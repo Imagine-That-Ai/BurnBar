@@ -966,12 +966,15 @@ final class ChatSessionController {
 
         let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
         activeThreadID = nextThread
+        let fetchedMessages: [ChatMessageRecord]
         do {
-            messages = try await dataStore.fetchChatMessages(threadID: nextThread)
+            fetchedMessages = try await dataStore.fetchChatMessages(threadID: nextThread)
         } catch {
             AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
-            messages = []
+            fetchedMessages = []
         }
+        guard chatBackend == backend, activeThreadID == nextThread else { return }
+        messages = fetchedMessages
 
         if messages.isEmpty {
             if backend.requiresCLIAssistantConsent {
@@ -1146,12 +1149,15 @@ final class ChatSessionController {
         // Don't clobber in-memory messages if a stream is active — the in-flight
         // assistant reply and any streaming transcript pieces haven't been persisted yet.
         if !isStreaming {
+            let fetchedMessages: [ChatMessageRecord]
             do {
-                messages = try await dataStore.fetchChatMessages(threadID: chosenThreadID)
+                fetchedMessages = try await dataStore.fetchChatMessages(threadID: chosenThreadID)
             } catch {
                 AppLogger.chat.silentFailure("fetchChatMessages (loadPersisted)", error: error)
-                messages = []
+                fetchedMessages = []
             }
+            guard activeThreadID == chosenThreadID, !isStreaming else { return }
+            messages = fetchedMessages
             firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
             conversationJumpTargets = []
         }
@@ -1249,7 +1255,9 @@ final class ChatSessionController {
                 _ = try await dataStore.createChatThread(id: threadID)
             }
             guard activeThreadID == threadID else { return }
-            messages = try await dataStore.fetchChatMessages(threadID: threadID)
+            let fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
+            guard activeThreadID == threadID else { return }
+            messages = fetchedMessages
         } catch {
             AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
             await startNewChatThreadAsync()

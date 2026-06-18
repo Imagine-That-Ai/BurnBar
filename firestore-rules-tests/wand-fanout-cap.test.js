@@ -151,6 +151,29 @@ function singleMission(uid, requestID, extra = {}) {
   };
 }
 
+function missionEventAad(uid, requestID, eventID) {
+  return payloadAad(uid, "cli_agent_mission_requests/events", `${requestID}/${eventID}`);
+}
+
+function missionEvent(uid, requestID, eventID, extra = {}) {
+  return {
+    sequence: 1,
+    timestamp: "2026-05-13T00:00:00.000Z",
+    kind: "status",
+    phase: "queued",
+    source: "ios",
+    deliveryMode: "action_only",
+    eventImportance: "normal",
+    skillStepID: "queued",
+    isError: false,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload: sealedPayload(missionEventAad(uid, requestID, eventID)),
+    ...extra,
+  };
+}
+
 function childIDsFor(groupID, count) {
   return Array.from({ length: count }, (_, index) => `${groupID}-child-${index + 1}`);
 }
@@ -244,6 +267,15 @@ async function main() {
     );
   });
 
+  await step("grouped child siblingIndex must point at its parent slot", async () => {
+    await seed(testEnv, aliceUid, "cloud");
+    await assertFails(
+      commitFanOut(aliceDB, aliceUid, "sibling-slot-bypass", 2, {
+        childExtra: (_childID, index) => (index === 1 ? { siblingIndex: 0 } : {}),
+      })
+    );
+  });
+
   await step("parent membership cannot be mutated after create", async () => {
     await seed(testEnv, aliceUid, "free");
     await assertSucceeds(commitFanOut(aliceDB, aliceUid, "mutate-parent", 1));
@@ -275,6 +307,40 @@ async function main() {
         doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/spoof-single`),
         singleMission(aliceUid, "spoof-single", {
           groupID: "missing-parent",
+        })
+      )
+    );
+  });
+
+  await step("Mac Wand dispatcher can seed the first queued event", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const requestID = "mac-wand-seed";
+    const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, requestPath),
+        singleMission(aliceUid, requestID, {
+          approvalMode: "manual_all",
+          source: "mac",
+          sourceSurface: "mac-wand",
+        })
+      )
+    );
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, `${requestPath}/events/000001`),
+        missionEvent(aliceUid, requestID, "000001", {
+          source: "mac",
+          sourceSurface: "mac-wand",
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `${requestPath}/events/000002`),
+        missionEvent(aliceUid, requestID, "000002", {
+          source: "mac",
+          sourceSurface: "mac-wand",
         })
       )
     );

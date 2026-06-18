@@ -7595,7 +7595,7 @@
 				F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
 				A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */,
 				8A38C8EE41C5257032CEB552 /* Bundle Remote Unlock Input Helpers */,
-				E5ED3AFEDC460F8E5C943D11 /* Bundle Project Code Memory Resources */,
+				4D5D25B9C20B6B325DFD55C5 /* Bundle Agent Runtime Resources */,
 			);
 			buildRules = (
 			);
@@ -8132,6 +8132,28 @@
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]] || [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" == \"YES\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  exit 0\nfi\n\nfor KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do\n  if /usr/libexec/PlistBuddy -c \"Print :${KEY}\" \"${SOURCE_PLIST}\" >/dev/null 2>&1; then\n    echo \"error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds.\"\n    exit 1\n  fi\ndone\n";
 		};
+		4D5D25B9C20B6B325DFD55C5 /* Bundle Agent Runtime Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/tools/project-code-memory/secret-pattern-corpus.json",
+				"$(PROJECT_DIR)/tools/openburnbar-mcp/select_wand_models.py",
+			);
+			name = "Bundle Agent Runtime Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tools/openburnbar-mcp/select_wand_models.py",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nCORPUS_SOURCE=\"${PROJECT_DIR}/tools/project-code-memory/secret-pattern-corpus.json\"\nCORPUS_DEST_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ProjectCodeMemory\"\nCORPUS_DEST=\"${CORPUS_DEST_DIR}/secret-pattern-corpus.json\"\nWAND_SELECTOR_SOURCE=\"${PROJECT_DIR}/tools/openburnbar-mcp/select_wand_models.py\"\nWAND_SELECTOR_DEST_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/tools/openburnbar-mcp\"\nWAND_SELECTOR_DEST=\"${WAND_SELECTOR_DEST_DIR}/select_wand_models.py\"\n\nif [[ ! -f \"${CORPUS_SOURCE}\" ]]; then\n  echo \"error: missing Project Code Memory secret-scanner corpus at ${CORPUS_SOURCE}\" >&2\n  exit 1\nfi\nif [[ ! -f \"${WAND_SELECTOR_SOURCE}\" ]]; then\n  echo \"error: missing Wand selector script at ${WAND_SELECTOR_SOURCE}\" >&2\n  exit 1\nfi\n\nmkdir -p \"${CORPUS_DEST_DIR}\" \"${WAND_SELECTOR_DEST_DIR}\"\ncp \"${CORPUS_SOURCE}\" \"${CORPUS_DEST}\"\ncp \"${WAND_SELECTOR_SOURCE}\" \"${WAND_SELECTOR_DEST}\"\nchmod 0755 \"${WAND_SELECTOR_DEST}\"\n";
+		};
 		521470C163F4349FD4306702 /* Dedupe GRDB Link File Entries (Xcode 16) */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -8245,26 +8267,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-		};
-		E5ED3AFEDC460F8E5C943D11 /* Bundle Project Code Memory Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/tools/project-code-memory/secret-pattern-corpus.json",
-			);
-			name = "Bundle Project Code Memory Resources";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nSOURCE=\"${PROJECT_DIR}/tools/project-code-memory/secret-pattern-corpus.json\"\nDEST_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ProjectCodeMemory\"\nDEST=\"${DEST_DIR}/secret-pattern-corpus.json\"\n\nif [[ ! -f \"${SOURCE}\" ]]; then\n  echo \"error: missing Project Code Memory secret-scanner corpus at ${SOURCE}\" >&2\n  exit 1\nfi\n\nmkdir -p \"${DEST_DIR}\"\ncp \"${SOURCE}\" \"${DEST}\"\n";
 		};
 		F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -10226,11 +10228,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E0EBEBBB-2594-4919-8173-D7C7D86E3F67" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_0DDCB076-DF51-467A-9749-2D7C68201AC3" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_36BF7146-DE4F-47B8-9721-14DB75DFAFA1" /* OpenBurnBarCore */;
+			productRef = "TEMP_B6E8F700-26BB-42F0-BA78-AF3D821A0DFE" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10283,7 +10285,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_0E99EE64-B0D6-443E-9AE6-E168CC565868" /* OpenBurnBarCore */;
+			productRef = "TEMP_237ECD72-58B0-4FA7-A789-702C5771A8CA" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10301,15 +10303,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_9CB11280-6FFA-4879-A4EC-11E3B893DAB5" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_989EE631-2AFB-4E40-AAE7-41F222EE25EA" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_F530F30A-CF43-400A-9C7A-7CA6BD81FDDB" /* OpenBurnBarMedia */;
+			productRef = "TEMP_EC87C4F9-5C2B-4368-A964-C6FA11B29F89" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_8D91940C-5B5F-4654-B4C1-0B28E47ED843" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_021E1B82-FE39-40EE-92F7-244C44B2E38D" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -11472,27 +11474,27 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_0E99EE64-B0D6-443E-9AE6-E168CC565868" /* OpenBurnBarCore */ = {
+		"TEMP_021E1B82-FE39-40EE-92F7-244C44B2E38D" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_0DDCB076-DF51-467A-9749-2D7C68201AC3" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_237ECD72-58B0-4FA7-A789-702C5771A8CA" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_36BF7146-DE4F-47B8-9721-14DB75DFAFA1" /* OpenBurnBarCore */ = {
+		"TEMP_989EE631-2AFB-4E40-AAE7-41F222EE25EA" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_B6E8F700-26BB-42F0-BA78-AF3D821A0DFE" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_8D91940C-5B5F-4654-B4C1-0B28E47ED843" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_9CB11280-6FFA-4879-A4EC-11E3B893DAB5" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_E0EBEBBB-2594-4919-8173-D7C7D86E3F67" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_F530F30A-CF43-400A-9C7A-7CA6BD81FDDB" /* OpenBurnBarMedia */ = {
+		"TEMP_EC87C4F9-5C2B-4368-A964-C6FA11B29F89" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};

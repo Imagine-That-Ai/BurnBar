@@ -220,6 +220,11 @@ extension BurnBarProjectCodeMemoryStore {
 
     static func legacyProjectID(for root: URL) -> String {
         let canonical = root.resolvingSymlinksInPath().standardizedFileURL.path
+        return "proj_" + String(sha256Hex(canonical).prefix(16))
+    }
+
+    static func longLegacyProjectID(for root: URL) -> String {
+        let canonical = root.resolvingSymlinksInPath().standardizedFileURL.path
         return "proj_" + String(sha256Hex(canonical).prefix(32))
     }
 

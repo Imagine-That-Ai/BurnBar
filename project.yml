@@ -211,24 +211,35 @@ targets:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog
-      - name: Bundle Project Code Memory Resources
+      - name: Bundle Agent Runtime Resources
         script: |
           set -euo pipefail
-          SOURCE="${PROJECT_DIR}/tools/project-code-memory/secret-pattern-corpus.json"
-          DEST_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ProjectCodeMemory"
-          DEST="${DEST_DIR}/secret-pattern-corpus.json"
+          CORPUS_SOURCE="${PROJECT_DIR}/tools/project-code-memory/secret-pattern-corpus.json"
+          CORPUS_DEST_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ProjectCodeMemory"
+          CORPUS_DEST="${CORPUS_DEST_DIR}/secret-pattern-corpus.json"
+          WAND_SELECTOR_SOURCE="${PROJECT_DIR}/tools/openburnbar-mcp/select_wand_models.py"
+          WAND_SELECTOR_DEST_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/tools/openburnbar-mcp"
+          WAND_SELECTOR_DEST="${WAND_SELECTOR_DEST_DIR}/select_wand_models.py"
 
-          if [[ ! -f "${SOURCE}" ]]; then
-            echo "error: missing Project Code Memory secret-scanner corpus at ${SOURCE}" >&2
+          if [[ ! -f "${CORPUS_SOURCE}" ]]; then
+            echo "error: missing Project Code Memory secret-scanner corpus at ${CORPUS_SOURCE}" >&2
+            exit 1
+          fi
+          if [[ ! -f "${WAND_SELECTOR_SOURCE}" ]]; then
+            echo "error: missing Wand selector script at ${WAND_SELECTOR_SOURCE}" >&2
             exit 1
           fi
 
-          mkdir -p "${DEST_DIR}"
-          cp "${SOURCE}" "${DEST}"
+          mkdir -p "${CORPUS_DEST_DIR}" "${WAND_SELECTOR_DEST_DIR}"
+          cp "${CORPUS_SOURCE}" "${CORPUS_DEST}"
+          cp "${WAND_SELECTOR_SOURCE}" "${WAND_SELECTOR_DEST}"
+          chmod 0755 "${WAND_SELECTOR_DEST}"
         inputFiles:
           - $(PROJECT_DIR)/tools/project-code-memory/secret-pattern-corpus.json
+          - $(PROJECT_DIR)/tools/openburnbar-mcp/select_wand_models.py
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tools/openburnbar-mcp/select_wand_models.py
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false

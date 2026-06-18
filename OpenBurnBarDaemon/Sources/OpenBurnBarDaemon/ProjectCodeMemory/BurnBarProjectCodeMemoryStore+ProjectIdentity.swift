@@ -6,6 +6,7 @@ extension BurnBarProjectCodeMemoryStore {
         let canonicalPath = canonicalRoot.path
         let pathHash = Self.sha256Hex(canonicalPath)
         let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
+        let longLegacyProjectID = Self.longLegacyProjectID(for: canonicalRoot)
         let fingerprint = Self.projectIdentityFingerprint(root: canonicalRoot)
         let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
         let now = Self.isoNow()
@@ -26,6 +27,8 @@ extension BurnBarProjectCodeMemoryStore {
                 projectID = existingForAlias
             } else if try hasProjectRows(projectID: legacyProjectID) {
                 projectID = legacyProjectID
+            } else if try hasProjectRows(projectID: longLegacyProjectID) {
+                projectID = longLegacyProjectID
             } else {
                 projectID = preferredProjectID
             }

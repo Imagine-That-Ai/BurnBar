@@ -30,12 +30,15 @@ extension ChatSessionController {
 
         activeThreadID = threadID
         persistActiveThreadSlot()
+        let fetchedMessages: [ChatMessageRecord]
         do {
-            messages = try await dataStore.fetchChatMessages(threadID: threadID)
+            fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
         } catch {
             AppLogger.chat.silentFailure("fetchChatMessages (openHistory)", error: error)
-            messages = []
+            fetchedMessages = []
         }
+        guard activeThreadID == threadID else { return }
+        messages = fetchedMessages
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         ensureChatWorkspaceDirectoryExists()
     }

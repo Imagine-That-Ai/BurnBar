@@ -1871,7 +1871,8 @@ service cloud.firestore {
           && request.resource.data.siblingCount == group.data.childMissionIDs.size()
           && request.resource.data.siblingIndex is int
           && request.resource.data.siblingIndex >= 0
-          && request.resource.data.siblingIndex < group.data.childMissionIDs.size();
+          && request.resource.data.siblingIndex < group.data.childMissionIDs.size()
+          && group.data.childMissionIDs[request.resource.data.siblingIndex] == requestId;
       }
 
       function validCliMissionGroupingOnCreate() {
@@ -2101,6 +2102,14 @@ service cloud.firestore {
           )
           || (
             request.resource.data.source == "mac"
+            && request.resource.data.phase == "queued"
+            && request.resource.data.kind == "status"
+            && request.resource.data.sequence == 1
+            && eventId == "000001"
+            && request.resource.data.sourceSurface == "mac-wand"
+          )
+          || (
+            request.resource.data.source == "mac"
             && trustedMissionExecutorClaim(userId, requestId)
           );
       }
@@ -2134,6 +2143,7 @@ service cloud.firestore {
             "messageTruncated",
             "runtime",
             "source",
+            "sourceSurface",
             "sourceSkillID",
             "deliveryMode",
             "eventImportance",
@@ -2170,6 +2180,7 @@ service cloud.firestore {
           ))
           && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
           && request.resource.data.source in ["ios", "android", "ios-chat", "android-chat", "mac"]
+          && (!("sourceSurface" in request.resource.data) || request.resource.data.sourceSurface in ["ios", "android", "ios-chat", "android-chat", "mac-wand"])
           && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
           && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
           && (!("eventImportance" in request.resource.data) || request.resource.data.eventImportance in ["quiet", "normal", "action_required", "terminal"])

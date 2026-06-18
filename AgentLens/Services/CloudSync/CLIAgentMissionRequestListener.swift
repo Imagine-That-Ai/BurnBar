@@ -23,7 +23,14 @@ private enum WandMissionEntitlements {
         "com.openburnbar.proMax.annual",
         "com.openburnbar.ultra.monthly",
         "com.openburnbar.ultra.annual",
-        "com.openburnbar.ultra.annual.v2"
+        "com.openburnbar.ultra.annual.v2",
+        "com.openburnbar.hostedComputerUseSync.monthly",
+        "com.openburnbar.computerUse.monthly"
+    ]
+
+    static let hostedComputerUseProductIDs: Set<String> = [
+        "com.openburnbar.hostedComputerUseSync.monthly",
+        "com.openburnbar.computerUse.monthly"
     ]
 
     static let proMaxProductIDs: Set<String> = [
@@ -267,6 +274,11 @@ final class CLIAgentMissionRequestListener {
             return WandFanOut.maxParallel(for: .pro)
         }
 
+        let hostedComputerUse = try await entitlements.document("hosted_computer_use_sync").getDocument()
+        if activeEntitlement(hostedComputerUse, productIDs: WandMissionEntitlements.hostedComputerUseProductIDs) {
+            return WandFanOut.maxParallel(for: .pro)
+        }
+
         async let hostedQuota = entitlements.document("hosted_quota_sync").getDocument()
         async let burnBarPro = entitlements.document("burnbar_pro").getDocument()
         let cloudCandidates = try await [hostedQuota, burnBarPro, proMax]
@@ -282,11 +294,13 @@ final class CLIAgentMissionRequestListener {
               let data = snapshot.data(),
               data["active"] as? Bool == true,
               let productID = data["productID"] as? String,
-              productIDs.contains(productID),
-              let expireAt = entitlementTimestamp(data["expireAt"]) else {
+              productIDs.contains(productID) else {
             return false
         }
-        return expireAt > Date()
+        let expireAt = entitlementTimestamp(data["expireAt"])
+            ?? entitlementTimestamp(data["expiresAt"])
+            ?? entitlementTimestamp(data["expirationDate"])
+        return expireAt.map { $0 > Date() } ?? true
     }
 
     private func entitlementTimestamp(_ value: Any?) -> Date? {
@@ -295,6 +309,12 @@ final class CLIAgentMissionRequestListener {
             return timestamp.dateValue()
         case let date as Date:
             return date
+        case let seconds as TimeInterval:
+            return Date(timeIntervalSince1970: seconds)
+        case let int as Int:
+            return Date(timeIntervalSince1970: TimeInterval(int))
+        case let string as String:
+            return ISO8601DateFormatter().date(from: string)
         default:
             return nil
         }

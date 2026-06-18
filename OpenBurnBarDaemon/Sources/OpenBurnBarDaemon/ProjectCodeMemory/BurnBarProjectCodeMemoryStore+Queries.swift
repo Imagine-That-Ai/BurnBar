@@ -215,9 +215,8 @@ extension BurnBarProjectCodeMemoryStore {
                 JOIN code_artifacts callee_art ON callee_art.id = callee.artifact_id
                 WHERE e.project_id = ?
                 ORDER BY caller.name ASC, callee.name ASC, caller_art.file_path ASC
-                LIMIT ?
                 """,
-                [.text(projectID), .int(1_000)]
+                [.text(projectID)]
             )
             var staleCount = 0
             var totalCandidateCount = 0

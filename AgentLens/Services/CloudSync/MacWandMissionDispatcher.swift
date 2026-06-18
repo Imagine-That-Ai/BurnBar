@@ -260,6 +260,7 @@ struct MacWandMissionDispatcher {
             "kind": "status",
             "phase": "queued",
             "source": "mac",
+            "sourceSurface": "mac-wand",
             "deliveryMode": "action_only",
             "eventImportance": "normal",
             "skillStepID": "queued",

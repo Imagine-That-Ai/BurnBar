@@ -163,7 +163,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         ".codex", ".claude", ".venv", "target", "Vendor"
     ]
     static let indexedExtensions: Set<String> = [
-        "swift", "ts", "tsx", "py"
+        "swift", "kt", "kts", "java",
+        "ts", "tsx", "js", "jsx",
+        "py", "rs", "go",
+        "m", "mm", "h", "hpp", "c", "cc", "cpp",
+        "json", "md", "yml", "yaml"
     ]
     static let defaultProjectStorageBudgetBytes = 512 * 1_024 * 1_024
     static let maximumProjectStorageBudgetBytes = 10 * 1_024 * 1_024 * 1_024

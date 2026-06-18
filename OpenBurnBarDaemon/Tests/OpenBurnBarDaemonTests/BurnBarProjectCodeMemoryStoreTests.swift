@@ -92,6 +92,46 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(explored.truncated)
     }
 
+    func testIndexProjectKeepsAllSupportedLexicalLanguages() throws {
+        let fixture = try makeFixture()
+        try write(
+            """
+            package com.openburnbar.fixture
+            fun kotlinLexicalToken() = "kotlin-lexical-token"
+            """,
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Worker.kt")
+        )
+        try write(
+            """
+            fn rust_lexical_token() -> &'static str { "rust-lexical-token" }
+            """,
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("relay.rs")
+        )
+        try write(
+            """
+            # Fixture Notes
+            markdown lexical token for Project Code Memory.
+            """,
+            to: fixture.project.appendingPathComponent("README.md")
+        )
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let indexed = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        XCTAssertEqual(indexed.indexedFiles, 3)
+        XCTAssertTrue(indexed.rejectedFiles.isEmpty)
+        let kotlinHits = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "kotlinLexicalToken", projectPath: fixture.project.path)).hits
+        let rustHits = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "rust_lexical_token", projectPath: fixture.project.path)).hits
+        let markdownHits = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "markdown lexical token", projectPath: fixture.project.path)).hits
+        XCTAssertTrue(kotlinHits.contains { $0.filePath == "Sources/Worker.kt" })
+        XCTAssertTrue(rustHits.contains { $0.filePath == "Sources/relay.rs" })
+        XCTAssertTrue(markdownHits.contains { $0.filePath == "README.md" })
+        XCTAssertEqual(
+            Set(try sqliteStrings(database: fixture.database, sql: "SELECT DISTINCT lang FROM code_artifacts")),
+            Set(["kotlin", "rust", "markdown"])
+        )
+    }
+
     func testSwiftContextPackWrapsMaliciousSourceAsUntrustedContent() throws {
         let fixture = try makeFixture()
         try write(
@@ -480,6 +520,27 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(deep.edges.contains { $0.caller.name == "beta_chain" && $0.callee.name == "gamma_chain" })
     }
 
+    func testCallGraphDoesNotDropLateSeedEdgesBehindInternalScanCap() throws {
+        let fixture = try makeFixture()
+        var source = ""
+        for index in 0..<1_050 {
+            source += "func a_prefix_caller_\(index)() { a_prefix_callee_\(index)() }\n"
+            source += "func a_prefix_callee_\(index)() {}\n"
+        }
+        source += "func zz_targetCaller() { zz_targetSymbol() }\n"
+        source += "func zz_targetSymbol() {}\n"
+        try write(source, to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("ManyCalls.swift"))
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        let graph = try store.callGraph(
+            BurnBarProjectCodeSymbolRequest(name: "zz_targetSymbol", projectPath: fixture.project.path, limit: 10, depth: 1)
+        )
+
+        XCTAssertTrue(graph.edges.contains { $0.caller.name == "zz_targetCaller" && $0.callee.name == "zz_targetSymbol" })
+    }
+
     func testStaticParserTimeoutFallsBackWithoutHangingIndex() throws {
         let fixture = try makeFixture()
         let slowHelper = fixture.root.appendingPathComponent("slow-parser.sh", isDirectory: false)
@@ -730,6 +791,46 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_projects WHERE project_id = '\(first.projectID)' AND identity_version = 2").first,
             "1"
         )
+    }
+
+    func testProjectIdentityPreservesSixteenHexLegacyProjectIDRows() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let legacyProjectID = BurnBarProjectCodeMemoryStore.legacyProjectID(for: fixture.project)
+        XCTAssertEqual(legacyProjectID.count, "proj_".count + 16)
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO code_artifacts
+                (id, project_id, file_path, blob_sha, content_hash, commit_sha, lang, byte_count, mtime, indexed_at)
+            VALUES
+                ('artifact-legacy-16', \(sqlLiteral(legacyProjectID)), 'Sources/Legacy.swift', 'blob', 'content', NULL, 'swift', 10, 1, '2026-06-18T00:00:00Z')
+            """
+        )
+
+        let identity = try store.resolveProjectIdentity(root: fixture.project)
+
+        XCTAssertEqual(identity.projectID, legacyProjectID)
+    }
+
+    func testProjectIdentityRecognizesThirtyTwoHexTransitionRows() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let transitionProjectID = BurnBarProjectCodeMemoryStore.longLegacyProjectID(for: fixture.project)
+        XCTAssertEqual(transitionProjectID.count, "proj_".count + 32)
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO code_artifacts
+                (id, project_id, file_path, blob_sha, content_hash, commit_sha, lang, byte_count, mtime, indexed_at)
+            VALUES
+                ('artifact-legacy-32', \(sqlLiteral(transitionProjectID)), 'Sources/Transition.swift', 'blob', 'content', NULL, 'swift', 10, 1, '2026-06-18T00:00:00Z')
+            """
+        )
+
+        let identity = try store.resolveProjectIdentity(root: fixture.project)
+
+        XCTAssertEqual(identity.projectID, transitionProjectID)
     }
 
     func testIndexProjectEvictsOldestFilesFirstUnderBudget() throws {
@@ -1151,6 +1252,31 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             }
         }
         return values
+    }
+
+    private func sqliteExecute(database: URL, sql: String) throws {
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        guard let db else { return }
+        defer { sqlite3_close(db) }
+
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let result = sqlite3_exec(db, sql, nil, nil, &errorMessage)
+        if result != SQLITE_OK {
+            let message = errorMessage.map { String(cString: $0) } ?? "sqlite3_exec failed"
+            if let errorMessage {
+                sqlite3_free(errorMessage)
+            }
+            throw NSError(
+                domain: "BurnBarProjectCodeMemoryStoreTests",
+                code: Int(result),
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+    }
+
+    private func sqlLiteral(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
 
     private func runGit(_ arguments: [String], cwd: URL) throws {

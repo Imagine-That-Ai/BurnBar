@@ -192,7 +192,7 @@ struct MacWandComposerSheet: View {
                 prompt: prompt,
                 workerCount: workerCount,
                 targetProject: targetProject.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-                approvalMode: requireApproval ? "require_approval" : "existing_policy",
+                approvalMode: requireApproval ? "manual_all" : "existing_policy",
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed
             )
