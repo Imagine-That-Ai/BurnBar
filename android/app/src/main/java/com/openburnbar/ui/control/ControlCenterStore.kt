@@ -3,10 +3,12 @@ package com.openburnbar.ui.control
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.domains.DataDomains
+import java.security.GeneralSecurityException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -197,7 +199,16 @@ internal class ControlCenterStore(
             } catch (e: FirebaseFunctionsException) {
                 _error.value = e.localizedMessage
                 onDone(null)
-            } catch (e: Exception) {
+            } catch (e: FirebaseFirestoreException) {
+                _error.value = e.localizedMessage
+                onDone(null)
+            } catch (e: IllegalStateException) {
+                _error.value = e.localizedMessage ?: "Recovery key setup failed."
+                onDone(null)
+            } catch (e: IllegalArgumentException) {
+                _error.value = e.localizedMessage ?: "Recovery key setup failed."
+                onDone(null)
+            } catch (e: GeneralSecurityException) {
                 _error.value = e.localizedMessage ?: "Recovery key setup failed."
                 onDone(null)
             } finally {
@@ -227,7 +238,7 @@ internal class ControlCenterStore(
                 recoveryId = recoveryId,
                 verificationHash = CloudVaultCrypto.recoveryVerificationHash(recoveryKey),
             )
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             _error.value = e.localizedMessage ?: "Recovery key confirmation failed."
         }
     }
