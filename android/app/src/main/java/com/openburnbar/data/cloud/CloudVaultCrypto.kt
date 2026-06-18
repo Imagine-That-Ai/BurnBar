@@ -1119,13 +1119,13 @@ object AndroidCloudVaultKeyAccess {
                     "Mac or iPhone before writing cloud chat content.",
             )
 
-    suspend fun keyForRecoverySetup(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey {
-        keyForReading(uid = uid, firestore = firestore)?.let { return it }
+    suspend fun keyForRecoverySetup(uid: String): AndroidCloudVaultResolvedKey {
+        loadLocalKey(uid)?.let { local ->
+            return AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local))
+        }
         val key = CloudVaultCrypto.generateVaultKey()
-        val resolved = AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
-        verifyStateIfPresent(uid, firestore, resolved.vaultKeyID)
         saveLocalKey(uid, key)
-        return resolved
+        return AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
     }
 
     suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {
