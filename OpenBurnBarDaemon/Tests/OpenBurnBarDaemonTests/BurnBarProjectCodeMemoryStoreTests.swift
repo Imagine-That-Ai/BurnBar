@@ -623,7 +623,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("OverBudget.swift")
         )
 
-        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
         let indexed = try store.indexProject(
             BurnBarProjectCodeIndexProjectRequest(
                 projectPath: fixture.project.path,
@@ -647,6 +651,83 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         if BurnBarDaemonDatabaseCipher.isCipherAvailable() == false {
             XCTAssertTrue(status.productionReadinessReasons.contains { $0.contains("SQLCipher codec not linked") })
         }
+    }
+
+    func testIndexProjectCountsEmbeddingVectorsAgainstStorageBudget() throws {
+        let fixture = try makeFixture()
+        let relativePath = "Docs/VectorBudget.md"
+        let body = "semantic vector budget target\n"
+        try write(body, to: fixture.project.appendingPathComponent(relativePath))
+
+        let provider = StableBagEmbeddingProvider(dimension: 96)
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: provider
+        )
+        let identity = try store.resolveProjectIdentity(root: fixture.project)
+        let chunks = BurnBarProjectCodeMemoryStore.chunk(text: body)
+        let noVectorBytes = BurnBarProjectCodeMemoryStore.estimatedCodeStorageByteCount(
+            sourceBytes: body.utf8.count,
+            chunks: chunks,
+            filePath: relativePath,
+            projectID: identity.projectID,
+            provider: BurnBarProjectCodeMemoryStore.codeProvider
+        )
+        let vectorBytes = chunks.reduce(0) { partial, chunk in
+            guard let vector = provider.embed(chunk.text) else { return partial }
+            return partial + BurnBarCodeVectorCodec.base64EncodedByteCount(vectorDimension: vector.count)
+        }
+        XCTAssertGreaterThan(vectorBytes, 0)
+
+        let indexed = try store.indexProject(
+            BurnBarProjectCodeIndexProjectRequest(
+                projectPath: fixture.project.path,
+                maxFiles: 20,
+                maxFileBytes: 10_000,
+                storageBudgetBytes: noVectorBytes + vectorBytes - 1
+            )
+        )
+
+        XCTAssertEqual(indexed.indexedFiles, 0)
+        XCTAssertEqual(indexed.rejectedFiles.first?.filePath, relativePath)
+        XCTAssertEqual(indexed.rejectedFiles.first?.labels, ["Storage budget cap reached"])
+    }
+
+    func testIndexStatusIncludesDaemonCodeEmbeddingVectorBytes() throws {
+        let fixture = try makeFixture()
+        try write(
+            "semantic vector status target\n",
+            to: fixture.project.appendingPathComponent("Docs/VectorStatus.md")
+        )
+
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: StableBagEmbeddingProvider(dimension: 8)
+        )
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        let projectID = try XCTUnwrap(sqliteStrings(database: fixture.database, sql: "SELECT project_id FROM code_artifacts LIMIT 1").first)
+        let sourceBytes = try sqliteInt(database: fixture.database, sql: "SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts")
+        let chunkTextBytes = try sqliteInt(database: fixture.database, sql: "SELECT COALESCE(SUM(length(CAST(text AS BLOB))), 0) FROM search_chunks WHERE sourceKind = 'code'")
+        let chunkCount = try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM search_chunks WHERE sourceKind = 'code'")
+        let chunkTextAndPathBytes = try sqliteInt(
+            database: fixture.database,
+            sql: "SELECT COALESCE(SUM(length(CAST(text AS BLOB)) + length(CAST(COALESCE(sectionPath, '') AS BLOB))), 0) FROM search_chunks WHERE sourceKind = 'code'"
+        )
+        let ftsMirrorBytes = chunkTextAndPathBytes + chunkCount * (projectID.utf8.count + BurnBarProjectCodeMemoryStore.codeProvider.utf8.count)
+        let codeVectorBytes = try sqliteInt(
+            database: fixture.database,
+            sql: "SELECT COALESCE(SUM(length(CAST(vector AS BLOB))), 0) FROM code_chunk_embeddings"
+        )
+        XCTAssertGreaterThan(codeVectorBytes, 0)
+
+        let status = try store.indexStatus(BurnBarProjectCodeIndexStatusRequest(projectPath: fixture.project.path))
+
+        XCTAssertEqual(status.storageByteCount, sourceBytes + chunkTextBytes + ftsMirrorBytes + codeVectorBytes)
+        XCTAssertLessThanOrEqual(status.storageByteCount, status.storageBudgetBytes)
+        XCTAssertTrue(status.storageWithinBudget)
     }
 
     func testSQLiteCompactionPolicyUsesFreelistPageMetrics() throws {
@@ -845,7 +926,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: older.path)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 2_000)], ofItemAtPath: newer.path)
 
-        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
         let indexed = try store.indexProject(
             BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20, maxFileBytes: 10_000, storageBudgetBytes: 180)
         )
@@ -1252,6 +1337,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             }
         }
         return values
+    }
+
+    private func sqliteInt(database: URL, sql: String) throws -> Int {
+        let raw = try XCTUnwrap(sqliteStrings(database: database, sql: sql).first)
+        return try XCTUnwrap(Int(raw))
     }
 
     private func sqliteExecute(database: URL, sql: String) throws {

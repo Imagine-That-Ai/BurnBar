@@ -39,7 +39,7 @@ extension BurnBarProjectCodeMemoryStore {
             """,
             [.int(ftsMetadataBytes), .text(Self.codeSourceKind), .text(projectID)]
         )
-        let vectorBytes = try fetchInt(
+        let legacyVectorBytes = try fetchInt(
             """
             SELECT COALESCE(SUM(length(e.vectorBlob)), 0)
             FROM chunk_embeddings e
@@ -49,7 +49,17 @@ extension BurnBarProjectCodeMemoryStore {
             """,
             [.text(Self.codeSourceKind), .text(projectID)]
         )
-        return sourceBytes + chunkTextBytes + ftsMirrorBytes + vectorBytes
+        let codeVectorBytes = try fetchInt(
+            """
+            SELECT COALESCE(SUM(length(CAST(e.vector AS BLOB))), 0)
+            FROM code_chunk_embeddings e
+            JOIN search_chunks c ON c.id = e.chunk_id
+            JOIN code_artifacts a ON a.id = c.sourceID
+            WHERE c.sourceKind = ? AND a.project_id = ?
+            """,
+            [.text(Self.codeSourceKind), .text(projectID)]
+        )
+        return sourceBytes + chunkTextBytes + ftsMirrorBytes + legacyVectorBytes + codeVectorBytes
     }
 
     func projectRepoMap(projectID: String, topFiles: [BurnBarProjectCodeExploreFile]) throws -> BurnBarProjectCodeRepoMap {

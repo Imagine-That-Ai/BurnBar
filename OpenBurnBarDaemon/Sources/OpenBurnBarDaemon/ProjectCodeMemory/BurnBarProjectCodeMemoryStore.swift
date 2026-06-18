@@ -592,12 +592,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     } else {
                         chunks = Self.chunk(text: text)
                     }
+                    let preparedChunks = chunks.map {
+                        PreparedCodeChunk(chunk: $0, embeddingVector: codeEmbeddingVector(for: $0.text))
+                    }
+                    let vectorBytes = preparedChunks.reduce(0) { partial, prepared in
+                        partial + Self.codeEmbeddingVectorStorageByteCount(prepared.embeddingVector)
+                    }
                     let candidateStorageByteCount = Self.estimatedCodeStorageByteCount(
                         sourceBytes: data.count,
                         chunks: chunks,
                         filePath: relativePath,
                         projectID: projectID,
-                        provider: Self.codeProvider
+                        provider: Self.codeProvider,
+                        vectorBytes: vectorBytes
                     )
                     guard storageByteCount + candidateStorageByteCount <= storageBudgetBytes else {
                         rejectedFiles.append(
@@ -703,7 +710,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         contentHash: blobSHA,
                         now: now
                     )
-                    for (ordinal, chunk) in chunks.enumerated() {
+                    for (ordinal, prepared) in preparedChunks.enumerated() {
+                        let chunk = prepared.chunk
                         let chunkID = "chunk_" + String(Self.sha256Hex("\(documentID):\(ordinal):\(chunk.contentHash)").prefix(32))
                         try insertSearchChunk(
                             chunkID: chunkID,
@@ -716,6 +724,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                             endOffset: chunk.endOffset,
                             text: chunk.text,
                             contentHash: chunk.contentHash,
+                            embeddingVector: prepared.embeddingVector,
                             now: now
                         )
                         chunkCount += 1
@@ -1031,6 +1040,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         endOffset: Int,
         text: String,
         contentHash: String,
+        embeddingVector: [Float]?,
         now: String
     ) throws {
         try execute(
@@ -1052,7 +1062,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         // Daemon-owned semantic vector for this chunk, tagged with the embedding version
         // so search never mixes generations. Stored base64 (TEXT) to ride the existing
         // string-based row machinery. Missing/declined embeddings degrade to lexical-only.
-        if embeddingProvider.isAvailable, let vector = embeddingProvider.embed(text) {
+        if let vector = embeddingVector {
             try execute(
                 """
                 INSERT OR REPLACE INTO code_chunk_embeddings
@@ -1065,6 +1075,21 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 ]
             )
         }
+    }
+
+    private struct PreparedCodeChunk {
+        let chunk: CodeChunk
+        let embeddingVector: [Float]?
+    }
+
+    private func codeEmbeddingVector(for text: String) -> [Float]? {
+        guard embeddingProvider.isAvailable else { return nil }
+        return embeddingProvider.embed(text)
+    }
+
+    private static func codeEmbeddingVectorStorageByteCount(_ vector: [Float]?) -> Int {
+        guard let vector else { return 0 }
+        return BurnBarCodeVectorCodec.base64EncodedByteCount(vectorDimension: vector.count)
     }
 
     private func deleteCodeArtifact(artifactID: String) throws {
