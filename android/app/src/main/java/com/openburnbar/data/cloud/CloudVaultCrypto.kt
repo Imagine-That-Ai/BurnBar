@@ -210,7 +210,7 @@ object CloudVaultCrypto {
     private const val RECOVERY_SALT = "OpenBurnBar-Recovery-Salt-v1"
     private const val RECOVERY_WRAP_INFO = "OpenBurnBar-Recovery-Wrap-v1"
     private const val RECOVERY_KEY_GROUP_SIZE = 7
-    private const val RECOVERY_KEY_RANDOM_BYTES = 35
+    private const val RECOVERY_KEY_CHARACTER_COUNT = 35
     private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
     private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
     const val SIGNAL_ENVELOPE_FORMAT_VERSION: Int = 1
@@ -932,9 +932,9 @@ object CloudVaultCrypto {
 
     fun generateRecoveryKey(): String {
         val alphabet = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
-        val bytes = ByteArray(RECOVERY_KEY_RANDOM_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        return bytes
-            .map { alphabet[(it.toInt() and 0xff) % alphabet.length] }
+        val secureRandom = java.security.SecureRandom()
+        return CharArray(RECOVERY_KEY_CHARACTER_COUNT) { alphabet[secureRandom.nextInt(alphabet.length)] }
+            .asIterable()
             .chunked(RECOVERY_KEY_GROUP_SIZE)
             .joinToString("-") { it.joinToString("") }
     }
