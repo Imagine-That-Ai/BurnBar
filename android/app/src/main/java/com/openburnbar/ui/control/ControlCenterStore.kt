@@ -3,6 +3,7 @@ package com.openburnbar.ui.control
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.CloudVaultCrypto
@@ -196,6 +197,9 @@ internal class ControlCenterStore(
                 loadRecovery()
                 onDone(recoveryId)
             } catch (e: FirebaseFunctionsException) {
+                _error.value = e.localizedMessage
+                onDone(null)
+            } catch (e: FirebaseFirestoreException) {
                 _error.value = e.localizedMessage
                 onDone(null)
             } catch (e: IllegalStateException) {
