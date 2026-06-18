@@ -68,14 +68,25 @@ import {
     },
   ]);
   assert.equal(missingStorage.ok, false);
-  assert.ok(String(missingStorage.error).includes("firebasestorage.googleapis.com"));
+  const failedServiceIds = missingStorage.services
+    .filter((service) => !service.ok)
+    .map((service) => service.serviceId);
+  assert.deepEqual(
+    failedServiceIds,
+    ["firebasestorage.googleapis.com"],
+  );
 }
 
 {
   const malformedProbe = evaluateFirebaseAppCheckServiceSet(null);
   assert.equal(malformedProbe.ok, false);
-  assert.ok(String(malformedProbe.error).includes("firestore.googleapis.com"));
-  assert.ok(String(malformedProbe.error).includes("firebasestorage.googleapis.com"));
+  const failedServiceIds = malformedProbe.services
+    .filter((service) => !service.ok)
+    .map((service) => service.serviceId);
+  assert.deepEqual(
+    failedServiceIds,
+    REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  );
 }
 
 console.log("commercial-launch-gate App Check probe tests passed");
