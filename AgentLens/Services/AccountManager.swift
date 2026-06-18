@@ -522,6 +522,10 @@ final class AccountManager {
             try await Auth.auth().signIn(withEmail: email, password: password)
             refreshAuthStateSnapshot()
         }
+        Analytics.shared.track(.authSignInCompleted, [
+            "method": .string("email"),
+            "outcome": .string("success")
+        ])
     }
 
     func signUpWithEmail(email: String, password: String) async throws {
@@ -647,18 +651,15 @@ final class AccountManager {
     }
 
     private func authenticateWithoutKeychainRecovery(with credential: AuthCredential) async throws {
-        let isAccountLink: Bool
         if let user = currentUser, user.isAnonymous {
-            isAccountLink = true
             try await user.link(with: credential)
         } else {
-            isAccountLink = false
             try await Auth.auth().signIn(with: credential)
         }
         refreshAuthStateSnapshot()
         Analytics.shared.track(.authSignInCompleted, [
-            "provider": .string(lastOAuthProviderID ?? "email"),
-            "is_account_link": .bool(isAccountLink)
+            "method": .string(lastOAuthProviderID ?? "email"),
+            "outcome": .string("success")
         ])
     }
 

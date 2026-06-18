@@ -141,6 +141,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
             let sessionFacetsMap = (try? await context.dataStore.sessionFacetsMap()) ?? [:] // try?-ok(best-effort metadata read)
 
             var processedAnyBatch = false
+            var uploadedSessionLogCount = 0
             repeat {
                 let unsynced = try await context.dataStore.fetchUnsyncedSessionLogs(limit: 50)
                 guard !unsynced.isEmpty else {
@@ -458,6 +459,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         firestoreWrites: firestoreBatchCommits,
                         searchIndexCommits: 1
                     )
+                    uploadedSessionLogCount += 1
                 }
             } while drainAll
 
@@ -466,7 +468,9 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(progress?.currentSnapshot().uploadedSessionLogs ?? 0)
+            let itemCountBucket = AnalyticsBuckets.count(
+                progress?.currentSnapshot().uploadedSessionLogs ?? uploadedSessionLogCount
+            )
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "session_logs",
