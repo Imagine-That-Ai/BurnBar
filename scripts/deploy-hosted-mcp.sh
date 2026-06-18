@@ -217,7 +217,7 @@ if latest_percent != 100:
 print(f"Cloud Run traffic verified: 100% -> {latest_ready}")
 PY
 
-HEALTH_PATH="${MCP_HEALTH_PATH:-/healthz}"
+HEALTH_PATH="${MCP_HEALTH_PATH:-/readyz}"
 HEALTH_URL="${SERVICE_URL%/}${HEALTH_PATH}"
 RETRIES="${DEPLOY_HEALTH_RETRIES:-12}"
 SLEEP_SEC="${DEPLOY_HEALTH_SLEEP_SEC:-10}"

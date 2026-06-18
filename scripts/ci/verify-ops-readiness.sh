@@ -28,6 +28,7 @@ node --check functions/scripts/create-ops-log-metrics.mjs
 
 echo "==> post-deploy health gate script"
 bash -n scripts/ci/post-deploy-health-gate.sh
+bash scripts/ci/verify-hosted-mcp-deploy-health.sh
 
 echo "==> production ops plane scripts"
 bash -n scripts/ops/activate-production-ops-plane.sh
