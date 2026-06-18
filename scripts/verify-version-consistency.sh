@@ -33,7 +33,24 @@ check() {
 check "$repo_root/README.md" '.*Status:.*macOS `([^`]+)`.*' "README status line"
 check "$repo_root/CHANGELOG.md" '^## \[([0-9][^]]*)\].*' "CHANGELOG heading"
 check "$repo_root/extensions/openburnbar/package.json" '.*"version": "([^"]+)".*' "Extension package.json"
-check "$repo_root/homebrew/burnbar.rb" '^[[:space:]]*version "([^"]+)".*' "Homebrew cask"
+
+homebrew_file="$repo_root/homebrew/burnbar.rb"
+homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
+homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
+placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
+if [[ -z "$homebrew_version" ]]; then
+  echo "FAIL: Homebrew cask — version not found in $homebrew_file" >&2
+  fail=1
+elif [[ "$homebrew_version" == "$expected_version" && "$homebrew_sha" == "$placeholder_sha" ]]; then
+  echo "FAIL: Homebrew cask — version '$expected_version' still has placeholder sha256 in $homebrew_file" >&2
+  echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
+  fail=1
+elif [[ "$homebrew_version" != "$expected_version" ]]; then
+  echo "PASS: Homebrew cask deferred (currently '$homebrew_version'; update after v$expected_version DMG checksum exists)"
+else
+  echo "PASS: Homebrew cask"
+fi
+
 check "$repo_root/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift" '.*current = "([^"]+)".*' "Daemon version enum"
 check "$repo_root/SECURITY.md" '.*repo metadata \(`([^`]+)`.*' "SECURITY.md supported version"
 
