@@ -20,7 +20,7 @@ if [[ -d "$xcframework" ]]; then
 fi
 
 if [[ -f "$repo_root/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
-  git -C "$repo_root" submodule update --init --recursive Vendor/libsignal
+  bash "$repo_root/scripts/ci/update-submodules-with-retry.sh" Vendor/libsignal
 fi
 
 if [[ ! -d "$libsignal_dir" ]]; then
