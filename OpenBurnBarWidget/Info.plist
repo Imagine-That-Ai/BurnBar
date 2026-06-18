@@ -23,5 +23,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>amplitude.apiKey</key>
+	<string>$(BURNBAR_AMPLITUDE_API_KEY)</string>
 </dict>
 </plist>
