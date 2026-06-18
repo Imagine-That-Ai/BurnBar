@@ -141,9 +141,9 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount))
     }
 
-    func test_generateGatewayAuthToken_producesUniqueURLSafeSecrets() {
-        let first = GatewaySettings.generateAuthToken()
-        let second = GatewaySettings.generateAuthToken()
+    func test_generateGatewayAuthToken_producesUniqueURLSafeSecrets() throws {
+        let first = try GatewaySettings.generateAuthToken()
+        let second = try GatewaySettings.generateAuthToken()
         XCTAssertNotEqual(first, second, "Each launch must mint a distinct token")
         XCTAssertFalse(first.isEmpty)
         XCTAssertGreaterThanOrEqual(first.count, 43, "Token must carry at least 256 bits of entropy")

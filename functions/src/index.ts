@@ -191,3 +191,7 @@ export { getProfileAvatarDownloadUrl } from "./callables/profileAvatar.js";
 // Privacy-leak remediation: idempotent backfill that strips legacy plaintext
 // fields once a sealed copy exists + bumps a per-user reseal watermark.
 export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./callables/privacyBackfill.js";
+
+// Shared-artifact privacy remediation: read-only inventory of legacy plaintext
+// documents so trusted clients can pull and locally re-seal them.
+export { scanLegacyPlaintextArtifacts } from "./callables/sharedArtifactLegacyScan.js";

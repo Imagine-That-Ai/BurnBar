@@ -503,20 +503,33 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         report: inout SharedArtifactSyncReport
     ) async throws {
         let vaultKey = try await sharedArtifactVaultKeyForReading(scope: scope, deviceId: deviceId)
-        let snapshot = try await sharedArtifactsCollection(scope: scope)
+        let collection = sharedArtifactsCollection(scope: scope)
+        let snapshot = try await collection
             .limit(to: max(1, maxRemoteArtifacts))
             .getDocuments()
 
         for document in snapshot.documents {
             report.remoteArtifactsEvaluated += 1
+            let documentData = document.data()
             let remoteRecord = try SharedArtifactCloudCodec.decode(
                 documentID: document.documentID,
-                data: document.data(),
+                data: documentData,
                 vaultKeyData: vaultKey.keyData,
                 ownerUserID: scope.ownerUserID,
                 aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
                 aadDocumentID: document.documentID
             )
+            if SharedArtifactCloudCodec.isLegacyPlaintext(data: documentData) {
+                let healKey = (try? await sharedArtifactVaultKeyForWriting(scope: scope, deviceId: deviceId)) ?? vaultKey
+                await healLegacyPlaintextArtifactIfNeeded(
+                    artifactsCollection: collection,
+                    documentData: documentData,
+                    documentID: document.documentID,
+                    decodedRecord: remoteRecord,
+                    scope: scope,
+                    vaultKey: healKey
+                )
+            }
             let existingState = try await context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
             let localSourceID = existingState?.sourceArtifactID ?? sourceArtifactID(scope: scope, remoteArtifactID: remoteRecord.artifactID)
             let existingArtifact = try await context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
@@ -1056,6 +1069,72 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         try await headDoc.setData(headPayload, merge: true)
         try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(versionPayload, merge: true)
         return observedRevisionID
+    }
+
+    /// Re-seals legacy shared-artifact documents during normal pull.
+    ///
+    /// The backend cannot perform this migration because the CloudVault key must
+    /// not leave trusted devices. Pull already decrypts the record locally, so
+    /// rewriting the head and version through `encodeSealed` deletes legacy
+    /// plaintext fields while preserving sync progress. Failures are logged and
+    /// swallowed so plaintext cleanup cannot break the user's normal sync loop.
+    private func healLegacyPlaintextArtifactIfNeeded(
+        artifactsCollection: CloudSyncCollectionGateway,
+        documentData: [String: Any],
+        documentID: String,
+        decodedRecord: SharedArtifactCloudRecord,
+        scope: SharedArtifactScope,
+        vaultKey: CloudVaultResolvedKey
+    ) async {
+        guard SharedArtifactCloudCodec.isLegacyPlaintext(data: documentData) else { return }
+        guard let ownerUserID = decodedRecord.ownerUserID
+            ?? scope.ownerUserID
+            ?? SharedArtifactCloudCodec.ownerUID(fromWorkspaceID: decodedRecord.workspaceID) else {
+            AppLogger.sync.silentFailure(
+                "shared_artifact_legacy_heal_skipped",
+                error: SharedArtifactCloudCodecError.missingOwnerForSealedContent,
+                context: [
+                    "artifactID": decodedRecord.artifactID,
+                    "reason": "missing_owner"
+                ]
+            )
+            return
+        }
+
+        do {
+            let headPayload = try SharedArtifactCloudCodec.encodeSealed(
+                decodedRecord,
+                useServerTimestamp: true,
+                vaultKey: vaultKey,
+                ownerUserID: ownerUserID,
+                aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+                aadDocumentID: documentID
+            )
+            let versionPayload = try SharedArtifactCloudCodec.encodeSealed(
+                decodedRecord,
+                useServerTimestamp: true,
+                vaultKey: vaultKey,
+                ownerUserID: ownerUserID,
+                aadCollection: SharedArtifactCloudCodec.artifactVersionAADCollection,
+                aadDocumentID: decodedRecord.revisionID
+            )
+            let headDoc = artifactsCollection.document(documentID)
+            try await headDoc.setData(headPayload, merge: true)
+            try await headDoc.collection("versions").document(decodedRecord.revisionID).setData(versionPayload, merge: true)
+            AppLogger.sync.info("shared_artifact_legacy_healed", metadata: [
+                "artifactID": decodedRecord.artifactID,
+                "revisionID": decodedRecord.revisionID
+            ])
+        } catch {
+            AppLogger.sync.silentFailure(
+                "shared_artifact_legacy_heal_failed",
+                error: error,
+                context: [
+                    "artifactID": decodedRecord.artifactID,
+                    "revisionID": decodedRecord.revisionID
+                ]
+            )
+        }
     }
 
     private func publishCollaborationNotice(

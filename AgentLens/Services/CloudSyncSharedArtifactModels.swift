@@ -253,6 +253,17 @@ enum SharedArtifactCloudCodec {
     static let artifactAADCollection = "artifacts"
     static let artifactVersionAADCollection = "artifact_versions"
 
+    /// Returns true when a document still carries legacy plaintext private-content
+    /// fields that have not been migrated into the sealed payload envelope.
+    static func isLegacyPlaintext(data: [String: Any]) -> Bool {
+        let isSealed = boolValue(data["contentSealed"]) == true
+            || data[sealedPayloadField] != nil
+        if isSealed { return false }
+        return stringValue(data["title"]) != nil
+            || stringValue(data["body"]) != nil
+            || stringValue(data["contentHash"]) != nil
+    }
+
     private static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

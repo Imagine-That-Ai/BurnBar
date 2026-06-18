@@ -363,6 +363,58 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertNil(fetched?.lastErrorCode)
         XCTAssertEqual(fetched?.revisionID, "rev-2")
     }
+
+    func test_collaborationPull_healsLegacyPlaintextArtifact() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "legacy-art-1"
+        let revisionID = "legacy-rev-1"
+        let plaintextPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        let plaintextDoc: [String: Any] = [
+            "artifactID": artifactID,
+            "workspaceID": "workspace-test-uid-1",
+            "teamID": "team-default",
+            "ownerUserID": "test-uid-1",
+            "visibility": "team",
+            "revisionID": revisionID,
+            "isDeleted": false,
+            "title": "Legacy Plaintext Title",
+            "body": "Legacy plaintext body that must be sealed",
+            "contentHash": "legacy-hash-123"
+        ]
+        fakeGateway.setDocumentData(plaintextDoc, at: plaintextPath)
+
+        let preData = try XCTUnwrap(fakeGateway.documentData(at: plaintextPath))
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: preData))
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let healedData = try XCTUnwrap(fakeGateway.documentData(at: plaintextPath))
+        XCTAssertNil(healedData["title"], "Legacy title must be deleted after heal")
+        XCTAssertNil(healedData["body"], "Legacy body must be deleted after heal")
+        XCTAssertNil(healedData["contentHash"], "Legacy contentHash must be deleted after heal")
+        XCTAssertEqual(healedData["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(healedData[SharedArtifactCloudCodec.sealedPayloadField])
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: healedData))
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: healedData[SharedArtifactCloudCodec.sealedPayloadField]))
+        let aad = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifactID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let plaintext = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: aad)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+        XCTAssertEqual(decoded["title"] as? String, "Legacy Plaintext Title")
+        XCTAssertEqual(decoded["body"] as? String, "Legacy plaintext body that must be sealed")
+        XCTAssertEqual(decoded["contentHash"] as? String, "legacy-hash-123")
+    }
 }
 
 private final class CountingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {

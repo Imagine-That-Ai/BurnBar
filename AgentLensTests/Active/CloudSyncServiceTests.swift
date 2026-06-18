@@ -856,6 +856,47 @@ final class SharedArtifactCloudCodecTests: XCTestCase {
         }
     }
 
+    func test_isLegacyPlaintext_detectsUnsealedPrivateFields() {
+        let plaintextDoc: [String: Any] = [
+            "artifactID": "art-1",
+            "workspaceID": "workspace-user-1",
+            "teamID": "team-default",
+            "revisionID": "rev-1",
+            "title": "Plaintext Title",
+            "body": "Plaintext body",
+            "contentHash": "hash-1"
+        ]
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: plaintextDoc))
+    }
+
+    func test_isLegacyPlaintext_returnsFalseForSealedDocument() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        let sealedPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: sealedPayload))
+    }
+
+    func test_isLegacyPlaintext_returnsFalseForMetadataOnlyDocument() {
+        let metadataOnlyDoc: [String: Any] = [
+            "artifactID": "art-1",
+            "workspaceID": "workspace-user-1",
+            "teamID": "team-default",
+            "revisionID": "rev-1",
+            "isDeleted": true
+        ]
+
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: metadataOnlyDoc))
+    }
+
     private func sharedArtifactTestVaultKey() throws -> CloudVaultResolvedKey {
         let keyData = Data(repeating: 0x42, count: 32)
         return try CloudVaultResolvedKey(
