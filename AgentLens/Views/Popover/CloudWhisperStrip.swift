@@ -56,13 +56,7 @@ struct CloudWhisperStrip: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1)
                         .background(
-                            Capsule().fill(
-                                LinearGradient(
-                                    colors: [DesignSystem.Colors.ember, DesignSystem.Colors.amber],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                            Capsule().fill(DesignSystem.Colors.primaryGradient)
                         )
                     Text("Cloud Member")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))

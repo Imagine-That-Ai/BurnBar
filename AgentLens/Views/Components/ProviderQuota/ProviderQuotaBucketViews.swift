@@ -464,6 +464,7 @@ struct QuotaSignalView: View {
                             RoundedRectangle(cornerRadius: batteryRadius - 1.5, style: .continuous)
                                 .fill(fillGradient)
                                 .frame(width: remainingFraction > 0 ? fillWidth : 0)
+                                .animation(DesignSystem.Animation.gentle, value: remainingFraction)
                                 .padding(2)
                                 .shadow(color: fillColor.opacity(0.35), radius: 6, y: 0)
                         }

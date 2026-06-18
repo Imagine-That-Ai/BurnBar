@@ -11,6 +11,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { doc, setDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { dirname, resolve } from "node:path";
@@ -24,6 +25,10 @@ const aliceUid = "alice-uid";
 const vaultKeyID = "v1_" + "a".repeat(32);
 const wrapperId = `${vaultKeyID}_iphone-1_1`;
 const futureTimestamp = Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+function wrappedVaultKeyFixture(label) {
+  return Buffer.from(`rules-test-${label}`, "utf8").toString("base64");
+}
 
 function entitlementGranted() {
   return {
@@ -44,7 +49,7 @@ function wrapper(overrides = {}) {
     sourceDeviceId: "mac-1",
     publicKeyFingerprint: "fpr-iphone-1",
     keyVersion: 1,
-    wrappedVaultKey: "Q2lwaGVydGV4dA==",
+    wrappedVaultKey: wrappedVaultKeyFixture("ciphertext"),
     vaultKeyID,
     algorithm: "ECIES-P256-AESGCM",
     status: "active",
@@ -133,7 +138,7 @@ async function main() {
   await step("active wrapper refresh may update only wrapped key material and timestamps", async () => {
     await assertSucceeds(
       updateDoc(doc(aliceDB, `users/${aliceUid}/cloud_vault_key_wrappers/${wrapperId}`), {
-        wrappedVaultKey: "UmVmcmVzaGVkQ2lwaGVydGV4dA==",
+        wrappedVaultKey: wrappedVaultKeyFixture("refreshed-ciphertext"),
         updatedAt: Timestamp.fromMillis(Date.now()),
       })
     );

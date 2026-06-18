@@ -10,31 +10,39 @@ extension DataStore {
         try await actor.conversationStore.markConversationsSynced(ids: ids)
     }
 
-    nonisolated func upsertConversation(_ record: ConversationRecord) throws {
-        try actor.conversationStore.upsertConversation(record)
+    func upsertConversation(_ record: ConversationRecord) async throws {
+        try await actor.conversationStore.upsertConversation(record)
     }
 
     func fileModifiedAtForConversation(id: String) async throws -> Date? {
         try await actor.conversationStore.fileModifiedAtForConversation(id: id)
     }
 
-    nonisolated func fetchConversation(id: String) throws -> ConversationRecord? {
-        try actor.conversationStore.fetchConversation(id: id)
+    func fetchConversation(id: String) async throws -> ConversationRecord? {
+        try await actor.conversationStore.fetchConversation(id: id)
     }
 
-    nonisolated func fetchConversations(limit: Int = 500) throws -> [ConversationRecord] {
-        try actor.conversationStore.fetchConversations(limit: limit)
+    nonisolated func fetchConversationSynchronously(id: String) throws -> ConversationRecord? {
+        try actor.conversationStore.fetchConversationSynchronously(id: id)
+    }
+
+    func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchConversations(limit: limit)
+    }
+
+    nonisolated func fetchConversationsSynchronously(limit: Int = 500) throws -> [ConversationRecord] {
+        try actor.conversationStore.fetchConversationsSynchronously(limit: limit)
     }
 
     /// Paginated conversation fetch using offset-based cursor.
-    nonisolated func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
-        try actor.conversationStore.fetchConversations(limit: limit, offset: offset)
+    func fetchConversations(limit: Int, offset: Int) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchConversations(limit: limit, offset: offset)
     }
 
     /// Fetches multiple conversations by their IDs.
     /// Used by gap repair to check if indexed content is stale.
-    nonisolated func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
-        try actor.conversationStore.fetchConversations(ids: ids)
+    func fetchConversations(ids: [String]) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchConversations(ids: ids)
     }
 
     func updateConversationSummary(
@@ -146,12 +154,12 @@ extension DataStore {
         try await actor.conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
     }
 
-    nonisolated func fetchChatMessages() throws -> [ChatMessageRecord] {
-        try actor.conversationStore.fetchChatMessages()
+    func fetchChatMessages() async throws -> [ChatMessageRecord] {
+        try await actor.conversationStore.fetchChatMessages()
     }
 
-    nonisolated func fetchChatMessages(threadID: String) throws -> [ChatMessageRecord] {
-        try actor.conversationStore.fetchChatMessages(threadID: threadID)
+    func fetchChatMessages(threadID: String) async throws -> [ChatMessageRecord] {
+        try await actor.conversationStore.fetchChatMessages(threadID: threadID)
     }
 
     func deleteAllChatMessages() async throws {
@@ -248,7 +256,7 @@ extension DataStore {
             summary: nil,
             sourceType: .cliAssistant
         )
-        try upsertConversation(record)
+        try await upsertConversation(record)
         try await enqueueConversationProjectionJob(conversationID: record.id, jobType: .reproject)
     }
 

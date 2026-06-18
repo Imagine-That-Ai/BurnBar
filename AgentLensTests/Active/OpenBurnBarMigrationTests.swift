@@ -165,7 +165,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         }
         XCTAssertEqual(migratedTables, expectedTables)
 
-        let conversation = try XCTUnwrap(try store.fetchConversation(id: "legacy-conversation-1"))
+        let fetchedConversation = try await store.fetchConversation(id: "legacy-conversation-1")
+        let conversation = try XCTUnwrap(fetchedConversation)
         XCTAssertEqual(conversation.fullText, "legacy-migration-needle conversation transcript")
         XCTAssertEqual(conversation.sourceType, .providerLog)
 
@@ -210,7 +211,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             body: "# Skill\nbackfill-safety-needle artifact fixture"
         )
 
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         _ = try await harness.dataStore.upsertSourceArtifact(skill)
 
         let preBackfillSearchDocuments = try await harness.dataStore.fetchSearchDocuments(limit: 10)
@@ -260,7 +261,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             id: "conv-embed-backfill",
             fullText: "embedding-backfill-needle conversation text"
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
@@ -363,8 +364,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             fullText: "steady-state-recovery-token content for healthy re-embed coverage"
         )
 
-        try harness.dataStore.upsertConversation(failingConversation)
-        try harness.dataStore.upsertConversation(healthyConversation)
+        try await harness.dataStore.upsertConversation(failingConversation)
+        try await harness.dataStore.upsertConversation(healthyConversation)
         _ = try await harness.enqueueConversationProjection(conversationID: failingConversation.id, jobType: .project)
         _ = try await harness.enqueueConversationProjection(conversationID: healthyConversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(

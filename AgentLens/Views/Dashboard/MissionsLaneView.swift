@@ -437,11 +437,13 @@ struct MissionsLaneView: View {
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             Spacer()
-            Button("Clear filter") {
+            Button {
                 withAnimation(DesignSystem.Animation.snappy) {
                     stateFilter = .all
                     projectFilter = nil
                 }
+            } label: {
+                Label("Clear filter", systemImage: "xmark.circle")
             }
             .buttonStyle(.borderless)
             .font(DesignSystem.Typography.caption)

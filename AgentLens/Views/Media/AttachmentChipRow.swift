@@ -88,11 +88,7 @@ struct AttachmentChipRow: View {
         case .error:
             return LinearGradient(colors: [Color.red.opacity(0.7), Color.red.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
         default:
-            return LinearGradient(
-                colors: [Color(red: 0.78, green: 0.74, blue: 0.69), Color(red: 0.63, green: 0.67, blue: 0.73)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
+            return DesignSystem.Colors.mercuryGradient
         }
     }
 
@@ -136,13 +132,9 @@ private struct LinearProgressBar: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.gray.opacity(0.18))
+                Capsule().fill(DesignSystem.Colors.surfaceMuted)
                 Capsule()
-                    .fill(LinearGradient(
-                        colors: [Color(red: 0.78, green: 0.74, blue: 0.69), Color(red: 0.63, green: 0.67, blue: 0.73)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ))
+                    .fill(DesignSystem.Colors.mercuryGradient)
                     .frame(width: max(0, min(1, progress)) * proxy.size.width)
             }
         }

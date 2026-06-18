@@ -72,7 +72,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil,
             summaryTitle: "Concurrent Backup"
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         let firstUploadStarted = expectation(description: "first upload started")
         fakeEncryptedCloudClient.onBeginUpload = {
@@ -126,7 +126,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil,
             summaryTitle: "About Page Visual Upgrade"
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
 
@@ -158,7 +158,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil,
             summaryTitle: "Cheap Firebase Search"
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
         let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
         let manifestPath = "users/test-uid-1/session_logs/\(docId)"
         let chunkPath = "\(manifestPath)/chunks/0"
@@ -239,7 +239,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil,
             summaryTitle: "Exact name search"
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
 
@@ -278,7 +278,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil,
             summaryTitle: "Prefix name search"
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
 
@@ -309,7 +309,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Stable transcript body.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
         let commitsAfterFirstSync = fakeGateway.batchCommitCount
@@ -344,7 +344,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Stable transcript body with enough content to produce a search chunk.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
         let commitsAfterFirstSync = fakeGateway.batchCommitCount
@@ -424,7 +424,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Stable transcript body with a manifest that lost its encrypted storage path.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         let markdown = SessionLogMarkdownFormatter.markdown(for: record)
         let bodyHash = SHA256.hash(data: Data(markdown.utf8))
@@ -487,7 +487,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Body",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
         let unsyncedCount = try await dataStore.countUnsyncedSessionLogs()
         XCTAssertEqual(unsyncedCount, 1)
     }
@@ -529,8 +529,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Pending body that should still count toward backup storage.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(synced)
-        try dataStore.upsertConversation(pending)
+        try await dataStore.upsertConversation(synced)
+        try await dataStore.upsertConversation(pending)
         try await dataStore.markSessionLogsSynced(ids: [synced.id])
 
         let usage = try await dataStore.backupUsageSnapshot(
@@ -579,7 +579,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "This body is intentionally larger than the tiny test limit.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
         let limitedContext = CloudSyncContext(
             dataStore: dataStore,
             accountManager: accountManager,
@@ -627,7 +627,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Progress body text.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         var snapshots: [CloudBackupProgressSnapshot] = []
         let tracker = CloudBackupProgressTracker { snapshots.append($0) }

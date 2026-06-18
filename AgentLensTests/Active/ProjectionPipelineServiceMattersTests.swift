@@ -38,7 +38,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             fullText: String(repeating: "Reuse failure recovery sentence for chunking. ", count: 80),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         let sourceVersionV1 = ProjectionIdentity.conversationSourceVersionID(for: conversation)
         try await seedService.projectConversation(conversation, sourceVersionID: sourceVersionV1)
 
@@ -64,7 +64,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             reusedEmbeddingWriter: { _ in throw InjectedReuseWriteFailure() }
         )
         let metadataOnlyChange = withMessageCount(conversation, messageCount: 99)
-        try store.upsertConversation(metadataOnlyChange)
+        try await store.upsertConversation(metadataOnlyChange)
         let sourceVersionV2 = ProjectionIdentity.conversationSourceVersionID(for: metadataOnlyChange)
         try await failingService.projectConversation(metadataOnlyChange, sourceVersionID: sourceVersionV2)
 
@@ -120,7 +120,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             fullText: String(repeating: "Reuse happy path sentence. ", count: 60),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await service.projectConversation(
             conversation,
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation)
@@ -133,7 +133,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         let seededChunkCount = try await store.fetchSearchChunks(documentID: document.id).count
 
         let metadataOnlyChange = withMessageCount(conversation, messageCount: 7)
-        try store.upsertConversation(metadataOnlyChange)
+        try await store.upsertConversation(metadataOnlyChange)
         try await service.projectConversation(
             metadataOnlyChange,
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: metadataOnlyChange)
@@ -241,7 +241,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             fullText: String(repeating: "Partial reuse failure granularity sentence. ", count: 100),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await seedService.projectConversation(
             conversation,
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation)
@@ -268,7 +268,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             }
         )
         let metadataOnlyChange = withMessageCount(conversation, messageCount: 42)
-        try store.upsertConversation(metadataOnlyChange)
+        try await store.upsertConversation(metadataOnlyChange)
         try await failingService.projectConversation(
             metadataOnlyChange,
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: metadataOnlyChange)

@@ -743,9 +743,15 @@ private struct FusionImpactErrorCard: View {
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Couldn't read fusion spend")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .accessibilityHidden(true)
+                    Text("Couldn't read fusion spend")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
                 Text("The usage ledger couldn't be read for this period.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)

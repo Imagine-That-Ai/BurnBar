@@ -15,6 +15,7 @@
 
 import { AggregateField, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { WAND_PARALLEL_CAPS } from "@openburnbar/entitlements";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -36,18 +37,8 @@ type DataTier = "ultra" | "pro" | "cloud" | "free";
 
 const HOSTED_QUOTA_SYNC_ENTITLEMENT_ID = "hosted_quota_sync";
 
-// The Wand's per-tier parallel fan-out ceiling, mirrored from OpenBurnBarCore
-// WandFanOut.maxParallel + website site.ts. Tunable via Remote Config in a
-// follow-up; these are the compiled defaults.
-const WAND_PARALLEL_MAX_BY_TIER: Record<DataTier, number> = {
-  ultra: 16,
-  pro: 8,
-  cloud: 3,
-  free: 1,
-};
-
 export function wandParallelMaxForDataTier(tier: DataTier): number {
-  return WAND_PARALLEL_MAX_BY_TIER[tier];
+  return WAND_PARALLEL_CAPS[tier];
 }
 
 export function resolveDataTierFromEntitlements(raw: {

@@ -182,7 +182,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             workingDirectory: nil,
             fileModifiedAt: Date(timeIntervalSince1970: 40)
         )
-        try ConversationStore(dbQueue: queue).upsertConversation(conversation)
+        try await ConversationStore(dbQueue: queue).upsertConversation(conversation)
 
         await WorkingDirectoryBackfillService(batchSize: 1).runIfNeeded(database: database)
 

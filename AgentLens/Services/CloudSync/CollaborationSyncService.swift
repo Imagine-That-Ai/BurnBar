@@ -13,6 +13,7 @@ import OpenBurnBarCore
 ///   -> enqueue reproject/purge to keep local retrieval parity
 final class CollaborationSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
+    private let sharedArtifactVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -29,8 +30,12 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         set { maxRemoteArtifactsBox.write(newValue) }
     }
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        sharedArtifactVaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.sharedArtifactVaultKeyProvider = sharedArtifactVaultKeyProvider
     }
 
     func sync() async {
@@ -91,7 +96,12 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
         do {
             try await pushLocalSharedArtifacts(scope: scope, deviceId: deviceId, report: &report)
-            try await pullRemoteSharedArtifacts(scope: scope, maxRemoteArtifacts: max(1, maxRemoteArtifacts), report: &report)
+            try await pullRemoteSharedArtifacts(
+                scope: scope,
+                deviceId: deviceId,
+                maxRemoteArtifacts: max(1, maxRemoteArtifacts),
+                report: &report
+            )
 
             let status: RetrievalHealthStatus = report.conflicts > 0 ? .degraded : .healthy
             let errorCode = report.conflicts > 0 ? "COLLABORATION_DIVERGENCE_DETECTED" : nil
@@ -147,7 +157,10 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             rootPaths: nil,
             sourceKinds: [.sharedArtifact]
         )
+        guard localArtifacts.isEmpty == false else { return }
+
         let collection = sharedArtifactsCollection(scope: scope)
+        let vaultKey = try await sharedArtifactVaultKeyForWriting(scope: scope, deviceId: deviceId)
 
         for artifact in localArtifacts {
             report.localArtifactsEvaluated += 1
@@ -156,7 +169,13 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             let remoteArtifactID = resolveRemoteArtifactID(for: artifact, existingState: existingState)
             let remoteRef = collection.document(remoteArtifactID)
             let remoteData = try await remoteRef.getData()
-            let remoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: remoteData)
+            let remoteRecord = try decodeRemoteRecord(
+                documentID: remoteArtifactID,
+                data: remoteData,
+                vaultKeyData: vaultKey.keyData,
+                aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+                aadDocumentID: remoteArtifactID
+            )
             let decision = SharedArtifactSyncResolver.mergeDecision(
                 localContentHash: artifact.contentHash,
                 syncedContentHash: existingState?.localContentHashAtSync,
@@ -254,14 +273,21 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         artifactsCollection: collection,
                         remoteArtifactID: remoteArtifactID,
                         cloudRecord: cloudRecord,
-                        expectedRevisionID: baseRevisionID
+                        expectedRevisionID: baseRevisionID,
+                        vaultKey: vaultKey
                     )
                 } catch {
                     if let stale = SharedArtifactOptimisticWriteGate.conflict(from: error) {
                         var latestRemoteRecord = remoteRecord
                         do {
                             let latestData = try await remoteRef.getData()
-                            latestRemoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: latestData)
+                            latestRemoteRecord = try decodeRemoteRecord(
+                                documentID: remoteArtifactID,
+                                data: latestData,
+                                vaultKeyData: vaultKey.keyData,
+                                aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+                                aadDocumentID: remoteArtifactID
+                            )
                         } catch {
                             latestRemoteRecord = remoteRecord
                         }
@@ -472,16 +498,25 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
     func pullRemoteSharedArtifacts(
         scope: SharedArtifactScope,
+        deviceId: String,
         maxRemoteArtifacts: Int,
         report: inout SharedArtifactSyncReport
     ) async throws {
+        let vaultKey = try await sharedArtifactVaultKeyForReading(scope: scope, deviceId: deviceId)
         let snapshot = try await sharedArtifactsCollection(scope: scope)
             .limit(to: max(1, maxRemoteArtifacts))
             .getDocuments()
 
         for document in snapshot.documents {
             report.remoteArtifactsEvaluated += 1
-            let remoteRecord = try SharedArtifactCloudCodec.decode(documentID: document.documentID, data: document.data())
+            let remoteRecord = try SharedArtifactCloudCodec.decode(
+                documentID: document.documentID,
+                data: document.data(),
+                vaultKeyData: vaultKey.keyData,
+                ownerUserID: scope.ownerUserID,
+                aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+                aadDocumentID: document.documentID
+            )
             let existingState = try await context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
             let localSourceID = existingState?.sourceArtifactID ?? sourceArtifactID(scope: scope, remoteArtifactID: remoteRecord.artifactID)
             let existingArtifact = try await context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
@@ -986,21 +1021,40 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         artifactsCollection: CloudSyncCollectionGateway,
         remoteArtifactID: String,
         cloudRecord: SharedArtifactCloudRecord,
-        expectedRevisionID: String?
+        expectedRevisionID: String?,
+        vaultKey: CloudVaultResolvedKey
     ) async throws -> String? {
         let headDoc = artifactsCollection.document(remoteArtifactID)
         let existingData = try await headDoc.getData()
-        let observedRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: existingData)
-        let observedRevisionID = observedRecord?.revisionID
+        let observedRevisionID = SharedArtifactCloudCodec.revisionID(data: existingData)
 
         try SharedArtifactOptimisticWriteGate.validate(
             expectedRevisionID: expectedRevisionID,
             observedRevisionID: observedRevisionID
         )
 
-        let payload = SharedArtifactCloudCodec.encode(cloudRecord, useServerTimestamp: true)
-        try await headDoc.setData(payload, merge: true)
-        try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(payload, merge: true)
+        guard let ownerUserID = cloudRecord.ownerUserID
+            ?? SharedArtifactCloudCodec.ownerUID(fromWorkspaceID: cloudRecord.workspaceID) else {
+            throw SharedArtifactCloudCodecError.missingOwnerForSealedContent
+        }
+        let headPayload = try SharedArtifactCloudCodec.encodeSealed(
+            cloudRecord,
+            useServerTimestamp: true,
+            vaultKey: vaultKey,
+            ownerUserID: ownerUserID,
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: remoteArtifactID
+        )
+        let versionPayload = try SharedArtifactCloudCodec.encodeSealed(
+            cloudRecord,
+            useServerTimestamp: true,
+            vaultKey: vaultKey,
+            ownerUserID: ownerUserID,
+            aadCollection: SharedArtifactCloudCodec.artifactVersionAADCollection,
+            aadDocumentID: cloudRecord.revisionID
+        )
+        try await headDoc.setData(headPayload, merge: true)
+        try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(versionPayload, merge: true)
         return observedRevisionID
     }
 
@@ -1206,9 +1260,50 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         return "\(remoteRecord.artifactID).md"
     }
 
-    private func decodeRemoteRecord(documentID: String, data: [String: Any]?) throws -> SharedArtifactCloudRecord? {
+    private func decodeRemoteRecord(
+        documentID: String,
+        data: [String: Any]?,
+        vaultKeyData: Data,
+        aadCollection: String,
+        aadDocumentID: String
+    ) throws -> SharedArtifactCloudRecord? {
         guard let data, data.isEmpty == false else { return nil }
-        return try SharedArtifactCloudCodec.decode(documentID: documentID, data: data)
+        return try SharedArtifactCloudCodec.decode(
+            documentID: documentID,
+            data: data,
+            vaultKeyData: vaultKeyData,
+            aadCollection: aadCollection,
+            aadDocumentID: aadDocumentID
+        )
+    }
+
+    private func sharedArtifactOwnerUID(scope: SharedArtifactScope) throws -> String {
+        guard let ownerUID = scope.ownerUserID
+            ?? SharedArtifactCloudCodec.ownerUID(fromWorkspaceID: scope.workspaceID) else {
+            throw SharedArtifactCloudCodecError.missingOwnerForSealedContent
+        }
+        return ownerUID
+    }
+
+    private func sharedArtifactVaultKeyForWriting(
+        scope: SharedArtifactScope,
+        deviceId: String
+    ) async throws -> CloudVaultResolvedKey {
+        try await sharedArtifactVaultKeyProvider.keyForWriting(
+            uid: sharedArtifactOwnerUID(scope: scope),
+            deviceId: deviceId
+        )
+    }
+
+    private func sharedArtifactVaultKeyForReading(
+        scope: SharedArtifactScope,
+        deviceId: String
+    ) async throws -> CloudVaultResolvedKey {
+        let ownerUID = try sharedArtifactOwnerUID(scope: scope)
+        if let key = try await sharedArtifactVaultKeyProvider.keyForReading(uid: ownerUID, deviceId: deviceId) {
+            return key
+        }
+        return try await sharedArtifactVaultKeyProvider.keyForWriting(uid: ownerUID, deviceId: deviceId)
     }
 
     func upsertCollaborationHealth(

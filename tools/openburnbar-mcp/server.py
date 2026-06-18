@@ -1346,6 +1346,14 @@ def burnbar_semantic_search_conversations(
     and the active embedding version matches OpenBurnBar's deterministic local
     embedder. Otherwise it returns a structured unavailable payload.
     """
+    denied = _capability_denial(
+        "burnbar_semantic_search_conversations",
+        "sensitive_read",
+        "Semantic search returns private conversation snippets and requires an explicit sensitive-read session.",
+    )
+    if denied:
+        return denied
+
     path = _default_db_path()
     try:
         with _connect_ro(path) as conn:

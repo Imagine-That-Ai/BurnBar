@@ -146,12 +146,12 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let second = GatewaySettings.generateAuthToken()
         XCTAssertNotEqual(first, second, "Each launch must mint a distinct token")
         XCTAssertFalse(first.isEmpty)
-        XCTAssertGreaterThanOrEqual(first.count, 32, "Token must carry meaningful entropy")
-        // URL-safe + ps-redaction-safe: hex only, no separators or whitespace.
-        let allowed = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        XCTAssertGreaterThanOrEqual(first.count, 43, "Token must carry at least 256 bits of entropy")
+        // URL-safe + ps-redaction-safe: unpadded base64url, no separators or whitespace.
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
         XCTAssertTrue(
             first.unicodeScalars.allSatisfy { allowed.contains($0) },
-            "Token must be hex so it survives plist + header transport unescaped"
+            "Token must be base64url so it survives plist + header transport unescaped"
         )
     }
 

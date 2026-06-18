@@ -49,13 +49,8 @@ export interface QuotaRefreshResult {
   errorMessage?: string;
 }
 
-export interface ProviderAccountConnectContext {
-  endpointProfileID?: string;
-  region?: "cn" | "sgp" | "ams" | "global";
-  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
-  tokenPlanBillingCycle?: "monthly" | "annual";
-  authMethodID?: string;
-}
+export type ProviderAccountConnectContext =
+  import("../generated/provider-account.js").ProviderAccountConnectContext;
 
 /** Every provider adapter must satisfy this interface. */
 export interface ProviderAdapter {

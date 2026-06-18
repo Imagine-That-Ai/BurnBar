@@ -11,6 +11,8 @@ extension OpenBurnBarError {
             return .daemon("binary_signature_invalid", message: error.localizedDescription ?? "Daemon binary signature invalid.")
         case .daemonResourceBundleUnavailable:
             return .daemon("resource_bundle_unavailable", message: error.localizedDescription ?? "Daemon resources missing.")
+        case .daemonProjectCodeMemoryResourceUnavailable:
+            return .daemon("project_code_memory_resource_unavailable", message: error.localizedDescription ?? "Daemon Project Code Memory resources missing.")
         case .launchctlFailed:
             return .daemon("launchctl_failed", message: error.localizedDescription ?? "launchctl failed.")
         case .timedOutWaitingForHealth:

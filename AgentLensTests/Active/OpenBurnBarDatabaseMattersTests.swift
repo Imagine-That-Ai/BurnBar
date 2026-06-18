@@ -105,7 +105,7 @@ final class OpenBurnBarDatabaseMattersTests: XCTestCase {
             workingDirectory: nil,
             fileModifiedAt: Date(timeIntervalSince1970: 40)
         )
-        try ConversationStore(dbQueue: queue).upsertConversation(record)
+        try await ConversationStore(dbQueue: queue).upsertConversation(record)
 
         await WorkingDirectoryBackfillService(batchSize: 1).runIfNeeded(database: database)
 
@@ -155,7 +155,7 @@ final class OpenBurnBarDatabaseMattersTests: XCTestCase {
                 workingDirectory: nil,
                 fileModifiedAt: Date(timeIntervalSince1970: 40)
             )
-            try ConversationStore(dbQueue: rwQueue).upsertConversation(record)
+            try await ConversationStore(dbQueue: rwQueue).upsertConversation(record)
         }
 
         // 2. Reopen read-only: the column probe read and batch read both succeed,

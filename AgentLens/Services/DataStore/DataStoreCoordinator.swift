@@ -14,6 +14,10 @@ import OpenBurnBarCore
 // should continue to work via the typealias in DataStore.swift.
 // TODO(1.0): Remove the DataStore typealias and update all import sites.
 
+enum DataStoreLegacyChatThread {
+    static let id = "openburnbar-chat-legacy"
+}
+
 @Observable
 @MainActor
 final class DataStoreCoordinator {
@@ -191,6 +195,7 @@ final class DataStoreCoordinator {
 
         guard encryptionEnabled else {
             var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+            installStartupPragmas(on: &config)
             installDebugQueryTracer(on: &config)
             return try openDatabasePool(path: path, configuration: config)
         }
@@ -230,6 +235,7 @@ final class DataStoreCoordinator {
             )
         }
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        installStartupPragmas(on: &config)
         installDebugQueryTracer(on: &config)
         return try openDatabasePool(path: path, configuration: config)
     }
@@ -302,6 +308,19 @@ final class DataStoreCoordinator {
         )
     }
     #endif
+
+    /// Open-time WAL mode configuration (idempotent).
+    /// WAL is automatically enabled by GRDB's DatabasePool, but we explicitly
+    /// tune the checkpoint threshold and synchronous mode for our workload.
+    /// This hook runs after SQLCipher keying and before DEBUG tracing so
+    /// startup PRAGMAs do not require post-open synchronous queue writes.
+    private static func installStartupPragmas(on config: inout Configuration) {
+        config.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA journal_mode = WAL")
+            try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
+            try db.execute(sql: "PRAGMA synchronous = NORMAL")
+        }
+    }
 
     /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER
     /// `makeConfiguration`: GRDB chains `prepareDatabase` closures in install

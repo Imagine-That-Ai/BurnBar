@@ -62,27 +62,17 @@ struct SettingsSearchResultsView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-            VStack(spacing: DesignSystem.Spacing.xs) {
-                Text("No settings match \u{201C}\(router.query)\u{201D}")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Try a broader term, or browse the sidebar.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-
+        ContentUnavailableView {
+            Label("No settings match \u{201C}\(router.query)\u{201D}", systemImage: "magnifyingglass")
+        } description: {
+            Text("Try a broader term, or browse the sidebar.")
+        } actions: {
             Button("Browse all") {
                 router.reset()
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
         }
-        .padding(DesignSystem.Spacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

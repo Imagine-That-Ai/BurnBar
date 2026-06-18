@@ -318,7 +318,7 @@ struct TrustedDevicesDetailView: View {
         if deviceTrust.isLoading {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 ProgressView()
-                    .scaleEffect(0.8)
+                    .controlSize(.small)
                 Text("Loading devices…")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)

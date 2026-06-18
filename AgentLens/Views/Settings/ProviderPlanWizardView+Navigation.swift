@@ -63,6 +63,7 @@ extension ProviderPlanWizardView {
                     }
                 }
                 .buttonStyle(.bordered)
+                .tint(DesignSystem.Colors.textSecondary)
 
                 Spacer()
 
@@ -85,7 +86,7 @@ extension ProviderPlanWizardView {
                             }
                         }
                         .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, 2)
+                        .padding(.vertical, DesignSystem.Spacing.xxs)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(DesignSystem.Colors.blaze)

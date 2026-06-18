@@ -81,6 +81,8 @@ struct OnboardingProviderCloudView: View {
                 Text("\(selectedProviders.count) selected")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .contentTransition(.numericText())
+                    .animation(DesignSystem.Animation.snappy, value: selectedProviders.count)
             }
         }
         .onAppear {

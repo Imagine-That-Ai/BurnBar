@@ -53,6 +53,7 @@ import com.openburnbar.data.square.ThreadInboxStore
 import com.openburnbar.data.square.splitForInbox
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
+import com.openburnbar.ui.pro.CloudTier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -60,12 +61,14 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HermesSquareScreenContent(
+    currentTier: CloudTier = CloudTier.NONE,
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
 ) {
     val (state, actions) =
         rememberHermesSquareUiState(
+            currentTier = currentTier,
             onOpenLegacyRuntime = onOpenLegacyRuntime,
             onOpenBrandZone = onOpenBrandZone,
             onOpenPairedMac = onOpenPairedMac,
@@ -78,6 +81,7 @@ internal fun HermesSquareScreenContent(
 }
 
 internal data class HermesSquareUiState(
+    val currentTier: CloudTier,
     val registry: AgentIdentityRegistry,
     val hermesService: HermesService,
     val inbox: ThreadInboxStore,
@@ -443,11 +447,13 @@ private fun buildHermesSquareNavigationHandlers(
 }
 
 private fun buildHermesSquareUiState(
+    currentTier: CloudTier,
     core: HermesSquareServiceCore,
     pinned: HermesSquarePinnedGridState,
     overlay: HermesSquareOverlayFields,
     derived: HermesSquareDerivedData,
 ): HermesSquareUiState = HermesSquareUiState(
+    currentTier = currentTier,
     registry = core.registry,
     hermesService = core.hermesService,
     inbox = core.inbox,
@@ -542,6 +548,7 @@ private fun buildHermesSquareUiActions(
 
 @Composable
 internal fun rememberHermesSquareUiState(
+    currentTier: CloudTier = CloudTier.NONE,
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit,
     onOpenBrandZone: (String) -> Unit,
     onOpenPairedMac: (String) -> Unit,
@@ -552,7 +559,7 @@ internal fun rememberHermesSquareUiState(
     val derived = rememberHermesSquareDerivedData(core, overlay)
     HermesSquareUiRuntimeEffects(core, pinned, overlay)
     val navigation = buildHermesSquareNavigationHandlers(core, overlay, onOpenLegacyRuntime, onOpenBrandZone, onOpenPairedMac)
-    return buildHermesSquareUiState(core, pinned, overlay, derived) to
+    return buildHermesSquareUiState(currentTier, core, pinned, overlay, derived) to
         buildHermesSquareUiActions(core, pinned, overlay, derived, navigation)
 }
 

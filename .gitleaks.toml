@@ -4,6 +4,17 @@ title = "OpenBurnBar gitleaks policy"
 useDefault = true
 
 [[allowlists]]
+description = "Synthetic Project Code Memory high-entropy fixtures; runtime tests now construct these from short fragments"
+regexTarget = "match"
+regexes = [
+  '''Az9qLm8Pr2Vx7Ns4Tu6Wy1Za3Qb5Cd7Ef9Gh2Jk4Mn6''',
+]
+paths = [
+  '''OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarProjectCodeMemoryStoreTests\.swift''',
+  '''tools/openburnbar-mcp/tests/test_project_code_memory\.py''',
+]
+
+[[allowlists]]
 description = "Swift key-material parameter labels that reference variables, not committed secrets"
 regexTarget = "match"
 regexes = [

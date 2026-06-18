@@ -37,7 +37,7 @@ struct FanOutComposerSheet: View {
     @State private var mergeStrategy: MissionGroupMergeStrategy = .pickOne
     @State private var dispatching: Bool = false
     @State private var errorMessage: String?
-    @State private var showWandPaywall: Bool = false
+    @State private var unlockFeature: GatedFeature?
     @State private var wandSelector: WandPolicy.Selector?
     @State private var showAdvanced: Bool = false
     @State private var appeared: Bool = false
@@ -156,18 +156,19 @@ struct FanOutComposerSheet: View {
                     castButton
                 }
             }
-            .sheet(isPresented: $showWandPaywall) {
-                FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.theWand))
+            .sheet(item: $unlockFeature) { feature in
+                FeatureUnlockSheet(feature: feature)
             }
             .onAppear {
                 guard !appeared else { return }
                 appeared = true
-                if selectedRuntimes.count > maxParallel {
-                    selectedRuntimes = Set(Array(selectedRuntimes.prefix(maxParallel)))
-                }
+                clampSelectionToCurrentCap()
                 withAnimation(.easeOut(duration: 0.5)) {
                     promptFocused = true
                 }
+            }
+            .onChange(of: cloudTier) { _, _ in
+                clampSelectionToCurrentCap()
             }
         }
     }
@@ -349,6 +350,7 @@ struct FanOutComposerSheet: View {
                 selectedRuntimes.insert(rawValue)
             } else {
                 Haptics.warning()
+                unlockFeature = wandUnlockFeature(forParallel: selectedRuntimes.count + 1)
                 withAnimation(.easeInOut(duration: 0.3)) {
                     errorMessage = "Your plan allows up to \(maxParallel) agents in parallel."
                 }
@@ -474,7 +476,7 @@ struct FanOutComposerSheet: View {
     private var wandLockedTeaser: some View {
         Button {
             Haptics.light()
-            showWandPaywall = true
+            unlockFeature = GatedFeature.gatedFeature(.theWand)
         } label: {
             HStack(spacing: MobileTheme.Spacing.sm) {
                 ZStack {
@@ -668,6 +670,10 @@ struct FanOutComposerSheet: View {
         defer { dispatching = false }
         do {
             let runtimes = Array(selectedRuntimes)
+            guard runtimes.count <= maxParallel else {
+                unlockFeature = wandUnlockFeature(forParallel: runtimes.count)
+                return
+            }
             let dispatchParallelismLimit = min(maxParallel, max(1, runtimes.count))
             let result = try await CLIAgentMissionDispatcher.shared.dispatchFanOut(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -692,6 +698,26 @@ struct FanOutComposerSheet: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func clampSelectionToCurrentCap() {
+        guard selectedRuntimes.count > maxParallel else { return }
+        selectedRuntimes = Set(selectedRuntimes.sorted().prefix(maxParallel))
+    }
+
+    private func wandUnlockFeature(forParallel width: Int) -> GatedFeature {
+        let requiredTier = WandFanOut.minimumTier(forParallel: width)
+        let base = GatedFeature.gatedFeature(.theWand)
+        let presentationTier = requiredTier.satisfies(base.requiredTier) ? requiredTier : base.requiredTier
+        return GatedFeature(
+            id: base.id,
+            publicName: base.publicName,
+            requiredTier: presentationTier,
+            oneLineBenefit: base.oneLineBenefit,
+            benefitBullets: base.benefitBullets,
+            iconSystemName: base.iconSystemName,
+            crestAssetName: presentationTier.crestAssetName
+        )
     }
 }
 

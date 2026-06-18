@@ -252,32 +252,40 @@ extension DatabaseWorkspaceView {
                     }
 
                 case .conversation(let id):
-                    if let conversation = conversationDetail(id: id) {
-                        inspectorRow("Source", conversation.sourceType.rawValue)
-                        inspectorRow("Provider", conversation.provider.displayName)
-                        inspectorRow("Project", conversation.projectName)
-                        inspectorRow("Session", conversation.sessionId)
-                        inspectorRow("Title", conversation.inferredTaskTitle)
-                        inspectorRow("Messages", "\(conversation.messageCount)")
-                        inspectorRow("User Words", "\(conversation.userWordCount)")
-                        inspectorRow("Assistant Words", "\(conversation.assistantWordCount)")
-                        inspectorRow("Indexed", conversation.indexedAt.formatted())
-                        if let start = conversation.startTime {
-                            inspectorRow("Started", start.formatted())
+                    Group {
+                        if let conversation = conversationDetail(id: id) {
+                            inspectorRow("Source", conversation.sourceType.rawValue)
+                            inspectorRow("Provider", conversation.provider.displayName)
+                            inspectorRow("Project", conversation.projectName)
+                            inspectorRow("Session", conversation.sessionId)
+                            inspectorRow("Title", conversation.inferredTaskTitle)
+                            inspectorRow("Messages", "\(conversation.messageCount)")
+                            inspectorRow("User Words", "\(conversation.userWordCount)")
+                            inspectorRow("Assistant Words", "\(conversation.assistantWordCount)")
+                            inspectorRow("Indexed", conversation.indexedAt.formatted())
+                            if let start = conversation.startTime {
+                                inspectorRow("Started", start.formatted())
+                            }
+                            if let end = conversation.endTime {
+                                inspectorRow("Ended", end.formatted())
+                            }
+                            if let summary = conversation.summary, summary.isEmpty == false {
+                                Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                                inspectorTextBlock("Summary", summary)
+                            }
+                            if conversation.fullText.isEmpty == false {
+                                Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                                inspectorTextBlock("Transcript Preview", String(conversation.fullText.prefix(600)))
+                            }
+                        } else if let conversationDetailError {
+                            inspectorRow("Error", conversationDetailError)
+                        } else {
+                            ProgressView()
+                                .controlSize(.small)
                         }
-                        if let end = conversation.endTime {
-                            inspectorRow("Ended", end.formatted())
-                        }
-                        if let summary = conversation.summary, summary.isEmpty == false {
-                            Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
-                            inspectorTextBlock("Summary", summary)
-                        }
-                        if conversation.fullText.isEmpty == false {
-                            Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
-                            inspectorTextBlock("Transcript Preview", String(conversation.fullText.prefix(600)))
-                        }
-                    } else {
-                        unavailableLabel("Conversation detail is no longer available.")
+                    }
+                    .task(id: id) {
+                        await loadConversationDetail(id: id)
                     }
 
                 case .artifact(let id):

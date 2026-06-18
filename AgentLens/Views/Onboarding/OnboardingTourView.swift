@@ -71,6 +71,7 @@ struct OnboardingTourView: View {
                 .frame(maxWidth: .infinity)
             }
             .id(currentPage) // force transition on page change
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
 
             Spacer()
 

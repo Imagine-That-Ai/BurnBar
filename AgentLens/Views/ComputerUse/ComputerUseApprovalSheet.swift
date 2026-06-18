@@ -44,12 +44,12 @@ public struct ComputerUseApprovalSheet: View {
                     .scaledToFit()
                     .frame(width: 320, height: 180)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(.secondary.opacity(0.4), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 1)
                     )
             } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.secondary.opacity(0.08))
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceMuted)
                     .frame(width: 320, height: 180)
                     .overlay(alignment: .center) {
                         VStack(spacing: 6) {
@@ -66,13 +66,14 @@ public struct ComputerUseApprovalSheet: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(request.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Text(request.actionSummary)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Text("Tool: \(request.toolKind) · session \(request.sessionId.prefix(8))")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
 
             if liveTrustMode == .step {

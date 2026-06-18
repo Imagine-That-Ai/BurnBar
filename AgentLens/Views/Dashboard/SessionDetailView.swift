@@ -50,7 +50,8 @@ struct SessionDetailView: View {
                     SessionDetailContextPackRow(
                         session: session,
                         conversation: conversation,
-                        dataStore: dataStore
+                        dataStore: dataStore,
+                        isIndexingEnabled: isIndexingEnabled
                     ) { anchorId, anchorProject in
                         contextPackAnchorId = anchorId
                         contextPackAnchorProject = anchorProject
@@ -80,7 +81,7 @@ struct SessionDetailView: View {
         .task(id: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) {
             await cliBridge.detect()
             let id = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
-            conversation = try? dataStore.fetchConversation(id: id)
+            conversation = try? await dataStore.fetchConversation(id: id)
             summaryText = conversation?.summary
         }
         .sheet(isPresented: $showContextPackSheet) {
@@ -162,9 +163,13 @@ struct SessionDetailView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else if conversation?.fullText.isEmpty != false {
-                Text("No indexed transcript for this session yet. Run a scan after enabling indexing.")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "text.magnifyingglass")
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("No indexed transcript for this session yet. Run a scan after enabling indexing.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             }
         }
         .padding(.vertical, DesignSystem.Spacing.md)
@@ -201,7 +206,7 @@ struct SessionDetailView: View {
                 provider: "cli-manual",
                 model: "local-cli"
             )
-            conversation = try? dataStore.fetchConversation(id: conv.id)
+            conversation = try? await dataStore.fetchConversation(id: conv.id)
         } catch {
             summarizeError = error.localizedDescription
         }

@@ -137,11 +137,7 @@ final class SummaryWorkerMattersTests: XCTestCase {
     /// path is gated by the daily cost cap and resolves to an empty API key when no
     /// credential is configured, so no real secret is required to exercise the gate).
     private func makeWorker(spendReader: any SummaryDailySpendReading) async throws -> SummaryWorker {
-        // A real in-memory DataStoreActor satisfies the writer dependency. The
-        // fail-closed and over-cap paths return before any write; the under-cap
-        // path's post-loop attempt-marker write targets a migrated schema so it
-        // never throws spuriously.
-        let actor = try DataStoreActor(databaseQueue: DatabaseQueue(), runMigrations: true)
+        let summaryStore = SummaryWorkerNoopStore()
         let providerStore = await makeEmptyProviderStore()
         let resolver = SummaryAPIKeyResolver(
             providerAPIKeyStore: providerStore,
@@ -154,7 +150,7 @@ final class SummaryWorkerMattersTests: XCTestCase {
             }
         )
         return SummaryWorker(
-            dataStoreActor: actor,
+            summaryStore: summaryStore,
             llmClient: SummaryLLMClient(),
             keyResolver: resolver,
             spendReader: spendReader
@@ -256,6 +252,24 @@ private final class FixedDailySpendReader: SummaryDailySpendReading, @unchecked 
     func summarySpendToday(now _: Date) async throws -> Double {
         lock.lock(); _callCount += 1; lock.unlock()
         return spentToday
+    }
+}
+
+private actor SummaryWorkerNoopStore: SummaryPersistenceStore {
+    func updateConversationSummary(
+        id _: String,
+        title _: String?,
+        summary _: String?,
+        provider _: String?,
+        model _: String?,
+        updatedAt _: Date,
+        runCostUSD _: Double
+    ) async throws {}
+
+    func markConversationSummaryAttempt(id _: String, attemptedAt _: Date) async throws {}
+
+    func summarySpendToday(now _: Date) async throws -> Double {
+        0
     }
 }
 

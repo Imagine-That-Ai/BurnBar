@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Unit test for commercial-launch-gate Firestore App Check enforcement probe logic.
+ * Unit test for commercial-launch-gate Firebase App Check enforcement probe logic.
  */
 
 import assert from "node:assert/strict";
-import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+import {
+  REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  evaluateFirebaseAppCheckEnforcement,
+  evaluateFirebaseAppCheckServiceSet,
+} from "./lib/evaluate-firebase-app-check-enforcement.mjs";
 
 {
   const enforced = evaluateFirebaseAppCheckEnforcement({
@@ -17,12 +21,72 @@ import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app
 }
 
 {
+  const storage = evaluateFirebaseAppCheckEnforcement({
+    serviceName: "projects/123/services/firebasestorage.googleapis.com",
+    enforcementMode: "ENFORCED",
+  });
+  assert.equal(storage.ok, true);
+  assert.equal(storage.enforcementMode, "ENFORCED");
+}
+
+{
   const misconfigured = evaluateFirebaseAppCheckEnforcement({
     serviceName: "projects/123/services/firestore.googleapis.com",
     enforcementMode: "UNENFORCED",
   });
   assert.equal(misconfigured.ok, false);
   assert.match(String(misconfigured.error), /ENFORCED/);
+}
+
+{
+  const serviceSet = evaluateFirebaseAppCheckServiceSet([
+    {
+      serviceId: "firestore.googleapis.com",
+      serviceName: "projects/123/services/firestore.googleapis.com",
+      enforcementMode: "ENFORCED",
+    },
+    {
+      serviceId: "firebasestorage.googleapis.com",
+      serviceName: "projects/123/services/firebasestorage.googleapis.com",
+      enforcementMode: "ENFORCED",
+    },
+  ]);
+  assert.equal(serviceSet.ok, true);
+  assert.deepEqual(
+    serviceSet.requiredServiceIds,
+    REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  );
+  assert.equal(serviceSet.services.length, 2);
+}
+
+{
+  const missingStorage = evaluateFirebaseAppCheckServiceSet([
+    {
+      serviceId: "firestore.googleapis.com",
+      serviceName: "projects/123/services/firestore.googleapis.com",
+      enforcementMode: "ENFORCED",
+    },
+  ]);
+  assert.equal(missingStorage.ok, false);
+  const failedServiceIds = missingStorage.services
+    .filter((service) => !service.ok)
+    .map((service) => service.serviceId);
+  assert.deepEqual(
+    failedServiceIds,
+    ["firebasestorage.googleapis.com"],
+  );
+}
+
+{
+  const malformedProbe = evaluateFirebaseAppCheckServiceSet(null);
+  assert.equal(malformedProbe.ok, false);
+  const failedServiceIds = malformedProbe.services
+    .filter((service) => !service.ok)
+    .map((service) => service.serviceId);
+  assert.deepEqual(
+    failedServiceIds,
+    REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  );
 }
 
 console.log("commercial-launch-gate App Check probe tests passed");

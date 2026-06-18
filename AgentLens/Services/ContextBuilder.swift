@@ -207,7 +207,7 @@ enum ContextBuilder {
 
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
+        let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -341,7 +341,7 @@ enum ContextBuilder {
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
-        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
+        let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         lines.append("")

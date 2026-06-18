@@ -21,8 +21,8 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             fullText: "This thread focuses on runtime migration and queue tuning."
         )
 
-        try harness.dataStore.upsertConversation(lexicalConversation)
-        try harness.dataStore.upsertConversation(semanticConversation)
+        try await harness.dataStore.upsertConversation(lexicalConversation)
+        try await harness.dataStore.upsertConversation(semanticConversation)
         _ = try await harness.enqueueConversationProjection(conversationID: lexicalConversation.id, jobType: .project)
         _ = try await harness.enqueueConversationProjection(conversationID: semanticConversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
@@ -119,7 +119,7 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             projectName: "Alpha",
             fullText: "Rollout hardening checklist for lexical fallback coverage."
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
@@ -192,9 +192,9 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         )
         _ = harness.clock.set(base)
 
-        try harness.dataStore.upsertConversation(convClaude)
-        try harness.dataStore.upsertConversation(convCodex)
-        try harness.dataStore.upsertConversation(convCLI)
+        try await harness.dataStore.upsertConversation(convClaude)
+        try await harness.dataStore.upsertConversation(convCodex)
+        try await harness.dataStore.upsertConversation(convCLI)
         _ = try await harness.enqueueConversationProjection(conversationID: convClaude.id, jobType: .project)
         _ = try await harness.enqueueConversationProjection(conversationID: convCodex.id, jobType: .project)
         _ = try await harness.enqueueConversationProjection(conversationID: convCLI.id, jobType: .project)

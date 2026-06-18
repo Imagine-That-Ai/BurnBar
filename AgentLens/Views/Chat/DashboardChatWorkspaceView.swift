@@ -86,9 +86,11 @@ struct DashboardChatWorkspaceView: View {
             atomRouter.onPerform = { _ in }
         }
         .onAppear {
-            brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
             controller.loadPersistedMessages()
             controller.refreshHistory()
+            Task { @MainActor in
+                brief = await controller.buildInsightBriefSnapshotAsync(refreshRollups: false)
+            }
         }
         .onChange(of: dataStore.usagesVersion) { _, _ in
             Task { @MainActor in

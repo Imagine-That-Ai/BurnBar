@@ -59,6 +59,7 @@ def test_semantic_search_returns_unavailable_when_tables_missing(tmp_path, monke
     db_path = tmp_path / "openburnbar.sqlite"
     sqlite3.connect(db_path).close()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
 
     payload = json.loads(server.burnbar_semantic_search_conversations("quota debugging"))
 
@@ -66,6 +67,20 @@ def test_semantic_search_returns_unavailable_when_tables_missing(tmp_path, monke
     assert payload["code"] == "SEMANTIC_TABLES_MISSING"
     assert "chunk_embeddings" in payload["missingTables"]
     assert "search_documents" in payload["missingTables"]
+
+
+def test_semantic_search_requires_sensitive_read_capability(tmp_path, monkeypatch):
+    db_path = tmp_path / "openburnbar.sqlite"
+    sqlite3.connect(db_path).close()
+    monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", raising=False)
+
+    payload = json.loads(server.burnbar_semantic_search_conversations("quota debugging"))
+
+    assert payload["status"] == "denied"
+    assert payload["code"] == "MCP_CAPABILITY_DISABLED"
+    assert payload["tool"] == "burnbar_semantic_search_conversations"
+    assert payload["capability"] == "sensitive_read"
 
 
 def test_cloud_semantic_search_requires_explicit_cloud_credentials(monkeypatch):
@@ -219,6 +234,7 @@ def test_semantic_search_returns_deterministic_hit(tmp_path, monkeypatch):
     conn.close()
 
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
     payload = json.loads(
         server.burnbar_semantic_search_conversations(
             "quota routing deterministic semantic repair",

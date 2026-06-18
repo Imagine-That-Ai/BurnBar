@@ -5,16 +5,17 @@
  * H29 / finding-158: the three rules predicates were hand-maintained copies).
  *
  * The generated regions are delimited by BEGIN/END GENERATED marker comments
- * inside `activePremiumEntitlementData`, `activeMediaEntitlementData`, and
- * `activeComputerUseEntitlementData`. This script is the ONLY writer of those
- * regions; the product IDs live in
+ * inside the Firestore rules entitlement predicates. This script is the ONLY
+ * writer of those regions; the product IDs live in
  * `packages/entitlements/src/catalog.ts` (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS).
  *
  * Usage:
  *   node tools/gen-rules-entitlements.mjs            # rewrite firestore.rules in place
  *   node tools/gen-rules-entitlements.mjs --check    # exit 1 if firestore.rules drifts (CI gate)
- *   node tools/gen-rules-entitlements.mjs --print-list <premium|media|computerUse>
+ *   node tools/gen-rules-entitlements.mjs --print-list <premium|media|computerUse|proMax|ultra>
  *                                                    # print just the bare allowlist span (no markers)
+ *   node tools/gen-rules-entitlements.mjs --print-wand-caps
+ *                                                    # print the generated Wand cap return block
  *
  * Requires the entitlements package to be built first:
  *   bash scripts/build-entitlements.sh
@@ -36,7 +37,9 @@ if (!existsSync(catalogJsPath)) {
   process.exit(2);
 }
 
-const { FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS } = await import(pathToFileURL(catalogJsPath).href);
+const { FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS, WAND_PARALLEL_CAPS } = await import(
+  pathToFileURL(catalogJsPath).href
+);
 
 /**
  * One region per rules predicate. `linePrefix` preserves the file's historical
@@ -45,6 +48,8 @@ const { FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS } = await import(pathToFileURL(cat
  */
 const REGIONS = [
   { name: "premium", functionName: "activePremiumEntitlementData", linePrefix: "" },
+  { name: "proMax", functionName: "activeProMaxEntitlementData", linePrefix: "" },
+  { name: "ultra", functionName: "activeUltraEntitlementData", linePrefix: "" },
   { name: "media", functionName: "activeMediaEntitlementData", linePrefix: "" },
   { name: "computerUse", functionName: "activeComputerUseEntitlementData", linePrefix: "\t" },
 ];
@@ -55,6 +60,47 @@ function beginMarker(name) {
 
 function endMarker(name) {
   return `// END GENERATED: entitlement-product-ids ${name}`;
+}
+
+const wandCapsRegion = {
+  name: "wand-parallel-caps",
+  functionName: "wandFanOutCap",
+};
+
+function wandCapsBeginMarker() {
+  return `// BEGIN GENERATED: ${wandCapsRegion.name} — do not hand-edit.`;
+}
+
+function wandCapsEndMarker() {
+  return `// END GENERATED: ${wandCapsRegion.name}`;
+}
+
+function validateWandCaps() {
+  const expectedTiers = ["free", "cloud", "pro", "ultra"];
+  for (const tier of expectedTiers) {
+    if (!Number.isInteger(WAND_PARALLEL_CAPS[tier]) || WAND_PARALLEL_CAPS[tier] < 1) {
+      throw new Error(`WAND_PARALLEL_CAPS.${tier} must be a positive integer`);
+    }
+  }
+  for (const tier of Object.keys(WAND_PARALLEL_CAPS)) {
+    if (!expectedTiers.includes(tier)) {
+      throw new Error(`WAND_PARALLEL_CAPS has unexpected tier "${tier}"`);
+    }
+  }
+}
+
+function renderWandCapBlock() {
+  validateWandCaps();
+  return [
+    `      ${wandCapsBeginMarker()}`,
+    `      // Source: packages/entitlements/src/catalog.ts (WAND_PARALLEL_CAPS).`,
+    `      // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).`,
+    `      return hasActiveUltraEntitlement(userId) ? ${WAND_PARALLEL_CAPS.ultra}`,
+    `        : hasActiveProMaxEntitlement(userId) ? ${WAND_PARALLEL_CAPS.pro}`,
+    `        : hasActiveHostedQuotaEntitlement(userId) ? ${WAND_PARALLEL_CAPS.cloud}`,
+    `        : ${WAND_PARALLEL_CAPS.free};`,
+    `      ${wandCapsEndMarker()}`,
+  ].join("\n");
 }
 
 /** The bare `&& entitlement.productID in [...]` span, byte-identical to the historical hand-written lists. */
@@ -120,11 +166,36 @@ function replaceRegion(source, region) {
   return source.slice(0, absoluteIndex) + block + source.slice(absoluteIndex + bareSpan[0].length);
 }
 
+function replaceWandCapsRegion(source) {
+  const block = renderWandCapBlock();
+  const markered = new RegExp(
+    `^[\\t ]*${escapeRegExp(wandCapsBeginMarker())}$[\\s\\S]*?^[\\t ]*${escapeRegExp(wandCapsEndMarker())}$`,
+    "m",
+  );
+  if (markered.test(source)) {
+    return source.replace(markered, () => block);
+  }
+
+  const fnStart = source.indexOf(`function ${wandCapsRegion.functionName}(`);
+  if (fnStart === -1) {
+    throw new Error(`firestore.rules: function ${wandCapsRegion.functionName} not found`);
+  }
+  const fnEnd = source.indexOf("\n    }", fnStart);
+  const fnBody = source.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
+  const returnSpan = /^[\t ]*return hasActiveUltraEntitlement\(userId\) \? [\s\S]*?;$/m.exec(fnBody);
+  if (!returnSpan) {
+    throw new Error(`firestore.rules: Wand cap return expression not found inside ${wandCapsRegion.functionName}`);
+  }
+  const absoluteIndex = fnStart + returnSpan.index;
+  return source.slice(0, absoluteIndex) + block + source.slice(absoluteIndex + returnSpan[0].length);
+}
+
 function regenerate(source) {
   let next = source;
   for (const region of REGIONS) {
     next = replaceRegion(next, region);
   }
+  next = replaceWandCapsRegion(next);
   return next;
 }
 
@@ -138,6 +209,11 @@ if (args[0] === "--print-list") {
     process.exit(2);
   }
   process.stdout.write(`${renderListSpan(region)}\n`);
+  process.exit(0);
+}
+
+if (args[0] === "--print-wand-caps") {
+  process.stdout.write(`${renderWandCapBlock()}\n`);
   process.exit(0);
 }
 

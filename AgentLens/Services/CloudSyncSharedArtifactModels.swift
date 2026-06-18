@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 // Shared-artifact + memory sync boundary types and Firestore codecs used by `CloudSyncService`.
 
@@ -97,6 +98,9 @@ struct SharedArtifactCloudRecord: Equatable, Sendable {
 enum SharedArtifactCloudCodecError: LocalizedError {
     case missingField(String)
     case invalidFieldType(String)
+    case missingOwnerForSealedContent
+    case sealedContentRequiresKey
+    case sealedContentMalformed
 
     var errorDescription: String? {
         switch self {
@@ -104,6 +108,12 @@ enum SharedArtifactCloudCodecError: LocalizedError {
             return "Shared artifact cloud payload is missing required field: \(field)."
         case .invalidFieldType(let field):
             return "Shared artifact cloud payload has an invalid field type for: \(field)."
+        case .missingOwnerForSealedContent:
+            return "Shared artifact sealed payload is missing the owner user identity required for AAD binding."
+        case .sealedContentRequiresKey:
+            return "Shared artifact sealed payload requires a Cloud Vault key to decode."
+        case .sealedContentMalformed:
+            return "Shared artifact sealed payload could not be opened or decoded."
         }
     }
 }
@@ -230,8 +240,28 @@ enum SharedArtifactOptimisticWriteGate {
     }
 }
 
+private struct SharedArtifactSealedPayload: Codable, Equatable, Sendable {
+    let title: String
+    let body: String
+    let contentHash: String
+    let relativePath: String?
+}
+
 enum SharedArtifactCloudCodec {
     static let provenancePrefix = "shared-sync:"
+    static let sealedPayloadField = "sealedPayload"
+    static let artifactAADCollection = "artifacts"
+    static let artifactVersionAADCollection = "artifact_versions"
+
+    private static var encoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
+    private static var decoder: JSONDecoder {
+        JSONDecoder()
+    }
 
     static func encode(_ record: SharedArtifactCloudRecord, useServerTimestamp: Bool) -> [String: Any] {
         var payload: [String: Any] = [
@@ -271,7 +301,62 @@ enum SharedArtifactCloudCodec {
         return payload
     }
 
-    static func decode(documentID: String, data: [String: Any]) throws -> SharedArtifactCloudRecord {
+    static func encodeSealed(
+        _ record: SharedArtifactCloudRecord,
+        useServerTimestamp: Bool,
+        vaultKey: CloudVaultResolvedKey,
+        ownerUserID: String,
+        aadCollection: String,
+        aadDocumentID: String
+    ) throws -> [String: Any] {
+        let sealedPayload = SharedArtifactSealedPayload(
+            title: record.title,
+            body: record.body,
+            contentHash: record.contentHash,
+            relativePath: record.relativePath
+        )
+        let aadContext = try CloudVaultAADContext(
+            uid: ownerUserID,
+            collection: aadCollection,
+            docID: aadDocumentID,
+            field: sealedPayloadField
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            try encoder.encode(sealedPayload),
+            keyData: vaultKey.keyData,
+            vaultKeyID: vaultKey.vaultKeyID,
+            aadContext: aadContext
+        )
+
+        var payload = metadataPayload(
+            record,
+            useServerTimestamp: useServerTimestamp,
+            ownerUserID: ownerUserID
+        )
+        payload["contentSealed"] = true
+        payload["sealedSchemaVersion"] = CloudVaultCrypto.currentSealedPayloadSchemaVersion
+        payload["vaultKeyID"] = vaultKey.vaultKeyID
+        payload[sealedPayloadField] = CloudVaultCrypto.sealedPayloadDictionary(sealed)
+
+        // Merge writes must actively delete any legacy plaintext fields already
+        // present on the Firestore document. Rules evaluate request.resource after
+        // transforms, so these sentinels remove old content without weakening the
+        // sealed top-level key allowlist.
+        payload["title"] = FieldValue.delete()
+        payload["body"] = FieldValue.delete()
+        payload["contentHash"] = FieldValue.delete()
+        payload["relativePath"] = FieldValue.delete()
+        return payload
+    }
+
+    static func decode(
+        documentID: String,
+        data: [String: Any],
+        vaultKeyData: Data? = nil,
+        ownerUserID: String? = nil,
+        aadCollection: String = artifactAADCollection,
+        aadDocumentID: String? = nil
+    ) throws -> SharedArtifactCloudRecord {
         let artifactID = stringValue(data["artifactID"]) ?? stringValue(data["id"]) ?? documentID
         guard let workspaceID = stringValue(data["workspaceID"]) else {
             throw SharedArtifactCloudCodecError.missingField("workspaceID")
@@ -285,14 +370,38 @@ enum SharedArtifactCloudCodec {
         guard let revisionID = stringValue(data["revisionID"]) else {
             throw SharedArtifactCloudCodecError.missingField("revisionID")
         }
-        guard let title = stringValue(data["title"]) else {
-            throw SharedArtifactCloudCodecError.missingField("title")
-        }
-        guard let body = stringValue(data["body"]) else {
-            throw SharedArtifactCloudCodecError.missingField("body")
-        }
-        guard let contentHash = stringValue(data["contentHash"]) else {
-            throw SharedArtifactCloudCodecError.missingField("contentHash")
+        let privatePayload = try decodedPrivatePayloadIfPresent(
+            artifactID: artifactID,
+            workspaceID: workspaceID,
+            data: data,
+            vaultKeyData: vaultKeyData,
+            ownerUserID: ownerUserID,
+            aadCollection: aadCollection,
+            aadDocumentID: aadDocumentID
+        )
+        let title: String
+        let body: String
+        let contentHash: String
+        let relativePath: String?
+        if let privatePayload {
+            title = privatePayload.title
+            body = privatePayload.body
+            contentHash = privatePayload.contentHash
+            relativePath = privatePayload.relativePath
+        } else {
+            guard let decodedTitle = stringValue(data["title"]) else {
+                throw SharedArtifactCloudCodecError.missingField("title")
+            }
+            guard let decodedBody = stringValue(data["body"]) else {
+                throw SharedArtifactCloudCodecError.missingField("body")
+            }
+            guard let decodedContentHash = stringValue(data["contentHash"]) else {
+                throw SharedArtifactCloudCodecError.missingField("contentHash")
+            }
+            title = decodedTitle
+            body = decodedBody
+            contentHash = decodedContentHash
+            relativePath = stringValue(data["relativePath"])
         }
         let isDeleted = boolValue(data["isDeleted"]) ?? false
 
@@ -307,13 +416,98 @@ enum SharedArtifactCloudCodec {
             title: title,
             body: body,
             contentHash: contentHash,
-            relativePath: stringValue(data["relativePath"]),
+            relativePath: relativePath,
             isDeleted: isDeleted,
             updatedByUserID: stringValue(data["updatedByUserID"]),
             updatedByDeviceID: stringValue(data["updatedByDeviceID"]),
             resolvedConflictRevisionID: stringValue(data["resolvedConflictRevisionID"]),
             updatedAt: dateValue(data["updatedAt"])
         )
+    }
+
+    static func revisionID(data: [String: Any]?) -> String? {
+        guard let data else { return nil }
+        return stringValue(data["revisionID"])
+    }
+
+    static func ownerUID(fromWorkspaceID workspaceID: String) -> String? {
+        let prefix = "workspace-"
+        guard workspaceID.hasPrefix(prefix) else { return nil }
+        let owner = String(workspaceID.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return owner.isEmpty ? nil : owner
+    }
+
+    private static func metadataPayload(
+        _ record: SharedArtifactCloudRecord,
+        useServerTimestamp: Bool,
+        ownerUserID: String
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "artifactID": record.artifactID,
+            "workspaceID": record.workspaceID,
+            "teamID": record.teamID,
+            "ownerUserID": ownerUserID,
+            "visibility": record.visibility.rawValue,
+            "revisionID": record.revisionID,
+            "isDeleted": record.isDeleted
+        ]
+        if let baseRevisionID = record.baseRevisionID {
+            payload["baseRevisionID"] = baseRevisionID
+        }
+        if let updatedByUserID = record.updatedByUserID {
+            payload["updatedByUserID"] = updatedByUserID
+        }
+        if let updatedByDeviceID = record.updatedByDeviceID {
+            payload["updatedByDeviceID"] = updatedByDeviceID
+        }
+        if let resolvedConflictRevisionID = record.resolvedConflictRevisionID {
+            payload["resolvedConflictRevisionID"] = resolvedConflictRevisionID
+        }
+        if useServerTimestamp {
+            payload["updatedAt"] = FieldValue.serverTimestamp()
+        } else if let updatedAt = record.updatedAt {
+            payload["updatedAt"] = updatedAt
+        }
+        return payload
+    }
+
+    private static func decodedPrivatePayloadIfPresent(
+        artifactID: String,
+        workspaceID: String,
+        data: [String: Any],
+        vaultKeyData: Data?,
+        ownerUserID: String?,
+        aadCollection: String,
+        aadDocumentID: String?
+    ) throws -> SharedArtifactSealedPayload? {
+        let isSealed = boolValue(data["contentSealed"]) == true || data[sealedPayloadField] != nil
+        guard isSealed else { return nil }
+        guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]) else {
+            throw SharedArtifactCloudCodecError.sealedContentMalformed
+        }
+        guard let vaultKeyData else {
+            throw SharedArtifactCloudCodecError.sealedContentRequiresKey
+        }
+        guard let owner = stringValue(data["ownerUserID"]) ?? ownerUserID ?? ownerUID(fromWorkspaceID: workspaceID) else {
+            throw SharedArtifactCloudCodecError.missingOwnerForSealedContent
+        }
+
+        do {
+            let aadContext = try CloudVaultAADContext(
+                uid: owner,
+                collection: aadCollection,
+                docID: aadDocumentID ?? artifactID,
+                field: sealedPayloadField
+            )
+            let plaintext = try CloudVaultCrypto.openPayload(
+                envelope,
+                keyData: vaultKeyData,
+                aadContext: aadContext
+            )
+            return try decoder.decode(SharedArtifactSealedPayload.self, from: plaintext)
+        } catch {
+            throw SharedArtifactCloudCodecError.sealedContentMalformed
+        }
     }
 
     static func encodeProvenance(

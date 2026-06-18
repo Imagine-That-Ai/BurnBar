@@ -807,9 +807,13 @@ struct MacRemoteMCPConnectedClientsSection: View {
                     .foregroundStyle(DesignSystem.Colors.error)
                     .fixedSize(horizontal: false, vertical: true)
             } else if store.clients.isEmpty && !store.isLoading {
-                Text("No MCP clients are connected yet.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("No MCP clients are connected yet.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             } else {
                 ForEach(store.clients) { client in
                     MacRemoteMCPClientRow(

@@ -7,12 +7,12 @@ import OpenBurnBarCore
 extension ConversationStore {
         // MARK: - Conversation CRUD
 
-        func upsertConversation(_ record: ConversationRecord) throws {
+        func upsertConversation(_ record: ConversationRecord) async throws {
             let keyFilesJSON = try OpenBurnBarDatabase.encodeJSON(record.keyFiles)
             let keyCommandsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyCommands)
             let keyToolsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyTools)
 
-            try dbQueue.write { db in
+            try await dbQueue.write { db in
                 let existing = try Self.fetchConversationRow(db, id: record.id)
                 let priorSyncedAt: Date? = try Date.fetchOne(
                     db,
@@ -163,8 +163,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversation(id: String) throws -> ConversationRecord? {
-            try dbQueue.read { db in
+        func fetchConversation(id: String) async throws -> ConversationRecord? {
+            try await dbQueue.read { db in
                 // User-facing read: a tombstoned conversation reads as absent.
                 // Internal callers (upsert sync-preservation) use the unfiltered
                 // `fetchConversationRow` so re-indexing a transcript cannot
@@ -178,7 +178,29 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversations(limit: Int = 500) throws -> [ConversationRecord] {
+        func fetchConversationSynchronously(id: String) throws -> ConversationRecord? {
+            try dbQueue.read { db in
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM conversations WHERE id = ? AND deletedAt IS NULL",
+                    arguments: [id]
+                ) else { return nil }
+                return Self.conversation(from: row)
+            }
+        }
+
+        func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
+                    arguments: [limit]
+                )
+                return rows.compactMap { Self.conversation(from: $0) }
+            }
+        }
+
+        func fetchConversationsSynchronously(limit: Int = 500) throws -> [ConversationRecord] {
             try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -191,8 +213,8 @@ extension ConversationStore {
 
         /// Paginated conversation fetch using offset-based cursor.
         /// Returns conversations ordered by endTime/startTime for stable pagination.
-        func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchConversations(limit: Int, offset: Int) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
@@ -207,10 +229,10 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
+        func fetchConversations(ids: [String]) async throws -> [ConversationRecord] {
             guard ids.isEmpty == false else { return [] }
             let uniqueIDs = Array(Set(ids)).sorted()
-            return try dbQueue.read { db in
+            return try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: """

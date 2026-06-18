@@ -38,6 +38,7 @@ struct ChatViewModePicker: View {
                 .buttonStyle(.plain)
             }
         }
+        .animation(DesignSystem.Animation.snappy, value: controller.chatViewMode)
         .padding(2)
         .background(DesignSystem.Colors.background.opacity(0.6))
         .clipShape(Capsule(style: .continuous))

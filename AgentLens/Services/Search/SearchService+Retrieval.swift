@@ -336,7 +336,7 @@ extension SearchService {
             })
             if !conversationSourceIDs.isEmpty {
                 do {
-                    let batchConversations = try dataStore.fetchConversations(ids: Array(conversationSourceIDs))
+                    let batchConversations = try await dataStore.fetchConversations(ids: Array(conversationSourceIDs))
                     for conv in batchConversations {
                         conversationCache[conv.id] = conv
                     }

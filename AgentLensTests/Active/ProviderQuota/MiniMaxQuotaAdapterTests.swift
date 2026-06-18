@@ -1,5 +1,4 @@
 import XCTest
-import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -134,8 +133,6 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
     ) throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBarAppPaths.live()
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
-        let dbQueue = try DatabaseQueue()
-        let dataStoreActor = try DataStoreActor(databaseQueue: dbQueue)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MiniMaxMockURLProtocol.self]
@@ -147,7 +144,6 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
             session: session,
             environment: [:],
             homeDirectoryURL: tempDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: ClaudeQuotaBridgeManager(
                 appPaths: appPaths,

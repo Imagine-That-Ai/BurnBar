@@ -408,7 +408,12 @@ struct SessionLogsView: View {
 
             if isLoading {
                 Spacer()
-                ProgressView()
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ProgressView()
+                    Text("Loading logs…")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
                 Spacer()
             } else if filteredLogs.isEmpty {
                 emptyListState
@@ -1142,7 +1147,7 @@ struct SessionLogsView: View {
     private func resolveExportBody(for record: ConversationRecord) async -> String {
         switch dataSource {
         case .local:
-            if let full = try? dataStore.fetchConversation(id: record.id)?.fullText, !full.isEmpty {
+            if let full = try? await dataStore.fetchConversation(id: record.id)?.fullText, !full.isEmpty {
                 return full
             }
             return record.fullText
@@ -1307,7 +1312,7 @@ struct SessionLogsView: View {
         }
 
         do {
-            selectedDetailLog = try dataStore.fetchConversation(id: id)
+            selectedDetailLog = try await dataStore.fetchConversation(id: id)
         } catch {
             selectedDetailLog = allLogs.first { $0.id == id }
         }
@@ -1323,7 +1328,7 @@ struct SessionLogsView: View {
         do {
             switch dataSource {
             case .local:
-                let messages = try dataStore.fetchChatMessages()
+                let messages = try await dataStore.fetchChatMessages()
                 if !messages.isEmpty { try await dataStore.upsertCLIConversation(from: messages) }
                 allLogs = try await dataStore.fetchSessionLogSummaries()
 

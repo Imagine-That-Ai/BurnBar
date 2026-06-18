@@ -38,9 +38,9 @@ final class ConversationFTSOrphanInvariantTests: XCTestCase {
     /// conversation count.
     func test_repeatedUpsert_doesNotLeakOrphanedFTSRows() async throws {
         let id = "conv-fts-invariant"
-        try dataStore.upsertConversation(makeRecord(id: id, fullText: "first revision body"))
-        try dataStore.upsertConversation(makeRecord(id: id, fullText: "second revision body"))
-        try dataStore.upsertConversation(makeRecord(id: id, fullText: "third revision body"))
+        try await dataStore.upsertConversation(makeRecord(id: id, fullText: "first revision body"))
+        try await dataStore.upsertConversation(makeRecord(id: id, fullText: "second revision body"))
+        try await dataStore.upsertConversation(makeRecord(id: id, fullText: "third revision body"))
 
         let counts = try await queue.read { db -> (fts: Int, conversations: Int) in
             let fts = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations_fts") ?? -1
@@ -68,7 +68,7 @@ final class ConversationFTSOrphanInvariantTests: XCTestCase {
         let ids = (0..<8).map { "conv-fts-bulk-\($0)" }
         for revision in 0..<5 {
             for id in ids {
-                try dataStore.upsertConversation(makeRecord(id: id, fullText: "revision \(revision) of \(id)"))
+                try await dataStore.upsertConversation(makeRecord(id: id, fullText: "revision \(revision) of \(id)"))
             }
         }
 

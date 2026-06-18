@@ -9,6 +9,8 @@ struct SidebarItem: View {
     let sessionCount: Int
     let action: () -> Void
 
+    @State private var hovering = false
+
     private var theme: ProviderTheme {
         provider.map { ProviderTheme.theme(for: $0) } ?? ProviderTheme.theme(for: .factory)
     }
@@ -67,7 +69,7 @@ struct SidebarItem: View {
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering && !isSelected ? 0.55 : 0.35))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
@@ -75,6 +77,8 @@ struct SidebarItem: View {
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(DesignSystem.Animation.hover, value: hovering)
     }
 }
 
@@ -86,6 +90,8 @@ struct ModelSidebarItem: View {
     let action: () -> Void
 
     @Environment(SettingsManager.self) private var settingsManager
+
+    @State private var hovering = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: summary.modelName) }
 
@@ -135,7 +141,7 @@ struct ModelSidebarItem: View {
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering && !isSelected ? 0.55 : 0.35))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
@@ -143,6 +149,8 @@ struct ModelSidebarItem: View {
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(DesignSystem.Animation.hover, value: hovering)
     }
 }
 
@@ -157,6 +165,8 @@ struct DashboardWorkspaceNavButton: View {
     var trailingBadge: String?
     var isCompact: Bool = false
     let action: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -212,7 +222,7 @@ struct DashboardWorkspaceNavButton: View {
             )
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(isSelected ? accent.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+                    .fill(isSelected ? accent.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering ? 0.55 : 0.35))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
@@ -220,6 +230,8 @@ struct DashboardWorkspaceNavButton: View {
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(DesignSystem.Animation.hover, value: hovering)
     }
 }
 
