@@ -200,13 +200,15 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                 progress?.recordChatThreadProcessed(label: label)
             }
 
-            progress?.setCurrentRecord(label: "Chat threads", operation: "Committing Firestore batch")
-            try await withCloudSyncRetry(
-                policy: context.retryPolicy,
-                circuitBreaker: context.circuitBreaker,
-                domain: "chatThread"
-            ) {
-                try await batch.commit()
+            if syncedThreadCount > 0 {
+                progress?.setCurrentRecord(label: "Chat threads", operation: "Committing Firestore batch")
+                try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "chatThread"
+                ) {
+                    try await batch.commit()
+                }
             }
             state.withLock {
                 $0.lastSyncDate = Date()

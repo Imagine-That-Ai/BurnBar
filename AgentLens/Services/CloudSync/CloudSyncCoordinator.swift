@@ -146,20 +146,12 @@ final class CloudSyncCoordinator {
         await syncSessionLogs(drainAll: true, progress: tracker)
         if let err = lastSyncError, err.isEmpty == false {
             tracker.fail(err)
-            Analytics.shared.track(.cloudsyncFailed, [
-                "domain": "session_logs",
-                "error_type": .string("manual_backup_failed")
-            ])
             return
         }
 
         await syncChatThreads(progress: tracker)
         if let err = lastSyncError, err.isEmpty == false {
             tracker.fail(err)
-            Analytics.shared.track(.cloudsyncFailed, [
-                "domain": "chat_threads",
-                "error_type": .string("manual_backup_failed")
-            ])
             return
         }
 
