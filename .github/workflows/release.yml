@@ -218,10 +218,18 @@ jobs:
           SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
           xattr -dr com.apple.quarantine "$SPARKLE_CASKROOM" 2>/dev/null || true
           SPARKLE_SIGN_UPDATE="$(
-            find "$SPARKLE_CASKROOM" /Applications -path '*Sparkle*' -name sign_update -type f -perm -111 -print -quit 2>/dev/null || true
+            find "$SPARKLE_CASKROOM" /Applications -name sign_update \( -type f -o -type l \) -print -quit 2>/dev/null || true
           )"
           if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
             echo "::error::Sparkle sign_update tool was not found after cask install."
+            echo "::group::Sparkle install tree"
+            find "$SPARKLE_CASKROOM" /Applications -path '*Sparkle*' -print 2>/dev/null || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          chmod +x "$SPARKLE_SIGN_UPDATE" 2>/dev/null || true
+          if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update exists but is not executable: $SPARKLE_SIGN_UPDATE"
             exit 1
           fi
           echo "SPARKLE_SIGN_UPDATE=$SPARKLE_SIGN_UPDATE" >> "$GITHUB_ENV"

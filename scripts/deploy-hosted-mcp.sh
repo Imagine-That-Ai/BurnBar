@@ -76,6 +76,7 @@ npm --prefix services/hosted-mcp test
 gcloud builds submit . \
   --config services/hosted-mcp/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}" \
+  --suppress-logs \
   --project "$GOOGLE_CLOUD_PROJECT"
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
