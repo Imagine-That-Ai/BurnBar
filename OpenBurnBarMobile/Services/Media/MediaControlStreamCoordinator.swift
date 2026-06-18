@@ -467,7 +467,16 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         streamClass: MediaStreamClass.control.rawValue
                     )
                 )
-                try await sendGate.send(classifyFrame)
+                do {
+                    try await sendGate.send(classifyFrame)
+                } catch {
+                    if Task.isCancelled
+                        || !isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) {
+                        await stream.close()
+                        break
+                    }
+                    throw error
+                }
                 guard !Task.isCancelled,
                       isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
                     await stream.close()

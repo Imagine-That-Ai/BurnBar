@@ -96,6 +96,79 @@ struct HermesSquareLeftColumn: View {
     }
 
     var body: some View {
+        leftColumnContent
+            .navigationTitle("Agents")
+            .navigationBarTitleDisplayMode(.inline)
+            .task { await startLeftColumnTasks() }
+            .onChange(of: inbox.items) { _, _ in
+                Task { await reindexSearch() }
+            }
+            .onChange(of: registry.identities) { _, _ in
+                Task { await reindexSearch() }
+            }
+            .onChange(of: projectsStore.summaries) { _, _ in
+                Task { await reindexSearch() }
+            }
+            .onChange(of: mercuryPeer) { _, peer in
+                syncMercuryPeer(peer)
+            }
+            .sheet(isPresented: $isShowingDiscover) {
+                HermesSquareDiscoverDrawer(
+                    registry: registry,
+                    pinnedGrid: pinnedGrid,
+                    projectSummaries: Array(projectsStore.summaries.prefix(8)),
+                    onPin: { uri in pin(uri) },
+                    onUnpin: { uri in unpin(uri) },
+                    onOpenProjectMemory: { project in
+                        onSelect(.projectMemory(project.id))
+                        isShowingDiscover = false
+                    },
+                    onAskWiki: { project in
+                        askWiki(for: project)
+                        isShowingDiscover = false
+                    }
+                )
+            }
+            .sheet(isPresented: $isShowingFanOut) {
+                FanOutComposerSheet(
+                    registry: registry,
+                    onDispatched: { result in
+                        activeGroupObserver.start(groupID: result.groupID)
+                    }
+                )
+            }
+            .sheet(isPresented: $isShowingVoice) {
+                voiceSheetContent
+            }
+            .alert("Rename Conversation", isPresented: $isShowingRenameAlert) {
+                TextField("New Title", text: $newTitleText)
+                Button("Cancel", role: .cancel) {
+                    renameTargetItem = nil
+                }
+                Button("Rename") {
+                    if let item = renameTargetItem {
+                        updateThreadItemMetadata(item: item, customTitle: newTitleText)
+                    }
+                    renameTargetItem = nil
+                }
+            } message: {
+                Text("Enter a new title for this conversation.")
+            }
+            .confirmationDialog(
+                "Manage Mission",
+                isPresented: missionActionSheetPresented,
+                titleVisibility: .visible,
+                actions: { missionActionSheetActions() },
+                message: { missionActionSheetMessage() }
+            )
+            .toolbar { leftColumnToolbar }
+            .overlay(alignment: .top) { voiceIntentOverlay }
+            .sheet(isPresented: $isShowingSubscriptions) {
+                HermesSquareSubscriptionsFolder()
+            }
+    }
+
+    private var leftColumnContent: some View {
         ZStack(alignment: .top) {
             WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
             ScrollView {
@@ -108,200 +181,154 @@ struct HermesSquareLeftColumn: View {
                         searchResults
                             .padding(.horizontal, 12)
                     } else {
-                        // Approval inbox — sticky at top when pending
-                        if !missionHost.snapshot.approvalAsks.isEmpty {
-                            ApprovalInboxStrip(
-                                asks: missionHost.snapshot.approvalAsks,
-                                onApprove: { ask in
-                                    Task { await missionHost.respond(to: ask, approve: true) }
-                                },
-                                onDeny: { ask in
-                                    Task { await missionHost.respond(to: ask, approve: false) }
-                                },
-                                onApproveAlways: { ask in recordApprovalPolicy(ask, decision: .approve) },
-                                onDenyAlways: { ask in recordApprovalPolicy(ask, decision: .deny) }
-                            )
-                            .padding(.horizontal, 12)
-                        }
-
-                        // Fan-out group card
-                        activeGroupSection
-                            .padding(.horizontal, 12)
-
-                        pinnedGridSection
-                            .padding(.horizontal, 12)
-
-                        projectMemorySection
-                            .padding(.horizontal, 12)
-
-                        activeMissionsStrip
-                            .padding(.leading, 12)
-
-                        rollbackSections
-                            .padding(.horizontal, 12)
-
-                        threadInboxSection
-                            .padding(.horizontal, 12)
-
-                        subscriptionsSection
-                            .padding(.horizontal, 12)
-
-                        discoverButton
-                            .padding(.horizontal, 12)
+                        defaultLeftColumnSections
                     }
                 }
                 .padding(.bottom, 60)
             }
         }
-        .navigationTitle("Agents")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            inbox.bind(historyStore: historyStore, missionHost: missionHost)
-            syncMercuryPeer(mercuryPeer)
-            await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
-            await inbox.refresh()
-            await projectsStore.load()
-            await reindexSearch()
-            subscriptionTopicStore.bootstrap()
-            await subscriptionTopicStore.refresh()
-            rollbackService.startObservingRequests()
-            let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
-                tile.id.isEmpty ? nil : tile.id
-            })
-            for sessionID in sessionIDs {
-                rollbackService.startObservingSession(sessionID)
-            }
-        }
-        .onChange(of: inbox.items) { _, _ in
-            Task { await reindexSearch() }
-        }
-        .onChange(of: registry.identities) { _, _ in
-            Task { await reindexSearch() }
-        }
-        .onChange(of: projectsStore.summaries) { _, _ in
-            Task { await reindexSearch() }
-        }
-        .onChange(of: mercuryPeer) { _, peer in
-            syncMercuryPeer(peer)
-        }
-        .sheet(isPresented: $isShowingDiscover) {
-            HermesSquareDiscoverDrawer(
-                registry: registry,
-                pinnedGrid: pinnedGrid,
-                projectSummaries: Array(projectsStore.summaries.prefix(8)),
-                onPin: { uri in pin(uri) },
-                onUnpin: { uri in unpin(uri) },
-                onOpenProjectMemory: { project in
-                    onSelect(.projectMemory(project.id))
-                    isShowingDiscover = false
+    }
+
+    @ViewBuilder
+    private var defaultLeftColumnSections: some View {
+        if !missionHost.snapshot.approvalAsks.isEmpty {
+            ApprovalInboxStrip(
+                asks: missionHost.snapshot.approvalAsks,
+                onApprove: { ask in
+                    Task { await missionHost.respond(to: ask, approve: true) }
                 },
-                onAskWiki: { project in
-                    askWiki(for: project)
-                    isShowingDiscover = false
-                }
+                onDeny: { ask in
+                    Task { await missionHost.respond(to: ask, approve: false) }
+                },
+                onApproveAlways: { ask in recordApprovalPolicy(ask, decision: .approve) },
+                onDenyAlways: { ask in recordApprovalPolicy(ask, decision: .deny) }
             )
+            .padding(.horizontal, 12)
         }
-        .sheet(isPresented: $isShowingFanOut) {
-            FanOutComposerSheet(
-                registry: registry,
-                onDispatched: { result in
-                    activeGroupObserver.start(groupID: result.groupID)
-                }
-            )
-        }
-        .sheet(isPresented: $isShowingVoice) {
-            voiceSheetContent
-        }
-        .alert("Rename Conversation", isPresented: $isShowingRenameAlert) {
-            TextField("New Title", text: $newTitleText)
-            Button("Cancel", role: .cancel) {
-                renameTargetItem = nil
-            }
-            Button("Rename") {
-                if let item = renameTargetItem {
-                    updateThreadItemMetadata(item: item, customTitle: newTitleText)
-                }
-                renameTargetItem = nil
-            }
-        } message: {
-            Text("Enter a new title for this conversation.")
-        }
-        .confirmationDialog(
-            "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
-            }
 
-            Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
-            }
+        activeGroupSection
+            .padding(.horizontal, 12)
 
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
+        pinnedGridSection
+            .padding(.horizontal, 12)
+
+        projectMemorySection
+            .padding(.horizontal, 12)
+
+        activeMissionsStrip
+            .padding(.leading, 12)
+
+        rollbackSections
+            .padding(.horizontal, 12)
+
+        threadInboxSection
+            .padding(.horizontal, 12)
+
+        subscriptionsSection
+            .padding(.horizontal, 12)
+
+        discoverButton
+            .padding(.horizontal, 12)
+    }
+
+    @ToolbarContentBuilder
+    private var leftColumnToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                isShowingFanOut = true
+            } label: {
+                Image(systemName: "rectangle.stack.badge.plus")
             }
-        } message: {
+            .accessibilityLabel("Fan-out dispatch")
+
+            Button {
+                var prefs = SwarmBackgroundPreferences.from(jsonString: backgroundPrefsJSON)
+                let nextLocation: SwarmBackgroundLocation = prefs.location == .disabled ? .agentsTab : .disabled
+                prefs.location = nextLocation
+                if let encoded = try? JSONEncoder().encode(prefs), let json = String(data: encoded, encoding: .utf8) {
+                    backgroundPrefsJSON = json
+                }
+                HapticBus.toggle()
+            } label: {
+                let prefs = SwarmBackgroundPreferences.from(jsonString: backgroundPrefsJSON)
+                Image(systemName: "sparkles")
+                    .foregroundStyle(prefs.location != .disabled ? MobileTheme.hermesAureate : .secondary)
+            }
+            .accessibilityLabel("Toggle live background")
+
+            Button {
+                isShowingVoice = true
+            } label: {
+                Image(systemName: "mic.circle.fill")
+            }
+            .accessibilityLabel("Voice command")
+        }
+    }
+
+    private var missionActionSheetPresented: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private func missionActionSheetActions() -> some View {
+        Button("Cancel & Dismiss", role: .destructive) {
             if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    isShowingFanOut = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
+                let mid = mission.id
+                Task {
+                    await missionHost.cancelMission(id: mid)
+                    missionHost.dismissMission(id: mid)
                 }
-                .accessibilityLabel("Fan-out dispatch")
+            }
+            missionForActionSheet = nil
+        }
 
-                Button {
-                    var prefs = SwarmBackgroundPreferences.from(jsonString: backgroundPrefsJSON)
-                    let nextLocation: SwarmBackgroundLocation = prefs.location == .disabled ? .agentsTab : .disabled
-                    prefs.location = nextLocation
-                    if let encoded = try? JSONEncoder().encode(prefs), let json = String(data: encoded, encoding: .utf8) {
-                        backgroundPrefsJSON = json
-                    }
-                    HapticBus.toggle()
-                } label: {
-                    let prefs = SwarmBackgroundPreferences.from(jsonString: backgroundPrefsJSON)
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(prefs.location != .disabled ? MobileTheme.hermesAureate : .secondary)
-                }
-                .accessibilityLabel("Toggle live background")
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
 
-                Button {
-                    isShowingVoice = true
-                } label: {
-                    Image(systemName: "mic.circle.fill")
-                }
-                .accessibilityLabel("Voice command")
-            }
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
         }
-        .overlay(alignment: .top) {
-            if let intent = voiceIntentBanner {
-                VoiceIntentBanner(intent: intent, onDismiss: { voiceIntentBanner = nil })
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+    }
+
+    @ViewBuilder
+    private func missionActionSheetMessage() -> some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
         }
-        .sheet(isPresented: $isShowingSubscriptions) {
-            HermesSquareSubscriptionsFolder()
+    }
+
+    @ViewBuilder
+    private var voiceIntentOverlay: some View {
+        if let intent = voiceIntentBanner {
+            VoiceIntentBanner(intent: intent, onDismiss: { voiceIntentBanner = nil })
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    private func startLeftColumnTasks() async {
+        inbox.bind(historyStore: historyStore, missionHost: missionHost)
+        syncMercuryPeer(mercuryPeer)
+        await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
+        await inbox.refresh()
+        await projectsStore.load()
+        await reindexSearch()
+        subscriptionTopicStore.bootstrap()
+        await subscriptionTopicStore.refresh()
+        rollbackService.startObservingRequests()
+        let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
+            tile.id.isEmpty ? nil : tile.id
+        })
+        for sessionID in sessionIDs {
+            rollbackService.startObservingSession(sessionID)
         }
     }
 

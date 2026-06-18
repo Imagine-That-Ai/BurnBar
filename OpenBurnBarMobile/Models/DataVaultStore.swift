@@ -90,7 +90,7 @@ protocol DataVaultServicing: AnyObject {
     func getAuditLog(cursor: String?, limit: Int) async throws -> AuditLogPage
     func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?)
     func listRecovery() async throws -> [RecoveryMethod]
-    func setupRecovery(method: String, payload: [String: Any]) async throws -> String
+    func setupRecovery(method: String, payload: sending [String: Any]) async throws -> String
     // recovery_key confirmation requires the re-entered key's verificationHash
     // (Apple ADP delayed re-verify); recovery_contact passes nil.
     func confirmRecovery(recoveryId: String, verificationHash: String?) async throws
@@ -158,7 +158,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
         return try Self.decode([RecoveryMethod].self, from: methods)
     }
 
-    func setupRecovery(method: String, payload: [String: Any]) async throws -> String {
+    func setupRecovery(method: String, payload: sending [String: Any]) async throws -> String {
         let result = try await functions.httpsCallable("setupRecovery").call([
             "method": method,
             "payload": payload
@@ -404,7 +404,7 @@ final class DataVaultStore {
         await setupRecovery(method: "recovery_contact", payload: ["contactName": name, "share": share])
     }
 
-    private func setupRecovery(method: String, payload: [String: Any]) async -> Bool {
+    private func setupRecovery(method: String, payload: sending [String: Any]) async -> Bool {
         error = nil
         do {
             _ = try await service.setupRecovery(method: method, payload: payload)

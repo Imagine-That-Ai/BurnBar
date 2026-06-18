@@ -523,6 +523,36 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testStartRetargetClosesStreamWhenStaleClassifySendIsCancelled() async throws {
+        let staleStream = MediaControlFakeStream(sendHangAfterFrameCount: 0)
+        let currentStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let dialed = OSAllocatedUnfairLock(initialState: [String]())
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, connectionID in
+                dialed.withLock { $0.append(connectionID) }
+                return connectionID == "conn-current" ? currentStream : staleStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-stale")
+        await staleStream.waitForSendAttempt()
+        coordinator.start(uid: "user-1", connectionID: "conn-current")
+
+        try await waitUntilLive(coordinator)
+
+        XCTAssertEqual(dialed.withLock { $0.first }, "conn-stale")
+        XCTAssertEqual(dialed.withLock { $0.last }, "conn-current")
+        let staleCloseCount = await staleStream.closeCount
+        XCTAssertEqual(staleCloseCount, 1, "a superseded stream must close when classify send fails before promotion")
+        XCTAssertEqual(coordinator.connectionID, "conn-current")
+        XCTAssertEqual(coordinator.phase, .live)
+        await coordinator.stop()
+    }
+
     func testInteractiveMirrorSendSuppressesBackgroundPresenceHeartbeat() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -1020,8 +1050,10 @@ private actor MediaControlFakeStream: IrohRelayStream {
     private var inboundFrames: [HermesRealtimeRelayFrame] = []
     private var outboundFrames: [HermesRealtimeRelayFrame] = []
     private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
+    private var sendAttemptWaiters: [CheckedContinuation<Void, Never>] = []
     private var isClosed = false
     private var closeCallCount = 0
+    private var sendAttemptCount = 0
     private let sendHangAfterFrameCount: Int?
     private let autoReplyToPresenceHeartbeat: Bool
 
@@ -1034,6 +1066,12 @@ private actor MediaControlFakeStream: IrohRelayStream {
     var closeCount: Int { closeCallCount }
 
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        sendAttemptCount += 1
+        let waiters = sendAttemptWaiters
+        sendAttemptWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
         if let sendHangAfterFrameCount,
            outboundFrames.count >= sendHangAfterFrameCount {
             try await Task.sleep(nanoseconds: 60_000_000_000)
@@ -1057,6 +1095,13 @@ private actor MediaControlFakeStream: IrohRelayStream {
                     )
                 )
             )
+        }
+    }
+
+    func waitForSendAttempt() async {
+        if sendAttemptCount > 0 { return }
+        await withCheckedContinuation { continuation in
+            sendAttemptWaiters.append(continuation)
         }
     }
 

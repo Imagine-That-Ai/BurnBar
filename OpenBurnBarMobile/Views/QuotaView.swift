@@ -280,7 +280,7 @@ struct QuotaProviderCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Text("Tap to see per-account quota detail."))
-        .rotationEffect(.degrees(isJiggling ? sin(phase) * 1.5 : 0))
+        .rotationEffect(.degrees(isJiggling ? CGFloat(sin(Double(phase))) * 1.5 : 0))
         .onAppear {
             if isJiggling { startJiggling() }
         }
