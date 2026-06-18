@@ -209,6 +209,8 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                 ) {
                     try await batch.commit()
                 }
+            } else if skippedThreadCount > 0 {
+                throw ChatThreadSyncAllThreadsSkippedError()
             }
             state.withLock {
                 $0.lastSyncDate = Date()
@@ -243,6 +245,12 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         return encoder
+    }
+}
+
+private struct ChatThreadSyncAllThreadsSkippedError: LocalizedError {
+    var errorDescription: String? {
+        "Chat thread backup failed: all threads were skipped due to read errors."
     }
 }
 
