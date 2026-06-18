@@ -136,6 +136,7 @@ object GlobalVisualSettings {
         ensureLoaded()
         _usePremiumSOTAUX.value = value
         GlobalVisualSettingsPersistence.persistBoolean(KEY_PREMIUM_SOTA_UX, value)
+        trackSettingChanged("premium_sota_ux", value)
     }
 
     /** Selects a background style and persists it (keeps the legacy flag in sync). */
@@ -170,6 +171,22 @@ object GlobalVisualSettings {
         ensureLoaded()
         _enableSwarmSparkles.value = value
         GlobalVisualSettingsPersistence.persistBoolean(KEY_SWARM_SPARKLES, value)
+        trackSettingChanged("swarm_sparkles", value)
+    }
+
+    /**
+     * Emit `settings.changed` with a bounded `setting_key` enum + boolean
+     * `new_value`. No free text, no raw numerics — the key is a literal and the
+     * value is a boolean. Dropped entirely until analytics consent is granted.
+     */
+    private fun trackSettingChanged(settingKey: String, newValue: Boolean) {
+        com.openburnbar.analytics.AnalyticsManager.track(
+            com.openburnbar.analytics.AnalyticsEvent.SETTINGS_CHANGED,
+            mapOf(
+                "setting_key" to com.openburnbar.analytics.AnalyticsValue.Str(settingKey),
+                "new_value" to com.openburnbar.analytics.AnalyticsValue.Bool(newValue),
+            ),
+        )
     }
 
     /** Sets the Exclude Brand Shapes value and persists it. */

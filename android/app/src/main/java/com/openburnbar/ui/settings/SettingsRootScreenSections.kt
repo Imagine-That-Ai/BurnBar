@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -211,6 +212,14 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
         subtitle = "Manage && snippets and the OpenBurnBar snippets keyboard",
         pageRoute = SettingsPageRoute.TEXT_EXPANSION,
         onTap = { router.page = SettingsPageRoute.TEXT_EXPANSION },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.PRIVACY_ANALYTICS_ROW,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Shield),
+        title = "Privacy & Analytics",
+        subtitle = "Opt in or out of privacy-preserving usage analytics",
+        pageRoute = SettingsPageRoute.PRIVACY_ANALYTICS,
+        onTap = { router.page = SettingsPageRoute.PRIVACY_ANALYTICS },
     ),
 )
 

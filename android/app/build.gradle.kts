@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import java.util.Properties
 import org.gradle.api.GradleException
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
@@ -40,6 +41,28 @@ val openBurnBarDebugAppCheckToken =
 
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
+
+/**
+ * Resolve a build-time secret/config value from the environment first, then the
+ * gitignored local.properties, else empty string. Used for the Amplitude key so
+ * no key is ever committed and absence simply leaves analytics dark.
+ */
+fun resolveAmplitudeConfig(envVar: String, localPropertyKey: String): String {
+    val fromEnv = providers.environmentVariable(envVar).orNull?.trim()
+    if (!fromEnv.isNullOrBlank()) return fromEnv
+    val localPropsFile = rootProject.layout.projectDirectory.file("local.properties").asFile
+    if (localPropsFile.exists()) {
+        val props = Properties()
+        val stream = localPropsFile.inputStream()
+        try {
+            props.load(stream)
+        } finally {
+            stream.close()
+        }
+        return props.getProperty(localPropertyKey)?.trim().orEmpty()
+    }
+    return ""
+}
 
 gradle.taskGraph.whenReady {
     val releaseTask =
@@ -117,6 +140,18 @@ android {
                 .get()
         manifestPlaceholders["sentryDsn"] = sentryDsn
         manifestPlaceholders["sentryEnvironment"] = if (sentryDsn.isNotEmpty()) "production" else "development"
+
+        // Amplitude (opt-in analytics) — key injected at build time, NEVER
+        // committed. Resolution order: OPENBURNBAR_AMPLITUDE_API_KEY env var
+        // (CI secret), then `amplitude.apiKey` in the gitignored local.properties,
+        // else empty. An empty key leaves the analytics recorder dark by
+        // construction (see AnalyticsManager / Analytics.canSend), so OSS builds
+        // and CI without the secret never initialize the SDK or hit the network.
+        val amplitudeApiKey = resolveAmplitudeConfig("OPENBURNBAR_AMPLITUDE_API_KEY", "amplitude.apiKey")
+        val amplitudeServerZone = resolveAmplitudeConfig("OPENBURNBAR_AMPLITUDE_SERVER_ZONE", "amplitude.serverZone")
+            .ifBlank { "US" }
+        buildConfigField("String", "AMPLITUDE_API_KEY", "\"" + amplitudeApiKey + "\"")
+        buildConfigField("String", "AMPLITUDE_SERVER_ZONE", "\"" + amplitudeServerZone + "\"")
 
         ndk {
             // Android 16 KB page-size devices are 64-bit-first. Keep the APK's
@@ -475,6 +510,12 @@ dependencies {
 
     // OkHttp + WebSocket for Hermes
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
+    // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
+    // affirmative opt-in). Autocapture is fully disabled; key is BuildConfig-
+    // injected and never committed (absent key ⇒ recorder stays dark).
+    implementation("com.amplitude:analytics-android:1.21.0")
 
     // Vico 2.x — Compose-first chart library for Insights
     implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")

@@ -47,6 +47,9 @@ class MainActivity : FragmentActivity() {
                 LaunchSplashGate {
                     BurnBarNavHost()
                 }
+                // First-run, opt-in analytics consent prompt. Renders only while
+                // consent is unset; declining or ignoring keeps analytics dark.
+                com.openburnbar.ui.analytics.AnalyticsConsentPrompt()
             }
         }
     }

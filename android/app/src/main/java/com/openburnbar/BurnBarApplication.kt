@@ -191,6 +191,17 @@ class BurnBarApplication : Application() {
         val crashlyticsEnabled = getSharedPreferences("burnbar.diagnostics", MODE_PRIVATE)
             .getBoolean("crashlytics_enabled", true)
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
+        // Opt-in analytics: construct the consent-gated recorder and resume a
+        // previously-consented session (no grant re-emit). Stays fully dark
+        // until the user opts in AND an Amplitude key is configured — no SDK
+        // construction, no network. Emits the session-start spine only when
+        // already consented; first-run grant fires it from the consent prompt.
+        runCatching {
+            com.openburnbar.analytics.AnalyticsManager.initialize(this)
+            val isFirstLaunch = detectFirstLaunch()
+            com.openburnbar.analytics.AnalyticsManager.trackSessionStartIfConsented(isFirstLaunch)
+            installAnalyticsIdentity()
+        }.onFailure { Log.w("BurnBar", "Analytics init failed: ${it.message}") }
         // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
         BurnBarWidgetSnapshotStore.bind(this)
         BurnBarWidgetSyncWorker.enqueuePeriodic(this)
@@ -389,6 +400,39 @@ class BurnBarApplication : Application() {
             )} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
         )
         return controlTransportPool.dial(target, timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS)
+    }
+
+    /**
+     * First-launch detection for `app.session.started`'s `is_first_launch`.
+     * A boolean marker in a private prefs file; flips to false after the first
+     * read. Independent of analytics consent so the marker is correct whenever
+     * the user eventually opts in. No PII — a single boolean.
+     */
+    private fun detectFirstLaunch(): Boolean {
+        val prefs = getSharedPreferences("burnbar.analytics.lifecycle", MODE_PRIVATE)
+        val seen = prefs.getBoolean("has_launched_before", false)
+        if (!seen) prefs.edit().putBoolean("has_launched_before", true).apply()
+        return !seen
+    }
+
+    /**
+     * Identify the signed-in user to analytics with a **hashed** account uid
+     * (SHA-256, hex) — never the raw Firebase uid, email, or display name. The
+     * recorder no-ops the call entirely until consent is granted, so nothing
+     * leaks pre-opt-in. Cleared (`setUserId(null)`) on sign-out so a shared
+     * device doesn't attribute one user's anonymous events to another.
+     */
+    private fun installAnalyticsIdentity() {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            val uid = auth.currentUser?.uid
+            com.openburnbar.analytics.AnalyticsManager.setUserId(uid?.let { hashedAccountId(it) })
+        }
+        FirebaseAuth.getInstance().addAuthStateListener(listener)
+    }
+
+    private fun hashedAccountId(uid: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private fun registerFcmToken() {
