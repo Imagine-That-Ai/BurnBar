@@ -60,16 +60,16 @@ for ((attempt = 1; attempt <= attempts; attempt += 1)); do
   if run_submodule_update; then
     echo ">>> Submodule update succeeded."
     exit 0
-  fi
+  else
+    exit_code=$?
+    if ((attempt == attempts)); then
+      echo "Submodule update failed after ${attempts} attempts." >&2
+      exit "$exit_code"
+    fi
 
-  exit_code=$?
-  if ((attempt == attempts)); then
-    echo "Submodule update failed after ${attempts} attempts." >&2
-    exit "$exit_code"
+    reset_partial_submodule_checkout
+    sleep_seconds=$((base_sleep_seconds * attempt))
+    echo "Submodule update failed; retrying in ${sleep_seconds}s." >&2
+    sleep "$sleep_seconds"
   fi
-
-  reset_partial_submodule_checkout
-  sleep_seconds=$((base_sleep_seconds * attempt))
-  echo "Submodule update failed; retrying in ${sleep_seconds}s." >&2
-  sleep "$sleep_seconds"
 done
