@@ -69,15 +69,99 @@ fi
 
 SET_SECRETS="$(IFS=,; echo "${SECRET_BINDINGS[*]}")"
 
+submit_cloud_build() {
+  local build_output build_id status deadline poll_interval
+
+  build_output="$(gcloud builds submit . \
+    --config services/hosted-mcp/cloudbuild.yaml \
+    --substitutions "_IMAGE=${IMAGE}" \
+    --suppress-logs \
+    --async \
+    --format=json \
+    --project "$GOOGLE_CLOUD_PROJECT")"
+
+  build_id="$(python3 -c '
+import json
+import re
+import sys
+
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    data = {}
+
+paths = (
+    ("metadata", "build", "id"),
+    ("metadata", "build", "name"),
+    ("response", "id"),
+    ("response", "name"),
+    ("id",),
+    ("name",),
+)
+for path in paths:
+    node = data
+    for key in path:
+        if not isinstance(node, dict):
+            node = None
+            break
+        node = node.get(key)
+    if isinstance(node, str) and node:
+        print(node.rsplit("/", 1)[-1])
+        raise SystemExit(0)
+
+match = re.search(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", raw)
+if match:
+    print(match.group(0))
+' <<<"$build_output")"
+
+  if [[ -z "$build_id" ]]; then
+    echo "Unable to determine Cloud Build ID from gcloud output." >&2
+    echo "$build_output" >&2
+    exit 1
+  fi
+
+  echo "Cloud Build submitted: ${build_id}"
+  echo "Cloud Build logs: https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${GOOGLE_CLOUD_PROJECT}"
+
+  poll_interval="${CLOUD_BUILD_POLL_INTERVAL_SECONDS:-10}"
+  deadline=$((SECONDS + ${CLOUD_BUILD_TIMEOUT_SECONDS:-1800}))
+  while true; do
+    status="$(gcloud builds describe "$build_id" \
+      --project "$GOOGLE_CLOUD_PROJECT" \
+      --format='value(status)')"
+
+    case "$status" in
+      SUCCESS)
+        echo "Cloud Build succeeded: ${build_id}"
+        return 0
+        ;;
+      FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+        echo "Cloud Build failed with status ${status}: ${build_id}" >&2
+        exit 1
+        ;;
+      QUEUED|WORKING|PENDING|"")
+        if [[ "$SECONDS" -ge "$deadline" ]]; then
+          echo "Cloud Build timed out waiting for ${build_id}; last status: ${status:-unknown}" >&2
+          exit 1
+        fi
+        echo "Cloud Build ${build_id} status: ${status:-unknown}; waiting ${poll_interval}s..."
+        sleep "$poll_interval"
+        ;;
+      *)
+        echo "Cloud Build ${build_id} status: ${status}; waiting ${poll_interval}s..."
+        sleep "$poll_interval"
+        ;;
+    esac
+  done
+}
+
 npm ci --prefix services/hosted-mcp
 npm --prefix services/hosted-mcp run build
 npm --prefix services/hosted-mcp test
 
-gcloud builds submit . \
-  --config services/hosted-mcp/cloudbuild.yaml \
-  --substitutions "_IMAGE=${IMAGE}" \
-  --suppress-logs \
-  --project "$GOOGLE_CLOUD_PROJECT"
+submit_cloud_build
+
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --region "$REGION" \
