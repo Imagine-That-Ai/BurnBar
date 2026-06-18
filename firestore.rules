@@ -4116,86 +4116,7 @@ service cloud.firestore {
         && signalIdentityMatchesKnownDevice();
       allow update, delete: if false;
 
-      function signalIdentityKeyPath() {
-        return /databases/$(database)/documents/users/$(userId)/signal_identity_public_keys/$(keyId);
-      }
-
-      function signalDirectoryDocumentLimits() {
-        return escrowDocumentLimits()
-          && hasNoPlaintextSecretFields()
-          && !("privateKeyData" in request.resource.data)
-          && !("privateKeyB64" in request.resource.data)
-          && !("serializedSession" in request.resource.data)
-          && !("serializedSessionB64" in request.resource.data)
-          && !("sessionState" in request.resource.data)
-          && !("sessionStateB64" in request.resource.data)
-          && !("ratchetState" in request.resource.data)
-          && !("ratchetStateB64" in request.resource.data);
-      }
-
-      function signalDirectoryParentMatches() {
-        return exists(signalIdentityKeyPath())
-          && request.resource.data.identityKeyId == keyId
-          && request.resource.data.deviceId == get(signalIdentityKeyPath()).data.deviceId
-          && request.resource.data.keyVersion == get(signalIdentityKeyPath()).data.keyVersion
-          && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
-          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState in ["pending", "trusted"]
-          && request.resource.data.keyVersion == get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.keyVersion;
-      }
-
-      function validSignalDirectoryBase() {
-        return request.resource.data.identityKeyId is string
-          && request.resource.data.identityKeyId == keyId
-          && request.resource.data.deviceId is string
-          && request.resource.data.deviceId.size() <= 160
-          && request.resource.data.keyVersion is int
-          && request.resource.data.keyVersion >= 1
-          && request.resource.data.keyVersion <= 10
-          && request.resource.data.createdAt is timestamp
-          && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
-          && signalDirectoryParentMatches();
-      }
-
       match /signed_prekeys/{signedPreKeyId} {
-        function validSignedPreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "signedPreKeyId",
-            "signedPreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "signatureB64",
-            "algorithm",
-            "status",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.signedPreKeyId == signedPreKeyId
-          && request.resource.data.signedPreKeyNumericId is int
-          && request.resource.data.signedPreKeyNumericId >= 1
-          && request.resource.data.signedPreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 256)
-          && validSignalBase64(request.resource.data.signatureB64, 512)
-          && request.resource.data.algorithm == "signal-pqxdh-signed-prekey-v1"
-          && request.resource.data.status in ["active", "retired", "revoked"]
-          && (!("expiresAt" in request.resource.data) || request.resource.data.expiresAt is timestamp);
-        }
-
-        function signedPreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.signedPreKeyId == resource.data.signedPreKeyId
-            && request.resource.data.signedPreKeyNumericId == resource.data.signedPreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.signatureB64 == resource.data.signatureB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4203,53 +4124,6 @@ service cloud.firestore {
       }
 
       match /one_time_prekeys/{oneTimePreKeyId} {
-        function validOneTimePreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "oneTimePreKeyId",
-            "oneTimePreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "algorithm",
-            "status",
-            "claimedBySessionId",
-            "claimedAt",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.oneTimePreKeyId == oneTimePreKeyId
-          && request.resource.data.oneTimePreKeyNumericId is int
-          && request.resource.data.oneTimePreKeyNumericId >= 1
-          && request.resource.data.oneTimePreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 256)
-          && request.resource.data.algorithm == "signal-pqxdh-one-time-prekey-v1"
-          && request.resource.data.status in ["available", "claimed", "exhausted", "retired"]
-          && request.resource.data.expiresAt is timestamp
-          && request.resource.data.expiresAt > request.time
-          && (
-            request.resource.data.status == "available"
-            || (
-              request.resource.data.claimedBySessionId is string
-              && request.resource.data.claimedBySessionId.size() <= 200
-              && request.resource.data.claimedAt is timestamp
-            )
-          );
-        }
-
-        function oneTimePreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.oneTimePreKeyId == resource.data.oneTimePreKeyId
-            && request.resource.data.oneTimePreKeyNumericId == resource.data.oneTimePreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4257,56 +4131,6 @@ service cloud.firestore {
       }
 
       match /kyber_prekeys/{kyberPreKeyId} {
-        function validKyberPreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "kyberPreKeyId",
-            "kyberPreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "signatureB64",
-            "algorithm",
-            "status",
-            "claimedBySessionId",
-            "claimedAt",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.kyberPreKeyId == kyberPreKeyId
-          && request.resource.data.kyberPreKeyNumericId is int
-          && request.resource.data.kyberPreKeyNumericId >= 1
-          && request.resource.data.kyberPreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 4096)
-          && validSignalBase64(request.resource.data.signatureB64, 4096)
-          && request.resource.data.algorithm == "signal-pqxdh-kyber-prekey-v1"
-          && request.resource.data.status in ["available", "claimed", "exhausted", "retired"]
-          && request.resource.data.expiresAt is timestamp
-          && request.resource.data.expiresAt > request.time
-          && (
-            request.resource.data.status == "available"
-            || (
-              request.resource.data.claimedBySessionId is string
-              && request.resource.data.claimedBySessionId.size() <= 200
-              && request.resource.data.claimedAt is timestamp
-            )
-          );
-        }
-
-        function kyberPreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.kyberPreKeyId == resource.data.kyberPreKeyId
-            && request.resource.data.kyberPreKeyNumericId == resource.data.kyberPreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.signatureB64 == resource.data.signatureB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4314,51 +4138,6 @@ service cloud.firestore {
       }
 
       match /sessions/{sessionId} {
-        function validSignalSessionDirectoryDocument() {
-          return request.resource.data.keys().hasOnly([
-            "sessionId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "peerUid",
-            "peerDeviceId",
-            "peerIdentityKeyId",
-            "mode",
-            "stateStorage",
-            "status",
-            "createdAt",
-            "updatedAt",
-            "lastMessageAt",
-            "archivedAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.sessionId == sessionId
-          && request.resource.data.peerUid is string
-          && request.resource.data.peerUid.size() <= 160
-          && request.resource.data.peerDeviceId is string
-          && request.resource.data.peerDeviceId.size() <= 160
-          && request.resource.data.peerIdentityKeyId is string
-          && request.resource.data.peerIdentityKeyId.size() <= 200
-          && request.resource.data.mode in ["same-user-device", "gateway-transport"]
-          && request.resource.data.stateStorage == "device-local-only"
-          && request.resource.data.status in ["active", "archived", "revoked"]
-          && (!("lastMessageAt" in request.resource.data) || request.resource.data.lastMessageAt is timestamp)
-          && (!("archivedAt" in request.resource.data) || request.resource.data.archivedAt is timestamp);
-        }
-
-        function signalSessionImmutableFieldsUnchanged() {
-          return request.resource.data.sessionId == resource.data.sessionId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.peerUid == resource.data.peerUid
-            && request.resource.data.peerDeviceId == resource.data.peerDeviceId
-            && request.resource.data.peerIdentityKeyId == resource.data.peerIdentityKeyId
-            && request.resource.data.mode == resource.data.mode
-            && request.resource.data.stateStorage == resource.data.stateStorage
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: recordSignalSession is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4366,40 +4145,6 @@ service cloud.firestore {
       }
 
       match /rotation_events/{rotationId} {
-        function validSignalKeyRotationEventDocument() {
-          return request.resource.data.keys().hasOnly([
-            "rotationId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "fromKeyVersion",
-            "toKeyVersion",
-            "reason",
-            "status",
-            "rewrapRequired",
-            "rewrapJobId",
-            "revokedIdentityKeyId",
-            "createdAt",
-            "updatedAt",
-            "completedAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.rotationId == rotationId
-          && request.resource.data.fromKeyVersion is int
-          && request.resource.data.fromKeyVersion >= 1
-          && request.resource.data.fromKeyVersion <= 10
-          && request.resource.data.toKeyVersion is int
-          && request.resource.data.toKeyVersion >= 2
-          && request.resource.data.toKeyVersion <= 10
-          && request.resource.data.toKeyVersion > request.resource.data.fromKeyVersion
-          && request.resource.data.reason in ["scheduled", "suspected_compromise", "device_repair", "revocation_rewrap", "manual"]
-          && request.resource.data.status in ["planned", "running", "completed", "failed"]
-          && request.resource.data.rewrapRequired is bool
-          && (!("rewrapJobId" in request.resource.data) || (request.resource.data.rewrapJobId is string && request.resource.data.rewrapJobId.size() <= 200))
-          && (!("revokedIdentityKeyId" in request.resource.data) || (request.resource.data.revokedIdentityKeyId is string && request.resource.data.revokedIdentityKeyId.size() <= 200))
-          && (!("completedAt" in request.resource.data) || request.resource.data.completedAt is timestamp);
-        }
-
         // Server-only: recordSignalRotation is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create: if false;
