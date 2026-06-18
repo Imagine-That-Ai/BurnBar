@@ -253,12 +253,13 @@ enum SharedArtifactCloudCodec {
     static let artifactAADCollection = "artifacts"
     static let artifactVersionAADCollection = "artifact_versions"
 
-    /// Returns true when a document still carries legacy plaintext private-content
-    /// fields that have not been migrated into the sealed payload envelope.
+    /// Returns true when a document still carries plaintext private-content fields.
+    ///
+    /// Sealed documents can still leak legacy plaintext after a partial migration or
+    /// compatibility write. Those mixed envelopes are cleanup-required too because
+    /// `encodeSealed(..., merge: true)` preserves the encrypted payload while deleting
+    /// the leftover plaintext fields.
     static func isLegacyPlaintext(data: [String: Any]) -> Bool {
-        let isSealed = boolValue(data["contentSealed"]) == true
-            || data[sealedPayloadField] != nil
-        if isSealed { return false }
         return stringValue(data["title"]) != nil
             || stringValue(data["body"]) != nil
             || stringValue(data["contentHash"]) != nil

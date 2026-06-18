@@ -23,14 +23,38 @@ class FakeArtifactDoc {
 }
 
 class FakeArtifactCollection {
-  constructor(private readonly docs: readonly FakeArtifactDoc[]) {}
+  constructor(
+    private readonly docs: readonly FakeArtifactDoc[],
+    private readonly cursor: { readonly mode: "after" | "at"; readonly id: string } | null = null,
+    private readonly limitCount: number | null = null,
+  ) {}
+
+  orderBy(_fieldPath: unknown): FakeArtifactCollection {
+    return this;
+  }
+
+  startAfter(...fieldValues: unknown[]): FakeArtifactCollection {
+    return new FakeArtifactCollection(this.docs, { mode: "after", id: String(fieldValues[0]) }, this.limitCount);
+  }
+
+  startAt(...fieldValues: unknown[]): FakeArtifactCollection {
+    return new FakeArtifactCollection(this.docs, { mode: "at", id: String(fieldValues[0]) }, this.limitCount);
+  }
 
   limit(count: number): FakeArtifactCollection {
-    return new FakeArtifactCollection(this.docs.slice(0, count));
+    return new FakeArtifactCollection(this.docs, this.cursor, count);
   }
 
   async get(): Promise<{ readonly docs: readonly FakeArtifactDoc[] }> {
-    return { docs: this.docs };
+    let docs = [...this.docs].sort((lhs, rhs) => lhs.id.localeCompare(rhs.id));
+    const cursor = this.cursor;
+    if (cursor) {
+      docs = docs.filter((doc) => (cursor.mode === "after" ? doc.id > cursor.id : doc.id >= cursor.id));
+    }
+    if (this.limitCount != null) {
+      docs = docs.slice(0, this.limitCount);
+    }
+    return { docs };
   }
 }
 
@@ -51,14 +75,38 @@ class FakeTeamDoc {
 }
 
 class FakeTeamCollection {
-  constructor(private readonly docs: readonly FakeTeamDoc[]) {}
+  constructor(
+    private readonly docs: readonly FakeTeamDoc[],
+    private readonly cursor: { readonly mode: "after" | "at"; readonly id: string } | null = null,
+    private readonly limitCount: number | null = null,
+  ) {}
+
+  orderBy(_fieldPath: unknown): FakeTeamCollection {
+    return this;
+  }
+
+  startAfter(...fieldValues: unknown[]): FakeTeamCollection {
+    return new FakeTeamCollection(this.docs, { mode: "after", id: String(fieldValues[0]) }, this.limitCount);
+  }
+
+  startAt(...fieldValues: unknown[]): FakeTeamCollection {
+    return new FakeTeamCollection(this.docs, { mode: "at", id: String(fieldValues[0]) }, this.limitCount);
+  }
 
   limit(count: number): FakeTeamCollection {
-    return new FakeTeamCollection(this.docs.slice(0, count));
+    return new FakeTeamCollection(this.docs, this.cursor, count);
   }
 
   async get(): Promise<{ readonly docs: readonly FakeTeamDoc[] }> {
-    return { docs: this.docs };
+    let docs = [...this.docs].sort((lhs, rhs) => lhs.id.localeCompare(rhs.id));
+    const cursor = this.cursor;
+    if (cursor) {
+      docs = docs.filter((doc) => (cursor.mode === "after" ? doc.id > cursor.id : doc.id >= cursor.id));
+    }
+    if (this.limitCount != null) {
+      docs = docs.slice(0, this.limitCount);
+    }
+    return { docs };
   }
 }
 
@@ -82,8 +130,9 @@ describe("sharedArtifactLegacyScan", () => {
     expect(isLegacyPlaintextArtifactData({ title: "plain" })).toBe(true);
     expect(isLegacyPlaintextArtifactData({ body: "plain" })).toBe(true);
     expect(isLegacyPlaintextArtifactData({ contentHash: "hash" })).toBe(true);
-    expect(isLegacyPlaintextArtifactData({ contentSealed: true, title: "old" })).toBe(false);
-    expect(isLegacyPlaintextArtifactData({ sealedPayload: { nonce: "abc" }, body: "old" })).toBe(false);
+    expect(isLegacyPlaintextArtifactData({ contentSealed: true, title: "old" })).toBe(true);
+    expect(isLegacyPlaintextArtifactData({ sealedPayload: { nonce: "abc" }, body: "old" })).toBe(true);
+    expect(isLegacyPlaintextArtifactData({ contentSealed: true, sealedPayload: { nonce: "abc" } })).toBe(false);
     expect(isLegacyPlaintextArtifactData({ artifactID: "metadata-only" })).toBe(false);
   });
 
@@ -103,11 +152,19 @@ describe("sharedArtifactLegacyScan", () => {
       ]),
     ]);
 
-    const result = await scanLegacyPlaintextArtifactsForUser(db, "user-1", 10, 10, new Date("2026-06-18T00:00:00Z"));
+    const result = await scanLegacyPlaintextArtifactsForUser(
+      db,
+      "user-1",
+      10,
+      10,
+      null,
+      new Date("2026-06-18T00:00:00Z"),
+    );
 
     expect(db.requestedCollectionPaths).toEqual(["workspaces/workspace-user-1/teams"]);
     expect(result.scannedDocuments).toBe(1);
     expect(result.legacyPlaintextCount).toBe(1);
+    expect(result.nextPageToken).toBeNull();
     expect(result.scannedAt).toBe("2026-06-18T00:00:00.000Z");
     expect(result.hits).toEqual([
       {
@@ -143,6 +200,7 @@ describe("sharedArtifactLegacyScan", () => {
       "workspaces/workspace-user-1/teams/team-a/artifacts/a2",
     ]);
     expect(result.truncated).toBe(true);
+    expect(result.nextPageToken).toEqual(expect.any(String));
   });
 
   it("applies resultLimit without scanning later teams unnecessarily", async () => {
@@ -160,5 +218,27 @@ describe("sharedArtifactLegacyScan", () => {
     expect(result.hits).toHaveLength(1);
     expect(result.hits[0]?.artifactPath).toBe("workspaces/workspace-user-1/teams/team-a/artifacts/a1");
     expect(result.truncated).toBe(true);
+    expect(result.nextPageToken).toEqual(expect.any(String));
+  });
+
+  it("uses nextPageToken to continue past the first scanned artifact window", async () => {
+    const db = new FakeLegacyScanDb([
+      new FakeTeamDoc("team-a", [
+        artifact("workspaces/workspace-user-1/teams/team-a/artifacts/a1", { artifactID: "a1", title: "a1" }),
+        artifact("workspaces/workspace-user-1/teams/team-a/artifacts/a2", { artifactID: "a2", title: "a2" }),
+        artifact("workspaces/workspace-user-1/teams/team-a/artifacts/a3", { artifactID: "a3", title: "a3" }),
+      ]),
+      new FakeTeamDoc("team-b", [artifact("workspaces/workspace-user-1/teams/team-b/artifacts/b1", { title: "b1" })]),
+    ]);
+
+    const first = await scanLegacyPlaintextArtifactsForUser(db, "user-1", 2, 10);
+    expect(first.truncated).toBe(true);
+    expect(first.hits.map((hit) => hit.artifactID)).toEqual(["a1", "a2"]);
+    expect(first.nextPageToken).toEqual(expect.any(String));
+
+    const second = await scanLegacyPlaintextArtifactsForUser(db, "user-1", 10, 10, first.nextPageToken);
+    expect(second.truncated).toBe(false);
+    expect(second.nextPageToken).toBeNull();
+    expect(second.hits.map((hit) => hit.artifactID)).toEqual(["a3", "b1"]);
   });
 });

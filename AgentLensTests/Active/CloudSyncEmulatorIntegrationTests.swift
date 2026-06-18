@@ -414,6 +414,125 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertEqual(decoded["title"] as? String, "Legacy Plaintext Title")
         XCTAssertEqual(decoded["body"] as? String, "Legacy plaintext body that must be sealed")
         XCTAssertEqual(decoded["contentHash"] as? String, "legacy-hash-123")
+
+        let versionPath = "\(plaintextPath)/versions/\(revisionID)"
+        let versionData = try XCTUnwrap(fakeGateway.documentData(at: versionPath))
+        XCTAssertNil(versionData["title"], "Legacy version title must be deleted in the same heal")
+        XCTAssertNil(versionData["body"], "Legacy version body must be deleted in the same heal")
+        XCTAssertNil(versionData["contentHash"], "Legacy version contentHash must be deleted in the same heal")
+        XCTAssertEqual(versionData["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(versionData[SharedArtifactCloudCodec.sealedPayloadField])
+    }
+
+    func test_collaborationPull_healsMixedSealedPlaintextArtifact() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "mixed-art-1"
+        let revisionID = "mixed-rev-1"
+        let artifactPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        let record = SharedArtifactCloudRecord(
+            artifactID: artifactID,
+            workspaceID: scope.workspaceID,
+            teamID: scope.teamID,
+            ownerUserID: scope.ownerUserID,
+            revisionID: revisionID,
+            title: "Encrypted Source Title",
+            body: "Encrypted source body",
+            contentHash: "encrypted-hash",
+            relativePath: "mixed.md",
+            isDeleted: false,
+            updatedAt: Date(timeIntervalSince1970: 1_742_180_000)
+        )
+        let sealed = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: vaultKeyProvider.resolvedKey(),
+            ownerUserID: "test-uid-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: artifactID
+        )
+        var mixed = sealed.filter { key, _ in
+            !["title", "body", "contentHash", "relativePath"].contains(key)
+        }
+        mixed["title"] = "Leaked old title"
+        mixed["body"] = "Leaked old body"
+        mixed["contentHash"] = "leaked-old-hash"
+        fakeGateway.setDocumentData(mixed, at: artifactPath)
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: try XCTUnwrap(fakeGateway.documentData(at: artifactPath))))
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let healedData = try XCTUnwrap(fakeGateway.documentData(at: artifactPath))
+        XCTAssertNil(healedData["title"])
+        XCTAssertNil(healedData["body"])
+        XCTAssertNil(healedData["contentHash"])
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: healedData))
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: healedData[SharedArtifactCloudCodec.sealedPayloadField]))
+        let aad = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifactID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let plaintext = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: aad)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+        XCTAssertEqual(decoded["title"] as? String, "Encrypted Source Title")
+        XCTAssertEqual(decoded["body"] as? String, "Encrypted source body")
+        XCTAssertEqual(decoded["contentHash"] as? String, "encrypted-hash")
+    }
+
+    func test_collaborationPull_skipsLegacyHealWhenRemoteRevisionChanged() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "legacy-race-art-1"
+        let artifactPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        fakeGateway.setDocumentData([
+            "artifactID": artifactID,
+            "workspaceID": scope.workspaceID,
+            "teamID": scope.teamID,
+            "ownerUserID": "test-uid-1",
+            "visibility": "team",
+            "revisionID": "rev-old",
+            "isDeleted": false,
+            "title": "Old title",
+            "body": "Old body",
+            "contentHash": "old-hash"
+        ], at: artifactPath)
+        fakeGateway.beforeNextTransaction = { [fakeGateway] in
+            fakeGateway?.setDocumentData([
+                "artifactID": artifactID,
+                "workspaceID": "workspace-test-uid-1",
+                "teamID": "team-default",
+                "ownerUserID": "test-uid-1",
+                "visibility": "team",
+                "revisionID": "rev-newer",
+                "isDeleted": false,
+                "title": "Newer title",
+                "body": "Newer body",
+                "contentHash": "newer-hash"
+            ], at: artifactPath)
+        }
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let remoteData = try XCTUnwrap(fakeGateway.documentData(at: artifactPath))
+        XCTAssertEqual(remoteData["revisionID"] as? String, "rev-newer")
+        XCTAssertEqual(remoteData["title"] as? String, "Newer title")
+        XCTAssertEqual(remoteData["body"] as? String, "Newer body")
+        XCTAssertEqual(remoteData["contentHash"] as? String, "newer-hash")
+        XCTAssertNil(remoteData[SharedArtifactCloudCodec.sealedPayloadField])
     }
 }
 

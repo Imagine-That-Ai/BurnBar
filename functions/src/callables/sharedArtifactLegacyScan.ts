@@ -8,7 +8,7 @@
  */
 
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldPath, getFirestore } from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { onCallProduction } from "../logging.js";
@@ -31,6 +31,7 @@ interface LegacyPlaintextScanResult {
   readonly legacyPlaintextCount: number;
   readonly hits: readonly LegacyPlaintextArtifactHit[];
   readonly truncated: boolean;
+  readonly nextPageToken: string | null;
   readonly scannedAt: string;
 }
 
@@ -39,6 +40,9 @@ type LegacyScanQuerySnapshot<TDoc> = {
 };
 
 type LegacyScanQuery<TDoc> = {
+  orderBy(fieldPath: unknown): LegacyScanQuery<TDoc>;
+  startAfter(...fieldValues: unknown[]): LegacyScanQuery<TDoc>;
+  startAt(...fieldValues: unknown[]): LegacyScanQuery<TDoc>;
   limit(count: number): LegacyScanQuery<TDoc>;
   get(): Promise<LegacyScanQuerySnapshot<TDoc>>;
 };
@@ -67,13 +71,60 @@ const MAX_SCAN_LIMIT = 5_000;
 const DEFAULT_RESULT_LIMIT = 200;
 const MAX_RESULT_LIMIT = 1_000;
 const MAX_TEAMS_PER_SCAN = 100;
+const MAX_PAGE_TOKEN_BYTES = 1_024;
+const DOCUMENT_ID = FieldPath.documentId();
+
+type LegacyPlaintextScanCursor = {
+  readonly teamID: string;
+  readonly artifactID: string | null;
+};
 
 export function isLegacyPlaintextArtifactData(data: Record<string, unknown>): boolean {
-  const isSealed = data["contentSealed"] === true || data["sealedPayload"] != null;
-  if (isSealed) return false;
   return (
     typeof data["title"] === "string" || typeof data["body"] === "string" || typeof data["contentHash"] === "string"
   );
+}
+
+function encodePageToken(cursor: LegacyPlaintextScanCursor | null): string | null {
+  if (!cursor) return null;
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodePageToken(raw: unknown): LegacyPlaintextScanCursor | null {
+  if (raw == null) return null;
+  if (typeof raw !== "string") {
+    throw new HttpsError("invalid-argument", "pageToken must be a string.");
+  }
+  if (raw.trim() === "") return null;
+  if (Buffer.byteLength(raw, "utf8") > MAX_PAGE_TOKEN_BYTES) {
+    throw new HttpsError("invalid-argument", "pageToken is too large.");
+  }
+
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  } catch {
+    throw new HttpsError("invalid-argument", "pageToken is invalid.");
+  }
+
+  if (!decoded || typeof decoded !== "object") {
+    throw new HttpsError("invalid-argument", "pageToken is invalid.");
+  }
+  const candidate = decoded as Record<string, unknown>;
+  const teamID = validateCursorID(candidate["teamID"], "teamID");
+  const artifactID = candidate["artifactID"] == null ? null : validateCursorID(candidate["artifactID"], "artifactID");
+  return { teamID, artifactID };
+}
+
+function validateCursorID(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new HttpsError("invalid-argument", `pageToken ${field} must be a string.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.includes("/")) {
+    throw new HttpsError("invalid-argument", `pageToken ${field} is invalid.`);
+  }
+  return trimmed;
 }
 
 export async function scanLegacyPlaintextArtifactsForUser(
@@ -81,40 +132,51 @@ export async function scanLegacyPlaintextArtifactsForUser(
   uid: string,
   scanLimit: number,
   resultLimit: number,
+  pageToken: unknown = null,
   now: Date = new Date(),
 ): Promise<LegacyPlaintextScanResult> {
   const workspaceID = `workspace-${uid}`;
   const hits: LegacyPlaintextArtifactHit[] = [];
   let scannedDocuments = 0;
   let truncated = false;
+  let nextCursor: LegacyPlaintextScanCursor | null = null;
+  const pageCursor = decodePageToken(pageToken);
 
-  const teamsSnapshot = await db
-    .collection(`workspaces/${workspaceID}/teams`)
-    .limit(MAX_TEAMS_PER_SCAN + 1)
-    .get();
-  const teamDocs = teamsSnapshot.docs.slice(0, MAX_TEAMS_PER_SCAN);
-  if (teamsSnapshot.docs.length > MAX_TEAMS_PER_SCAN) {
-    truncated = true;
+  let teamsQuery = db.collection(`workspaces/${workspaceID}/teams`).orderBy(DOCUMENT_ID);
+  if (pageCursor) {
+    teamsQuery = pageCursor.artifactID
+      ? teamsQuery.startAt(pageCursor.teamID)
+      : teamsQuery.startAfter(pageCursor.teamID);
   }
+  const teamsSnapshot = await teamsQuery.limit(MAX_TEAMS_PER_SCAN + 1).get();
+  const teamDocs = teamsSnapshot.docs.slice(0, MAX_TEAMS_PER_SCAN);
+  const hasMoreTeams = teamsSnapshot.docs.length > MAX_TEAMS_PER_SCAN;
 
-  for (const teamDoc of teamDocs) {
+  for (const [teamIndex, teamDoc] of teamDocs.entries()) {
     if (hits.length >= resultLimit || scannedDocuments >= scanLimit) {
       truncated = true;
+      nextCursor = { teamID: teamDoc.id, artifactID: null };
       break;
     }
 
     const remainingScanBudget = scanLimit - scannedDocuments;
-    const artifactsSnapshot = await teamDoc.ref.collection("artifacts").limit(remainingScanBudget).get();
-    if (artifactsSnapshot.docs.length === remainingScanBudget) {
-      truncated = true;
+    let artifactsQuery = teamDoc.ref.collection("artifacts").orderBy(DOCUMENT_ID);
+    if (pageCursor?.teamID === teamDoc.id && pageCursor.artifactID) {
+      artifactsQuery = artifactsQuery.startAfter(pageCursor.artifactID);
     }
+    const artifactsSnapshot = await artifactsQuery.limit(remainingScanBudget + 1).get();
+    const artifactDocs = artifactsSnapshot.docs.slice(0, remainingScanBudget);
+    const hasMoreArtifacts = artifactsSnapshot.docs.length > artifactDocs.length;
+    let lastScannedArtifactID: string | null = null;
 
-    for (const artifactDoc of artifactsSnapshot.docs) {
+    for (const artifactDoc of artifactDocs) {
       if (scannedDocuments >= scanLimit) {
         truncated = true;
+        nextCursor = { teamID: teamDoc.id, artifactID: lastScannedArtifactID };
         break;
       }
       scannedDocuments += 1;
+      lastScannedArtifactID = artifactDoc.id;
       const data = artifactDoc.data();
 
       if (!isLegacyPlaintextArtifactData(data)) continue;
@@ -134,11 +196,31 @@ export async function scanLegacyPlaintextArtifactsForUser(
 
       if (hits.length >= resultLimit) {
         truncated = true;
+        nextCursor = { teamID: teamDoc.id, artifactID: artifactDoc.id };
         break;
       }
     }
 
-    if (truncated && (hits.length >= resultLimit || scannedDocuments >= scanLimit)) {
+    if (nextCursor) {
+      break;
+    }
+
+    if (hasMoreArtifacts) {
+      truncated = true;
+      nextCursor = { teamID: teamDoc.id, artifactID: lastScannedArtifactID };
+      break;
+    }
+
+    const hasLaterTeamsInPage = teamIndex < teamDocs.length - 1;
+    if (scannedDocuments >= scanLimit && (hasLaterTeamsInPage || hasMoreTeams)) {
+      truncated = true;
+      nextCursor = { teamID: teamDoc.id, artifactID: null };
+      break;
+    }
+
+    if (hasMoreTeams && teamIndex === teamDocs.length - 1) {
+      truncated = true;
+      nextCursor = { teamID: teamDoc.id, artifactID: null };
       break;
     }
   }
@@ -148,6 +230,7 @@ export async function scanLegacyPlaintextArtifactsForUser(
     legacyPlaintextCount: hits.length,
     hits,
     truncated,
+    nextPageToken: encodePageToken(nextCursor),
     scannedAt: now.toISOString(),
   };
 }
@@ -165,6 +248,7 @@ export const scanLegacyPlaintextArtifacts = onCallProduction(
     request: CallableRequest<{
       scanLimit?: unknown;
       resultLimit?: unknown;
+      pageToken?: unknown;
     }>,
   ): Promise<LegacyPlaintextScanResult> => {
     const uid = request.auth?.uid;
@@ -177,6 +261,6 @@ export const scanLegacyPlaintextArtifacts = onCallProduction(
     const resultLimit =
       boundedInteger(request.data?.resultLimit, "resultLimit", 1, MAX_RESULT_LIMIT, false) ?? DEFAULT_RESULT_LIMIT;
 
-    return scanLegacyPlaintextArtifactsForUser(getFirestore(), uid, scanLimit, resultLimit);
+    return scanLegacyPlaintextArtifactsForUser(getFirestore(), uid, scanLimit, resultLimit, request.data?.pageToken);
   },
 );

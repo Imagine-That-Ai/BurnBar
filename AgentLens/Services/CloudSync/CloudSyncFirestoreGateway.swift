@@ -8,6 +8,9 @@ import Foundation
 protocol CloudSyncFirestoreGateway: AnyObject, Sendable {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
     func batch() -> CloudSyncWriteBatchGateway
+    func runTransaction(
+        _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
+    ) async throws -> Bool
 }
 
 protocol CloudSyncCollectionGateway: AnyObject, Sendable {
@@ -41,6 +44,11 @@ protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
     func commit() async throws
 }
 
+protocol CloudSyncTransactionGateway: AnyObject, Sendable {
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]?
+    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws
+}
+
 protocol CloudSyncQuerySnapshotGateway: AnyObject, Sendable {
     var documents: [CloudSyncDocumentSnapshotGateway] { get }
 }
@@ -68,6 +76,27 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
 
     func batch() -> CloudSyncWriteBatchGateway {
         CloudSyncWriteBatchLiveGateway(batch: firestore.batch())
+    }
+
+    func runTransaction(
+        _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
+    ) async throws -> Bool {
+        try await withCheckedThrowingContinuation { continuation in
+            firestore.runTransaction({ transaction, errorPointer in
+                do {
+                    return try updateBlock(CloudSyncTransactionLiveGateway(transaction: transaction)) as NSNumber
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
+                }
+            }, completion: { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(returning: (result as? NSNumber)?.boolValue ?? false)
+            })
+        }
     }
 
     private var firestore: Firestore {
@@ -189,6 +218,39 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
 
     func commit() async throws {
         try await batch.commit()
+    }
+}
+
+final class CloudSyncTransactionLiveGateway: CloudSyncTransactionGateway, @unchecked Sendable {
+    private let transaction: Transaction
+
+    init(transaction: Transaction) {
+        self.transaction = transaction
+    }
+
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]? {
+        guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
+            throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentLiveGateway")
+        }
+        return try transaction.getDocument(liveDoc.reference).data()
+    }
+
+    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
+        guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
+            throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentLiveGateway")
+        }
+        transaction.setData(data, forDocument: liveDoc.reference, merge: merge)
+    }
+}
+
+enum CloudSyncGatewayError: LocalizedError {
+    case documentImplementationMismatch(expected: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .documentImplementationMismatch(let expected):
+            "Cloud sync gateway document implementation mismatch; expected \(expected)."
+        }
     }
 }
 

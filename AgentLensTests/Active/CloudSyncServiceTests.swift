@@ -885,6 +885,22 @@ final class SharedArtifactCloudCodecTests: XCTestCase {
         XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: sealedPayload))
     }
 
+    func test_isLegacyPlaintext_detectsMixedSealedPlaintextLeak() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        var sealedPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+        sealedPayload["title"] = "leftover plaintext"
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: sealedPayload))
+    }
+
     func test_isLegacyPlaintext_returnsFalseForMetadataOnlyDocument() {
         let metadataOnlyDoc: [String: Any] = [
             "artifactID": "art-1",

@@ -1125,8 +1125,27 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 aadDocumentID: decodedRecord.revisionID
             )
             let headDoc = artifactsCollection.document(documentID)
-            try await headDoc.setData(headPayload, merge: true)
-            try await headDoc.collection("versions").document(decodedRecord.revisionID).setData(versionPayload, merge: true)
+            let versionDoc = headDoc.collection("versions").document(decodedRecord.revisionID)
+            let didHeal = try await context.firestoreGateway.runTransaction { transaction in
+                guard let currentData = try transaction.getData(forDocument: headDoc),
+                      SharedArtifactCloudCodec.isLegacyPlaintext(data: currentData) else {
+                    return false
+                }
+                guard Self.trimmedString(currentData["revisionID"]) == decodedRecord.revisionID else {
+                    return false
+                }
+                try transaction.setData(headPayload, forDocument: headDoc, merge: true)
+                try transaction.setData(versionPayload, forDocument: versionDoc, merge: true)
+                return true
+            }
+            guard didHeal else {
+                AppLogger.sync.info("shared_artifact_legacy_heal_skipped", metadata: [
+                    "artifactID": decodedRecord.artifactID,
+                    "revisionID": decodedRecord.revisionID,
+                    "reason": "remote_revision_changed_or_already_clean"
+                ])
+                return
+            }
             AppLogger.sync.info("shared_artifact_legacy_healed", metadata: [
                 "artifactID": decodedRecord.artifactID,
                 "revisionID": decodedRecord.revisionID
@@ -1141,6 +1160,12 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 ]
             )
         }
+    }
+
+    private static func trimmedString(_ raw: Any?) -> String? {
+        guard let value = raw as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func publishCollaborationNotice(
