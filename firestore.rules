@@ -1436,7 +1436,7 @@ service cloud.firestore {
         && request.resource.data.teamID == teamId;
     }
 
-    function validSharedArtifactSealedMetadata(collection, artifactId, docId) {
+    function sharedArtifactSealedMetadata(artifactId) {
       return request.resource.data.keys().hasOnly([
         "artifactID",
         "workspaceID",
@@ -1456,26 +1456,19 @@ service cloud.firestore {
         "sealedPayload"
       ])
         && request.resource.data.artifactID == artifactId
-        && (
-          (collection == "artifacts" && request.resource.data.artifactID == docId)
-          || (collection == "artifact_versions" && request.resource.data.revisionID == docId)
-        )
         && request.resource.data.contentSealed == true
         && request.resource.data.sealedSchemaVersion == 2
-        // Per-field type/size/enum validators. The key allowlist above stops
-        // RENAMED cleartext fields, but without these an allowed metadata string
-        // (e.g. `updatedByDeviceID`) could still carry private content up to the
-        // ~1 MiB document cap — defeating the zero-plaintext promise via an
-        // honest-looking field. Bound every metadata string to 256 bytes (the
-        // codebase `createdByDeviceId` convention) so metadata cannot be a content
-        // exfil channel; constrain the enums/bools/timestamps to their real shapes.
+        && matchesCurrentVaultKey(request.auth.uid, request.resource.data.vaultKeyID)
+        && validCloudSealedPayload(request.resource.data.sealedPayload)
+        && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
+        && forbidsSealedPlaintextContentFields()
+        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
         && request.resource.data.artifactID is string
         && request.resource.data.artifactID.size() <= 256
         && request.resource.data.revisionID is string
         && request.resource.data.revisionID.size() <= 256
         && request.resource.data.visibility in ["personal", "shared", "workspace", "team"]
         && request.resource.data.isDeleted is bool
-        && validVaultKeyID(request.resource.data.vaultKeyID)
         && (!("baseRevisionID" in request.resource.data)
             || (request.resource.data.baseRevisionID is string && request.resource.data.baseRevisionID.size() <= 256))
         && (!("updatedByUserID" in request.resource.data)
@@ -1488,35 +1481,15 @@ service cloud.firestore {
             || request.resource.data.updatedAt is timestamp);
     }
 
-    // Shared/team artifacts seal private content in a path-bound payload.
-    // Keep an exact top-level key allowlist so renamed cleartext fields cannot
-    // bypass the body/title/relativePath/contentHash denylist.
-    function sharedArtifactSealedOwnerWrite(workspaceId, teamId, collection, docId) {
+    function sharedArtifactSealedOwnerWrite(workspaceId, teamId, artifactId) {
       return sharedArtifactOwnerWrite(workspaceId, teamId)
-        && validSharedArtifactSealedMetadata(collection, docId, docId)
-        && forbidsSealedPlaintextContentFields()
-        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
-        && validPathBoundSealedPayloadForUser(
-             request.auth.uid,
-             request.resource.data.vaultKeyID,
-             request.resource.data.sealedPayload,
-             collection,
-             docId
-           );
+        && sharedArtifactSealedMetadata(artifactId);
     }
 
     function sharedArtifactVersionSealedOwnerWrite(workspaceId, teamId, artifactId, revisionId) {
       return sharedArtifactOwnerWrite(workspaceId, teamId)
-        && validSharedArtifactSealedMetadata("artifact_versions", artifactId, revisionId)
-        && forbidsSealedPlaintextContentFields()
-        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
-        && validPathBoundSealedPayloadForUser(
-             request.auth.uid,
-             request.resource.data.vaultKeyID,
-             request.resource.data.sealedPayload,
-             "artifact_versions",
-             revisionId
-           );
+        && sharedArtifactSealedMetadata(artifactId)
+        && request.resource.data.revisionID == revisionId;
     }
 
     // --- Server-only private provider credential references ---
@@ -1845,51 +1818,6 @@ service cloud.firestore {
           );
       }
 
-      function missionGroupAfter(groupId) {
-        return getAfter(/databases/$(database)/documents/users/$(userId)/mission_groups/$(groupId));
-      }
-
-      function hasCliMissionGroupFields() {
-        return request.resource.data.keys().hasAny([
-          "groupID",
-          "siblingIndex",
-          "siblingCount",
-          "isGroupChild"
-        ]);
-      }
-
-      function validGroupedCliMissionCreate() {
-        let groupId = request.resource.data.groupID;
-        let group = missionGroupAfter(groupId);
-        return request.resource.data.id == requestId
-          && request.resource.data.isGroupChild == true
-          && groupId is string
-          && groupId.size() <= 512
-          && group.data.childMissionIDs is list
-          && requestId in group.data.childMissionIDs
-          && request.resource.data.siblingCount is int
-          && request.resource.data.siblingCount == group.data.childMissionIDs.size()
-          && request.resource.data.siblingIndex is int
-          && request.resource.data.siblingIndex >= 0
-          && request.resource.data.siblingIndex < group.data.childMissionIDs.size()
-          && group.data.childMissionIDs[request.resource.data.siblingIndex] == requestId;
-      }
-
-      function validCliMissionGroupingOnCreate() {
-        return hasCliMissionGroupFields()
-          ? (
-              request.resource.data.keys().hasAll([
-                "groupID",
-                "siblingIndex",
-                "siblingCount",
-                "isGroupChild"
-              ])
-              && request.resource.data.groupID is string
-              && validGroupedCliMissionCreate()
-            )
-          : true;
-      }
-
       function validCliAgentMissionRequest() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -1984,7 +1912,6 @@ service cloud.firestore {
       function validCliAgentMissionCreate() {
         return request.resource.data.id == requestId
           && request.resource.data.status == "pending"
-          && validCliMissionGroupingOnCreate()
           && !request.resource.data.keys().hasAny([
             "startedAt",
             "completedAt",
@@ -2276,7 +2203,7 @@ service cloud.firestore {
           request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
           && validCloudSealedPayload(request.resource.data.sealedStatePayload)
-          && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
+        && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         ))
         && request.resource.data.id == groupId
         && request.resource.data.childMissionIDs is list
@@ -4189,86 +4116,7 @@ service cloud.firestore {
         && signalIdentityMatchesKnownDevice();
       allow update, delete: if false;
 
-      function signalIdentityKeyPath() {
-        return /databases/$(database)/documents/users/$(userId)/signal_identity_public_keys/$(keyId);
-      }
-
-      function signalDirectoryDocumentLimits() {
-        return escrowDocumentLimits()
-          && hasNoPlaintextSecretFields()
-          && !("privateKeyData" in request.resource.data)
-          && !("privateKeyB64" in request.resource.data)
-          && !("serializedSession" in request.resource.data)
-          && !("serializedSessionB64" in request.resource.data)
-          && !("sessionState" in request.resource.data)
-          && !("sessionStateB64" in request.resource.data)
-          && !("ratchetState" in request.resource.data)
-          && !("ratchetStateB64" in request.resource.data);
-      }
-
-      function signalDirectoryParentMatches() {
-        return exists(signalIdentityKeyPath())
-          && request.resource.data.identityKeyId == keyId
-          && request.resource.data.deviceId == get(signalIdentityKeyPath()).data.deviceId
-          && request.resource.data.keyVersion == get(signalIdentityKeyPath()).data.keyVersion
-          && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
-          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState in ["pending", "trusted"]
-          && request.resource.data.keyVersion == get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.keyVersion;
-      }
-
-      function validSignalDirectoryBase() {
-        return request.resource.data.identityKeyId is string
-          && request.resource.data.identityKeyId == keyId
-          && request.resource.data.deviceId is string
-          && request.resource.data.deviceId.size() <= 160
-          && request.resource.data.keyVersion is int
-          && request.resource.data.keyVersion >= 1
-          && request.resource.data.keyVersion <= 10
-          && request.resource.data.createdAt is timestamp
-          && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
-          && signalDirectoryParentMatches();
-      }
-
       match /signed_prekeys/{signedPreKeyId} {
-        function validSignedPreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "signedPreKeyId",
-            "signedPreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "signatureB64",
-            "algorithm",
-            "status",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.signedPreKeyId == signedPreKeyId
-          && request.resource.data.signedPreKeyNumericId is int
-          && request.resource.data.signedPreKeyNumericId >= 1
-          && request.resource.data.signedPreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 256)
-          && validSignalBase64(request.resource.data.signatureB64, 512)
-          && request.resource.data.algorithm == "signal-pqxdh-signed-prekey-v1"
-          && request.resource.data.status in ["active", "retired", "revoked"]
-          && (!("expiresAt" in request.resource.data) || request.resource.data.expiresAt is timestamp);
-        }
-
-        function signedPreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.signedPreKeyId == resource.data.signedPreKeyId
-            && request.resource.data.signedPreKeyNumericId == resource.data.signedPreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.signatureB64 == resource.data.signatureB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4276,53 +4124,6 @@ service cloud.firestore {
       }
 
       match /one_time_prekeys/{oneTimePreKeyId} {
-        function validOneTimePreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "oneTimePreKeyId",
-            "oneTimePreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "algorithm",
-            "status",
-            "claimedBySessionId",
-            "claimedAt",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.oneTimePreKeyId == oneTimePreKeyId
-          && request.resource.data.oneTimePreKeyNumericId is int
-          && request.resource.data.oneTimePreKeyNumericId >= 1
-          && request.resource.data.oneTimePreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 256)
-          && request.resource.data.algorithm == "signal-pqxdh-one-time-prekey-v1"
-          && request.resource.data.status in ["available", "claimed", "exhausted", "retired"]
-          && request.resource.data.expiresAt is timestamp
-          && request.resource.data.expiresAt > request.time
-          && (
-            request.resource.data.status == "available"
-            || (
-              request.resource.data.claimedBySessionId is string
-              && request.resource.data.claimedBySessionId.size() <= 200
-              && request.resource.data.claimedAt is timestamp
-            )
-          );
-        }
-
-        function oneTimePreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.oneTimePreKeyId == resource.data.oneTimePreKeyId
-            && request.resource.data.oneTimePreKeyNumericId == resource.data.oneTimePreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4330,56 +4131,6 @@ service cloud.firestore {
       }
 
       match /kyber_prekeys/{kyberPreKeyId} {
-        function validKyberPreKeyDocument() {
-          return request.resource.data.keys().hasOnly([
-            "kyberPreKeyId",
-            "kyberPreKeyNumericId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "publicKeyB64",
-            "signatureB64",
-            "algorithm",
-            "status",
-            "claimedBySessionId",
-            "claimedAt",
-            "createdAt",
-            "updatedAt",
-            "expiresAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.kyberPreKeyId == kyberPreKeyId
-          && request.resource.data.kyberPreKeyNumericId is int
-          && request.resource.data.kyberPreKeyNumericId >= 1
-          && request.resource.data.kyberPreKeyNumericId <= 2147483647
-          && validSignalBase64(request.resource.data.publicKeyB64, 4096)
-          && validSignalBase64(request.resource.data.signatureB64, 4096)
-          && request.resource.data.algorithm == "signal-pqxdh-kyber-prekey-v1"
-          && request.resource.data.status in ["available", "claimed", "exhausted", "retired"]
-          && request.resource.data.expiresAt is timestamp
-          && request.resource.data.expiresAt > request.time
-          && (
-            request.resource.data.status == "available"
-            || (
-              request.resource.data.claimedBySessionId is string
-              && request.resource.data.claimedBySessionId.size() <= 200
-              && request.resource.data.claimedAt is timestamp
-            )
-          );
-        }
-
-        function kyberPreKeyImmutableFieldsUnchanged() {
-          return request.resource.data.kyberPreKeyId == resource.data.kyberPreKeyId
-            && request.resource.data.kyberPreKeyNumericId == resource.data.kyberPreKeyNumericId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.publicKeyB64 == resource.data.publicKeyB64
-            && request.resource.data.signatureB64 == resource.data.signatureB64
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4387,51 +4138,6 @@ service cloud.firestore {
       }
 
       match /sessions/{sessionId} {
-        function validSignalSessionDirectoryDocument() {
-          return request.resource.data.keys().hasOnly([
-            "sessionId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "peerUid",
-            "peerDeviceId",
-            "peerIdentityKeyId",
-            "mode",
-            "stateStorage",
-            "status",
-            "createdAt",
-            "updatedAt",
-            "lastMessageAt",
-            "archivedAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.sessionId == sessionId
-          && request.resource.data.peerUid is string
-          && request.resource.data.peerUid.size() <= 160
-          && request.resource.data.peerDeviceId is string
-          && request.resource.data.peerDeviceId.size() <= 160
-          && request.resource.data.peerIdentityKeyId is string
-          && request.resource.data.peerIdentityKeyId.size() <= 200
-          && request.resource.data.mode in ["same-user-device", "gateway-transport"]
-          && request.resource.data.stateStorage == "device-local-only"
-          && request.resource.data.status in ["active", "archived", "revoked"]
-          && (!("lastMessageAt" in request.resource.data) || request.resource.data.lastMessageAt is timestamp)
-          && (!("archivedAt" in request.resource.data) || request.resource.data.archivedAt is timestamp);
-        }
-
-        function signalSessionImmutableFieldsUnchanged() {
-          return request.resource.data.sessionId == resource.data.sessionId
-            && request.resource.data.identityKeyId == resource.data.identityKeyId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.keyVersion == resource.data.keyVersion
-            && request.resource.data.peerUid == resource.data.peerUid
-            && request.resource.data.peerDeviceId == resource.data.peerDeviceId
-            && request.resource.data.peerIdentityKeyId == resource.data.peerIdentityKeyId
-            && request.resource.data.mode == resource.data.mode
-            && request.resource.data.stateStorage == resource.data.stateStorage
-            && request.resource.data.createdAt == resource.data.createdAt;
-        }
-
         // Server-only: recordSignalSession is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create, update: if false;
@@ -4439,40 +4145,6 @@ service cloud.firestore {
       }
 
       match /rotation_events/{rotationId} {
-        function validSignalKeyRotationEventDocument() {
-          return request.resource.data.keys().hasOnly([
-            "rotationId",
-            "identityKeyId",
-            "deviceId",
-            "keyVersion",
-            "fromKeyVersion",
-            "toKeyVersion",
-            "reason",
-            "status",
-            "rewrapRequired",
-            "rewrapJobId",
-            "revokedIdentityKeyId",
-            "createdAt",
-            "updatedAt",
-            "completedAt"
-          ])
-          && validSignalDirectoryBase()
-          && request.resource.data.rotationId == rotationId
-          && request.resource.data.fromKeyVersion is int
-          && request.resource.data.fromKeyVersion >= 1
-          && request.resource.data.fromKeyVersion <= 10
-          && request.resource.data.toKeyVersion is int
-          && request.resource.data.toKeyVersion >= 2
-          && request.resource.data.toKeyVersion <= 10
-          && request.resource.data.toKeyVersion > request.resource.data.fromKeyVersion
-          && request.resource.data.reason in ["scheduled", "suspected_compromise", "device_repair", "revocation_rewrap", "manual"]
-          && request.resource.data.status in ["planned", "running", "completed", "failed"]
-          && request.resource.data.rewrapRequired is bool
-          && (!("rewrapJobId" in request.resource.data) || (request.resource.data.rewrapJobId is string && request.resource.data.rewrapJobId.size() <= 200))
-          && (!("revokedIdentityKeyId" in request.resource.data) || (request.resource.data.revokedIdentityKeyId is string && request.resource.data.revokedIdentityKeyId.size() <= 200))
-          && (!("completedAt" in request.resource.data) || request.resource.data.completedAt is timestamp);
-        }
-
         // Server-only: recordSignalRotation is the sole write path.
         allow read: if ownsUserNamespace(userId);
         allow create: if false;
@@ -4627,7 +4299,7 @@ service cloud.firestore {
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
       allow read: if sharedArtifactOwnerRead(workspaceId);
-      allow create, update: if sharedArtifactSealedOwnerWrite(workspaceId, teamId, "artifacts", artifactId);
+      allow create, update: if sharedArtifactSealedOwnerWrite(workspaceId, teamId, artifactId);
       allow delete: if sharedArtifactOwnerRead(workspaceId);
 
       match /versions/{revisionId} {

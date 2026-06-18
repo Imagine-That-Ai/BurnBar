@@ -106,4 +106,5 @@ def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
     deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
     assert "--only firestore:indexes" in body
     assert "deploy-firebase-rules-releases.mjs" in body
-    assert 'updateMask: "rulesetName"' in deployer
+    assert "updateMask:" not in deployer
+    assert "live API rejects an" in deployer

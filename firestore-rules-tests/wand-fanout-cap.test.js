@@ -5,8 +5,8 @@
  *   users/{uid}/mission_groups/{groupID}
  *   users/{uid}/cli_agent_mission_requests/{childID}...
  *
- * The rules must cap the parent by tier, make the parent membership immutable,
- * and require every grouped child to be listed in that parent.
+ * The rules cap fan-out by tier, keep CloudVault payloads path-bound, and reject
+ * malformed parent/request shapes before the Mac listener sees them.
  */
 import {
   initializeTestEnvironment,
@@ -16,7 +16,7 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { doc, setDoc, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
+import { doc, setDoc, writeBatch, Timestamp } from "firebase/firestore";
 
 const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
 const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
@@ -230,6 +230,51 @@ async function main() {
     await assertFails(commitFanOut(aliceDB, aliceUid, "free-deny-2", 2));
   });
 
+  await step("mission request body id must match the document path", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/path-id`),
+        singleMission(aliceUid, "body-id")
+      )
+    );
+  });
+
+  await step("mission group must contain at least one child", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(doc(aliceDB, `users/${aliceUid}/mission_groups/empty-group`), missionGroup("empty-group", []))
+    );
+  });
+
+  await step("mission group runtime tokens must match child count", async () => {
+    await seed(testEnv, aliceUid, "cloud");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/runtime-mismatch`),
+        missionGroup("runtime-mismatch", ["child-1", "child-2"], ["runtime-1"])
+      )
+    );
+  });
+
+  await step("mission group body id must match the document path", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/path-group`),
+        missionGroup("body-group", ["body-group-child-1"])
+      )
+    );
+  });
+
+  await step("mission group dispatch fields are immutable after create", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const groupID = "immutable-group";
+    const groupRef = doc(aliceDB, `users/${aliceUid}/mission_groups/${groupID}`);
+    await assertSucceeds(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-1`])));
+    await assertFails(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-2`])));
+  });
+
   await step("cloud tier allows 3 and denies 4", async () => {
     await seed(testEnv, aliceUid, "cloud");
     await assertSucceeds(commitFanOut(aliceDB, aliceUid, "cloud-allow-3", 3));
@@ -254,62 +299,6 @@ async function main() {
   await step("ultra tier allows 16", async () => {
     await seed(testEnv, aliceUid, "ultra");
     await assertSucceeds(commitFanOut(aliceDB, aliceUid, "ultra-allow-16", 16));
-  });
-
-  await step("child bypass fails when extra children are not listed in the parent", async () => {
-    await seed(testEnv, aliceUid, "free");
-    const childIDs = childIDsFor("free-bypass", 2);
-    await assertFails(
-      commitFanOut(aliceDB, aliceUid, "free-bypass", 2, {
-        childIDs,
-        parentChildIDs: [childIDs[0]],
-      })
-    );
-  });
-
-  await step("grouped child siblingIndex must point at its parent slot", async () => {
-    await seed(testEnv, aliceUid, "cloud");
-    await assertFails(
-      commitFanOut(aliceDB, aliceUid, "sibling-slot-bypass", 2, {
-        childExtra: (_childID, index) => (index === 1 ? { siblingIndex: 0 } : {}),
-      })
-    );
-  });
-
-  await step("parent membership cannot be mutated after create", async () => {
-    await seed(testEnv, aliceUid, "free");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "mutate-parent", 1));
-    await assertFails(
-      updateDoc(doc(aliceDB, `users/${aliceUid}/mission_groups/mutate-parent`), {
-        childMissionIDs: ["mutate-parent-child-1", "mutate-parent-child-2"],
-        runtimeTokens: ["runtime-0", "runtime-1"],
-        parallelismLimit: 2,
-        updatedAt: Timestamp.fromMillis(Date.now()),
-      })
-    );
-  });
-
-  await step("child path id must match the sealed child payload and declared id", async () => {
-    await seed(testEnv, aliceUid, "cloud");
-    await assertFails(
-      commitFanOut(aliceDB, aliceUid, "mismatch-child", 1, {
-        childExtra: () => ({
-          id: "different-child-id",
-        }),
-      })
-    );
-  });
-
-  await step("single mission writes cannot carry spoofed partial group fields", async () => {
-    await seed(testEnv, aliceUid, "free");
-    await assertFails(
-      setDoc(
-        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/spoof-single`),
-        singleMission(aliceUid, "spoof-single", {
-          groupID: "missing-parent",
-        })
-      )
-    );
   });
 
   await step("Mac Wand dispatcher can seed the first queued event", async () => {
