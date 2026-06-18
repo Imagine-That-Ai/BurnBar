@@ -21,9 +21,10 @@ export interface AmplitudeFetchResponse {
 }
 export type FetchLike = (url: string, init: AmplitudeFetchInit) => Promise<AmplitudeFetchResponse>;
 
-/** Default transport: the Node 20+ global `fetch` (VS Code 1.95 ships Node 20).
- *  Reached through `globalThis` so no DOM lib types leak into this Node module. */
-const globalFetch: FetchLike = (url, init) => (globalThis as unknown as { fetch: FetchLike }).fetch(url, init);
+/** Default transport: the Node 20+ global `fetch` (VS Code 1.95 ships Node 20;
+ *  @types/node types the global). The structural `AmplitudeFetchInit`/`Response`
+ *  are assignable to/from the global `RequestInit`/`Response`, so no cast. */
+const globalFetch: FetchLike = (url, init) => fetch(url, init);
 
 /**
  * Production transport: a tiny DIRECT Amplitude HTTP V2 client — the same
