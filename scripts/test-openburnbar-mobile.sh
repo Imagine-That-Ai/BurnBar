@@ -23,7 +23,7 @@
 #                                           Force the CI-style unsigned simulator host locally.
 #   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
 #                                           Skip Signal FFI prep when the caller
-#                                           already prepared Vendor/OpenBurnBarSignalFfi.xcframework.
+#                                           already prepared the Signal FFI XCFramework artifacts.
 #   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
 #                                           Disable Xcode automatic profile/device updates on physical-device runs.
 #
@@ -486,8 +486,8 @@ fi
 : > "$attempt_log_path"
 
 if [[ "${OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP:-}" == "1" ]]; then
-    if [[ ! -d "$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
-        echo "ERROR: OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 but Vendor/OpenBurnBarSignalFfi.xcframework is missing." >&2
+    if [[ ! -d "$repo_root/Vendor/OpenBurnBarSignalFfiIOS.xcframework" && ! -d "$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 but no iOS Signal FFI XCFramework artifact is present." >&2
         exit 66
     fi
     echo ">>> Reusing prebuilt Signal FFI XCFramework."

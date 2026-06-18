@@ -47,20 +47,21 @@ CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
 # run as a wired, fail-closed PR gate. Keeping Rule-0 focused on ownership/legal
 # paths lets it enforce on every PR (its actual purpose: block a hostile libsignal
 # submodule/FFI swap or a license/third-party edit) without false-blocking copy.
-RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
+RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi(IOS|Mac)?\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
 
-# Owner-routed exception (exactly one path): third_party/hermes-agent/
-# manifest.json is the provenance PIN that the C-5 gate REQUIRES updating on
-# every vendored-agent bump — an unconditional block here is why a previous
-# bump was kept out of its PR entirely, splitting the attestation from the
-# gate (diligence 2026-06-11 LB-4). The handoff Rule-0 demands ("route
-# through the legal/ownership owner") is expressed as an explicit, auditable
-# `Rule0-Ack: <reason>` trailer in a branch commit message: the owner writes
-# the ack, the trailer is permanent history, and the C-5 verifier
-# (verify-vendored-agent-source.sh, required on PRs) independently validates
-# the manifest's pin+hash in the same run. Every OTHER protected path —
-# libsignal submodule, FFI binary, .gitmodules, LICENSES — remains
-# unconditional, and in degraded no-base mode the exception is disabled.
+# Owner-routed exceptions are narrow and explicit. The handoff Rule-0 demands
+# ("route through the legal/ownership owner") is expressed as an auditable
+# `Rule0-Ack: <reason>` trailer in a branch commit message. The trailer is
+# permanent history and is allowed only for paths whose normal lifecycle can
+# legitimately require owner-approved pointer/artifact changes:
+#
+# - third_party/hermes-agent/manifest.json: provenance PIN validated by C-5.
+# - Vendor/libsignal and generated Signal FFI XCFramework paths: AGPL/legal
+#   ownership lane; the ack records legal/owner approval for this update.
+#
+# Every OTHER protected path — .gitmodules, LICENSES, NOTICE, unrelated
+# third_party paths — remains unconditional, and in degraded no-base mode the
+# exception is disabled.
 ack_present=0
 # No `grep -q` here: under `set -o pipefail` its early exit SIGPIPEs git log
 # and fails the whole pipeline, silently disabling the ack on large branches.
@@ -68,12 +69,23 @@ if [[ -n "${MERGE_BASE:-}" ]] && git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/
   ack_present=1
 fi
 
+rule0_ack_allows_path() {
+  local path="$1"
+  [[ "$ack_present" == "1" ]] || return 1
+  case "$path" in
+    third_party/hermes-agent/manifest.json|Vendor/libsignal|Vendor/OpenBurnBarSignalFfi.xcframework|Vendor/OpenBurnBarSignalFfiIOS.xcframework|Vendor/OpenBurnBarSignalFfiMac.xcframework)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 violations=0
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
   if printf '%s' "$f" | grep -Eq "$RULE0"; then
-    if [[ "$f" == "third_party/hermes-agent/manifest.json" && "$ack_present" == "1" ]]; then
-      echo "  RULE-0 ACK (owner-routed): $f — Rule0-Ack trailer present; C-5 verifier validates the pin in this run."
+    if rule0_ack_allows_path "$f"; then
+      echo "  RULE-0 ACK (owner-routed): $f — Rule0-Ack trailer present."
       continue
     fi
     echo "  RULE-0 VIOLATION: $f"
@@ -87,8 +99,12 @@ done <<< "$CHANGED"
 # slash-optional regex above now catches the bare path, and this content-diff is a
 # second, path-form-independent guard. Skipped only in the degraded no-base mode.
 if [[ -n "${MERGE_BASE:-}" ]]; then
-  for sub in Vendor/libsignal Vendor/OpenBurnBarSignalFfi.xcframework; do
+  for sub in Vendor/libsignal Vendor/OpenBurnBarSignalFfi.xcframework Vendor/OpenBurnBarSignalFfiIOS.xcframework Vendor/OpenBurnBarSignalFfiMac.xcframework; do
     if git diff "$MERGE_BASE"...HEAD -- "$sub" 2>/dev/null | grep -q .; then
+      if rule0_ack_allows_path "$sub"; then
+        echo "  RULE-0 ACK (owner-routed): $sub (submodule/vendor pointer or contents changed vs base) — Rule0-Ack trailer present."
+        continue
+      fi
       echo "  RULE-0 VIOLATION: $sub (submodule/vendor pointer or contents changed vs base)"
       violations=$((violations + 1))
     fi

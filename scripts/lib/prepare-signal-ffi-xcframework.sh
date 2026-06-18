@@ -11,11 +11,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 libsignal_dir="$repo_root/Vendor/libsignal"
-xcframework="$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework"
+ios_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfiIOS.xcframework"
+macos_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfiMac.xcframework"
+legacy_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework"
 build_script="$repo_root/scripts/build-signal-ffi-xcframework.sh"
 
-if [[ -d "$xcframework" ]]; then
-  echo ">>> Using existing OpenBurnBarSignalFfi.xcframework."
+if [[ -d "$legacy_xcframework" || ( -d "$ios_xcframework" && -d "$macos_xcframework" ) ]]; then
+  echo ">>> Using existing Signal FFI XCFramework artifacts."
   exit 0
 fi
 
@@ -43,7 +45,7 @@ if ! command -v cargo >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; th
   exit 1
 fi
 
-echo ">>> Building OpenBurnBarSignalFfi.xcframework for Xcode tests."
+echo ">>> Building Signal FFI XCFramework artifacts for Xcode tests."
 SIGNAL_FFI_BUILD_PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-debug}" \
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
   bash "$build_script"

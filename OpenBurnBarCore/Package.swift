@@ -11,7 +11,19 @@ let hasIrohXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
-let hasSignalFfiXCFramework = FileManager.default.fileExists(
+let hasSignalFfiIOSXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarSignalFfiIOS.xcframework")
+        .standardizedFileURL
+        .path
+)
+let hasSignalFfiMacXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarSignalFfiMac.xcframework")
+        .standardizedFileURL
+        .path
+)
+let hasLegacySignalFfiXCFramework = FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/OpenBurnBarSignalFfi.xcframework")
         .standardizedFileURL
@@ -82,11 +94,6 @@ let packageProducts: [Product] = [
         name: "BurnBarRemoteFFI",
         targets: ["BurnBarRemoteFFI"]
     )
-] : []) + (hasSignalFfiXCFramework ? [
-    .library(
-        name: "OpenBurnBarSignalFfi",
-        targets: ["OpenBurnBarSignalFfi"]
-    )
 ] : [])
 
 let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
@@ -135,17 +142,47 @@ let burnBarRemoteEngineDependencies: [Target.Dependency] = hasBurnBarRemoteXCFra
     "BurnBarRemoteFFI"
 ] : []
 
+let signalFfiDependencies: [Target.Dependency] = {
+    var dependencies: [Target.Dependency] = []
+    if hasSignalFfiIOSXCFramework {
+        dependencies.append(.target(name: "OpenBurnBarSignalFfiIOS", condition: .when(platforms: [.iOS])))
+    }
+    if hasSignalFfiMacXCFramework {
+        dependencies.append(.target(name: "OpenBurnBarSignalFfiMac", condition: .when(platforms: [.macOS])))
+    }
+    if dependencies.isEmpty && hasLegacySignalFfiXCFramework {
+        dependencies.append("OpenBurnBarSignalFfi")
+    }
+    return dependencies
+}()
+
 let signalCoreDependencies: [Target.Dependency] = [
     "OpenBurnBarCore",
     .product(name: "LibSignalClient", package: "LibSignalClient")
-] + (hasSignalFfiXCFramework ? ["OpenBurnBarSignalFfi"] : [])
+] + signalFfiDependencies
 
-let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
-    .binaryTarget(
-        name: "OpenBurnBarSignalFfi",
-        path: "../Vendor/OpenBurnBarSignalFfi.xcframework"
-    )
-] : []
+let signalBinaryTargets: [Target] = {
+    var targets: [Target] = []
+    if hasSignalFfiIOSXCFramework {
+        targets.append(.binaryTarget(
+            name: "OpenBurnBarSignalFfiIOS",
+            path: "../Vendor/OpenBurnBarSignalFfiIOS.xcframework"
+        ))
+    }
+    if hasSignalFfiMacXCFramework {
+        targets.append(.binaryTarget(
+            name: "OpenBurnBarSignalFfiMac",
+            path: "../Vendor/OpenBurnBarSignalFfiMac.xcframework"
+        ))
+    }
+    if targets.isEmpty && hasLegacySignalFfiXCFramework {
+        targets.append(.binaryTarget(
+            name: "OpenBurnBarSignalFfi",
+            path: "../Vendor/OpenBurnBarSignalFfi.xcframework"
+        ))
+    }
+    return targets
+}()
 
 let swiftTestingDependency: Target.Dependency = .product(name: "Testing", package: "swift-testing")
 

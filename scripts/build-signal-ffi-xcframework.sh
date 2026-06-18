@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build OpenBurnBarSignalFfi.xcframework from the vendored libsignal FFI.
+# Build OpenBurnBar Signal FFI XCFrameworks from the vendored libsignal FFI.
 #
 # Usage:
 #   ./scripts/build-signal-ffi-xcframework.sh
@@ -7,19 +7,22 @@
 #   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin x86_64-apple-darwin" ./scripts/build-signal-ffi-xcframework.sh
 #
 # Output:
-#   Vendor/OpenBurnBarSignalFfi.xcframework/
+#   Vendor/OpenBurnBarSignalFfiIOS.xcframework/
+#   Vendor/OpenBurnBarSignalFfiMac.xcframework/
 #
-# The Swift libsignal package links a library named `signal_ffi`. OpenBurnBar
-# also links a Rust iroh static archive, so linking libsignal_ffi as a static
-# archive duplicates Rust runtime symbols. This packages libsignal_ffi as a
-# dylib XCFramework and lets SwiftPM/Xcode embed it as a binary dependency.
+# The Swift libsignal package links a library named `signal_ffi`. iOS must use
+# a static library so App Store archives never embed a loose libsignal_ffi.dylib
+# in Payload/*.app/Frameworks. macOS must stay dynamic because static libsignal
+# duplicates Rust and BoringSSL symbols with iroh/gRPC in the app link.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIBSIGNAL_DIR="${ROOT_DIR}/Vendor/libsignal"
 VENDOR_DIR="${ROOT_DIR}/Vendor"
-XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfi.xcframework"
+LEGACY_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfi.xcframework"
+IOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiIOS.xcframework"
+MACOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiMac.xcframework"
 BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
@@ -84,11 +87,20 @@ ensure_rust_target() {
 build_target() {
   local target="$1"
   local features="log/release_max_level_info"
+  local crate_type="staticlib"
+  local rustc_extra_args=()
   if [[ "${target}" != "aarch64-apple-ios" ]]; then
     features="libsignal-bridge-testing ${features}"
   fi
+  if [[ "${target}" == *"-apple-darwin" ]]; then
+    crate_type="cdylib"
+    rustc_extra_args=(
+      -C "link-arg=-Wl,-install_name,@rpath/libsignal_ffi.dylib"
+      -C "link-arg=-Wl,-exported_symbols_list,${EXPORTS_FILE}"
+    )
+  fi
   ensure_rust_target "${target}"
-  log "cargo +stable rustc ${PROFILE} ${target}"
+  log "cargo +stable rustc ${PROFILE} ${target} (${crate_type})"
   (
     cd "${LIBSIGNAL_DIR}"
     CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
@@ -101,9 +113,7 @@ build_target() {
         ${PROFILE_FLAG} \
         --target "${target}" \
         --features "${features}" \
-        -- --crate-type cdylib \
-           -C "link-arg=-Wl,-install_name,@rpath/libsignal_ffi.dylib" \
-           -C "link-arg=-Wl,-exported_symbols_list,${EXPORTS_FILE}"
+        -- --crate-type "${crate_type}" "${rustc_extra_args[@]}"
   )
 }
 
@@ -112,9 +122,21 @@ latest_target_dylib() {
   local dir="${LIBSIGNAL_DIR}/target/${target}/${PROFILE_DIR}/deps"
   [[ -d "${dir}" ]] || abort "missing build output dir ${dir}"
   local dylib
-  dylib="$(ls -t "${dir}"/libsignal_ffi-*.dylib 2>/dev/null | head -n 1 || true)"
+  dylib="$(
+    find "${dir}" -maxdepth 1 -type f -name 'libsignal_ffi-*.dylib' -exec stat -f '%m %N' {} + 2>/dev/null \
+      | sort -rn \
+      | head -n 1 \
+      | cut -d' ' -f2-
+  )"
   [[ -f "${dylib}" ]] || abort "missing libsignal_ffi dylib for ${target}"
   printf '%s\n' "${dylib}"
+}
+
+latest_target_staticlib() {
+  local target="$1"
+  local lib="${LIBSIGNAL_DIR}/target/${target}/${PROFILE_DIR}/libsignal_ffi.a"
+  [[ -f "${lib}" ]] || abort "missing libsignal_ffi static library for ${target}"
+  printf '%s\n' "${lib}"
 }
 
 stage_headers() {
@@ -125,10 +147,21 @@ void OpenBurnBarSignalFfiLinkAnchor(void);
 EOF
 }
 
+stage_static_target() {
+  local target="$1"
+  local platform_id="$2"
+  local staticlib
+  staticlib="$(latest_target_staticlib "${target}")"
+  local out_dir="${ARCHS_DIR}/${platform_id}"
+  mkdir -p "${out_dir}/Headers"
+  cp "${staticlib}" "${out_dir}/libsignal_ffi.a"
+  cp "${HEADERS_DIR}/"* "${out_dir}/Headers/"
+}
+
 stage_exports() {
   mkdir -p "${BUILD_DIR}"
   printf '_signal_*\n' > "${EXPORTS_FILE}"
-  log "exporting public Signal FFI symbols only; hiding bundled native deps"
+  log "exporting public Signal FFI symbols only for dynamic macOS slices"
 }
 
 repair_macho_linkedit_alignment() {
@@ -206,7 +239,7 @@ if insertions:
 PY
 }
 
-stage_target() {
+stage_dynamic_target() {
   local target="$1"
   local platform_id="$2"
   local dylib
@@ -229,19 +262,20 @@ else
 fi
 
 mkdir -p "${VENDOR_DIR}"
-rm -rf "${ARCHS_DIR}" "${XCFRAMEWORK}"
+rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
 mkdir -p "${ARCHS_DIR}"
 stage_headers
 
-build_xcframework_args=()
+ios_xcframework_args=()
+macos_xcframework_args=()
 
 macos_library_args=()
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-darwin "* ]]; then
-  stage_target aarch64-apple-darwin macos-arm64
+  stage_dynamic_target aarch64-apple-darwin macos-arm64
   macos_library_args+=("${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib")
 fi
 if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
-  stage_target x86_64-apple-darwin macos-x86_64
+  stage_dynamic_target x86_64-apple-darwin macos-x86_64
   macos_library_args+=("${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib")
 fi
 if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
@@ -252,47 +286,58 @@ if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
     "${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib" \
     -output "${macos_universal_dir}/libsignal_ffi.dylib"
   cp "${HEADERS_DIR}/"* "${macos_universal_dir}/Headers/"
-  build_xcframework_args+=(-library "${macos_universal_dir}/libsignal_ffi.dylib" -headers "${macos_universal_dir}/Headers")
+  macos_xcframework_args+=(-library "${macos_universal_dir}/libsignal_ffi.dylib" -headers "${macos_universal_dir}/Headers")
 elif [[ "${#macos_library_args[@]}" -eq 1 ]]; then
   macos_platform_id="macos-arm64"
   if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
     macos_platform_id="macos-x86_64"
   fi
-  build_xcframework_args+=(-library "${ARCHS_DIR}/${macos_platform_id}/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/${macos_platform_id}/Headers")
+  macos_xcframework_args+=(-library "${ARCHS_DIR}/${macos_platform_id}/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/${macos_platform_id}/Headers")
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then
-  stage_target aarch64-apple-ios ios-arm64
-  build_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/ios-arm64/Headers")
+  stage_static_target aarch64-apple-ios ios-arm64
+  ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64/Headers")
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-  stage_target aarch64-apple-ios-sim ios-arm64-simulator
-  stage_target x86_64-apple-ios ios-x86_64-simulator
+  stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
+  stage_static_target x86_64-apple-ios ios-x86_64-simulator
   local_sim_dir="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${local_sim_dir}/Headers"
   /usr/bin/lipo -create \
-    "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.dylib" \
-    "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.dylib" \
-    -output "${local_sim_dir}/libsignal_ffi.dylib"
+    "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.a" \
+    "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.a" \
+    -output "${local_sim_dir}/libsignal_ffi.a"
   cp "${HEADERS_DIR}/"* "${local_sim_dir}/Headers/"
-  build_xcframework_args+=(-library "${local_sim_dir}/libsignal_ffi.dylib" -headers "${local_sim_dir}/Headers")
+  ios_xcframework_args+=(-library "${local_sim_dir}/libsignal_ffi.a" -headers "${local_sim_dir}/Headers")
 else
   if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* ]]; then
-    stage_target aarch64-apple-ios-sim ios-arm64-simulator
-    build_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/ios-arm64-simulator/Headers")
+    stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
+    ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64-simulator/Headers")
   fi
   if [[ " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-    stage_target x86_64-apple-ios ios-x86_64-simulator
-    build_xcframework_args+=(-library "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/ios-x86_64-simulator/Headers")
+    stage_static_target x86_64-apple-ios ios-x86_64-simulator
+    ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-x86_64-simulator/Headers")
   fi
 fi
 
-[[ "${#build_xcframework_args[@]}" -gt 0 ]] || abort "no XCFramework libraries staged"
+if [[ "${#macos_xcframework_args[@]}" -gt 0 ]]; then
+  log "assembling ${MACOS_XCFRAMEWORK}"
+  /usr/bin/xcodebuild -create-xcframework \
+    "${macos_xcframework_args[@]}" \
+    -output "${MACOS_XCFRAMEWORK}"
+fi
 
-log "assembling ${XCFRAMEWORK}"
-/usr/bin/xcodebuild -create-xcframework \
-  "${build_xcframework_args[@]}" \
-  -output "${XCFRAMEWORK}"
+if [[ "${#ios_xcframework_args[@]}" -gt 0 ]]; then
+  log "assembling ${IOS_XCFRAMEWORK}"
+  /usr/bin/xcodebuild -create-xcframework \
+    "${ios_xcframework_args[@]}" \
+    -output "${IOS_XCFRAMEWORK}"
+fi
 
-log "DONE: ${XCFRAMEWORK}"
+if [[ "${#macos_xcframework_args[@]}" -eq 0 && "${#ios_xcframework_args[@]}" -eq 0 ]]; then
+  abort "no XCFramework libraries staged"
+fi
+
+log "DONE: Signal FFI XCFrameworks"
