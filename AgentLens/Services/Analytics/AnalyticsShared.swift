@@ -1,27 +1,58 @@
 import Foundation
 
-extension AnalyticsConsentStore {
-    /// The single app-wide consent store. The settings toggle and the first-run
-    /// prompt mutate this; `Analytics.shared` reads it on every call. Persisted to
-    /// `UserDefaults.standard`.
-    static let shared = AnalyticsConsentStore()
-}
+@MainActor
+enum AnalyticsRuntime {
+    private static var consentStore: AnalyticsConsentStore?
+    private static var recorder: Analytics?
 
-extension Analytics {
-    /// The single app-wide recorder. Every instrumentation call site goes through
-    /// `Analytics.shared.track(...)`; nothing touches the Amplitude SDK directly.
-    /// Built once, lazily, on first access — the SDK is not constructed until the
-    /// recorder's `start()` runs (which only happens after consent is granted).
-    static let shared: Analytics = {
+    static func configure(
+        consentStore newConsentStore: AnalyticsConsentStore? = nil,
+        recorder newRecorder: Analytics? = nil
+    ) {
+        if let newConsentStore {
+            consentStore = newConsentStore
+        }
+        if let newRecorder {
+            recorder = newRecorder
+        }
+    }
+
+    static var consent: AnalyticsConsentStore {
+        if let consentStore {
+            return consentStore
+        }
+        let store = AnalyticsConsentStore()
+        consentStore = store
+        return store
+    }
+
+    static var analytics: Analytics {
+        if let recorder {
+            return recorder
+        }
         let sessionId = UUID().uuidString
         let transport = AmplitudeTransport(
             apiKey: AnalyticsConfig.apiKey,
             deviceId: AnalyticsIdentity.deviceId()
         )
-        return Analytics(
-            consent: AnalyticsConsentStore.shared,
+        let instance = Analytics(
+            consent: consent,
             transport: transport,
             superProperties: { AnalyticsSuperProperties.macOS(sessionId: sessionId).asDictionary() }
         )
-    }()
+        recorder = instance
+        return instance
+    }
+}
+
+extension AnalyticsConsentStore {
+    /// App-wide consent store owned by `AnalyticsRuntime`. The settings toggle
+    /// and first-run prompt mutate this; the recorder reads it on every call.
+    static var shared: AnalyticsConsentStore { AnalyticsRuntime.consent }
+}
+
+extension Analytics {
+    /// App-wide recorder owned by `AnalyticsRuntime`. Every instrumentation call
+    /// site goes through this accessor; nothing touches the Amplitude SDK directly.
+    static var shared: Analytics { AnalyticsRuntime.analytics }
 }
