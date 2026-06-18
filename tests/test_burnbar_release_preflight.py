@@ -90,6 +90,14 @@ def test_product_release_workflows_invoke_release_preflight():
     for workflow in required_workflows:
         body = (ROOT / workflow).read_text(encoding="utf-8")
         assert "python3 scripts/ci/check_burnbar_release_preflight.py" in body, workflow
+        assert "release_hold_bypass_reason" in body, workflow
+        assert "Record owner-approved release hold bypass" in body, workflow
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
+
+
+def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
+    body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
+    assert "--only firestore:indexes,firestore:rules,storage" in body
+    assert "deploy-firebase-rules-releases.mjs" not in body
