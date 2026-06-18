@@ -100,6 +100,16 @@ struct OpenBurnBarMobileApp: App {
 
     init() {
         MobileDataProtectionBootstrap.apply()
+        // Resume opt-in analytics for a previously-consented install WITHOUT
+        // re-emitting the grant event, then record this app session. Both are
+        // no-ops (and the SDK is never constructed) unless consent is granted and
+        // an Amplitude key is configured — see MobileAnalytics / AmplitudeTransport.
+        MobileAnalytics.shared.startIfConsented()
+        MobileAnalytics.shared.track(.appSessionStarted, [
+            "is_first_launch": .bool(!UserDefaults.standard.bool(forKey: "hasLaunchedBefore")),
+            "cold_start": .bool(true)
+        ])
+        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
     }
 
     var body: some Scene {
@@ -122,6 +132,7 @@ struct OpenBurnBarMobileApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     agentNotifications.updateLifecycle("active")
+                    MobileAnalytics.shared.track(.appForegrounded)
                     // Sync any snippets the user added straight from the keyboard.
                     Task { await MobileTextExpansionStore.ingestKeyboardInboxIfNeeded() }
                 }
@@ -130,7 +141,11 @@ struct OpenBurnBarMobileApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                     agentNotifications.updateLifecycle("background")
+                    MobileAnalytics.shared.track(.appBackgrounded)
                 }
+                // First-run, opt-in analytics consent prompt. Shows once while
+                // consent is `.unset`; never reappears after a decision.
+                .analyticsConsentPrompt()
                 .burnBarLaunchSplash(onHaptic: HapticBus.logoFormation)
         }
     }
@@ -153,6 +168,10 @@ struct OpenBurnBarMobileApp: App {
 
         switch url.host {
         case "dashboard":
+            // `burnbar://dashboard` is produced by the home-screen widget's tap
+            // target, so this open is the widget tap outcome (host-side; the
+            // widget process gets no tap callback). Bounded target only.
+            MobileAnalytics.shared.track(.widgetTapped, ["target": "dashboard"])
             NotificationCenter.default.post(name: .init("NavigateToDashboard"), object: nil)
         case "settings":
             NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)

@@ -3,6 +3,7 @@ import FirebaseAppCheck
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import OpenBurnBarAnalytics
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
@@ -752,6 +753,16 @@ final class HermesService {
         isStreaming = true
         lastError = nil
         persistCurrentThread()
+
+        // Primary action: a chat message was sent. We emit ONLY the backend,
+        // mode, and bucketed attachment count — NEVER the message text, prompt,
+        // attachment contents, or file names (chat PII guard).
+        MobileAnalytics.shared.track(.chatMessageSent, [
+            "backend": "hermes",
+            "mode": "agent",
+            "has_attachments": .bool(!attachments.isEmpty),
+            "attachment_count_bucket": .string(AnalyticsBuckets.count(attachments.count))
+        ])
 
         currentTask?.cancel()
         currentTask = Task { @MainActor in

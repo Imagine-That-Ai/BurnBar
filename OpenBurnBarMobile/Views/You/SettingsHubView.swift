@@ -65,6 +65,9 @@ struct SettingsHubView: View {
             prompt: "Search settings"
         )
         .navigationTitle("Settings")
+        .onAppear {
+            MobileAnalytics.shared.track(.screenViewed, ["surface": "settings"])
+        }
         .task {
             if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
                 didLoadLocalSubscription = true
@@ -328,6 +331,13 @@ struct SettingsHubView: View {
                     MissionFABResurrectToggle()
                 } header: { groupHeader("Experimental") } footer: {
                     Text("The Mission Console orb toggle controls the floating action button. The orb auto-restores when an approval is waiting or a mission fails, regardless of this setting.")
+                }
+
+                Section {
+                    AnalyticsSettingsToggle()
+                        .tint(MobileTheme.ember)
+                } header: { groupHeader("Privacy") } footer: {
+                    Text("Analytics are fully opt-in and anonymous. We never collect your conversations, prompts, message text, keystrokes, API keys, secrets, file paths, or precise location.")
                 }
 
                 Section {

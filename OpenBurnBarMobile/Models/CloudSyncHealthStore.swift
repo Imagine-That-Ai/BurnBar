@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 public enum CloudSyncHealth: Sendable, Equatable {
     case unknown, healthy, syncing, macNotSyncing, degraded(reason: CloudErrorClassification)
@@ -43,8 +44,30 @@ final class CloudSyncHealthStore {
         do {
             let s = try await reader.loadSyncStatus()
             lastPublishedAt = s.lastPublishedAt; lastReadAt = s.lastReadAt; publisher = s.publisher
-            if let c = s.lastErrorClassification { health = map(c) } else if isStale(now: now) { health = .macNotSyncing } else { health = .healthy }
-        } catch let CloudGatewayError.classified(c) { health = map(c) } catch { health = .degraded(reason: .other(message: error.localizedDescription)) }
+            if let c = s.lastErrorClassification {
+                health = map(c)
+                trackHandledError(c)
+            } else if isStale(now: now) { health = .macNotSyncing } else { health = .healthy }
+        } catch let CloudGatewayError.classified(c) {
+            health = map(c)
+            trackHandledError(c)
+        } catch {
+            health = .degraded(reason: .other(message: error.localizedDescription))
+            // Handled error — bounded category only, no raw message.
+            MobileAnalytics.shared.track(.errorHandled, [
+                "error_category": "other",
+                "surface": "cloud_sync"
+            ])
+        }
+    }
+
+    /// Emit a handled-error event for a classified cloud failure. Bounded category
+    /// + surface only — the raw error message is never sent.
+    private func trackHandledError(_ c: CloudErrorClassification) {
+        MobileAnalytics.shared.track(.errorHandled, [
+            "error_category": .string(c.analyticsCode),
+            "surface": "cloud_sync"
+        ])
     }
 
     func isStale(now: Date = Date()) -> Bool {

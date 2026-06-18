@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 #if DEBUG
 import OSLog
 #endif
@@ -174,6 +175,20 @@ struct RootTabView: View {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
             applyComputerUseE2EProofIfNeeded()
+            // First visible tab is a screen view too (the launch destination).
+            MobileAnalytics.shared.track(.screenViewed, [
+                "surface": Self.surface(for: selection),
+                "is_first_view": .bool(true)
+            ])
+        }
+        .onChange(of: selection) { oldValue, newValue in
+            // A deliberate tab switch: the primary navigation action on iPhone.
+            MobileAnalytics.shared.track(.mobileTabSelected, ["tab": Self.routeLabel(newValue)])
+            MobileAnalytics.shared.track(.navRouteChanged, [
+                "from_route": Self.routeLabel(oldValue),
+                "to_route": Self.routeLabel(newValue)
+            ])
+            MobileAnalytics.shared.track(.screenViewed, ["surface": Self.surface(for: newValue)])
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
@@ -489,6 +504,33 @@ struct RootTabView: View {
         }
     }
     #endif
+
+    // MARK: - Analytics route/surface mapping (bounded enum values only)
+
+    /// A stable, bounded label for a tab — the analytics `tab`/route value. Never a
+    /// raw enum description that could drift; an explicit closed mapping.
+    private static func routeLabel(_ destination: AuroraNavDestination) -> AnalyticsValue {
+        switch destination {
+        case .pulse:    return "pulse"
+        case .burn:     return "burn"
+        case .insights: return "insights"
+        case .streams:  return "streams"
+        case .hermes:   return "hermes"
+        case .you:      return "you"
+        }
+    }
+
+    /// The canonical cross-platform `surface` value for a tab (taxonomy enum).
+    private static func surface(for destination: AuroraNavDestination) -> AnalyticsValue {
+        switch destination {
+        case .pulse:    return "dashboard"
+        case .burn:     return "dashboard"
+        case .insights: return "insights"
+        case .streams:  return "dashboard_activity"
+        case .hermes:   return "chat"
+        case .you:      return "account"
+        }
+    }
 
     // MARK: - Destination Mapping (for external router compatibility)
 
