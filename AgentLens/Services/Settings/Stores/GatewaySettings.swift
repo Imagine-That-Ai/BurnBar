@@ -114,7 +114,10 @@ final class GatewaySettings {
         guard !allowUnauthenticatedLoopback else {
             return nil
         }
-        guard let generated = try? Self.generateAuthToken() else {
+        let generated: String
+        do {
+            generated = try Self.generateAuthToken()
+        } catch {
             return nil
         }
         gatewayAuthToken = generated

@@ -520,7 +520,13 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 aadDocumentID: document.documentID
             )
             if SharedArtifactCloudCodec.isLegacyPlaintext(data: documentData) {
-                let healKey = (try? await sharedArtifactVaultKeyForWriting(scope: scope, deviceId: deviceId)) ?? vaultKey
+                let healKey: CloudVaultResolvedKey
+                do {
+                    healKey = try await sharedArtifactVaultKeyForWriting(scope: scope, deviceId: deviceId)
+                } catch {
+                    AppLogger.sync.silentFailure("shared_artifact_legacy_heal_write_key_fallback", error: error)
+                    healKey = vaultKey
+                }
                 await healLegacyPlaintextArtifactIfNeeded(
                     artifactsCollection: collection,
                     documentData: documentData,

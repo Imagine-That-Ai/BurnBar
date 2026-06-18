@@ -15,7 +15,7 @@ import { onCallProduction } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { boundedInteger } from "./computerUseSecurityCodecs.js";
 
-export interface LegacyPlaintextArtifactHit {
+interface LegacyPlaintextArtifactHit {
   readonly artifactPath: string;
   readonly artifactID: string;
   readonly workspaceID: string;
@@ -26,7 +26,7 @@ export interface LegacyPlaintextArtifactHit {
   readonly hasContentHash: boolean;
 }
 
-export interface LegacyPlaintextScanResult {
+interface LegacyPlaintextScanResult {
   readonly scannedDocuments: number;
   readonly legacyPlaintextCount: number;
   readonly hits: readonly LegacyPlaintextArtifactHit[];
