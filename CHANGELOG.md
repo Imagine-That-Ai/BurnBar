@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-06-18
+
+### Fixed
+
+- Shipped the June security hardening stack on the release line: Firestore and
+  Storage App Check enforcement probes, owner-only avatar Storage rules, stricter
+  endpoint authorization inventory, SQLCipher release gating, sensitive logging
+  redaction, CODEOWNERS security-tree coverage, and OIDC-only production deploy
+  gates.
+- Hardened release-critical CI against transient Xcode/SwiftPM and native
+  submodule failures: app/mobile/retrieval wrappers now retry classified package
+  resolution flakes, Mercury media proof gets multiple mobile attempts, and
+  native libsignal submodule initialization is bounded and fails closed.
+- Advanced macOS direct-download release metadata to `1.0.3` build `43` and iOS
+  TestFlight build metadata to build `73` without changing the approved iOS
+  marketing version line.
+
 ### Quota Freshness
 
 - Audited all 16 adapters in `QuotaRefreshActor.adapters` for eager-fetch capability. Every adapter can produce a snapshot on first launch when credentials are present: API-key adapters (MiniMax, ZAI, DeepSeek, Copilot, Kimi, OpenAI, Mimo, Warp) hit their provider endpoints directly; cookie/session adapters (Cursor, Ollama, Factory) resolve from keychain or local stores; local-file adapters (Factory droid sessions, Codex rollout scan, Claude JSONL, Antigravity history, Aider analytics, Kilo Code, Forge) read on disk with no prior-usage dependency. The three trigger-adjacent adapters already have eager fallback paths: Claude (JSONL scan + OAuth usage API), Codex (OAuth usage API + rollout scan), XAI (Management API for GrokBuild, pacing log for SuperGrok).
