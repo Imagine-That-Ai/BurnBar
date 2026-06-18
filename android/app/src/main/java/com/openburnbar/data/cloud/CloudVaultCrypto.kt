@@ -195,6 +195,7 @@ data class CloudVaultDocumentRewrapResult(
 // the size rule; the grouping is load-bearing, so suppress rather than fragment.
 @Suppress("LargeClass") // reason: cohesive crypto facade kept whole for Swift byte-parity (see note above); splitting scatters the AAD/constant parity seam.
 object CloudVaultCrypto {
+    const val AES_GCM_ALGORITHM: String = "AES-256-GCM"
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
     private const val SHA256_DIGEST_BYTES = 32
@@ -206,6 +207,10 @@ object CloudVaultCrypto {
     private const val P256_COORDINATE_BYTES = 32
     private const val P256_Y_COORDINATE_OFFSET = 33
     private const val WRAP_INFO = "OpenBurnBar-Escrow-v1"
+    private const val RECOVERY_SALT = "OpenBurnBar-Recovery-Salt-v1"
+    private const val RECOVERY_WRAP_INFO = "OpenBurnBar-Recovery-Wrap-v1"
+    private const val RECOVERY_KEY_GROUP_SIZE = 7
+    private const val RECOVERY_KEY_CHARACTER_COUNT = 35
     private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
     private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
     const val SIGNAL_ENVELOPE_FORMAT_VERSION: Int = 1
@@ -235,6 +240,7 @@ object CloudVaultCrypto {
     const val CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION: Int = 2
     const val TOKEN_HASH_VERSION: Int = 1
     const val SEMANTIC_HASH_VERSION: Int = 1
+    const val CURRENT_KEY_VERSION: Int = 1
 
     fun sealText(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultSealedText {
         val plaintext = text.toByteArray(Charsets.UTF_8)
@@ -924,6 +930,66 @@ object CloudVaultCrypto {
     /** Fresh 32-byte vault key — the Android mirror of Swift `CloudVaultCrypto.generateVaultKey()`. */
     fun generateVaultKey(): ByteArray = ByteArray(SHA256_DIGEST_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
 
+    fun generateRecoveryKey(): String {
+        val alphabet = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
+        val secureRandom = java.security.SecureRandom()
+        return CharArray(RECOVERY_KEY_CHARACTER_COUNT) { alphabet[secureRandom.nextInt(alphabet.length)] }
+            .asIterable()
+            .chunked(RECOVERY_KEY_GROUP_SIZE)
+            .joinToString("-") { it.joinToString("") }
+    }
+
+    data class RecoveryWrappedVaultKey(
+        val wrappedVaultKeyBase64: String,
+        val verificationHash: String,
+    )
+
+    fun deriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
+        val normalized = normalizedRecoveryKey(recoveryKey)
+        require(normalized.length >= 20) { "Recovery key is too short" }
+        return CloudVaultCryptoSearch.hkdfSha256(
+            normalized.toByteArray(Charsets.UTF_8),
+            RECOVERY_SALT.toByteArray(Charsets.UTF_8),
+            RECOVERY_WRAP_INFO.toByteArray(Charsets.UTF_8),
+            SHA256_DIGEST_BYTES,
+        )
+    }
+
+    fun wrapVaultKeyWithRecovery(vaultKey: ByteArray, recoveryKey: String): RecoveryWrappedVaultKey {
+        require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
+        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
+        val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        val combined = nonce + cipher.doFinal(vaultKey)
+        return RecoveryWrappedVaultKey(
+            wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(combined),
+            verificationHash = sha256Hex(wrappingKey),
+        )
+    }
+
+    fun unwrapVaultKeyWithRecovery(wrappedVaultKeyBase64: String, recoveryKey: String): ByteArray {
+        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
+        val combined = CloudVaultCryptoSupport.decodeBase64(wrappedVaultKeyBase64)
+        require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
+        val plaintext =
+            CloudVaultCryptoSupport.openAesGcm(
+                wrappingKey,
+                combined.copyOfRange(0, GCM_NONCE_BYTES),
+                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
+            )
+        require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
+        return plaintext
+    }
+
+    fun recoveryVerificationHash(recoveryKey: String): String = sha256Hex(deriveRecoveryWrappingKey(recoveryKey))
+
+    private fun normalizedRecoveryKey(recoveryKey: String): String {
+        return recoveryKey
+            .uppercase()
+            .filter { it.isLetterOrDigit() }
+    }
+
     /**
      * Wrap a 32-byte vault key to a recipient's P-256 escrow public key — the exact inverse of
      * [unwrapVaultKey] and the Android mirror of Swift `CloudVaultCrypto.wrapVaultKey`. Output is the
@@ -1052,6 +1118,21 @@ object AndroidCloudVaultKeyAccess {
                 "Cloud vault key is not active on this Android device yet. Approve this device from a " +
                     "Mac or iPhone before writing cloud chat content.",
             )
+
+    suspend fun keyForRecoverySetup(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey {
+        loadLocalKey(uid)?.let { local ->
+            return AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local))
+        }
+        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        AndroidEscrowDeviceRegistry(firestore).registerSelf(uid = uid, keypair = keypair)
+        unwrapExistingKey(uid, firestore, keypair)?.let { unwrapped ->
+            saveLocalKey(uid, unwrapped.keyData)
+            return unwrapped
+        }
+        val key = CloudVaultCrypto.generateVaultKey()
+        saveLocalKey(uid, key)
+        return AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
+    }
 
     suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()

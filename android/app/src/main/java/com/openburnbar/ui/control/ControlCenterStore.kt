@@ -2,7 +2,10 @@ package com.openburnbar.ui.control
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.FirebaseFunctionsException
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.domains.DataDomains
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -170,18 +173,62 @@ internal class ControlCenterStore(
         }
     }
 
-    fun confirmRecovery(recoveryId: String) {
+    fun setupRecoveryKey(recoveryKey: String, onDone: (String?) -> Unit = {}) {
         viewModelScope.launch {
             _recoveryBusy.value = true
             _error.value = null
             try {
-                functions.confirmRecovery(recoveryId)
+                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: error("Sign in before setting up recovery.")
+                val vaultKey = AndroidCloudVaultKeyAccess.keyForRecoverySetup(uid).keyData
+                val wrapped = CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey, recoveryKey)
+                val result =
+                    functions.setupRecovery(
+                        "recovery_key",
+                        mapOf(
+                            "algorithm" to CloudVaultCrypto.AES_GCM_ALGORITHM,
+                            "wrappedVaultKey" to wrapped.wrappedVaultKeyBase64,
+                            "verificationHash" to wrapped.verificationHash,
+                            "keyVersion" to CloudVaultCrypto.CURRENT_KEY_VERSION,
+                        ),
+                    )
+                val recoveryId = result["recoveryId"] as? String
+                loadRecovery()
+                onDone(recoveryId)
+            } catch (e: FirebaseFunctionsException) {
+                _error.value = e.localizedMessage
+                onDone(null)
+            } catch (e: Exception) {
+                _error.value = e.localizedMessage ?: "Recovery key setup failed."
+                onDone(null)
+            } finally {
+                _recoveryBusy.value = false
+            }
+        }
+    }
+
+    fun confirmRecovery(recoveryId: String, verificationHash: String? = null) {
+        viewModelScope.launch {
+            _recoveryBusy.value = true
+            _error.value = null
+            try {
+                functions.confirmRecovery(recoveryId, verificationHash)
                 loadRecovery()
             } catch (e: FirebaseFunctionsException) {
                 _error.value = e.localizedMessage
             } finally {
                 _recoveryBusy.value = false
             }
+        }
+    }
+
+    fun confirmRecoveryKey(recoveryId: String, recoveryKey: String) {
+        try {
+            confirmRecovery(
+                recoveryId = recoveryId,
+                verificationHash = CloudVaultCrypto.recoveryVerificationHash(recoveryKey),
+            )
+        } catch (e: Exception) {
+            _error.value = e.localizedMessage ?: "Recovery key confirmation failed."
         }
     }
 

@@ -49,7 +49,11 @@ internal class ControlCenterFunctions(
     suspend fun setupRecovery(method: String, payload: Map<String, Any>): Map<String, Any> =
         callMap("setupRecovery", mapOf("method" to method, "payload" to payload))
 
-    suspend fun confirmRecovery(recoveryId: String): Map<String, Any> = callMap("confirmRecovery", mapOf("recoveryId" to recoveryId))
+    suspend fun confirmRecovery(recoveryId: String, verificationHash: String? = null): Map<String, Any> {
+        val payload = mutableMapOf<String, Any>("recoveryId" to recoveryId)
+        verificationHash?.let { payload["verificationHash"] = it }
+        return callMap("confirmRecovery", payload)
+    }
 
     suspend fun listRecovery(): Map<String, Any> = callMap("listRecovery", emptyMap())
 

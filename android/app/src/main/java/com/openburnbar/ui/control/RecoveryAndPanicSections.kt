@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.People
@@ -25,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,7 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.domains.PensieveControlTokens
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraRadius
@@ -43,7 +47,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 /**
- * Recovery setup — forced before zero-knowledge mode. Supports a raw recovery
+ * Recovery setup — forced before zero-knowledge mode. Supports a generated recovery
  * key and split-knowledge recovery contacts, with delayed re-entry confirmation
  * (Apple Advanced Data Protection pattern): a freshly set method is "pending"
  * until the user confirms after a deliberate delay.
@@ -52,11 +56,14 @@ import com.openburnbar.ui.theme.AuroraType
 internal fun RecoverySection(
     methods: List<RecoveryMethod>,
     busy: Boolean,
-    onSetupKey: () -> Unit,
+    onSetupKey: (String) -> Unit,
     onSetupContact: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (RecoveryMethod, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var generatedRecoveryKey by remember { mutableStateOf<String?>(null) }
+    var keyToConfirm by remember { mutableStateOf<RecoveryMethod?>(null) }
+
     AuroraGlassCard(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,14 +89,25 @@ internal fun RecoverySection(
             if (methods.isEmpty()) {
                 Text("No recovery method yet.", style = AuroraType.body, color = PensieveControlTokens.textDim)
             } else {
-                methods.forEach { method -> RecoveryMethodRow(method = method, onConfirm = onConfirm) }
+                methods.forEach { method ->
+                    RecoveryMethodRow(
+                        method = method,
+                        onConfirm = {
+                            if (method.kind == "recovery_key") {
+                                keyToConfirm = method
+                            } else {
+                                onConfirm(method, null)
+                            }
+                        },
+                    )
+                }
             }
 
             ControlActionButton(
                 label = "Add a recovery key",
                 icon = Icons.Filled.Key,
                 enabled = !busy,
-                onClick = onSetupKey,
+                onClick = { generatedRecoveryKey = CloudVaultCrypto.generateRecoveryKey() },
             )
             ControlActionButton(
                 label = "Add a recovery contact",
@@ -99,10 +117,36 @@ internal fun RecoverySection(
             )
         }
     }
+
+    generatedRecoveryKey?.let { recoveryKey ->
+        GeneratedRecoveryKeyDialog(
+            recoveryKey = recoveryKey,
+            busy = busy,
+            onDismiss = { generatedRecoveryKey = null },
+            onRegenerate = { generatedRecoveryKey = CloudVaultCrypto.generateRecoveryKey() },
+            onConfirm = {
+                generatedRecoveryKey = null
+                onSetupKey(recoveryKey)
+            },
+        )
+    }
+
+    keyToConfirm?.let { method ->
+        RecoveryKeyEntryDialog(
+            title = "Confirm recovery key",
+            confirmLabel = "Confirm",
+            busy = busy,
+            onDismiss = { keyToConfirm = null },
+            onConfirm = { recoveryKey ->
+                keyToConfirm = null
+                onConfirm(method, recoveryKey)
+            },
+        )
+    }
 }
 
 @Composable
-private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Unit) {
+private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: () -> Unit) {
     val accent = if (method.confirmed) PensieveControlTokens.tierEndToEnd else PensieveControlTokens.brassBright
     Row(
         modifier =
@@ -128,10 +172,102 @@ private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Uni
                 "Confirm",
                 style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
                 color = PensieveControlTokens.brassBright,
-                modifier = Modifier.clickable { onConfirm(method.recoveryId) },
+                modifier = Modifier.clickable { onConfirm() },
             )
         }
     }
+}
+
+@Composable
+private fun GeneratedRecoveryKeyDialog(recoveryKey: String, busy: Boolean, onDismiss: () -> Unit, onRegenerate: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add recovery key", color = PensieveControlTokens.mercuryBright) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
+                Text(
+                    "Write this key down before registering it. It is generated locally and BurnBar will not show it again.",
+                    style = AuroraType.caption,
+                    color = PensieveControlTokens.textMute,
+                )
+                SelectionContainer {
+                    Text(
+                        recoveryKey,
+                        style = AuroraType.mono,
+                        color = PensieveControlTokens.tierEndToEnd,
+                        modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(PensieveControlTokens.tierEndToEnd.copy(alpha = 0.10f), RoundedCornerShape(AuroraRadius.SM.dp))
+                            .padding(AuroraSpacing.SM.dp),
+                    )
+                }
+                Text(
+                    "The raw key is only used on this device to wrap the vault key and derive a verification hash.",
+                    style = AuroraType.caption,
+                    color = PensieveControlTokens.textMute,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = onConfirm) {
+                Text("Register")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(enabled = !busy, onClick = onRegenerate) {
+                    Text("Regenerate")
+                }
+                TextButton(enabled = !busy, onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun RecoveryKeyEntryDialog(title: String, confirmLabel: String, busy: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var recoveryKey by remember { mutableStateOf("") }
+    val trimmed = recoveryKey.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, color = PensieveControlTokens.mercuryBright) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
+                OutlinedTextField(
+                    value = recoveryKey,
+                    onValueChange = { recoveryKey = it },
+                    label = { Text("Recovery key") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "The key is used locally to wrap the vault key and derive a verification hash. " +
+                        "The raw key is never sent.",
+                    style = AuroraType.caption,
+                    color = PensieveControlTokens.textMute,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && trimmed.isNotEmpty(),
+                onClick = { onConfirm(trimmed) },
+            ) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 /**

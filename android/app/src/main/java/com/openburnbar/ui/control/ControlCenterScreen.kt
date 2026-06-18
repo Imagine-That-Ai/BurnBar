@@ -275,9 +275,15 @@ private fun ControlCenterInventoryList(paneState: ControlCenterPaneState, store:
             RecoverySection(
                 methods = recovery,
                 busy = recoveryBusy,
-                onSetupKey = { store.setupRecovery("recovery_key", emptyMap()) },
+                onSetupKey = { store.setupRecoveryKey(it) },
                 onSetupContact = { store.setupRecovery("recovery_contact", emptyMap()) },
-                onConfirm = { store.confirmRecovery(it) },
+                onConfirm = { method, recoveryKey ->
+                    if (recoveryKey != null) {
+                        store.confirmRecoveryKey(method.recoveryId, recoveryKey)
+                    } else {
+                        store.confirmRecovery(method.recoveryId)
+                    }
+                },
             )
         }
         item {
