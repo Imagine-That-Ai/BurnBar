@@ -277,6 +277,60 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 0)
     }
 
+    func testBrowserGotoRejectsPrivateDNSResolutionBeforeDispatch() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory,
+            browserHostResolver: { _ in ["10.0.0.5"] }
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .manual)
+        let driver = try await makeEchoDriver(sessionId: sessionId, expectedRequestCount: 1)
+        _ = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        defer { Task { await driver.stop() } }
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserGoto,
+                arguments: .object([
+                    "url": .string("https://example.com/internal"),
+                    "timeoutMillis": .number(5_000)
+                ])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://example.com/internal"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+
+        XCTAssertEqual(response.status, .error)
+        XCTAssertEqual(approvals.requests.count, 1)
+        let denyReason = try XCTUnwrap(response.denyReason)
+        XCTAssertTrue(
+            denyReason.contains("anti-rebind"),
+            "Expected DNS anti-rebind rejection, got: \(denyReason)"
+        )
+
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries.first?.denyReason, ComputerUseRunCoordinator.auditReservationSentinel)
+        let completionDenyReason = try XCTUnwrap(entries.last?.denyReason)
+        XCTAssertTrue(
+            completionDenyReason.contains("anti-rebind"),
+            "Expected audit completion to record DNS anti-rebind rejection, got: \(completionDenyReason)"
+        )
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 0)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
     func testBrowserApprovalRejectDoesNotDispatchAndAuditsDenial() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let auditBaseDirectory = testAuditBaseDirectory()
@@ -856,13 +910,15 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         },
         macInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         macInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
-        auditBaseDirectory: URL? = nil
+        auditBaseDirectory: URL? = nil,
+        browserHostResolver: @escaping ComputerUseRunCoordinator.BrowserHostResolver = { _ in ["93.184.216.34"] }
     ) -> ComputerUseRunCoordinator {
         let auditBaseDirectory = auditBaseDirectory ?? testAuditBaseDirectory()
         return ComputerUseRunCoordinator(
             approvalIssuer: approvalIssuer,
             macInputDispatcher: macInputDispatcher,
             macInspectDispatcher: macInspectDispatcher,
+            browserHostResolver: browserHostResolver,
             macAppVersion: "test",
             auditBaseDirectory: auditBaseDirectory,
             logger: BurnBarDaemonLogger(category: "cu-coordinator-tests")

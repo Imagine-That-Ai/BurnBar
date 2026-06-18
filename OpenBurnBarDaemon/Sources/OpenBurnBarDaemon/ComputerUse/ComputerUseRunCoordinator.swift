@@ -48,6 +48,8 @@ public actor ComputerUseRunCoordinator {
         _ action: MacInspectAction
     ) async throws -> BurnBarJSONValue
 
+    public typealias BrowserHostResolver = @Sendable (_ host: String) -> [String]
+
     private struct ActiveSession {
         var state: ComputerUseSessionState
         var logger: ComputerUseAuditLogger
@@ -71,6 +73,7 @@ public actor ComputerUseRunCoordinator {
     private let approvalIssuer: ApprovalIssuer
     private let macInputDispatcher: MacInputDispatcher?
     private let macInspectDispatcher: MacInspectDispatcher?
+    private let browserHostResolver: BrowserHostResolver
     private let macAppVersion: String
     private let auditBaseDirectory: URL
     private let logger: BurnBarDaemonLogger
@@ -85,6 +88,7 @@ public actor ComputerUseRunCoordinator {
         approvalIssuer: @escaping ApprovalIssuer,
         macInputDispatcher: MacInputDispatcher? = nil,
         macInspectDispatcher: MacInspectDispatcher? = nil,
+        browserHostResolver: BrowserHostResolver? = nil,
         macAppVersion: String,
         auditBaseDirectory: URL,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-coordinator")
@@ -93,6 +97,7 @@ public actor ComputerUseRunCoordinator {
         self.approvalIssuer = approvalIssuer
         self.macInputDispatcher = macInputDispatcher
         self.macInspectDispatcher = macInspectDispatcher
+        self.browserHostResolver = browserHostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
         self.macAppVersion = macAppVersion
         self.auditBaseDirectory = auditBaseDirectory
         self.logger = logger
@@ -786,7 +791,11 @@ public actor ComputerUseRunCoordinator {
             // T-AI-04: validate the navigation target host AND its post-DNS
             // resolved IPs (anti-rebind) before navigating, so a hostname that
             // resolves to a loopback/private/metadata address is refused.
-            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(url, allowDataURL: true)
+            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(
+                url,
+                allowDataURL: true,
+                resolver: browserHostResolver
+            )
             response = try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
         case .key:
             guard let key = action.key else {
