@@ -22,6 +22,22 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Software factory PR loop
+
+BurnBar uses a software-factory PR loop to remove CI/review babysitting, not to launder sloppy work into `main`.
+
+Portable prompt and machine setup notes live in [`docs/SOFTWARE_FACTORY_PR_LOOP.md`](docs/SOFTWARE_FACTORY_PR_LOOP.md).
+
+The rule is not "always make tiny PRs." The rule is to ship the smallest reviewable coherent unit, with enough evidence for an independent reviewer to make a real decision.
+
+Use the right lane: fast lane for mechanical/narrow work; structured large lane for genuinely atomic cross-cutting work; spike lane for exploratory draft PRs; reject lane for known-broken, vague, mixed-goal, or mystery work. Agents should run cheap relevant local checks, commit, push, open a clear PR, include validation and risks in the PR body, request/label the factory review loop, then keep moving unless Alberto explicitly asked for CI babysitting. Large PRs are acceptable when splitting would make review or validation worse, but they need a review map, major areas touched, invariants preserved, validation matrix, known risks, and rollback or containment notes.
+
+The factory handles review, small fix loops, CI waiting, re-review, merge, close, and named blockers. Every selected PR should end as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
+
+Do **not** dump known-broken work into the factory. Do **not** open vague mega-PRs and expect automation to discover the intent. Big PRs must be coherent, well-mapped, and validated enough for an independent reviewer to reason about them. If cheap local checks fail, fix them before PR unless the failure is environmental and documented in the PR body. Do **not** treat Cursor Approval Agent output as approval evidence. Cursor/Bugbot/Cloud Agent may implement scoped fixes; Codex is the independent reviewer and approval gate; GitHub branch protection is the mechanical merge gate.
+
+---
+
 ## Repo knowledge lives in mem0 — query it first
 
 Search the BurnBar mem0 project before reading a wiki page or scanning `docs/`. The canonical Droid wiki (`droid-wiki/`) is mirrored there verbatim and refreshed on every commit. In Claude Code, call `mcp__mem0-burnbar__search_memories` with `filters={"AND":[{"user_id":"burnbar"}]}` and load only the chunks a query returns; each result's `metadata.source_path` names the full `droid-wiki/<path>` page to open when you need all of it. Export `MEM0_BURNBAR_API_KEY` to read and write the mirror. See [`AGENTS.md`](AGENTS.md) for the full directive.
