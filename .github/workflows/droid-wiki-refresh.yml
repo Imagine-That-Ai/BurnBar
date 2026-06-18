@@ -40,9 +40,10 @@ jobs:
 
       - name: Generate Wiki
         # Droid Core MiniMax M3 is the OpenBurnBar wiki default: cheap (0.12x
-        # multiplier) and fast for read-only codebase analysis + doc synthesis.
-        # Droid exec defaults to read-only/spec-mode. Do not pass --auto here:
-        # this push-to-main workflow exposes FACTORY_API_KEY to the process.
-        run: droid exec --model minimax-m3 "/wiki"
+        # multiplier) and fast for codebase analysis + doc synthesis. Droid
+        # 0.150.x requires an explicit autonomy level; medium is the least-power
+        # mode that allows the wiki skill to update generated docs without the
+        # destructive-command bypass.
+        run: droid exec --auto medium --model minimax-m3 "/wiki"
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
