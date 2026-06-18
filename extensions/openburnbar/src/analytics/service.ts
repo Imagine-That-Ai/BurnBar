@@ -123,7 +123,11 @@ export class OpenBurnBarAnalyticsService {
     if (typeof vscode.env.onDidChangeTelemetryEnabled === 'function') {
       context.subscriptions.push(
         vscode.env.onDidChangeTelemetryEnabled(() => {
-          telemetrySignalDidChange(graph);
+          telemetrySignalDidChange(graph, {
+            isFirstActivation,
+            hostKind,
+            surface: SURFACE.app
+          });
         })
       );
     }

@@ -91,7 +91,7 @@ struct AccountSettingsView: View {
             try await onDeleteAccount()
             Analytics.shared.track(.authAccountDeleted, ["outcome": "success"])
         } catch {
-            Analytics.shared.track(.authAccountDeleted, ["outcome": "failure", "error_code": "other"])
+            Analytics.shared.track(.authAccountDeleted, ["outcome": "failure"])
             authError = error.localizedDescription
         }
     }

@@ -145,6 +145,10 @@ export function revokeAnalyticsConsent(graph: AnalyticsGraph): void {
 }
 
 /** Re-evaluate gates after the VS Code telemetry switch flips (start or stop). */
-export function telemetrySignalDidChange(graph: AnalyticsGraph): void {
+export function telemetrySignalDidChange(
+  graph: AnalyticsGraph,
+  ctx: { isFirstActivation: boolean; hostKind: string; surface?: Surface }
+): void {
   graph.analytics.consentDidChange();
+  bootAnalytics(graph, ctx);
 }
