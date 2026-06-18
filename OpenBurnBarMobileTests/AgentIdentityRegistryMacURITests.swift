@@ -7,6 +7,17 @@ import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
 
+private enum MediaControlTestTimeout: Error, CustomStringConvertible {
+    case timedOut(String)
+
+    var description: String {
+        switch self {
+        case let .timedOut(message):
+            message
+        }
+    }
+}
+
 /// Mercury Phase 8 — locks in the `device://paired-mac/<id>` URI
 /// resolution path. The registry synthesizes a `AgentIdentity` for
 /// the Mercury Live tile only when `pairedMacPeer` is set, and the
@@ -512,6 +523,66 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testStaleSupervisorCannotCancelCurrentHeartbeatAfterRetarget() async throws {
+        let staleStream = MediaControlFakeStream(deferCloseReceiveUntilReleased: true)
+        let currentStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, connectionID in
+                connectionID == "conn-current" ? currentStream : staleStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01,
+            heartbeatInitialDelay: 0.01,
+            heartbeatInterval: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-stale")
+        try await waitUntilLive(coordinator)
+
+        coordinator.start(uid: "user-1", connectionID: "conn-current")
+        try await waitUntilLive(coordinator)
+        try await waitUntilHeartbeatCount(currentStream, count: 1, timeout: 5)
+
+        await staleStream.releaseDeferredCloseReceive()
+
+        try await waitUntilHeartbeatCount(currentStream, count: 2, timeout: 5)
+        XCTAssertEqual(coordinator.connectionID, "conn-current")
+        XCTAssertEqual(coordinator.phase, .live)
+        await coordinator.stop()
+    }
+
+    func testStartRetargetClosesStreamWhenStaleClassifySendIsCancelled() async throws {
+        let staleStream = MediaControlFakeStream(sendHangAfterFrameCount: 0)
+        let currentStream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let dialed = OSAllocatedUnfairLock(initialState: [String]())
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, connectionID in
+                dialed.withLock { $0.append(connectionID) }
+                return connectionID == "conn-current" ? currentStream : staleStream
+            },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-stale")
+        try await waitUntil {
+            dialed.withLock { $0.contains("conn-stale") }
+        }
+        coordinator.start(uid: "user-1", connectionID: "conn-current")
+
+        try await waitUntilLive(coordinator)
+
+        let staleCloseCount = await staleStream.closeCount
+        XCTAssertEqual(staleCloseCount, 1, "a superseded stream must close when classify send fails before promotion")
+        XCTAssertEqual(coordinator.connectionID, "conn-current")
+        XCTAssertEqual(coordinator.phase, .live)
+        await coordinator.stop()
+    }
+
     func testInteractiveMirrorSendSuppressesBackgroundPresenceHeartbeat() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -805,8 +876,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while coordinator.phase != .live {
             if Date() > deadline {
-                XCTFail("media control stream did not become live")
-                return
+                let message = "media control stream did not become live"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -819,8 +891,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while coordinator.lastInboundAt == nil {
             if Date() > deadline {
-                XCTFail("media control stream did not receive inbound traffic")
-                return
+                let message = "media control stream did not receive inbound traffic"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -833,8 +906,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while !predicate() {
             if Date() > deadline {
-                XCTFail("condition was not met before timeout")
-                return
+                let message = "condition was not met before timeout"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -848,8 +922,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while await stream.sentFrames.filter({ $0.type == .mediaPresenceHeartbeat }).count < count {
             if Date() > deadline {
-                XCTFail("expected \(count) heartbeat frame(s)")
-                return
+                let message = "expected \(count) heartbeat frame(s)"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -1005,14 +1080,21 @@ private actor MediaControlFakeStream: IrohRelayStream {
     private var inboundFrames: [HermesRealtimeRelayFrame] = []
     private var outboundFrames: [HermesRealtimeRelayFrame] = []
     private var receiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
+    private var deferredCloseReceiveWaiter: CheckedContinuation<HermesRealtimeRelayFrame?, Error>?
     private var isClosed = false
     private var closeCallCount = 0
     private let sendHangAfterFrameCount: Int?
     private let autoReplyToPresenceHeartbeat: Bool
+    private let deferCloseReceiveUntilReleased: Bool
 
-    init(sendHangAfterFrameCount: Int? = nil, autoReplyToPresenceHeartbeat: Bool = false) {
+    init(
+        sendHangAfterFrameCount: Int? = nil,
+        autoReplyToPresenceHeartbeat: Bool = false,
+        deferCloseReceiveUntilReleased: Bool = false
+    ) {
         self.sendHangAfterFrameCount = sendHangAfterFrameCount
         self.autoReplyToPresenceHeartbeat = autoReplyToPresenceHeartbeat
+        self.deferCloseReceiveUntilReleased = deferCloseReceiveUntilReleased
     }
 
     var sentFrames: [HermesRealtimeRelayFrame] { outboundFrames }
@@ -1056,8 +1138,13 @@ private actor MediaControlFakeStream: IrohRelayStream {
     func close() async {
         closeCallCount += 1
         isClosed = true
-        receiveWaiter?.resume(returning: nil)
-        receiveWaiter = nil
+        if deferCloseReceiveUntilReleased {
+            deferredCloseReceiveWaiter = receiveWaiter
+            receiveWaiter = nil
+        } else {
+            receiveWaiter?.resume(returning: nil)
+            receiveWaiter = nil
+        }
     }
 
     func pushInbound(_ frame: HermesRealtimeRelayFrame) {
@@ -1067,6 +1154,11 @@ private actor MediaControlFakeStream: IrohRelayStream {
             return
         }
         inboundFrames.append(frame)
+    }
+
+    func releaseDeferredCloseReceive() {
+        deferredCloseReceiveWaiter?.resume(returning: nil)
+        deferredCloseReceiveWaiter = nil
     }
 }
 
