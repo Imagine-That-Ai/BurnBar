@@ -19,7 +19,7 @@ struct AccountSettingsView: View {
     let onLinkApple: () async throws -> Void
     let onLinkGitHub: () async throws -> Void
     let onUpgradeToPremium: () -> Void
-    let onDeleteAccount: () -> Void
+    let onDeleteAccount: () async throws -> Void
     let onSignOut: () -> Void
 
     @State private var showDeleteConfirmation = false
@@ -30,6 +30,7 @@ struct AccountSettingsView: View {
     @State private var emailLinkError: String?
     @State private var authError: String?
     @State private var activeAuthProvider: AuthProviderAction?
+    @State private var isDeletingAccount = false
 
     var body: some View {
         SettingsDeepLinkScrollContainer(route: .accountRoot) { _ in
@@ -67,16 +68,31 @@ struct AccountSettingsView: View {
             emailLinkSheet
         }
         .onAppear {
-            Analytics.shared.track(.screenViewed, ["surface": "settings_account"])
+            Analytics.shared.track(.screenViewed, ["surface": "account"])
         }
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
-                Analytics.shared.track(.authAccountDeleted)
-                onDeleteAccount()
+                Task { await deleteAccount() }
             }
+            .disabled(isDeletingAccount)
         } message: {
             Text("This will permanently delete your account and all associated data. This action cannot be undone.")
+        }
+    }
+
+    @MainActor
+    private func deleteAccount() async {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        authError = nil
+        defer { isDeletingAccount = false }
+        do {
+            try await onDeleteAccount()
+            Analytics.shared.track(.authAccountDeleted, ["outcome": "success"])
+        } catch {
+            Analytics.shared.track(.authAccountDeleted, ["outcome": "failure", "error_code": "other"])
+            authError = error.localizedDescription
         }
     }
 

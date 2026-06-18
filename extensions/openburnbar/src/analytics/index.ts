@@ -108,6 +108,7 @@ export function bootAnalytics(
 ): void {
   graph.analytics.startIfConsented();
   if (!graph.consent.isGranted) return;
+  if (!graph.analytics.canSend) return;
   if (graph._booted.value) return; // session spine already emitted this process
   graph._booted.value = true;
   graph.analytics.track(EVENT.appSessionStarted, {

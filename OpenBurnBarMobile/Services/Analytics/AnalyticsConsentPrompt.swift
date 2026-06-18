@@ -76,6 +76,9 @@ struct AnalyticsConsentPrompt: View {
 
     private func decide(granted: Bool) {
         MobileAnalytics.setConsent(granted: granted)
+        if granted {
+            MobileAnalytics.trackSessionSpineAfterFirstGrant()
+        }
         isPresented = false
     }
 }

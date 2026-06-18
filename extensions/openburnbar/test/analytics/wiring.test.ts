@@ -63,6 +63,22 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(transport.events).toHaveLength(0);
   });
 
+  it('boot while host telemetry is off does not mark the analytics spine as fired', () => {
+    const telemetry = { isEnabled: false };
+    const graph = createAnalytics({ ...host(transport), telemetrySignal: telemetry });
+    grantAnalyticsConsent(graph, { isFirstActivation: true, hostKind: 'VS Code' });
+    expect(transport.startCalls).toBe(0);
+    expect(transport.events).toHaveLength(0);
+
+    telemetry.isEnabled = true;
+    bootAnalytics(graph, { isFirstActivation: true, hostKind: 'VS Code' });
+
+    const names = transport.events.map((e) => e.name);
+    expect(names).toContain(EVENT.appSessionStarted);
+    expect(names).toContain(EVENT.vscodeExtensionActivated);
+    expect(names).toContain(EVENT.screenViewed);
+  });
+
   it('grant emits grant + the lifecycle spine, with vscode super-properties', () => {
     const graph = createAnalytics(host(transport));
     grantAnalyticsConsent(graph, { isFirstActivation: true, hostKind: 'VS Code' });

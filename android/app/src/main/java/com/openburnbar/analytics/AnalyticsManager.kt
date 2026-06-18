@@ -24,6 +24,10 @@ object AnalyticsManager {
 
     @Volatile private var consentStore: AnalyticsConsentStore? = null
 
+    @Volatile private var anonymousDeviceId: String? = null
+
+    @Volatile private var currentSessionIsFirstLaunch: Boolean = false
+
     /** Per-app-session id (rotated each process launch); NOT a user id. */
     private val sessionId: String = UUID.randomUUID().toString()
 
@@ -38,6 +42,7 @@ object AnalyticsManager {
         val storage = SharedPreferencesConsentStorage(app)
         val store = AnalyticsConsentStore(storage)
         val deviceId = AnonymousDeviceId.getOrCreate(app)
+        anonymousDeviceId = deviceId
         val serverZone = if (BuildConfig.AMPLITUDE_SERVER_ZONE.equals("EU", ignoreCase = true)) {
             ServerZone.EU
         } else {
@@ -67,6 +72,16 @@ object AnalyticsManager {
 
     val isGranted: Boolean
         get() = consentStore?.isGranted ?: false
+
+    val analyticsConsentPayload: String?
+        get() = if (isGranted) AnalyticsConsent.GRANTED.raw else null
+
+    val analyticsDeviceIdPayload: String?
+        get() = if (isGranted) anonymousDeviceId else null
+
+    fun rememberLaunchContext(isFirstLaunch: Boolean) {
+        currentSessionIsFirstLaunch = isFirstLaunch
+    }
 
     /** Grant consent: persist, start the transport, emit consent.analytics.granted once. */
     fun grant() {
@@ -110,6 +125,10 @@ object AnalyticsManager {
                 "cold_start" to true.av(),
             ),
         )
+    }
+
+    fun trackCurrentSessionStartIfConsented() {
+        trackSessionStartIfConsented(isFirstLaunch = currentSessionIsFirstLaunch)
     }
 
     private fun superProperties(context: Context): Map<String, AnalyticsValue> {

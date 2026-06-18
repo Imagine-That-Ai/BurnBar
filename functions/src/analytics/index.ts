@@ -8,6 +8,7 @@
  * `granted` consent flag PROPAGATED from the client. Without that flag (or
  * without a configured key) the stream is dark — no SDK, no network.
  */
+import { createHash } from "node:crypto";
 import { ConsentSignal } from "./consent.js";
 import { ServerAnalytics, type AnalyticsProps, type EmitIdentity } from "./recorder.js";
 import { AmplitudeHttpTransport } from "./amplitudeTransport.js";
@@ -62,6 +63,11 @@ export function boundedAnalyticsDeviceId(raw: unknown): string {
   return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : "";
 }
 
+/** Stable Amplitude account identity: SHA-256(Firebase uid), never the raw uid. */
+export function analyticsUserIdForUid(uid: string): string {
+  return createHash("sha256").update(uid, "utf8").digest("hex");
+}
+
 /** Bounded enum of the entitlement families the server grants. */
 type EntitlementFamily = "burnbar_pro" | "burnbar_pro_max" | "burnbar_ultra" | "hosted_quota_sync" | "other";
 
@@ -89,7 +95,7 @@ interface SubscriptionGrantParams {
   consent: ConsentSignal;
   /** Anonymous per-install device id propagated from the client. */
   deviceId: string;
-  /** Authenticated server uid (this IS an authenticated action). */
+  /** Authenticated server uid; hashed before it enters the Amplitude envelope. */
   userId: string;
   entitlementFamily: EntitlementFamily;
   source: EntitlementSource;
@@ -129,7 +135,7 @@ export async function emitSubscriptionEntitlementGranted(params: SubscriptionGra
 
   const identity: EmitIdentity = {
     deviceId: params.deviceId,
-    userId: params.userId,
+    userId: analyticsUserIdForUid(params.userId),
     dedupeKey: params.dedupeKey,
     timeMs: params.timeMs,
   };

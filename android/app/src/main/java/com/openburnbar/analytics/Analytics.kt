@@ -21,6 +21,7 @@ class Analytics(
 ) {
     private val lock = Any()
     private var announcedGrant = false
+    private var currentUserId: String? = null
 
     /** The single invariant: granted consent AND a non-empty key. No key → dark. */
     private val canSend: Boolean
@@ -48,6 +49,7 @@ class Analytics(
         synchronized(lock) {
             if (canSend) {
                 ensureStarted()
+                transport.setUserId(currentUserId)
                 if (!announcedGrant) {
                     announcedGrant = true
                     emit(AnalyticsEvent.CONSENT_ANALYTICS_GRANTED, mapOf("consent_version" to CONSENT_VERSION.av()))
@@ -68,14 +70,17 @@ class Analytics(
         synchronized(lock) {
             if (!canSend) return
             ensureStarted()
+            transport.setUserId(currentUserId)
             announcedGrant = true
         }
     }
 
-    /** Identify the signed-in user. No-op unless [canSend]. */
+    /** Identify the signed-in user. Remembered while dark, forwarded only after [canSend]. */
     fun setUserId(id: String?) {
         synchronized(lock) {
+            currentUserId = id
             if (!canSend) return
+            ensureStarted()
             transport.setUserId(id)
         }
     }

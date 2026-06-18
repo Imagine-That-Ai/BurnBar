@@ -442,7 +442,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       await emitSubscriptionEntitlementGranted({
         consent: new ConsentSignal(request.data.analyticsConsent),
         deviceId: boundedAnalyticsDeviceId(request.data.analyticsDeviceId),
-        userId: uid, // authenticated action ⇒ user_id is permitted
+        userId: uid, // analytics helper hashes the Firebase uid before user_id leaves process
         entitlementFamily: entitlementFamilyOf(entitlementTarget.entitlementID),
         source: "google_play",
         platform: "android",

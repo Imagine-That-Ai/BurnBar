@@ -60,6 +60,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const lastRouteKey = useRef<string | null>(null);
   const booted = useRef(false);
+  const identityRequest = useRef(0);
   // Read the current path without making the boot effect depend on it (the boot
   // must run exactly once; later path changes are handled by the nav effect).
   const pathnameRef = useRef(pathname);
@@ -76,7 +77,8 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
 
   // Identify / clear the signed-in member (hashed uid only; gated downstream).
   useEffect(() => {
-    void identifyUser(user?.uid);
+    const request = ++identityRequest.current;
+    void identifyUser(user?.uid, () => request === identityRequest.current);
   }, [user?.uid]);
 
   // Track in-app navigation as nav.route.changed (bounded route keys, no raw URL).

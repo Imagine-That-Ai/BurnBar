@@ -48,7 +48,7 @@ fun AnalyticsConsentPrompt() {
         confirmButton = {
             TextButton(onClick = {
                 AnalyticsManager.grant()
-                AnalyticsManager.trackSessionStartIfConsented(isFirstLaunch = false)
+                AnalyticsManager.trackCurrentSessionStartIfConsented()
                 visible = false
             }) {
                 Text("Enable analytics")

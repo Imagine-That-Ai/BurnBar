@@ -105,11 +105,8 @@ struct OpenBurnBarMobileApp: App {
         // no-ops (and the SDK is never constructed) unless consent is granted and
         // an Amplitude key is configured — see MobileAnalytics / AmplitudeTransport.
         MobileAnalytics.shared.startIfConsented()
-        MobileAnalytics.shared.track(.appSessionStarted, [
-            "is_first_launch": .bool(!UserDefaults.standard.bool(forKey: "hasLaunchedBefore")),
-            "cold_start": .bool(true)
-        ])
-        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+        MobileAnalytics.trackSessionStartIfConsented()
+        MobileAnalytics.markLaunchSeen()
     }
 
     var body: some Scene {

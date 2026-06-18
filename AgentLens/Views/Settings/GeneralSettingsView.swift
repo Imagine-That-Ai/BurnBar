@@ -147,7 +147,7 @@ struct GeneralSettingsView: View {
         .background(DesignSystem.Colors.background)
         .navigationTitle("General")
         .onAppear {
-            Analytics.shared.track(.screenViewed, ["surface": "settings_general"])
+            Analytics.shared.track(.screenViewed, ["surface": "settings"])
         }
     }
 

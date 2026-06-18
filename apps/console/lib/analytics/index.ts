@@ -114,17 +114,21 @@ export function trackHandledError(errorCategory: string): void {
  * the raw uid, email, or name. No-op (and clears identity) when signed out.
  * Stored even while dark; only forwarded to the SDK after consent is granted.
  */
-export async function identifyUser(uid: string | null | undefined): Promise<void> {
+export async function identifyUser(
+  uid: string | null | undefined,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
   if (!uid) {
-    analytics.setUserId(undefined);
+    if (isCurrent()) analytics.setUserId(undefined);
     return;
   }
   const hashed = await hashUid(uid);
+  if (!isCurrent()) return;
   analytics.setUserId(hashed);
 }
 
 /** SHA-256(uid) → hex. WebCrypto is available in every supported browser. */
-async function hashUid(uid: string): Promise<string> {
+async function hashUid(uid: string): Promise<string | undefined> {
   try {
     const data = new TextEncoder().encode(`burnbar-console:${uid}`);
     const digest = await crypto.subtle.digest("SHA-256", data);
@@ -134,6 +138,6 @@ async function hashUid(uid: string): Promise<string> {
   } catch {
     // Subtle crypto unavailable (ancient/insecure context) — fall back to no id
     // rather than ever forwarding a raw uid.
-    return "anon";
+    return undefined;
   }
 }

@@ -8,10 +8,7 @@ import { readFileSync } from "node:fs";
  * by `next dev` and any server runtime) — asserted strictly below.
  *
  * The PRODUCTION CSP for the static export lives in the repo-root firebase.json
- * `console` hosting target, which this subproject does NOT own. Until the
- * orchestrator adds the same origins there, post-consent analytics will be
- * CSP-blocked in production. That requirement is tracked as a TODO so it is
- * visible without red-failing this owned subproject's suite.
+ * `console` hosting target, so the test asserts both runtime layers.
  */
 const AMPLITUDE_ORIGINS = ["https://api2.amplitude.com", "https://api.eu.amplitude.com"];
 
@@ -30,10 +27,17 @@ describe("analytics CSP — Amplitude egress", () => {
     expect(envExample).not.toMatch(/NEXT_PUBLIC_AMPLITUDE_API_KEY=\S/);
   });
 
-  // GATED on the orchestrator: add api2.amplitude.com + api.eu.amplitude.com to
-  // the `console` hosting target's connect-src in repo-root firebase.json (the
-  // `marketing` target already has them). Owned centrally, not by apps/console.
-  it.todo(
-    "firebase.json console hosting connect-src includes the Amplitude egress origins (orchestrator-owned)",
-  );
+  it("firebase.json console hosting connect-src includes the Amplitude egress origins", () => {
+    const firebase = JSON.parse(
+      readFileSync(new URL("../../../firebase.json", import.meta.url), "utf8"),
+    ) as { hosting?: Array<{ target?: string; headers?: Array<{ headers?: Array<{ value?: string }> }> }> };
+    const consoleTarget = firebase.hosting?.find((target) => target.target === "console");
+    const csp = consoleTarget?.headers
+      ?.flatMap((entry) => entry.headers ?? [])
+      .find((header) => header.value?.includes("connect-src"))?.value;
+    expect(csp).toBeTruthy();
+    for (const origin of AMPLITUDE_ORIGINS) {
+      expect(csp, `firebase console connect-src should include ${origin}`).toContain(origin);
+    }
+  });
 });

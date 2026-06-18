@@ -378,9 +378,7 @@ struct SettingsView: View {
                     router.path.removeAll()
                 },
                 onDeleteAccount: {
-                    Task { @MainActor in
-                        try? await accountManager.deleteCurrentUser()
-                    }
+                    try await accountManager.deleteCurrentUser()
                 },
                 onSignOut: {
                     try? accountManager.signOut()

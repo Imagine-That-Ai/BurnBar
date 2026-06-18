@@ -19,6 +19,9 @@ extension AnalyticsConsentStore {
 /// AND a key is present).
 @MainActor
 enum MobileAnalytics {
+    private static let launchMarkerKey = "hasLaunchedBefore"
+    static let currentSessionIsFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: launchMarkerKey)
+
     static let shared: Analytics = {
         let sessionId = UUID().uuidString
         let transport = AmplitudeTransport(
@@ -55,5 +58,24 @@ enum MobileAnalytics {
     static func setConsent(granted: Bool) {
         if granted { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
         shared.consentDidChange()
+    }
+
+    static func trackSessionStartIfConsented() {
+        shared.track(.appSessionStarted, [
+            "is_first_launch": .bool(currentSessionIsFirstLaunch),
+            "cold_start": .bool(true)
+        ])
+    }
+
+    static func trackSessionSpineAfterFirstGrant() {
+        trackSessionStartIfConsented()
+        shared.track(.screenViewed, [
+            "surface": .string("app"),
+            "is_first_view": .bool(true)
+        ])
+    }
+
+    static func markLaunchSeen() {
+        UserDefaults.standard.set(true, forKey: launchMarkerKey)
     }
 }

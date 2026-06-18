@@ -52,7 +52,7 @@ export class Analytics {
   /** The single invariant: granted consent AND a non-empty key AND every extra
    *  signal (VS Code telemetry) enabled. No key, declined/unset, or host
    *  telemetry off → dark. Checked on EVERY call. */
-  private get canSend(): boolean {
+  get canSend(): boolean {
     if (!this.opts.consent.isGranted) return false;
     if (this.opts.apiKey.length === 0) return false;
     for (const signal of this.opts.extraSignals ?? []) {

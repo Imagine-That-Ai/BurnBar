@@ -161,6 +161,23 @@ class AnalyticsConsentContractTest {
         assertEquals("hashed-account-id", transport.lastUserId)
     }
 
+    @Test
+    fun `setUserId before grant is replayed when consent opens`() {
+        val storage = InMemoryConsentStorage(null)
+        val store = AnalyticsConsentStore(storage)
+        val transport = FakeAnalyticsTransport()
+        val recorder = Analytics(store, transport, key, ::superProps)
+
+        recorder.setUserId("hashed-before-consent")
+        assertEquals("no user id may be forwarded while dark", 0, transport.userIdSetCount)
+
+        store.grant()
+        recorder.consentDidChange()
+
+        assertEquals("hashed-before-consent", transport.lastUserId)
+        assertEquals(1, transport.userIdSetCount)
+    }
+
     // ── RESUME WITHOUT RE-ANNOUNCE ──
 
     @Test

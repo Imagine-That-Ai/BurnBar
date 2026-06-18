@@ -174,7 +174,7 @@ struct DevicesAndSyncSettingsView: View {
         .background(DesignSystem.Colors.background)
         .navigationTitle(MacCopy.devicesAndSyncTitle)
         .onAppear {
-            Analytics.shared.track(.screenViewed, ["surface": "settings_devices_sync"])
+            Analytics.shared.track(.screenViewed, ["surface": "settings"])
         }
         .task { await deviceTrust.load() }
     }

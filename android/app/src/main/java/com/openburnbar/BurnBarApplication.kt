@@ -199,6 +199,7 @@ class BurnBarApplication : Application() {
         runCatching {
             com.openburnbar.analytics.AnalyticsManager.initialize(this)
             val isFirstLaunch = detectFirstLaunch()
+            com.openburnbar.analytics.AnalyticsManager.rememberLaunchContext(isFirstLaunch)
             com.openburnbar.analytics.AnalyticsManager.trackSessionStartIfConsented(isFirstLaunch)
             installAnalyticsIdentity()
         }.onFailure { Log.w("BurnBar", "Analytics init failed: ${it.message}") }

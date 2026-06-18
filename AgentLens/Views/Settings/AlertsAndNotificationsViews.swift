@@ -71,7 +71,7 @@ struct AlertsSettingsView: View {
         .background(DesignSystem.Colors.background)
         .navigationTitle("Alerts")
         .onAppear {
-            Analytics.shared.track(.screenViewed, ["surface": "settings_alerts"])
+            Analytics.shared.track(.screenViewed, ["surface": "settings"])
         }
     }
 }

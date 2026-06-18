@@ -8,7 +8,7 @@
  *   - `analyticsConsent: "granted"` but missing device id → NO event;
  *   - `analyticsConsent: "granted"` + device id → exactly ONE
  *     `subscription.entitlement.granted`, AFTER the entitlement write, with the
- *     bounded family/source/platform enums, the authenticated user_id, a dedup
+ *     bounded family/source/platform enums, the hashed authenticated user_id, a dedup
  *     key derived from the token HASH (never the raw token), and NO PII;
  *   - the consent gate runs through the REAL recorder + a fake transport, so the
  *     darkness is structural (the transport is never started pre-consent).
@@ -126,6 +126,10 @@ function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function userIdHash(uid: string): string {
+  return createHash("sha256").update(uid).digest("hex");
+}
+
 function req(data: Record<string, unknown>) {
   return { auth: { uid: UID }, data, rawRequest: { headers: {} } };
 }
@@ -222,7 +226,8 @@ describe("verifyGooglePlayBurnBarProSubscription — consent-gated analytics", (
     expect(e.name).toBe("subscription.entitlement.granted");
     expect(e.category).toBe("conversion_auth");
     expect(e.deviceId).toBe(DEVICE);
-    expect(e.userId).toBe(UID); // authenticated action ⇒ user_id allowed
+    expect(e.userId).toBe(userIdHash(UID)); // authenticated action ⇒ stable hashed user_id
+    expect(e.userId).not.toBe(UID);
     // dedup key is derived from the token HASH, never the raw token.
     expect(e.insertId).toBe(`gp_sub_${tokenHash(TOKEN)}`);
     expect(e.insertId).not.toContain(TOKEN);
@@ -239,6 +244,7 @@ describe("verifyGooglePlayBurnBarProSubscription — consent-gated analytics", (
     // PII / leakage sweep over the entire serialized event.
     const serialized = JSON.stringify(e);
     expect(serialized).not.toContain(TOKEN); // raw purchase token
+    expect(serialized).not.toContain(UID); // raw Firebase uid
     expect(serialized).not.toContain("@"); // no emails
     expect(serialized).not.toMatch(/users\//); // no Firestore paths
     // every property value is a string or boolean (no raw numbers on the wire).
