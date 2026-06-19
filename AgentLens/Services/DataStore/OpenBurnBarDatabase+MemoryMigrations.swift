@@ -12,8 +12,9 @@ extension OpenBurnBarDatabase {
             }
             if !agentMemoryColumns.contains("review_status") {
                 try db.alter(table: "agent_memories") { t in
-                    t.add(column: "review_status", .text).notNull().defaults(to: "approved")
+                    t.add(column: "review_status", .text).notNull().defaults(to: "quarantined")
                 }
+                try db.execute(sql: "UPDATE agent_memories SET review_status = 'approved' WHERE source_kind = 'code'")
             }
             if !agentMemoryColumns.contains("user_id") {
                 try db.alter(table: "agent_memories") { t in
@@ -102,6 +103,26 @@ extension OpenBurnBarDatabase {
                 sql: """
                 CREATE INDEX IF NOT EXISTS memory_embedding_refs_version_idx
                 ON memory_embedding_refs(embedding_version_id, dimension)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS memory_body_snapshots (
+                    id TEXT PRIMARY KEY,
+                    memory_id TEXT NOT NULL UNIQUE,
+                    body_ref TEXT NOT NULL UNIQUE,
+                    snapshot_json TEXT NOT NULL,
+                    body_hash TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS memory_body_snapshots_source_idx
+                ON memory_body_snapshots(source_kind, updated_at)
                 """
             )
             try db.execute(

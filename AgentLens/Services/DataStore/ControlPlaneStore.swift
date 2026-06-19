@@ -366,39 +366,35 @@ final class ControlPlaneStore: Sendable {
             citations: citations,
             createdAt: now
         )
-        let labelsJSON = try Self.auditLabelsJSON([
-            "memory_id": id,
-            "source_kind": MemorySourceKind.chat.rawValue,
-            "review_status": request.reviewStatus.rawValue,
-            "body_ref": bodyRef
-        ])
+        let auditLabels = [
+            "body_ref:\(bodyRef)",
+            "memory_id:\(id)",
+            "review_status:\(request.reviewStatus.rawValue)",
+            "source_kind:\(MemorySourceKind.chat.rawValue)"
+        ].sorted()
+        let labelsJSON = try Self.auditLabelsJSON(auditLabels)
 
         try await dbQueue.write { db in
             try db.execute(
                 sql: """
-                INSERT INTO project_memory_snapshots (
-                    projectSlug, projectDisplayName, snapshotJSON, contentHash,
-                    sourceSessionCount, sourceConversationCount, generatedAt, schemaVersion, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(projectSlug) DO UPDATE SET
-                    projectDisplayName = excluded.projectDisplayName,
-                    snapshotJSON = excluded.snapshotJSON,
-                    contentHash = excluded.contentHash,
-                    sourceSessionCount = excluded.sourceSessionCount,
-                    sourceConversationCount = excluded.sourceConversationCount,
-                    generatedAt = excluded.generatedAt,
-                    schemaVersion = excluded.schemaVersion,
-                    updatedAt = excluded.updatedAt
+                INSERT INTO memory_body_snapshots (
+                    id, memory_id, body_ref, snapshot_json, body_hash, source_kind, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(memory_id) DO UPDATE SET
+                    body_ref = excluded.body_ref,
+                    snapshot_json = excluded.snapshot_json,
+                    body_hash = excluded.body_hash,
+                    source_kind = excluded.source_kind,
+                    updated_at = excluded.updated_at
                 """,
                 arguments: [
                     snapshotSlug,
-                    "Chat memory \(id)",
+                    id,
+                    bodyRef,
                     snapshotJSON,
                     bodyHash,
-                    citations.map(\.threadLogicalID).uniqued().count,
-                    citations.map { $0.messageID ?? $0.crossDeviceHMAC }.uniqued().count,
+                    MemorySourceKind.chat.rawValue,
                     now,
-                    1,
                     now
                 ]
             )
@@ -441,7 +437,7 @@ final class ControlPlaneStore: Sendable {
                     ON CONFLICT(id) DO NOTHING
                     """,
                     arguments: [
-                        citation.id,
+                        Self.memoryProvenanceID(memoryID: id, citationID: citation.id),
                         id,
                         "chat_message",
                         citation.threadLogicalID,
@@ -456,21 +452,24 @@ final class ControlPlaneStore: Sendable {
                     ]
                 )
             }
-            let prevHash = try String.fetchOne(
+            let previousAudit = try Row.fetchOne(
                 db,
-                sql: "SELECT hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
+                sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
             )
-            let auditHash = Self.sha256Hex(
-                [
-                    prevHash ?? "",
-                    nowString,
-                    "app",
-                    "memory.add",
-                    "memory",
-                    storageProjectID,
-                    id,
-                    labelsJSON
-                ].joined(separator: "|")
+            let prevHash: String? = previousAudit?["hash"]
+            let previousSequence: Int = previousAudit?["seq"] ?? 0
+            let auditHash = try Self.sha256Hex(
+                Self.auditPayloadData(
+                    sequence: previousSequence + 1,
+                    timestamp: nowString,
+                    actor: "app",
+                    action: "memory.add",
+                    domain: "memory",
+                    projectID: storageProjectID,
+                    subjectID: id,
+                    labels: auditLabels,
+                    prevHash: prevHash
+                )
             )
             try db.execute(
                 sql: """
@@ -479,7 +478,7 @@ final class ControlPlaneStore: Sendable {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
-                    now,
+                    nowString,
                     "app",
                     "memory.add",
                     "memory",
@@ -542,8 +541,8 @@ final class ControlPlaneStore: Sendable {
         return try await dbQueue.read { db in
             guard let snapshotJSON = try String.fetchOne(
                 db,
-                sql: "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = ?",
-                arguments: [snapshotSlug]
+                sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE id = ? AND memory_id = ?",
+                arguments: [snapshotSlug, id]
             ),
                   let data = snapshotJSON.data(using: .utf8)
             else {
@@ -579,7 +578,7 @@ final class ControlPlaneStore: Sendable {
     }
 
     private static func memorySnapshotRef(_ slug: String) -> String {
-        "project_memory_snapshots:\(slug)"
+        "memory_body_snapshots:\(slug)"
     }
 
     private static func memoryStorageProjectID(for scope: MemoryScope) -> String {
@@ -613,18 +612,49 @@ final class ControlPlaneStore: Sendable {
         return json
     }
 
-    private static func auditLabelsJSON(_ labels: [String: String]) throws -> String {
-        let data = try JSONSerialization.data(
-            withJSONObject: labels.sorted { $0.key < $1.key }.reduce(into: [String: String]()) { acc, pair in
-                acc[pair.key] = pair.value
-            },
+    private static func memoryProvenanceID(memoryID: MemoryID, citationID: String) -> String {
+        "\(memoryID)#\(citationID)"
+    }
+
+    private static func auditLabelsJSON(_ labels: [String]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: labels.sorted(), options: [.sortedKeys])
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    private static func auditPayloadData(
+        sequence: Int,
+        timestamp: String,
+        actor: String,
+        action: String,
+        domain: String,
+        projectID: String?,
+        subjectID: String?,
+        labels: [String],
+        prevHash: String?
+    ) throws -> Data {
+        try JSONSerialization.data(
+            withJSONObject: [
+                "schema": "openburnbar.memory_audit.v2",
+                "seq": sequence,
+                "ts": timestamp,
+                "actor": actor,
+                "action": action,
+                "domain": domain,
+                "projectID": projectID.map { $0 as Any } ?? NSNull(),
+                "subjectID": subjectID.map { $0 as Any } ?? NSNull(),
+                "labels": labels.sorted(),
+                "prevHash": prevHash ?? ""
+            ],
             options: [.sortedKeys]
         )
-        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private static func sha256Hex(_ string: String) -> String {
         SHA256.hash(data: Data(string.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func iso8601String(_ date: Date) -> String {
@@ -649,12 +679,13 @@ final class ControlPlaneStore: Sendable {
         else {
             return nil
         }
+        let projectID: String? = sourceKind == .chat ? nil : row["project_id"]
         let scope = MemoryScope(
             userID: row["user_id"],
             agentID: row["agent_id"],
             runID: row["run_id"],
             appID: row["app_id"],
-            projectID: row["project_id"]
+            projectID: projectID
         )
         return Memory(
             id: id,
@@ -675,6 +706,7 @@ final class ControlPlaneStore: Sendable {
 
     private static func memoryCitation(from row: Row) -> MemoryCitation? {
         guard let id: String = row["id"],
+              let memoryID: String = row["memory_id"],
               let threadLogicalID: String = row["thread_logical_id"],
               let role: String = row["role"],
               let authoredAt = OpenBurnBarDatabase.parseDateValue(row["authored_at"]),
@@ -686,8 +718,9 @@ final class ControlPlaneStore: Sendable {
         else {
             return nil
         }
+        let publicCitationID = id.hasPrefix("\(memoryID)#") ? String(id.dropFirst(memoryID.count + 1)) : id
         return MemoryCitation(
-            id: id,
+            id: publicCitationID,
             threadLogicalID: threadLogicalID,
             messageID: row["message_id"],
             role: role,

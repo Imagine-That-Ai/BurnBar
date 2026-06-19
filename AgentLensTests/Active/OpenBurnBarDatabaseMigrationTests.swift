@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -124,6 +125,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 "memory_provenance",
                 "memory_extraction_jobs",
                 "memory_embedding_refs",
+                "memory_body_snapshots",
                 "memory_source_tombstones"
             ].map { table in
                 (table, try Self.tableExists(db, table))
@@ -140,7 +142,74 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("memory_provenance_memory_idx"))
         XCTAssertTrue(indexes.contains("memory_extraction_jobs_status_idx"))
         XCTAssertTrue(indexes.contains("memory_embedding_refs_version_idx"))
+        XCTAssertTrue(indexes.contains("memory_body_snapshots_source_idx"))
         XCTAssertTrue(indexes.contains("memory_source_tombstones_thread_idx"))
+    }
+
+    func test_v51ChatMemoryAuthority_quarantinesNewRowsByDefaultButPreservesLegacyCodeRows() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v50_project_code_memory_schema")
+        let legacyDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memories (
+                    id, project_id, kind, scope, confidence, body_ref, body_redacted,
+                    tags_json, source_path, valid_from, valid_to, superseded_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+                """,
+                arguments: [
+                    "legacy-code-memory",
+                    "project-1",
+                    "fact",
+                    "project",
+                    0.8,
+                    "ref",
+                    "redacted",
+                    "[]",
+                    nil,
+                    legacyDate,
+                    legacyDate,
+                    legacyDate
+                ]
+            )
+        }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let statuses = try await queue.write { db -> (legacy: String?, newDefault: String?) in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memories (
+                    id, project_id, kind, scope, confidence, body_ref, body_redacted,
+                    tags_json, source_path, valid_from, valid_to, superseded_by, created_at, updated_at,
+                    source_kind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+                """,
+                arguments: [
+                    "new-chat-memory",
+                    "chat:user",
+                    "fact",
+                    "chat",
+                    0.7,
+                    "ref",
+                    "redacted",
+                    "[]",
+                    nil,
+                    legacyDate,
+                    legacyDate,
+                    legacyDate,
+                    "chat"
+                ]
+            )
+            return (
+                try String.fetchOne(db, sql: "SELECT review_status FROM agent_memories WHERE id = 'legacy-code-memory'"),
+                try String.fetchOne(db, sql: "SELECT review_status FROM agent_memories WHERE id = 'new-chat-memory'")
+            )
+        }
+
+        XCTAssertEqual(statuses.legacy, "approved")
+        XCTAssertEqual(statuses.newDefault, "quarantined")
     }
 
     func test_chatMemoryAuthorityWritesAreDisabledByDefault() async throws {
@@ -199,12 +268,24 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(fetched?.id, "mem-pr1")
         XCTAssertEqual(fetched?.reviewStatus, .quarantined)
         XCTAssertEqual(fetched?.sourceKind, .chat)
-        XCTAssertEqual(fetched?.bodyRedacted, "project_memory_snapshots:memory-mem-pr1")
+        XCTAssertEqual(fetched?.bodyRedacted, "memory_body_snapshots:memory-mem-pr1")
         XCTAssertEqual(fetched?.citations, [citation])
+        XCTAssertEqual(
+            fetched?.scope,
+            MemoryScope(userID: "user-pr1", agentID: "agent-pr1", runID: "run-pr1", appID: "app-pr1"),
+            "Chat memory hydration must not expose the synthetic storage project_id as MemoryScope.projectID."
+        )
         let openedBody = try await store.openChatMemoryBody(id: written.id)
         XCTAssertEqual(openedBody, body)
 
-        let persistentPayloads = try await queue.read { db -> (agent: String, provenance: String, audit: String, snapshot: String) in
+        let persistentPayloads = try await queue.read { db -> (
+            agent: String,
+            provenance: String,
+            audit: String,
+            snapshot: String,
+            projectSnapshotCount: Int,
+            auditRow: Row?
+        ) in
             let agent = try String.fetchAll(
                 db,
                 sql: """
@@ -231,15 +312,68 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             ).joined(separator: "\n")
             let snapshot = try String.fetchAll(
                 db,
-                sql: "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-pr1'"
+                sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE id = 'memory-mem-pr1'"
             ).joined(separator: "\n")
-            return (agent, provenance, audit, snapshot)
+            let projectSnapshotCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-pr1'"
+            ) ?? 0
+            let auditRow = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT seq, ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
+                FROM memory_audit
+                WHERE subject_id = 'mem-pr1'
+                """
+            )
+            return (agent, provenance, audit, snapshot, projectSnapshotCount, auditRow)
         }
 
         XCTAssertFalse(persistentPayloads.agent.contains(body))
         XCTAssertFalse(persistentPayloads.provenance.contains(body))
         XCTAssertFalse(persistentPayloads.audit.contains(body))
         XCTAssertTrue(persistentPayloads.snapshot.contains(body))
+        XCTAssertEqual(persistentPayloads.projectSnapshotCount, 0)
+        try assertMemoryAuditRowRecomputes(persistentPayloads.auditRow)
+    }
+
+    func test_chatMemoryAuthorityProvenanceAllowsSameCitationIDAcrossDifferentMemories() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_100)
+        let citation = MemoryCitation(
+            id: "shared-citation",
+            threadLogicalID: "thread-shared",
+            messageID: "msg-shared",
+            role: "assistant",
+            authoredAt: now,
+            contentHash: "source-hash-shared",
+            crossDeviceHMAC: "hmac-shared"
+        )
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: "first fact", scope: MemoryScope(userID: "u"), citations: [citation]),
+            id: "mem-one",
+            now: now,
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: "second fact", scope: MemoryScope(userID: "u"), citations: [citation]),
+            id: "mem-two",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        let first = try await store.fetchChatMemoryAuthorityRecord(id: "mem-one")
+        let second = try await store.fetchChatMemoryAuthorityRecord(id: "mem-two")
+        XCTAssertEqual(first?.citations, [citation])
+        XCTAssertEqual(second?.citations, [citation])
+        let provenanceIDs = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM memory_provenance ORDER BY id")
+        }
+        XCTAssertEqual(provenanceIDs, ["mem-one#shared-citation", "mem-two#shared-citation"])
     }
 
     /// A database genuinely behind the latest migration must take a pre-migration
@@ -779,6 +913,45 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             arguments: [table]
         ) ?? 0
         return count > 0
+    }
+
+    private func assertMemoryAuditRowRecomputes(
+        _ row: Row?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        guard let row else {
+            XCTFail("Missing memory audit row", file: file, line: line)
+            return
+        }
+        let seq: Int = row["seq"]
+        let ts: String = row["ts"]
+        let actor: String = row["actor"]
+        let action: String = row["action"]
+        let domain: String = row["domain"]
+        let projectID: String? = row["project_id"]
+        let subjectID: String? = row["subject_id"]
+        let prevHash: String? = row["prev_hash"]
+        let storedHash: String = row["hash"]
+        let labelsJSON: String = row["labels_json"]
+        let labels = try JSONDecoder().decode([String].self, from: Data(labelsJSON.utf8))
+        let payload = try JSONSerialization.data(
+            withJSONObject: [
+                "schema": "openburnbar.memory_audit.v2",
+                "seq": seq,
+                "ts": ts,
+                "actor": actor,
+                "action": action,
+                "domain": domain,
+                "projectID": projectID.map { $0 as Any } ?? NSNull(),
+                "subjectID": subjectID.map { $0 as Any } ?? NSNull(),
+                "labels": labels,
+                "prevHash": prevHash ?? ""
+            ],
+            options: [.sortedKeys]
+        )
+        let recomputed = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(storedHash, recomputed, file: file, line: line)
     }
 
     nonisolated private static func columnNames(_ db: Database, table: String) throws -> Set<String> {

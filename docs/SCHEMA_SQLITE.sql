@@ -222,7 +222,7 @@ CREATE TABLE agent_memories (
   scope         TEXT NOT NULL,
   confidence    REAL NOT NULL,
   body_ref      TEXT NOT NULL,
-  body_redacted TEXT NOT NULL, -- Project Memory snapshot ref; raw body lives in snapshotJSON
+  body_redacted TEXT NOT NULL, -- Sealed body ref; chat bodies live in memory_body_snapshots
   tags_json     TEXT NOT NULL,
   source_path   TEXT,
   valid_from    TEXT NOT NULL,
@@ -231,7 +231,7 @@ CREATE TABLE agent_memories (
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   source_kind   TEXT NOT NULL DEFAULT 'code',
-  review_status TEXT NOT NULL DEFAULT 'approved',
+  review_status TEXT NOT NULL DEFAULT 'quarantined',
   user_id       TEXT,
   agent_id      TEXT,
   run_id        TEXT,
@@ -287,6 +287,19 @@ CREATE TABLE memory_embedding_refs (
 );
 
 CREATE INDEX memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension);
+
+CREATE TABLE memory_body_snapshots (
+  id            TEXT NOT NULL PRIMARY KEY,
+  memory_id     TEXT NOT NULL UNIQUE,
+  body_ref      TEXT NOT NULL UNIQUE,
+  snapshot_json TEXT NOT NULL,
+  body_hash     TEXT NOT NULL,
+  source_kind   TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE INDEX memory_body_snapshots_source_idx ON memory_body_snapshots(source_kind, updated_at);
 
 CREATE TABLE memory_source_tombstones (
   id                TEXT NOT NULL PRIMARY KEY,
