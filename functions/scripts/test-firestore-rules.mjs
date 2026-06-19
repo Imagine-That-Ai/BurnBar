@@ -187,6 +187,13 @@ function sealedBlob(overrides = {}) {
   };
 }
 
+function sealedBlobAt(uid, collection, docID, field, overrides = {}) {
+  return sealedBlob({
+    aad: cloudVaultAAD(uid, collection, docID, field),
+    ...overrides,
+  });
+}
+
 async function seedCloudVaultState(uid, vaultKeyID = TEST_VAULT_KEY_ID) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), `users/${uid}/cloud_vault_state/current`), {
@@ -4793,6 +4800,109 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
   await assertSucceeds(getDoc(doc(db, manifestPath)));
   // A cross-user read of another member's manifest is denied.
   await assertFails(getDoc(doc(intruder, manifestPath)));
+});
+
+// T19 — memory_facts and memory_forget_receipts carry sealed facts plus opaque
+// 64-hex HMAC handles only. Source HMAC lists are bounded and per-entry checked
+// so clients cannot smuggle plaintext source refs through list values.
+test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists", async () => {
+  const ownerUid = "memory-owner";
+  const db = authedDb(ownerUid);
+  const timestamp = Timestamp.fromDate(new Date("2026-06-04T00:00:00.000Z"));
+  const sourceRefHmac = "a".repeat(64);
+
+  const memoryFact = (docID, overrides = {}) => ({
+    uid: ownerUid,
+    docID,
+    schemaVersion: 1,
+    sourceKind: "chat",
+    kind: "fact",
+    reviewStatus: "approved",
+    sealedMemory: sealedBlobAt(ownerUid, "memory_facts", docID, "sealedMemory"),
+    sourceRefHmacs: [sourceRefHmac],
+    citationCount: 1,
+    validFrom: timestamp,
+    updatedAt: timestamp,
+    replicatedAt: timestamp,
+    ...overrides,
+  });
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-ok`), memoryFact("fact-ok"))
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_facts/fact-plaintext-source`),
+      memoryFact("fact-plaintext-source", {
+        sourceRefHmacs: [sourceRefHmac, "thread/message/plaintext"],
+        citationCount: 2,
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_facts/fact-uppercase-source`),
+      memoryFact("fact-uppercase-source", {
+        sourceRefHmacs: ["A".repeat(64)],
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_facts/fact-object-source`),
+      memoryFact("fact-object-source", {
+        sourceRefHmacs: [{ plaintext: "message-id" }],
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_facts/fact-too-many-sources`),
+      memoryFact("fact-too-many-sources", {
+        sourceRefHmacs: Array.from({ length: 51 }, (_, index) => (index % 10).toString().repeat(64)),
+        citationCount: 50,
+      })
+    )
+  );
+
+  const factReceipt = (receiptID, overrides = {}) => ({
+    uid: ownerUid,
+    receiptID,
+    schemaVersion: 1,
+    memoryIdHmac: "b".repeat(64),
+    sourceRefHmacs: [sourceRefHmac],
+    reason: "user_delete",
+    createdAt: timestamp,
+    replicatedAt: timestamp,
+    ...overrides,
+  });
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-fact-ok`),
+      factReceipt("receipt-fact-ok")
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-fact-plaintext-source`),
+      factReceipt("receipt-fact-plaintext-source", {
+        sourceRefHmacs: [sourceRefHmac, "thread/message/plaintext"],
+      })
+    )
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-source-ok`), {
+      uid: ownerUid,
+      receiptID: "receipt-source-ok",
+      schemaVersion: 1,
+      sourceRefHmac,
+      reason: "clear_history",
+      createdAt: timestamp,
+      replicatedAt: timestamp,
+    })
+  );
 });
 
 test("rules test environment is isolated", () => {
