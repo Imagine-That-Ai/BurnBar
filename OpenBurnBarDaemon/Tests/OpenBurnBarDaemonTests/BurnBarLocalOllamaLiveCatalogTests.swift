@@ -154,11 +154,14 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         let cloudIDs = Set(cloudRows.map(\.id))
         XCTAssertTrue(cloudIDs.contains("kimi-k2.7-code:cloud"))
         XCTAssertTrue(cloudIDs.contains("glm-5.2:cloud"))
-        XCTAssertTrue(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.routeEligible == true)
-        XCTAssertTrue(cloudRows.first { $0.id == "glm-5.2:cloud" }?.routeEligible == true)
-        XCTAssertTrue(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.modelCapabilities?.supportsImageInput == true)
+
+        let kimi = try XCTUnwrap(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" })
+        let glm = try XCTUnwrap(cloudRows.first { $0.id == "glm-5.2:cloud" })
+        XCTAssertTrue(kimi.routeEligible)
+        XCTAssertTrue(glm.routeEligible)
+        XCTAssertEqual(kimi.modelCapabilities?.supportsImageInput, true)
         XCTAssertEqual(
-            cloudRows.first { $0.id == "glm-5.2:cloud" }?.modelCapabilities?.contextWindowTokens,
+            glm.modelCapabilities?.contextWindowTokens,
             976_000
         )
     }

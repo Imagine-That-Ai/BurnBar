@@ -304,6 +304,29 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(aliasRoute.resolvedModelID, "claude-opus-4-7")
     }
 
+    func testRouterUsesCodexAliasForAdvertisedVirtualFamilyModelIDs() async throws {
+        let harness = try makeHarness(name: "codex-family-wire-id")
+        try await harness.configStore.setSecret("codex-token", for: "codex")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "codex",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: ["codex-gpt-5.5-family"]
+            )
+        )
+
+        let familyRoute = try await harness.router.route(modelName: "codex-gpt-5.5-family")
+        XCTAssertEqual(familyRoute.requestedModel, "codex-gpt-5.5-family")
+        XCTAssertEqual(familyRoute.resolvedModelID, "gpt-5.5")
+        XCTAssertEqual(familyRoute.canonicalModelID, "gpt-5.5")
+        XCTAssertEqual(familyRoute.modelCapabilityClassID, "openai:codex")
+
+        let aliasRoute = try await harness.router.route(modelName: "gpt-5.5")
+        XCTAssertEqual(aliasRoute.resolvedModelID, "gpt-5.5")
+        XCTAssertEqual(aliasRoute.canonicalModelID, "gpt-5.5")
+    }
+
     func testRouterRoutesClaudeOpus48WireIDsThroughOwnFamily() async throws {
         let harness = try makeHarness(name: "anthropic-opus-48-wire-id")
         try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
