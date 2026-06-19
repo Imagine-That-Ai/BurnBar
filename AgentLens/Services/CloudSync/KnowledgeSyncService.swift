@@ -524,8 +524,7 @@ final class MemoryCloudSyncService: Sendable {
 
     @discardableResult
     func syncApprovedMemories(uid: String, vaultKey: Data, now: Date = Date()) async throws -> MemoryCloudSyncResult {
-        let active = try await store.fetchActiveChatMemoryAuthorityRecords()
-            .filter { $0.scope.userID == uid }
+        let candidates = try await store.cloudSyncCandidateChatMemories(userID: uid)
         let eligible = try await store.cloudSyncEligibleChatMemories(userID: uid)
         let userDocument = firestoreGateway.collection("users").document(uid)
         let factCollection = userDocument.collection("memory_facts")
@@ -547,7 +546,23 @@ final class MemoryCloudSyncService: Sendable {
 
         var forgetReceipts = 0
         var deletedFacts = 0
-        for tombstone in try await store.fetchMemorySourceTombstones() {
+        for tombstone in try await store.fetchPendingMemoryFactTombstones(userID: uid) {
+            let encoded = try Self.encodeFactForgetReceipt(
+                tombstone: tombstone,
+                uid: uid,
+                vaultKey: vaultKey,
+                now: now
+            )
+            try await receiptCollection.document(encoded.docID).setData(encoded.data, merge: true)
+            forgetReceipts += 1
+            deletedFacts += try await Self.deleteCloudFact(
+                memoryID: tombstone.memoryID,
+                vaultKey: vaultKey,
+                from: factCollection
+            )
+            try await store.markMemoryFactTombstoneReplicated(id: tombstone.id, now: now)
+        }
+        for tombstone in try await store.fetchPendingMemorySourceTombstones(userID: uid) {
             let encoded = try Self.encodeForgetReceipt(
                 tombstone: tombstone,
                 uid: uid,
@@ -560,22 +575,12 @@ final class MemoryCloudSyncService: Sendable {
                 matchingSourceRefHmac: encoded.sourceRefHmac,
                 from: factCollection
             )
-        }
-        for tombstone in try await store.fetchMemoryFactTombstones(userID: uid) {
-            let encoded = try Self.encodeFactForgetReceipt(
-                tombstone: tombstone,
-                uid: uid,
-                vaultKey: vaultKey,
-                now: now
-            )
-            try await receiptCollection.document(encoded.docID).setData(encoded.data, merge: true)
-            forgetReceipts += 1
-            deletedFacts += try await Self.deleteCloudFact(documentID: encoded.memoryFactDocID, from: factCollection)
+            try await store.markMemorySourceTombstoneReplicated(id: tombstone.id, now: now)
         }
 
         return MemoryCloudSyncResult(
             uploaded: uploaded,
-            skipped: max(0, active.count - eligible.count),
+            skipped: max(0, candidates.count - eligible.count),
             forgetReceipts: forgetReceipts,
             cloudFactsDeleted: deletedFacts
         )
@@ -588,7 +593,7 @@ final class MemoryCloudSyncService: Sendable {
         vaultKey: Data,
         now: Date
     ) throws -> (docID: String, data: [String: Any]) {
-        let docID = try memoryFactDocID(memoryID: memory.id, vaultKey: vaultKey)
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memory.id)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
             schemaVersion: 1,
             memoryID: memory.id,
@@ -673,17 +678,27 @@ final class MemoryCloudSyncService: Sendable {
         uid: String,
         vaultKey: Data,
         now: Date
-    ) throws -> (docID: String, memoryFactDocID: String, data: [String: Any]) {
-        let memoryFactDocID = try memoryFactDocID(memoryID: tombstone.memoryID, vaultKey: vaultKey)
-        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact-forget:\(tombstone.id)", keyData: vaultKey)
+    ) throws -> (docID: String, data: [String: Any]) {
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-forget:\(tombstone.id)", keyData: vaultKey)
+        let memoryIDHmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(tombstone.memoryID)", keyData: vaultKey)
+        let rawSourceRefHmacs = try tombstone.sourceRefs.map {
+            try sourceRefHmac(
+                threadLogicalID: $0.threadLogicalID,
+                messageID: $0.messageID,
+                contentHash: $0.contentHash,
+                vaultKey: vaultKey
+            )
+        }
+        var seenSourceRefs = Set<String>()
+        let sourceRefHmacs = rawSourceRefHmacs.filter { seenSourceRefs.insert($0).inserted }
         return (
             docID,
-            memoryFactDocID,
             [
                 "uid": uid,
                 "receiptID": docID,
                 "schemaVersion": 1,
-                "memoryFactDocID": memoryFactDocID,
+                "memoryIdHmac": memoryIDHmac,
+                "sourceRefHmacs": sourceRefHmacs,
                 "reason": tombstone.reason,
                 "createdAt": tombstone.createdAt,
                 "replicatedAt": now
@@ -701,10 +716,6 @@ final class MemoryCloudSyncService: Sendable {
             "memory-source:\(threadLogicalID)|\(messageID ?? "")|\(contentHash ?? "")",
             keyData: vaultKey
         )
-    }
-
-    private static func memoryFactDocID(memoryID: MemoryID, vaultKey: Data) throws -> String {
-        try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memoryID)", keyData: vaultKey)
     }
 
     private static func deleteCloudFacts(
@@ -726,12 +737,14 @@ final class MemoryCloudSyncService: Sendable {
     }
 
     private static func deleteCloudFact(
-        documentID: String,
+        memoryID: MemoryID,
+        vaultKey: Data,
         from collection: CloudSyncCollectionGateway
     ) async throws -> Int {
-        let document = collection.document(documentID)
-        guard try await document.getData() != nil else { return 0 }
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memoryID)", keyData: vaultKey)
+        let document = collection.document(docID)
+        let existed = try await document.getData() != nil
         try await document.deleteDocument()
-        return 1
+        return existed ? 1 : 0
     }
 }

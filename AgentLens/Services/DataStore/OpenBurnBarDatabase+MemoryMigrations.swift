@@ -183,22 +183,42 @@ extension OpenBurnBarDatabase {
                 """
             )
         }
-        migrator.registerMigration("v53_memory_fact_tombstones") { db in
+        migrator.registerMigration("v53_memory_forget_outbox") { db in
+            let sourceColumns = try Row.fetchAll(db, sql: "PRAGMA table_info(memory_source_tombstones)")
+                .compactMap { $0["name"] as? String }
+            if !sourceColumns.contains("user_id") {
+                try db.alter(table: "memory_source_tombstones") { t in
+                    t.add(column: "user_id", .text)
+                }
+            }
+            if !sourceColumns.contains("replicated_at") {
+                try db.alter(table: "memory_source_tombstones") { t in
+                    t.add(column: "replicated_at", .text)
+                }
+            }
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS memory_source_tombstones_pending_idx
+                ON memory_source_tombstones(user_id, replicated_at, created_at)
+                """
+            )
             try db.execute(
                 sql: """
                 CREATE TABLE IF NOT EXISTS memory_fact_tombstones (
                     id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
                     memory_id TEXT NOT NULL,
-                    user_id TEXT,
+                    source_refs_json TEXT NOT NULL,
                     reason TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    replicated_at TEXT
                 )
                 """
             )
             try db.execute(
                 sql: """
-                CREATE INDEX IF NOT EXISTS memory_fact_tombstones_memory_idx
-                ON memory_fact_tombstones(memory_id)
+                CREATE INDEX IF NOT EXISTS memory_fact_tombstones_pending_idx
+                ON memory_fact_tombstones(user_id, replicated_at, created_at)
                 """
             )
         }

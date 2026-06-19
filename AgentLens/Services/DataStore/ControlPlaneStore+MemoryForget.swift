@@ -4,15 +4,33 @@ import Foundation
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
-    struct MemoryFactTombstoneRecord: Sendable, Equatable {
+    struct MemorySourceTombstoneRecord: Equatable, Sendable {
         let id: String
-        let memoryID: MemoryID
         let userID: String?
+        let threadLogicalID: String
+        let messageID: String?
+        let contentHash: String?
+        let reason: String
+        let createdAt: Date
+    }
+
+    struct MemoryFactTombstoneSourceRef: Codable, Equatable, Sendable {
+        let threadLogicalID: String
+        let messageID: String?
+        let contentHash: String
+    }
+
+    struct MemoryFactTombstoneRecord: Equatable, Sendable {
+        let id: String
+        let userID: String
+        let memoryID: MemoryID
+        let sourceRefs: [MemoryFactTombstoneSourceRef]
         let reason: String
         let createdAt: Date
     }
 
     func recordMemorySourceTombstone(
+        userID: String?,
         threadLogicalID: String,
         messageID: String?,
         contentHash: String?,
@@ -29,30 +47,11 @@ extension ControlPlaneStore {
             try Self.insertMemorySourceTombstone(
                 db: db,
                 id: id,
+                userID: userID,
                 threadLogicalID: threadLogicalID,
                 messageID: messageID,
                 contentHash: contentHash,
                 reason: reason,
-                now: now
-            )
-        }
-        return id
-    }
-
-    func recordMemoryFactTombstone(
-        memoryID: MemoryID,
-        userID: String? = nil,
-        reason: String,
-        now: Date = Date()
-    ) async throws -> String {
-        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason
-        let id = Self.memoryFactTombstoneID(memoryID: memoryID, reason: normalizedReason)
-        try await dbQueue.write { db in
-            try Self.insertMemoryFactTombstone(
-                db: db,
-                memoryID: memoryID,
-                userID: userID,
-                reason: normalizedReason,
                 now: now
             )
         }
@@ -114,67 +113,74 @@ extension ControlPlaneStore {
         }
     }
 
-    func fetchMemorySourceTombstones() async throws -> [MemorySourceTombstoneRecord] {
+    func cloudSyncCandidateChatMemories(userID: String) async throws -> [Memory] {
+        try await fetchActiveChatMemoryAuthorityRecords()
+            .filter { memory in
+                memory.reviewStatus == .approved &&
+                memory.validTo == nil &&
+                memory.scope.userID == userID
+            }
+    }
+
+    func cloudSyncEligibleChatMemories(userID: String) async throws -> [Memory] {
+        var eligible: [Memory] = []
+        for memory in try await cloudSyncCandidateChatMemories(userID: userID) {
+            guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
+            eligible.append(memory)
+        }
+        return eligible
+    }
+
+    func fetchPendingMemorySourceTombstones(userID: String) async throws -> [MemorySourceTombstoneRecord] {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
                 SELECT *
                 FROM memory_source_tombstones
+                WHERE user_id = ?
+                  AND replicated_at IS NULL
                 ORDER BY created_at ASC, id ASC
-                """
+                """,
+                arguments: [userID]
             )
             return rows.compactMap(Self.memorySourceTombstone(from:))
         }
     }
 
-    func fetchMemoryFactTombstones(userID: String? = nil) async throws -> [MemoryFactTombstoneRecord] {
+    func fetchPendingMemoryFactTombstones(userID: String) async throws -> [MemoryFactTombstoneRecord] {
         try await dbQueue.read { db in
-            var predicates: [String] = []
-            var arguments: [any DatabaseValueConvertible] = []
-            if let userID {
-                predicates.append("user_id = ?")
-                arguments.append(userID)
-            }
-            let whereClause = predicates.isEmpty ? "" : "WHERE \(predicates.joined(separator: " AND "))"
             let rows = try Row.fetchAll(
                 db,
                 sql: """
                 SELECT *
                 FROM memory_fact_tombstones
-                \(whereClause)
+                WHERE user_id = ?
+                  AND replicated_at IS NULL
                 ORDER BY created_at ASC, id ASC
                 """,
-                arguments: StatementArguments(arguments)
+                arguments: [userID]
             )
             return rows.compactMap(Self.memoryFactTombstone(from:))
         }
     }
 
-    func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
-        let ids = try await dbQueue.read { db in
-            var predicates = ["source_kind = ?", "project_id = ?"]
-            var arguments: [any DatabaseValueConvertible] = [
-                MemorySourceKind.chat.rawValue,
-                Self.memoryStorageProjectID(for: scope)
-            ]
-            Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
-            return try String.fetchAll(
-                db,
-                sql: """
-                SELECT id
-                FROM agent_memories
-                WHERE \(predicates.joined(separator: " AND "))
-                ORDER BY valid_from ASC, id ASC
-                """,
-                arguments: StatementArguments(arguments)
+    func markMemorySourceTombstoneReplicated(id: String, now: Date = Date()) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE memory_source_tombstones SET replicated_at = ? WHERE id = ?",
+                arguments: [now, id]
             )
         }
-        var deleted = 0
-        for id in ids where try await deleteChatMemoryAuthorityRecord(id: id, now: now) {
-            deleted += 1
+    }
+
+    func markMemoryFactTombstoneReplicated(id: String, now: Date = Date()) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE memory_fact_tombstones SET replicated_at = ? WHERE id = ?",
+                arguments: [now, id]
+            )
         }
-        return deleted
     }
 
     func memoryHasTombstonedSource(id: MemoryID) async throws -> Bool {
@@ -199,6 +205,7 @@ extension ControlPlaneStore {
     static func insertMemorySourceTombstone(
         db: Database,
         id: String,
+        userID: String?,
         threadLogicalID: String,
         messageID: String?,
         contentHash: String?,
@@ -208,12 +215,17 @@ extension ControlPlaneStore {
         try db.execute(
             sql: """
             INSERT INTO memory_source_tombstones (
-                id, thread_logical_id, message_id, content_hash, reason, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO NOTHING
+                id, user_id, thread_logical_id, message_id, content_hash, reason, created_at, replicated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                user_id = excluded.user_id,
+                reason = excluded.reason,
+                created_at = excluded.created_at,
+                replicated_at = NULL
             """,
             arguments: [
                 id,
+                userID,
                 threadLogicalID,
                 messageID,
                 contentHash,
@@ -225,24 +237,40 @@ extension ControlPlaneStore {
 
     static func insertMemoryFactTombstone(
         db: Database,
-        memoryID: MemoryID,
-        userID: String?,
+        memory: Memory,
         reason: String,
         now: Date
     ) throws {
-        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason
+        guard let userID = memory.scope.userID else { return }
+        let sourceRefs = memory.citations.map {
+            MemoryFactTombstoneSourceRef(
+                threadLogicalID: $0.threadLogicalID,
+                messageID: $0.messageID,
+                contentHash: $0.contentHash
+            )
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let sourceRefsData = try encoder.encode(sourceRefs)
+        let sourceRefsJSON = String(decoding: sourceRefsData, as: UTF8.self)
         try db.execute(
             sql: """
             INSERT INTO memory_fact_tombstones (
-                id, memory_id, user_id, reason, created_at
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO NOTHING
+                id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                user_id = excluded.user_id,
+                source_refs_json = excluded.source_refs_json,
+                reason = excluded.reason,
+                created_at = excluded.created_at,
+                replicated_at = NULL
             """,
             arguments: [
-                memoryFactTombstoneID(memoryID: memoryID, reason: normalizedReason),
-                memoryID,
+                memoryFactTombstoneID(memoryID: memory.id),
                 userID,
-                normalizedReason,
+                memory.id,
+                sourceRefsJSON,
+                reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason,
                 now
             ]
         )
@@ -263,10 +291,6 @@ extension ControlPlaneStore {
         return "memory-source-tombstone-\(sha256HexForTombstone(material))"
     }
 
-    private static func memoryFactTombstoneID(memoryID: MemoryID, reason: String) -> String {
-        "memory-fact-tombstone-\(sha256HexForTombstone("\(memoryID)|\(reason)"))"
-    }
-
     private static func sha256HexForTombstone(_ string: String) -> String {
         let digest = SHA256.hash(data: Data(string.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
@@ -282,6 +306,7 @@ extension ControlPlaneStore {
         }
         return MemorySourceTombstoneRecord(
             id: id,
+            userID: row["user_id"],
             threadLogicalID: threadLogicalID,
             messageID: row["message_id"],
             contentHash: row["content_hash"],
@@ -290,18 +315,34 @@ extension ControlPlaneStore {
         )
     }
 
+    private static func memoryFactTombstoneID(memoryID: MemoryID) -> String {
+        "memory-fact-tombstone-\(sha256HexForTombstone(memoryID))"
+    }
+
     private static func memoryFactTombstone(from row: Row) -> MemoryFactTombstoneRecord? {
         guard let id: String = row["id"],
+              let userID: String = row["user_id"],
               let memoryID: String = row["memory_id"],
+              let sourceRefsJSON: String = row["source_refs_json"],
               let reason: String = row["reason"],
-              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"])
+              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"]),
+              let data = sourceRefsJSON.data(using: .utf8)
         else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let sourceRefs: [MemoryFactTombstoneSourceRef]
+        do {
+            sourceRefs = try decoder.decode([MemoryFactTombstoneSourceRef].self, from: data)
+        } catch {
             return nil
         }
         return MemoryFactTombstoneRecord(
             id: id,
+            userID: userID,
             memoryID: memoryID,
-            userID: row["user_id"],
+            sourceRefs: sourceRefs,
             reason: reason,
             createdAt: createdAt
         )
