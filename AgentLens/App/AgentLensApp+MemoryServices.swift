@@ -46,19 +46,27 @@ extension OpenBurnBarApp {
         let store: ControlPlaneStore
         let service: OpenBurnBarMemoryService
         let engine: MemoryExtractionEngine
+        /// PR-E2 approved-memory cloud-replication scheduler over the SAME store.
+        /// Ships DORMANT (default OFF); only constructed here so the refresh
+        /// orchestrator can schedule it in the post-persistence cadence.
+        let cloudSyncDomain: MemoryCloudSyncDomain
     }
 
-    /// Construct the shared-store memory services (PR-D3 must-fix #1 + #4).
+    /// Construct the shared-store memory services (PR-D3 must-fix #1 + #4; PR-E2 domain).
     ///
     /// - Parameters:
     ///   - dataStore: the live coordinator; its db queue backs the single store, and its
     ///     spend reader feeds the engine's fail-closed cloud daily cap.
     ///   - settingsManager: the source of the combined kill switch + the (summary-derived,
-    ///     local-first-forced) provider settings the extractor reads per drain.
+    ///     local-first-forced) provider settings the extractor reads per drain, and the
+    ///     `memoryApprovedCloudBackupEnabled` gate the cloud-sync domain honours.
+    ///   - accountManager: the cloud-sync identity gate the PR-E2 domain reads (uid,
+    ///     signed-in, cloud-sync-enabled) before any egress.
     @MainActor
     static func makeMemoryServices(
         dataStore: DataStoreCoordinator,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        accountManager: any AccountManaging
     ) -> MemoryServices {
         // ONE store over the live queue, shared by the service and the engine (must-fix #1).
         let store = ControlPlaneStore(dbQueue: dataStore.actor.dbQueue)
@@ -78,7 +86,17 @@ extension OpenBurnBarApp {
             settingsManager: settingsManager
         )
 
-        return MemoryServices(store: store, service: service, engine: engine)
+        // PR-E2: the cloud-replication scheduler over the SAME store. DORMANT by default —
+        // it replicates nothing unless the user opted in (`memoryApprovedCloudBackupEnabled`,
+        // default OFF), the Remote Config fleet ceiling allows, and the account is
+        // cloud-sync-ready. Constructing it flips nothing on.
+        let cloudSyncDomain = MemoryCloudSyncDomain(
+            store: store,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+
+        return MemoryServices(store: store, service: service, engine: engine, cloudSyncDomain: cloudSyncDomain)
     }
 
     /// Start the memory-extraction drain loop, if the gate currently allows. Called from
@@ -96,5 +114,20 @@ extension OpenBurnBarApp {
         // foreground drain. If the gate is off this returns without scheduling any work and
         // without any LLM egress or spend.
         engine.launchDrain()
+    }
+}
+
+// MARK: - Runtime-context memory wiring
+
+extension OpenBurnBarRuntimeContext {
+    /// Stash the constructed memory services on the context in one call, so the
+    /// app-startup site does not grow line-by-line per field (`AgentLensApp.swift`
+    /// is at its debt-gate baseline). Sets the shared store, the drain engine, and
+    /// the PR-E2 cloud-sync domain. Flips nothing on — the engine + domain stay
+    /// dormant until their own gates allow.
+    func applyMemoryServices(_ services: OpenBurnBarApp.MemoryServices) {
+        chatMemoryStore = services.store
+        memoryExtractionEngine = services.engine
+        memoryCloudSyncDomain = services.cloudSyncDomain
     }
 }

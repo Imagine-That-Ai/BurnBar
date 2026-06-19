@@ -227,6 +227,14 @@ final class OpenBurnBarRuntimeContext {
     /// the subsystem dormant out of the box; this engine flips nothing on.
     var memoryExtractionEngine: MemoryExtractionEngine?
 
+    /// PR-E2 approved-memory cloud-replication scheduler over the SAME shared store as the
+    /// engine. Assigned post-construction via `applyMemoryServices` (mirrors the engine
+    /// injection). Ships DORMANT: `RefreshOrchestrator` schedules its `sync()` in the
+    /// post-persistence cadence, but it replicates nothing unless the user opted in
+    /// (`memoryApprovedCloudBackupEnabled`, default OFF), the Remote Config fleet ceiling
+    /// allows, and the account is cloud-sync-ready. Constructing it flips nothing on.
+    var memoryCloudSyncDomain: MemoryCloudSyncDomain?
+
     // MARK: - Mercury Phase 8 — user-facing surfaces
 
     /// Live-share / file-transfer / call brain. Mounted into the
@@ -359,7 +367,8 @@ final class OpenBurnBarRuntimeContext {
                 cloudSync: sync,
                 sessionMirror: mirror,
                 settingsManager: settingsManager,
-                quotaService: quotaService
+                quotaService: quotaService,
+                memoryCloudSyncDomain: memoryCloudSyncDomain
             )
             aggregator = usageAggregator
         }

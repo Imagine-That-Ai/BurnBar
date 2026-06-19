@@ -21,6 +21,18 @@ final class MemorySettings {
         didSet { persistence.set(highRecallPerReply, forKey: "memoryHighRecallPerReply") }
     }
 
+    /// Opt-in: replicate **approved** sealed memory facts to the user's cloud
+    /// vault (default OFF — PR-E2 / residual decision §5.5). Cloud egress of
+    /// derived memory is consent-gated independently of local extraction:
+    /// enabling local extraction does not imply consent to upload memory off the
+    /// device, even sealed. When false, `MemoryCloudSyncDomain.sync()` early-exits
+    /// before any candidate is read or any Firestore handle is touched, so there
+    /// is zero cloud egress out of the box. This switch is additionally clamped by
+    /// the fleet ceiling (`remoteConfigExtractionEnabled`) at the sync boundary.
+    var approvedCloudBackupEnabled: Bool = false {
+        didSet { persistence.set(approvedCloudBackupEnabled, forKey: "memoryApprovedCloudBackupEnabled") }
+    }
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fail-closed: a fetch error flips this false.
@@ -33,6 +45,9 @@ final class MemorySettings {
         }
         if persistence.objectExists(forKey: "memoryHighRecallPerReply") {
             self.highRecallPerReply = persistence.bool(forKey: "memoryHighRecallPerReply")
+        }
+        if persistence.objectExists(forKey: "memoryApprovedCloudBackupEnabled") {
+            self.approvedCloudBackupEnabled = persistence.bool(forKey: "memoryApprovedCloudBackupEnabled")
         }
     }
 }

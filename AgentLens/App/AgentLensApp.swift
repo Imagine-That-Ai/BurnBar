@@ -1040,7 +1040,7 @@ struct OpenBurnBarApp: App {
 
         // PR-D3: one shared store backs the recall service + drain engine (built pre-controller).
         let memoryServices = StartupProfiler.interval("memory_services_init") {
-            makeMemoryServices(dataStore: initializedStore, settingsManager: settings)
+            makeMemoryServices(dataStore: initializedStore, settingsManager: settings, accountManager: accountManager)
         }
         let controller = StartupProfiler.interval("chat_controller_init") {
             ChatSessionController(
@@ -1070,8 +1070,7 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
-        context.chatMemoryStore = memoryServices.store
-        context.memoryExtractionEngine = memoryServices.engine
+        context.applyMemoryServices(memoryServices)
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         let textExpansionRuntime = TextExpansionRuntimeController(
             dataStore: initializedStore,
@@ -1393,7 +1392,8 @@ struct OpenBurnBarApp: App {
                     cloudSync: sync,
                     sessionMirror: mirror,
                     settingsManager: context.settingsManager,
-                    quotaService: context.quotaService
+                    quotaService: context.quotaService,
+                    memoryCloudSyncDomain: context.memoryCloudSyncDomain
                 )
             }
             context.aggregator = aggregator

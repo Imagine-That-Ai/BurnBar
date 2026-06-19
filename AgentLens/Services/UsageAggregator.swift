@@ -72,7 +72,8 @@ final class UsageAggregator {
         artifactDiscoveryService: ArtifactDiscoveryService? = nil,
         projectionPipelineService: ProjectionPipelineService? = nil,
         parserOverrides: [AgentProvider: any LogParser]? = nil,
-        summaryEngine: AutoSummaryEngine? = nil
+        summaryEngine: AutoSummaryEngine? = nil,
+        memoryCloudSyncDomain: MemoryCloudSyncDomain? = nil
     ) {
         self.dataStore = dataStore
         self.cloudSync = cloudSync
@@ -93,7 +94,8 @@ final class UsageAggregator {
             cloudSync: cloudSync,
             sessionMirror: sessionMirror,
             quotaService: quotaService,
-            usageAPIService: usageAPIService
+            usageAPIService: usageAPIService,
+            memoryCloudSyncDomain: memoryCloudSyncDomain
         )
         self.summaryEngine = summaryEngine ?? AutoSummaryEngine(
             dataStore: dataStore,
