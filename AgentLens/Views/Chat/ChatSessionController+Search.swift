@@ -523,15 +523,48 @@ extension ChatSessionController {
             focusSection = ""
         }
 
-        var augmentedSystem = basePrompt + "\n\n" + evidencePack + oracleContextSection + focusSection
         ensureChatWorkspaceDirectoryExists()
         let workspacePath = chatWorkspaceURL.path
-        augmentedSystem += Self.burnBarWorkspacePromptSection(path: workspacePath)
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
-        if let activeDesktopGrant {
-            augmentedSystem += Self.desktopControlPromptSection(for: activeDesktopGrant)
+
+        // G9: assemble augmentedSystem under one token-aware arbiter so a future
+        // memory-injection section (F-2) subtracts from a shared retrieval pool
+        // instead of becoming an uncapped seventh block. Persona (`.core`) and tool
+        // definitions (`.toolDefs`) are never dropped; the conversation history + user
+        // turn are reserved out of the model's context window so they are never
+        // starved. Conservative floor for ollama / unknown local backends.
+        let requestModel = effectiveChatModel(for: chatBackend)
+        let arbiterFamily = Self.memoryArbiterModelFamily(
+            backend: chatBackend,
+            resolvedModel: requestModel,
+            hermesFamily: settingsManager.selectedHermesModel
+        )
+        let historyChars = messages.reduce(0) { $0 + $1.content.count }
+        let historyTokens = TokenExtractionUtility.estimatedTokenCount(for: historyChars, charsPerToken: 3.5)
+        let promptArbiter = PromptTokenArbiter.make(model: arbiterFamily, historyAndUserTurnTokens: historyTokens)
+        let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
+        let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
+        let assembledPrompt = promptArbiter.assemble([
+            PromptTokenSection(id: .core, content: basePrompt),
+            PromptTokenSection(id: .toolDefs, content: toolDefsSection),
+            PromptTokenSection(id: .focus, content: focusSection),
+            PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
+            // `.memory` is injected in F-2 via recallForPrompt, wrapped with
+            // LLMSafeContent.wrapUntrusted (G8). Never concatenated into `.core`.
+        ])
+        if !assembledPrompt.droppedSections.isEmpty || !assembledPrompt.truncatedSections.isEmpty {
+            AppLogger.chat.info(
+                "prompt token arbiter adjusted prompt",
+                metadata: [
+                    "dropped": assembledPrompt.droppedSections.map(\.rawValue).joined(separator: ","),
+                    "truncated": assembledPrompt.truncatedSections.map(\.rawValue).joined(separator: ","),
+                    "tokens": String(assembledPrompt.estimatedTokens),
+                    "budget": String(assembledPrompt.augmentedSystemBudget)
+                ]
+            )
         }
+        let augmentedSystem = assembledPrompt.systemPrompt
 
         isStreaming = true
         let assistantId = UUID().uuidString
@@ -552,7 +585,7 @@ extension ChatSessionController {
             ? messages.filter { $0.id != assistantId }
             : []
 
-        let requestModel = effectiveChatModel(for: chatBackend)
+        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
         // Load bytes for any attachments referenced by history. We load lazily
         // so re-opened threads don't pay the cost when nothing was attached.
         let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
