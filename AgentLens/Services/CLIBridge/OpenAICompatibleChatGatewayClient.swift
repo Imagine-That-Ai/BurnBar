@@ -1110,8 +1110,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             continuation.finish(throwing: missingModelError)
             return
         }
-        if let allowedModels, !allowedModels.allows(selectedModel) {
-            continuation.finish(throwing: disallowedModelError ?? CLIBridgeError.disallowedModel(backend: "OpenAI-compatible gateway", model: selectedModel))
+        if let allowedModels, !allowedModels.allows(model) {
+            continuation.finish(throwing: disallowedModelError ?? CLIBridgeError.disallowedModel(backend: "OpenAI-compatible gateway", model: model))
             return
         }
 
@@ -1285,6 +1285,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         func allows(_ modelID: String) -> Bool {
             let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return false }
+            guard trimmed == modelID else { return false }
             if modelIDs.isEmpty { return true }
             let lower = trimmed.lowercased()
             for allowed in modelIDs {

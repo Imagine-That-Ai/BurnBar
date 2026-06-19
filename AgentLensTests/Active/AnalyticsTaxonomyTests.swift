@@ -17,7 +17,7 @@ final class AnalyticsTaxonomyTests: XCTestCase {
             .deletingLastPathComponent() // repo root
             .appendingPathComponent("docs/analytics/event-taxonomy.md")
         let doc = try String(contentsOf: docURL, encoding: .utf8)
-        let regex = try NSRegularExpression(pattern: "`([a-z0-9]+(?:\\.[a-z0-9_]+)+)`")
+        let regex = try NSRegularExpression(pattern: "`([a-z0-9_]+(?:\\.[a-z0-9_]+)+)`")
         var names = Set<String>()
         for match in regex.matches(in: doc, range: NSRange(doc.startIndex..., in: doc)) {
             guard let range = Range(match.range(at: 1), in: doc) else { continue }
