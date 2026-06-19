@@ -1,3 +1,4 @@
+import GRDB
 import OpenBurnBarCore
 
 actor OpenBurnBarMemoryService: MemoryServing {
@@ -79,5 +80,17 @@ actor OpenBurnBarMemoryService: MemoryServing {
 
     func enqueueExtraction(_ intent: ExtractionIntent) async throws {
         _ = try await store.enqueueMemoryExtraction(intent)
+    }
+}
+
+// MARK: - Atomic extraction enqueue (G3/P1b)
+
+extension OpenBurnBarMemoryService: TransactionalMemoryExtractionServing {
+    /// Enqueue the extraction-outbox row inside the caller's chat-message transaction so it
+    /// commits atomically with the assistant reply (G3/P1b). `nonisolated` so it can run
+    /// synchronously within GRDB's `write { db in … }`; it touches only the Sendable `store`,
+    /// never actor-isolated state.
+    nonisolated func enqueueExtraction(_ intent: ExtractionIntent, in db: Database) throws {
+        _ = try store.enqueueMemoryExtraction(intent, in: db)
     }
 }

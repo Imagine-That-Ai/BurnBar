@@ -234,6 +234,50 @@ final class TerminalAssistantCommitTests: XCTestCase {
         XCTAssertEqual(ctx.threadLogicalID, "thread-xyz")
         XCTAssertEqual(ctx.promptVersion, ChatSessionController.memoryPromptVersion)
     }
+    // MARK: - Production memory service uses the atomic transactional enqueue (audit regression, G3/P1b)
+
+    func testRealMemoryServiceUsesAtomicTransactionalEnqueue() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true)
+        let service = OpenBurnBarMemoryService(store: ControlPlaneStore(dbQueue: queue))
+
+        // Regression guard: the production service MUST take the atomic in-transaction path
+        // (the chokepoint downcasts to this protocol), not the post-commit async fallback.
+        let tx = try XCTUnwrap(
+            service as? any TransactionalMemoryExtractionServing,
+            "OpenBurnBarMemoryService must enqueue extraction atomically with the chat write (G3/P1b)"
+        )
+
+        let intent = ExtractionIntent(
+            threadID: "t1",
+            threadLogicalID: "t1",
+            messageID: "m1",
+            scope: MemoryScope(appID: "openburnbar"),
+            promptVersion: "v1",
+            idempotencyKey: MemoryExtraction.idempotencyKey(threadLogicalID: "t1", messageID: "m1", promptVersion: "v1")
+        )
+
+        // Atomicity: a write that throws after enqueue leaves NO job (rolled back with the chat write).
+        struct Boom: Error {}
+        do {
+            try await queue.write { db in
+                try tx.enqueueExtraction(intent, in: db)
+                throw Boom()
+            }
+            XCTFail("expected the write to throw")
+        } catch is Boom {}
+        let afterRollback = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(1) FROM memory_extraction_jobs") ?? -1
+        }
+        XCTAssertEqual(afterRollback, 0, "A rolled-back transaction must persist no extraction job.")
+
+        // Commit path: a successful write persists exactly one job (idempotency-keyed).
+        try await queue.write { db in try tx.enqueueExtraction(intent, in: db) }
+        let afterCommit = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(1) FROM memory_extraction_jobs") ?? -1
+        }
+        XCTAssertEqual(afterCommit, 1, "A committed transaction must persist exactly one extraction job.")
+    }
 }
 
 private final class TransactionalMemoryService: TransactionalMemoryExtractionServing, @unchecked Sendable {
