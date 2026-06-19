@@ -84,7 +84,7 @@ openburnbar_app_test_final_selected_summary_is_green() {
     local log_path="$1"
 
     awk '
-        /Test Suite '\''Selected tests'\'' passed/ {
+        /Test Suite '\''Selected tests'\'' (passed|failed)/ {
             waiting_for_summary = 1
             green = 0
             next
