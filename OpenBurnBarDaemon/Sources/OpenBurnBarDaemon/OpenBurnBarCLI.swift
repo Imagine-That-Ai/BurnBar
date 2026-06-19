@@ -545,10 +545,6 @@ public struct BurnBarCLIRunner {
             )
         }
 
-        if effectiveArguments.first == "claude-meter-experiment" {
-            return try await runClaudeMeterExperiment(Array(effectiveArguments.dropFirst()))
-        }
-
         if effectiveArguments.first == "claude-handoff" {
             return try runClaudeHandoff(Array(effectiveArguments.dropFirst()))
         }
@@ -574,52 +570,6 @@ public struct BurnBarCLIRunner {
             mode: mode
         )
         return (response, mode)
-    }
-
-    /// Part B0 diagnostic: drives one interactive `claude` turn through a PTY
-    /// and reports whether it billed the subscription window vs. a metered pool.
-    /// Off the routing path entirely; produces evidence for a human to read.
-    private func runClaudeMeterExperiment(_ arguments: [String]) async throws -> BurnBarCLIInvocationResult {
-        var options = ClaudeInteractiveMeterExperiment.Options()
-        var emitJSON = false
-        var index = 0
-        while index < arguments.count {
-            switch arguments[index] {
-            case "--prompt":
-                index += 1
-                guard index < arguments.count else {
-                    throw BurnBarCLIError.missingArgument("Usage: claude-meter-experiment --prompt <text>")
-                }
-                options.prompt = arguments[index]
-            case "--model":
-                index += 1
-                guard index < arguments.count else {
-                    throw BurnBarCLIError.missingArgument("Usage: claude-meter-experiment --model <model>")
-                }
-                options.model = arguments[index]
-            case "--json":
-                emitJSON = true
-            default:
-                throw BurnBarCLIError.invalidCommand("claude-meter-experiment \(arguments[index])")
-            }
-            index += 1
-        }
-
-        let report = try await ClaudeInteractiveMeterExperiment(options: options).run()
-        if emitJSON {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(report)
-            return BurnBarCLIInvocationResult(
-                output: String(decoding: data, as: UTF8.self),
-                exitCode: EXIT_SUCCESS
-            )
-        }
-        return BurnBarCLIInvocationResult(
-            output: ClaudeInteractiveMeterExperiment.format(report),
-            exitCode: report.verdict == .turnDidNotComplete ? EXIT_FAILURE : EXIT_SUCCESS
-        )
     }
 
     /// Part B1 handoff: dispatches a task into a genuine interactive `claude`
@@ -718,7 +668,6 @@ public struct BurnBarCLIRunner {
       remote-unlock-certification <status|record-hardware-proof|reset>
       audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
-      claude-meter-experiment [--prompt <text>] [--model <model>] [--json]
       claude-handoff <dispatch|reconcile|list> [args]
       install-shell-shims
     """

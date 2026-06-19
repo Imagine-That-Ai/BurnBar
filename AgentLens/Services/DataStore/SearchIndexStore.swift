@@ -370,8 +370,13 @@ final class SearchIndexStore: Sendable {
 
         // With our fix, rekeyed chunks don't cause writes. So the only writes
         // are for truly added or deleted contentHashes.
-        let effectiveWriteCount = deletedHashes.reduce(0) { $0 + (existingByHash[$1]?.count ?? 0) }
-            + addedHashes.reduce(0) { $0 + (newByHash[$1]?.count ?? 0) }
+        let deletedWriteCount = deletedHashes.reduce(0) { count, hash in
+            count + (existingByHash[hash]?.count ?? 0)
+        }
+        let addedWriteCount = addedHashes.reduce(0) { count, hash in
+            count + (newByHash[hash]?.count ?? 0)
+        }
+        let effectiveWriteCount = deletedWriteCount + addedWriteCount
 
         // If no new content hashes added, no content hashes removed, no effective writes,
         // AND no rekeyed chunks (IDs differ), this is a true no-op — skip all writes entirely.
@@ -622,7 +627,10 @@ final class SearchIndexStore: Sendable {
         guard ftsQuery.isEmpty == false, limit > 0 else { return [] }
 
         let normalizedSourceKinds = Array(Set(sourceKinds ?? [])).sorted { $0.rawValue < $1.rawValue }
-        let normalizedSourceIDs = Array(Set((sourceIDs ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+        let trimmedSourceIDs = (sourceIDs ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let normalizedSourceIDs = Array(Set(trimmedSourceIDs)).sorted()
         let normalizedProject = projectName?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         var clauses: [String] = ["search_chunks_fts MATCH ?"]

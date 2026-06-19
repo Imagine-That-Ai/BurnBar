@@ -22,6 +22,10 @@ struct MemoryExtractionContext: Sendable {
     let promptVersion: String
 }
 
+protocol TransactionalMemoryExtractionServing: MemoryServing {
+    func enqueueExtraction(_ intent: ExtractionIntent, in db: Database) throws
+}
+
 enum MemoryExtraction {
     /// `idempotency_key = HMAC-SHA256(threadLogicalID | messageID | promptVersion)`, hex.
     /// Deterministic so a replayed commit (e.g. re-save) collapses to one backend
@@ -61,6 +65,15 @@ extension ConversationStore {
                 attachmentsJSON = try OpenBurnBarDatabase.encodeChatAttachments(message.attachments)
             }
 
+            let extractionIntent = Self.makeMemoryExtractionIntent(
+                message,
+                threadID: threadID,
+                isTerminalAssistantCommit: isTerminalAssistantCommit,
+                memoryService: memoryService,
+                extractionContext: extractionContext
+            )
+            let transactionalMemoryService = memoryService as? any TransactionalMemoryExtractionServing
+
             try await dbQueue.write { db in
                 try Self.upsertChatThread(threadID, at: message.timestamp, db: db)
                 try db.execute(
@@ -79,6 +92,14 @@ extension ConversationStore {
                         attachmentsJSON
                     ]
                 )
+
+                if let extractionIntent, let transactionalMemoryService {
+                    do {
+                        try transactionalMemoryService.enqueueExtraction(extractionIntent, in: db)
+                    } catch {
+                        AppLogger.chat.silentFailure("memory enqueueExtraction (transactional)", error: error)
+                    }
+                }
             }
 
             // G3: emit the extraction trigger from the persistence chokepoint, not
@@ -87,29 +108,41 @@ extension ConversationStore {
             // (PR-5) lands, production wires no service, so this is a no-op in app
             // builds; tests inject `FakeMemoryService` to assert it fires.
             // Extraction failure must never fail the chat save or block the caller.
-            if isTerminalAssistantCommit,
-               message.role == .assistant,
-               !message.content.isEmpty,
-               let memoryService,
-               let extractionContext {
-                let intent = ExtractionIntent(
-                    threadID: threadID,
-                    threadLogicalID: extractionContext.threadLogicalID,
-                    messageID: message.id,
-                    scope: extractionContext.scope,
-                    promptVersion: extractionContext.promptVersion,
-                    idempotencyKey: MemoryExtraction.idempotencyKey(
-                        threadLogicalID: extractionContext.threadLogicalID,
-                        messageID: message.id,
-                        promptVersion: extractionContext.promptVersion
-                    )
-                )
+            if let extractionIntent, let memoryService, transactionalMemoryService == nil {
                 do {
-                    try await memoryService.enqueueExtraction(intent)
+                    try await memoryService.enqueueExtraction(extractionIntent)
                 } catch {
                     AppLogger.chat.silentFailure("memory enqueueExtraction", error: error)
                 }
             }
+        }
+
+        private static func makeMemoryExtractionIntent(
+            _ message: ChatMessageRecord,
+            threadID: String,
+            isTerminalAssistantCommit: Bool,
+            memoryService: (any MemoryServing)?,
+            extractionContext: MemoryExtractionContext?
+        ) -> ExtractionIntent? {
+            guard isTerminalAssistantCommit,
+                  message.role == .assistant,
+                  !message.content.isEmpty,
+                  memoryService != nil,
+                  let extractionContext else {
+                return nil
+            }
+            return ExtractionIntent(
+                threadID: threadID,
+                threadLogicalID: extractionContext.threadLogicalID,
+                messageID: message.id,
+                scope: extractionContext.scope,
+                promptVersion: extractionContext.promptVersion,
+                idempotencyKey: MemoryExtraction.idempotencyKey(
+                    threadLogicalID: extractionContext.threadLogicalID,
+                    messageID: message.id,
+                    promptVersion: extractionContext.promptVersion
+                )
+            )
         }
 
         func createChatThread(id: String, at date: Date) async throws -> String {

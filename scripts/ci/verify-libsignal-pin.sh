@@ -46,6 +46,10 @@ function xmlTag(xml, tag, label) {
   return match[1];
 }
 
+function xmlTagValues(xml, tag) {
+  return Array.from(xml.matchAll(new RegExp(`<${tag}>([^<]+)</${tag}>`, 'g')), (match) => match[1]);
+}
+
 const manifest = readJSON('third_party/libsignal/manifest.json');
 const readiness = readJSON('third_party/libsignal/runtime-readiness.json');
 const bridgePackage = readJSON('packages/libsignal-bridge/package.json');
@@ -109,18 +113,23 @@ if (peeledLine.split(/\s+/)[0] !== pinnedCommit) fail(`upstream peeled commit fo
 
 const npmMeta = JSON.parse(execFileSync('npm', [
   'view',
-  nodePackage,
+  `${nodePackage}@${nodeVersion}`,
   'version',
   'license',
   'dist.integrity',
   'repository.url',
   '--json',
 ], { encoding: 'utf8' }));
-if (npmMeta.version !== nodeVersion) fail(`npm latest ${nodePackage} is ${npmMeta.version}, manifest pins ${nodeVersion}`);
+if (npmMeta.version !== nodeVersion) fail(`npm ${nodePackage}@${nodeVersion} resolved to ${npmMeta.version}`);
 if (npmMeta.license !== 'AGPL-3.0-only') fail(`npm ${nodePackage} license is ${npmMeta.license}`);
 if (npmMeta['dist.integrity'] !== nodeIntegrity) fail(`npm ${nodePackage} integrity drifted`);
 if (!String(npmMeta['repository.url'] ?? '').includes('signalapp/libsignal')) {
   fail(`npm ${nodePackage} repository does not point at signalapp/libsignal`);
+}
+
+const npmLatest = JSON.parse(execFileSync('npm', ['view', nodePackage, 'version', '--json'], { encoding: 'utf8' }));
+if (npmLatest !== nodeVersion) {
+  console.warn(`WARN: npm latest ${nodePackage} is ${npmLatest}; manifest intentionally pins reviewed ${nodeVersion}`);
 }
 
 for (const artifact of androidArtifacts) {
@@ -129,11 +138,17 @@ for (const artifact of androidArtifacts) {
   const metadataUrl = `${base}/${groupPath}/${artifact.artifact}/maven-metadata.xml`;
   const pomUrl = `${base}/${groupPath}/${artifact.artifact}/${artifact.version}/${artifact.artifact}-${artifact.version}.pom`;
   const metadata = curl(metadataUrl);
-  if (xmlTag(metadata, 'latest', metadataUrl) !== artifact.version) {
-    fail(`${artifact.group}:${artifact.artifact} latest does not match ${artifact.version}`);
+  const versions = xmlTagValues(metadata, 'version');
+  if (!versions.includes(artifact.version)) {
+    fail(`${artifact.group}:${artifact.artifact} metadata does not list pinned version ${artifact.version}`);
   }
-  if (xmlTag(metadata, 'release', metadataUrl) !== artifact.version) {
-    fail(`${artifact.group}:${artifact.artifact} release does not match ${artifact.version}`);
+  const latest = xmlTag(metadata, 'latest', metadataUrl);
+  const release = xmlTag(metadata, 'release', metadataUrl);
+  if (latest !== artifact.version || release !== artifact.version) {
+    console.warn(
+      `WARN: ${artifact.group}:${artifact.artifact} latest/release is ${latest}/${release}; ` +
+      `manifest intentionally pins reviewed ${artifact.version}`,
+    );
   }
   const pom = curl(pomUrl);
   if (xmlTag(pom, 'version', pomUrl) !== artifact.version) {
@@ -144,5 +159,5 @@ for (const artifact of androidArtifacts) {
   }
 }
 
-console.log('PASS: libsignal pin is current against upstream Git, npm, and Signal Maven metadata');
+console.log('PASS: libsignal pin is authentic against upstream Git, pinned npm metadata, and pinned Signal Maven artifacts');
 NODE

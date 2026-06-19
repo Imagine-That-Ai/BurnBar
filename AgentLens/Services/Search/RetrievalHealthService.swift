@@ -191,9 +191,11 @@ actor RetrievalHealthService {
         if let rawDetails = decodeJSONDictionary(from: row.detailsJSON) {
             backend = stringValue(from: rawDetails["backend"])
             embeddingVersionID = stringValue(from: rawDetails["embeddingVersionID"])
-            indexedVectorCount = intValue(from: rawDetails["indexedVectorCount"])
-                ?? intValue(from: rawDetails["indexedChunkCount"])
-                ?? 0
+            if let count = intValue(from: rawDetails["indexedVectorCount"]) {
+                indexedVectorCount = count
+            } else if let count = intValue(from: rawDetails["indexedChunkCount"]) {
+                indexedVectorCount = count
+            }
             fallbackToExact = boolValue(from: rawDetails["fallbackToExact"]) ?? false
             candidateCount = intValue(from: rawDetails["candidateCount"]) ?? 0
             snapshotState = stringValue(from: rawDetails["snapshotState"])
@@ -327,18 +329,18 @@ actor RetrievalHealthService {
         return modes
     }
 
-    private func decodeJSONDictionary(from json: String?) -> [String: Any]? {
+    private nonisolated func decodeJSONDictionary(from json: String?) -> [String: Any]? {
         guard let json, let data = json.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] // try?-ok(optional JSON parse)
     }
 
-    private func stringValue(from raw: Any?) -> String? {
+    private nonisolated func stringValue(from raw: Any?) -> String? {
         guard let value = raw as? String else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func intValue(from raw: Any?) -> Int? {
+    private nonisolated func intValue(from raw: Any?) -> Int? {
         if let value = raw as? Int { return value }
         if let value = raw as? Int64 { return Int(value) }
         if let value = raw as? Double { return Int(value) }
@@ -347,7 +349,7 @@ actor RetrievalHealthService {
         return nil
     }
 
-    private func boolValue(from raw: Any?) -> Bool? {
+    private nonisolated func boolValue(from raw: Any?) -> Bool? {
         if let value = raw as? Bool { return value }
         if let value = raw as? NSNumber { return value.boolValue }
         if let value = raw as? String {

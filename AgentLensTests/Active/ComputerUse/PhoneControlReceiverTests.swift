@@ -1465,6 +1465,7 @@ final class PhoneControlReceiverTests: XCTestCase {
                 auditBaseDirectory: FileManager.default.temporaryDirectory
                     .appendingPathComponent("computer-use-clipboard-attestation-\(UUID().uuidString)", isDirectory: true),
                 macAppVersion: "test",
+                phoneControlAttestationRequired: true,
                 clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(

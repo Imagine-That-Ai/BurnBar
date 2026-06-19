@@ -12,6 +12,7 @@
 #
 # Reads third_party/libsignal/manifest.json:
 #   - submoduleFork.basedOnOfficialCommit  (the official commit the fork sits on)
+#   - submoduleFork.forkCommit              (the exact reviewed fork commit vendored here)
 #   - submoduleFork.allowedDivergentFiles  (build files allowed to differ)
 #
 set -euo pipefail
@@ -22,13 +23,14 @@ cd "$repo_root"
 manifest="third_party/libsignal/manifest.json"
 submodule="Vendor/libsignal"
 
-read -r official_commit allow_csv < <(python3 - "$manifest" <<'PY'
+read -r official_commit fork_commit allow_csv < <(python3 - "$manifest" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
 fork = m.get("submoduleFork") or {}
 official = fork.get("basedOnOfficialCommit", "")
+fork_commit = fork.get("forkCommit", "")
 allowed = ",".join(fork.get("allowedDivergentFiles", []))
-print(official, allowed)
+print(official, fork_commit, allowed)
 PY
 )
 
@@ -36,9 +38,20 @@ if [[ -z "$official_commit" ]]; then
   echo "ERROR: manifest $manifest is missing submoduleFork.basedOnOfficialCommit" >&2
   exit 1
 fi
+if [[ -z "$fork_commit" ]]; then
+  echo "ERROR: manifest $manifest is missing submoduleFork.forkCommit" >&2
+  exit 1
+fi
 
 if [[ ! -e "$submodule/.git" && ! -f "$submodule/.git" ]]; then
   echo "ERROR: submodule $submodule is not checked out. Run: git submodule update --init $submodule" >&2
+  exit 1
+fi
+
+submodule_head="$(git -C "$submodule" rev-parse HEAD)"
+if [[ "$submodule_head" != "$fork_commit" ]]; then
+  echo "ERROR: $submodule is checked out at $submodule_head, but manifest records forkCommit $fork_commit" >&2
+  echo "Update the submodule pointer and third_party/libsignal/manifest.json together." >&2
   exit 1
 fi
 

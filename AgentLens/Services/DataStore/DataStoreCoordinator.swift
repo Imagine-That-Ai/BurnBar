@@ -269,7 +269,7 @@ final class DataStoreCoordinator {
     private static func openAndValidateDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
         let pool = try DatabasePool(path: path, configuration: configuration)
         do {
-            _ = try pool.read { db in
+            _ = try pool.read { @Sendable db in
                 try Int.fetchOne(db, sql: "PRAGMA user_version")
             }
             return pool
@@ -315,7 +315,7 @@ final class DataStoreCoordinator {
     /// This hook runs after SQLCipher keying and before DEBUG tracing so
     /// startup PRAGMAs do not require post-open synchronous queue writes.
     private static func installStartupPragmas(on config: inout Configuration) {
-        config.prepareDatabase { db in
+        config.prepareDatabase { @Sendable db in
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
             try db.execute(sql: "PRAGMA synchronous = NORMAL")

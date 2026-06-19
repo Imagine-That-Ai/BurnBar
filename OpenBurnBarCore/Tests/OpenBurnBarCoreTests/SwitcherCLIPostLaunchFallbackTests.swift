@@ -52,11 +52,15 @@ final class SwitcherCLIPostLaunchFallbackTests: XCTestCase {
     func test_launchCLI_recoversAfterPostLaunchQuotaSignal() async throws {
         let store = InMemorySwitcherProfileStoreAdapter()
         let recorder = PackageLaunchEventRecorder()
+        let fallbackEventRecorded = expectation(description: "post-launch fallback event recorded")
         let service = SwitcherCLILAunchService(
             profileStore: store,
             fallbackPlanner: PackageTestCLIFallbackPlanner(),
             eventHandler: { event in
-                Task { await recorder.append(event) }
+                Task {
+                    await recorder.append(event)
+                    fallbackEventRecorded.fulfill()
+                }
             }
         )
 
@@ -109,7 +113,7 @@ final class SwitcherCLIPostLaunchFallbackTests: XCTestCase {
         XCTAssertTrue(initialOutcome.success)
         XCTAssertEqual(initialOutcome.launchedProfileID, primary.id)
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        await fulfillment(of: [fallbackEventRecorded], timeout: 5.0)
 
         XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
         let events = await recorder.snapshot()

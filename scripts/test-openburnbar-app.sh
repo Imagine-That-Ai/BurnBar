@@ -392,6 +392,18 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     attempt_end_epoch="$(date +%s)"
     attempt_duration=$((attempt_end_epoch - attempt_start_epoch))
 
+    if openburnbar_app_test_has_concrete_xctest_failure "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "test_failure" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Detected concrete XCTest failure in xcodebuild log; failing attempt even though xcodebuild exited $last_test_exit_code."
+        final_exit_code="$last_test_exit_code"
+        if [ "$final_exit_code" -eq 0 ]; then
+            final_exit_code=65
+        fi
+        final_outcome="test_failure"
+        final_xcresult="$attempt_xcresult"
+        break
+    fi
+
     if [ "$last_test_exit_code" -eq 0 ]; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "passed" "$attempt_duration" "$attempt_xcresult"
         final_exit_code=0

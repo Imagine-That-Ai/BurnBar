@@ -155,10 +155,6 @@ extension BurnBarHTTPGatewayServer {
         if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
             return .factoryDroid
         }
-        if interactiveClaudeExecutor != nil,
-           ClaudeInteractiveSessionExecutor.isEligible(route: route) {
-            return .claudeInteractive
-        }
         return .http
     }
 

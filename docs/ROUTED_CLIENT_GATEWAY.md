@@ -541,12 +541,11 @@ default behavior stays fully legitimate; the gray-area paths below are all
 |---|---|---|---|
 | **Console API key (default)** | Legit. Bills the Console `sk-ant-api…` plan, not the subscription window. | On | Add an Anthropic Console key in Accounts; it is the default Anthropic route and unlocks gateway routing with cost-truth UI. |
 | **B1 — Interactive handoff** | Lowest brittleness, human-in-loop. Dispatches a task into a real interactive `claude` window the user drives (no `-p`); OpenBurnBar reconciles the subscription-window token delta as a companion. | Manual | `openburnbar-cli claude-handoff dispatch --briefing <text> [--terminal terminal\|iterm\|warp]`, then `claude-handoff reconcile <sessionID>`. |
-| **B2 — PTY interactive executor** | Highest brittleness / ToS risk. A resident interactive `claude` driven through a pseudo-terminal serves the completion full-auto; per-turn usage is read from the freshly-written `~/.claude` JSONL. Subscription (`sk-ant-oat…`) routes only. | Off | **Settings → Agents → Advanced → Experimental routing → "Interactive Claude routing"**, then restart the daemon. (Equivalently, export `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1` for a manually-launched daemon.) Logs a loud warning whenever it activates; any failure falls back to the legit path. |
 | **B3 — Cross-vendor degrade** | Legit (user's own keys), but relaxes the exact-model invariant. When the requested model cannot be served, substitutes an allow-listed OpenAI-compatible vendor on the user's own key. | Off | **Settings → Agents → Advanced → Experimental routing → "Cross-vendor degrade"**, then restart the daemon. (Equivalently, export `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1`; optionally narrow/reorder vendors with `OPENBURNBAR_CROSS_VENDOR_DEGRADE_VENDORS=deepseek,zai,moonshot`.) |
 
-> **Where the toggles live.** Both B2 and B3 are surfaced as off-by-default,
-> `EXPERIMENTAL`-badged switches under **Settings → Agents → Advanced →
-> Experimental routing**. Flipping one persists the choice and the card prompts
+> **Where the toggles live.** B3 is surfaced as an off-by-default,
+> `EXPERIMENTAL`-badged switch under **Settings → Agents → Advanced →
+> Experimental routing**. Flipping it persists the choice and the card prompts
 > you to **restart the daemon to apply** — the app emits the matching env var
 > into the launchd plist (`writeLaunchAgentPlist()`), and the gateway reads it
 > at launch. The env vars remain the source of truth for headless/manual daemon

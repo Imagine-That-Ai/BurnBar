@@ -95,6 +95,12 @@ targets:
         SUPublicEDKey: 613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Swift 6.2 (Xcode 26+) made swift_task_isCurrentExecutor crash on an isolation
+        # mismatch where it previously returned false. Restore legacy non-crashing
+        # behavior until the concurrency-isolation migration is complete. Keep aligned
+        # with AgentLens/Resources/OpenBurnBar-Info.plist.
+        LSEnvironment:
+          SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE: legacy
         NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.
         NSAppleEventsUsageDescription: OpenBurnBar may send Apple Events to apps you approve--such as Cursor, Safari, Google Chrome, and Finder--during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.
     sources:

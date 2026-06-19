@@ -210,7 +210,11 @@ extension ChatSessionController {
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
-        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming, !sendInFlight else { return }
+        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty else { return }
+        guard !isSendBusy else {
+            streamError = "A chat response is already in progress. Wait for it to finish, then send again."
+            return
+        }
 
         // Synchronous reentrancy sentinel: set before any await so a second
         // programmatic/relay `send()` arriving in the await window before
@@ -487,7 +491,7 @@ extension ChatSessionController {
                     assistant,
                     threadID: activeThreadID,
                     isTerminalAssistantCommit: true,
-                    memoryService: memoryService,
+                    memoryService: memoryServiceForExtraction,
                     extractionContext: makeMemoryExtractionContext()
                 )
             } catch {
@@ -546,7 +550,7 @@ extension ChatSessionController {
             aggregateSection: aggregateSection
         )
 
-        let basePrompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
+        let promptSections = await ContextBuilder.buildDatabaseAnalystSystemPromptSections(
             from: dataStore,
             intelligenceService: searchSvc,
             indexingEnabled: settingsManager.conversationIndexingEnabled,
@@ -571,6 +575,9 @@ extension ChatSessionController {
         let workspacePath = chatWorkspaceURL.path
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
+        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
+            ? messages
+            : []
 
         // G9: assemble augmentedSystem under one token-aware arbiter so a future
         // memory-injection section (F-2) subtracts from a shared retrieval pool
@@ -584,9 +591,19 @@ extension ChatSessionController {
             resolvedModel: requestModel,
             hermesFamily: settingsManager.selectedHermesModel
         )
-        let historyChars = messages.reduce(0) { $0 + $1.content.count }
-        let historyTokens = TokenExtractionUtility.estimatedTokenCount(for: historyChars, charsPerToken: 3.5)
-        let promptArbiter = PromptTokenArbiter.make(model: arbiterFamily, historyAndUserTurnTokens: historyTokens)
+        let payloadTokens = Self.promptPayloadTokenReserve(
+            history: multiTurnHistory,
+            userMessage: trimmed
+        )
+        let wrapperTokens = Self.promptSystemWrapperTokenReserve(
+            backend: chatBackend,
+            piAgentInstanceID: settingsManager.piAgentSelectedInstanceID
+        )
+        let promptArbiter = PromptTokenArbiter.make(
+            model: arbiterFamily,
+            historyAndUserTurnTokens: payloadTokens,
+            systemWrapperTokens: wrapperTokens
+        )
         let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
         let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
         // F-2 (G8): recall + wrap memory snippets into the `.memory` section. They
@@ -594,11 +611,14 @@ extension ChatSessionController {
         // LLMSafeContent.wrapUntrusted so they never enter the trusted `.core` persona.
         let memorySection = await recallMemorySection(query: trimmed, tokenBudget: promptArbiter.memoryBudget)
         let assembledPrompt = promptArbiter.assemble([
-            PromptTokenSection(id: .core, content: basePrompt),
+            PromptTokenSection(id: .core, content: promptSections.core),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
             PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
+            // F-2 recall snippets (wrapped, G8) + ephemeral usage rollups both share the
+            // arbiter's pool below evidence; neither enters the trusted `.core`.
             PromptTokenSection(id: .memory, content: memorySection),
+            PromptTokenSection(id: .rollups, content: promptSections.ephemeralRollups)
         ])
         if !assembledPrompt.droppedSections.isEmpty || !assembledPrompt.truncatedSections.isEmpty {
             AppLogger.chat.info(
@@ -627,10 +647,6 @@ extension ChatSessionController {
         firstAssistantBadgeShown = true
         messages.append(placeholder)
         let streamStartedAt = Date()
-
-        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
-            ? messages.filter { $0.id != assistantId }
-            : []
 
         // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
         // Load bytes for any attachments referenced by history. We load lazily
@@ -819,7 +835,7 @@ extension ChatSessionController {
                                 final,
                                 threadID: self.activeThreadID,
                                 isTerminalAssistantCommit: true,
-                                memoryService: self.memoryService,
+                                memoryService: self.memoryServiceForExtraction,
                                 extractionContext: self.makeMemoryExtractionContext()
                             )
                             await self.saveUsageIfNeeded(
