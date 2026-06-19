@@ -239,7 +239,16 @@ extension ChatSessionController {
         // user toggle) immediately stops surfacing memories — even already-stored ones.
         guard settingsManager.memoryExtractionEnabled, let memoryService else { return "" }
         let scope = makeMemoryExtractionContext().scope
-        let request = MemoryRecallRequest(query: query, scope: scope, tokenBudget: max(tokenBudget, 1))
+        let recallBudget = MemoryRecallBudget.forReply(
+            arbiterBudget: max(tokenBudget, 1),
+            highRecall: settingsManager.memoryHighRecallPerReply
+        )
+        let request = MemoryRecallRequest(
+            query: query,
+            scope: scope,
+            tokenBudget: recallBudget.tokenBudget,
+            limit: recallBudget.limit
+        )
         let snippets: [MemorySnippet]
         do {
             snippets = try await memoryService.recallForPrompt(request)

@@ -6,6 +6,10 @@ struct DashboardWorkspaceNavStrip: View {
     /// chat bubble otherwise). Defaults to non-Hermes (`whimsy`) when nil so
     /// existing callers continue to compile during incremental adoption.
     var activeChatBackend: ChatBackendID?
+    /// Number of memories awaiting review. When greater than zero a small count
+    /// badge rides the Memory tab. Optional (defaults to nil → plain button) so
+    /// callers that have not threaded a loaded inbox model still compile.
+    var pendingMemoryCount: Int?
     var onNavigate: (DashboardMainRoute) -> Void
 
     private var chatAccent: Color {
@@ -18,6 +22,11 @@ struct DashboardWorkspaceNavStrip: View {
 
     private var chatSubtitle: String {
         activeChatBackend == .hermes ? "Ask Hermes anything" : "Full-canvas chat"
+    }
+
+    private var memoryBadge: String? {
+        guard let pendingMemoryCount, pendingMemoryCount > 0 else { return nil }
+        return pendingMemoryCount > 99 ? "99+" : "\(pendingMemoryCount)"
     }
 
     var body: some View {
@@ -84,6 +93,16 @@ struct DashboardWorkspaceNavStrip: View {
                 isSelected: currentRoute == .sessionLogs,
                 isCompact: isCompact,
                 action: { onNavigate(.sessionLogs) }
+            )
+            DashboardWorkspaceNavButton(
+                title: "Memory",
+                subtitle: "Review what OpenBurnBar learned",
+                systemImage: "brain.head.profile",
+                accent: DesignSystem.Colors.whimsy,
+                isSelected: currentRoute == .memoryReview,
+                trailingBadge: memoryBadge,
+                isCompact: isCompact,
+                action: { onNavigate(.memoryReview) }
             )
         }
         .animation(DesignSystem.Animation.standard, value: currentRoute)

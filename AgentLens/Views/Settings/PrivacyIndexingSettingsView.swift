@@ -11,6 +11,11 @@ struct PrivacyIndexingSettingsView: View {
     /// Wired when a memory backend is available (nil today, until backend PR-5).
     /// When nil, "Reset memory" is disabled — extraction is already a no-op.
     var memoryService: (any MemoryServing)?
+    /// Live runtime context, threaded so the "Review pending memories" link can
+    /// build the inbox over the shared `ControlPlaneStore`. Optional so settings
+    /// surfaces that have no runtime context still compile (the link then shows a
+    /// graceful unavailable state).
+    var runtimeContext: OpenBurnBarRuntimeContext?
     var accountManager: AccountManager = .shared
     @State private var storageBytes: Int64 = 0
     @State private var conversationCount: Int = 0
@@ -127,6 +132,24 @@ struct PrivacyIndexingSettingsView: View {
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                         }
                     }
+
+                    SettingsToggle(
+                        title: "Back up approved memories",
+                        subtitle: "Off by default. When on, only memories you approve are replicated to your cloud vault, end-to-end sealed. Declining keeps every memory on this Mac.",
+                        isOn: $settingsManager.memoryApprovedCloudBackupOptIn
+                    )
+
+                    NavigationLink {
+                        memoryReviewDestination
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "tray.full",
+                            iconTint: DesignSystem.Colors.whimsy,
+                            title: "Review pending memories",
+                            subtitle: "Approve or reject what OpenBurnBar learned before it can be used"
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
 
@@ -687,6 +710,33 @@ struct PrivacyIndexingSettingsView: View {
     }
 
     // MARK: - Helper Views
+
+    /// Destination for the "Review pending memories" link. Builds the inbox over
+    /// the shared `ControlPlaneStore` when the runtime context is wired; otherwise
+    /// shows a graceful unavailable state so the link never dead-ends.
+    @ViewBuilder
+    private var memoryReviewDestination: some View {
+        if let store = runtimeContext?.chatMemoryStore {
+            MemoryReviewInboxView(
+                model: MemoryReviewInboxModel(
+                    scope: MemorySettingsService.resetScope(userID: accountManager.userID),
+                    loadPage: { request in try await store.chatMemoryPage(request) },
+                    openBody: { id in try await store.openChatMemoryBody(id: id) },
+                    setStatus: { id, status in
+                        try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                    }
+                )
+            )
+            .navigationTitle("Memory")
+        } else {
+            ContentUnavailableView(
+                "Memory is unavailable",
+                systemImage: "brain.head.profile",
+                description: Text("The memory store is not ready yet. It activates once OpenBurnBar finishes starting up.")
+            )
+            .navigationTitle("Memory")
+        }
+    }
 
     private func metricPill(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {

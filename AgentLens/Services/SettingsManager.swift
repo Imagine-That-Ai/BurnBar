@@ -712,6 +712,20 @@ final class SettingsManager {
         set { memory.highRecallPerReply = newValue }
     }
 
+    /// User consent to chat-memory extraction (gate G0, default OFF). Setting this
+    /// true also marks the consent prompt as shown. Until granted, the whole
+    /// memory loop is dormant (see `memoryExtractionEnabled`).
+    var memoryConsentGranted: Bool {
+        get { memory.consentGranted }
+        set { memory.consentGranted = newValue }
+    }
+
+    /// Whether the first-run memory consent prompt has already been presented.
+    var memoryConsentShown: Bool {
+        get { memory.consentShown }
+        set { memory.consentShown = newValue }
+    }
+
     /// Remote Config `memory_extraction_enabled`. Not user-settable; written by
     /// the RC refresh. Fail-closed (false) on fetch error or fleet kill.
     var memoryExtractionRemoteConfigEnabled: Bool {
@@ -719,10 +733,13 @@ final class SettingsManager {
         set { memory.remoteConfigExtractionEnabled = newValue }
     }
 
-    /// Combined extraction gate (G4): user toggle AND fleet kill switch both
-    /// must allow. This is the single value the extraction chokepoint consults.
+    /// Combined extraction gate (G0 + G4): user CONSENT **and** the user toggle
+    /// **and** the fleet kill switch must all allow. This is the single value the
+    /// extraction chokepoint consults; with consent default OFF the whole loop is
+    /// dormant out of the box.
     var memoryExtractionEnabled: Bool {
         MemoryExtractionGate.isEnabled(
+            consentGranted: memory.consentGranted,
             automaticExtraction: memory.automaticExtraction,
             remoteConfigEnabled: memory.remoteConfigExtractionEnabled
         )

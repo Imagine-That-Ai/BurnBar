@@ -362,7 +362,7 @@ extension ControlPlaneStore {
                     AND not_before <= ?
                 ) OR (
                     status = 'running'
-                    AND attempts < ?
+                    AND attempts <= ?
                     AND lease_expires_at IS NOT NULL
                     AND lease_expires_at <= ?
                 )
@@ -1079,6 +1079,12 @@ extension ControlPlaneStore {
         scope.projectID ?? "chat:\(scope.userID ?? scope.appID ?? "unscoped")"
     }
 
+    /// Internal shim exposed for `MemoryExtractionWorker` (which lives outside the extension
+    /// and cannot access the private `memoryStorageProjectID`). Same logic, different name.
+    static func memoryExtractionProjectID(for scope: MemoryScope) -> String {
+        memoryStorageProjectID(for: scope)
+    }
+
     private static func memoryBodySnapshotJSON(
         memoryID: MemoryID,
         body: String,
@@ -1465,6 +1471,34 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Emit a `memory.candidate_dropped` audit event for a G7-rejected extraction candidate.
+    ///
+    /// Called by `MemoryExtractionWorker` when the G7 gate rejects a candidate. Labels carry
+    /// only stable, non-sensitive identifiers — NEVER the secret text or the candidate body.
+    /// The `findingLabels` must be the finding IDs/labels (e.g. `openai-api-key`) joined with
+    /// commas; the raw candidate text MUST NOT appear in any label.
+    func appendMemoryCandidateDroppedAuditEvent(
+        projectID: String,
+        memoryID: String,
+        sourceKind: String,
+        findingLabels: String,
+        candidateIndex: Int,
+        now: Date
+    ) async throws {
+        try await appendMemoryAuditEvent(
+            action: "memory.candidate_dropped",
+            projectID: projectID,
+            subjectID: memoryID,
+            labels: [
+                "candidate_index": String(candidateIndex),
+                "finding_labels": findingLabels,
+                "memory_id": memoryID,
+                "source_kind": sourceKind
+            ],
+            now: now
+        )
+    }
+
     private func updateMemoryExtractionJob(
         _ id: String,
         status: MemoryEventStatus,
@@ -1586,6 +1620,11 @@ actor MemoryExtractionWorker {
     private let authorityWritesEnabled: @Sendable () -> Bool
     private let nowProvider: @Sendable () -> Date
 
+    /// Number of candidates dropped by the G7 gate during the most recent `drainNext()` call.
+    /// Reset to 0 at the start of each drain. The driving engine reads this after each tick to
+    /// accumulate the pump-level `dropped` counter in `MemoryExtractionPumpReport`.
+    private(set) var lastDroppedCount: Int = 0
+
     init(
         store: ControlPlaneStore,
         admission: MemoryExtractionAdmissionController = MemoryExtractionAdmissionController(),
@@ -1635,18 +1674,34 @@ actor MemoryExtractionWorker {
         guard authorityWritesEnabled() else { return .idle }
         let now = nowProvider()
         guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return .idle }
+        lastDroppedCount = 0
         do {
             // The extractor performs the LLM round-trip. The worker actor holds NO
             // database write transaction across this call (PR-D1 must-fix:
             // lock-not-held-across-LLM) — the LLM latency is fully outside any DB lock.
             let requests = try await extractor(job)
+            let projectID = ControlPlaneStore.memoryExtractionProjectID(for: job.scope)
 
             for (index, request) in requests.enumerated() {
                 // G7 candidate-DROP gate (PR-D1 must-fix #4): drop a secret/PII-bearing
                 // candidate instead of failing the whole batch, so one poisoned
                 // candidate cannot starve the rest. `.reject` (fail-closed) is also what
                 // an unavailable corpus returns, so a missing corpus drops everything.
-                guard case .allow = MemorySecretPIIGate.evaluate(request.text, policy: .reject) else {
+                let verdict = MemorySecretPIIGate.evaluate(request.text, policy: .reject)
+                guard case .allow = verdict else {
+                    lastDroppedCount += 1
+                    // Emit a non-sensitive audit event: finding IDs/labels only,
+                    // NEVER the secret text or the candidate body.
+                    let findingLabels = verdict.findings.map(\.id).joined(separator: ",")
+                    let memoryID = Self.memoryID(for: job, index: index)
+                    try await store.appendMemoryCandidateDroppedAuditEvent(
+                        projectID: projectID,
+                        memoryID: memoryID,
+                        sourceKind: MemorySourceKind.chat.rawValue,
+                        findingLabels: findingLabels,
+                        candidateIndex: index,
+                        now: now
+                    )
                     continue
                 }
 

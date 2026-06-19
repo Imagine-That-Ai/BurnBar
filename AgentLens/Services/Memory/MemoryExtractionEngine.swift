@@ -51,6 +51,10 @@ import Foundation
 struct MemoryExtractionPumpReport: Equatable, Sendable {
     var processed: Int = 0
     var failed: Int = 0
+    /// Total candidates silently dropped by the G7 gate across all jobs in this pump.
+    /// A candidate is dropped when `MemorySecretPIIGate.evaluate` returns `.reject` or
+    /// `.redact`; a `memory.candidate_dropped` audit event is emitted for each.
+    var dropped: Int = 0
     var stoppedReason: StopReason = .idle
 
     enum StopReason: Equatable, Sendable {
@@ -248,12 +252,14 @@ final class MemoryExtractionEngine {
             switch outcome {
             case .drained:
                 report.processed += 1
+                report.dropped += await worker.lastDroppedCount
                 extractedThisSession += 1
             case .claimedButFailed:
                 // The worker marked the job failed (no throw). Surface it by reading the
                 // terminal status (must-fix #3) and KEEP DRAINING the rest of the backlog.
                 report.processed += 1
                 report.failed += 1
+                report.dropped += await worker.lastDroppedCount
                 failedThisSession += 1
                 await recordMostRecentFailure()
             case .idle:

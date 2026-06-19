@@ -1,4 +1,5 @@
 import AppKit
+import OpenBurnBarCore
 import SwiftUI
 import WebKit
 
@@ -137,6 +138,7 @@ struct DashboardView: View {
         case .projects: return "Projects"
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
+        case .memoryReview: return "Memory"
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .provider(let provider): return provider.displayName
@@ -292,6 +294,16 @@ struct DashboardView: View {
             }
             .presentationBackground(Material.ultraThinMaterial)
         }
+        .sheet(isPresented: Binding(
+            get: { consentCoordinator?.showMemoryConsent ?? false },
+            set: { consentCoordinator?.showMemoryConsent = $0 }
+        )) {
+            MemoryConsentSheet { grant in
+                consentCoordinator?.confirmMemoryConsent(grant: grant)
+                consentCoordinator?.showMemoryConsent = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
         .sheet(isPresented: $showAnalyticsConsent) {
             AnalyticsConsentPromptView { granted in
                 if granted {
@@ -312,10 +324,17 @@ struct DashboardView: View {
         }
         .onAppear {
             presentAnalyticsConsentIfNeeded()
+            presentMemoryConsentIfNeeded()
         }
         .onChange(of: showIndexingConsent) { wasShowing, isShowing in
             if wasShowing && !isShowing {
                 presentAnalyticsConsentIfNeeded()
+                presentMemoryConsentIfNeeded()
+            }
+        }
+        .onChange(of: showAnalyticsConsent) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                presentMemoryConsentIfNeeded()
             }
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
@@ -412,6 +431,9 @@ struct DashboardView: View {
                         preferredChatModelKey: chatController.hermesModelName
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .memoryReview:
+                    memoryReviewView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .chat:
                     DashboardChatWorkspaceView(
                         controller: chatController,
@@ -512,6 +534,22 @@ struct DashboardView: View {
         showAnalyticsConsent = true
     }
 
+    /// Presents the first-run memory consent once every other first-run sheet has
+    /// settled, so the permission moments never stack. Memory consent is the last
+    /// link in the chain: it waits for the indexing prompt, the CLI/cloud sheets,
+    /// and the analytics decision before surfacing.
+    private func presentMemoryConsentIfNeeded() {
+        guard let consentCoordinator,
+              consentCoordinator.shouldShowMemoryConsent,
+              !consentCoordinator.showMemoryConsent,
+              !showIndexingConsent,
+              !showCLIConsentSheet,
+              !showSessionLogCloudConsent,
+              !showAnalyticsConsent,
+              AnalyticsConsentStore.shared.hasDecided else { return }
+        consentCoordinator.showMemoryConsent = true
+    }
+
     private func autoExpandTimeRangeIfNeeded() {
         guard !didAutoExpandEmptyTimeRange else { return }
         defer { didAutoExpandEmptyTimeRange = true }
@@ -530,6 +568,44 @@ struct DashboardView: View {
         ) { route in
             navigate(to: route)
         }
+    }
+
+    // MARK: - Memory Review
+
+    /// First-class Memory Review destination. The inbox is the human approval gate
+    /// for extracted memories. The closures bind directly to the SHARED
+    /// `ControlPlaneStore` published on the runtime context; when that store is not
+    /// yet wired (e.g. the test-stub scene), we render a graceful unavailable state
+    /// mirroring how other routes degrade on a missing dependency.
+    @ViewBuilder
+    private var memoryReviewView: some View {
+        if let store = runtimeContext?.chatMemoryStore {
+            MemoryReviewInboxView(
+                model: MemoryReviewInboxModel(
+                    scope: memoryReviewScope,
+                    loadPage: { request in try await store.chatMemoryPage(request) },
+                    openBody: { id in try await store.openChatMemoryBody(id: id) },
+                    setStatus: { id, status in
+                        try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                    }
+                )
+            )
+        } else {
+            ContentUnavailableView(
+                "Memory is unavailable",
+                systemImage: "brain.head.profile",
+                description: Text("The memory store is not ready yet. It activates once OpenBurnBar finishes starting up.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
+        }
+    }
+
+    /// Chat-memory scope for the signed-in user, derived the same way as
+    /// `MemorySettingsService.resetScope`: a blank/absent user id collapses to nil
+    /// so the inbox reads the device-local (unscoped-user) bucket.
+    private var memoryReviewScope: MemoryScope {
+        MemorySettingsService.resetScope(userID: accountManager.userID)
     }
 
     @ViewBuilder

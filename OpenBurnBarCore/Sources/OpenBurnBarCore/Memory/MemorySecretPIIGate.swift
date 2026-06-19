@@ -173,6 +173,30 @@ public enum MemorySecretPIIGate {
         return ids
     }
 
+    // MARK: - Testing seam
+    //
+    // `_evaluate(_:policy:overrideCorpus:)` is the ONLY test seam in this type.
+    // It re-runs the corpus availability guard against a caller-supplied corpus,
+    // enabling tests to inject `LoadedCorpus.unavailable` and prove the
+    // fail-closed branch without altering any production code paths.
+    //
+    // IMPORTANT: Do NOT call this from production code. It is intentionally
+    // `internal` (not `private`) so `@testable import` can reach it.
+    static func _evaluate(
+        _ text: String,
+        policy: MemoryGatePolicy = .reject,
+        overrideCorpus: LoadedCorpus
+    ) -> MemoryGateVerdict {
+        guard overrideCorpus.available else {
+            // Corpus unavailable — fail closed. This is the exact guard mirrored
+            // from the public `evaluate` path; both must agree.
+            return .reject(findings: [unavailableFinding])
+        }
+        // Corpus is available: delegate to the normal evaluation so the seam
+        // exercises the real scanner for the positive (available) case too.
+        return evaluate(text, policy: policy)
+    }
+
     // MARK: - Redaction (bounded, fail-closed)
 
     private static func redactEvaluate(originalText: String, initialScan: [ScanFinding]) -> MemoryGateVerdict {

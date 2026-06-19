@@ -369,18 +369,20 @@ final class MemoryActivationEndToEndTests: XCTestCase {
     /// `/chat/completions` is the path taken. Never touches `.standard` defaults.
     private static func makeSettingsWithExtractionEnabled() -> SettingsManager {
         let settings = makeIsolatedSettings()
+        settings.memoryConsentGranted = true             // G0 consent (default OFF)
         settings.memoryAutomaticExtraction = true        // user toggle
         settings.memoryExtractionRemoteConfigEnabled = true  // fleet kill switch
-        XCTAssertTrue(settings.memoryExtractionEnabled, "both levers on ⇒ combined gate allows")
+        XCTAssertTrue(settings.memoryExtractionEnabled, "consent + both levers on ⇒ combined gate allows")
         configureLocalProvider(settings)
         return settings
     }
 
     private static func makeSettingsWithExtractionDisabled() -> SettingsManager {
         let settings = makeIsolatedSettings()
-        // The combined gate defaults ON (both sub-levers default true), so close it
-        // explicitly: with the user toggle off, `memoryExtractionEnabled` is false and the
-        // engine claims nothing. This is the "either lever off ⇒ halted" fail-closed leg.
+        // Consent is granted so this leg isolates the USER TOGGLE as the disabler:
+        // with the toggle off, `memoryExtractionEnabled` is false and the engine
+        // claims nothing. This is the "any lever off ⇒ halted" fail-closed leg.
+        settings.memoryConsentGranted = true
         settings.memoryAutomaticExtraction = false
         XCTAssertFalse(settings.memoryExtractionEnabled, "user toggle off ⇒ combined gate closed")
         configureLocalProvider(settings)

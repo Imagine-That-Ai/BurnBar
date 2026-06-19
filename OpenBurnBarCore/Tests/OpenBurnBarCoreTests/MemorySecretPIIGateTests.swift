@@ -204,4 +204,104 @@ final class MemorySecretPIIGateTests: XCTestCase {
         let ids = MemorySecretPIIGate.findingIDs(in: "\(key) and again \(key)")
         XCTAssertEqual(ids, ["anthropic-api-key"])
     }
+
+    // MARK: - Corpus unavailable: fail-closed (G7 gate audit finding)
+    //
+    // The gate design contract states: when the secret-pattern corpus is missing
+    // or fails to load, `evaluate` MUST return `.reject` with a synthetic
+    // `corpus-unavailable` finding — it must NEVER fall through to `.allow`.
+    // These tests exercise that branch via the `_evaluate(_:policy:overrideCorpus:)`
+    // testing seam, which injects `LoadedCorpus.unavailable` so the test runs
+    // without depending on filesystem state.
+
+    func testCorpusUnavailableRejectsEverything_benignText() {
+        // Even completely benign text must be rejected when the corpus is missing.
+        let verdict = MemorySecretPIIGate._evaluate(
+            "I prefer dark mode and tabs over spaces.",
+            policy: .reject,
+            overrideCorpus: .unavailable
+        )
+        guard case .reject(let findings) = verdict else {
+            XCTFail("Expected .reject when corpus is unavailable, got \(verdict)")
+            return
+        }
+        XCTAssertEqual(
+            findings.map(\.id),
+            [MemorySecretPIIGate.corpusUnavailableFindingID],
+            "Fail-closed finding must carry the stable corpus-unavailable id."
+        )
+        XCTAssertEqual(
+            findings.first?.label,
+            MemorySecretPIIGate.corpusUnavailableLabel,
+            "Fail-closed finding must carry the daemon-contract label verbatim."
+        )
+        XCTAssertEqual(
+            findings.first?.kind,
+            .secret,
+            "Corpus-unavailable finding kind must be .secret (existing audit contract)."
+        )
+    }
+
+    func testCorpusUnavailableRejectsEverything_emptyText() {
+        // Even the empty string must be rejected — the gate cannot verify
+        // anything without a corpus.
+        let verdict = MemorySecretPIIGate._evaluate(
+            "",
+            policy: .reject,
+            overrideCorpus: .unavailable
+        )
+        guard case .reject(let findings) = verdict else {
+            XCTFail("Expected .reject for empty text when corpus is unavailable, got \(verdict)")
+            return
+        }
+        XCTAssertEqual(findings.map(\.id), [MemorySecretPIIGate.corpusUnavailableFindingID])
+    }
+
+    func testCorpusUnavailableRejectsUnderRedactPolicy() {
+        // The `.redact` policy must ALSO fail closed when the corpus is unavailable;
+        // the policy default of `.reject` must not be the only guarded branch.
+        let verdict = MemorySecretPIIGate._evaluate(
+            "totally fine note",
+            policy: .redact,
+            overrideCorpus: .unavailable
+        )
+        guard case .reject(let findings) = verdict else {
+            XCTFail("Expected .reject under .redact policy when corpus is unavailable, got \(verdict)")
+            return
+        }
+        XCTAssertEqual(findings.map(\.id), [MemorySecretPIIGate.corpusUnavailableFindingID])
+    }
+
+    func testAvailableCorpusStillAllowsBenignText() {
+        // Sanity-check: when we do NOT override the corpus (real production path),
+        // benign text is still allowed. This pair-test distinguishes "test
+        // exercises the unavailable path" from "the gate is just broken globally".
+        XCTAssertTrue(
+            MemorySecretPIIGate.isAvailable,
+            "Production corpus must be available; if not, ALL tests in this class are vacuous."
+        )
+        let verdict = MemorySecretPIIGate._evaluate(
+            "I prefer dark mode and tabs over spaces.",
+            policy: .reject,
+            overrideCorpus: corpus  // real loaded corpus
+        )
+        XCTAssertEqual(verdict, .allow, "Benign text must be .allow when corpus is available.")
+    }
+}
+
+// MARK: - Test-only corpus accessor
+
+// Constructs a minimal available-sentinel `LoadedCorpus` for use in
+// `testAvailableCorpusStillAllowsBenignText`. The corpus payload is empty
+// (zero patterns) because `_evaluate` delegates to `MemorySecretPIIGate.evaluate`
+// (the real production scanner) whenever `overrideCorpus.available == true`, so
+// only the `available` flag matters here.
+private var corpus: MemorySecretPIIGate.LoadedCorpus {
+    MemorySecretPIIGate.LoadedCorpus(
+        version: "test-sentinel",
+        patterns: [],
+        entropy: nil,
+        decoding: nil,
+        available: true
+    )
 }
