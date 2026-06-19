@@ -169,6 +169,25 @@ final class ChatSessionController {
     /// follow-up (the citations live on the snippet, not the chat row).
     var lastRecalledMemorySnippets: [MemorySnippet] = []
 
+    /// E1 (citation jump): a `chat_messages.id` the stream should scroll to once it
+    /// is present in `messages`. Recall is app-wide, so tapping a citation may first
+    /// open the owning thread; the actual `proxy.scrollTo` happens in the
+    /// `ScrollViewReader` (the only place with a proxy). `jumpToMemoryCitation`
+    /// sets this; the view clears it after scrolling so the same target can be
+    /// re-requested later. Set in lockstep with `memoryJumpRequestToken` so a
+    /// repeat tap on the *already-centered* row still re-triggers the flash.
+    var pendingMemoryJumpMessageID: String?
+
+    /// Monotonic token bumped on every citation tap. The stream observes this (not
+    /// just `pendingMemoryJumpMessageID`) so tapping the same in-view source twice
+    /// re-runs the scroll + gold flash even though the id is unchanged.
+    var memoryJumpRequestToken = 0
+
+    /// E1: the `chat_messages.id` currently painted with the gold "landed here"
+    /// flash. The stream sets it on arrival and clears it after the flash window so
+    /// the highlight does not persist. Purely cosmetic; never gates content.
+    var memoryJumpHighlightMessageID: String?
+
     /// Synchronous reentrancy sentinel for `send()`. `isStreaming` flips late (only
     /// once streaming actually begins), leaving an await window where a second
     /// programmatic/relay `send()` can append a duplicate user turn. `sendInFlight`

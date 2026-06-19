@@ -43,6 +43,51 @@ extension ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
     }
 
+    /// E1 (citation jump): navigate to the chat message a recalled memory cites.
+    ///
+    /// Recall is app-wide (`recallChatMemorySnippets` carries no thread predicate),
+    /// so the dominant case is **cross-thread**: the cited `messageID` lives in a
+    /// thread other than the one on screen. Resolve its owning thread, open that
+    /// thread if needed (reusing `openHistoryThreadAsync`, which loads its
+    /// messages), then hand the row id to the stream's `ScrollViewReader` to scroll
+    /// + flash. When the message is already in the open thread we skip the reload
+    /// and request the scroll directly.
+    ///
+    /// Pure local navigation: it never decrypts or logs memory/message bodies, only
+    /// reads the `chat_messages.id → threadId` mapping. The chip itself only emits a
+    /// `messageID` for a `.live` + device-local citation (`MemoryCitationResolver`),
+    /// so `.approved`/tombstone gating upstream already governs what is jumpable.
+    /// Bumping `memoryJumpRequestToken` last guarantees the stream re-fires the
+    /// scroll + flash even when the target id is unchanged (repeat tap, same row).
+    func jumpToMemoryCitation(messageID: String) async {
+        let trimmed = messageID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let owningThreadID: String?
+        do {
+            owningThreadID = try await dataStore.threadID(forChatMessageID: trimmed)
+        } catch {
+            AppLogger.chat.silentFailure("threadID(forChatMessageID) (memory citation jump)", error: error)
+            owningThreadID = nil
+        }
+
+        // Source row is gone (hard-deleted) or unknown — fail closed, navigate
+        // nowhere rather than to an empty thread. The chip stays where it was.
+        guard let owningThreadID else { return }
+
+        if owningThreadID != activeThreadID {
+            await openHistoryThreadAsync(owningThreadID)
+            // Bail if a concurrent navigation moved us elsewhere mid-open, so we
+            // don't scroll a thread the user is no longer looking at.
+            guard activeThreadID == owningThreadID else { return }
+        }
+
+        // Defer the scroll to the stream's ScrollViewReader (the only proxy owner).
+        // Setting the id then bumping the token wakes its `.onChange` observers.
+        pendingMemoryJumpMessageID = trimmed
+        memoryJumpRequestToken &+= 1
+    }
+
     func performSearch() {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else {

@@ -174,6 +174,13 @@ extension DataStore {
         try await actor.conversationStore.fetchChatMessages(threadID: threadID)
     }
 
+    /// E1 (citation jump): resolve the owning thread for a `chat_messages.id`.
+    /// Memory recall is app-wide, so a cited message often lives in a thread other
+    /// than the one currently open; the chat view opens this thread, then scrolls.
+    func threadID(forChatMessageID messageID: String) async throws -> String? {
+        try await actor.conversationStore.threadID(forChatMessageID: messageID)
+    }
+
     func deleteAllChatMessages() async throws {
         try await actor.conversationStore.deleteAllChatMessages()
     }

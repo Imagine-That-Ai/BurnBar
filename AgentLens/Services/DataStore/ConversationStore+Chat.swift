@@ -290,6 +290,24 @@ extension ConversationStore {
             }
         }
 
+        /// E1 (citation jump): resolve the owning thread for a `chat_messages.id`.
+        ///
+        /// Memory recall is app-wide (no thread predicate, `recallChatMemorySnippets`),
+        /// so a citation's `messageID` very often points at a row in a *different*
+        /// thread than the one currently open. The chat UI uses this to open the
+        /// owning thread before scrolling to the cited row. Returns `nil` when the
+        /// id is unknown (e.g. the source was hard-deleted), so the caller can fail
+        /// closed rather than navigate to nothing.
+        func threadID(forChatMessageID messageID: String) async throws -> String? {
+            try await dbQueue.read { db in
+                try String.fetchOne(
+                    db,
+                    sql: "SELECT threadId FROM chat_messages WHERE id = ?",
+                    arguments: [messageID]
+                )
+            }
+        }
+
         func deleteAllChatMessages() async throws {
             try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM chat_messages")
