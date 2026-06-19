@@ -855,6 +855,267 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
+    func chatMemoryPage(_ request: MemoryPageRequest) async throws -> MemoryPage {
+        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: request.scope)
+            .filter { memory in
+                if memory.reviewStatus == .rejected { return false }
+                return request.includeQuarantined || memory.reviewStatus == .approved
+            }
+            .sorted { lhs, rhs in
+                if lhs.updatedAt == rhs.updatedAt { return lhs.id < rhs.id }
+                return lhs.updatedAt > rhs.updatedAt
+            }
+        let pageSize = max(1, request.pageSize)
+        let page = max(1, request.page)
+        let start = max(0, (page - 1) * pageSize)
+        return MemoryPage(
+            items: Array(records.dropFirst(start).prefix(pageSize)),
+            page: page,
+            pageSize: pageSize,
+            total: records.count
+        )
+    }
+
+    func searchChatMemoryAuthorityRecords(_ query: MemoryQuery) async throws -> [Memory] {
+        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: query.scope)
+            .filter { $0.reviewStatus != .rejected }
+        var scored: [(memory: Memory, score: Double)] = []
+        scored.reserveCapacity(records.count)
+        for memory in records {
+            let body = try await openChatMemoryBody(id: memory.id) ?? ""
+            scored.append((memory, Self.memoryTextScore(query: query.text, text: body) + memory.confidence))
+        }
+        return scored.sorted { lhs, rhs in
+            if lhs.score == rhs.score { return lhs.memory.id < rhs.memory.id }
+            return lhs.score > rhs.score
+        }
+        .prefix(max(1, query.limit))
+        .map(\.memory)
+    }
+
+    func recallChatMemorySnippets(_ request: MemoryRecallRequest) async throws -> [MemorySnippet] {
+        guard request.tokenBudget > 0, request.limit > 0 else { return [] }
+        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: request.scope)
+            .filter { $0.reviewStatus == .approved && $0.validTo == nil }
+        var ranked: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
+        ranked.reserveCapacity(records.count)
+        for memory in records {
+            guard let body = try await openChatMemoryBody(id: memory.id), body.isEmpty == false else {
+                continue
+            }
+            let tokenEstimate = Self.memoryTokenEstimate(body)
+            let score = Self.memoryTextScore(query: request.query, text: body) + memory.confidence
+            ranked.append((memory, body, tokenEstimate, score))
+        }
+
+        var spent = 0
+        var snippets: [MemorySnippet] = []
+        for item in ranked.sorted(by: { lhs, rhs in
+            if lhs.score == rhs.score { return lhs.memory.id < rhs.memory.id }
+            return lhs.score > rhs.score
+        }) {
+            guard snippets.count < request.limit else { break }
+            guard item.tokenEstimate <= request.tokenBudget - spent else { continue }
+            spent += item.tokenEstimate
+            snippets.append(
+                MemorySnippet(
+                    memoryID: item.memory.id,
+                    text: item.text,
+                    kind: item.memory.kind,
+                    confidence: item.memory.confidence,
+                    citations: item.memory.citations,
+                    trustTier: .untrusted,
+                    tokenCountEstimate: item.tokenEstimate
+                )
+            )
+        }
+        return snippets
+    }
+
+    func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
+        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let patchedBody {
+            guard patchedBody.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
+            let secretLabels = MemorySecretScanner.labels(in: patchedBody)
+            if secretLabels.isEmpty == false {
+                try await appendMemoryAuditEvent(
+                    action: "memory.secret_rejected",
+                    projectID: Self.memoryStorageProjectID(for: existing.scope),
+                    subjectID: id,
+                    labels: [
+                        "memory_id": id,
+                        "source_kind": MemorySourceKind.chat.rawValue,
+                        "labels": secretLabels.joined(separator: ",")
+                    ],
+                    now: now
+                )
+                throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+            }
+        }
+
+        let snapshotSlug = Self.memorySnapshotSlug(id)
+        let auditLabels = [
+            "memory_id:\(id)",
+            "source_kind:\(MemorySourceKind.chat.rawValue)"
+        ]
+        let nowString = Self.iso8601String(now)
+        try await dbQueue.write { db in
+            if let patchedBody {
+                let bodyHash = Self.sha256Hex(patchedBody)
+                let bodyRef = Self.memorySnapshotRef(snapshotSlug)
+                let snapshotJSON = try Self.memoryBodySnapshotJSON(
+                    memoryID: id,
+                    body: patchedBody,
+                    bodyHash: bodyHash,
+                    citations: existing.citations,
+                    createdAt: existing.createdAt
+                )
+                try db.execute(sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?", arguments: [snapshotSlug])
+                try db.execute(
+                    sql: """
+                    INSERT INTO memory_body_snapshots (
+                        id, memory_id, body_ref, snapshot_json, body_hash, source_kind, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(memory_id) DO UPDATE SET
+                        body_ref = excluded.body_ref,
+                        snapshot_json = excluded.snapshot_json,
+                        body_hash = excluded.body_hash,
+                        source_kind = excluded.source_kind,
+                        updated_at = excluded.updated_at
+                    """,
+                    arguments: [
+                        snapshotSlug,
+                        id,
+                        bodyRef,
+                        snapshotJSON,
+                        bodyHash,
+                        MemorySourceKind.chat.rawValue,
+                        existing.createdAt,
+                        now
+                    ]
+                )
+            }
+            try db.execute(
+                sql: """
+                UPDATE agent_memories
+                SET kind = COALESCE(?, kind),
+                    confidence = COALESCE(?, confidence),
+                    updated_at = ?
+                WHERE id = ?
+                  AND source_kind = ?
+                """,
+                arguments: [
+                    patch.kind?.rawValue,
+                    patch.confidence,
+                    now,
+                    id,
+                    MemorySourceKind.chat.rawValue
+                ]
+            )
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: "memory.update",
+                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                subjectID: id,
+                labels: auditLabels,
+                nowString: nowString
+            )
+        }
+        return true
+    }
+
+    func setChatMemoryReviewStatus(id: MemoryID, status: MemoryReviewStatus, now: Date = Date()) async throws -> Bool {
+        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        let auditLabels = [
+            "memory_id:\(id)",
+            "review_status:\(status.rawValue)",
+            "source_kind:\(MemorySourceKind.chat.rawValue)"
+        ]
+        let nowString = Self.iso8601String(now)
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE agent_memories
+                SET review_status = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND source_kind = ?
+                """,
+                arguments: [status.rawValue, now, id, MemorySourceKind.chat.rawValue]
+            )
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: status == .approved ? "memory.approve" : "memory.reject",
+                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                subjectID: id,
+                labels: auditLabels,
+                nowString: nowString
+            )
+        }
+        return true
+    }
+
+    func deleteChatMemoryAuthorityRecord(id: MemoryID, now: Date = Date()) async throws -> Bool {
+        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        let snapshotSlug = Self.memorySnapshotSlug(id)
+        let auditLabels = [
+            "memory_id:\(id)",
+            "source_kind:\(MemorySourceKind.chat.rawValue)"
+        ]
+        let nowString = Self.iso8601String(now)
+        try await dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
+            try db.execute(sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?", arguments: [snapshotSlug])
+            try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: "memory.delete",
+                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                subjectID: id,
+                labels: auditLabels,
+                nowString: nowString
+            )
+        }
+        return true
+    }
+
+    func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
+        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+        var deleted = 0
+        for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
+            deleted += 1
+        }
+        return deleted
+    }
+
+    func listChatMemoryEntities() async throws -> [MemoryEntity] {
+        let records = try await fetchActiveChatMemoryAuthorityRecords()
+            .filter { $0.reviewStatus != .rejected }
+        var counts: [String: Int] = [:]
+        for memory in records {
+            if let value = memory.scope.userID { counts["user_id:\(value)", default: 0] += 1 }
+            if let value = memory.scope.agentID { counts["agent_id:\(value)", default: 0] += 1 }
+            if let value = memory.scope.runID { counts["run_id:\(value)", default: 0] += 1 }
+            if let value = memory.scope.appID { counts["app_id:\(value)", default: 0] += 1 }
+            if let value = memory.scope.projectID { counts["project_id:\(value)", default: 0] += 1 }
+        }
+        return counts.map { key, count in
+            let parts = key.split(separator: ":", maxSplits: 1)
+            return MemoryEntity(
+                keyName: String(parts.first ?? ""),
+                value: String(parts.last ?? ""),
+                count: count
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.keyName == rhs.keyName { return lhs.value < rhs.value }
+            return lhs.keyName < rhs.keyName
+        }
+    }
+
     func registerMemoryEmbeddingVersion(
         descriptor: EmbeddingModelDescriptor,
         isActive: Bool = true,
@@ -1114,6 +1375,30 @@ final class ControlPlaneStore: Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    private static func memoryTokenEstimate(_ text: String) -> Int {
+        max(1, (text.count + 3) / 4)
+    }
+
+    private static func memoryTextScore(query: String, text: String) -> Double {
+        let queryTerms = memoryTerms(query)
+        guard queryTerms.isEmpty == false else { return 0 }
+        let textTerms = memoryTerms(text)
+        guard textTerms.isEmpty == false else { return 0 }
+        let overlap = queryTerms.intersection(textTerms).count
+        return Double(overlap) / Double(queryTerms.count)
+    }
+
+    private static func memoryTerms(_ text: String) -> Set<String> {
+        Set(
+            text
+                .lowercased()
+                .split { character in
+                    character.isLetter == false && character.isNumber == false
+                }
+                .map(String.init)
+        )
     }
 
     private static func memory(from row: Row, citations: [MemoryCitation]) -> Memory? {
