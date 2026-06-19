@@ -35,6 +35,8 @@ const APP = {
   appleId: process.env.APP_STORE_APPLE_APP_ID || "6766366964",
   bundleId: process.env.APP_STORE_BUNDLE_ID || "com.openburnbar.app",
   buildVersion: process.env.APP_STORE_BUILD_VERSION || currentMobileBuildVersion(),
+  testFlightVersion:
+    process.env.APP_STORE_TESTFLIGHT_VERSION || currentMobileMarketingVersion(),
   macBuildVersion:
     process.env.OPENBURNBAR_MAC_BUILD_VERSION || currentMacBuildVersion(),
   subscriptionId:
@@ -63,6 +65,19 @@ function currentMobileBuildVersion() {
     const project = fs.readFileSync(projectPath, "utf8");
     const match = project.match(
       /OpenBurnBarMobile:[\s\S]*?CURRENT_PROJECT_VERSION:\s*"?([^"\n]+)"?/
+    );
+    return match?.[1]?.trim() || "1";
+  } catch {
+    return "1";
+  }
+}
+
+function currentMobileMarketingVersion() {
+  const projectPath = path.join(REPO_ROOT, "project.yml");
+  try {
+    const project = fs.readFileSync(projectPath, "utf8");
+    const match = project.match(
+      /OpenBurnBarMobile:[\s\S]*?MARKETING_VERSION:\s*"?([^"\n]+)"?/
     );
     return match?.[1]?.trim() || "1";
   } catch {
@@ -560,8 +575,8 @@ async function printBetaGroups() {
 }
 
 async function attachBuildToInternalTestFlightGroups() {
-  const version = await getLatestIosVersion();
-  const build = await getLatestValidBuild(version.attributes?.versionString);
+  const versionString = APP.testFlightVersion;
+  const build = await getLatestValidBuild(versionString);
   const groups = await getBetaGroups();
   const internalGroups = groups.filter(
     (group) => group.attributes?.isInternalGroup === true
@@ -569,7 +584,7 @@ async function attachBuildToInternalTestFlightGroups() {
 
   if (internalGroups.length === 0) {
     console.log(
-      `No internal TestFlight beta groups found for app ${APP.appleId}; build ${build.id} remains uploaded and attached to iOS ${version.attributes?.versionString}.`
+      `No internal TestFlight beta groups found for app ${APP.appleId}; build ${build.id} remains uploaded for iOS ${versionString}.`
     );
     return;
   }
@@ -591,7 +606,7 @@ async function attachBuildToInternalTestFlightGroups() {
 
   const groupNames = internalGroups.map(betaGroupName).join(", ");
   console.log(
-    `Build ${build.id} (${version.attributes?.versionString}/${build.attributes?.version}) is assigned to internal TestFlight group(s): ${groupNames}`
+    `Build ${build.id} (${versionString}/${build.attributes?.version}) is assigned to internal TestFlight group(s): ${groupNames}`
   );
 }
 
