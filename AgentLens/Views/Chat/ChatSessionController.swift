@@ -150,6 +150,38 @@ final class ChatSessionController {
     var activeThreadID: String = DataStore.legacyChatThreadID
     var selectedContext: ConversationRecord?
 
+    /// Wired by the app until the backend (PR-5) lands a real `MemoryServing`.
+    /// `nil` in production today, so the terminal-commit extraction chokepoint is a
+    /// no-op in app builds; tests inject `FakeMemoryService` to assert it fires.
+    var memoryService: (any MemoryServing)?
+
+    /// Synchronous reentrancy sentinel for `send()`. `isStreaming` flips late (only
+    /// once streaming actually begins), leaving an await window where a second
+    /// programmatic/relay `send()` can append a duplicate user turn. `sendInFlight`
+    /// is set synchronously right after the guard and cleared via `defer`, so any
+    /// second `send()` arriving during that await window is rejected.
+    var sendInFlight = false
+
+    var isSendBusy: Bool {
+        isStreaming || sendInFlight
+    }
+
+    /// System-prompt assembly version baked into the extraction idempotency key;
+    /// a new prompt version is a distinct extraction event.
+    static let memoryPromptVersion = "openburnbar-prompt-v1"
+
+    /// Builds the extraction context for the current turn. v1 scopes by `appID`
+    /// (same-device); `userID` is resolved at the backend rendezvous (PR-5), not
+    /// trusted from this client. `threadLogicalID` is the device-local thread id
+    /// for v1; a content-addressed cross-device id is a backend/F-3 refinement.
+    func makeMemoryExtractionContext() -> MemoryExtractionContext {
+        MemoryExtractionContext(
+            scope: MemoryScope(appID: "openburnbar"),
+            threadLogicalID: activeThreadID,
+            promptVersion: Self.memoryPromptVersion
+        )
+    }
+
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 
     /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.
@@ -282,10 +314,12 @@ final class ChatSessionController {
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
-        cliBridge: CLIBridge? = nil
+        cliBridge: CLIBridge? = nil,
+        memoryService: (any MemoryServing)? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.memoryService = memoryService
         if let searchService {
             self.searchService = searchService
             self.searchServiceFactory = { searchService }
