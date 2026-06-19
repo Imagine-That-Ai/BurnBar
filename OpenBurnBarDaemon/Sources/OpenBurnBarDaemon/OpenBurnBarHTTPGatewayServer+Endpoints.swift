@@ -198,22 +198,12 @@ extension BurnBarHTTPGatewayServer {
                 )
             },
             streamAttempt: { context in
-                // B2: when the experimental interactive path is enabled and
-                // this OAuth subscription route is eligible, a real
-                // interactive `claude` TUI serves the request. It produces
-                // a single buffered answer, so verbatim streaming is
-                // skipped for these routes. Otherwise the client wire
-                // format (Anthropic messages) matches the upstream route
-                // family, so chunks relay unchanged.
-                guard context.formatFamily == .anthropic else {
-                    // OpenAI-compatible routes are translated back to
-                    // Anthropic SSE on the buffered path. That keeps
-                    // failover/accounting intact before any bytes leave.
-                    return nil
-                }
-                let useInteractiveClaude = self.interactiveClaudeExecutor != nil
-                    && ClaudeInteractiveSessionExecutor.isEligible(route: context.route)
-                guard context.wantsStream, !useInteractiveClaude else { return nil }
+                // Anthropic routes stream verbatim in the client wire format;
+                // OpenAI-compatible routes are translated back to Anthropic SSE
+                // on the buffered path (below), so they skip streaming here to
+                // keep failover/accounting intact before any bytes leave.
+                guard context.formatFamily == .anthropic else { return nil }
+                guard context.wantsStream else { return nil }
                 return GatewayStreamAttemptPlan(usageFormat: .anthropic) {
                     try await self.anthropicExecutor.openMessagesStream(
                         body: context.bodyData,

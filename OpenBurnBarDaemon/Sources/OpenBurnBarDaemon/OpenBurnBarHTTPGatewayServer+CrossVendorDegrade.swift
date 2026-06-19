@@ -167,9 +167,6 @@ extension BurnBarHTTPGatewayServer {
         if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
             return try await factoryExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
         }
-        if let interactiveClaudeExecutor, ClaudeInteractiveSessionExecutor.isEligible(route: route) {
-            return try await interactiveClaudeExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
-        }
         switch formatFamily {
         case .openaiCompat:
             return try await providerExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
@@ -186,9 +183,6 @@ extension BurnBarHTTPGatewayServer {
     ) async throws -> BurnBarProviderProxyResponse {
         if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
             return try await factoryExecutor.proxyResponses(body: body, route: route, variant: variant)
-        }
-        if let interactiveClaudeExecutor, ClaudeInteractiveSessionExecutor.isEligible(route: route) {
-            return try await interactiveClaudeExecutor.proxyResponses(body: body, route: route, variant: variant)
         }
         switch formatFamily {
         case .openaiCompat:
@@ -222,9 +216,6 @@ extension BurnBarHTTPGatewayServer {
             }
             return try await providerExecutor.proxyMessages(body: body, route: route, variant: variant)
         case .anthropic:
-            if let interactiveClaudeExecutor, ClaudeInteractiveSessionExecutor.isEligible(route: route) {
-                return try await interactiveClaudeExecutor.proxyMessages(body: body, route: route, variant: variant)
-            }
             return try await anthropicExecutor.proxyMessages(body: body, route: route, variant: variant)
         }
     }

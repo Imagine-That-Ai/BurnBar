@@ -543,13 +543,6 @@ final class SettingsManager {
         ]
     }
 
-    /// Experimental: route Anthropic subscription traffic through an interactive
-    /// `claude` TUI (gray-area). Off by default; applied at daemon launch.
-    var experimentalInteractiveClaudeEnabled: Bool {
-        get { gateway.experimentalInteractiveClaudeEnabled }
-        set { gateway.experimentalInteractiveClaudeEnabled = newValue }
-    }
-
     /// Experimental: substitute an allow-listed OpenAI-compatible vendor on the
     /// user's own key when the requested model can't be served. Off by default;
     /// applied at daemon launch.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the experimental interactive-Claude meter-bypass path (Part B0 + B2): the `ClaudeInteractiveSessionExecutor` gateway executor, the `ClaudeInteractiveMeterExperiment` diagnostic + its `claude-meter-experiment` CLI command, the `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE` opt-in and its Settings UI toggle. Claude Code's first-run workspace-trust dialog cannot be driven reliably from a headless PTY (verified against 2.1.183), so the path no longer worked and is gone rather than patched. The legitimate human-driven `claude-handoff` feature (B1) is retained; its `ClaudeCodeJSONLUsageProbe` and claude-binary discovery helpers were relocated into the handoff service.
+
 ### Quota Freshness
 
 - Audited all 16 adapters in `QuotaRefreshActor.adapters` for eager-fetch capability. Every adapter can produce a snapshot on first launch when credentials are present: API-key adapters (MiniMax, ZAI, DeepSeek, Copilot, Kimi, OpenAI, Mimo, Warp) hit their provider endpoints directly; cookie/session adapters (Cursor, Ollama, Factory) resolve from keychain or local stores; local-file adapters (Factory droid sessions, Codex rollout scan, Claude JSONL, Antigravity history, Aider analytics, Kilo Code, Forge) read on disk with no prior-usage dependency. The three trigger-adjacent adapters already have eager fallback paths: Claude (JSONL scan + OAuth usage API), Codex (OAuth usage API + rollout scan), XAI (Management API for GrokBuild, pacing log for SuperGrok).
