@@ -1945,8 +1945,8 @@ final class OpenBurnBarDatabase: Sendable {
                 """
             )
         }
-
         migrator.registerMigration("v51a_drop_body_fts") { db in try db.execute(sql: "DROP TABLE IF EXISTS agent_memories_fts") }
+        registerChatMemoryAuthorityMigration(on: &migrator)
         return migrator
     }
 

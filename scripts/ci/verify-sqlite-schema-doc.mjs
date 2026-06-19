@@ -12,6 +12,9 @@ const sourceSpecs = [
     startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
   },
   {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
+  },
+  {
     path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
   },
   {
@@ -107,7 +110,22 @@ for (const forbidden of ["agent_memories_fts"]) {
 }
 
 const pcmColumnChecks = {
-  agent_memories: ["body_ref", "body_redacted", "valid_from", "superseded_by"],
+  agent_memories: [
+    "body_ref",
+    "body_redacted",
+    "valid_from",
+    "superseded_by",
+    "source_kind",
+    "review_status",
+    "user_id",
+    "agent_id",
+    "run_id",
+    "app_id",
+  ],
+  memory_provenance: ["memory_id", "thread_logical_id", "xdevice_hmac", "citation_state"],
+  memory_extraction_jobs: ["idempotency_key", "scope_json", "not_before"],
+  memory_embedding_refs: ["memory_id", "embedding_version_id", "dimension", "vector", "norm"],
+  memory_source_tombstones: ["thread_logical_id", "message_id", "content_hash", "reason"],
   memory_audit: ["seq", "prev_hash", "hash"],
   pcm_projects: ["project_id", "identity_version", "identity_fingerprint", "primary_path"],
   pcm_project_aliases: ["project_id", "alias_path", "path_hash", "first_seen_at", "last_seen_at"],
@@ -131,6 +149,13 @@ for (const [table, columns] of Object.entries(pcmColumnChecks)) {
 
 for (const indexName of [
   "agent_memories_project_idx",
+  "agent_memories_chat_scope_idx",
+  "memory_provenance_memory_idx",
+  "memory_provenance_hmac_idx",
+  "memory_provenance_msg_idx",
+  "memory_extraction_jobs_status_idx",
+  "memory_embedding_refs_version_idx",
+  "memory_source_tombstones_thread_idx",
   "pcm_projects_fingerprint_idx",
   "pcm_project_aliases_path_hash_idx",
   "pcm_project_aliases_project_idx",

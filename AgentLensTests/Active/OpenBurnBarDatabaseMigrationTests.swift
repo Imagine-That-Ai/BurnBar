@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
@@ -72,7 +73,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v51a_drop_body_fts",
+            "v51_chat_memory_authority",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -104,6 +105,141 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             try Self.tableExists(db, "agent_memories_fts")
         }
         XCTAssertFalse(exists, "Fresh databases must end without the body-bearing agent_memories_fts table.")
+    }
+
+    func test_v51ChatMemoryAuthority_addsChatAuthorityTablesAndScopeColumns() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v51a_drop_body_fts")
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let agentColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "agent_memories")
+        }
+        for column in ["source_kind", "review_status", "user_id", "agent_id", "run_id", "app_id"] {
+            XCTAssertTrue(agentColumns.contains(column), "agent_memories missing v51 column \(column)")
+        }
+        let tables = try await queue.read { db in
+            try [
+                "memory_provenance",
+                "memory_extraction_jobs",
+                "memory_embedding_refs",
+                "memory_source_tombstones"
+            ].map { table in
+                (table, try Self.tableExists(db, table))
+            }
+        }
+        XCTAssertTrue(tables.allSatisfy(\.1), "Missing v51 tables: \(tables)")
+        let indexes = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'memory_%_idx' OR name = 'agent_memories_chat_scope_idx'"
+            )
+        }
+        XCTAssertTrue(indexes.contains("agent_memories_chat_scope_idx"))
+        XCTAssertTrue(indexes.contains("memory_provenance_memory_idx"))
+        XCTAssertTrue(indexes.contains("memory_extraction_jobs_status_idx"))
+        XCTAssertTrue(indexes.contains("memory_embedding_refs_version_idx"))
+        XCTAssertTrue(indexes.contains("memory_source_tombstones_thread_idx"))
+    }
+
+    func test_chatMemoryAuthorityWritesAreDisabledByDefault() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+
+        do {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(text: "never write while disabled", scope: MemoryScope(userID: "u-disabled"))
+            )
+            XCTFail("Expected disabled chat-memory authority write to throw.")
+        } catch {
+            XCTAssertEqual(error as? ControlPlaneStore.ChatMemoryAuthorityError, .disabled)
+        }
+
+        let count = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        }
+        XCTAssertEqual(count, 0)
+    }
+
+    func test_chatMemoryAuthorityWriteRoundTripKeepsBodyOutOfIndexesAndAudit() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let body = "NEVER_INDEX_MEMORY_BODY_SECRET prefers local-only recall."
+        let citation = MemoryCitation(
+            id: "cite-pr1",
+            threadLogicalID: "thread-logical-pr1",
+            messageID: "msg-pr1",
+            role: "assistant",
+            authoredAt: now,
+            contentHash: "source-hash-pr1",
+            crossDeviceHMAC: "hmac-pr1"
+        )
+
+        let written = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: MemoryScope(userID: "user-pr1", agentID: "agent-pr1", runID: "run-pr1", appID: "app-pr1"),
+                confidence: 0.88,
+                citations: [citation],
+                reviewStatus: .quarantined
+            ),
+            id: "mem-pr1",
+            now: now,
+            enabled: true
+        )
+
+        let fetched = try await store.fetchChatMemoryAuthorityRecord(id: written.id)
+        XCTAssertEqual(fetched?.id, "mem-pr1")
+        XCTAssertEqual(fetched?.reviewStatus, .quarantined)
+        XCTAssertEqual(fetched?.sourceKind, .chat)
+        XCTAssertEqual(fetched?.bodyRedacted, "project_memory_snapshots:memory-mem-pr1")
+        XCTAssertEqual(fetched?.citations, [citation])
+        let openedBody = try await store.openChatMemoryBody(id: written.id)
+        XCTAssertEqual(openedBody, body)
+
+        let persistentPayloads = try await queue.read { db -> (agent: String, provenance: String, audit: String, snapshot: String) in
+            let agent = try String.fetchAll(
+                db,
+                sql: """
+                SELECT id || '|' || project_id || '|' || kind || '|' || scope || '|' ||
+                       body_ref || '|' || body_redacted || '|' || tags_json || '|' ||
+                       COALESCE(source_path, '') || '|' || source_kind || '|' || review_status || '|' ||
+                       COALESCE(user_id, '') || '|' || COALESCE(agent_id, '') || '|' ||
+                       COALESCE(run_id, '') || '|' || COALESCE(app_id, '')
+                FROM agent_memories
+                """
+            ).joined(separator: "\n")
+            let provenance = try String.fetchAll(
+                db,
+                sql: """
+                SELECT id || '|' || memory_id || '|' || source_kind || '|' || thread_logical_id || '|' ||
+                       COALESCE(message_id, '') || '|' || role || '|' || content_hash || '|' ||
+                       xdevice_hmac || '|' || citation_state
+                FROM memory_provenance
+                """
+            ).joined(separator: "\n")
+            let audit = try String.fetchAll(
+                db,
+                sql: "SELECT action || '|' || labels_json || '|' || hash FROM memory_audit"
+            ).joined(separator: "\n")
+            let snapshot = try String.fetchAll(
+                db,
+                sql: "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-pr1'"
+            ).joined(separator: "\n")
+            return (agent, provenance, audit, snapshot)
+        }
+
+        XCTAssertFalse(persistentPayloads.agent.contains(body))
+        XCTAssertFalse(persistentPayloads.provenance.contains(body))
+        XCTAssertFalse(persistentPayloads.audit.contains(body))
+        XCTAssertTrue(persistentPayloads.snapshot.contains(body))
     }
 
     /// A database genuinely behind the latest migration must take a pre-migration
@@ -643,6 +779,11 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             arguments: [table]
         ) ?? 0
         return count > 0
+    }
+
+    nonisolated private static func columnNames(_ db: Database, table: String) throws -> Set<String> {
+        let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
+        return Set(rows.compactMap { $0["name"] as? String })
     }
 
     private static let migrationIdentifiersThroughV35 = [
