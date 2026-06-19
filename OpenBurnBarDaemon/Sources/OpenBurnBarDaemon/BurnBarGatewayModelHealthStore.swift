@@ -158,6 +158,9 @@ public actor BurnBarGatewayModelHealthStore {
         route: BurnBarProviderRoute
     ) -> TimeInterval? {
         let lowerBody = body.lowercased()
+        if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+            return 60
+        }
         if statusCode == 429 {
             return isAnthropicOAuth(route) ? 15 * 60 : 5 * 60
         }

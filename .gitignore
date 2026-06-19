@@ -249,3 +249,14 @@ docs/security/*HANDOFF*.md
 docs/security/*REMEDIATION*.md
 docs/security/*findings*.md
 docs/security/SOTA_*_SIGNOFF.md
+
+# /design-sync (claude.ai/design) — staged converter + regenerated build output +
+# machine state. The durable inputs (.design-sync/config.json, NOTES.md,
+# conventions.md, previews/) and the committed apps/console design-sync helpers
+# (.ds-entry.tsx, .ds-build-css.mjs) are NOT ignored.
+.ds-sync/
+/ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+apps/console/.ds-preview.css

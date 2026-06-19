@@ -590,6 +590,7 @@ public struct BurnBarProviderRouter: Sendable {
         guard let slotID = route.credentialSlotID else { return }
         let now = Date()
         let cooldown = Calendar.current.date(byAdding: .minute, value: 5, to: now)
+        let transientCapacityCooldown = Calendar.current.date(byAdding: .minute, value: 1, to: now)
         var status: BurnBarProviderCredentialSlotStatus?
         var cooldownUntil: Date?
         if let providerError = error as? BurnBarProviderExecutorError,
@@ -598,7 +599,10 @@ public struct BurnBarProviderRouter: Sendable {
                 return
             }
             let lowerBody = body.lowercased()
-            if statusCode == 401 || statusCode == 403 {
+            if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                status = .coolingDown
+                cooldownUntil = transientCapacityCooldown
+            } else if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
                 cooldownUntil = nil
             } else if statusCode == 402
