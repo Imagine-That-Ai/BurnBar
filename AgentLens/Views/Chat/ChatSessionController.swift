@@ -162,6 +162,10 @@ final class ChatSessionController {
     /// second `send()` arriving during that await window is rejected.
     var sendInFlight = false
 
+    var isSendBusy: Bool {
+        isStreaming || sendInFlight
+    }
+
     /// System-prompt assembly version baked into the extraction idempotency key;
     /// a new prompt version is a distinct extraction event.
     static let memoryPromptVersion = "openburnbar-prompt-v1"
