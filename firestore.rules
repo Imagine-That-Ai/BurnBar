@@ -801,6 +801,90 @@ service cloud.firestore {
         && value.matches("^[a-f0-9]{32,128}$");
     }
 
+    function validMemorySourceRefHmac(value) {
+      return value is string
+        && value.matches("^[a-f0-9]{64}$");
+    }
+
+    function validMemorySourceRefHmacAt(values, position) {
+      return values.size() <= position || validMemorySourceRefHmac(values[position]);
+    }
+
+    function validMemorySourceRefHmacs0to9(values) {
+      return validMemorySourceRefHmacAt(values, 0)
+        && validMemorySourceRefHmacAt(values, 1)
+        && validMemorySourceRefHmacAt(values, 2)
+        && validMemorySourceRefHmacAt(values, 3)
+        && validMemorySourceRefHmacAt(values, 4)
+        && validMemorySourceRefHmacAt(values, 5)
+        && validMemorySourceRefHmacAt(values, 6)
+        && validMemorySourceRefHmacAt(values, 7)
+        && validMemorySourceRefHmacAt(values, 8)
+        && validMemorySourceRefHmacAt(values, 9);
+    }
+
+    function validMemorySourceRefHmacs10to19(values) {
+      return validMemorySourceRefHmacAt(values, 10)
+        && validMemorySourceRefHmacAt(values, 11)
+        && validMemorySourceRefHmacAt(values, 12)
+        && validMemorySourceRefHmacAt(values, 13)
+        && validMemorySourceRefHmacAt(values, 14)
+        && validMemorySourceRefHmacAt(values, 15)
+        && validMemorySourceRefHmacAt(values, 16)
+        && validMemorySourceRefHmacAt(values, 17)
+        && validMemorySourceRefHmacAt(values, 18)
+        && validMemorySourceRefHmacAt(values, 19);
+    }
+
+    function validMemorySourceRefHmacs20to29(values) {
+      return validMemorySourceRefHmacAt(values, 20)
+        && validMemorySourceRefHmacAt(values, 21)
+        && validMemorySourceRefHmacAt(values, 22)
+        && validMemorySourceRefHmacAt(values, 23)
+        && validMemorySourceRefHmacAt(values, 24)
+        && validMemorySourceRefHmacAt(values, 25)
+        && validMemorySourceRefHmacAt(values, 26)
+        && validMemorySourceRefHmacAt(values, 27)
+        && validMemorySourceRefHmacAt(values, 28)
+        && validMemorySourceRefHmacAt(values, 29);
+    }
+
+    function validMemorySourceRefHmacs30to39(values) {
+      return validMemorySourceRefHmacAt(values, 30)
+        && validMemorySourceRefHmacAt(values, 31)
+        && validMemorySourceRefHmacAt(values, 32)
+        && validMemorySourceRefHmacAt(values, 33)
+        && validMemorySourceRefHmacAt(values, 34)
+        && validMemorySourceRefHmacAt(values, 35)
+        && validMemorySourceRefHmacAt(values, 36)
+        && validMemorySourceRefHmacAt(values, 37)
+        && validMemorySourceRefHmacAt(values, 38)
+        && validMemorySourceRefHmacAt(values, 39);
+    }
+
+    function validMemorySourceRefHmacs40to49(values) {
+      return validMemorySourceRefHmacAt(values, 40)
+        && validMemorySourceRefHmacAt(values, 41)
+        && validMemorySourceRefHmacAt(values, 42)
+        && validMemorySourceRefHmacAt(values, 43)
+        && validMemorySourceRefHmacAt(values, 44)
+        && validMemorySourceRefHmacAt(values, 45)
+        && validMemorySourceRefHmacAt(values, 46)
+        && validMemorySourceRefHmacAt(values, 47)
+        && validMemorySourceRefHmacAt(values, 48)
+        && validMemorySourceRefHmacAt(values, 49);
+    }
+
+    function validMemorySourceRefHmacs(values) {
+      return values is list
+        && values.size() <= 50
+        && validMemorySourceRefHmacs0to9(values)
+        && validMemorySourceRefHmacs10to19(values)
+        && validMemorySourceRefHmacs20to29(values)
+        && validMemorySourceRefHmacs30to39(values)
+        && validMemorySourceRefHmacs40to49(values);
+    }
+
     function cloudVaultAADContext(userId, collection, docID, field) {
       return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
     }
@@ -2588,8 +2672,7 @@ service cloud.firestore {
           cloudVaultAADContext(userId, "memory_facts", memoryDocId, "sealedMemory")
         )
         && request.resource.data.sealedMemory.schemaVersion >= 2
-        && request.resource.data.sourceRefHmacs is list
-        && request.resource.data.sourceRefHmacs.size() <= 50
+        && validMemorySourceRefHmacs(request.resource.data.sourceRefHmacs)
         && request.resource.data.citationCount is int
         && request.resource.data.citationCount >= 0
         && request.resource.data.citationCount <= 50
@@ -2639,8 +2722,7 @@ service cloud.firestore {
           (
             request.resource.data.memoryIdHmac is string
             && request.resource.data.memoryIdHmac.matches("^[a-f0-9]{64}$")
-            && request.resource.data.sourceRefHmacs is list
-            && request.resource.data.sourceRefHmacs.size() <= 50
+            && validMemorySourceRefHmacs(request.resource.data.sourceRefHmacs)
             && !("sourceRefHmac" in request.resource.data)
           )
         )

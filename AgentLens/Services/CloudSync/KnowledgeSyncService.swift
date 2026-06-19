@@ -575,7 +575,7 @@ final class MemoryCloudSyncService: Sendable {
             forgetReceipts += 1
             sourceRefHmacsToDelete.insert(encoded.sourceRefHmac)
             for sourceRef in try await store.fetchMemorySourceReferences(matching: tombstone) {
-                sourceRefHmacsToDelete.insert(try sourceRefHmac(
+                sourceRefHmacsToDelete.insert(try Self.sourceRefHmac(
                     threadLogicalID: sourceRef.threadLogicalID,
                     messageID: sourceRef.messageID,
                     contentHash: sourceRef.contentHash,
@@ -632,7 +632,7 @@ final class MemoryCloudSyncService: Sendable {
         )
         let sealed = try CloudVaultCrypto.sealBlob(payloadData, keyData: vaultKey, aadContext: aad)
         let rawSourceRefHmacs = try memory.citations.map {
-            try sourceRefHmac(
+            try Self.sourceRefHmac(
                 threadLogicalID: $0.threadLogicalID,
                 messageID: $0.messageID,
                 contentHash: $0.contentHash,
@@ -669,7 +669,7 @@ final class MemoryCloudSyncService: Sendable {
         vaultKey: Data,
         now: Date
     ) throws -> (docID: String, sourceRefHmac: String, data: [String: Any]) {
-        let sourceRefHmac = try sourceRefHmac(
+        let sourceRefHmac = try Self.sourceRefHmac(
             threadLogicalID: tombstone.threadLogicalID,
             messageID: tombstone.messageID,
             contentHash: tombstone.contentHash,
@@ -700,7 +700,7 @@ final class MemoryCloudSyncService: Sendable {
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-forget:\(tombstone.id)", keyData: vaultKey)
         let memoryIDHmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(tombstone.memoryID)", keyData: vaultKey)
         let rawSourceRefHmacs = try tombstone.sourceRefs.map {
-            try sourceRefHmac(
+            try Self.sourceRefHmac(
                 threadLogicalID: $0.threadLogicalID,
                 messageID: $0.messageID,
                 contentHash: $0.contentHash,
