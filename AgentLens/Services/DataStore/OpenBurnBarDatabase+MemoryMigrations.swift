@@ -144,5 +144,44 @@ extension OpenBurnBarDatabase {
                 """
             )
         }
+        migrator.registerMigration("v52_memory_extraction_job_intent_and_lease") { db in
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(memory_extraction_jobs)")
+                .compactMap { $0["name"] as? String }
+            if !columns.contains("thread_logical_id") {
+                try db.alter(table: "memory_extraction_jobs") { t in
+                    t.add(column: "thread_logical_id", .text).notNull().defaults(to: "")
+                }
+                try db.execute(
+                    sql: """
+                    UPDATE memory_extraction_jobs
+                    SET thread_logical_id = thread_id
+                    WHERE thread_logical_id = ''
+                    """
+                )
+            }
+            if !columns.contains("prompt_version") {
+                try db.alter(table: "memory_extraction_jobs") { t in
+                    t.add(column: "prompt_version", .text).notNull().defaults(to: "legacy-unknown")
+                }
+            }
+            if !columns.contains("lease_expires_at") {
+                try db.alter(table: "memory_extraction_jobs") { t in
+                    t.add(column: "lease_expires_at", .text)
+                }
+                try db.execute(
+                    sql: """
+                    UPDATE memory_extraction_jobs
+                    SET lease_expires_at = updated_at
+                    WHERE status = 'running' AND lease_expires_at IS NULL
+                    """
+                )
+            }
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS memory_extraction_jobs_lease_idx
+                ON memory_extraction_jobs(status, lease_expires_at)
+                """
+            )
+        }
     }
 }
