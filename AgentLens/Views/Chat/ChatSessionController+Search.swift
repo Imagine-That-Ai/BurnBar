@@ -195,8 +195,10 @@ extension ChatSessionController {
             snippets = try await memoryService.recallForPrompt(request)
         } catch {
             AppLogger.chat.silentFailure("memory recallForPrompt", error: error)
+            self.lastRecalledMemorySnippets = []
             return ""
         }
+        self.lastRecalledMemorySnippets = snippets
         guard !snippets.isEmpty else { return "" }
         return snippets.map { snippet in
             let jumpID = snippet.citations.first?.messageID ?? snippet.citations.first?.crossDeviceHMAC

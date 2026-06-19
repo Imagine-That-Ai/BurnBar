@@ -155,6 +155,12 @@ final class ChatSessionController {
     /// no-op in app builds; tests inject `FakeMemoryService` to assert it fires.
     var memoryService: (any MemoryServing)?
 
+    /// F-3: the snippets recalled for the current/last turn, retained so the chat
+    /// view can render citation affordances on the latest assistant message. v1
+    /// surfaces the latest turn only; per-message citation persistence is a
+    /// follow-up (the citations live on the snippet, not the chat row).
+    var lastRecalledMemorySnippets: [MemorySnippet] = []
+
     /// Synchronous reentrancy sentinel for `send()`. `isStreaming` flips late (only
     /// once streaming actually begins), leaving an await window where a second
     /// programmatic/relay `send()` can append a duplicate user turn. `sendInFlight`

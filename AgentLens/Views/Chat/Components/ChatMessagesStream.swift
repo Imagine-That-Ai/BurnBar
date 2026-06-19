@@ -125,13 +125,24 @@ struct ChatMessagesStream: View {
                     .padding(.horizontal, DesignSystem.Spacing.sm)
             }
             ForEach(controller.messages) { msg in
+                let isLatestAssistant = !controller.isStreaming
+                    && msg.role == .assistant
+                    && msg.id == controller.messages.last(where: { $0.role == .assistant })?.id
                 ChatMessageView(
                     message: msg,
                     isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
                     showViaBadge: msg.cliUsed != nil,
                     isHermes: msg.cliUsed == "hermes" || msg.cliUsed == "openclaw",
                     assistantModelKey: chatAssistantModelKey(for: msg),
-                    viewMode: controller.chatViewMode
+                    viewMode: controller.chatViewMode,
+                    // F-3: surface recalled-memory citations on the latest
+                    // completed assistant turn. Jump navigation is wired in a
+                    // follow-up; until then jumpable chips render disabled
+                    // (never a dead link).
+                    memoryCitations: isLatestAssistant
+                        ? controller.lastRecalledMemorySnippets.flatMap(\.citations)
+                        : [],
+                    onJumpToLocal: nil
                 )
                 .id(msg.id)
             }
