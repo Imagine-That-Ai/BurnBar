@@ -24,6 +24,11 @@ enum OllamaCloudModelRoutingPolicy {
         return normalizedBaseID.isEmpty ? nil : "\(normalizedBaseID):cloud"
     }
 
+    static func isCloudFamilyModelID(_ rawID: String) -> Bool {
+        rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("ollama-cloud-family") == .orderedSame
+    }
+
     static func mayClaimModelID(_ rawID: String, catalog: BurnBarCatalog) -> Bool {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }

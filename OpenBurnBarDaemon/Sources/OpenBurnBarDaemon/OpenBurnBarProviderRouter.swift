@@ -369,12 +369,20 @@ public struct BurnBarProviderRouter: Sendable {
             requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
+        let resolvedRequiredCapabilityClassID = resolveRequiredCapabilityClassID(
+            explicitCapabilityClassID: requiredCapabilityClassID,
+            modelName: modelName,
+            preferredProviderID: effectivePreferredProviderID,
+            requestedFormatFamily: requestedFormatFamily,
+            requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
+            routerMode: effectiveRouterMode
+        )
         return try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
-            requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCapabilityClassID: resolvedRequiredCapabilityClassID,
             requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
             configurations: configurations,
             routerMode: effectiveRouterMode,
@@ -879,36 +887,12 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         if configuration.provider.id.lowercased() == "ollama",
-           let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) {
-            guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
-                directCloudModelID,
-                catalog: configStore.catalogSupport.catalog
-            ) else {
-                return nil
-            }
-            let exactCloudModel = configuration.preferredModels.first(where: {
-                $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
-            })
-            let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
-            let modelTemplate = exactCloudModel ?? cloudFamily
-            guard let modelTemplate else { return nil }
-            let capabilityClassID: String? = {
-                if let exactCloudModel {
-                    return exactCloudModel.capabilityClassID ?? exactCloudModel.id
-                }
-                return directCloudModelID
-            }()
-            return BurnBarCatalogModel(
-                id: directCloudModelID,
-                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
-                visibility: .hidden,
-                aliases: [modelName],
-                matchers: [],
-                pricing: modelTemplate.pricing,
-                canonicalModelID: directCloudModelID,
-                capabilityClassID: capabilityClassID,
-                capabilityClassRank: cloudFamily?.capabilityClassRank ?? modelTemplate.capabilityClassRank
-            )
+           let cloudModel = ollamaCloudRouteModel(named: modelName, in: configuration) {
+            return cloudModel
+        }
+        if configuration.provider.id.lowercased() == "ollama",
+           OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) != nil {
+            return nil
         }
 
         if let exactMatch = configuration.preferredModels.first(where: {
@@ -928,29 +912,67 @@ public struct BurnBarProviderRouter: Sendable {
             return nil
         }
 
-        if configuration.provider.id.lowercased() == "ollama",
-           matchedModel.id == "ollama-cloud-family",
-           let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) {
-            guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
-                directCloudModelID,
-                catalog: configStore.catalogSupport.catalog
-            ) else {
-                return nil
-            }
-            return BurnBarCatalogModel(
-                id: directCloudModelID,
-                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
-                visibility: .hidden,
-                aliases: [modelName],
-                matchers: [],
-                pricing: matchedModel.pricing,
-                canonicalModelID: directCloudModelID,
-                capabilityClassID: matchedModel.capabilityClassID ?? matchedModel.id,
-                capabilityClassRank: matchedModel.capabilityClassRank
-            )
+        return wireModel(for: matchedModel, requestedModel: modelName)
+    }
+
+    private func ollamaCloudRouteModel(
+        named modelName: String,
+        in configuration: BurnBarResolvedProviderConfiguration
+    ) -> BurnBarCatalogModel? {
+        guard let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) else {
+            return nil
+        }
+        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+            directCloudModelID,
+            catalog: configStore.catalogSupport.catalog
+        ) else {
+            return nil
         }
 
-        return wireModel(for: matchedModel, requestedModel: modelName)
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let exactCloudModel = configuration.preferredModels.first(where: {
+            $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
+        })
+        let concreteCloudModel: BurnBarCatalogModel? = exactCloudModel.flatMap {
+            if OllamaCloudModelRoutingPolicy.isCloudFamilyModelID($0.id) {
+                return nil
+            }
+            if OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: $0.id) != nil {
+                return nil
+            }
+            return $0
+        }
+        let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
+        let modelTemplate = concreteCloudModel ?? cloudFamily
+        guard let modelTemplate else { return nil }
+
+        let resolvedModelID = concreteCloudModel?.id ?? directCloudModelID
+        let canonicalModelID: String
+        if let concreteCloudModel,
+           concreteCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
+            canonicalModelID = concreteCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
+                ?? concreteCloudModel.canonicalModelID
+                ?? concreteCloudModel.id
+        } else {
+            canonicalModelID = directCloudModelID
+        }
+        let capabilityClassID = concreteCloudModel?.capabilityClassID
+            ?? concreteCloudModel?.id
+            ?? directCloudModelID
+
+        return BurnBarCatalogModel(
+            id: resolvedModelID,
+            displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+            visibility: .hidden,
+            aliases: [modelName],
+            matchers: [],
+            pricing: modelTemplate.pricing,
+            canonicalModelID: canonicalModelID,
+            capabilityClassID: capabilityClassID,
+            capabilityClassRank: concreteCloudModel?.capabilityClassRank
+                ?? cloudFamily?.capabilityClassRank
+                ?? modelTemplate.capabilityClassRank
+        )
     }
 
     /// Whether a (local) provider's base URL is a queryable HTTP(S) endpoint.
@@ -1143,6 +1165,42 @@ public struct BurnBarProviderRouter: Sendable {
         }
         let uniqueCanonicalIDs = Set(canonicalIDs)
         return uniqueCanonicalIDs.count == 1 ? uniqueCanonicalIDs.first : nil
+    }
+
+    private func resolveRequiredCapabilityClassID(
+        explicitCapabilityClassID: String?,
+        modelName: String,
+        preferredProviderID: String?,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
+        requiredCanonicalModelID: String?,
+        routerMode: ProviderRouterMode
+    ) -> String? {
+        if let explicit = explicitCapabilityClassID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           !explicit.isEmpty {
+            return explicit
+        }
+        guard requiredCanonicalModelID != nil || routerMode.usesExactSameModelInvariant else {
+            return nil
+        }
+        guard preferredProviderID == nil else {
+            return nil
+        }
+        if OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) != nil {
+            return nil
+        }
+        let catalog = configStore.catalogSupport.catalog
+        if let capability = catalog.capabilityClassID(forModelName: modelName) {
+            return capability
+        }
+        guard requestedFormatFamily != nil else { return nil }
+        let matchingCapabilities = catalog.providers.compactMap { provider -> String? in
+            guard provider.formatFamily == requestedFormatFamily else { return nil }
+            return catalog.capabilityClassID(forModelName: modelName, providerID: provider.id)
+        }
+        let uniqueCapabilities = Set(matchingCapabilities)
+        return uniqueCapabilities.count == 1 ? uniqueCapabilities.first : nil
     }
 
     private func resolvedRouterMode(_ requested: ProviderRouterMode?) async throws -> ProviderRouterMode {
@@ -1471,12 +1529,20 @@ extension BurnBarProviderRouter {
             requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
+        let resolvedRequiredCapabilityClassID = resolveRequiredCapabilityClassID(
+            explicitCapabilityClassID: requiredCapabilityClassID,
+            modelName: modelName,
+            preferredProviderID: effectivePreferredProviderID,
+            requestedFormatFamily: requestedFormatFamily,
+            requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
+            routerMode: effectiveRouterMode
+        )
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
-            requiredCapabilityClassID: requiredCapabilityClassID,
+            requiredCapabilityClassID: resolvedRequiredCapabilityClassID,
             requiredCanonicalModelID: resolvedRequiredCanonicalModelID,
             configurations: configurations,
             routerMode: effectiveRouterMode,
@@ -1486,7 +1552,7 @@ extension BurnBarProviderRouter {
         // Retain legacy capability-class filtering for older direct router
         // callers. The HTTP gateway now enforces exact canonical model identity.
         let blockedByCapabilityClass: [BurnBarProviderRoute]
-        if requiredCapabilityClassID != nil {
+        if resolvedRequiredCapabilityClassID != nil {
             let unfilteredCandidates = try candidateRoutes(
                 modelName: modelName,
                 preferredProviderID: effectivePreferredProviderID,

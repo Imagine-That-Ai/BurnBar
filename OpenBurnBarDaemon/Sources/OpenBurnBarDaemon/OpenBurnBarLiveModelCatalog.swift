@@ -524,6 +524,16 @@ public struct BurnBarLiveModelCatalog: Sendable {
             return [advertisedModelID(for: model, providerID: providerID)]
         }
 
+        if providerID.lowercased() == "codex",
+           model.id.lowercased().hasSuffix("-family") {
+            let aliases = model.aliases
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !aliases.isEmpty {
+                return aliases
+            }
+        }
+
         if formatFamily == .anthropic,
            model.id.lowercased().hasSuffix("-family") {
             let aliases = model.aliases
@@ -822,8 +832,16 @@ public struct BurnBarLiveModelCatalog: Sendable {
     private func staticLocalProviderModels(
         configuration: BurnBarResolvedProviderConfiguration
     ) -> LiveRefreshResult {
-        let discovered = configuration.provider.models.map {
-            DiscoveredModel(id: $0.id, displayName: $0.displayName)
+        var seen = Set<String>()
+        let discovered = configuration.provider.models.flatMap { model in
+            advertisedWireModelIDs(
+                for: model,
+                providerID: configuration.provider.id,
+                formatFamily: configuration.provider.formatFamily
+            ).compactMap { id -> DiscoveredModel? in
+                guard seen.insert(id.lowercased()).inserted else { return nil }
+                return DiscoveredModel(id: id, displayName: model.displayName)
+            }
         }
         return LiveRefreshResult(
             advertisedModels: discovered,

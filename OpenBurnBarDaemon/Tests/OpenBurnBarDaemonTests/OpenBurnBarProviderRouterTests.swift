@@ -188,6 +188,15 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(unlistedCloudRoute.providerID, "ollama")
         XCTAssertEqual(unlistedCloudRoute.resolvedModelID, "glm-5.2")
         XCTAssertEqual(unlistedCloudRoute.modelCapabilityClassID, "glm-5.2")
+
+        let documentedAliasRoute = try await harness.router.route(
+            modelName: "kimi-k2.7:cloud",
+            preferredProviderID: "ollama"
+        )
+        XCTAssertEqual(documentedAliasRoute.providerID, "ollama")
+        XCTAssertEqual(documentedAliasRoute.resolvedModelID, "kimi-k2.7-code")
+        XCTAssertEqual(documentedAliasRoute.canonicalModelID, "kimi-k2.7-code:cloud")
+        XCTAssertEqual(documentedAliasRoute.modelCapabilityClassID, "kimi-k2.7-code")
     }
 
     func testRouterRoutesLocalOllamaModelWithoutCredential() async throws {
@@ -211,12 +220,12 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let harness = try makeHarness(name: "ollama-local-no-shadow", allowDynamicModels: true)
 
         // Only `ollama-local` is enabled (credential-less, default-on). A request
-        // for a catalog model owned by a non-local vendor (openai's `gpt-5.5`)
+        // for a catalog model owned by a non-local vendor (Anthropic's Claude)
         // must NOT be captured by the local catch-all and routed to localhost —
         // it should fail cleanly so the missing-credential path can surface.
         do {
-            _ = try await harness.router.route(modelName: "gpt-5.5")
-            XCTFail("Local provider must not shadow the catalog model gpt-5.5")
+            _ = try await harness.router.route(modelName: "claude-opus-4-8")
+            XCTFail("Local provider must not shadow the catalog model claude-opus-4-8")
         } catch is BurnBarProviderRouterError {
             // expected: no eligible route for an unconfigured catalog vendor
         }

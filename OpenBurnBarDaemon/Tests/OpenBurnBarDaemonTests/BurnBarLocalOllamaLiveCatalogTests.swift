@@ -163,6 +163,26 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         )
     }
 
+    func testCodexStaticCatalogAdvertisesAliasesInsteadOfFamilyIDs() async throws {
+        let harness = try makeHarness(name: "codex-static")
+
+        let liveCatalog = BurnBarLiveModelCatalog(
+            configStore: harness.configStore,
+            session: stubSession(),
+            refreshTimeoutSeconds: 0.05
+        )
+        let snapshot = try await liveCatalog.snapshot()
+
+        let codexRows = snapshot.models.filter { $0.providerID == "codex" }
+        let codexIDs = Set(codexRows.map(\.id))
+        XCTAssertTrue(codexIDs.contains("gpt-5.5"))
+        XCTAssertTrue(codexIDs.contains("gpt-5.5-codex"))
+        XCTAssertTrue(codexIDs.contains("gpt-5.4"))
+        XCTAssertFalse(codexIDs.contains("codex-gpt-5.5-family"))
+        XCTAssertEqual(codexRows.first { $0.id == "gpt-5.5" }?.routeEligible, true)
+        XCTAssertEqual(codexRows.first { $0.id == "gpt-5.5-codex" }?.routeEligible, true)
+    }
+
     // MARK: - Harness
 
     private struct Harness {
