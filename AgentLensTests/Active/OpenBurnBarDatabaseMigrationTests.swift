@@ -1512,6 +1512,115 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts").count, 1)
     }
 
+    func test_memoryReapprovalRetiresPendingFactTombstoneBeforeCloudSync() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 11, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_455)
+        let scope = MemoryScope(userID: "cloud-reapprove-user", appID: "cloud-reapprove-app")
+        let body = "Re-approved cloud fact must not be deleted by a stale review tombstone."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .fact,
+                scope: scope,
+                confidence: 0.84,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-cloud-reapprove",
+                        threadLogicalID: "thread-cloud-reapprove",
+                        messageID: "message-cloud-reapprove",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-cloud-reapprove",
+                        crossDeviceHMAC: "hmac-cloud-reapprove"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-reapprove",
+            now: now,
+            enabled: true
+        )
+
+        let first = try await sync.syncApprovedMemories(
+            uid: "cloud-reapprove-user",
+            vaultKey: vaultKey,
+            now: now.addingTimeInterval(1)
+        )
+        XCTAssertEqual(first.uploaded, 1)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-reapprove-user/memory_facts").count, 1)
+
+        let rejected = try await store.setChatMemoryReviewStatus(
+            id: "mem-cloud-reapprove",
+            status: .rejected,
+            now: now.addingTimeInterval(2)
+        )
+        XCTAssertTrue(rejected)
+        let pendingAfterReject = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE memory_id = 'mem-cloud-reapprove'
+                  AND replicated_at IS NULL
+                """
+            ) ?? 0
+        }
+        XCTAssertEqual(pendingAfterReject, 1)
+
+        let reapproved = try await store.setChatMemoryReviewStatus(
+            id: "mem-cloud-reapprove",
+            status: .approved,
+            now: now.addingTimeInterval(3)
+        )
+        XCTAssertTrue(reapproved)
+        let tombstoneCounts = try await queue.read { db -> [String: Int] in
+            let pending = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE memory_id = 'mem-cloud-reapprove'
+                  AND replicated_at IS NULL
+                """
+            ) ?? 0
+            let retired = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE memory_id = 'mem-cloud-reapprove'
+                  AND replicated_at IS NOT NULL
+                """
+            ) ?? 0
+            return ["pending": pending, "retired": retired]
+        }
+        XCTAssertEqual(tombstoneCounts["pending"], 0)
+        XCTAssertEqual(tombstoneCounts["retired"], 1)
+
+        let second = try await sync.syncApprovedMemories(
+            uid: "cloud-reapprove-user",
+            vaultKey: vaultKey,
+            now: now.addingTimeInterval(4)
+        )
+        XCTAssertEqual(second.uploaded, 1)
+        XCTAssertEqual(second.forgetReceipts, 0)
+        XCTAssertEqual(second.cloudFactsDeleted, 0)
+        XCTAssertTrue(gateway.documents(under: "users/cloud-reapprove-user/memory_forget_receipts").isEmpty)
+        let facts = gateway.documents(under: "users/cloud-reapprove-user/memory_facts")
+        XCTAssertEqual(facts.count, 1)
+        let fact = try XCTUnwrap(facts.values.first)
+        XCTAssertEqual((fact["sourceRefHmacs"] as? [String])?.count, 1)
+        XCTAssertFalse(String(describing: fact).contains(body))
+    }
+
     func test_memoryCloudSyncCapsCitationsAndNormalizesForgetReason() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

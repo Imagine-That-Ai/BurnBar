@@ -1046,6 +1046,19 @@ final class ControlPlaneStore: Sendable {
                     now: now
                 )
             }
+            if existing.reviewStatus != .approved,
+               status == .approved,
+               existing.scope.userID != nil {
+                try db.execute(
+                    sql: """
+                    UPDATE memory_fact_tombstones
+                    SET replicated_at = ?
+                    WHERE memory_id = ?
+                      AND replicated_at IS NULL
+                    """,
+                    arguments: [now, id]
+                )
+            }
             try db.execute(
                 sql: """
                 UPDATE agent_memories
