@@ -695,7 +695,7 @@ final class ControlPlaneStore: Sendable {
                 """,
                 arguments: [embeddingVersionID, dimension]
             )
-            return rows.compactMap { row -> MemoryEmbeddingMatch? in
+            let matches = rows.compactMap { row -> MemoryEmbeddingMatch? in
                 guard let memoryID: String = row["memory_id"],
                       let data: Data = row["vector"],
                       let vector = Self.floatVector(from: data, dimension: dimension) else {
@@ -707,8 +707,7 @@ final class ControlPlaneStore: Sendable {
                 if lhs.score == rhs.score { return lhs.memoryID < rhs.memoryID }
                 return lhs.score > rhs.score
             }
-            .prefix(max(1, limit))
-            .map { $0 }
+            return Array(matches.prefix(max(1, limit)))
         }
     }
 
