@@ -605,64 +605,70 @@ final class ControlPlaneStore: Sendable {
     }
 
     func enqueueMemoryExtraction(_ intent: ExtractionIntent, now: Date = Date()) async throws -> String {
+        try await dbQueue.write { db in
+            try self.enqueueMemoryExtraction(intent, in: db, now: now)
+        }
+    }
+
+    /// Synchronous, transaction-scoped enqueue used by `TransactionalMemoryExtractionServing`
+    /// so the extraction-outbox row commits atomically with the chat-message insert (G3/P1b).
+    /// Shares its INSERT with the async variant above.
+    @discardableResult
+    func enqueueMemoryExtraction(_ intent: ExtractionIntent, in db: Database, now: Date = Date()) throws -> String {
         let id = "memory-extraction-\(Self.sha256Hex(intent.idempotencyKey))"
-        let encoder = JSONEncoder()
-        let scopeData = try encoder.encode(intent.scope)
+        let scopeData = try JSONEncoder().encode(intent.scope)
         guard let scopeJSON = String(data: scopeData, encoding: .utf8) else {
             throw NSError(domain: "OpenBurnBar.MemoryExtraction", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "Extraction scope could not be encoded as UTF-8."
             ])
         }
-
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO memory_extraction_jobs (
-                    id, idempotency_key, thread_id, thread_logical_id, message_id,
-                    prompt_version, scope_json, status, attempts, last_error,
-                    not_before, lease_expires_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL, NULL, ?, ?)
-                ON CONFLICT(idempotency_key) DO UPDATE SET
-                    thread_id = excluded.thread_id,
-                    thread_logical_id = excluded.thread_logical_id,
-                    message_id = excluded.message_id,
-                    prompt_version = excluded.prompt_version,
-                    scope_json = excluded.scope_json,
-                    status = CASE
-                        WHEN memory_extraction_jobs.status = 'failed' THEN 'pending'
-                        ELSE memory_extraction_jobs.status
-                    END,
-                    attempts = CASE
-                        WHEN memory_extraction_jobs.status = 'failed' THEN 0
-                        ELSE memory_extraction_jobs.attempts
-                    END,
-                    last_error = CASE
-                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
-                        ELSE memory_extraction_jobs.last_error
-                    END,
-                    not_before = CASE
-                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
-                        ELSE memory_extraction_jobs.not_before
-                    END,
-                    lease_expires_at = CASE
-                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
-                        ELSE memory_extraction_jobs.lease_expires_at
-                    END,
-                    updated_at = excluded.updated_at
-                """,
-                arguments: [
-                    id,
-                    intent.idempotencyKey,
-                    intent.threadID,
-                    intent.threadLogicalID,
-                    intent.messageID,
-                    intent.promptVersion,
-                    scopeJSON,
-                    now,
-                    now
-                ]
-            )
-        }
+        try db.execute(
+            sql: """
+            INSERT INTO memory_extraction_jobs (
+                id, idempotency_key, thread_id, thread_logical_id, message_id,
+                prompt_version, scope_json, status, attempts, last_error,
+                not_before, lease_expires_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL, NULL, ?, ?)
+            ON CONFLICT(idempotency_key) DO UPDATE SET
+                thread_id = excluded.thread_id,
+                thread_logical_id = excluded.thread_logical_id,
+                message_id = excluded.message_id,
+                prompt_version = excluded.prompt_version,
+                scope_json = excluded.scope_json,
+                status = CASE
+                    WHEN memory_extraction_jobs.status = 'failed' THEN 'pending'
+                    ELSE memory_extraction_jobs.status
+                END,
+                attempts = CASE
+                    WHEN memory_extraction_jobs.status = 'failed' THEN 0
+                    ELSE memory_extraction_jobs.attempts
+                END,
+                last_error = CASE
+                    WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                    ELSE memory_extraction_jobs.last_error
+                END,
+                not_before = CASE
+                    WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                    ELSE memory_extraction_jobs.not_before
+                END,
+                lease_expires_at = CASE
+                    WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                    ELSE memory_extraction_jobs.lease_expires_at
+                END,
+                updated_at = excluded.updated_at
+            """,
+            arguments: [
+                id,
+                intent.idempotencyKey,
+                intent.threadID,
+                intent.threadLogicalID,
+                intent.messageID,
+                intent.promptVersion,
+                scopeJSON,
+                now,
+                now
+            ]
+        )
         return id
     }
 
