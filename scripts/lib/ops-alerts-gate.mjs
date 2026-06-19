@@ -10,6 +10,10 @@ const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT
   || process.env.GOOGLE_CLOUD_PROJECT
   || "burnbar";
 
+function gcloudArgs(subcommandArgs) {
+  return ["--quiet", ...subcommandArgs];
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || process.cwd(),
@@ -159,9 +163,9 @@ export function notificationChannelStatus(name, channel, options = {}) {
 
 function loadNotificationChannels(runner, project) {
   const attempts = [
-    ["monitoring", "channels", "list", "--project", project, "--format=json"],
-    ["alpha", "monitoring", "channels", "list", "--project", project, "--format=json"],
-    ["beta", "monitoring", "channels", "list", "--project", project, "--format=json"],
+    gcloudArgs(["monitoring", "channels", "list", "--project", project, "--format=json"]),
+    gcloudArgs(["alpha", "monitoring", "channels", "list", "--project", project, "--format=json"]),
+    gcloudArgs(["beta", "monitoring", "channels", "list", "--project", project, "--format=json"]),
   ];
   let result;
   for (const args of attempts) {
@@ -216,14 +220,14 @@ export function checkAlertPolicies(expectedPolicies, options = {}) {
   const project = options.project || PROJECT;
   const runner = options.runner || run;
   const disallowedEmails = options.disallowedEmails || disallowedAlertEmails();
-  const result = runner("gcloud", [
+  const result = runner("gcloud", gcloudArgs([
     "monitoring",
     "policies",
     "list",
     "--project",
     project,
     "--format=json",
-  ]);
+  ]));
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout, project };
 
   const policies = parseJsonOutput(result.stdout, []);

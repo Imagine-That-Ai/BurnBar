@@ -94,8 +94,9 @@ steps = [s for s in os.environ.get("STEPS_CSV", "").split(",") if s]
 launch = {}
 gate_path = os.environ.get("GATE_JSON", "")
 if gate_path and os.path.isfile(gate_path):
-    with open(gate_path) as f:
-        launch = json.load(f)
+    raw = open(gate_path).read().strip()
+    if raw:
+        launch = json.loads(raw)
 
 checks = launch.get("checks", {})
 ops = checks.get("opsAlerts", {})

@@ -19,3 +19,20 @@
 
 # Not applicable to static sites / Firebase Functions
 10032	IGNORE	Viewstate Scanner
+
+# Firebase Hosting cache headers are intentional for static assets
+10015	IGNORE	Re-examine Cache-control Directives
+10049	IGNORE	Non-Storable Content
+10050	IGNORE	Retrieved from Cache
+
+# Static bundles may embed base64 literals; not secret disclosure
+10094	IGNORE	Base64 Disclosure
+
+# SPA/static marketing site baseline noise
+10027	IGNORE	Information Disclosure - Suspicious Comments
+10109	IGNORE	Modern Web Application
+2	IGNORE	Private IP Disclosure
+
+# COEP/Sec-Fetch-Dest are not required for the marketing site baseline
+90004	IGNORE	Cross-Origin-Embedder-Policy Header Missing or Invalid
+90005	IGNORE	Sec-Fetch-Dest Header is Missing

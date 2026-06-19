@@ -18,10 +18,10 @@ const expectedPolicy = {
 
 function fakeRunner({ policies, channels }) {
   return (_command, args) => {
-    if (args[1] === "policies") {
+    if (args.includes("policies")) {
       return { ok: true, status: 0, stdout: JSON.stringify(policies), stderr: "" };
     }
-    if (args[1] === "channels") {
+    if (args.includes("channels")) {
       return { ok: true, status: 0, stdout: JSON.stringify(channels), stderr: "" };
     }
     return { ok: false, status: 1, stdout: "", stderr: `unexpected gcloud args: ${args.join(" ")}` };
