@@ -45,7 +45,8 @@ openburnbar_app_test_has_concrete_xctest_failure() {
 openburnbar_app_test_has_terminal_concrete_xctest_failure() {
     local log_path="$1"
 
-    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path" &&
+        openburnbar_app_test_final_selected_summary_is_green "$log_path"; then
         return 1
     fi
 
@@ -183,7 +184,8 @@ is_known_hang() {
     local log_path="$1"
     local pattern
 
-    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path" &&
+        openburnbar_app_test_final_selected_summary_is_green "$log_path"; then
         return 0
     fi
 
