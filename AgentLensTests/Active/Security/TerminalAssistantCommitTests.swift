@@ -128,6 +128,24 @@ final class TerminalAssistantCommitTests: XCTestCase {
         XCTAssertEqual(total, 0)
     }
 
+    func testTransactionalMemoryServiceEnqueuesInsideChatWrite() async throws {
+        let store = try makeInMemoryStore()
+        let memory = TransactionalMemoryService()
+        let assistant = makeAssistant()
+
+        try await store.saveChatMessage(
+            assistant,
+            threadID: "thread-1",
+            isTerminalAssistantCommit: true,
+            memoryService: memory,
+            extractionContext: makeContext()
+        )
+
+        XCTAssertEqual(memory.transactionalIntents.map(\.messageID), [assistant.id])
+        XCTAssertEqual(memory.chatRowsObservedInTransaction, [1], "The extraction enqueue must see the committed chat row inside the same write transaction.")
+        XCTAssertFalse(memory.asyncFallbackCalled, "A transactional memory service must not also receive the post-commit async fallback.")
+    }
+
     // MARK: - Idempotency key (deterministic, backend dedup surface)
 
     func testIdempotencyKeyIsDeterministic() {
@@ -170,6 +188,7 @@ final class TerminalAssistantCommitTests: XCTestCase {
 
         XCTAssertTrue(controller.messages.isEmpty, "A send arriving while another is in-flight must be rejected before appending any turn.")
         XCTAssertTrue(controller.sendInFlight, "A rejected send must not clear a sentinel owned by the in-flight send; its own defer clears it on return.")
+        XCTAssertEqual(controller.streamError, "A chat response is already in progress. Wait for it to finish, then send again.")
     }
 
     func testSendResetsSentinelOnEarlyReturn() async throws {
@@ -215,4 +234,54 @@ final class TerminalAssistantCommitTests: XCTestCase {
         XCTAssertEqual(ctx.threadLogicalID, "thread-xyz")
         XCTAssertEqual(ctx.promptVersion, ChatSessionController.memoryPromptVersion)
     }
+}
+
+private final class TransactionalMemoryService: TransactionalMemoryExtractionServing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _transactionalIntents: [ExtractionIntent] = []
+    private var _chatRowsObservedInTransaction: [Int] = []
+    private var _asyncFallbackCalled = false
+
+    var transactionalIntents: [ExtractionIntent] {
+        lock.withLock { _transactionalIntents }
+    }
+
+    var chatRowsObservedInTransaction: [Int] {
+        lock.withLock { _chatRowsObservedInTransaction }
+    }
+
+    var asyncFallbackCalled: Bool {
+        lock.withLock { _asyncFallbackCalled }
+    }
+
+    func enqueueExtraction(_ intent: ExtractionIntent, in db: Database) throws {
+        let rowCount = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(1) FROM chat_messages WHERE id = ?",
+            arguments: [intent.messageID]
+        ) ?? 0
+        lock.withLock {
+            _transactionalIntents.append(intent)
+            _chatRowsObservedInTransaction.append(rowCount)
+        }
+    }
+
+    func enqueueExtraction(_ intent: ExtractionIntent) async throws {
+        lock.withLock { _asyncFallbackCalled = true }
+    }
+
+    func add(_ request: MemoryAddRequest) async throws -> MemoryEventID { "evt_unused_add" }
+    func update(id: MemoryID, _ patch: MemoryPatch) async throws -> MemoryEventID { "evt_unused_update" }
+    func delete(id: MemoryID) async throws -> MemoryEventID { "evt_unused_delete" }
+    func deleteAll(scope: MemoryScope) async throws -> MemoryEventID { "evt_unused_delete_all" }
+    func eventStatus(_ id: MemoryEventID) async throws -> MemoryEventStatus { .succeeded }
+    func search(_ query: MemoryQuery) async throws -> [Memory] { [] }
+    func get(id: MemoryID) async throws -> Memory? { nil }
+    func getAll(_ page: MemoryPageRequest) async throws -> MemoryPage {
+        MemoryPage(items: [], page: page.page, pageSize: page.pageSize, total: 0)
+    }
+    func listEntities() async throws -> [MemoryEntity] { [] }
+    func recallForPrompt(_ request: MemoryRecallRequest) async throws -> [MemorySnippet] { [] }
+    func approve(id: MemoryID) async throws -> MemoryEventID { "evt_unused_approve" }
+    func reject(id: MemoryID) async throws -> MemoryEventID { "evt_unused_reject" }
 }

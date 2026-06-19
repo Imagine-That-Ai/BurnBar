@@ -374,7 +374,7 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
         request: CLIAgentRelayChatRequest,
         onEvent: @escaping @Sendable (CLIAgentRelayChatEvent) async throws -> Void
     ) async throws {
-        guard !chatController.isStreaming else {
+        guard !chatController.isSendBusy else {
             throw CLIAgentRelayChatExecutorError.busy
         }
         guard let backend = Self.backend(for: request.runtime) else {

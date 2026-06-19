@@ -178,7 +178,11 @@ extension ChatSessionController {
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
-        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming, !sendInFlight else { return }
+        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty else { return }
+        guard !isSendBusy else {
+            streamError = "A chat response is already in progress. Wait for it to finish, then send again."
+            return
+        }
 
         // Synchronous reentrancy sentinel: set before any await so a second
         // programmatic/relay `send()` arriving in the await window before
