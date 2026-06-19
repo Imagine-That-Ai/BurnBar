@@ -150,6 +150,48 @@ final class ChatSessionController {
     var activeThreadID: String = DataStore.legacyChatThreadID
     var selectedContext: ConversationRecord?
 
+    /// Wired by the app until the backend (PR-5) lands a real `MemoryServing`.
+    /// `nil` in production today, so the terminal-commit extraction chokepoint is a
+    /// no-op in app builds; tests inject `FakeMemoryService` to assert it fires.
+    var memoryService: (any MemoryServing)?
+
+    /// F-3: the snippets recalled for the current/last turn, retained so the chat
+    /// view can render citation affordances on the latest assistant message. v1
+    /// surfaces the latest turn only; per-message citation persistence is a
+    /// follow-up (the citations live on the snippet, not the chat row).
+    var lastRecalledMemorySnippets: [MemorySnippet] = []
+
+    /// Synchronous reentrancy sentinel for `send()`. `isStreaming` flips late (only
+    /// once streaming actually begins), leaving an await window where a second
+    /// programmatic/relay `send()` can append a duplicate user turn. `sendInFlight`
+    /// is set synchronously right after the guard and cleared via `defer`, so any
+    /// second `send()` arriving during that await window is rejected.
+    var sendInFlight = false
+
+    var isSendBusy: Bool {
+        isStreaming || sendInFlight
+    }
+
+    /// System-prompt assembly version baked into the extraction idempotency key;
+    /// a new prompt version is a distinct extraction event.
+    static let memoryPromptVersion = "openburnbar-prompt-v1"
+
+    /// Builds the extraction context for the current turn. v1 scopes by `appID`
+    /// (same-device); `userID` is resolved at the backend rendezvous (PR-5), not
+    /// trusted from this client. `threadLogicalID` is the device-local thread id
+    /// for v1; a content-addressed cross-device id is a backend/F-3 refinement.
+    func makeMemoryExtractionContext() -> MemoryExtractionContext {
+        MemoryExtractionContext(
+            scope: MemoryScope(appID: "openburnbar"),
+            threadLogicalID: activeThreadID,
+            promptVersion: Self.memoryPromptVersion
+        )
+    }
+
+    var memoryServiceForExtraction: (any MemoryServing)? {
+        settingsManager.memoryExtractionEnabled ? memoryService : nil
+    }
+
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 
     /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.
@@ -282,10 +324,12 @@ final class ChatSessionController {
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
-        cliBridge: CLIBridge? = nil
+        cliBridge: CLIBridge? = nil,
+        memoryService: (any MemoryServing)? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.memoryService = memoryService
         if let searchService {
             self.searchService = searchService
             self.searchServiceFactory = { searchService }
@@ -535,6 +579,57 @@ final class ChatSessionController {
         }
     }
 
+    /// Resolve the model family used to pick the prompt token arbiter's context
+    /// window + ceiling (G9). Ollama and genuinely unknown local backends get the
+    /// conservative floor; all other backends route to cloud models and receive the
+    /// large-context ceiling. Static + param-driven so it is unit-testable.
+    nonisolated static func memoryArbiterModelFamily(
+        backend: ChatBackendID,
+        resolvedModel: String,
+        hermesFamily: HermesModelID?
+    ) -> HermesModelID {
+        if let family = hermesFamilyHint(for: resolvedModel) {
+            return family
+        }
+        if backend == .hermes, let family = hermesFamily {
+            return family
+        }
+        // All other shipped backends (and Hermes without an explicit family) route to
+        // cloud models; use a generic cloud family so they receive the large-context
+        // ceiling rather than the ollama floor.
+        return .codex
+    }
+
+    nonisolated static func promptPayloadTokenReserve(
+        history: [ChatMessageRecord],
+        userMessage: String
+    ) -> Int {
+        if history.isEmpty {
+            return PromptTokenArbiter.estimateProseTokens(userMessage)
+        }
+        let contentChars = history.reduce(0) { partial, message in
+            partial + message.content.count
+        }
+        let attachmentTokens = history.reduce(0) { partial, message in
+            partial + message.attachments.reduce(0) { $0 + $1.estimatedTokenCost }
+        }
+        return TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
+    }
+
+    nonisolated static func promptSystemWrapperTokenReserve(
+        backend: ChatBackendID,
+        piAgentInstanceID: String
+    ) -> Int {
+        switch backend {
+        case .hermes:
+            return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
+        case .piAgent:
+            return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+            return 0
+        }
+    }
+
     func liveAdvertisedModels(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
         switch backend {
         case .hermes:
@@ -606,7 +701,7 @@ final class ChatSessionController {
         return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    static func hermesFamilyHint(for model: String) -> HermesModelID? {
+    nonisolated static func hermesFamilyHint(for model: String) -> HermesModelID? {
         let normalized = model
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -1124,10 +1219,15 @@ final class ChatSessionController {
     /// Appends a `Pi agent context` block to the system prompt so responses
     /// can be attributed to the active Pi instance.
     static func piSystemPrompt(base: String, instanceID: String) -> String {
-        let trimmedInstance = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedInstance.isEmpty else { return base }
-        return base + """
+        let wrapper = piSystemPromptWrapper(instanceID: instanceID)
+        guard !wrapper.isEmpty else { return base }
+        return base + "\n\n" + wrapper
+    }
 
+    nonisolated static func piSystemPromptWrapper(instanceID: String) -> String {
+        let trimmedInstance = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInstance.isEmpty else { return "" }
+        return """
         ## Pi agent context
         You are responding through the Pi agent instance `\(trimmedInstance)`. When the user asks which instance is answering, name this instance explicitly and remind them that OpenBurnBar can switch instances from Settings → Chat Gateway → Pi Agent Instances.
         """
