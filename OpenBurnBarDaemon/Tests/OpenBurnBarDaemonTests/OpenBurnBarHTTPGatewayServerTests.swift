@@ -625,7 +625,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         let factory = try XCTUnwrap(data.first {
-            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
+            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "factory/gpt-5.5"
         })
         XCTAssertEqual(factory["provider_name"] as? String, "Factory Droid")
         XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 · Factory Droid Standard · via OpenBurnBar · Reasoning: CLI default")
@@ -835,7 +835,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let session = URLSession(configuration: sessionConfig)
         // Order: snapshot /v1/models for the configured vendor, then the
         // degrade /v1/chat/completions.
-        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 2)
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: #"{"id":"chatcmpl-degrade","object":"chat.completion","model":"deepseek-chat","choices":[{"index":0,"message":{"role":"assistant","content":"degrade answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#
@@ -3135,6 +3135,35 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"glm-5.2""#), true)
         XCTAssertEqual(upstreamRequests.last?.body.contains(#""glm-5.2:cloud""#), false)
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
+    }
+
+    func testGatewayDoesNotRouteClaudeMessagesToOllamaCloudFallback() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureOllamaProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-opus-4-8-max","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503, String(decoding: body, as: UTF8.self))
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("No eligible route"))
+        XCTAssertFalse(
+            GatewayUpstreamURLProtocol.recordedRequests().contains { $0.path == "/api/chat" },
+            "Claude-owned Anthropic Messages requests must not be rewritten to Ollama Cloud"
+        )
     }
 
     func testGatewayRejectsOllamaCloudLengthResponseWithoutAssistantText() async throws {

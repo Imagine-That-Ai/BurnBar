@@ -2004,23 +2004,25 @@
       "local": true,
       "models": [
         {
-          "id": "codex-gpt-5.3-codex-family",
-          "displayName": "GPT-5.3 Codex",
+          "id": "codex-gpt-5.5-family",
+          "displayName": "GPT-5.5",
           "visibility": "public",
           "aliases": [
-            "gpt-5.3-codex"
+            "gpt-5.5",
+            "gpt-5.5-codex"
           ],
           "matchers": [
             {
               "all": [
                 "gpt",
-                "5.3",
-                "codex"
+                "5.5"
               ],
               "any": [],
               "none": [
                 "fast",
-                "spark"
+                "mini",
+                "nano",
+                "pro"
               ]
             }
           ],
@@ -2029,53 +2031,29 @@
             "outputPerMToken": 0,
             "cacheReadPerMToken": 0
           },
+          "canonicalModelID": "gpt-5.5",
           "capabilityClassID": "openai:codex",
-          "capabilityClassRank": 90
+          "capabilityClassRank": 110
         },
         {
-          "id": "codex-gpt-5.2-codex-family",
-          "displayName": "GPT-5.2 Codex",
+          "id": "codex-gpt-5.4-family",
+          "displayName": "GPT-5.4",
           "visibility": "public",
           "aliases": [
-            "gpt-5.2-codex"
+            "gpt-5.4"
           ],
           "matchers": [
             {
               "all": [
                 "gpt",
-                "5.2",
-                "codex"
-              ],
-              "any": [],
-              "none": []
-            }
-          ],
-          "pricing": {
-            "inputPerMToken": 0,
-            "outputPerMToken": 0,
-            "cacheReadPerMToken": 0
-          },
-          "capabilityClassID": "openai:codex",
-          "capabilityClassRank": 80
-        },
-        {
-          "id": "codex-gpt-5.1-codex-family",
-          "displayName": "GPT-5.1 Codex",
-          "visibility": "public",
-          "aliases": [
-            "gpt-5.1-codex"
-          ],
-          "matchers": [
-            {
-              "all": [
-                "gpt",
-                "5.1",
-                "codex"
+                "5.4"
               ],
               "any": [],
               "none": [
+                "fast",
                 "mini",
-                "max"
+                "nano",
+                "pro"
               ]
             }
           ],
@@ -2084,62 +2062,9 @@
             "outputPerMToken": 0,
             "cacheReadPerMToken": 0
           },
+          "canonicalModelID": "gpt-5.4",
           "capabilityClassID": "openai:codex",
-          "capabilityClassRank": 70
-        },
-        {
-          "id": "codex-gpt-5.1-codex-max-family",
-          "displayName": "GPT-5.1 Codex Max",
-          "visibility": "public",
-          "aliases": [
-            "gpt-5.1-codex-max"
-          ],
-          "matchers": [
-            {
-              "all": [
-                "gpt",
-                "5.1",
-                "codex",
-                "max"
-              ],
-              "any": [],
-              "none": []
-            }
-          ],
-          "pricing": {
-            "inputPerMToken": 0,
-            "outputPerMToken": 0,
-            "cacheReadPerMToken": 0
-          },
-          "capabilityClassID": "openai:codex",
-          "capabilityClassRank": 75
-        },
-        {
-          "id": "codex-gpt-5.1-codex-mini-family",
-          "displayName": "GPT-5.1 Codex Mini",
-          "visibility": "public",
-          "aliases": [
-            "gpt-5.1-codex-mini"
-          ],
-          "matchers": [
-            {
-              "all": [
-                "gpt",
-                "5.1",
-                "codex",
-                "mini"
-              ],
-              "any": [],
-              "none": []
-            }
-          ],
-          "pricing": {
-            "inputPerMToken": 0,
-            "outputPerMToken": 0,
-            "cacheReadPerMToken": 0
-          },
-          "capabilityClassID": "openai:codex",
-          "capabilityClassRank": 40
+          "capabilityClassRank": 100
         }
       ]
     },
@@ -4913,6 +4838,137 @@
             "inputPerMToken": 0,
             "outputPerMToken": 0,
             "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "kimi-k2.7-code",
+          "displayName": "Kimi K2.7 Code",
+          "visibility": "public",
+          "aliases": [
+            "kimi-k2.7-code:cloud",
+            "kimi-k2.7-code-cloud",
+            "kimi-k2.7:cloud",
+            "kimi-k2.7-code",
+            "kimi-k2-7-code"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "kimi",
+                "k2.7",
+                "code"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "k2",
+                "7",
+                "code"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "kimi-k2.7-code:cloud",
+          "capabilityClassID": "kimi-k2.7-code",
+          "capabilityClassRank": 100,
+          "modelCapabilities": {
+            "schemaVersion": 1,
+            "inputModalities": [
+              "text",
+              "image"
+            ],
+            "outputModalities": [
+              "text"
+            ],
+            "supportedParameters": [
+              "max_tokens",
+              "reasoning",
+              "reasoning_effort",
+              "temperature",
+              "tool_choice",
+              "tools",
+              "top_p"
+            ],
+            "contextWindowTokens": 262144,
+            "acceptedInputMimeTypes": [
+              "image/*"
+            ],
+            "sourceRefs": [
+              {
+                "label": "Ollama kimi-k2.7-code",
+                "url": "https://ollama.com/library/kimi-k2.7-code"
+              },
+              {
+                "label": "Ollama kimi-k2.7-code tags",
+                "url": "https://ollama.com/library/kimi-k2.7-code/tags"
+              }
+            ]
+          }
+        },
+        {
+          "id": "glm-5.2",
+          "displayName": "GLM-5.2",
+          "visibility": "public",
+          "aliases": [
+            "glm-5.2:cloud",
+            "glm-5.2-cloud"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "glm",
+                "5.2"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "glm-5.2:cloud",
+          "capabilityClassID": "glm-5.2",
+          "capabilityClassRank": 100,
+          "modelCapabilities": {
+            "schemaVersion": 1,
+            "inputModalities": [
+              "text"
+            ],
+            "outputModalities": [
+              "text"
+            ],
+            "supportedParameters": [
+              "max_tokens",
+              "reasoning",
+              "reasoning_effort",
+              "temperature",
+              "tool_choice",
+              "tools",
+              "top_p"
+            ],
+            "contextWindowTokens": 976000,
+            "acceptedInputMimeTypes": [],
+            "sourceRefs": [
+              {
+                "label": "Ollama glm-5.2",
+                "url": "https://ollama.com/library/glm-5.2"
+              },
+              {
+                "label": "Ollama glm-5.2 tags",
+                "url": "https://ollama.com/library/glm-5.2/tags"
+              }
+            ]
           }
         },
         {
