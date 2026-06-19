@@ -46,6 +46,8 @@ When a task needs code changes, agents should:
 
 The factory handles review, small fix loops, CI waiting, re-review, merge, close, and named blockers. It should leave every selected PR in exactly one state: `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
 
+When Codex, Cursor/Bugbot, or Cursor Cloud Agent reacts to another agent's review or fix, leave a `Cross-agent receipt` in the PR. Keep it scannable: saw, reaction, status, next owner. Include review/comment/thread ids and commit SHAs when available. This is the human-readable team handoff; do not hide it only in automation logs.
+
 Do **not** dump known-broken work into the factory. Do **not** open vague mega-PRs and expect automation to discover the intent. Big PRs are acceptable only when they are coherent, well-mapped, and validated enough for an independent reviewer to reason about them. If cheap local checks fail, fix them before PR unless the failure is environmental and documented in the PR body. Do **not** treat Cursor Approval Agent output as approval evidence. Cursor/Bugbot/Cloud Agent may implement scoped fixes; Codex is the independent reviewer and approval gate; GitHub branch protection is the mechanical merge gate.
 
 Use the factory for velocity with safety: good attempts go in, finished outcomes come out.

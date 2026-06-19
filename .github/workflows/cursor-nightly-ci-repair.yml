@@ -305,6 +305,14 @@ jobs:
             head, diff, reviews, and checks before deciding what remains.
           - Do not treat Cursor Approval Agent output as approval evidence.
             Branch protection and human/Codex review are the merge gates.
+          - Leave a visible "Cross-agent receipt" in the repair PR body whenever
+            Codex/cloud-service feedback exists, Cursor/Bugbot reviewed the PR,
+            Cursor pushed a fix, or another agent is still running. Keep it
+            short: saw, reaction, status, next owner.
+          - The receipt must name the review/comment/thread ids and commit SHAs
+            you reacted to when available. Example: "Saw Codex thread 123 on
+            workflow stale-head handling; Cursor fixed it in abc123; status:
+            waiting for Codex re-review."
 
           Repair loop state:
           PROMPT

@@ -12,6 +12,13 @@ This is the operating model:
 
 The always-on machine owns the recurring automation and authenticated GitHub CLI setup. Other BurnBar machines should pull these repo instructions; they only need `gh` installed and authenticated if they will perform GitHub lifecycle actions themselves.
 
+Cross-agent visibility rule:
+
+- When Codex, Cursor/Bugbot, or Cursor Cloud Agent reacts to another agent's feedback, the PR should include a `Cross-agent receipt`.
+- Keep it short: saw, reaction, status, next owner.
+- Include review/comment/thread ids and commit SHAs when available.
+- This is the human management surface; do not hide team handoff state only in automation logs.
+
 ## Agent Prompt
 
 Paste this into a BurnBar agent when you need it to remember the factory model permanently:
@@ -76,6 +83,12 @@ Every selected PR should end as:
 Cursor/Bugbot/Cloud Agent can fix.
 Codex approves.
 GitHub branch protection decides mergeability.
+
+When agents react to each other, leave a Cross-agent receipt in the PR:
+- saw
+- reaction
+- status
+- next owner
 
 Do not use the factory to launder sloppy work into main.
 Good attempts go in. Finished outcomes come out.
