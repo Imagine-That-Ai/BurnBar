@@ -887,7 +887,11 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         if configuration.provider.id.lowercased() == "ollama",
-           let cloudModel = ollamaCloudRouteModel(named: modelName, in: configuration) {
+           let cloudModel = OllamaCloudModelRoutingPolicy.routeModel(
+            named: modelName,
+            in: configuration,
+            catalog: configStore.catalogSupport.catalog
+           ) {
             return cloudModel
         }
         if configuration.provider.id.lowercased() == "ollama",
@@ -915,66 +919,6 @@ public struct BurnBarProviderRouter: Sendable {
         return wireModel(for: matchedModel, requestedModel: modelName)
     }
 
-    private func ollamaCloudRouteModel(
-        named modelName: String,
-        in configuration: BurnBarResolvedProviderConfiguration
-    ) -> BurnBarCatalogModel? {
-        guard let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) else {
-            return nil
-        }
-        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
-            directCloudModelID,
-            catalog: configStore.catalogSupport.catalog
-        ) else {
-            return nil
-        }
-
-        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let exactCloudModel = configuration.preferredModels.first(where: {
-            $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
-        })
-        let concreteCloudModel: BurnBarCatalogModel? = exactCloudModel.flatMap {
-            if OllamaCloudModelRoutingPolicy.isCloudFamilyModelID($0.id) {
-                return nil
-            }
-            if OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: $0.id) != nil {
-                return nil
-            }
-            return $0
-        }
-        let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
-        let modelTemplate = concreteCloudModel ?? cloudFamily
-        guard let modelTemplate else { return nil }
-
-        let resolvedModelID = concreteCloudModel?.id ?? directCloudModelID
-        let canonicalModelID: String
-        if let concreteCloudModel,
-           concreteCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
-            canonicalModelID = concreteCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
-                ?? concreteCloudModel.canonicalModelID
-                ?? concreteCloudModel.id
-        } else {
-            canonicalModelID = directCloudModelID
-        }
-        let capabilityClassID = concreteCloudModel?.capabilityClassID
-            ?? concreteCloudModel?.id
-            ?? directCloudModelID
-
-        return BurnBarCatalogModel(
-            id: resolvedModelID,
-            displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
-            visibility: .hidden,
-            aliases: [modelName],
-            matchers: [],
-            pricing: modelTemplate.pricing,
-            canonicalModelID: canonicalModelID,
-            capabilityClassID: capabilityClassID,
-            capabilityClassRank: concreteCloudModel?.capabilityClassRank
-                ?? cloudFamily?.capabilityClassRank
-                ?? modelTemplate.capabilityClassRank
-        )
-    }
-
     /// Whether a (local) provider's base URL is a queryable HTTP(S) endpoint.
     /// Subprocess-backed local providers use a non-HTTP sentinel scheme (e.g.
     /// `codex-cli://local`) and serve only their static catalog models.
@@ -996,15 +940,8 @@ public struct BurnBarProviderRouter: Sendable {
         let template = configuration.preferredModels.first
             ?? configuration.provider.models.first(where: { $0.visibility == .public })
 
-        // Local, credential-less providers (e.g. a local Ollama daemon) carry no
-        // static catalog rows, so any installed model the server serves must be
-        // routable as a free, zero-priced passthrough. Non-local providers still
-        // require a template to anchor pricing/capability metadata.
-        // Subprocess-backed local providers (e.g. codex via `codex-cli://`) serve
-        // ONLY their static catalog models and must NEVER synthesize a dynamic
-        // route — otherwise (since they carry a static template) they would shadow
-        // every other provider's models. Only HTTP-backed local providers (a local
-        // Ollama daemon) act as a dynamic catch-all for arbitrary installed models.
+        // Local HTTP providers can route installed models as free passthroughs.
+        // Subprocess-backed local providers serve only their static catalog rows.
         if configuration.provider.local,
            !Self.isHTTPLocalEndpoint(configuration.settings.baseURL) {
             return nil

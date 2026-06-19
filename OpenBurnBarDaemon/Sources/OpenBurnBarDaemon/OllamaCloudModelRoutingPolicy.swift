@@ -29,6 +29,59 @@ enum OllamaCloudModelRoutingPolicy {
             .caseInsensitiveCompare("ollama-cloud-family") == .orderedSame
     }
 
+    static func routeModel(
+        named modelName: String,
+        in configuration: BurnBarResolvedProviderConfiguration,
+        catalog: BurnBarCatalog
+    ) -> BurnBarCatalogModel? {
+        guard let directCloudModelID = cloudAliasBaseModelID(from: modelName),
+              mayClaimModelID(directCloudModelID, catalog: catalog) else {
+            return nil
+        }
+
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let exactCloudModel = configuration.preferredModels.first {
+            $0.id.lowercased() == normalized || $0.aliases.contains { $0.lowercased() == normalized }
+        }
+        let concreteCloudModel: BurnBarCatalogModel? = exactCloudModel.flatMap {
+            if isCloudFamilyModelID($0.id) || cloudAliasBaseModelID(from: $0.id) != nil {
+                return nil
+            }
+            return $0
+        }
+        let cloudFamily = configuration.provider.models.first { $0.id == "ollama-cloud-family" }
+        let modelTemplate = concreteCloudModel ?? cloudFamily
+        guard let modelTemplate else { return nil }
+
+        let resolvedModelID = concreteCloudModel?.id ?? directCloudModelID
+        let canonicalModelID: String
+        if let concreteCloudModel,
+           concreteCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
+            canonicalModelID = concreteCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
+                ?? concreteCloudModel.canonicalModelID
+                ?? concreteCloudModel.id
+        } else {
+            canonicalModelID = directCloudModelID
+        }
+        let capabilityClassID = concreteCloudModel?.capabilityClassID
+            ?? concreteCloudModel?.id
+            ?? directCloudModelID
+
+        return BurnBarCatalogModel(
+            id: resolvedModelID,
+            displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+            visibility: .hidden,
+            aliases: [modelName],
+            matchers: [],
+            pricing: modelTemplate.pricing,
+            canonicalModelID: canonicalModelID,
+            capabilityClassID: capabilityClassID,
+            capabilityClassRank: concreteCloudModel?.capabilityClassRank
+                ?? cloudFamily?.capabilityClassRank
+                ?? modelTemplate.capabilityClassRank
+        )
+    }
+
     static func mayClaimModelID(_ rawID: String, catalog: BurnBarCatalog) -> Bool {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
