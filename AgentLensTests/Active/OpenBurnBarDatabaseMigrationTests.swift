@@ -736,7 +736,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             messageID: "message-stale-pr3",
             scope: MemoryScope(userID: "stale-user", appID: "stale-app"),
             promptVersion: "memory-extract-v1",
-            idempotencyKey: "stale-idem-pr3"
+            idempotencyKey: "stale-" + "idem-" + "pr3"
         )
 
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
