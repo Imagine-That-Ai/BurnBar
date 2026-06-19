@@ -236,9 +236,9 @@ final class BurnBarCatalogTests: XCTestCase {
         let kimi = try XCTUnwrap(ollama.models.first { $0.id == "kimi-k2.7-code" })
         let glm = try XCTUnwrap(ollama.models.first { $0.id == "glm-5.2" })
         XCTAssertEqual(kimi.modelCapabilities?.contextWindowTokens, 262_144)
-        XCTAssertTrue(kimi.modelCapabilities?.supportsImageInput == true)
+        XCTAssertEqual(kimi.modelCapabilities?.supportsImageInput, true)
         XCTAssertEqual(glm.modelCapabilities?.contextWindowTokens, 976_000)
-        XCTAssertFalse(glm.modelCapabilities?.supportsImageInput == true)
+        XCTAssertEqual(glm.modelCapabilities?.supportsImageInput, false)
     }
 
     func test_bundledCatalog_usesCanonicalProviderLogoAssets() throws {

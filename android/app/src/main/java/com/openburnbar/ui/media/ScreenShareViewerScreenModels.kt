@@ -448,11 +448,7 @@ internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboar
     )
 }
 
-internal fun remoteKeyboardCaptureChange(
-    state: RemoteKeyboardCaptureState,
-    newText: String,
-    retainedTextLimit: Int = 256,
-): RemoteKeyboardCaptureChange {
+internal fun remoteKeyboardCaptureChange(state: RemoteKeyboardCaptureState, newText: String, retainedTextLimit: Int = 256): RemoteKeyboardCaptureChange {
     if (state.lastRawText == newText) {
         return RemoteKeyboardCaptureChange(
             nextState = state,
