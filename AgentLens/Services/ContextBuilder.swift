@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - LLM Safety Wrappers (Prompt Injection Hardening — 2026-06-01 security review)
 // All untrusted content (RAG chunks, logs, focus transcripts, summaries, CU extracts) MUST be wrapped.
@@ -810,5 +811,62 @@ struct PromptTokenArbiter {
         }
         let bodyMax = max(0, totalMaxChars - marker.count)
         return String(content.prefix(bodyMax)) + marker
+    }
+}
+
+// MARK: - Memory citation resolver (F-3)
+
+/// The tap affordance for a single memory citation. Never a dead link: a live
+/// citation without a device-local jump id degrades to `crossDeviceOnly`, not a
+/// jump to nothing; a pruned/tombstoned source shows `sourceUnavailable`.
+enum MemoryCitationAffordance: Equatable, Sendable {
+    /// Same-device: tap jumps to the source chat message.
+    case jumpToLocal(messageID: String)
+    /// No local jump id available; the source lives on another device.
+    case crossDeviceOnly
+    /// The source message was deleted/GC'd or tombstoned.
+    case sourceUnavailable
+}
+
+enum MemoryCitationResolver {
+    /// Classify a citation into its tap affordance.
+    static func affordance(for citation: MemoryCitation) -> MemoryCitationAffordance {
+        switch citation.citationState {
+        case .sourcePruned, .tombstoned:
+            return .sourceUnavailable
+        case .live:
+            if let messageID = citation.messageID, !messageID.isEmpty {
+                return .jumpToLocal(messageID: messageID)
+            }
+            return .crossDeviceOnly
+        }
+    }
+
+    /// Select the canonical citation for display (prefer a live, jumpable source)
+    /// and the count of remaining sources for a "+N more" affordance. Returns nil
+    /// when there are no citations.
+    static func canonicalAndExtra(from citations: [MemoryCitation]) -> (canonical: MemoryCitation, extraCount: Int)? {
+        guard let first = citations.first else { return nil }
+        let canonical = citations.first(where: {
+            $0.citationState == .live && ($0.messageID?.isEmpty == false)
+        }) ?? first
+        return (canonical, max(0, citations.count - 1))
+    }
+
+    /// Human-readable label for an affordance (used by the chip + accessibility).
+    static func label(for affordance: MemoryCitationAffordance, extraCount: Int = 0) -> String {
+        let base: String
+        switch affordance {
+        case .jumpToLocal:
+            base = "Source message"
+        case .crossDeviceOnly:
+            base = "Source on another device"
+        case .sourceUnavailable:
+            base = "Source no longer available"
+        }
+        if extraCount > 0 {
+            return "\(base)  +\(extraCount) more"
+        }
+        return base
     }
 }
