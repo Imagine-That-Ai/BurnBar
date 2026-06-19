@@ -385,6 +385,127 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(provenanceIDs, ["mem-one#shared-citation", "mem-two#shared-citation"])
     }
 
+    func test_memoryEmbeddingProvidersExposeBgePrimaryAndNLRevisionStampedFallback() async throws {
+        let descriptors = MemoryEmbeddingProviderSelector.descriptors()
+        let bge = try XCTUnwrap(descriptors.first)
+        XCTAssertEqual(bge.provider, "openburnbar-bge")
+        XCTAssertEqual(bge.modelName, "bge-small-en-v1.5")
+        XCTAssertEqual(bge.dimensions, 384)
+        XCTAssertEqual(bge.versionTag, "bge-small-en-v1.5-384")
+        XCTAssertFalse(descriptors.contains { $0.modelName == "deterministic-fake-embedding" })
+
+        guard let nl = NLEmbeddingProvider() else {
+            throw XCTSkip("NLEmbedding sentence model unavailable in this environment.")
+        }
+        XCTAssertTrue(nl.descriptor.versionTag.hasPrefix("nl-sentence-en-\(nl.descriptor.dimensions)-rmacos-"))
+        XCTAssertEqual(nl.descriptor.promptVersion, "memory-fact-v1")
+
+        let selected = try XCTUnwrap(MemoryEmbeddingProviderSelector.selectedLocalProvider())
+        XCTAssertEqual(selected.descriptor, nl.descriptor)
+        let vector = try await selected.embedding(for: "OpenBurnBar memory facts stay version-floored.")
+        XCTAssertEqual(vector.count, selected.descriptor.dimensions)
+    }
+
+    func test_memoryEmbeddingRefsRespectVersionFloorAndDimensionMismatch() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_100)
+        let descriptorA = EmbeddingModelDescriptor(
+            provider: "test-memory",
+            modelName: "memory-vector-test",
+            dimensions: 3,
+            distanceMetric: .cosine,
+            versionTag: "test-a",
+            chunkerVersion: "memory-test-chunker",
+            normalizationVersion: "unit-l2-v1",
+            promptVersion: "memory-fact-v1"
+        )
+        let descriptorB = EmbeddingModelDescriptor(
+            provider: "test-memory",
+            modelName: "memory-vector-test",
+            dimensions: 3,
+            distanceMetric: .cosine,
+            versionTag: "test-b",
+            chunkerVersion: "memory-test-chunker",
+            normalizationVersion: "unit-l2-v1",
+            promptVersion: "memory-fact-v1"
+        )
+
+        let registrationA = try await store.registerMemoryEmbeddingVersion(descriptor: descriptorA, now: now)
+        let registrationB = try await store.registerMemoryEmbeddingVersion(descriptor: descriptorB, now: now.addingTimeInterval(1))
+        XCTAssertNotEqual(registrationA.versionID, registrationB.versionID)
+
+        do {
+            try await store.upsertMemoryEmbeddingRef(
+                memoryID: "mem-wrong-dimension",
+                embeddingVersionID: registrationA.versionID,
+                vector: [1, 0],
+                now: now
+            )
+            XCTFail("Expected dimension mismatch to throw before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
+                .dimensionMismatch(expected: 3, actual: 2)
+            )
+        }
+
+        do {
+            try await store.upsertMemoryEmbeddingRef(
+                memoryID: "mem-unknown-version",
+                embeddingVersionID: "missing-version",
+                vector: [1, 0, 0],
+                now: now
+            )
+            XCTFail("Expected unknown embedding version to throw before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
+                .unknownEmbeddingVersion("missing-version")
+            )
+        }
+
+        let rejectedRows = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_embedding_refs
+                WHERE memory_id IN ('mem-wrong-dimension', 'mem-unknown-version')
+                """
+            ) ?? 0
+        }
+        XCTAssertEqual(rejectedRows, 0)
+
+        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-a", embeddingVersionID: registrationA.versionID, vector: [1, 0, 0], now: now)
+        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-b", embeddingVersionID: registrationB.versionID, vector: [1, 0, 0], now: now)
+        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-c", embeddingVersionID: registrationA.versionID, vector: [0, 1, 0], now: now)
+
+        let matches = try await store.memoryEmbeddingMatches(
+            queryVector: [1, 0, 0],
+            embeddingVersionID: registrationA.versionID,
+            dimension: registrationA.dimension
+        )
+        XCTAssertEqual(matches.map(\.memoryID), ["mem-a", "mem-c"])
+        XCTAssertFalse(matches.map(\.memoryID).contains("mem-b"), "Cross-version memory vectors must never be compared.")
+
+        do {
+            _ = try await store.memoryEmbeddingMatches(
+                queryVector: [1, 0],
+                embeddingVersionID: registrationA.versionID,
+                dimension: registrationA.dimension
+            )
+            XCTFail("Expected dimension mismatch to throw.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
+                .dimensionMismatch(expected: 3, actual: 2)
+            )
+        }
+    }
+
     /// A database genuinely behind the latest migration must take a pre-migration
     /// backup. With the old hardcoded `latestMigrationIdentifier` constant, the
     /// gate saw the prior version already applied and skipped the backup entirely
