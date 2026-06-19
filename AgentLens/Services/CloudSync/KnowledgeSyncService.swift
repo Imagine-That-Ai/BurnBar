@@ -490,3 +490,199 @@ public final class KnowledgeSyncService: Sendable {
         return String(slug.prefix(120))
     }
 }
+
+struct MemoryCloudSyncResult: Equatable, Sendable {
+    let uploaded: Int
+    let skipped: Int
+    let forgetReceipts: Int
+    let cloudFactsDeleted: Int
+}
+
+private struct MemoryCloudFactPayload: Codable {
+    let schemaVersion: Int
+    let memoryID: MemoryID
+    let text: String
+    let kind: MemoryKind
+    let scope: MemoryScope
+    let confidence: Double
+    let citations: [MemoryCitation]
+    let validFrom: Date
+    let updatedAt: Date
+}
+
+final class MemoryCloudSyncService: Sendable {
+    private let store: ControlPlaneStore
+    private let firestoreGateway: CloudSyncFirestoreGateway
+
+    init(
+        store: ControlPlaneStore,
+        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway()
+    ) {
+        self.store = store
+        self.firestoreGateway = firestoreGateway
+    }
+
+    @discardableResult
+    func syncApprovedMemories(uid: String, vaultKey: Data, now: Date = Date()) async throws -> MemoryCloudSyncResult {
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords()
+        let eligible = try await store.cloudSyncEligibleChatMemories()
+        let userDocument = firestoreGateway.collection("users").document(uid)
+        let factCollection = userDocument.collection("memory_facts")
+        let receiptCollection = userDocument.collection("memory_forget_receipts")
+
+        var uploaded = 0
+        for memory in eligible {
+            guard let body = try await store.openChatMemoryBody(id: memory.id) else { continue }
+            let encoded = try Self.encodeMemoryFact(
+                memory: memory,
+                body: body,
+                uid: uid,
+                vaultKey: vaultKey,
+                now: now
+            )
+            try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
+            uploaded += 1
+        }
+
+        var forgetReceipts = 0
+        var deletedFacts = 0
+        for tombstone in try await store.fetchMemorySourceTombstones() {
+            let encoded = try Self.encodeForgetReceipt(
+                tombstone: tombstone,
+                uid: uid,
+                vaultKey: vaultKey,
+                now: now
+            )
+            try await receiptCollection.document(encoded.docID).setData(encoded.data, merge: true)
+            forgetReceipts += 1
+            deletedFacts += try await Self.deleteCloudFacts(
+                matchingSourceRefHmac: encoded.sourceRefHmac,
+                from: factCollection
+            )
+        }
+
+        return MemoryCloudSyncResult(
+            uploaded: uploaded,
+            skipped: max(0, active.count - eligible.count),
+            forgetReceipts: forgetReceipts,
+            cloudFactsDeleted: deletedFacts
+        )
+    }
+
+    static func encodeMemoryFact(
+        memory: Memory,
+        body: String,
+        uid: String,
+        vaultKey: Data,
+        now: Date
+    ) throws -> (docID: String, data: [String: Any]) {
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memory.id)", keyData: vaultKey)
+        let payload = MemoryCloudFactPayload(
+            schemaVersion: 1,
+            memoryID: memory.id,
+            text: body,
+            kind: memory.kind,
+            scope: memory.scope,
+            confidence: memory.confidence,
+            citations: memory.citations,
+            validFrom: memory.validFrom,
+            updatedAt: memory.updatedAt
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let payloadData = try encoder.encode(payload)
+        let aad = try CloudVaultAADContext(
+            uid: uid,
+            collection: "memory_facts",
+            docID: docID,
+            field: "sealedMemory"
+        )
+        let sealed = try CloudVaultCrypto.sealBlob(payloadData, keyData: vaultKey, aadContext: aad)
+        let rawSourceRefHmacs = try memory.citations.map {
+            try sourceRefHmac(
+                threadLogicalID: $0.threadLogicalID,
+                messageID: $0.messageID,
+                contentHash: $0.contentHash,
+                vaultKey: vaultKey
+            )
+        }
+        var seenSourceRefs = Set<String>()
+        let sourceRefHmacs = rawSourceRefHmacs.filter { seenSourceRefs.insert($0).inserted }
+
+        return (
+            docID,
+            [
+                "uid": uid,
+                "docID": docID,
+                "schemaVersion": 1,
+                "sourceKind": memory.sourceKind.rawValue,
+                "kind": memory.kind.rawValue,
+                "reviewStatus": MemoryReviewStatus.approved.rawValue,
+                "sealedMemory": try CloudVaultCrypto.firestoreDictionary(sealed),
+                "sourceRefHmacs": sourceRefHmacs,
+                "citationCount": memory.citations.count,
+                "validFrom": memory.validFrom,
+                "updatedAt": memory.updatedAt,
+                "replicatedAt": now
+            ]
+        )
+    }
+
+    static func encodeForgetReceipt(
+        tombstone: ControlPlaneStore.MemorySourceTombstoneRecord,
+        uid: String,
+        vaultKey: Data,
+        now: Date
+    ) throws -> (docID: String, sourceRefHmac: String, data: [String: Any]) {
+        let sourceRefHmac = try sourceRefHmac(
+            threadLogicalID: tombstone.threadLogicalID,
+            messageID: tombstone.messageID,
+            contentHash: tombstone.contentHash,
+            vaultKey: vaultKey
+        )
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-forget:\(tombstone.id)", keyData: vaultKey)
+        return (
+            docID,
+            sourceRefHmac,
+            [
+                "uid": uid,
+                "receiptID": docID,
+                "schemaVersion": 1,
+                "sourceRefHmac": sourceRefHmac,
+                "reason": tombstone.reason,
+                "createdAt": tombstone.createdAt,
+                "replicatedAt": now
+            ]
+        )
+    }
+
+    private static func sourceRefHmac(
+        threadLogicalID: String,
+        messageID: String?,
+        contentHash: String?,
+        vaultKey: Data
+    ) throws -> String {
+        try CloudVaultCrypto.pensieveSlugHmac(
+            "memory-source:\(threadLogicalID)|\(messageID ?? "")|\(contentHash ?? "")",
+            keyData: vaultKey
+        )
+    }
+
+    private static func deleteCloudFacts(
+        matchingSourceRefHmac sourceRefHmac: String,
+        from collection: CloudSyncCollectionGateway
+    ) async throws -> Int {
+        let snapshot = try await collection.getDocuments()
+        var deleted = 0
+        for document in snapshot.documents {
+            let data = document.data()
+            guard let refs = data["sourceRefHmacs"] as? [String],
+                  refs.contains(sourceRefHmac) else {
+                continue
+            }
+            try await collection.document(document.documentID).deleteDocument()
+            deleted += 1
+        }
+        return deleted
+    }
+}

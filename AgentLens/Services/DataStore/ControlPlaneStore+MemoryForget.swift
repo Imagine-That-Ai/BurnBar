@@ -86,6 +86,20 @@ extension ControlPlaneStore {
         }
     }
 
+    func fetchMemorySourceTombstones() async throws -> [MemorySourceTombstoneRecord] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_source_tombstones
+                ORDER BY created_at ASC, id ASC
+                """
+            )
+            return rows.compactMap(Self.memorySourceTombstone(from:))
+        }
+    }
+
     func memoryHasTombstonedSource(id: MemoryID) async throws -> Bool {
         try await dbQueue.read { db in
             let count = try Int.fetchOne(
@@ -190,5 +204,23 @@ extension ControlPlaneStore {
     private static func sha256HexForTombstone(_ string: String) -> String {
         let digest = SHA256.hash(data: Data(string.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func memorySourceTombstone(from row: Row) -> MemorySourceTombstoneRecord? {
+        guard let id: String = row["id"],
+              let threadLogicalID: String = row["thread_logical_id"],
+              let reason: String = row["reason"],
+              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"])
+        else {
+            return nil
+        }
+        return MemorySourceTombstoneRecord(
+            id: id,
+            threadLogicalID: threadLogicalID,
+            messageID: row["message_id"],
+            contentHash: row["content_hash"],
+            reason: reason,
+            createdAt: createdAt
+        )
     }
 }

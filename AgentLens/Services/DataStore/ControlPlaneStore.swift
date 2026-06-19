@@ -393,6 +393,15 @@ final class ControlPlaneStore: Sendable {
         let updatedAt: Date
     }
 
+    struct MemorySourceTombstoneRecord: Equatable, Sendable {
+        let id: String
+        let threadLogicalID: String
+        let messageID: String?
+        let contentHash: String?
+        let reason: String
+        let createdAt: Date
+    }
+
     enum MemorySecretScanner {
         private static let patterns = makePatterns()
 
@@ -932,6 +941,17 @@ final class ControlPlaneStore: Sendable {
             )
         }
         return snippets
+    }
+
+    func cloudSyncEligibleChatMemories() async throws -> [Memory] {
+        var eligible: [Memory] = []
+        for memory in try await fetchActiveChatMemoryAuthorityRecords()
+            where memory.reviewStatus == .approved && memory.validTo == nil {
+            if try await memoryHasTombstonedSource(id: memory.id) == false {
+                eligible.append(memory)
+            }
+        }
+        return eligible
     }
 
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
