@@ -23,6 +23,10 @@ public enum TelemetryOutcome: String, Sendable {
     case cancelled
 }
 
+/// A sink that mirrors each recorded feature event downstream (e.g. to the
+/// consent-gated Amplitude wrapper). Registered once at app launch.
+public typealias TelemetryForwardHandler = @Sendable (TelemetryFeature, TelemetryOutcome, Int?) -> Void
+
 // MARK: - Telemetry Event
 
 private struct TelemetryEvent: Sendable {
@@ -49,6 +53,14 @@ public final class TelemetryService: Sendable {
     private let events = Locked<[TelemetryEvent]>([])
     private let maxBufferSize = 100
     private let logger = Logger(subsystem: "com.openburnbar.telemetry", category: "events")
+    private let forwarder = Locked<TelemetryForwardHandler?>(nil)
+
+    /// Register a downstream sink for recorded feature events. The app wires this
+    /// at launch to fan telemetry out to the consent-gated Amplitude wrapper.
+    /// Passing `nil` detaches the sink.
+    public func setForwarder(_ handler: TelemetryForwardHandler?) {
+        forwarder.withLock { $0 = handler }
+    }
 
     public func record(
         feature: TelemetryFeature,
@@ -65,6 +77,11 @@ public final class TelemetryService: Sendable {
         let shouldFlush = events.withLock { events -> Bool in
             events.append(event)
             return events.count >= maxBufferSize
+        }
+        // Fan out to the consent-gated Amplitude wrapper, if wired. The handler
+        // itself drops everything unless analytics consent has been granted.
+        if let handler = forwarder.withLock({ $0 }) {
+            handler(feature, outcome, bucketedDuration)
         }
         if shouldFlush {
             flush()

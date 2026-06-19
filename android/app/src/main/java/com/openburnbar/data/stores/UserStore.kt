@@ -63,17 +63,56 @@ class UserStore : ViewModel() {
     private val _needsLegacyGoogleFallback = MutableStateFlow(false)
     val needsLegacyGoogleFallback: StateFlow<Boolean> = _needsLegacyGoogleFallback.asStateFlow()
 
+    /** Tracks the prior signed-in edge so the auth-state listener can emit the
+     *  sign-in / sign-out conversion events exactly once per real transition. */
+    private var wasSignedIn: Boolean = auth.currentUser != null
+
     private val authStateListener =
         FirebaseAuth.AuthStateListener { firebaseAuth ->
             val currentUser = firebaseAuth.currentUser
             _user.value = currentUser?.toAppUser() ?: AppUser()
             Log.d("BurnBar", "Auth state: uid=${currentUser?.uid ?: "null"}")
+            trackAuthTransition(currentUser != null, currentUser?.providerData?.lastOrNull()?.providerId)
         }
 
     init {
         Log.d("BurnBar", "UserStore init: uid=${auth.currentUser?.uid ?: "null"}")
         auth.addAuthStateListener(authStateListener)
         _user.value = auth.currentUser?.toAppUser() ?: AppUser()
+    }
+
+    /**
+     * Emit `auth.sign_in.completed` (success) on a signed-out → signed-in edge,
+     * and `auth.signed_out` on the reverse. Catches every provider path in one
+     * place. Sends only the bounded `method` enum + `outcome` — no uid, email,
+     * token, or name. Dropped entirely until analytics consent is granted.
+     */
+    private fun trackAuthTransition(isSignedIn: Boolean, providerId: String?) {
+        if (isSignedIn == wasSignedIn) return
+        wasSignedIn = isSignedIn
+        if (isSignedIn) {
+            com.openburnbar.analytics.AnalyticsManager.track(
+                com.openburnbar.analytics.AnalyticsEvent.AUTH_SIGN_IN_COMPLETED,
+                mapOf(
+                    "method" to com.openburnbar.analytics.AnalyticsValue.Str(signInMethod(providerId)),
+                    "outcome" to com.openburnbar.analytics.AnalyticsValue.Str("success"),
+                ),
+            )
+        } else {
+            com.openburnbar.analytics.AnalyticsManager.track(
+                com.openburnbar.analytics.AnalyticsEvent.AUTH_SIGNED_OUT,
+                mapOf("outcome" to com.openburnbar.analytics.AnalyticsValue.Str("success")),
+            )
+        }
+    }
+
+    /** Map a Firebase provider id to the taxonomy's bounded `method` enum. */
+    private fun signInMethod(providerId: String?): String = when (providerId) {
+        "google.com" -> "google"
+        "apple.com" -> "apple"
+        "github.com" -> "github"
+        "password" -> "email"
+        else -> "email"
     }
 
     // ═══ Google ═══

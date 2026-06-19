@@ -35,6 +35,10 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         KeyboardHaptics.prepare()
         reloadSnippets()
+        // Usage OUTCOME only: the keyboard became active. No keystrokes, no text,
+        // no document context — ever. Gated on the host app's analytics consent
+        // (read from the shared App Group); a no-op if the host did not opt in.
+        KeyboardAnalytics.trackActivated()
     }
 
     // MARK: - Real-Time Snippet Updates
@@ -182,10 +186,14 @@ final class KeyboardViewController: UIInputViewController {
         // Record the usage statistics in the shared App Group
         TextExpansionUsageStore.recordUse(snippetID: result.match.snippet.id)
 
+        // Usage OUTCOME only — bucketed count of available snippets, NEVER the
+        // snippet body, the snippet id, or any typed text. Gated on host consent.
+        KeyboardAnalytics.trackSnippetInserted(availableSnippetCount: snippets.count)
+
         // Reset suggestions and reload snippets
         suggestions = []
         reloadSnippets()
-        
+
         return true
     }
 
@@ -254,8 +262,11 @@ final class KeyboardViewController: UIInputViewController {
                 self?.advanceToNextInputMode()
             },
             onSnippetUsed: { [weak self] snippet in
+                guard let self else { return }
                 TextExpansionUsageStore.recordUse(snippetID: snippet.id)
-                self?.reloadSnippets()
+                // Outcome only — count of available snippets, never the snippet text.
+                KeyboardAnalytics.trackSnippetInserted(availableSnippetCount: self.snippets.count)
+                self.reloadSnippets()
             },
             onSuggestionSelected: { [weak self] suggestion in
                 self?.applySuggestion(suggestion)

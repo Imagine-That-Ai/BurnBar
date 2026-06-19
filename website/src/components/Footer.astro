@@ -76,8 +76,9 @@ const year = new Date().getFullYear();
 
     <div class="site-footer__base">
       <p class="mono small">
-        burnbar.ai — built with restraint. No analytics, no trackers, no third-party fonts loaded
-        remotely.
+        burnbar.ai — built with restraint. No analytics by default; privacy-preserving usage
+        analytics (Amplitude) are opt-in and revocable anytime. No trackers, no third-party fonts
+        loaded remotely.
       </p>
       <div class="site-footer__contact mono small">
         <span>privacy@imagine-that.ai</span>
@@ -86,7 +87,15 @@ const year = new Date().getFullYear();
         <span aria-hidden="true">·</span>
         <a href="/legal/privacy-policy">Privacy policy</a>
         <span aria-hidden="true">·</span>
-        <a href={SITE.github} target="_blank" rel="noopener noreferrer">github</a>
+        <button type="button" class="site-footer__manage" data-analytics-manage>analytics</button>
+        <span aria-hidden="true">·</span>
+        <a
+          href={SITE.github}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-analytics-event="nav.external.clicked"
+          data-analytics-prop-destination="github">github</a
+        >
       </div>
     </div>
   </div>
@@ -167,6 +176,19 @@ const year = new Date().getFullYear();
     color: var(--text-base);
   }
   .site-footer__contact a:hover {
+    color: var(--ember-bright);
+  }
+  .site-footer__manage {
+    font: inherit;
+    color: var(--text-base);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .site-footer__manage:hover {
     color: var(--ember-bright);
   }
   @media (max-width: 880px) {

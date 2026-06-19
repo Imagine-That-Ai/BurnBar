@@ -70,6 +70,7 @@ enum class SettingsPageRoute {
     BUDGET_PREFS,
     TEXT_EXPANSION,
     TRANSCRIPT_CACHE,
+    PRIVACY_ANALYTICS,
 }
 
 /**
@@ -92,6 +93,7 @@ object SettingsAnchor {
     const val THEME_ROW = "root.theme"
     const val QUOTA_CUSTOMIZATION_ROW = "root.quotaCustomization"
     const val BUDGET_ROW = "root.budgeting"
+    const val PRIVACY_ANALYTICS_ROW = "root.privacyAnalytics"
 
     // Smart Displays
     const val GOOGLE_SMART_DISPLAY = "smartDisplays.google"

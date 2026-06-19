@@ -19,6 +19,7 @@ struct DashboardModelLaneView: View {
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(models.enumerated()), id: \.element.id) { index, summary in
                         ModelCard(summary: summary, rank: index + 1) {
+                            Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "model"])
                             withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 onNavigateToModel(summary.modelName)
                             }

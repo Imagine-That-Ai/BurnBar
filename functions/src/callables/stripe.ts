@@ -39,6 +39,13 @@ import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
 import { googlePlayTopUpKind, STRIPE_TOP_UP_KINDS, topUpCheckoutSelection } from "./stripeTopUps.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
+import {
+  ANALYTICS_SECRETS,
+  ConsentSignal,
+  emitSubscriptionEntitlementGranted,
+  entitlementFamilyOf,
+  boundedAnalyticsDeviceId,
+} from "../analytics/index.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
@@ -252,11 +259,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
       const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
-      const topUpKind = optionalChoice(
-        request.data.topUpKind,
-        STRIPE_TOP_UP_KINDS,
-        "topUpKind",
-      );
+      const topUpKind = optionalChoice(request.data.topUpKind, STRIPE_TOP_UP_KINDS, "topUpKind");
 
       if (topUpKind) {
         await assertActiveBurnBarCloudProEntitlement(uid);
@@ -348,6 +351,10 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
+    // Bind the Amplitude key so `.value()` resolves at request time. If the
+    // secret is unset the analytics stream stays dark (recorder key gate);
+    // binding it does not enable any tracking on its own.
+    secrets: ANALYTICS_SECRETS,
   },
   wrapCallableHandler(
     "verifyGooglePlayBurnBarProSubscription",
@@ -355,6 +362,10 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       request: CallableRequest<{
         purchaseToken?: unknown;
         productID?: unknown;
+        // Opt-in analytics signal PROPAGATED from the client. Both default to
+        // dark: absent/declined consent or a missing device id ⇒ no event.
+        analyticsConsent?: unknown;
+        analyticsDeviceId?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
@@ -420,6 +431,27 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
         }),
         { merge: true },
       );
+
+      // Opt-in, consent-gated server conversion. The entitlement is now durably
+      // written; emit `subscription.entitlement.granted` ONLY when the client
+      // propagated a `granted` consent flag + an anonymous device id. Dark
+      // otherwise (unset/declined/no-key/no-device-id). Best-effort and
+      // NON-FATAL: a `.catch` guarantees a failing Amplitude can never reject a
+      // verified purchase. `purchaseToken` itself never reaches analytics — its
+      // sha256 hash is the dedup key (insert_id).
+      await emitSubscriptionEntitlementGranted({
+        consent: new ConsentSignal(request.data.analyticsConsent),
+        deviceId: boundedAnalyticsDeviceId(request.data.analyticsDeviceId),
+        userId: uid, // analytics helper hashes the Firebase uid before user_id leaves process
+        entitlementFamily: entitlementFamilyOf(entitlementTarget.entitlementID),
+        source: "google_play",
+        platform: "android",
+        isActive: active,
+        expiresInSeconds: Math.max(0, Math.round((expiresAtMillis - Date.now()) / 1000)),
+        dedupeKey: `gp_sub_${tokenHash}`, // idempotent across client retries
+      }).catch(() => {
+        /* analytics is best-effort; never fail the verified purchase on it */
+      });
 
       return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
     },

@@ -25,6 +25,7 @@ struct DashboardCredentialLaneView: View {
                     VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                         ForEach(Array(summaries.enumerated()), id: \.element.id) { index, summary in
                             CredentialCard(summary: summary, rank: index + 1) {
+                                Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "credential"])
                                 withAnimation(UnifiedDesignSystem.Animation.standard) {
                                     onNavigateToCredential(summary)
                                 }

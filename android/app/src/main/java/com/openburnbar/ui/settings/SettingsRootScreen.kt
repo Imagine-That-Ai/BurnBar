@@ -53,6 +53,9 @@ fun SettingsRootScreen(onBack: (() -> Unit)? = null, onComputerUse: (() -> Unit)
                 router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT },
             )
+            SettingsPageRoute.PRIVACY_ANALYTICS -> com.openburnbar.ui.analytics.AnalyticsPrivacyScreen(
+                onBack = { router.page = SettingsPageRoute.ROOT },
+            )
         }
     }
 }

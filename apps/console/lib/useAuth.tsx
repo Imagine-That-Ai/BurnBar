@@ -24,6 +24,35 @@ import {
   verifyPasskeyAssertion,
   verifyPasskeyRegistration,
 } from "./api";
+import { trackEvent, EVENT } from "./analytics";
+import { bucketDurationMs } from "./analytics/buckets";
+
+/** Auth sign-in methods, as the taxonomy's `method` enum (passkey is console-specific). */
+type SignInMethod = "google" | "apple" | "github" | "passkey";
+
+/**
+ * Time a sign-in and emit `auth.sign_in.completed` with method + outcome +
+ * bucketed duration. No PII, no tokens — just the enumerated method, success or
+ * failure, and a coarse duration bucket. Dark until the member opts in.
+ */
+async function trackedSignIn(method: SignInMethod, fn: () => Promise<void>): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    await fn();
+    trackEvent(EVENT.authSignInCompleted, {
+      method,
+      outcome: "success",
+      duration_ms_bucket: bucketDurationMs(Date.now() - startedAt),
+    });
+  } catch (err) {
+    trackEvent(EVENT.authSignInCompleted, {
+      method,
+      outcome: "failure",
+      duration_ms_bucket: bucketDurationMs(Date.now() - startedAt),
+    });
+    throw err;
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -54,41 +83,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInGoogle = useCallback(async () => {
-    await signInWithPopup(auth(), googleProvider());
+    await trackedSignIn("google", async () => {
+      await signInWithPopup(auth(), googleProvider());
+    });
   }, []);
 
   const signInApple = useCallback(async () => {
-    await signInWithPopup(auth(), appleProvider());
+    await trackedSignIn("apple", async () => {
+      await signInWithPopup(auth(), appleProvider());
+    });
   }, []);
 
   const signInGitHub = useCallback(async () => {
-    await signInWithPopup(auth(), githubProvider());
+    await trackedSignIn("github", async () => {
+      await signInWithPopup(auth(), githubProvider());
+    });
   }, []);
 
   const signInPasskey = useCallback(async () => {
-    if (typeof PublicKeyCredential === "undefined") {
-      throw new Error("Passkeys are not supported in this browser.");
-    }
-    const { options } = await beginPasskeyAssertion();
-    const assertion = await startAuthentication({ optionsJSON: options });
-    const { token } = await verifyPasskeyAssertion(assertion, options.challenge);
-    await signInWithCustomToken(auth(), token);
+    await trackedSignIn("passkey", async () => {
+      if (typeof PublicKeyCredential === "undefined") {
+        throw new Error("Passkeys are not supported in this browser.");
+      }
+      const { options } = await beginPasskeyAssertion();
+      const assertion = await startAuthentication({ optionsJSON: options });
+      const { token } = await verifyPasskeyAssertion(assertion, options.challenge);
+      await signInWithCustomToken(auth(), token);
+    });
   }, []);
 
   const createPasskey = useCallback(async () => {
     if (typeof PublicKeyCredential === "undefined") {
       throw new Error("Passkeys are not supported in this browser.");
     }
-    const { options } = await registerPasskey();
-    window.focus();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    const response = await startRegistration({ optionsJSON: options });
-    const { credentialId } = await verifyPasskeyRegistration(response, options.challenge);
-    return credentialId;
+    try {
+      const { options } = await registerPasskey();
+      window.focus();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const response = await startRegistration({ optionsJSON: options });
+      const { credentialId } = await verifyPasskeyRegistration(response, options.challenge);
+      trackEvent(EVENT.passkeyEnrollmentCompleted, { outcome: "success" });
+      return credentialId;
+    } catch (err) {
+      // Mirrors trackedSignIn: emit both outcomes so enrollment drop-off
+      // (cancels, already-registered, verification failures) is visible.
+      // No PII — just the enumerated outcome. Re-throw so the UI still
+      // surfaces the (un-tracked) error text.
+      trackEvent(EVENT.passkeyEnrollmentCompleted, { outcome: "failure" });
+      throw err;
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    await fbSignOut(auth());
+    try {
+      await fbSignOut(auth());
+      trackEvent(EVENT.authSignedOut, { outcome: "success" });
+    } catch (err) {
+      trackEvent(EVENT.authSignedOut, { outcome: "failure" });
+      throw err;
+    }
   }, []);
 
   const passkeySupported =

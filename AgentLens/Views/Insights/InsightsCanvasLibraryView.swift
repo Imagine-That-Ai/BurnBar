@@ -50,6 +50,7 @@ struct InsightsCanvasLibraryView: View {
         let isSelected = canvas.id == environment.selectedCanvasID
         return Button {
             environment.selectedCanvasID = canvas.id
+            Analytics.shared.track(.insightsCanvasSelected)
             Task { await environment.refreshSelectedCanvasData() }
         } label: {
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {

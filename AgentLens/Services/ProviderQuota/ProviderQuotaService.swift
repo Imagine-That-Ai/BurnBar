@@ -723,6 +723,7 @@ final class ProviderQuotaService {
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
         let start = Date()
+        Analytics.shared.track(.quotaRefreshStarted, ["provider_name": .string(provider.rawValue)])
 
         do {
             let context = makeContext()
@@ -744,9 +745,18 @@ final class ProviderQuotaService {
             if provider == .claudeCode {
                 refreshClaudeBridgeStatus()
             }
+            Analytics.shared.track(.quotaRefreshSucceeded, [
+                "provider_name": .string(provider.rawValue),
+                "duration_ms_bucket": .string(AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(start) * 1000)))
+            ])
             TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             OpenBurnBarMetrics.counter(name: "quota_refresh_success", labels: ["provider": provider.rawValue])
         } catch {
+            Analytics.shared.track(.quotaRefreshFailed, [
+                "provider_name": .string(provider.rawValue),
+                "duration_ms_bucket": .string(AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(start) * 1000))),
+                "error_code": .string(String(describing: type(of: error)))
+            ])
             TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .failure, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             OpenBurnBarMetrics.counter(name: "quota_refresh_failure", labels: ["provider": provider.rawValue])
             errors[provider] = error.localizedDescription

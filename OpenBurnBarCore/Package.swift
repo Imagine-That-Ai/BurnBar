@@ -40,6 +40,18 @@ let packageProducts: [Product] = [
         name: "OpenBurnBarCore",
         targets: ["OpenBurnBarCore"]
     ),
+    // Opt-in, consent-gated Amplitude analytics core (SDK-free). Holds the
+    // tri-state consent store (persisted in the shared App Group so the widget +
+    // keyboard extensions read it), the recorder/wrapper, the transport-protocol
+    // seam, the event registry, the anti-fingerprinting buckets, and the
+    // string|bool-only AnalyticsValue. The real Amplitude SDK lives behind the
+    // transport protocol in the iOS app target, so this package never imports the
+    // SDK and stays `swift build`-able on any toolchain. Mirrors the macOS
+    // reference in AgentLens/Services/Analytics.
+    .library(
+        name: "OpenBurnBarAnalytics",
+        targets: ["OpenBurnBarAnalytics"]
+    ),
     // Transport-agnostic iroh relay protocol + pairing + loopback
     // transport. When `Vendor/OpenBurnBarIroh.xcframework` exists, this
     // product also links the UniFFI-backed iroh QUIC bridge.
@@ -210,6 +222,15 @@ let firstPartyTargets: [Target] = [
             ]
         ),
         .target(
+            name: "OpenBurnBarAnalytics",
+            // SDK-free by design: no OpenBurnBarCore dependency, no Amplitude
+            // dependency. Pure Foundation so it builds under Swift 6 strict
+            // concurrency on any toolchain and the consent contract is testable
+            // without Xcode/Amplitude. The iOS app supplies the real Amplitude
+            // transport behind `AnalyticsTransporting`.
+            dependencies: []
+        ),
+        .target(
             name: "OpenBurnBarIrohRelay",
             dependencies: irohRelayDependencies,
             linkerSettings: [
@@ -269,6 +290,17 @@ let firstPartyTargets: [Target] = [
             ],
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenBurnBarAnalyticsTests",
+            dependencies: [
+                "OpenBurnBarAnalytics",
+                swiftTestingDependency
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6
+            // region-isolation checker has known gaps (Task hand-off) that would
+            // contort correct tests. Matches the other Core test targets.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

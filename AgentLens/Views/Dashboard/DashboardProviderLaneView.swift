@@ -28,6 +28,7 @@ struct DashboardProviderLaneView: View {
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(summaries.enumerated()), id: \.element.id) { index, summary in
                         ProviderCard(summary: summary, rank: index + 1) {
+                            Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "provider"])
                             withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 onNavigateToProvider(summary.provider)
                             }
@@ -69,6 +70,7 @@ extension DashboardView {
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(dashboardProviderSummaries.enumerated()), id: \.element.id) { index, summary in
                         ProviderCard(summary: summary, rank: index + 1) {
+                            Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "provider"])
                             withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 navigate(to: .provider(summary.provider))
                             }
@@ -107,6 +109,7 @@ extension DashboardView {
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(dashboardModelSummaries.enumerated()), id: \.element.id) { index, summary in
                         ModelCard(summary: summary, rank: index + 1) {
+                            Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "model"])
                             withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 navigate(to: .model(summary.modelName))
                             }

@@ -60,6 +60,9 @@ extension ChatSessionController {
         let queryRevisionAtStart = searchQueryRevision
         activeSearchQuery = q
         isSearching = true
+        Analytics.shared.track(.chatSearchPerformed, [
+            "query_length": .string(AnalyticsBuckets.count(q.count))
+        ])
         let service = searchService
         searchTask = Task { [service] in
             let results = await service.search(query: q)
@@ -270,6 +273,11 @@ extension ChatSessionController {
             attachments: attachmentsToSend
         )
         messages.append(userMsg)
+        Analytics.shared.track(.chatMessageSent, [
+            "backend": .string(chatBackend.rawValue),
+            "has_attachments": .bool(!attachmentsToSend.isEmpty),
+            "attachment_count": .string(AnalyticsBuckets.count(attachmentsToSend.count))
+        ])
         do {
             try await dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
         } catch {
@@ -280,171 +288,7 @@ extension ChatSessionController {
         pendingAttachments = []
         attachmentError = nil
 
-        switch chatBackend {
-        case .hermes:
-            if !hermesAvailable {
-                await probeHermesAvailability()
-            }
-            if !hermesAvailable {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: await hermesUnavailableMessage(),
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Hermes unavailable)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-        case .openclaw:
-            if !openClawAvailable {
-                await probeOpenClawAvailability()
-            }
-            if !openClawAvailable {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "OpenClaw gateway is unavailable. Start the gateway (default 127.0.0.1:18789) and set the URL/token in Settings → Chat.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (OpenClaw unavailable)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-        case .piAgent:
-            if !piAgentAvailable {
-                await probePiAgentAvailability()
-            }
-            if !piAgentAvailable {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Pi agent gateway is unavailable. Open Settings → Chat Gateway and choose Open Pi + Gateway, or check the gateway URL/token under Pi Agent Instances.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Pi unavailable)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
-            guard settingsManager.cliAssistantAllowed else {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (CLI disabled)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .droid, await !cliBridge.isExecutableAvailable(named: "droid") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Droid CLI was not found. Install Factory Droid and ensure `droid` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Droid not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .forge, await !cliBridge.isExecutableAvailable(named: "forge") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Forge CLI was not found. Install Forge and ensure `forge` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Forge not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .antigravity, await !cliBridge.isExecutableAvailable(named: "agy") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Antigravity not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .cursorAgent, await !cliBridge.isExecutableAvailable(named: "cursor-agent") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Cursor Agent not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .codex, await !cliBridge.isExecutableAvailable(named: "codex") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Codex CLI was not found. Install with `npm i -g @openai/codex` or `brew install codex` and ensure `codex` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Codex not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-            if chatBackend == .claude, await !cliBridge.isExecutableAvailable(named: "claude") {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: "Claude Code CLI was not found. Install the native installer or Homebrew package and ensure `claude` is on your PATH.",
-                    cliUsed: nil
-                )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (Claude not found)", error: error)
-                }
-                refreshHistory()
-                return
-            }
-        }
+        guard await validateChatBackendAvailability() else { return }
 
         let pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
 
@@ -801,6 +645,12 @@ extension ChatSessionController {
                         Self.appendStreamingText(chunk, to: &pieces)
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                        Task { @MainActor in
+                            Analytics.shared.track(.chatToolInvoked, [
+                                "tool_name": .string(name),
+                                "backend": .string(self.chatBackend.rawValue)
+                            ])
+                        }
                     case .toolResult(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
                         #if canImport(AppKit) && !DISTRIBUTION_MAS
@@ -844,6 +694,14 @@ extension ChatSessionController {
                     self.activeStreamMessageId = nil
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         let final = self.messages[idx]
+                        Analytics.shared.track(.chatGenerationCompleted, [
+                            "backend": .string(self.chatBackend.rawValue),
+                            "model": .string(requestModel),
+                            "duration_ms": .string(AnalyticsBuckets.durationMs(
+                                final.timestamp.timeIntervalSince(streamStartedAt) * 1000
+                            )),
+                            "has_tools": .bool(final.transcriptPieces.contains { $0.kind == .toolUse })
+                        ])
                         do {
                             try await self.dataStore.saveChatMessage(
                                 final,
@@ -896,6 +754,10 @@ extension ChatSessionController {
                     // Don't surface cancellation as an error — cancelGeneration() already cleaned up
                     if !(error is CancellationError) {
                         let nsError = error as NSError
+                        Analytics.shared.track(.chatGenerationFailed, [
+                            "backend": .string(self.chatBackend.rawValue),
+                            "error_type": .string(String(describing: type(of: error)))
+                        ])
                         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
                             self.streamError = "Chat request timed out — try again or simplify the request."
                         } else {
@@ -911,6 +773,115 @@ extension ChatSessionController {
                 }.value
             }
         }
+    }
+
+    private func validateChatBackendAvailability() async -> Bool {
+        switch chatBackend {
+        case .hermes:
+            if !hermesAvailable {
+                await probeHermesAvailability()
+            }
+            if !hermesAvailable {
+                await appendAndPersistAssistantError(
+                    await hermesUnavailableMessage(),
+                    logContext: "Hermes unavailable"
+                )
+                return false
+            }
+        case .openclaw:
+            if !openClawAvailable {
+                await probeOpenClawAvailability()
+            }
+            if !openClawAvailable {
+                await appendAndPersistAssistantError(
+                    "OpenClaw gateway is unavailable. Start the gateway (default 127.0.0.1:18789) and set the URL/token in Settings → Chat.",
+                    logContext: "OpenClaw unavailable"
+                )
+                return false
+            }
+        case .piAgent:
+            if !piAgentAvailable {
+                await probePiAgentAvailability()
+            }
+            if !piAgentAvailable {
+                await appendAndPersistAssistantError(
+                    "Pi agent gateway is unavailable. Open Settings → Chat Gateway and choose Open Pi + Gateway, or check the gateway URL/token under Pi Agent Instances.",
+                    logContext: "Pi unavailable"
+                )
+                return false
+            }
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+            guard settingsManager.cliAssistantAllowed else {
+                await appendAndPersistAssistantError(
+                    "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
+                    logContext: "CLI disabled"
+                )
+                return false
+            }
+            guard await validateSelectedCLIAssistantAvailability() else { return false }
+        }
+        return true
+    }
+
+    private func validateSelectedCLIAssistantAvailability() async -> Bool {
+        let requirement: (executable: String, message: String, logContext: String)?
+        switch chatBackend {
+        case .droid:
+            requirement = (
+                "droid",
+                "Droid CLI was not found. Install Factory Droid and ensure `droid` is on your PATH.",
+                "Droid not found"
+            )
+        case .forge:
+            requirement = (
+                "forge",
+                "Forge CLI was not found. Install Forge and ensure `forge` is on your PATH.",
+                "Forge not found"
+            )
+        case .antigravity:
+            requirement = (
+                "agy",
+                "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
+                "Antigravity not found"
+            )
+        case .cursorAgent:
+            requirement = (
+                "cursor-agent",
+                "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",
+                "Cursor Agent not found"
+            )
+        case .codex:
+            requirement = (
+                "codex",
+                "Codex CLI was not found. Install with `npm i -g @openai/codex` or `brew install codex` and ensure `codex` is on your PATH.",
+                "Codex not found"
+            )
+        case .claude:
+            requirement = (
+                "claude",
+                "Claude Code CLI was not found. Install the native installer or Homebrew package and ensure `claude` is on your PATH.",
+                "Claude not found"
+            )
+        case .hermes, .openclaw, .piAgent:
+            requirement = nil
+        }
+        guard let requirement else { return true }
+        if !(await cliBridge.isExecutableAvailable(named: requirement.executable)) {
+            await appendAndPersistAssistantError(requirement.message, logContext: requirement.logContext)
+            return false
+        }
+        return true
+    }
+
+    private func appendAndPersistAssistantError(_ content: String, logContext: String) async {
+        let err = ChatMessageRecord(role: .assistant, content: content, cliUsed: nil)
+        messages.append(err)
+        do {
+            try await dataStore.saveChatMessage(err, threadID: activeThreadID)
+        } catch {
+            AppLogger.chat.silentFailure("saveChatMessage (\(logContext))", error: error)
+        }
+        refreshHistory()
     }
 
     private func completeFusionSessionReceiptIfNeeded(_ didRouteThroughFusion: Bool, error: Error? = nil) {

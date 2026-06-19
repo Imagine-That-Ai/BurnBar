@@ -425,6 +425,16 @@ private fun assistantTileBridgeQueueSend(
 ) {
     callbacks.onSending(true)
     callbacks.onError(null)
+    // chat.message.sent — backend label + outcome bucket only. The prompt body
+    // (request.body) is NEVER sent: no content, no length, no thread id.
+    com.openburnbar.analytics.AnalyticsManager.track(
+        com.openburnbar.analytics.AnalyticsEvent.CHAT_MESSAGE_SENT,
+        mapOf(
+            "backend" to com.openburnbar.analytics.AnalyticsValue.Str("cli"),
+            "has_attachments" to com.openburnbar.analytics.AnalyticsValue.Bool(false),
+            "mode" to com.openburnbar.analytics.AnalyticsValue.Str("cli"),
+        ),
+    )
     scope.launch {
         try {
             val requestID =
@@ -442,6 +452,15 @@ private fun assistantTileBridgeQueueSend(
             callbacks.onQueued(requestID)
         } catch (t: IOException) {
             callbacks.onError(t.message ?: t::class.java.simpleName)
+            // chat.generation.failed — error_type is the exception class name
+            // (a bounded identifier), never the message text or stack.
+            com.openburnbar.analytics.AnalyticsManager.track(
+                com.openburnbar.analytics.AnalyticsEvent.CHAT_GENERATION_FAILED,
+                mapOf(
+                    "backend" to com.openburnbar.analytics.AnalyticsValue.Str("cli"),
+                    "error_type" to com.openburnbar.analytics.AnalyticsValue.Str(t::class.java.simpleName),
+                ),
+            )
         } finally {
             callbacks.onSending(false)
         }

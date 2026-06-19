@@ -50,6 +50,7 @@ struct OnboardingWizardView: View {
         .background(DesignSystem.Colors.background)
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "onboarding"])
             // Pre-select detected providers
             let detection = settingsManager.detectAvailableProviders()
             for (provider, found) in detection where found {

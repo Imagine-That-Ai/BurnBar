@@ -60,6 +60,7 @@ struct ChatPanelHeader: View {
             Spacer(minLength: 0)
 
             Button {
+                Analytics.shared.track(.chatPanelAction, ["action": "new_chat"])
                 onNewChat()
             } label: {
                 Image(systemName: "square.and.pencil")
@@ -388,6 +389,10 @@ struct ChatDesktopControlButton: View {
                     capabilities: selectedCapabilities,
                     trustMode: selectedTrustMode
                 )
+                Analytics.shared.track(.chatDesktopControlGranted, [
+                    "capability_count": .string(AnalyticsBuckets.count(selectedCapabilities.count)),
+                    "trust_mode": .string(selectedTrustMode.rawValue)
+                ])
                 showsPopover = false
             } catch {
                 controller.desktopControlError = "Device authentication is required for this permission level."

@@ -137,6 +137,7 @@ struct QuotaWorkspaceView: View {
             .ignoresSafeArea()
         }
         .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "quota"])
             viewModel.sort = sortStorage
             viewModel.viewMode = viewModeStorage
             viewModel.showInactive = showInactiveStorage

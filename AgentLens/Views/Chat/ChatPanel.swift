@@ -498,7 +498,10 @@ struct ChatPanel: View {
 
             // Pop out to its own window
             if let onPopOut {
-                Button(action: onPopOut) {
+                Button {
+                    Analytics.shared.track(.chatPanelAction, ["action": "popped_out"])
+                    onPopOut()
+                } label: {
                     Image(systemName: "rectangle.on.rectangle")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(panelIconTint)
@@ -509,7 +512,10 @@ struct ChatPanel: View {
 
             // Maximize into the dashboard chat workspace
             if let onMaximize {
-                Button(action: onMaximize) {
+                Button {
+                    Analytics.shared.track(.chatPanelAction, ["action": "maximized"])
+                    onMaximize()
+                } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right.square")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(panelIconTint)
@@ -520,6 +526,7 @@ struct ChatPanel: View {
 
             // Minimize
             Button {
+                Analytics.shared.track(.chatPanelAction, ["action": "minimized"])
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     controller.isMinimized = true
                 }
@@ -533,6 +540,7 @@ struct ChatPanel: View {
 
             // Close
             Button {
+                Analytics.shared.track(.chatPanelAction, ["action": "closed"])
                 onClose()
             } label: {
                 Image(systemName: "xmark.circle.fill")

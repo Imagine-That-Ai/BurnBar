@@ -64,10 +64,17 @@ const path = Astro.url.pathname.replace(/\/$/, "");
         href={SITE.github}
         target="_blank"
         rel="noopener noreferrer"
+        data-analytics-event="nav.external.clicked"
+        data-analytics-prop-destination="github"
       >
         GitHub
       </a>
-      <a class="btn btn--small btn--ember" href="/download">
+      <a
+        class="btn btn--small btn--ember"
+        href="/download"
+        data-analytics-event="download.cta.clicked"
+        data-analytics-prop-placement="header"
+      >
         Download
         <span class="btn-arrow" aria-hidden="true">→</span>
       </a>
@@ -94,10 +101,22 @@ const path = Astro.url.pathname.replace(/\/$/, "");
         ))
       }
       <li>
-        <a href={SITE.github} target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a
+          href={SITE.github}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-analytics-event="nav.external.clicked"
+          data-analytics-prop-destination="github">GitHub</a
+        >
       </li>
       <li>
-        <a class="btn btn--ember" href="/download">
+        <a
+          class="btn btn--ember"
+          href="/download"
+          data-analytics-event="download.cta.clicked"
+          data-analytics-prop-placement="mobile_nav"
+          data-analytics-prop-platform="macos"
+        >
           Download for macOS
           <span class="btn-arrow" aria-hidden="true">→</span>
         </a>

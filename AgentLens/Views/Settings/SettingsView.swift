@@ -54,6 +54,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             .onAppear {
+                Analytics.shared.track(.screenViewed, ["surface": "settings"])
                 consumePendingSettingsDestination()
             }
         } detail: {
@@ -377,9 +378,7 @@ struct SettingsView: View {
                     router.path.removeAll()
                 },
                 onDeleteAccount: {
-                    Task { @MainActor in
-                        try? await accountManager.deleteCurrentUser()
-                    }
+                    try await accountManager.deleteCurrentUser()
                 },
                 onSignOut: {
                     try? accountManager.signOut()

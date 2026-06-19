@@ -138,6 +138,10 @@ struct ChatEngineModelMenu: View {
             ForEach(Array(menuOptions.enumerated()), id: \.offset) { _, row in
                 Button(row.title + (row.disabled ? "" : suffix)) {
                     controller.setChatModelSelection(row.id, for: controller.chatBackend)
+                    Analytics.shared.track(.chatModelSelected, [
+                        "backend": .string(controller.chatBackend.rawValue),
+                        "model_id": .string(row.id)
+                    ])
                 }
                 .disabled(row.disabled)
             }

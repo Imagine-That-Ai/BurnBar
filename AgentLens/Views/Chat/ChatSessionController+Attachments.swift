@@ -30,8 +30,15 @@ extension ChatSessionController {
             let attachment = try HermesAttachmentLoader.importFile(at: url, intoWorkspace: chatWorkspaceURL)
             pendingAttachments.append(attachment)
             attachmentError = nil
+            Analytics.shared.track(.chatAttachmentAdded, [
+                "attachment_type": .string(attachment.mimeType),
+                "size_bytes": .string(AnalyticsBuckets.sizeBytes(attachment.byteSize))
+            ])
         } catch {
             attachmentError = error.localizedDescription
+            Analytics.shared.track(.chatAttachmentFailed, [
+                "error_type": .string(String(describing: type(of: error)))
+            ])
             AppLogger.chat.silentFailure("addAttachment", error: error)
         }
     }
@@ -48,8 +55,15 @@ extension ChatSessionController {
             )
             pendingAttachments.append(attachment)
             attachmentError = nil
+            Analytics.shared.track(.chatAttachmentAdded, [
+                "attachment_type": .string(attachment.mimeType),
+                "size_bytes": .string(AnalyticsBuckets.sizeBytes(attachment.byteSize))
+            ])
         } catch {
             attachmentError = error.localizedDescription
+            Analytics.shared.track(.chatAttachmentFailed, [
+                "error_type": .string(String(describing: type(of: error)))
+            ])
             AppLogger.chat.silentFailure("addAttachment(image)", error: error)
         }
     }

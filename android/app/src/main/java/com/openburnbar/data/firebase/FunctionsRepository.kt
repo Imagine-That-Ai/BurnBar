@@ -4,6 +4,7 @@ import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.BuildConfig
+import com.openburnbar.analytics.AnalyticsManager
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.CloudVaultSealedText
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
@@ -198,10 +199,12 @@ class FunctionsRepository {
             ?: error("Encrypted session download URL missing.")
     }
 
-    suspend fun verifyGooglePlayBurnBarProSubscription(purchaseToken: String, productID: String = "com.openburnbar.pro.monthly"): Map<String, Any> = callMap(
-        "verifyGooglePlayBurnBarProSubscription",
-        mapOf("purchaseToken" to purchaseToken, "productID" to productID),
-    )
+    suspend fun verifyGooglePlayBurnBarProSubscription(purchaseToken: String, productID: String = "com.openburnbar.pro.monthly"): Map<String, Any> {
+        val payload = mutableMapOf<String, Any>("purchaseToken" to purchaseToken, "productID" to productID)
+        AnalyticsManager.analyticsConsentPayload?.let { payload["analyticsConsent"] = it }
+        AnalyticsManager.analyticsDeviceIdPayload?.let { payload["analyticsDeviceId"] = it }
+        return callMap("verifyGooglePlayBurnBarProSubscription", payload)
+    }
 
     suspend fun verifyGooglePlayCloudProTopUp(purchaseToken: String, productID: String): Map<String, Any> = callMap(
         "verifyGooglePlayCloudProTopUp",

@@ -19,6 +19,9 @@ import { disconnectKnowledgeRepo, requestKnowledgeResync, type DataTier } from "
 import { formatBytes, formatCount, formatRelativeTime } from "@/lib/utils";
 import type { PensieveRepo } from "@/lib/usePensieveRepos";
 import { ConnectRepositoryDialog } from "./ConnectRepositoryDialog";
+import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
+import { EVENT } from "@/lib/analytics";
+import { bucketCount } from "@/lib/analytics/buckets";
 
 type SyncState = "synced" | "queued" | "waiting";
 
@@ -117,6 +120,7 @@ export function PensieveSourcesCard({
   const [resyncing, setResyncing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { track } = useAnalytics();
 
   const isFree = tier === "free";
   const hasRepos = (repos?.length ?? 0) > 0;
@@ -126,14 +130,27 @@ export function PensieveSourcesCard({
     reloadUsage();
   }
 
+  // Fires only on a successful connect (the dialog calls onConnected then). The
+  // repo name is sealed and NEVER sent — just the member's tier + a bucketed
+  // count of how many sources they now have.
+  function onConnected() {
+    track(EVENT.pensieveRepoConnected, {
+      tier,
+      source_count_bucket: bucketCount((repos?.length ?? 0) + 1),
+    });
+    refresh();
+  }
+
   async function disconnect(repoId: string) {
     setBusyRepoId(repoId);
     setError(null);
     try {
       await disconnectKnowledgeRepo(repoId);
+      track(EVENT.pensieveRepoDisconnected, { tier, outcome: "success" });
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not disconnect that repo.");
+      track(EVENT.pensieveRepoDisconnected, { tier, outcome: "failure" });
     } finally {
       setBusyRepoId(null);
     }
@@ -150,9 +167,15 @@ export function PensieveSourcesCard({
           ? `Re-sync queued for ${result.flagged} source${result.flagged === 1 ? "" : "s"} — your Mac will re-seal them.`
           : "No connected repos to re-sync yet.",
       );
+      track(EVENT.pensieveResyncRequested, {
+        tier,
+        outcome: "success",
+        flagged_count_bucket: bucketCount(result.flagged),
+      });
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not queue a re-sync.");
+      track(EVENT.pensieveResyncRequested, { tier, outcome: "failure" });
     } finally {
       setResyncing(false);
     }
@@ -224,7 +247,7 @@ export function PensieveSourcesCard({
         </p>
       </CardContent>
 
-      <ConnectRepositoryDialog open={dialogOpen} onOpenChange={setDialogOpen} onConnected={refresh} />
+      <ConnectRepositoryDialog open={dialogOpen} onOpenChange={setDialogOpen} onConnected={onConnected} />
     </Card>
   );
 }

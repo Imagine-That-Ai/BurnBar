@@ -3,6 +3,8 @@
   "entry": [
     ".dependency-cruiser.cjs",
     "src/extension.ts",
+    "src/analytics/index.ts",
+    "src/analytics/service.ts",
     "src/webview/panel.js",
     "src/webview/workspace.js",
     "test/extensionHost/suite/index.ts",

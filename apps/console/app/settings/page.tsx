@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BadgeCheck, KeyRound, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { PasskeyEnrollmentActions } from "@/components/account/PasskeyEnrollment";
+import { AnalyticsSettingsToggle } from "@/components/analytics/AnalyticsSettingsToggle";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/useAuth";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,19 @@ export default function SettingsPage() {
               </Button>
             }
           />
+        </div>
+      </section>
+
+      <section aria-labelledby="privacy-heading" className="space-y-token-3">
+        <div className="flex items-baseline justify-between gap-token-4">
+          <h2 id="privacy-heading" className="font-display text-2xl text-content-bright">
+            Privacy
+          </h2>
+          <span className="folio">Opt-in · revisitable</span>
+        </div>
+
+        <div className="border-y border-glass-line">
+          <AnalyticsSettingsToggle />
         </div>
       </section>
     </div>

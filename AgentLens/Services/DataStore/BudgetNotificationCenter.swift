@@ -36,6 +36,11 @@ final class BudgetNotificationCenter {
         content.body = "$\(String(format: "%.2f", used)) of $\(String(format: "%.2f", limit)) (\(usedPercent)%) — heading toward the cap."
         content.sound = .default
         content.userInfo = ["ruleID": rule.id, "kind": "warning"]
+        Analytics.shared.track(.budgetThresholdWarning, [
+            "rule_scope": .string(rule.scope.rawValue),
+            "used_percent_bucket": .string(AnalyticsBuckets.percent(Double(usedPercent))),
+            "limit_usd_bucket": .string(AnalyticsBuckets.amountUSD(limit))
+        ])
         deliver(content: content, identifier: "burnbar.budget.warn.\(rule.id).\(periodStart?.timeIntervalSince1970 ?? 0)")
     }
 
@@ -48,6 +53,10 @@ final class BudgetNotificationCenter {
         content.body = "$\(String(format: "%.2f", used)) ≥ $\(String(format: "%.2f", limit)). New requests on this scope are blocked until you raise the limit or the period resets."
         content.sound = .defaultCritical
         content.userInfo = ["ruleID": rule.id, "kind": "block"]
+        Analytics.shared.track(.budgetThresholdBlocked, [
+            "rule_scope": .string(rule.scope.rawValue),
+            "limit_usd_bucket": .string(AnalyticsBuckets.amountUSD(limit))
+        ])
         deliver(content: content, identifier: "burnbar.budget.block.\(rule.id).\(Date().timeIntervalSince1970)")
     }
 

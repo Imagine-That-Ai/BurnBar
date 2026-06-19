@@ -107,6 +107,46 @@ class FloatingChatState {
 @Composable
 fun rememberFloatingChatState(): FloatingChatState = remember { FloatingChatState() }
 
+/**
+ * Single instrumentation point for `screen.viewed` + `nav.route.changed`. The
+ * nav back-stack route is the one source of route truth, so emitting here (vs.
+ * per-screen) keeps coverage complete and collapses ~all per-screen
+ * `screen_view` candidates into one parameterized event. Every route is mapped
+ * to a BOUNDED surface via [com.openburnbar.analytics.AnalyticsSurface.forRoute]
+ * — raw route strings (which can carry object slugs/ids) never reach the wire.
+ * Each call is dropped unless analytics consent is granted, so nothing leaks
+ * pre-opt-in.
+ */
+@Composable
+private fun AnalyticsRouteTracker(currentRoute: String?) {
+    val viewedSurfaces = remember { mutableStateOf(emptySet<String>()) }
+    val previousSurface = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == null) return@LaunchedEffect
+        val surface = com.openburnbar.analytics.AnalyticsSurface.forRoute(currentRoute)
+        val from = previousSurface.value
+        if (from != null && from != surface.wire) {
+            com.openburnbar.analytics.AnalyticsManager.track(
+                com.openburnbar.analytics.AnalyticsEvent.NAV_ROUTE_CHANGED,
+                mapOf(
+                    "from_route" to com.openburnbar.analytics.AnalyticsValue.Str(from),
+                    "to_route" to com.openburnbar.analytics.AnalyticsValue.Str(surface.wire),
+                ),
+            )
+        }
+        val isFirstView = !viewedSurfaces.value.contains(surface.wire)
+        if (isFirstView) viewedSurfaces.value = viewedSurfaces.value + surface.wire
+        com.openburnbar.analytics.AnalyticsManager.track(
+            com.openburnbar.analytics.AnalyticsEvent.SCREEN_VIEWED,
+            mapOf(
+                "surface" to com.openburnbar.analytics.AnalyticsValue.Str(surface.wire),
+                "is_first_view" to com.openburnbar.analytics.AnalyticsValue.Bool(isFirstView),
+            ),
+        )
+        previousSurface.value = surface.wire
+    }
+}
+
 @Composable
 fun BurnBarNavHost(
     modifier: Modifier = Modifier,
@@ -131,6 +171,7 @@ fun BurnBarNavHost(
     val proPrice by subscriptionStore.productDetailsByID.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    AnalyticsRouteTracker(currentRoute)
     val currentTab =
         remember(currentRoute) {
             when (currentRoute) {

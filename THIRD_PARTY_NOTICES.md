@@ -77,6 +77,9 @@ Known examples in this tree include:
 
 - `plugins/security-guidance/`: Apache-2.0, with its own `LICENSE` and `NOTICE`.
 - `plugins/hermes-achievements/`: MIT, with its own `LICENSE`.
+- `Amplitude-Swift` (Swift Package Manager): MIT — opt-in product-usage analytics
+  SDK (macOS/iOS). Disabled by default; see [docs/PRIVACY.md](docs/PRIVACY.md)
+  § Optional Usage Analytics.
 - Swift Package Manager, Gradle, npm, and Python dependencies resolved during
   platform builds.
 

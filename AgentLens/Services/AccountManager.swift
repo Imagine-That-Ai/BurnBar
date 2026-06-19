@@ -522,6 +522,10 @@ final class AccountManager {
             try await Auth.auth().signIn(withEmail: email, password: password)
             refreshAuthStateSnapshot()
         }
+        Analytics.shared.track(.authSignInCompleted, [
+            "method": .string("email"),
+            "outcome": .string("success")
+        ])
     }
 
     func signUpWithEmail(email: String, password: String) async throws {
@@ -653,6 +657,10 @@ final class AccountManager {
             try await Auth.auth().signIn(with: credential)
         }
         refreshAuthStateSnapshot()
+        Analytics.shared.track(.authSignInCompleted, [
+            "method": .string(lastOAuthProviderID ?? "email"),
+            "outcome": .string("success")
+        ])
     }
 
     private func googleSignInResult(presentingWindow window: NSWindow) async throws -> GIDSignInResult {

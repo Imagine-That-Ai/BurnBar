@@ -67,14 +67,20 @@ struct DashboardToolbar: ToolbarContent {
             BurnRailTimeRangeMenuChip(
                 selected: Binding(
                     get: { navigationModel.selectedTimeRange },
-                    set: { navigationModel.selectedTimeRange = $0 }
+                    set: {
+                        navigationModel.selectedTimeRange = $0
+                        Analytics.shared.track(.dashboardTimeRangeChanged, ["time_range": .string($0.rawValue)])
+                    }
                 )
             )
 
             BurnRailUnitToggle(
                 unit: Binding(
                     get: { BurnRailUnit(from: settingsManager.usageDisplayMode) },
-                    set: { settingsManager.usageDisplayMode = $0.toUsageDisplayMode }
+                    set: {
+                        settingsManager.usageDisplayMode = $0.toUsageDisplayMode
+                        Analytics.shared.track(.dashboardUnitToggled, ["unit": .string($0.toUsageDisplayMode.rawValue)])
+                    }
                 )
             )
 

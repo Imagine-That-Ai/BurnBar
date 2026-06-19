@@ -32,6 +32,10 @@ struct QuotaFilterRail: View {
                     withAnimation(DesignSystem.Animation.snappy) {
                         viewMode = mode
                     }
+                    Analytics.shared.track(.quotaWorkspaceFilterChanged, [
+                        "filter_type": "view_mode",
+                        "new_value": .string(mode.rawValue)
+                    ])
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: mode.systemImage)
@@ -76,6 +80,10 @@ struct QuotaFilterRail: View {
             ForEach(QuotaSortMode.allCases) { mode in
                 Button {
                     sort = mode
+                    Analytics.shared.track(.quotaWorkspaceFilterChanged, [
+                        "filter_type": "sort",
+                        "new_value": .string(mode.rawValue)
+                    ])
                 } label: {
                     if sort == mode {
                         Label(mode.label, systemImage: "checkmark")
@@ -112,6 +120,10 @@ struct QuotaFilterRail: View {
     private var showInactiveToggle: some View {
         Button {
             showInactive.toggle()
+            Analytics.shared.track(.quotaWorkspaceFilterChanged, [
+                "filter_type": "show_inactive",
+                "new_value": .bool(showInactive)
+            ])
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: showInactive ? "eye" : "eye.slash")

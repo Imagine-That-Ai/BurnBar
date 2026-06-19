@@ -26,7 +26,10 @@ struct DashboardActivityLaneView: View {
                             SessionPreviewRow(
                                 usage: usage,
                                 settingsManager: settingsManager,
-                                onTap: { onOpenSession(usage) }
+                                onTap: {
+                                    Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "activity"])
+                                    onOpenSession(usage)
+                                }
                             )
                         }
                     }

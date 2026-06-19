@@ -19,7 +19,7 @@ struct AccountSettingsView: View {
     let onLinkApple: () async throws -> Void
     let onLinkGitHub: () async throws -> Void
     let onUpgradeToPremium: () -> Void
-    let onDeleteAccount: () -> Void
+    let onDeleteAccount: () async throws -> Void
     let onSignOut: () -> Void
 
     @State private var showDeleteConfirmation = false
@@ -30,6 +30,7 @@ struct AccountSettingsView: View {
     @State private var emailLinkError: String?
     @State private var authError: String?
     @State private var activeAuthProvider: AuthProviderAction?
+    @State private var isDeletingAccount = false
 
     var body: some View {
         SettingsDeepLinkScrollContainer(route: .accountRoot) { _ in
@@ -66,11 +67,32 @@ struct AccountSettingsView: View {
         .sheet(isPresented: $showEmailLinkSheet) {
             emailLinkSheet
         }
+        .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "account"])
+        }
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) { onDeleteAccount() }
+            Button("Delete", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            .disabled(isDeletingAccount)
         } message: {
             Text("This will permanently delete your account and all associated data. This action cannot be undone.")
+        }
+    }
+
+    @MainActor
+    private func deleteAccount() async {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        authError = nil
+        defer { isDeletingAccount = false }
+        do {
+            try await onDeleteAccount()
+            Analytics.shared.track(.authAccountDeleted, ["outcome": "success"])
+        } catch {
+            Analytics.shared.track(.authAccountDeleted, ["outcome": "failure"])
+            authError = error.localizedDescription
         }
     }
 
@@ -418,7 +440,10 @@ struct AccountSettingsView: View {
     private var actionsSection: some View {
         VStack(spacing: DesignSystem.Spacing.sm) {
             if !isAnonymous {
-                Button("Sign Out") { onSignOut() }
+                Button("Sign Out") {
+                    Analytics.shared.track(.authSignedOut)
+                    onSignOut()
+                }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
             }
@@ -468,9 +493,12 @@ struct AccountSettingsView: View {
                         do {
                             switch emailMode {
                             case .signIn:
+                                // auth.sign_in.completed is emitted centrally by
+                                // AccountManager once the credential resolves.
                                 try await onEmailSignIn(emailLinkEmail, emailLinkPassword)
                             case .signUp:
                                 try await onEmailSignUp(emailLinkEmail, emailLinkPassword)
+                                Analytics.shared.track(.authSignUpCompleted, ["method": "email"])
                             }
                             showEmailLinkSheet = false
                         } catch {

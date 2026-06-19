@@ -76,6 +76,10 @@ If you use the BurnBar-hosted Intelligence Brief fallback, OpenBurnBar sends a b
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.
 
+### Optional Usage Analytics (opt-in only)
+
+If you enable analytics in **Settings → Analytics**, OpenBurnBar sends privacy-preserving product-usage events to Amplitude to help us understand which features are used and where flows break. This is **disabled by default** — the Amplitude SDK never initializes and no events are sent or buffered until you explicitly opt in. Events carry only feature identifiers, enumerated outcomes (e.g. success/failure), and counts/durations bucketed to coarse ranges — never your conversation content, prompts, responses, API keys, provider secrets, file paths, or message bodies. You can turn analytics off at any time; revoking consent stops all future sends immediately and flushes nothing.
+
 ### Optional Computer Use Audit Notarization (opt-in only)
 
 If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and verify the proof through the configured OpenTimestamps verifier service. Screenshots and full action descriptors remain local unless you explicitly include them in an audit export.
@@ -106,6 +110,7 @@ When cloud sync is enabled:
 | OpenTimestamps calendar servers | Optional Computer Use audit-chain timestamping; receives only a 32-byte hash | [opentimestamps.org](https://opentimestamps.org/) |
 | OpenRouter / MiniMax | Optional BurnBar Pro hosted LLM fallback for Intelligence Brief answers | [openrouter.ai/privacy](https://openrouter.ai/privacy) / [minimax.io/privacy](https://www.minimax.io/privacy) |
 | Sentry | Optional crash reporting | [sentry.io/privacy](https://sentry.io/privacy) |
+| Amplitude | Optional, opt-in product-usage analytics (feature names, outcomes, bucketed counts — no content, keys, or secrets) | [amplitude.com/privacy](https://amplitude.com/privacy) |
 
 ---
 

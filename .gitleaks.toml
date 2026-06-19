@@ -309,3 +309,17 @@ regexes = [
 paths = [
   '''packages/hermes-wire-protocol/relay-message-types\.json''',
 ]
+
+[[allowlists]]
+description = "Synthetic Amplitude API keys used only in the VS Code extension analytics unit tests — placeholders, never real credentials"
+regexTarget = "match"
+regexes = [
+  '''env-injected-key-[0-9]+''',
+  '''amp-test-key-[0-9]+''',
+  '''wiring-test-key-[0-9]+''',
+]
+paths = [
+  '''extensions/openburnbar/test/analytics/config\.test\.ts''',
+  '''extensions/openburnbar/test/analytics/consentContract\.test\.ts''',
+  '''extensions/openburnbar/test/analytics/wiring\.test\.ts''',
+]

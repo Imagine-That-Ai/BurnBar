@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { PanicButton } from "@/components/PanicButton";
+import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -108,6 +109,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Your data, your keys. The server never sees your sealed content.
         </p>
       </footer>
+
+      <ConsentBanner />
     </div>
   );
 }

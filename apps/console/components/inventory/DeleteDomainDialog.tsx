@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { deleteDomainData, type DeleteDomainDataResponse } from "@/lib/api";
 import type { DataDomain } from "@/lib/domains";
+import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
+import { EVENT } from "@/lib/analytics";
 
 /**
  * Scoped-delete confirmation. Breaking a wax seal is irreversible — the only
@@ -31,6 +33,7 @@ export function DeleteDomainDialog({
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { track } = useAnalytics();
   const armed = confirmText.trim().toLowerCase() === domain.title.toLowerCase();
 
   const onConfirm = async () => {
@@ -42,8 +45,17 @@ export function DeleteDomainDialog({
       onDeleted?.(res);
       setOpen(false);
       setConfirmText("");
+      // Bounded enum (encryption_tier) + outcome only — never the deleted contents.
+      track(EVENT.inventoryDomainDeleted, {
+        encryption_tier: domain.encryptionTier,
+        outcome: "success",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed.");
+      track(EVENT.inventoryDomainDeleted, {
+        encryption_tier: domain.encryptionTier,
+        outcome: "failure",
+      });
     } finally {
       setBusy(false);
     }

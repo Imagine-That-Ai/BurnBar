@@ -90,6 +90,10 @@ final class InsightsMacVerdictModel {
     func refresh() {
         refreshTask?.cancel()
         isRefreshing = true
+        Analytics.shared.track(.insightsVerdictRefreshed, [
+            "window": .string(window.rawValue),
+            "is_manual": .bool(true)
+        ])
         refreshTask = Task { [composer, window] in
             for await event in await composer.refresh(window: window) {
                 await handle(event)
