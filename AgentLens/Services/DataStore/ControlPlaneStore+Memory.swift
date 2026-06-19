@@ -441,6 +441,29 @@ extension ControlPlaneStore {
         }
     }
 
+    /// The most-recently-updated job currently in `failed` status, or nil if none.
+    /// The `MemoryExtractionEngine` reads this after a `claimedButFailed` drain tick to
+    /// surface `lastError` (PR-D2 must-fix #3): extraction errors are swallowed by the
+    /// worker — they never propagate through `drainNext()` — so the terminal status is
+    /// the only place a failure is observable. A best-effort diagnostic read; not a gate.
+    func mostRecentFailedMemoryExtractionJob() async throws -> MemoryExtractionJob? {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_extraction_jobs
+                WHERE status = 'failed'
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """
+            ) else {
+                return nil
+            }
+            return Self.memoryExtractionJob(from: row)
+        }
+    }
+
     func fetchChatMemoryAuthorityRecord(id: MemoryID) async throws -> Memory? {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(
@@ -1539,6 +1562,24 @@ actor MemoryExtractionAdmissionController {
 actor MemoryExtractionWorker {
     typealias Extractor = @Sendable (ControlPlaneStore.MemoryExtractionJob) async throws -> [MemoryAddRequest]
 
+    /// Tri-state result of a single drain attempt. The driving pump
+    /// (`MemoryExtractionEngine`) MUST loop on this, not on a `Bool`: a `Bool`
+    /// conflates "claimed a job that then failed" with "nothing claimable", and a
+    /// loop guarded on `drained == true` would halt the whole backlog on the first
+    /// failing job (`drainClaimedJob` catches the extractor error, marks the job
+    /// failed, and returns without re-throwing — PR-D2 must-fix #1).
+    enum DrainOutcome: Equatable, Sendable {
+        /// A job was claimed and processed to a terminal commit (succeeded).
+        case drained
+        /// A job was claimed but its processing failed; it is marked `failed` with a
+        /// retry backoff. The pump should KEEP DRAINING (a later good job may sit
+        /// behind it) but record the failure via `memoryExtractionJobStatus`.
+        case claimedButFailed
+        /// Nothing to do: the kill switch is off, admission was busy, or no job is
+        /// currently claimable. The pump stops on this (idle).
+        case idle
+    }
+
     private let store: ControlPlaneStore
     private let admission: MemoryExtractionAdmissionController
     private let extractor: Extractor
@@ -1561,24 +1602,36 @@ actor MemoryExtractionWorker {
         self.extractor = extractor
     }
 
+    /// Back-compat `Bool` adapter (kept so existing single-drain call sites and tests
+    /// read unchanged): `true` iff a job was claimed and committed successfully.
+    /// `false` for both `claimedButFailed` and `idle`. New drivers MUST prefer
+    /// `drainNext()` so they can keep draining past a failing job.
     func drainOne() async throws -> Bool {
-        guard await admission.tryEnter() else { return false }
+        try await drainNext() == .drained
+    }
+
+    /// Claim and process at most one job, surfacing the tri-state the pump needs.
+    func drainNext() async throws -> DrainOutcome {
+        guard await admission.tryEnter() else { return .idle }
         do {
-            let drained = try await drainClaimedJob()
+            let outcome = try await drainClaimedJob()
             await admission.leave()
-            return drained
+            return outcome
         } catch {
             await admission.leave()
             throw error
         }
     }
 
-    private func drainClaimedJob() async throws -> Bool {
+    private func drainClaimedJob() async throws -> DrainOutcome {
         // Kill switch checked PRE-CLAIM so a disabled fleet never claims (and never
-        // burns an attempt on) a job. Re-checked per-record below.
-        guard authorityWritesEnabled() else { return false }
+        // burns an attempt on) a job. Re-checked per-record below. The closure reads
+        // the engine's live `Sendable` atomic (PR-D2 must-fix #2/#4): the kill switch
+        // is re-established at THIS worker boundary because the engine-driven path
+        // bypasses the controller's `memoryServiceForExtraction == nil` gate.
+        guard authorityWritesEnabled() else { return .idle }
         let now = nowProvider()
-        guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return false }
+        guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return .idle }
         do {
             // The extractor performs the LLM round-trip. The worker actor holds NO
             // database write transaction across this call (PR-D1 must-fix:
@@ -1624,7 +1677,7 @@ actor MemoryExtractionWorker {
                 )
             }
             try await store.markMemoryExtractionJobSucceeded(job.id, now: nowProvider())
-            return true
+            return .drained
         } catch {
             try await store.markMemoryExtractionJobFailed(
                 job.id,
@@ -1632,7 +1685,10 @@ actor MemoryExtractionWorker {
                 retryAfter: 60,
                 now: nowProvider()
             )
-            return false
+            // Job failed but the pump must KEEP DRAINING (do NOT re-throw here): a
+            // good job may sit behind this one. The engine reads the terminal status
+            // and records the failure (PR-D2 must-fix #1/#3).
+            return .claimedButFailed
         }
     }
 
