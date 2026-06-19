@@ -317,6 +317,35 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(text.contains("[model_providers.openburnbar]"))
     }
 
+    func test_wireCodex_replacesLegacyOpenBurnBarProviderWithoutSentinel() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        [profiles.work]
+        model = "gpt-5.4"
+
+        [model_providers.openburnbar]
+        name = "OpenBurnBar Hydrant"
+        base_url = "http://127.0.0.1:8317/v1"
+        env_key = "OPENBURNBAR_GATEWAY_TOKEN"
+        wire_api = "chat"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        _ = try makeWiring().wire(target: .codex, gateway: exampleGateway(token: "tok"))
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("[profiles.work]"))
+        XCTAssertTrue(text.contains("model = \"gpt-5.4\""))
+        XCTAssertFalse(text.contains("OpenBurnBar Hydrant"))
+        XCTAssertFalse(text.contains("wire_api = \"chat\""))
+        XCTAssertEqual(text.components(separatedBy: "[model_providers.openburnbar]").count - 1, 1)
+        XCTAssertTrue(text.contains("name = \"OpenBurnBar Gateway\""))
+        XCTAssertTrue(text.contains("wire_api = \"responses\""))
+    }
+
     func test_isWired_codex_detectsSentinel() throws {
         let wiring = makeWiring()
         XCTAssertFalse(wiring.isWired(target: .codex))
