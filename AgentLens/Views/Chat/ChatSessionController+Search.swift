@@ -175,6 +175,36 @@ extension ChatSessionController {
         Task { await send() }
     }
 
+    /// F-2 (G8): recall memory snippets for the current turn and wrap each via
+    /// `LLMSafeContent.wrapUntrusted` so they land in the evidence region only —
+    /// never the trusted persona block. Returns "" when no service is wired or
+    /// recall yields nothing.
+    ///
+    /// Memory text is ALWAYS untrusted regardless of the snippet's `trustTier`
+    /// (defense-in-depth): the tier is server-resolved against the canonical chat
+    /// row and carried on the snippet for provenance, but it is never a license
+    /// to skip wrapping or to inject into persona voice. If the source row is
+    /// missing/non-user/non-assistant the backend pins the tier to
+    /// `.untrusted`/`.assistantDerived`; the frontend treats both as untrusted.
+    func recallMemorySection(query: String, tokenBudget: Int) async -> String {
+        guard let memoryService else { return "" }
+        let scope = makeMemoryExtractionContext().scope
+        let request = MemoryRecallRequest(query: query, scope: scope, tokenBudget: max(tokenBudget, 1))
+        let snippets: [MemorySnippet]
+        do {
+            snippets = try await memoryService.recallForPrompt(request)
+        } catch {
+            AppLogger.chat.silentFailure("memory recallForPrompt", error: error)
+            return ""
+        }
+        guard !snippets.isEmpty else { return "" }
+        return snippets.map { snippet in
+            let jumpID = snippet.citations.first?.messageID ?? snippet.citations.first?.crossDeviceHMAC
+            let provenance = "memory:\(snippet.memoryID)@\(jumpID ?? "unresolved")"
+            return LLMSafeContent.wrapUntrusted(snippet.text, provenance: provenance)
+        }.joined(separator: "\n\n")
+    }
+
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
@@ -557,13 +587,16 @@ extension ChatSessionController {
         let promptArbiter = PromptTokenArbiter.make(model: arbiterFamily, historyAndUserTurnTokens: historyTokens)
         let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
         let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
+        // F-2 (G8): recall + wrap memory snippets into the `.memory` section. They
+        // share the evidence+memory pool under the arbiter (G9) and are wrapped via
+        // LLMSafeContent.wrapUntrusted so they never enter the trusted `.core` persona.
+        let memorySection = await recallMemorySection(query: trimmed, tokenBudget: promptArbiter.memoryBudget)
         let assembledPrompt = promptArbiter.assemble([
             PromptTokenSection(id: .core, content: basePrompt),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
             PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
-            // `.memory` is injected in F-2 via recallForPrompt, wrapped with
-            // LLMSafeContent.wrapUntrusted (G8). Never concatenated into `.core`.
+            PromptTokenSection(id: .memory, content: memorySection),
         ])
         if !assembledPrompt.droppedSections.isEmpty || !assembledPrompt.truncatedSections.isEmpty {
             AppLogger.chat.info(
