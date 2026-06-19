@@ -5,7 +5,7 @@ import AppKit
 import CoreGraphics
 #endif
 #if canImport(ScreenCaptureKit)
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 #endif
 import OSLog
 import OpenBurnBarCore
