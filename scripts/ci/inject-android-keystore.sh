@@ -69,3 +69,11 @@ if command -v keytool >/dev/null 2>&1 && [ -n "${OPENBURNBAR_ANDROID_KEYSTORE_PA
 fi
 
 echo "Android release keystore injected at $keystore_path"
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+    printf 'OPENBURNBAR_ANDROID_KEYSTORE_PATH=%s\n' "$keystore_path" >> "$GITHUB_ENV"
+fi
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf 'keystore_path=%s\n' "$keystore_path" >> "$GITHUB_OUTPUT"
+fi
