@@ -1134,6 +1134,175 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertNil(deletedMemory)
     }
 
+    func test_memoryDeleteWritesSourceTombstoneAndPurgesSealedBody() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let now = Date(timeIntervalSince1970: 1_800_000_390)
+        let scope = MemoryScope(userID: "forget-user", appID: "forget-app")
+        let body = "User asked to forget this exact local fact."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .fact,
+                scope: scope,
+                confidence: 0.7,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-forget",
+                        threadLogicalID: "thread-forget",
+                        messageID: "message-forget",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-forget",
+                        crossDeviceHMAC: "hmac-forget"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-forget",
+            now: now,
+            enabled: true
+        )
+
+        let deleteEvent = try await service.delete(id: "mem-forget")
+        let deleteStatus = try await service.eventStatus(deleteEvent)
+        XCTAssertEqual(deleteStatus, .succeeded)
+
+        let persisted = try await queue.read { db -> (memory: Int, provenance: Int, snapshot: Int, tombstone: Int, audit: String) in
+            let memory = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE id = 'mem-forget'") ?? 0
+            let provenance = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_provenance WHERE memory_id = 'mem-forget'") ?? 0
+            let snapshot = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-forget'") ?? 0
+            let tombstone = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_source_tombstones
+                WHERE thread_logical_id = 'thread-forget'
+                  AND message_id = 'message-forget'
+                  AND content_hash = 'content-forget'
+                  AND reason = 'user_delete'
+                """
+            ) ?? 0
+            let audit = try String.fetchAll(
+                db,
+                sql: "SELECT action || '|' || labels_json FROM memory_audit WHERE subject_id = 'mem-forget'"
+            ).joined(separator: "\n")
+            return (memory, provenance, snapshot, tombstone, audit)
+        }
+        XCTAssertEqual(persisted.memory, 0)
+        XCTAssertEqual(persisted.provenance, 0)
+        XCTAssertEqual(persisted.snapshot, 0)
+        XCTAssertEqual(persisted.tombstone, 1)
+        XCTAssertTrue(persisted.audit.contains("memory.delete"))
+        XCTAssertFalse(persisted.audit.contains(body))
+    }
+
+    func test_memorySourceTombstoneSuppressesRecallAndReconcilesActiveFacts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let now = Date(timeIntervalSince1970: 1_800_000_400)
+        let scope = MemoryScope(userID: "tombstone-user", appID: "tombstone-app")
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "User wants tombstoned source facts suppressed.",
+                kind: .fact,
+                scope: scope,
+                confidence: 0.8,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-tombstone",
+                        threadLogicalID: "thread-tombstone",
+                        messageID: "message-tombstone",
+                        role: "assistant",
+                        authoredAt: now,
+                        contentHash: "content-tombstone",
+                        crossDeviceHMAC: "hmac-tombstone"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-tombstone",
+            now: now,
+            enabled: true
+        )
+
+        let before = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+        )
+        XCTAssertEqual(before.map(\.memoryID), ["mem-tombstone"])
+
+        _ = try await store.recordMemorySourceTombstone(
+            threadLogicalID: "thread-tombstone",
+            messageID: "message-tombstone",
+            contentHash: "content-tombstone",
+            reason: "clear_history",
+            now: now.addingTimeInterval(1)
+        )
+        let suppressedBeforeReconcile = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+        )
+        XCTAssertTrue(suppressedBeforeReconcile.isEmpty)
+
+        let reconciled = try await store.reconcileMemorySourceTombstones(now: now.addingTimeInterval(2))
+        XCTAssertEqual(reconciled, 1)
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .fact)
+        XCTAssertTrue(active.isEmpty)
+        let memory = try await service.get(id: "mem-tombstone")
+        XCTAssertNotNil(memory?.validTo)
+    }
+
+    func test_memoryReviewLifecycleAuditsAndControlsRecall() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let now = Date(timeIntervalSince1970: 1_800_000_410)
+        let scope = MemoryScope(userID: "review-user", appID: "review-app")
+        let body = "User wants reviewed memories only."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: body, kind: .preference, scope: scope, confidence: 0.74, reviewStatus: .quarantined),
+            id: "mem-review",
+            now: now,
+            enabled: true
+        )
+        let quarantinedRecall = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+        )
+        XCTAssertTrue(quarantinedRecall.isEmpty)
+
+        _ = try await service.approve(id: "mem-review")
+        let approvedRecall = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+        )
+        XCTAssertEqual(approvedRecall.map(\.memoryID), ["mem-review"])
+
+        _ = try await service.reject(id: "mem-review")
+        let rejectedRecall = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+        )
+        XCTAssertTrue(rejectedRecall.isEmpty)
+
+        let audit = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT action || '|' || labels_json FROM memory_audit WHERE subject_id = 'mem-review'"
+            ).joined(separator: "\n")
+        }
+        XCTAssertTrue(audit.contains("memory.approve"))
+        XCTAssertTrue(audit.contains("memory.reject"))
+        XCTAssertFalse(audit.contains(body))
+    }
+
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

@@ -900,6 +900,7 @@ final class ControlPlaneStore: Sendable {
         var ranked: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
         ranked.reserveCapacity(records.count)
         for memory in records {
+            guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
             guard let body = try await openChatMemoryBody(id: memory.id), body.isEmpty == false else {
                 continue
             }
@@ -1065,6 +1066,12 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
+            try Self.insertMemorySourceTombstonesForMemory(
+                db: db,
+                memoryID: id,
+                reason: "user_delete",
+                now: now
+            )
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
@@ -1089,6 +1096,89 @@ final class ControlPlaneStore: Sendable {
             deleted += 1
         }
         return deleted
+    }
+
+    func recordMemorySourceTombstone(
+        threadLogicalID: String,
+        messageID: String?,
+        contentHash: String?,
+        reason: String,
+        now: Date = Date()
+    ) async throws -> String {
+        let id = Self.memorySourceTombstoneID(
+            threadLogicalID: threadLogicalID,
+            messageID: messageID,
+            contentHash: contentHash,
+            reason: reason
+        )
+        try await dbQueue.write { db in
+            try Self.insertMemorySourceTombstone(
+                db: db,
+                id: id,
+                threadLogicalID: threadLogicalID,
+                messageID: messageID,
+                contentHash: contentHash,
+                reason: reason,
+                now: now
+            )
+        }
+        return id
+    }
+
+    func reconcileMemorySourceTombstones(now: Date = Date()) async throws -> Int {
+        let nowString = Self.iso8601String(now)
+        return try await dbQueue.write { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT m.id, m.project_id
+                FROM agent_memories m
+                JOIN memory_provenance p
+                  ON p.memory_id = m.id
+                JOIN memory_source_tombstones t
+                  ON t.thread_logical_id = p.thread_logical_id
+                 AND (t.message_id IS NULL OR t.message_id = p.message_id)
+                 AND (t.content_hash IS NULL OR t.content_hash = p.content_hash)
+                WHERE m.source_kind = ?
+                  AND m.valid_to IS NULL
+                """,
+                arguments: [MemorySourceKind.chat.rawValue]
+            )
+            var suppressed = 0
+            for row in rows {
+                guard let memoryID: String = row["id"],
+                      let projectID: String = row["project_id"] else {
+                    continue
+                }
+                try db.execute(
+                    sql: """
+                    UPDATE agent_memories
+                    SET valid_to = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                      AND source_kind = ?
+                      AND valid_to IS NULL
+                    """,
+                    arguments: [now, now, memoryID, MemorySourceKind.chat.rawValue]
+                )
+                let labelsJSON = try Self.auditLabelsJSON([
+                    "memory_id": memoryID,
+                    "reason": "source_tombstone",
+                    "source_kind": MemorySourceKind.chat.rawValue
+                ])
+                try Self.insertMemoryAuditEvent(
+                    db: db,
+                    action: "memory.source_tombstone_suppressed",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labelsJSON: labelsJSON,
+                    now: now,
+                    nowString: nowString
+                )
+                suppressed += 1
+            }
+            return suppressed
+        }
     }
 
     func listChatMemoryEntities() async throws -> [MemoryEntity] {
@@ -1702,6 +1792,107 @@ final class ControlPlaneStore: Sendable {
                 ]
             )
         }
+    }
+
+    private func memoryHasTombstonedSource(id: MemoryID) async throws -> Bool {
+        try await dbQueue.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_provenance p
+                JOIN memory_source_tombstones t
+                  ON t.thread_logical_id = p.thread_logical_id
+                 AND (t.message_id IS NULL OR t.message_id = p.message_id)
+                 AND (t.content_hash IS NULL OR t.content_hash = p.content_hash)
+                WHERE p.memory_id = ?
+                """,
+                arguments: [id]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    private static func insertMemorySourceTombstonesForMemory(
+        db: Database,
+        memoryID: MemoryID,
+        reason: String,
+        now: Date
+    ) throws {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT thread_logical_id, message_id, content_hash
+            FROM memory_provenance
+            WHERE memory_id = ?
+            ORDER BY thread_logical_id ASC, message_id ASC, content_hash ASC
+            """,
+            arguments: [memoryID]
+        )
+        for row in rows {
+            guard let threadLogicalID: String = row["thread_logical_id"],
+                  let contentHash: String = row["content_hash"] else {
+                continue
+            }
+            let messageID: String? = row["message_id"]
+            let tombstoneID = memorySourceTombstoneID(
+                threadLogicalID: threadLogicalID,
+                messageID: messageID,
+                contentHash: contentHash,
+                reason: reason
+            )
+            try insertMemorySourceTombstone(
+                db: db,
+                id: tombstoneID,
+                threadLogicalID: threadLogicalID,
+                messageID: messageID,
+                contentHash: contentHash,
+                reason: reason,
+                now: now
+            )
+        }
+    }
+
+    private static func insertMemorySourceTombstone(
+        db: Database,
+        id: String,
+        threadLogicalID: String,
+        messageID: String?,
+        contentHash: String?,
+        reason: String,
+        now: Date
+    ) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO memory_source_tombstones (
+                id, thread_logical_id, message_id, content_hash, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            arguments: [
+                id,
+                threadLogicalID,
+                messageID,
+                contentHash,
+                reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason,
+                now
+            ]
+        )
+    }
+
+    private static func memorySourceTombstoneID(
+        threadLogicalID: String,
+        messageID: String?,
+        contentHash: String?,
+        reason: String
+    ) -> String {
+        let material = [
+            threadLogicalID,
+            messageID ?? "",
+            contentHash ?? "",
+            reason
+        ].joined(separator: "|")
+        return "memory-source-tombstone-\(sha256Hex(material))"
     }
 
     private func appendMemoryAuditEvent(
