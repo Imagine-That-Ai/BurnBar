@@ -287,7 +287,7 @@ final class MemoryExtractionEngine {
     /// Read the most recently failed job's status to populate `lastError`. Best-effort:
     /// a failed status read must not itself crash the pump.
     private func recordMostRecentFailure() async {
-        guard let failed = try? await chatMemoryStore.mostRecentFailedMemoryExtractionJob() else {
+        guard let failed = try? await chatMemoryStore.mostRecentFailedMemoryExtractionJob() else { // try?-ok(best-effort failure status read)
             lastError = "memory_extraction_job_failed"
             return
         }

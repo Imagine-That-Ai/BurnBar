@@ -51,7 +51,7 @@ enum MemoryExtractionParser {
         guard trimmed.isEmpty == false else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(RawExtractionPayload.self, from: data) {
+           let decoded = try? JSONDecoder().decode(RawExtractionPayload.self, from: data) { // try?-ok(malformed model JSON falls through)
             return decoded
         }
 
@@ -63,7 +63,7 @@ enum MemoryExtractionParser {
         }
         let candidate = String(trimmed[start ... end])
         guard let data = candidate.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(RawExtractionPayload.self, from: data)
+        return try? JSONDecoder().decode(RawExtractionPayload.self, from: data) // try?-ok(prose-wrapped malformed JSON rejected)
     }
 
     // MARK: - Validation
