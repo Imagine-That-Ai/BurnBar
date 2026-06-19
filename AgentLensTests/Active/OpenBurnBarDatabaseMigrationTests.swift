@@ -437,6 +437,48 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let registrationB = try await store.registerMemoryEmbeddingVersion(descriptor: descriptorB, now: now.addingTimeInterval(1))
         XCTAssertNotEqual(registrationA.versionID, registrationB.versionID)
 
+        do {
+            try await store.upsertMemoryEmbeddingRef(
+                memoryID: "mem-wrong-dimension",
+                embeddingVersionID: registrationA.versionID,
+                vector: [1, 0],
+                now: now
+            )
+            XCTFail("Expected dimension mismatch to throw before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
+                .dimensionMismatch(expected: 3, actual: 2)
+            )
+        }
+
+        do {
+            try await store.upsertMemoryEmbeddingRef(
+                memoryID: "mem-unknown-version",
+                embeddingVersionID: "missing-version",
+                vector: [1, 0, 0],
+                now: now
+            )
+            XCTFail("Expected unknown embedding version to throw before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
+                .unknownEmbeddingVersion("missing-version")
+            )
+        }
+
+        let rejectedRows = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_embedding_refs
+                WHERE memory_id IN ('mem-wrong-dimension', 'mem-unknown-version')
+                """
+            ) ?? 0
+        }
+        XCTAssertEqual(rejectedRows, 0)
+
         try await store.upsertMemoryEmbeddingRef(memoryID: "mem-a", embeddingVersionID: registrationA.versionID, vector: [1, 0, 0], now: now)
         try await store.upsertMemoryEmbeddingRef(memoryID: "mem-b", embeddingVersionID: registrationB.versionID, vector: [1, 0, 0], now: now)
         try await store.upsertMemoryEmbeddingRef(memoryID: "mem-c", embeddingVersionID: registrationA.versionID, vector: [0, 1, 0], now: now)
