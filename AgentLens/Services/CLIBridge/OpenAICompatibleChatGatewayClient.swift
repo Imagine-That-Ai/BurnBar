@@ -1283,10 +1283,11 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         /// Normalize provider-scoped ids (`anthropic/claude-sonnet-4-6`) and
         /// bare ids against the allowed set.
         func allows(_ modelID: String) -> Bool {
-            let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return false }
+            // Allowlist entries are normalized in init; callers must pass clean ids.
+            guard modelID == modelID.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+            guard !modelID.isEmpty else { return false }
             if modelIDs.isEmpty { return true }
-            let lower = trimmed.lowercased()
+            let lower = modelID.lowercased()
             for allowed in modelIDs {
                 if allowed.lowercased() == lower { return true }
                 let scoped = allowed.split(separator: "/").map(String.init)

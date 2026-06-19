@@ -122,6 +122,30 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
     @MainActor
     func testVisibleTerminalSessionPermissionsAndTeardown() async throws {
         let fileManager = FileManager.default
+
+        // Terminal.app is unavailable/unreliable on GitHub Actions macOS runners.
+        // Workspace permission + cleanup invariants are covered here and in
+        // VisibleTerminalSessionWorkspaceTests without launching Terminal.
+        if openBurnBarIsGitHubActionsRunner() {
+            let workspace = try VisibleTerminalSessionWorkspace.prepare(
+                sessionID: "ci-workspace-\(UUID().uuidString)",
+                fileManager: fileManager
+            )
+            defer { workspace.cleanup(fileManager: fileManager) }
+
+            let sessionAttrs = try fileManager.attributesOfItem(atPath: workspace.sessionURL.path)
+            let sessionPerms = try XCTUnwrap(sessionAttrs[.posixPermissions] as? NSNumber)
+            XCTAssertEqual(sessionPerms.uint16Value & 0o777, 0o700)
+
+            let logAttrs = try fileManager.attributesOfItem(atPath: workspace.logURL.path)
+            let logPerms = try XCTUnwrap(logAttrs[.posixPermissions] as? NSNumber)
+            XCTAssertEqual(logPerms.uint16Value & 0o777, 0o600)
+
+            workspace.cleanup(fileManager: fileManager)
+            XCTAssertFalse(fileManager.fileExists(atPath: workspace.sessionURL.path))
+            return
+        }
+
         let sessionID = "test-session-\(UUID().uuidString)"
 
         let rootURL = fileManager.temporaryDirectory

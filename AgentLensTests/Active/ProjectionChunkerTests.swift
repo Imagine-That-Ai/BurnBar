@@ -1,5 +1,4 @@
 import XCTest
-import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -695,7 +694,11 @@ final class ProjectionChunkerTests: XCTestCase {
 
     // MARK: - Performance Characteristics Tests
 
-    func test_chunker_100ChunksCompletesQuickly() {
+    func test_chunker_100ChunksCompletesQuickly() throws {
+        try XCTSkipIf(
+            openBurnBarIsGitHubActionsRunner(),
+            "XCTest measure baselines are unreliable on GitHub Actions macOS runners and can crash the test host."
+        )
         let text = String(repeating: "Word word word. ", count: 1000)
         let chunker = makeChunker(maxChunkCharacters: 200, minChunkCharacters: 100, overlapCharacters: 30)
 
