@@ -302,14 +302,10 @@ extension OpenBurnBarDaemonManager {
             }
         }
 
-        // Experimental, off-by-default gateway routing opt-ins. These map the
-        // app toggles to the daemon env vars read by
-        // `ClaudeInteractiveSessionExecutor.makeIfEnabled()` and
+        // Experimental, off-by-default gateway routing opt-in. Maps the app
+        // toggle to the daemon env var read by
         // `BurnBarCrossVendorDegradePolicy.fromEnvironment()` at gateway init,
-        // so flipping a toggle takes effect on the next daemon restart.
-        if settings.experimentalInteractiveClaudeEnabled {
-            environmentVariables["OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE"] = "1"
-        }
+        // so flipping the toggle takes effect on the next daemon restart.
         if settings.crossVendorDegradeEnabled {
             environmentVariables["OPENBURNBAR_CROSS_VENDOR_DEGRADE"] = "1"
         }

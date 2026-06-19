@@ -654,13 +654,6 @@ struct ConnectionsSettingsView: View {
             }
 
             SettingsToggle(
-                title: "Interactive Claude routing",
-                subtitle: "Serve Anthropic subscription requests through a genuine interactive claude session (no -p), not the metered path. Against Anthropic's terms, brittle, and may be throttled without notice. Subscription (sk-ant-oat…) routes only.",
-                icon: "terminal",
-                isOn: experimentalRoutingBinding(\.experimentalInteractiveClaudeEnabled)
-            )
-
-            SettingsToggle(
                 title: "Cross-vendor degrade",
                 subtitle: "When the requested model can't be served, fall back to an allow-listed OpenAI-compatible vendor (DeepSeek, Z.ai, Moonshot) on your own key. Legitimate — but the reply won't be from the model you asked for.",
                 icon: "arrow.triangle.branch",

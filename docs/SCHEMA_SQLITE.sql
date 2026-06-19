@@ -222,25 +222,99 @@ CREATE TABLE agent_memories (
   scope         TEXT NOT NULL,
   confidence    REAL NOT NULL,
   body_ref      TEXT NOT NULL,
-  body_redacted TEXT NOT NULL, -- Project Memory snapshot ref; raw body lives in snapshotJSON
+  body_redacted TEXT NOT NULL, -- Sealed body ref; chat bodies live in memory_body_snapshots
   tags_json     TEXT NOT NULL,
   source_path   TEXT,
   valid_from    TEXT NOT NULL,
   valid_to      TEXT,
   superseded_by TEXT,
   created_at    TEXT NOT NULL,
-  updated_at    TEXT NOT NULL
+  updated_at    TEXT NOT NULL,
+  source_kind   TEXT NOT NULL DEFAULT 'code',
+  review_status TEXT NOT NULL DEFAULT 'quarantined',
+  user_id       TEXT,
+  agent_id      TEXT,
+  run_id        TEXT,
+  app_id        TEXT
 );
 
 CREATE INDEX agent_memories_project_idx ON agent_memories(project_id, scope, updated_at);
+CREATE INDEX agent_memories_chat_scope_idx ON agent_memories(source_kind, user_id, agent_id, run_id, app_id, updated_at);
 
-CREATE VIRTUAL TABLE agent_memories_fts USING fts5(
-  memoryID UNINDEXED,
-  projectID UNINDEXED,
-  bodyText,
-  tags,
-  tokenize='porter unicode61'
+CREATE TABLE memory_provenance (
+  id                TEXT NOT NULL PRIMARY KEY,
+  memory_id         TEXT NOT NULL,
+  source_kind       TEXT NOT NULL,
+  thread_logical_id TEXT NOT NULL,
+  message_id        TEXT,
+  role              TEXT NOT NULL,
+  authored_at       TEXT NOT NULL,
+  content_hash      TEXT NOT NULL,
+  occurrence        INTEGER NOT NULL DEFAULT 0,
+  xdevice_hmac      TEXT NOT NULL,
+  citation_state    TEXT NOT NULL DEFAULT 'live',
+  created_at        TEXT NOT NULL
 );
+
+CREATE INDEX memory_provenance_memory_idx ON memory_provenance(memory_id);
+CREATE INDEX memory_provenance_hmac_idx ON memory_provenance(xdevice_hmac);
+CREATE INDEX memory_provenance_msg_idx ON memory_provenance(message_id);
+
+CREATE TABLE memory_extraction_jobs (
+  id              TEXT NOT NULL PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  thread_id       TEXT NOT NULL,
+  thread_logical_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  prompt_version  TEXT NOT NULL,
+  scope_json      TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  not_before      TEXT,
+  lease_expires_at TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX memory_extraction_jobs_status_idx ON memory_extraction_jobs(status, not_before);
+CREATE INDEX memory_extraction_jobs_lease_idx ON memory_extraction_jobs(status, lease_expires_at);
+
+CREATE TABLE memory_embedding_refs (
+  memory_id            TEXT NOT NULL,
+  embedding_version_id TEXT NOT NULL,
+  dimension            INTEGER NOT NULL,
+  vector               BLOB NOT NULL,
+  norm                 REAL NOT NULL,
+  created_at           TEXT NOT NULL,
+  PRIMARY KEY (memory_id, embedding_version_id)
+);
+
+CREATE INDEX memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension);
+
+CREATE TABLE memory_body_snapshots (
+  id            TEXT NOT NULL PRIMARY KEY,
+  memory_id     TEXT NOT NULL UNIQUE,
+  body_ref      TEXT NOT NULL UNIQUE,
+  snapshot_json TEXT NOT NULL,
+  body_hash     TEXT NOT NULL,
+  source_kind   TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE INDEX memory_body_snapshots_source_idx ON memory_body_snapshots(source_kind, updated_at);
+
+CREATE TABLE memory_source_tombstones (
+  id                TEXT NOT NULL PRIMARY KEY,
+  thread_logical_id TEXT NOT NULL,
+  message_id        TEXT,
+  content_hash      TEXT,
+  reason            TEXT NOT NULL,
+  created_at        TEXT NOT NULL
+);
+
+CREATE INDEX memory_source_tombstones_thread_idx ON memory_source_tombstones(thread_logical_id);
 
 CREATE TABLE memory_audit (
   seq         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

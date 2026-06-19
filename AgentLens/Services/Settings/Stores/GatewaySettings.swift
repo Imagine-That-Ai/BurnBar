@@ -40,16 +40,6 @@ final class GatewaySettings {
         didSet { persistence.set(allowUnauthenticatedLoopback, forKey: "gatewayAllowUnauthenticatedLoopback") }
     }
 
-    /// **Experimental, off by default.** Routes eligible Anthropic subscription
-    /// requests through a genuine interactive `claude` TUI (no `-p`) instead of
-    /// the metered programmatic path. Gray-area: Anthropic's terms prohibit
-    /// routing Pro/Max credentials through third-party apps, and the detection
-    /// heuristic is undocumented. When on, the daemon is launched with
-    /// `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1`. Requires a daemon restart.
-    var experimentalInteractiveClaudeEnabled: Bool = false {
-        didSet { persistence.set(experimentalInteractiveClaudeEnabled, forKey: "experimentalInteractiveClaudeEnabled") }
-    }
-
     /// **Experimental, off by default.** When the requested model can't be served
     /// (its provider family is exhausted or unconfigured), substitutes an
     /// allow-listed OpenAI-compatible vendor (DeepSeek/Z.ai/Moonshot) on the
@@ -80,7 +70,6 @@ final class GatewaySettings {
             legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
         )
         self.allowUnauthenticatedLoopback = persistence.bool(forKey: "gatewayAllowUnauthenticatedLoopback")
-        self.experimentalInteractiveClaudeEnabled = persistence.bool(forKey: "experimentalInteractiveClaudeEnabled")
         self.crossVendorDegradeEnabled = persistence.bool(forKey: "crossVendorDegradeEnabled")
     }
 
