@@ -468,6 +468,42 @@ async function getLatestValidBuild(versionString) {
   return build;
 }
 
+async function setBuildCompliance(buildId) {
+  const existingBuild = await getBuild(buildId);
+  if (existingBuild.attributes?.usesNonExemptEncryption === false) {
+    console.log(`Build ${buildId} already has usesNonExemptEncryption=false`);
+    return existingBuild;
+  }
+
+  await api(
+    "PATCH",
+    `/builds/${buildId}`,
+    data(
+      "builds",
+      { usesNonExemptEncryption: false },
+      undefined,
+      buildId
+    )
+  );
+  const build = await getBuild(buildId);
+  console.log(
+    `Set build ${buildId} usesNonExemptEncryption=${build.attributes?.usesNonExemptEncryption}`
+  );
+  return build;
+}
+
+function summarizeBuild(build) {
+  if (!build) return null;
+  return {
+    id: build.id,
+    version: build.attributes?.version,
+    processingState: build.attributes?.processingState,
+    buildAudienceType: build.attributes?.buildAudienceType,
+    uploadedDate: build.attributes?.uploadedDate,
+    usesNonExemptEncryption: build.attributes?.usesNonExemptEncryption,
+  };
+}
+
 async function setLinkedBuildCompliance() {
   const version = await getLatestIosVersion();
   const linkedBuild = await getLinkedBuild(version.id);
@@ -475,26 +511,7 @@ async function setLinkedBuildCompliance() {
     throw new Error(`No build is linked to iOS version ${version.id}`);
   }
 
-  const existingBuild = await getBuild(linkedBuild.id);
-  if (existingBuild.attributes?.usesNonExemptEncryption === false) {
-    console.log(`Build ${linkedBuild.id} already has usesNonExemptEncryption=false`);
-    return;
-  }
-
-  await api(
-    "PATCH",
-    `/builds/${linkedBuild.id}`,
-    data(
-      "builds",
-      { usesNonExemptEncryption: false },
-      undefined,
-      linkedBuild.id
-    )
-  );
-  const build = await getBuild(linkedBuild.id);
-  console.log(
-    `Set build ${linkedBuild.id} usesNonExemptEncryption=${build.attributes?.usesNonExemptEncryption}`
-  );
+  await setBuildCompliance(linkedBuild.id);
 }
 
 async function attachBuildToVersion() {
@@ -577,6 +594,7 @@ async function printBetaGroups() {
 async function attachBuildToInternalTestFlightGroups() {
   const versionString = APP.testFlightVersion;
   const build = await getLatestValidBuild(versionString);
+  const complianceReadback = await setBuildCompliance(build.id);
   const groups = await getBetaGroups();
   const internalGroups = groups.filter(
     (group) => group.attributes?.isInternalGroup === true
@@ -606,7 +624,7 @@ async function attachBuildToInternalTestFlightGroups() {
 
   const groupNames = internalGroups.map(betaGroupName).join(", ");
   console.log(
-    `Build ${build.id} (${versionString}/${build.attributes?.version}) is assigned to internal TestFlight group(s): ${groupNames}`
+    `Build ${build.id} (${versionString}/${build.attributes?.version}) is assigned to internal TestFlight group(s): ${groupNames}; usesNonExemptEncryption=${complianceReadback.attributes?.usesNonExemptEncryption}`
   );
 }
 
@@ -1802,6 +1820,13 @@ async function printStatus() {
   const inAppPurchases = await getAllInAppPurchases();
   const linkedBuild = await getLinkedBuild(version.id);
   const linkedBuildReadback = linkedBuild?.id ? await getBuild(linkedBuild.id) : null;
+  let testFlightBuildReadback = null;
+  try {
+    const testFlightBuild = await getLatestValidBuild(APP.testFlightVersion);
+    testFlightBuildReadback = await getBuild(testFlightBuild.id);
+  } catch {
+    testFlightBuildReadback = null;
+  }
   const reviewDetail = await getReviewDetail(version.id);
   const hasReviewNotes = Boolean(reviewDetail?.attributes?.notes);
 
@@ -1826,17 +1851,8 @@ async function printStatus() {
           id: set.id,
           displayType: set.attributes?.screenshotDisplayType,
         })),
-        linkedBuild: linkedBuild
-          ? {
-              id: linkedBuild.id,
-              version: linkedBuildReadback?.attributes?.version,
-              processingState: linkedBuildReadback?.attributes?.processingState,
-              buildAudienceType: linkedBuildReadback?.attributes?.buildAudienceType,
-              uploadedDate: linkedBuildReadback?.attributes?.uploadedDate,
-              usesNonExemptEncryption:
-                linkedBuildReadback?.attributes?.usesNonExemptEncryption,
-            }
-          : null,
+        linkedBuild: summarizeBuild(linkedBuildReadback),
+        testFlightBuild: summarizeBuild(testFlightBuildReadback),
         appReviewDetail: reviewDetail
           ? {
               id: reviewDetail.id,
