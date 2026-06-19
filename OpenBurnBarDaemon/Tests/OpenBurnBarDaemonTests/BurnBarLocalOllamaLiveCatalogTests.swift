@@ -19,6 +19,15 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
     }
     """.utf8)
 
+    private static let cloudCatalogHTML = Data("""
+    <html>
+      <body>
+        <a href="/library/kimi-k2.7-code">Kimi K2.7 Code</a>
+        <a href="/library/glm-5.2%3Acloud">GLM-5.2</a>
+      </body>
+    </html>
+    """.utf8)
+
     func testLocalOllamaAdvertisesDiscoveredModelsWithoutCredential() async throws {
         let harness = try makeHarness(name: "ollama-local-up")
         StubURLProtocol.handler = { request in
@@ -102,6 +111,56 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
                       "Live local models must be route-eligible without a credential.")
         XCTAssertFalse(localRows.contains { $0.id.hasSuffix(":cloud") || $0.id.hasSuffix("-cloud") },
                        "Cloud-suffixed models must be filtered from local advertising.")
+    }
+
+    func testOllamaCloudAdvertisesKimi27AndGLM52CloudModelsWithCredential() async throws {
+        let harness = try makeHarness(name: "ollama-cloud")
+        let configSnapshot = try await harness.configStore.snapshot()
+        var ollama = try XCTUnwrap(configSnapshot.providers.first { $0.providerID == "ollama" })
+        ollama.isEnabled = true
+        ollama.preferredModelIDs = ["kimi-k2.7-code", "glm-5.2"]
+        _ = try await harness.configStore.upsertProvider(ollama)
+        try await harness.configStore.setSecret("ollama-cloud-token", for: "ollama")
+
+        StubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": request.url?.host == "ollama.com" ? "text/html" : "application/json"
+                ]
+            )!
+            if request.url?.path == "/api/tags" {
+                XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/api/tags")
+                XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                return (response, Data(#"{"models":[]}"#.utf8))
+            }
+
+            XCTAssertEqual(request.url?.absoluteString, "https://ollama.com/search?c=cloud")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            return (response, Self.cloudCatalogHTML)
+        }
+        defer { StubURLProtocol.handler = nil }
+
+        let liveCatalog = BurnBarLiveModelCatalog(
+            configStore: harness.configStore,
+            session: stubSession(),
+            refreshTimeoutSeconds: 1.0
+        )
+        let snapshot = try await liveCatalog.snapshot()
+
+        let cloudRows = snapshot.models.filter { $0.providerID == "ollama" }
+        let cloudIDs = Set(cloudRows.map(\.id))
+        XCTAssertTrue(cloudIDs.contains("kimi-k2.7-code:cloud"))
+        XCTAssertTrue(cloudIDs.contains("glm-5.2:cloud"))
+        XCTAssertTrue(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.routeEligible == true)
+        XCTAssertTrue(cloudRows.first { $0.id == "glm-5.2:cloud" }?.routeEligible == true)
+        XCTAssertTrue(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.modelCapabilities?.supportsImageInput == true)
+        XCTAssertEqual(
+            cloudRows.first { $0.id == "glm-5.2:cloud" }?.modelCapabilities?.contextWindowTokens,
+            976_000
+        )
     }
 
     // MARK: - Harness
