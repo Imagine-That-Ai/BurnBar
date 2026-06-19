@@ -6,6 +6,43 @@ import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
+private enum MercuryRouterTestFixtures {
+    static let runtimeHealth = MercuryRuntimeHealthSnapshot(
+        timestampMillis: 1_742_600_000_000,
+        cpuUsagePercent: nil,
+        batteryLevelPercent: nil,
+        isCharging: nil,
+        isLowPowerModeEnabled: false,
+        thermalState: .nominal
+    )
+
+    static let localStreamingCapabilities = MercuryStreamingCapabilitySnapshot(
+        codecCapabilities: [
+            MercuryVideoCodecCapability(
+                codec: .hevc,
+                canEncode: true,
+                canDecode: true,
+                hardwareAccelerated: false,
+                longTermReference: true
+            ),
+            MercuryVideoCodecCapability(
+                codec: .h264,
+                canEncode: true,
+                canDecode: true,
+                hardwareAccelerated: false
+            ),
+            MercuryVideoCodecCapability(
+                codec: .av1,
+                canEncode: false,
+                canDecode: false,
+                hardwareAccelerated: false
+            )
+        ],
+        mediaFrameVersions: .v1AndV2,
+        source: "MercuryRouterTests"
+    )
+}
+
 /// Mercury Phase 8 — locks in the user-facing arbiter that turns
 /// inbound `media.mirror.request` frames into ringing UI, cooldowns,
 /// auto-accepts (consent fast-path), and acks on the control stream.
@@ -55,12 +92,13 @@ final class MercuryRouterTests: XCTestCase {
         )
         let sessionCoordinator = MediaSessionCoordinator(
             capabilityGate: AlwaysAllowGate(),
-            // Keep real VideoToolbox out of the headless-CI app-test host: a
-            // hardware encoder is absent there, and the VTVideoEncoderSelection
-            // threads it spawns intermittently wedge the whole host (a sibling
-            // media test then times out at 10 minutes). These router tests
-            // assert mirror-ack decisions and capability negotiation, never
-            // encoded video, so a no-op encoder is faithful.
+            runtimeHealthProvider: {
+                MercuryRouterTestFixtures.runtimeHealth
+            },
+            // Keep real ScreenCaptureKit and VideoToolbox out of the headless-CI
+            // app-test host. These router tests assert mirror-ack decisions and
+            // capability negotiation, never real captured or encoded video.
+            screenCaptureFactory: { _, _ in RouterNoopScreenCaptureSession() },
             videoEncoderFactory: { _, _ in RouterNoopVideoEncoder() }
         )
         let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
@@ -79,6 +117,9 @@ final class MercuryRouterTests: XCTestCase {
             remoteUnlockReadiness: remoteUnlockReadiness ?? makeRemoteUnlockReadinessService(
                 lockStateProvider: { .unlocked }
             ),
+            localStreamingCapabilityProvider: {
+                MercuryRouterTestFixtures.localStreamingCapabilities
+            },
             cooldownSeconds: cooldownSeconds,
             clock: clock
         )
@@ -707,7 +748,7 @@ final class MercuryRouterTests: XCTestCase {
         )
         XCTAssertEqual(advertised?.mediaFrameVersions.supportsV1, true)
         XCTAssertEqual(advertised?.mediaFrameVersions.supportsV2, true)
-        XCTAssertEqual(advertised?.source, "VideoToolbox")
+        XCTAssertEqual(advertised?.source, "MercuryRouterTests")
         XCTAssertEqual(router.phase, .idle)
     }
 
@@ -1861,6 +1902,12 @@ final class MercuryRouterTests: XCTestCase {
 }
 
 // MARK: - Test doubles
+
+@MainActor
+private final class RouterNoopScreenCaptureSession: ScreenCaptureSession {
+    func start() async throws {}
+    func stop() async {}
+}
 
 @MainActor
 private final class RouterNoopVideoEncoder: VideoEncoding {

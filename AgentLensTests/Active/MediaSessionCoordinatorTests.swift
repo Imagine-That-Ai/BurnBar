@@ -6,6 +6,17 @@ import ScreenCaptureKit
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
+private enum MediaSessionCoordinatorTestFixtures {
+    static let runtimeHealth = MercuryRuntimeHealthSnapshot(
+        timestampMillis: 1_742_600_000_000,
+        cpuUsagePercent: nil,
+        batteryLevelPercent: nil,
+        isCharging: nil,
+        isLowPowerModeEnabled: false,
+        thermalState: .nominal
+    )
+}
+
 @MainActor
 final class MediaSessionCoordinatorTests: XCTestCase {
     #if canImport(ScreenCaptureKit)
@@ -80,6 +91,9 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         var encoders: [RecordingVideoEncoder] = []
         let coordinator = MediaSessionCoordinator(
             capabilityGate: AlwaysAllowMediaCapabilityGate(),
+            runtimeHealthProvider: {
+                MediaSessionCoordinatorTestFixtures.runtimeHealth
+            },
             screenCaptureFactory: { _, _ in
                 starts += 1
                 if starts == 1 {
@@ -131,6 +145,9 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         let coordinator = MediaSessionCoordinator(
             capabilityGate: gate,
             admissionRecheckIntervalNanoseconds: UInt64.max,
+            runtimeHealthProvider: {
+                MediaSessionCoordinatorTestFixtures.runtimeHealth
+            },
             screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() },
             // Keep this focused on admission revocation; virtualized CI Macs
             // can reject the real VideoToolbox encoder independently.

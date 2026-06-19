@@ -127,6 +127,7 @@ final class MercuryRouter: ObservableObject {
     ) async throws -> Void
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
     typealias FocusFollowModeApplier = @MainActor (AgentFocusFollowMode) -> Void
+    typealias LocalStreamingCapabilityProvider = @MainActor @Sendable () -> MercuryStreamingCapabilitySnapshot
 
     @Published var phase: Phase = .idle
     @Published var lastError: String?
@@ -143,6 +144,7 @@ final class MercuryRouter: ObservableObject {
     let applyFocusFollowMode: FocusFollowModeApplier?
     let maxMirrorViewers: Int
     let remoteUnlockReadiness: MacRemoteUnlockReadinessService
+    let localStreamingCapabilityProvider: LocalStreamingCapabilityProvider
 
     var mirrorSinkFactory: MirrorSinkFactory?
     /// The frame + reply sender from the most recently accepted request.
@@ -192,6 +194,9 @@ final class MercuryRouter: ObservableObject {
         startScreenShare: ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
         remoteUnlockReadiness: MacRemoteUnlockReadinessService = .shared,
+        localStreamingCapabilityProvider: @escaping LocalStreamingCapabilityProvider = {
+            MercuryRouter.cachedLocalStreamingCapabilities
+        },
         cooldownSeconds: TimeInterval = 30,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -201,6 +206,7 @@ final class MercuryRouter: ObservableObject {
         self.ensureComputerUseSession = ensureComputerUseSession
         self.applyFocusFollowMode = applyFocusFollowMode
         self.remoteUnlockReadiness = remoteUnlockReadiness
+        self.localStreamingCapabilityProvider = localStreamingCapabilityProvider
         if let startScreenShare {
             self.startScreenShare = startScreenShare
         } else {

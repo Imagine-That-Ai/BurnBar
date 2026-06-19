@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 import GRDB
 import OpenBurnBarCore
@@ -695,19 +696,45 @@ final class ProjectionChunkerTests: XCTestCase {
 
     // MARK: - Performance Characteristics Tests
 
-    func test_chunker_100ChunksCompletesQuickly() {
+    func test_chunker_largeInputCompletesQuicklyWithBoundedOutput() {
         let text = String(repeating: "Word word word. ", count: 1000)
-        let chunker = makeChunker(maxChunkCharacters: 200, minChunkCharacters: 100, overlapCharacters: 30)
+        let chunker = makeChunker(
+            maxChunkCharacters: 200,
+            minChunkCharacters: 100,
+            overlapCharacters: 30,
+            maxChunksPerDocument: 128
+        )
+        let createdAt = Date(timeIntervalSince1970: 1_742_600_000)
 
-        measure {
-            _ = chunker.makeChunks(
-                text: text,
-                sourceKind: .agentDoc,
-                sourceID: "perf-test",
-                sourceVersionID: "v1",
-                documentID: "doc-perf",
-                createdAt: Date()
-            )
+        let startedAt = CFAbsoluteTimeGetCurrent()
+        let chunks = chunker.makeChunks(
+            text: text,
+            sourceKind: .agentDoc,
+            sourceID: "perf-test",
+            sourceVersionID: "v1",
+            documentID: "doc-perf",
+            createdAt: createdAt
+        )
+        let elapsedSeconds = CFAbsoluteTimeGetCurrent() - startedAt
+
+        XCTAssertFalse(chunks.isEmpty)
+        XCTAssertLessThanOrEqual(chunks.count, 128)
+        XCTAssertLessThan(
+            elapsedSeconds,
+            1.0,
+            "Projection chunking is synchronous and must remain bounded for release app-test runs"
+        )
+        XCTAssertEqual(chunks.first?.startOffset, 0)
+        XCTAssertEqual(chunks.last?.endOffset, (text as NSString).length)
+        XCTAssertEqual(chunks.map(\.ordinal), Array(chunks.indices))
+        XCTAssertTrue(chunks.allSatisfy { !$0.text.isEmpty })
+        XCTAssertTrue(chunks.allSatisfy { $0.text.count <= chunker.maxChunkCharacters })
+
+        var previousStart = -1
+        for chunk in chunks {
+            XCTAssertGreaterThan(chunk.startOffset, previousStart)
+            XCTAssertGreaterThan(chunk.endOffset, chunk.startOffset)
+            previousStart = chunk.startOffset
         }
     }
 
