@@ -146,7 +146,8 @@ extension ControlPlaneStore {
                 bodyHash: bodyHash,
                 storageProjectID: storageProjectID,
                 kind: request.kind,
-                scope: request.scope
+                scope: request.scope,
+                excludingID: id
             )
             let winnerID = Self.memoryDedupWinnerID(
                 duplicateRows: duplicateRows,
@@ -187,6 +188,7 @@ extension ControlPlaneStore {
                     tags_json, source_path, valid_from, valid_to, superseded_by, created_at, updated_at,
                     source_kind, review_status, user_id, agent_id, run_id, app_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
                 """,
                 arguments: [
                     id,
@@ -466,6 +468,64 @@ extension ControlPlaneStore {
             )
             let citations = citationRows.compactMap(Self.memoryCitation(from:))
             return Self.memory(from: row, citations: citations)
+        }
+    }
+
+    /// Fetch the chat transcript for `threadID` as the lightweight provenance view the
+    /// extractor reasons over and the worker cites. Reads `chat_messages` from the
+    /// shared db queue (the control-plane store and the chat store share one queue), so
+    /// the worker can recompute provenance without a second store handle. Tool/system
+    /// rows are excluded: only user/assistant turns are citable provenance (G8).
+    func fetchChatTranscriptForExtraction(threadID: String) async throws -> [ChatTranscriptMessage] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, role, content, timestamp
+                FROM chat_messages
+                WHERE threadId = ? AND role IN ('user', 'assistant')
+                ORDER BY timestamp ASC, id ASC
+                """,
+                arguments: [threadID]
+            )
+            return rows.compactMap { row -> ChatTranscriptMessage? in
+                guard let id = row["id"] as? String,
+                      let role = row["role"] as? String,
+                      let content = row["content"] as? String,
+                      let authoredAt = OpenBurnBarDatabase.parseDateValue(row["timestamp"]) else {
+                    return nil
+                }
+                return ChatTranscriptMessage(id: id, role: role, body: content, authoredAt: authoredAt)
+            }
+        }
+    }
+
+    /// Fetch a single citable source message by id, scoped to the job's thread, for
+    /// worker-side provenance recomputation (PR-D1 must-fix #1/#3). Returns nil when the
+    /// message is absent or not a user/assistant turn — the caller then drops the
+    /// citation rather than fabricating provenance.
+    func fetchChatProvenanceSourceMessage(
+        threadID: String,
+        messageID: String
+    ) async throws -> ChatTranscriptMessage? {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT id, role, content, timestamp
+                FROM chat_messages
+                WHERE threadId = ? AND id = ? AND role IN ('user', 'assistant')
+                LIMIT 1
+                """,
+                arguments: [threadID, messageID]
+            ),
+                  let id = row["id"] as? String,
+                  let role = row["role"] as? String,
+                  let content = row["content"] as? String,
+                  let authoredAt = OpenBurnBarDatabase.parseDateValue(row["timestamp"]) else {
+                return nil
+            }
+            return ChatTranscriptMessage(id: id, role: role, body: content, authoredAt: authoredAt)
         }
     }
 
@@ -1156,12 +1216,14 @@ extension ControlPlaneStore {
         bodyHash: String,
         storageProjectID: String,
         kind: MemoryKind,
-        scope: MemoryScope
+        scope: MemoryScope,
+        excludingID: MemoryID
     ) throws -> [Row] {
         var predicates = [
             "m.source_kind = ?",
             "m.kind = ?",
             "m.project_id = ?",
+            "m.id <> ?",
             "m.valid_to IS NULL",
             "s.body_hash = ?",
             "s.source_kind = ?"
@@ -1170,6 +1232,7 @@ extension ControlPlaneStore {
             MemorySourceKind.chat.rawValue,
             kind.rawValue,
             storageProjectID,
+            excludingID,
             bodyHash,
             MemorySourceKind.chat.rawValue
         ]
@@ -1511,20 +1574,48 @@ actor MemoryExtractionWorker {
     }
 
     private func drainClaimedJob() async throws -> Bool {
+        // Kill switch checked PRE-CLAIM so a disabled fleet never claims (and never
+        // burns an attempt on) a job. Re-checked per-record below.
         guard authorityWritesEnabled() else { return false }
         let now = nowProvider()
         guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return false }
         do {
+            // The extractor performs the LLM round-trip. The worker actor holds NO
+            // database write transaction across this call (PR-D1 must-fix:
+            // lock-not-held-across-LLM) — the LLM latency is fully outside any DB lock.
             let requests = try await extractor(job)
-            try Self.preflight(requests)
+
             for (index, request) in requests.enumerated() {
+                // G7 candidate-DROP gate (PR-D1 must-fix #4): drop a secret/PII-bearing
+                // candidate instead of failing the whole batch, so one poisoned
+                // candidate cannot starve the rest. `.reject` (fail-closed) is also what
+                // an unavailable corpus returns, so a missing corpus drops everything.
+                guard case .allow = MemorySecretPIIGate.evaluate(request.text, policy: .reject) else {
+                    continue
+                }
+
                 let memoryID = Self.memoryID(for: job, index: index)
+                // Fast-path idempotency check. The durable write itself is idempotent
+                // (`agent_memories` INSERT is `ON CONFLICT(id) DO NOTHING`), so a race
+                // past this check is a no-op, not a crash; this only avoids redundant
+                // work on the common retry path.
                 if try await store.fetchChatMemoryAuthorityRecord(id: memoryID) != nil {
                     continue
                 }
+
+                // Worker is the SOLE provenance authority (PR-D1 must-fix #1/#3): rebuild
+                // every citation from the fetched source message, ignoring whatever the
+                // extractor/model supplied. Unresolvable citations are dropped, never
+                // fabricated.
+                let authoritativeCitations = try await recomputeProvenance(
+                    for: request,
+                    job: job
+                )
+
                 var quarantined = request
                 quarantined.scope = job.scope
                 quarantined.reviewStatus = .quarantined
+                quarantined.citations = authoritativeCitations
                 _ = try await store.addChatMemoryAuthorityRecord(
                     quarantined,
                     id: memoryID,
@@ -1545,6 +1636,64 @@ actor MemoryExtractionWorker {
         }
     }
 
+    /// Recompute authoritative provenance for `request` from the job + the fetched
+    /// source message. The model's `citation.messageID` is treated as a LOOKUP KEY
+    /// ONLY (PR-D1 must-fix #1): a citation whose message id is not a real user/assistant
+    /// turn on the job's thread is DROPPED, never fabricated. `contentHash` is the
+    /// SHA-256 of the cited SOURCE MESSAGE body (must-fix #3) — the thing the citation
+    /// points at — not the extracted memory body. `crossDeviceHMAC` is a v1 non-crypto,
+    /// content-derived provenance tag (must-fix #2): memory stays LOCAL-ONLY until a real
+    /// HMAC key lifecycle exists, so this tag is never an authenticated cross-device
+    /// identity and never leaves the device.
+    private func recomputeProvenance(
+        for request: MemoryAddRequest,
+        job: ControlPlaneStore.MemoryExtractionJob
+    ) async throws -> [MemoryCitation] {
+        // Resolve the distinct claimed message ids the model proposed.
+        var seen = Set<String>()
+        var claimedIDs: [String] = []
+        for citation in request.citations {
+            guard let messageID = citation.messageID, messageID.isEmpty == false else { continue }
+            if seen.insert(messageID).inserted {
+                claimedIDs.append(messageID)
+            }
+        }
+
+        var citations: [MemoryCitation] = []
+        for (occurrence, messageID) in claimedIDs.enumerated() {
+            guard let source = try await store.fetchChatProvenanceSourceMessage(
+                threadID: job.threadID,
+                messageID: messageID
+            ) else {
+                // Lookup miss: the model named a message that is not a citable turn on
+                // this thread. Drop the citation (never fabricate provenance).
+                continue
+            }
+
+            let contentHash = Self.provenanceContentHash(source.body)
+            let crossDeviceHMAC = Self.provenanceLocalTag(
+                threadLogicalID: job.threadLogicalID,
+                messageID: source.id,
+                occurrence: occurrence,
+                contentHash: contentHash
+            )
+            citations.append(
+                MemoryCitation(
+                    id: "\(source.id)#\(occurrence)",
+                    threadLogicalID: job.threadLogicalID,
+                    messageID: source.id,
+                    role: source.role,
+                    authoredAt: source.authoredAt,
+                    contentHash: contentHash,
+                    occurrence: occurrence,
+                    crossDeviceHMAC: crossDeviceHMAC,
+                    citationState: .live
+                )
+            )
+        }
+        return citations
+    }
+
     private static func failureLabel(for error: Error) -> String {
         if case .secretRejected(let labels) = error as? ControlPlaneStore.ChatMemoryAuthorityError {
             return "secret_rejected:\(labels.joined(separator: ","))"
@@ -1556,17 +1705,36 @@ actor MemoryExtractionWorker {
         "memory-\(job.id)-\(index)"
     }
 
-    private static func preflight(_ requests: [MemoryAddRequest]) throws {
-        // PR-C1 must-fix #5: this is a cheap, non-scanning admission early-out only.
-        // The authoritative secret/PII scan is unavoidable at
-        // `addChatMemoryAuthorityRecord` (which every persisted record passes
-        // through). Re-running the full corpus scan here would mean a second
-        // base64/hex decode pass over every candidate on the hot path for no
-        // safety gain, so preflight is reduced to the empty/length guard that the
-        // authority path would otherwise reach only after work.
-        for request in requests {
-            let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard body.isEmpty == false else { throw ControlPlaneStore.ChatMemoryAuthorityError.emptyBody }
-        }
+    /// SHA-256 hex of the cited source message body. The citation binds to the source
+    /// text, so a later edit/deletion of that message is detectable.
+    static func provenanceContentHash(_ sourceBody: String) -> String {
+        let bytes = SHA256.hash(data: Data(sourceBody.utf8))
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// v1 non-crypto provenance tag. Content-derived (stable for identical source
+    /// content) but explicitly NOT an authenticated HMAC: it is NOT derived from the
+    /// idempotency key (that key is promptVersion-salted and is the wrong envelope) nor
+    /// from any secret key. The `v1-local:` prefix marks it as the placeholder that
+    /// gates cloud-sync — memory stays local-only until a real key lifecycle replaces
+    /// this (integrated build plan §5.2).
+    static func provenanceLocalTag(
+        threadLogicalID: String,
+        messageID: String,
+        occurrence: Int,
+        contentHash: String
+    ) -> String {
+        let material = "\(threadLogicalID)|\(messageID)|\(occurrence)|\(contentHash)"
+        let digest = SHA256.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "v1-local:\(digest)"
     }
 }
+
+// MARK: - Extractor read seam
+
+// `ControlPlaneStore` already exposes `fetchChatTranscriptForExtraction(threadID:)`
+// against the shared db queue, so satisfying the extractor's transcript seam is a
+// marker conformance. The extractor and the worker therefore read the transcript from
+// the SAME store handle the worker uses to persist, which is what lets the worker be
+// the sole provenance authority without a second store.
+extension ControlPlaneStore: ChatExtractionTranscriptReading {}

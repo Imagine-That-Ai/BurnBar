@@ -1848,7 +1848,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(status, .succeeded)
     }
 
-    func test_memoryExtractionWorkerPreflightsBatchBeforeWritingSecretBearingRequest() async throws {
+    func test_memoryExtractionWorkerDropsSecretBearingCandidateButKeepsSafeOnes() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -1869,19 +1869,31 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             authorityWritesEnabled: { true },
             extractor: { job in
             [
-                MemoryAddRequest(text: "Safe first memory should not be persisted.", scope: job.scope),
-                MemoryAddRequest(text: "Secret sk-ant-1234567890abcdef1234567890 must reject the whole batch.", scope: job.scope)
+                MemoryAddRequest(text: "Safe first memory should persist.", scope: job.scope),
+                MemoryAddRequest(
+                    text: "Secret sk-ant-1234567890abcdef1234567890 must be dropped, not poison the batch.",
+                    scope: job.scope
+                ),
+                MemoryAddRequest(text: "Safe third memory should persist.", kind: .preference, scope: job.scope)
             ]
         })
 
+        // PR-D1 must-fix #4: the G7 gate is a per-candidate DROP filter — one
+        // secret-bearing candidate is dropped, the safe candidates persist, and the
+        // job SUCCEEDS (a single bad candidate does not fail the whole batch).
         let drained = try await worker.drainOne()
-        XCTAssertFalse(drained)
-        let count = try await queue.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        XCTAssertTrue(drained)
+        let rows = try await queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT id FROM agent_memories WHERE source_kind = 'chat' ORDER BY id"
+            )
         }
-        XCTAssertEqual(count, 0)
+        // Indices 0 and 2 survive; index 1 (the secret) is dropped. The deterministic
+        // ids preserve the original candidate index so a later retry stays idempotent.
+        XCTAssertEqual(rows.map { $0["id"] as? String }, ["memory-\(jobID)-0", "memory-\(jobID)-2"])
         let status = try await store.memoryExtractionJobStatus(id: jobID)
-        XCTAssertEqual(status, .failed)
+        XCTAssertEqual(status, .succeeded)
     }
 
     func test_memoryExtractionWorkerRespectsAuthorityWriteKillSwitch() async throws {

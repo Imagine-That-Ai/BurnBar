@@ -1,0 +1,501 @@
+import XCTest
+import CryptoKit
+import GRDB
+import OpenBurnBarCore
+@testable import OpenBurnBar
+
+// MARK: - PR-D1 LLM Extractor tests
+//
+// Proves the six PR-D1 must-fixes of the memory-activation build plan:
+//   1. The WORKER (not the model) is the sole provenance authority: it recomputes
+//      `content_hash` from the cited SOURCE MESSAGE body and stamps a v1 local
+//      `xdevice_hmac`, ignoring whatever the extractor/model supplied.
+//   2. `xdevice_hmac` is a v1 NON-CRYPTO, content-derived `v1-local:` tag (memory is
+//      local-only), never the promptVersion-salted idempotency key.
+//   3. `content_hash` binds the SOURCE message body, not the extracted memory body.
+//   4. The G7 gate is a per-candidate DROP filter, not a batch-failing throw.
+//   5. Total extractor wall-clock is strictly below the 15-min job lease.
+//   6. (Local-only posture; cloud gates are exercised in the cost-cap test.)
+//
+// The whole feature stays OFF by default; these tests force the kill switches ON
+// explicitly to exercise the dormant machinery.
+@MainActor
+final class MemoryExtractionExtractorTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        MemoryExtractionExtractorHTTPStub.reset()
+        URLProtocol.registerClass(MemoryExtractionExtractorHTTPStub.self)
+    }
+
+    override func tearDown() {
+        URLProtocol.unregisterClass(MemoryExtractionExtractorHTTPStub.self)
+        MemoryExtractionExtractorHTTPStub.reset()
+        super.tearDown()
+    }
+
+    // MARK: - Parser
+
+    func test_parser_decodesStrictJSONAndValidatesCandidates() {
+        let json = """
+        {"memories":[
+          {"text":"User prefers dark mode.","kind":"preference","confidence":0.9,"messageId":"m1"},
+          {"text":"","kind":"fact","confidence":0.5,"messageId":"m2"},
+          {"text":"User lives in Berlin.","kind":"profile","confidence":2.5,"messageId":"m3"}
+        ]}
+        """
+        let candidates = MemoryExtractionParser.parse(json, maxCandidates: 10)
+        // The empty-text candidate is dropped; the over-range confidence is clamped.
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertEqual(candidates[0].text, "User prefers dark mode.")
+        XCTAssertEqual(candidates[0].kind, .preference)
+        XCTAssertEqual(candidates[0].confidence, 0.9, accuracy: 0.0001)
+        XCTAssertEqual(candidates[0].claimedMessageID, "m1")
+        XCTAssertEqual(candidates[1].kind, .profile)
+        XCTAssertEqual(candidates[1].confidence, 1.0, accuracy: 0.0001)
+    }
+
+    func test_parser_recoversJSONEmbeddedInProse() {
+        let body = "Sure! Here is the JSON:\n{\"memories\":[{\"text\":\"Likes tea.\",\"messageId\":\"x\"}]}\nDone."
+        let candidates = MemoryExtractionParser.parse(body, maxCandidates: 10)
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].text, "Likes tea.")
+        XCTAssertEqual(candidates[0].kind, .fact) // default when omitted
+    }
+
+    func test_parser_returnsEmptyForGarbageOrEmpty() {
+        XCTAssertTrue(MemoryExtractionParser.parse("not json at all", maxCandidates: 10).isEmpty)
+        XCTAssertTrue(MemoryExtractionParser.parse("", maxCandidates: 10).isEmpty)
+        XCTAssertTrue(MemoryExtractionParser.parse("{\"memories\":[]}", maxCandidates: 10).isEmpty)
+    }
+
+    func test_parser_respectsCandidateCap() {
+        let json = """
+        {"memories":[
+          {"text":"a","messageId":"1"},{"text":"b","messageId":"2"},{"text":"c","messageId":"3"}
+        ]}
+        """
+        XCTAssertEqual(MemoryExtractionParser.parse(json, maxCandidates: 2).count, 2)
+        XCTAssertEqual(MemoryExtractionParser.parse(json, maxCandidates: 0).count, 0)
+    }
+
+    // MARK: - Prompt builder
+
+    func test_promptBuilder_boundsTranscriptAndKeepsRecentLines() {
+        let lines = (0 ..< 50).map { index in
+            MemoryExtractionPromptBuilder.TranscriptLine(
+                messageID: "m\(index)",
+                role: index.isMultiple(of: 2) ? "user" : "assistant",
+                text: String(repeating: "x", count: 40)
+            )
+        }
+        let rendered = MemoryExtractionPromptBuilder.renderTranscript(lines: lines, maxChars: 300)
+        XCTAssertLessThanOrEqual(rendered.count, 300)
+        // The newest line must survive truncation (extraction triggers on the terminal turn).
+        XCTAssertTrue(rendered.contains("[m49]"))
+        XCTAssertFalse(rendered.contains("[m0]"))
+    }
+
+    func test_promptBuilder_embedsUntrustedFenceAndNoFabricateRule() {
+        let lines = [
+            MemoryExtractionPromptBuilder.TranscriptLine(messageID: "m1", role: "user", text: "Hi")
+        ]
+        let prompt = MemoryExtractionPromptBuilder.buildPrompt(lines: lines, maxChars: 4_000)
+        XCTAssertTrue(prompt.contains("BEGIN TRANSCRIPT"))
+        XCTAssertTrue(prompt.contains("END TRANSCRIPT"))
+        XCTAssertTrue(prompt.contains("UNTRUSTED"))
+        XCTAssertTrue(prompt.contains("Do not invent ids"))
+        XCTAssertTrue(prompt.contains("[m1] user: Hi"))
+    }
+
+    // MARK: - Wall-clock deadline (must-fix #5)
+
+    func test_deadline_isStrictlyBelowJobLease() {
+        XCTAssertLessThan(
+            ChatTranscriptExtractor.maxWallClock,
+            ControlPlaneStore.MemoryExtractionJob.defaultLeaseDuration
+        )
+    }
+
+    func test_deadline_returnsFastResultAndThrowsOnTimeout() async throws {
+        let fast = try await withThrowingDeadline(seconds: 5) { 42 }
+        XCTAssertEqual(fast, 42)
+
+        do {
+            _ = try await withThrowingDeadline(seconds: 0.05) { () async throws -> Int in
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return 0
+            }
+            XCTFail("Expected deadline to fire")
+        } catch let error as MemoryExtractionDeadlineError {
+            XCTAssertEqual(error.seconds, 0.05, accuracy: 0.0001)
+        }
+    }
+
+    // MARK: - Worker provenance recomputation (must-fix #1/#3)
+
+    func test_worker_recomputesProvenanceFromSourceMessageIgnoringModelSuppliedHashes() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_100_000)
+
+        let threadID = "thread-prov"
+        let sourceID = "msg-source-1"
+        let sourceBody = "I always deploy on Fridays."
+        try await insertChatMessage(queue, threadID: threadID, id: sourceID, role: "assistant", body: sourceBody, at: now)
+
+        let intent = ExtractionIntent(
+            threadID: threadID,
+            threadLogicalID: "thread-logical-prov",
+            messageID: sourceID,
+            scope: MemoryScope(appID: "openburnbar"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "prov-idem"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+
+        // The extractor (stand-in) supplies a citation with DELIBERATELY WRONG hashes —
+        // the worker must ignore them and recompute from the source message body.
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { true },
+            extractor: { job in
+                [
+                    MemoryAddRequest(
+                        text: "User deploys on Fridays.",
+                        kind: .preference,
+                        scope: job.scope,
+                        confidence: 0.8,
+                        citations: [
+                            MemoryCitation(
+                                id: "model-supplied-id",
+                                threadLogicalID: "model-supplied-logical",
+                                messageID: sourceID,
+                                role: "user", // wrong; source row is assistant
+                                authoredAt: Date(timeIntervalSince1970: 0),
+                                contentHash: "MODEL-FORGED-HASH",
+                                crossDeviceHMAC: "MODEL-FORGED-HMAC",
+                                citationState: .live
+                            )
+                        ],
+                        reviewStatus: .approved
+                    )
+                ]
+            }
+        )
+
+        XCTAssertTrue(try await worker.drainOne())
+
+        let row = try await queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT content_hash, xdevice_hmac, role, thread_logical_id, message_id
+                FROM memory_provenance WHERE memory_id = ?
+                """,
+                arguments: ["memory-\(jobID)-0"]
+            )
+        }
+        let expectedHash = SHA256.hash(data: Data(sourceBody.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(row?["content_hash"] as? String, expectedHash)
+        XCTAssertNotEqual(row?["content_hash"] as? String, "MODEL-FORGED-HASH")
+        XCTAssertTrue((row?["xdevice_hmac"] as? String ?? "").hasPrefix("v1-local:"))
+        XCTAssertNotEqual(row?["xdevice_hmac"] as? String, "MODEL-FORGED-HMAC")
+        // Role + logical id come from the authoritative source/job, not the model.
+        XCTAssertEqual(row?["role"] as? String, "assistant")
+        XCTAssertEqual(row?["thread_logical_id"] as? String, "thread-logical-prov")
+    }
+
+    func test_worker_dropsCitationWhenMessageIdNotInTranscriptButKeepsFact() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_100_100)
+
+        let intent = ExtractionIntent(
+            threadID: "thread-missing",
+            threadLogicalID: "thread-logical-missing",
+            messageID: "ghost",
+            scope: MemoryScope(appID: "openburnbar"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "missing-idem"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { true },
+            extractor: { job in
+                [
+                    MemoryAddRequest(
+                        text: "Fact with an unresolvable citation.",
+                        scope: job.scope,
+                        citations: [
+                            MemoryCitation(
+                                id: "c",
+                                threadLogicalID: "tl",
+                                messageID: "does-not-exist",
+                                role: "assistant",
+                                authoredAt: now,
+                                contentHash: "x",
+                                crossDeviceHMAC: "y"
+                            )
+                        ]
+                    )
+                ]
+            }
+        )
+
+        XCTAssertTrue(try await worker.drainOne())
+        let provenanceCount = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM memory_provenance WHERE memory_id = ?",
+                arguments: ["memory-\(jobID)-0"]
+            ) ?? -1
+        }
+        // Citation dropped (never fabricated)...
+        XCTAssertEqual(provenanceCount, 0)
+        // ...but the fact itself still persisted (quarantined, no provenance).
+        let factCount = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM agent_memories WHERE id = ?",
+                arguments: ["memory-\(jobID)-0"]
+            ) ?? -1
+        }
+        XCTAssertEqual(factCount, 1)
+    }
+
+    // MARK: - End-to-end extractor closure with a stubbed local HTTP model
+
+    func test_extractor_endToEnd_dropsSecretCandidateAndThreadsResolvedCitation() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_100_200)
+
+        let threadID = "thread-e2e"
+        let sourceID = "msg-e2e-1"
+        try await insertChatMessage(
+            queue,
+            threadID: threadID,
+            id: sourceID,
+            role: "user",
+            body: "Remember I prefer Swift over Python.",
+            at: now
+        )
+
+        // Stub the OpenAI-compatible endpoint to return one safe + one secret candidate.
+        MemoryExtractionExtractorHTTPStub.responseJSON = """
+        {"memories":[
+          {"text":"User prefers Swift over Python.","kind":"preference","confidence":0.9,"messageId":"\(sourceID)"},
+          {"text":"key sk-ant-deadbeefdeadbeefdeadbeef0001","kind":"fact","confidence":0.9,"messageId":"\(sourceID)"}
+        ]}
+        """
+
+        let settings = MemoryExtractionSettingsSnapshot(
+            providerOrder: [.mlx], // OpenAI-compatible path; the stub answers /chat/completions
+            localBaseURL: "http://127.0.0.1:11434",
+            localModel: "",
+            mlxBaseURL: "http://127.0.0.1:9999",
+            mlxModel: "test-model",
+            minimaxModel: "",
+            openRouterPrimaryModel: "",
+            openRouterFallbackModel: "",
+            zaiModel: "",
+            ollamaBaseURL: "",
+            ollamaModel: "",
+            requestTimeoutSeconds: 5,
+            maxPromptChars: 4_000,
+            maxOutputTokens: 256,
+            dailyCapUSD: 100,
+            retryCount: 0,
+            maxCandidatesPerJob: 8,
+            promptVersion: "memory-extract-v1"
+        )
+        let extractor = ChatTranscriptExtractor(
+            transcriptReader: store,
+            spendReader: ZeroSpendReader(),
+            keyResolver: MemoryExtractionAPIKeyResolver(providerAPIKeyStore: ProviderAPIKeyStore()),
+            settingsProvider: { settings }
+        )
+
+        let job = ControlPlaneStore.MemoryExtractionJob(
+            id: "memory-extraction-e2e",
+            idempotencyKey: "e2e-idem",
+            threadID: threadID,
+            threadLogicalID: "thread-logical-e2e",
+            messageID: sourceID,
+            promptVersion: "memory-extract-v1",
+            scope: MemoryScope(appID: "openburnbar"),
+            status: .running,
+            attempts: 1,
+            lastError: nil,
+            notBefore: nil,
+            leaseExpiresAt: now.addingTimeInterval(900),
+            createdAt: now,
+            updatedAt: now
+        )
+
+        let requests = try await extractor.extract(job)
+        // The secret candidate is dropped by the G7 gate; only the safe one survives.
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests[0].text, "User prefers Swift over Python.")
+        XCTAssertEqual(requests[0].kind, .preference)
+        // The claimed (and transcript-present) message id is threaded through for the
+        // worker to recompute provenance against; hashes are placeholders here.
+        XCTAssertEqual(requests[0].citations.count, 1)
+        XCTAssertEqual(requests[0].citations[0].messageID, sourceID)
+        XCTAssertTrue(MemoryExtractionExtractorHTTPStub.requestCount >= 1)
+    }
+
+    func test_extractor_returnsEmptyWhenTranscriptMissingTerminalMessage() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_100_300)
+        // No chat_messages inserted → empty transcript → benign empty, no model call.
+        MemoryExtractionExtractorHTTPStub.responseJSON = "{\"memories\":[]}"
+
+        let settings = Self.minimalLocalSettings
+        let extractor = ChatTranscriptExtractor(
+            transcriptReader: store,
+            spendReader: ZeroSpendReader(),
+            keyResolver: MemoryExtractionAPIKeyResolver(providerAPIKeyStore: ProviderAPIKeyStore()),
+            settingsProvider: { settings }
+        )
+        let job = ControlPlaneStore.MemoryExtractionJob(
+            id: "memory-extraction-empty",
+            idempotencyKey: "empty-idem",
+            threadID: "thread-empty",
+            threadLogicalID: "tl",
+            messageID: "missing",
+            promptVersion: "memory-extract-v1",
+            scope: MemoryScope(appID: "openburnbar"),
+            status: .running,
+            attempts: 1,
+            lastError: nil,
+            notBefore: nil,
+            leaseExpiresAt: now.addingTimeInterval(900),
+            createdAt: now,
+            updatedAt: now
+        )
+        let requests = try await extractor.extract(job)
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(MemoryExtractionExtractorHTTPStub.requestCount, 0)
+    }
+
+    // MARK: - Helpers
+
+    private static let minimalLocalSettings = MemoryExtractionSettingsSnapshot(
+        providerOrder: [.mlx],
+        localBaseURL: "",
+        localModel: "",
+        mlxBaseURL: "http://127.0.0.1:9999",
+        mlxModel: "test-model",
+        minimaxModel: "",
+        openRouterPrimaryModel: "",
+        openRouterFallbackModel: "",
+        zaiModel: "",
+        ollamaBaseURL: "",
+        ollamaModel: "",
+        requestTimeoutSeconds: 5,
+        maxPromptChars: 4_000,
+        maxOutputTokens: 256,
+        dailyCapUSD: 100,
+        retryCount: 0,
+        maxCandidatesPerJob: 8,
+        promptVersion: "memory-extract-v1"
+    )
+
+    private func insertChatMessage(
+        _ queue: DatabaseQueue,
+        threadID: String,
+        id: String,
+        role: String,
+        body: String,
+        at date: Date
+    ) async throws {
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
+                arguments: [threadID, date, date]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO chat_messages (id, role, content, timestamp, threadId)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [id, role, body, date, threadID]
+            )
+        }
+    }
+}
+
+// MARK: - Test doubles
+
+/// Always reports zero cloud spend so the cap never blocks the stubbed call.
+private struct ZeroSpendReader: SummaryDailySpendReading {
+    func summarySpendToday(now: Date) async throws -> Double { 0 }
+}
+
+/// `URLProtocol` registered on `URLSession.shared` that answers the OpenAI-compatible
+/// `/chat/completions` endpoint with a canned assistant message wrapping
+/// `responseJSON`. Keeps the extractor end-to-end test hermetic (no real network).
+private final class MemoryExtractionExtractorHTTPStub: URLProtocol {
+    private static let lock = NSLock()
+    private static var _requestCount = 0
+    private static var _responseJSON = "{\"memories\":[]}"
+
+    static var requestCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _requestCount
+    }
+
+    static var responseJSON: String {
+        get { lock.lock(); defer { lock.unlock() }; return _responseJSON }
+        set { lock.lock(); _responseJSON = newValue; lock.unlock() }
+    }
+
+    static func reset() {
+        lock.lock(); _requestCount = 0; _responseJSON = "{\"memories\":[]}"; lock.unlock()
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        request.url?.path.contains("chat/completions") ?? false
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.lock.lock(); Self._requestCount += 1; let json = Self._responseJSON; Self.lock.unlock()
+
+        let escaped = json
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let envelope = """
+        {"choices":[{"message":{"role":"assistant","content":"\(escaped)"}}]}
+        """
+        let data = Data(envelope.utf8)
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "http://127.0.0.1")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
