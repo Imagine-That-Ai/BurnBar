@@ -9,14 +9,26 @@ import Foundation
 // in the worker + `ChatTranscriptExtractor`; this type stays MainActor-isolated so it can
 // be observed and so the kill switch is updated synchronously from the UI.
 //
-// THE FEATURE SHIPS OFF. Extraction is gated by TWO independent fail-closed levers, both
-// of which must allow before any work happens:
+// THE FEATURE SHIPS OFF. Durable writes are gated by TWO independent fail-closed levers.
+// The worker's authority closure is the AND of both, so NO durable `agent_memories` row is
+// written until BOTH allow:
 //   1. `settingsManager.memoryExtractionEnabled` — the combined G4 gate (user toggle AND
-//      Firebase Remote Config fleet kill switch). The engine mirrors this into a
-//      `Sendable` atomic (`MemoryExtractionKillSwitch`) that the worker reads off-main.
-//   2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, false) — the
-//      go-live switch, enforced inside the worker per-record. Human-owned.
-// This engine flips NOTHING on; it only reflects whatever those levers currently say.
+//      Firebase Remote Config fleet kill switch; DEFAULTS TRUE). The engine mirrors this
+//      into a `Sendable` atomic (`MemoryExtractionKillSwitch`) the worker reads off-main.
+//      This is the instant fleet kill; it gates whether the LLM round-trip runs at all.
+//   2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, DEFAULTS
+//      FALSE) — the human-owned go-live switch. Threaded through `init` and AND-ed into
+//      the worker's authority closure (PR-D FIX #1). Because it defaults false, durable
+//      writes stay blocked EVEN WHEN extraction is enabled: the loop may claim + drain +
+//      run the model, but `recomputeProvenance` → `addChatMemoryAuthorityRecord(enabled:)`
+//      is called with `false`, which throws `.disabled` and persists nothing.
+// This engine flips NOTHING on; it only reflects whatever those two levers currently say.
+//
+// WHY THE AND IS REQUIRED (the bug this FIX closes): lever #1 defaults TRUE, so wiring the
+// worker gate to `{ killSwitch.isAllowed() }` alone would make durable writes depend ONLY
+// on the default-true extraction toggle — the feature would ship ON. The static default-
+// false go-live flag is the second, human-owned lever; it MUST be AND-ed in so that
+// enabling extraction (to observe the loop) does not by itself enable durable writes.
 //
 // PR-D2 must-fixes folded in:
 //   #1 The pump loops on the worker's tri-state `DrainOutcome`, NOT a `Bool`, so one
@@ -94,12 +106,20 @@ final class MemoryExtractionEngine {
     ///     writes memories to the one store — the basis for the worker being the sole
     ///     provenance authority without a second store).
     ///   - dataStore: live spend source for the cloud daily cap (fail-closed).
+    ///   - authorityWritesGoLiveEnabled: the SECOND, human-owned dormancy lever (PR-D FIX
+    ///     #1). Defaults to the static `chatMemoryAuthorityWritesEnabledByDefault` (false),
+    ///     so durable writes stay blocked until a human flips the go-live flag — EVEN WHEN
+    ///     `memoryExtractionEnabled` is true (which it is by default). It is AND-ed with the
+    ///     live kill-switch atomic in the worker's authority closure below. Exposed as a
+    ///     parameter so the gate matrix (extraction on + authority off ⇒ zero writes) is
+    ///     representable and testable.
     init(
         chatMemoryStore: ControlPlaneStore,
         dataStore: DataStore,
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
-        llmClient: MemoryExtractionLLMClient = MemoryExtractionLLMClient()
+        llmClient: MemoryExtractionLLMClient = MemoryExtractionLLMClient(),
+        authorityWritesGoLiveEnabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
     ) {
         self.chatMemoryStore = chatMemoryStore
         self.settingsManager = settingsManager
@@ -131,9 +151,14 @@ final class MemoryExtractionEngine {
 
         self.worker = MemoryExtractionWorker(
             store: chatMemoryStore,
-            // Re-establish the kill switch at the WORKER boundary (must-fix #4): the worker
-            // reads the LIVE atomic, never a cached or main-isolated value.
-            authorityWritesEnabled: { killSwitch.isAllowed() },
+            // Re-establish the kill switch at the WORKER boundary (PR-D2 must-fix #4): the
+            // worker reads the LIVE atomic, never a cached or main-isolated value. AND it
+            // with the human-owned go-live lever (PR-D FIX #1) so durable writes require
+            // BOTH the (default-true) extraction gate AND the (default-false) go-live flag.
+            // `authorityWritesGoLiveEnabled` is captured by value: it is a static go-live
+            // switch flipped by a deliberate code/config change + restart, not a per-tick
+            // toggle, so it does not need the live-atomic treatment the fleet kill needs.
+            authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled },
             extractor: extractor.makeExtractor()
         )
     }

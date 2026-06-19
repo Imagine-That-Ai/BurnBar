@@ -28,10 +28,16 @@ import Foundation
 //      `memoryExtractionEnabled` flips, which is an EARLIER switch than authority-writes.
 //
 // THE FEATURE SHIPS OFF. `startMemoryExtractionIfNeeded` is a no-op whenever the combined
-// gate `settingsManager.memoryExtractionEnabled` is false (default), and even with the gate
-// on, the worker's per-record authority guard (human-owned, default false) blocks writes.
-// This file flips nothing on; it only constructs the dormant machinery and, when both
-// levers allow, lets the existing drain run.
+// gate `settingsManager.memoryExtractionEnabled` is false — but that gate DEFAULTS TRUE, so
+// it is NOT the lever that keeps the feature dormant out of the box. The dormancy guarantee
+// comes from the SECOND, human-owned lever:
+// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, default FALSE),
+// which the engine AND-s into the worker's authority closure (PR-D FIX #1). With that flag
+// false, the worker's pre-claim guard returns idle and `addChatMemoryAuthorityRecord` is
+// called with `enabled: false` (which throws `.disabled`), so NO durable `agent_memories`
+// row is written even when extraction is enabled and the loop runs. This file flips nothing
+// on; it only constructs the dormant machinery and, when BOTH levers allow, lets the
+// existing drain run.
 extension OpenBurnBarApp {
 
     /// Bundle of the memory services that share one `ControlPlaneStore`. Built once in
@@ -78,9 +84,11 @@ extension OpenBurnBarApp {
     /// Start the memory-extraction drain loop, if the gate currently allows. Called from
     /// `startLiveServicesIfNeeded` (already behind `shouldUseTestStubScene`, so it never
     /// runs under the test-stub scene). A no-op when the combined kill switch is off — and
-    /// even when it is on, the worker's per-record authority guard (default off) blocks any
-    /// durable write. `launchDrain()` itself re-reads the live gate and returns immediately
-    /// when disabled, so this is safe to call unconditionally on startup.
+    /// even when extraction IS enabled, the worker's authority closure (the AND of the live
+    /// kill switch AND the human-owned go-live flag, default OFF — PR-D FIX #1) blocks every
+    /// durable write, so the loop can run while nothing is persisted. `launchDrain()` itself
+    /// re-reads the live gate and returns immediately when extraction is disabled, so this
+    /// is safe to call unconditionally on startup.
     @MainActor
     func startMemoryExtractionIfNeeded(context: OpenBurnBarRuntimeContext) {
         guard let engine = context.memoryExtractionEngine else { return }

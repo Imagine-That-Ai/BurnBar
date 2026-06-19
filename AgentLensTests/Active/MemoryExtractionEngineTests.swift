@@ -165,6 +165,119 @@ final class MemoryExtractionEngineTests: XCTestCase {
         XCTAssertEqual(bodyCount, 1)
     }
 
+    // MARK: - Worker-boundary G7 DROP gate (PR-D FIX #4): defense-in-depth
+    //
+    // The extractor has its OWN candidate pre-filter, but the design leans on the WORKER's
+    // G7 DROP gate as the last line of defense: even if a secret-bearing candidate reaches
+    // `drainClaimedJob` (a buggy/bypassed/prompt-injected extractor, a future refactor that
+    // drops the pre-filter), it MUST NOT be persisted, while clean siblings in the same
+    // batch DO persist. This test feeds a secret candidate DIRECTLY to the worker (the
+    // extractor closure here returns it verbatim, bypassing any pre-filter) and proves the
+    // worker drops exactly the secret and stores the clean ones — the path PR-D leaned on
+    // but left unproven.
+    func test_worker_dropsSecretCandidate_persistsCleanSiblings() async throws {
+        let (store, queue) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_900_000_600)
+
+        // The cited source message must exist so the clean candidates' provenance resolves.
+        try await insertChatMessage(
+            queue,
+            threadID: "thread-secret",
+            id: "msg-secret",
+            role: "assistant",
+            body: "Here is some context for the extracted facts.",
+            at: now
+        )
+        let jobID = try await enqueue(
+            store,
+            threadID: "thread-secret",
+            messageID: "msg-secret",
+            idempotencyKey: "idem-secret",
+            now: now
+        )
+
+        // A live-looking Anthropic key the G7 corpus flags as `anthropic-api-key`. Bypasses
+        // the extractor pre-filter entirely: the closure hands it straight to the worker.
+        let secret = "sk-ant-deadbeefdeadbeefdeadbeef0001"
+
+        func candidate(_ text: String) -> MemoryAddRequest {
+            MemoryAddRequest(
+                text: text,
+                kind: .fact,
+                scope: MemoryScope(userID: "pr-d2-user", appID: "pr-d2-app"),
+                confidence: 0.9,
+                citations: [
+                    MemoryCitation(
+                        id: "cite",
+                        threadLogicalID: "thread-secret-logical",
+                        messageID: "msg-secret",
+                        role: "assistant",
+                        authoredAt: now,
+                        // Worker recomputes provenance; these are ignored on purpose.
+                        contentHash: "ignored-by-worker",
+                        crossDeviceHMAC: "ignored-by-worker"
+                    )
+                ],
+                reviewStatus: .quarantined
+            )
+        }
+
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { true },
+            // Batch order: clean (index 0) → SECRET (index 1) → clean (index 2). The worker
+            // must drop ONLY index 1 and persist 0 and 2.
+            extractor: { _ in
+                [
+                    candidate("User prefers concise answers."),
+                    candidate("My api key is \(secret) keep it safe."),
+                    candidate("User works in the Pacific time zone.")
+                ]
+            }
+        )
+
+        let outcome = try await worker.drainNext()
+        // The job SUCCEEDS even though one candidate was dropped — a dropped secret is not a
+        // job failure; the clean facts still committed.
+        XCTAssertEqual(outcome, .drained, "the job succeeds; the secret is dropped, not failed")
+        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .succeeded)
+
+        // Index 0 and 2 persisted with their clean bodies; index 1 (the secret) did NOT.
+        let mem0 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-0")
+        let mem1 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-1")
+        let mem2 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-2")
+        XCTAssertEqual(mem0?.bodyRedacted, "User prefers concise answers.")
+        XCTAssertNil(mem1, "the secret-bearing candidate was DROPPED by the worker's G7 gate")
+        XCTAssertEqual(mem2?.bodyRedacted, "User works in the Pacific time zone.")
+
+        // Exactly two clean memories total — the secret never reached `agent_memories`.
+        let total = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
+        }
+        XCTAssertEqual(total, 2, "two clean siblings stored; the secret persisted nowhere")
+
+        // Belt-and-braces: the raw secret string appears in NO stored body — neither the
+        // redacted column on `agent_memories` nor any `memory_body_snapshots` JSON snapshot
+        // (the secret candidate is dropped BEFORE either is written).
+        let redactedHits = try await queue.read { db -> Int in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM agent_memories WHERE body_redacted LIKE ?",
+                arguments: ["%\(secret)%"]
+            ) ?? -1
+        }
+        XCTAssertEqual(redactedHits, 0, "the secret string is absent from every agent_memories row")
+        let snapshotHits = try await queue.read { db -> Int in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM memory_body_snapshots WHERE snapshot_json LIKE ?",
+                arguments: ["%\(secret)%"]
+            ) ?? -1
+        }
+        XCTAssertEqual(snapshotHits, 0, "the secret string is absent from every stored body snapshot")
+    }
+
     // MARK: - Tri-state correctness
 
     func test_drainNext_returnsClaimedButFailed_onExtractorThrow() async throws {

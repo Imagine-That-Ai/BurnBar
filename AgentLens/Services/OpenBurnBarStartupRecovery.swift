@@ -219,9 +219,12 @@ final class OpenBurnBarRuntimeContext {
 
     /// The `@MainActor` scheduler that drains the extraction outbox (PR-D2). Owned here
     /// so the start-site (`startLiveServicesIfNeeded`) and the post-commit drain hook
-    /// (`ChatSessionController`) share one engine. The whole feature ships OFF: the engine
-    /// only ever reflects the combined kill switch (`memoryExtractionEnabled`) and the
-    /// human-owned authority switch; it flips nothing on.
+    /// (`ChatSessionController`) share one engine. The whole feature ships OFF: durable
+    /// writes require BOTH the combined kill switch (`memoryExtractionEnabled`, default
+    /// TRUE) AND the human-owned go-live flag
+    /// (`chatMemoryAuthorityWritesEnabledByDefault`, default FALSE), AND-ed in the worker's
+    /// authority closure (PR-D FIX #1). The go-live flag's default-false value is what keeps
+    /// the subsystem dormant out of the box; this engine flips nothing on.
     var memoryExtractionEngine: MemoryExtractionEngine?
 
     // MARK: - Mercury Phase 8 — user-facing surfaces

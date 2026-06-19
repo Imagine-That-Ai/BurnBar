@@ -1624,11 +1624,14 @@ actor MemoryExtractionWorker {
     }
 
     private func drainClaimedJob() async throws -> DrainOutcome {
-        // Kill switch checked PRE-CLAIM so a disabled fleet never claims (and never
-        // burns an attempt on) a job. Re-checked per-record below. The closure reads
-        // the engine's live `Sendable` atomic (PR-D2 must-fix #2/#4): the kill switch
-        // is re-established at THIS worker boundary because the engine-driven path
-        // bypasses the controller's `memoryServiceForExtraction == nil` gate.
+        // Authority gate checked PRE-CLAIM so a disabled fleet (or a not-yet-gone-live
+        // subsystem) never claims (and never burns an attempt on) a job. Re-checked
+        // per-record below via the `enabled:` argument. `authorityWritesEnabled` is the
+        // AND of the engine's live `Sendable` kill-switch atomic AND the human-owned
+        // go-live flag (PR-D2 must-fix #2/#4 + PR-D FIX #1): the kill switch is
+        // re-established at THIS worker boundary because the engine-driven path bypasses
+        // the controller's `memoryServiceForExtraction == nil` gate, and the default-false
+        // go-live flag keeps durable writes blocked even when extraction is enabled.
         guard authorityWritesEnabled() else { return .idle }
         let now = nowProvider()
         guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return .idle }

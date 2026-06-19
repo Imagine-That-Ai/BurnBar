@@ -9,9 +9,12 @@ import Foundation
 //
 // All values are deliberately conservative: memory extraction is a background,
 // best-effort enrichment, not a foreground task the user waits on. The feature ships
-// OFF (gated by `settingsManager.memoryExtractionEnabled` AND
-// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == false`), so these
-// rails only matter once a human flips it on.
+// OFF: durable writes require BOTH `settingsManager.memoryExtractionEnabled` (the G4
+// gate, default TRUE) AND the human-owned go-live flag
+// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, default FALSE)
+// — the engine AND-s the two in the worker's authority closure (PR-D FIX #1). Because the
+// go-live flag defaults false, nothing is persisted out of the box even when extraction is
+// enabled; these rails only matter once a human flips that flag on.
 enum MemoryExtractionPolicy {
     /// Upper bound on transcript characters fed to the model per job (input-side
     /// bound). Smaller than summaries: a single thread's recent turns, not a backlog.
