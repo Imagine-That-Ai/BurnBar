@@ -377,6 +377,9 @@ extension ChatSessionController {
                     memoryService: memoryServiceForExtraction,
                     extractionContext: makeMemoryExtractionContext()
                 )
+                // PR-D3: the commit above (atomically) enqueued the extraction job; kick the
+                // drain so it is picked up this session. No-op when extraction is off.
+                scheduleMemoryDrainAfterCommit()
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
             }
@@ -710,6 +713,9 @@ extension ChatSessionController {
                                 memoryService: self.memoryServiceForExtraction,
                                 extractionContext: self.makeMemoryExtractionContext()
                             )
+                            // PR-D3: kick the drain for the just-enqueued extraction job
+                            // (no-op when extraction is off).
+                            self.scheduleMemoryDrainAfterCommit()
                             await self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,

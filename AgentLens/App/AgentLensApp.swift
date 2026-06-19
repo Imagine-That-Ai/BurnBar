@@ -1038,18 +1038,16 @@ struct OpenBurnBarApp: App {
             )
         }
 
-        // F-2/F-3 (PR-5): wire the real recall/extraction service. Behavior stays gated
-        // by the G4 kill switch (`settings.memoryExtractionEnabled`) inside the controller,
-        // and authority writes default off (`chatMemoryAuthorityWritesEnabledByDefault`),
-        // so this is dormant until the memory feature is enabled fleet-wide.
-        let chatMemoryService = OpenBurnBarMemoryService(
-            store: ControlPlaneStore(dbQueue: initializedStore.actor.dbQueue)
-        )
+        // PR-D3: one shared store backs the recall service + drain engine (built pre-controller).
+        let memoryServices = StartupProfiler.interval("memory_services_init") {
+            makeMemoryServices(dataStore: initializedStore, settingsManager: settings)
+        }
         let controller = StartupProfiler.interval("chat_controller_init") {
             ChatSessionController(
                 dataStore: initializedStore,
                 settingsManager: settings,
-                memoryService: chatMemoryService
+                memoryService: memoryServices.service,
+                memoryExtractionEngine: memoryServices.engine
             )
         }
         let layer = StartupProfiler.interval("operating_layer_init") {
@@ -1072,6 +1070,8 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
+        context.chatMemoryStore = memoryServices.store
+        context.memoryExtractionEngine = memoryServices.engine
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         let textExpansionRuntime = TextExpansionRuntimeController(
             dataStore: initializedStore,
@@ -1371,6 +1371,8 @@ struct OpenBurnBarApp: App {
                 context.textExpansionRuntimeController?.start()
             }
             #endif
+
+            startMemoryExtractionIfNeeded(context: context)
 
             let mirror: ICloudSessionMirrorService
             mirror = StartupProfiler.interval("icloud_mirror_init") {

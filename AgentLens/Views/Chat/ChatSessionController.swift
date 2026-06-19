@@ -155,6 +155,14 @@ final class ChatSessionController {
     /// no-op in app builds; tests inject `FakeMemoryService` to assert it fires.
     var memoryService: (any MemoryServing)?
 
+    /// PR-D3: the drain-loop scheduler, injected at construction (default nil keeps test
+    /// constructors green). After a terminal assistant commit enqueues an extraction job,
+    /// `scheduleMemoryDrainAfterCommit()` kicks this engine so the just-enqueued job is
+    /// picked up THIS session rather than waiting for the next foreground/startup drain
+    /// (must-fix #4). The engine itself re-reads the live kill switch and no-ops when the
+    /// feature is off, so holding a reference here flips nothing on.
+    var memoryExtractionEngine: MemoryExtractionEngine?
+
     /// F-3: the snippets recalled for the current/last turn, retained so the chat
     /// view can render citation affordances on the latest assistant message. v1
     /// surfaces the latest turn only; per-message citation persistence is a
@@ -190,6 +198,16 @@ final class ChatSessionController {
 
     var memoryServiceForExtraction: (any MemoryServing)? {
         settingsManager.memoryExtractionEnabled ? memoryService : nil
+    }
+
+    /// PR-D3 must-fix #4: kick the extraction drain after a terminal assistant commit has
+    /// (atomically) enqueued an extraction job, so the job is processed THIS session instead
+    /// of waiting for the next foreground/startup drain. A no-op when no engine is wired
+    /// (tests, or pre-PR-5 builds) or when the kill switch is off — `launchDrain()` re-reads
+    /// the live gate and returns immediately when extraction is disabled. Fire-and-forget;
+    /// extraction must never block or fail the chat turn.
+    func scheduleMemoryDrainAfterCommit() {
+        memoryExtractionEngine?.launchDrain()
     }
 
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
@@ -325,11 +343,13 @@ final class ChatSessionController {
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
         cliBridge: CLIBridge? = nil,
-        memoryService: (any MemoryServing)? = nil
+        memoryService: (any MemoryServing)? = nil,
+        memoryExtractionEngine: MemoryExtractionEngine? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
         self.memoryService = memoryService
+        self.memoryExtractionEngine = memoryExtractionEngine
         if let searchService {
             self.searchService = searchService
             self.searchServiceFactory = { searchService }

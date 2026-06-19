@@ -206,6 +206,24 @@ final class OpenBurnBarRuntimeContext {
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
 
+    // MARK: - Semantic memory (PR-D3 app wiring)
+    //
+    // The SINGLE shared `ControlPlaneStore` the chat-memory subsystem reads from and
+    // writes to (PR-D3 must-fix #1). The same instance backs `OpenBurnBarMemoryService`
+    // (the transactional enqueue path) AND `memoryExtractionEngine` (the drain loop), so
+    // the worker is the sole provenance authority over one store — never two scopes over
+    // the same queue. Assigned post-construction in `makeRuntimeContext` (mirrors the
+    // existing `textExpansionRuntimeController` injection), so the init signature stays
+    // unchanged.
+    var chatMemoryStore: ControlPlaneStore?
+
+    /// The `@MainActor` scheduler that drains the extraction outbox (PR-D2). Owned here
+    /// so the start-site (`startLiveServicesIfNeeded`) and the post-commit drain hook
+    /// (`ChatSessionController`) share one engine. The whole feature ships OFF: the engine
+    /// only ever reflects the combined kill switch (`memoryExtractionEnabled`) and the
+    /// human-owned authority switch; it flips nothing on.
+    var memoryExtractionEngine: MemoryExtractionEngine?
+
     // MARK: - Mercury Phase 8 — user-facing surfaces
 
     /// Live-share / file-transfer / call brain. Mounted into the
