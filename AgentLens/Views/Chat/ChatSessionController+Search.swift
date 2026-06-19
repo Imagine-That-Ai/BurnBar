@@ -187,7 +187,9 @@ extension ChatSessionController {
     /// missing/non-user/non-assistant the backend pins the tier to
     /// `.untrusted`/`.assistantDerived`; the frontend treats both as untrusted.
     func recallMemorySection(query: String, tokenBudget: Int) async -> String {
-        guard let memoryService else { return "" }
+        // Gate recall by the same G4 kill switch as extraction so a fleet kill (or the
+        // user toggle) immediately stops surfacing memories — even already-stored ones.
+        guard settingsManager.memoryExtractionEnabled, let memoryService else { return "" }
         let scope = makeMemoryExtractionContext().scope
         let request = MemoryRecallRequest(query: query, scope: scope, tokenBudget: max(tokenBudget, 1))
         let snippets: [MemorySnippet]
