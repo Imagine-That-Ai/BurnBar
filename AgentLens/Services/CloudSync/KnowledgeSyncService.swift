@@ -575,7 +575,7 @@ final class MemoryCloudSyncService: Sendable {
             forgetReceipts += 1
             sourceRefHmacsToDelete.insert(encoded.sourceRefHmac)
             for sourceRef in try await store.fetchMemorySourceReferences(matching: tombstone) {
-                sourceRefHmacsToDelete.insert(try sourceRefHmac(
+                sourceRefHmacsToDelete.insert(try Self.sourceRefHmac(
                     threadLogicalID: sourceRef.threadLogicalID,
                     messageID: sourceRef.messageID,
                     contentHash: sourceRef.contentHash,
