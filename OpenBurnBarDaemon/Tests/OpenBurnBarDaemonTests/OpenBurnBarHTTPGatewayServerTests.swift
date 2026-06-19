@@ -3957,6 +3957,66 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testClaudeCodeAnthropicRequestFailsOverWhenPrimaryOverloaded() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 529,
+            body: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"},"request_id":"req_test_overloaded"}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_claude_code_overload_failover",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "overload fallback answered"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 9,
+                "output_tokens": 3,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: [
+                "Content-Type": "application/json",
+                "X-OpenBurnBar-Client": "claude-code"
+            ],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"simulate overload"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("overload fallback answered"))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2)
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-api03-primary-key")
+        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-api03-backup-key")
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .coolingDown)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready)
+    }
+
     func testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured() async throws {
         GatewayUpstreamURLProtocol.reset()
         let harness = try GatewayHarness()
