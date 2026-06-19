@@ -165,6 +165,30 @@ extension ControlPlaneStore {
         }
     }
 
+    func fetchMemorySourceReferences(matching tombstone: MemorySourceTombstoneRecord) async throws -> [MemoryFactTombstoneSourceRef] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT p.thread_logical_id, p.message_id, p.content_hash
+                FROM memory_provenance p
+                WHERE p.thread_logical_id = ?
+                  AND (? IS NULL OR p.message_id = ?)
+                  AND (? IS NULL OR p.content_hash = ?)
+                ORDER BY p.thread_logical_id ASC, p.message_id ASC, p.content_hash ASC
+                """,
+                arguments: [
+                    tombstone.threadLogicalID,
+                    tombstone.messageID,
+                    tombstone.messageID,
+                    tombstone.contentHash,
+                    tombstone.contentHash
+                ]
+            )
+            return rows.compactMap(Self.memorySourceReference(from:))
+        }
+    }
+
     func markMemorySourceTombstoneReplicated(id: String, now: Date = Date()) async throws {
         try await dbQueue.write { db in
             try db.execute(
@@ -229,7 +253,7 @@ extension ControlPlaneStore {
                 threadLogicalID,
                 messageID,
                 contentHash,
-                reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason,
+                normalizedMemoryForgetReason(reason),
                 now
             ]
         )
@@ -270,7 +294,7 @@ extension ControlPlaneStore {
                 userID,
                 memory.id,
                 sourceRefsJSON,
-                reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason,
+                normalizedMemoryForgetReason(reason),
                 now
             ]
         )
@@ -346,5 +370,27 @@ extension ControlPlaneStore {
             reason: reason,
             createdAt: createdAt
         )
+    }
+
+    private static func memorySourceReference(from row: Row) -> MemoryFactTombstoneSourceRef? {
+        guard let threadLogicalID: String = row["thread_logical_id"],
+              let contentHash: String = row["content_hash"] else {
+            return nil
+        }
+        return MemoryFactTombstoneSourceRef(
+            threadLogicalID: threadLogicalID,
+            messageID: row["message_id"],
+            contentHash: contentHash
+        )
+    }
+
+    private static func normalizedMemoryForgetReason(_ reason: String) -> String {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed {
+        case "user_delete", "review_status_quarantined", "review_status_rejected", "clear_history", "gc_30d":
+            return trimmed
+        default:
+            return "unknown"
+        }
     }
 }

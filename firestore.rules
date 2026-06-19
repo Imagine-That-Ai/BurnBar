@@ -2587,6 +2587,7 @@ service cloud.firestore {
           request.resource.data.sealedMemory,
           cloudVaultAADContext(userId, "memory_facts", memoryDocId, "sealedMemory")
         )
+        && request.resource.data.sealedMemory.schemaVersion >= 2
         && request.resource.data.sourceRefHmacs is list
         && request.resource.data.sourceRefHmacs.size() <= 50
         && request.resource.data.citationCount is int

@@ -562,6 +562,8 @@ final class MemoryCloudSyncService: Sendable {
             )
             try await store.markMemoryFactTombstoneReplicated(id: tombstone.id, now: now)
         }
+        var sourceRefHmacsToDelete = Set<String>()
+        var replicatedSourceTombstoneIDs: [String] = []
         for tombstone in try await store.fetchPendingMemorySourceTombstones(userID: uid) {
             let encoded = try Self.encodeForgetReceipt(
                 tombstone: tombstone,
@@ -571,11 +573,25 @@ final class MemoryCloudSyncService: Sendable {
             )
             try await receiptCollection.document(encoded.docID).setData(encoded.data, merge: true)
             forgetReceipts += 1
+            sourceRefHmacsToDelete.insert(encoded.sourceRefHmac)
+            for sourceRef in try await store.fetchMemorySourceReferences(matching: tombstone) {
+                sourceRefHmacsToDelete.insert(try sourceRefHmac(
+                    threadLogicalID: sourceRef.threadLogicalID,
+                    messageID: sourceRef.messageID,
+                    contentHash: sourceRef.contentHash,
+                    vaultKey: vaultKey
+                ))
+            }
+            replicatedSourceTombstoneIDs.append(tombstone.id)
+        }
+        if !sourceRefHmacsToDelete.isEmpty {
             deletedFacts += try await Self.deleteCloudFacts(
-                matchingSourceRefHmac: encoded.sourceRefHmac,
+                matchingSourceRefHmacs: sourceRefHmacsToDelete,
                 from: factCollection
             )
-            try await store.markMemorySourceTombstoneReplicated(id: tombstone.id, now: now)
+        }
+        for id in replicatedSourceTombstoneIDs {
+            try await store.markMemorySourceTombstoneReplicated(id: id, now: now)
         }
 
         return MemoryCloudSyncResult(
@@ -624,7 +640,9 @@ final class MemoryCloudSyncService: Sendable {
             )
         }
         var seenSourceRefs = Set<String>()
-        let sourceRefHmacs = rawSourceRefHmacs.filter { seenSourceRefs.insert($0).inserted }
+        let sourceRefHmacs = Array(rawSourceRefHmacs
+            .filter { seenSourceRefs.insert($0).inserted }
+            .prefix(50))
 
         return (
             docID,
@@ -637,7 +655,7 @@ final class MemoryCloudSyncService: Sendable {
                 "reviewStatus": MemoryReviewStatus.approved.rawValue,
                 "sealedMemory": try CloudVaultCrypto.firestoreDictionary(sealed),
                 "sourceRefHmacs": sourceRefHmacs,
-                "citationCount": memory.citations.count,
+                "citationCount": min(memory.citations.count, 50),
                 "validFrom": memory.validFrom,
                 "updatedAt": memory.updatedAt,
                 "replicatedAt": now
@@ -666,7 +684,7 @@ final class MemoryCloudSyncService: Sendable {
                 "receiptID": docID,
                 "schemaVersion": 1,
                 "sourceRefHmac": sourceRefHmac,
-                "reason": tombstone.reason,
+                "reason": normalizedForgetReason(tombstone.reason),
                 "createdAt": tombstone.createdAt,
                 "replicatedAt": now
             ]
@@ -690,7 +708,9 @@ final class MemoryCloudSyncService: Sendable {
             )
         }
         var seenSourceRefs = Set<String>()
-        let sourceRefHmacs = rawSourceRefHmacs.filter { seenSourceRefs.insert($0).inserted }
+        let sourceRefHmacs = Array(rawSourceRefHmacs
+            .filter { seenSourceRefs.insert($0).inserted }
+            .prefix(50))
         return (
             docID,
             [
@@ -699,7 +719,7 @@ final class MemoryCloudSyncService: Sendable {
                 "schemaVersion": 1,
                 "memoryIdHmac": memoryIDHmac,
                 "sourceRefHmacs": sourceRefHmacs,
-                "reason": tombstone.reason,
+                "reason": normalizedForgetReason(tombstone.reason),
                 "createdAt": tombstone.createdAt,
                 "replicatedAt": now
             ]
@@ -719,15 +739,16 @@ final class MemoryCloudSyncService: Sendable {
     }
 
     private static func deleteCloudFacts(
-        matchingSourceRefHmac sourceRefHmac: String,
+        matchingSourceRefHmacs sourceRefHmacs: Set<String>,
         from collection: CloudSyncCollectionGateway
     ) async throws -> Int {
+        guard !sourceRefHmacs.isEmpty else { return 0 }
         let snapshot = try await collection.getDocuments()
         var deleted = 0
         for document in snapshot.documents {
             let data = document.data()
             guard let refs = data["sourceRefHmacs"] as? [String],
-                  refs.contains(sourceRefHmac) else {
+                  refs.contains(where: { sourceRefHmacs.contains($0) }) else {
                 continue
             }
             try await collection.document(document.documentID).deleteDocument()
@@ -746,5 +767,15 @@ final class MemoryCloudSyncService: Sendable {
         let existed = try await document.getData() != nil
         try await document.deleteDocument()
         return existed ? 1 : 0
+    }
+
+    private static func normalizedForgetReason(_ reason: String) -> String {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed {
+        case "user_delete", "review_status_quarantined", "review_status_rejected", "clear_history", "gc_30d":
+            return trimmed
+        default:
+            return "unknown"
+        }
     }
 }
