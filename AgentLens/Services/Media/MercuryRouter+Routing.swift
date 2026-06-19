@@ -296,7 +296,7 @@ extension MercuryRouter {
                     // capabilities back to phones, so phone-side negotiators
                     // (codec, wire version, frame AEAD) had no Mac snapshot.
                     // The probe is cached — no per-beat encoder sessions.
-                    streamingCapabilities: Self.cachedLocalStreamingCapabilities.wireValue,
+                    streamingCapabilities: localStreamingCapabilityProvider().wireValue,
                     remoteUnlockCapabilities: remoteUnlockReadiness.capabilities()
                 )
                 let responseFrame = HermesRealtimeRelayFrame(
@@ -651,9 +651,7 @@ extension MercuryRouter {
                 remoteStreamingCapabilitiesByControlStreamID[$0]
             }
             ?? remoteStreamingCapabilitiesByConnectionID[frame.connectionId]
-        let localCapabilities = remoteCapabilities.map { _ in
-            MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
-        }
+        let localCapabilities = remoteCapabilities.map { _ in localStreamingCapabilityProvider() }
         return (localCapabilities, remoteCapabilities)
     }
 
@@ -1679,7 +1677,7 @@ extension MercuryRouter {
             remoteUnlockCapabilities: capabilities,
             // F7: advertise the Mac's snapshot in the ack itself so the viewer
             // negotiates codec/wire-version/frame-AEAD without a second probe.
-            streamingCapabilities: Self.cachedLocalStreamingCapabilities.wireValue
+            streamingCapabilities: localStreamingCapabilityProvider().wireValue
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,
