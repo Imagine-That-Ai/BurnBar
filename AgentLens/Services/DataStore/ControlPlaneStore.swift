@@ -1036,6 +1036,16 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
+            if existing.reviewStatus == .approved,
+               status != .approved,
+               existing.scope.userID != nil {
+                try Self.insertMemoryFactTombstone(
+                    db: db,
+                    memory: existing,
+                    reason: "review_status_\(status.rawValue)",
+                    now: now
+                )
+            }
             try db.execute(
                 sql: """
                 UPDATE agent_memories
@@ -1067,6 +1077,15 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
+            if existing.reviewStatus == .approved,
+               existing.scope.userID != nil {
+                try Self.insertMemoryFactTombstone(
+                    db: db,
+                    memory: existing,
+                    reason: "user_delete",
+                    now: now
+                )
+            }
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])

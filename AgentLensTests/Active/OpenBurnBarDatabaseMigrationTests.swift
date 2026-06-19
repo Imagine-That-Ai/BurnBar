@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v52_memory_extraction_job_intent_and_lease",
+            "v53_memory_forget_outbox",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -153,6 +153,33 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("memory_embedding_refs_version_idx"))
         XCTAssertTrue(indexes.contains("memory_body_snapshots_source_idx"))
         XCTAssertTrue(indexes.contains("memory_source_tombstones_thread_idx"))
+    }
+
+    func test_v53MemoryForgetOutboxAddsUserScopedPendingTables() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v52_memory_extraction_job_intent_and_lease")
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let sourceColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_source_tombstones")
+        }
+        XCTAssertTrue(sourceColumns.contains("user_id"))
+        XCTAssertTrue(sourceColumns.contains("replicated_at"))
+        let factColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_fact_tombstones")
+        }
+        for column in ["id", "user_id", "memory_id", "source_refs_json", "reason", "created_at", "replicated_at"] {
+            XCTAssertTrue(factColumns.contains(column), "memory_fact_tombstones missing \(column)")
+        }
+        let indexes = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'memory_%_pending_idx'"
+            )
+        }
+        XCTAssertTrue(indexes.contains("memory_source_tombstones_pending_idx"))
+        XCTAssertTrue(indexes.contains("memory_fact_tombstones_pending_idx"))
     }
 
     func test_v52MemoryExtractionJobsBackfillsIntentAndAddsLease() async throws {
@@ -1185,7 +1212,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             let memory = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE id = 'mem-forget'") ?? 0
             let provenance = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_provenance WHERE memory_id = 'mem-forget'") ?? 0
             let snapshot = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-forget'") ?? 0
-            let tombstone = try Int.fetchOne(
+            let sourceTombstone = try Int.fetchOne(
                 db,
                 sql: """
                 SELECT COUNT(*)
@@ -1196,11 +1223,23 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                   AND reason = 'user_delete'
                 """
             ) ?? 0
+            let factTombstone = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE user_id = 'forget-user'
+                  AND memory_id = 'mem-forget'
+                  AND reason = 'user_delete'
+                  AND replicated_at IS NULL
+                """
+            ) ?? 0
             return [
                 "memory": memory,
                 "provenance": provenance,
                 "snapshot": snapshot,
-                "tombstone": tombstone
+                "sourceTombstone": sourceTombstone,
+                "factTombstone": factTombstone
             ]
         }
         let audit = try await queue.read { db in
@@ -1212,7 +1251,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(persistedCounts["memory"], 0)
         XCTAssertEqual(persistedCounts["provenance"], 0)
         XCTAssertEqual(persistedCounts["snapshot"], 0)
-        XCTAssertEqual(persistedCounts["tombstone"], 0)
+        XCTAssertEqual(persistedCounts["sourceTombstone"], 0)
+        XCTAssertEqual(persistedCounts["factTombstone"], 1)
         XCTAssertTrue(audit.contains("memory.delete"))
         XCTAssertFalse(audit.contains(body))
     }
@@ -1256,6 +1296,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(before.map(\.memoryID), ["mem-tombstone"])
 
         _ = try await store.recordMemorySourceTombstone(
+            userID: "tombstone-user",
             threadLogicalID: "thread-tombstone",
             messageID: "message-tombstone",
             contentHash: "content-tombstone",
@@ -1321,6 +1362,269 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(audit.contains("memory.approve"))
         XCTAssertTrue(audit.contains("memory.reject"))
         XCTAssertFalse(audit.contains(body))
+    }
+
+    func test_memoryCloudSyncReplicatesOnlyApprovedSealedFacts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 7, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_420)
+        let scope = MemoryScope(userID: "cloud-user", appID: "cloud-app")
+        let otherScope = MemoryScope(userID: "other-cloud-user", appID: "cloud-app")
+        let approvedBody = "Approved cloud memory body must be sealed."
+        let quarantinedBody = "Quarantined cloud memory body must not upload."
+        let otherUserBody = "Other user approved memory must not upload to this cloud user."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: approvedBody,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.86,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-cloud-approved",
+                        threadLogicalID: "thread-cloud-approved",
+                        messageID: "message-cloud-approved",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-cloud-approved",
+                        crossDeviceHMAC: "hmac-cloud-approved"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-approved",
+            now: now,
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: quarantinedBody, kind: .fact, scope: scope, confidence: 0.99, reviewStatus: .quarantined),
+            id: "mem-cloud-quarantined",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: otherUserBody, kind: .fact, scope: otherScope, confidence: 0.93, reviewStatus: .approved),
+            id: "mem-cloud-other-user",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        let result = try await sync.syncApprovedMemories(uid: "cloud-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertEqual(result.skipped, 0)
+
+        let docs = gateway.documents(under: "users/cloud-user/memory_facts")
+        XCTAssertEqual(docs.count, 1)
+        let data = try XCTUnwrap(docs.values.first)
+        XCTAssertNil(data["text"])
+        XCTAssertNil(data["body"])
+        XCTAssertNil(data["vector"])
+        XCTAssertNil(data["cloakedVector"])
+        XCTAssertEqual(data["reviewStatus"] as? String, MemoryReviewStatus.approved.rawValue)
+        XCTAssertNotNil(data["sealedMemory"] as? [String: Any])
+        XCTAssertEqual((data["sourceRefHmacs"] as? [String])?.count, 1)
+        let outerDocument = String(describing: data)
+        XCTAssertFalse(outerDocument.contains(approvedBody))
+        XCTAssertFalse(outerDocument.contains(quarantinedBody))
+        XCTAssertFalse(outerDocument.contains(otherUserBody))
+    }
+
+    func test_memoryCloudForgetReceiptDeletesMatchingCloudFact() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 8, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_430)
+        let scope = MemoryScope(userID: "cloud-forget-user", appID: "cloud-forget-app")
+        let body = "Cloud fact must disappear after local forget."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .fact,
+                scope: scope,
+                confidence: 0.82,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-cloud-forget",
+                        threadLogicalID: "thread-cloud-forget",
+                        messageID: "message-cloud-forget",
+                        role: "assistant",
+                        authoredAt: now,
+                        contentHash: "content-cloud-forget",
+                        crossDeviceHMAC: "hmac-cloud-forget"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-forget",
+            now: now,
+            enabled: true
+        )
+
+        let first = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(1))
+        XCTAssertEqual(first.uploaded, 1)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_facts").count, 1)
+
+        _ = try await service.delete(id: "mem-cloud-forget")
+        let second = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
+        XCTAssertEqual(second.forgetReceipts, 1)
+        XCTAssertEqual(second.cloudFactsDeleted, 1)
+        XCTAssertTrue(gateway.documents(under: "users/cloud-forget-user/memory_facts").isEmpty)
+
+        let receipts = gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts")
+        XCTAssertEqual(receipts.count, 1)
+        let receipt = try XCTUnwrap(receipts.values.first)
+        XCTAssertNil(receipt["sourceRefHmac"])
+        XCTAssertNotNil(receipt["memoryIdHmac"] as? String)
+        XCTAssertEqual((receipt["sourceRefHmacs"] as? [String])?.count, 1)
+        XCTAssertNil(receipt["threadLogicalID"])
+        XCTAssertNil(receipt["messageID"])
+        XCTAssertNil(receipt["contentHash"])
+        XCTAssertFalse(String(describing: receipt).contains(body))
+
+        let replicatedFactTombstones = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE memory_id = 'mem-cloud-forget'
+                  AND replicated_at IS NOT NULL
+                """
+            ) ?? 0
+        }
+        XCTAssertEqual(replicatedFactTombstones, 1)
+
+        let third = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(3))
+        XCTAssertEqual(third.forgetReceipts, 0)
+        XCTAssertEqual(third.cloudFactsDeleted, 0)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts").count, 1)
+    }
+
+    func test_memoryCloudSyncCapsCitationsAndNormalizesForgetReason() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 9, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_470)
+        let scope = MemoryScope(userID: "cloud-cap-user", appID: "cloud-cap-app")
+        let citations = (0..<55).map { index in
+            MemoryCitation(
+                id: "cite-cloud-cap-\(index)",
+                threadLogicalID: "thread-cap-\(index)",
+                messageID: "message-cap-\(index)",
+                role: "assistant",
+                authoredAt: now.addingTimeInterval(TimeInterval(index)),
+                contentHash: "content-cap-\(index)",
+                crossDeviceHMAC: "hmac-cap-\(index)"
+            )
+        }
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Cloud sync citation fanout must stay rule-bounded.",
+                kind: .fact,
+                scope: scope,
+                confidence: 0.88,
+                citations: citations,
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-cap",
+            now: now,
+            enabled: true
+        )
+
+        let first = try await sync.syncApprovedMemories(uid: "cloud-cap-user", vaultKey: vaultKey, now: now.addingTimeInterval(60))
+        XCTAssertEqual(first.uploaded, 1)
+        XCTAssertEqual(first.skipped, 0)
+        let fact = try XCTUnwrap(gateway.documents(under: "users/cloud-cap-user/memory_facts").values.first)
+        XCTAssertEqual((fact["sourceRefHmacs"] as? [String])?.count, 50)
+        XCTAssertEqual(fact["citationCount"] as? Int, 50)
+
+        _ = try await store.recordMemorySourceTombstone(
+            userID: "cloud-cap-user",
+            threadLogicalID: "thread-cap-0",
+            messageID: "message-cap-0",
+            contentHash: "content-cap-0",
+            reason: "operator_cleanup",
+            now: now.addingTimeInterval(61)
+        )
+        let second = try await sync.syncApprovedMemories(uid: "cloud-cap-user", vaultKey: vaultKey, now: now.addingTimeInterval(62))
+        XCTAssertEqual(second.uploaded, 0)
+        XCTAssertEqual(second.forgetReceipts, 1)
+        XCTAssertEqual(second.cloudFactsDeleted, 1)
+        XCTAssertTrue(gateway.documents(under: "users/cloud-cap-user/memory_facts").isEmpty)
+        let receipt = try XCTUnwrap(gateway.documents(under: "users/cloud-cap-user/memory_forget_receipts").values.first)
+        XCTAssertEqual(receipt["reason"] as? String, "unknown")
+    }
+
+    func test_memorySourceWildcardTombstoneDeletesMatchingCloudFacts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 10, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_490)
+        let scope = MemoryScope(userID: "cloud-wildcard-user", appID: "cloud-wildcard-app")
+
+        for index in 0..<2 {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: "Cloud wildcard delete fact \(index).",
+                    kind: .fact,
+                    scope: scope,
+                    confidence: 0.81,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-wildcard-\(index)",
+                            threadLogicalID: "thread-wildcard",
+                            messageID: "message-wildcard-\(index)",
+                            role: "assistant",
+                            authoredAt: now.addingTimeInterval(TimeInterval(index)),
+                            contentHash: "content-wildcard-\(index)",
+                            crossDeviceHMAC: "hmac-wildcard-\(index)"
+                        )
+                    ],
+                    reviewStatus: .approved
+                ),
+                id: "mem-cloud-wildcard-\(index)",
+                now: now.addingTimeInterval(TimeInterval(index)),
+                enabled: true
+            )
+        }
+
+        let first = try await sync.syncApprovedMemories(uid: "cloud-wildcard-user", vaultKey: vaultKey, now: now.addingTimeInterval(10))
+        XCTAssertEqual(first.uploaded, 2)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-wildcard-user/memory_facts").count, 2)
+
+        _ = try await store.recordMemorySourceTombstone(
+            userID: "cloud-wildcard-user",
+            threadLogicalID: "thread-wildcard",
+            messageID: nil,
+            contentHash: nil,
+            reason: "clear_history",
+            now: now.addingTimeInterval(11)
+        )
+        let second = try await sync.syncApprovedMemories(uid: "cloud-wildcard-user", vaultKey: vaultKey, now: now.addingTimeInterval(12))
+        XCTAssertEqual(second.forgetReceipts, 1)
+        XCTAssertEqual(second.cloudFactsDeleted, 2)
+        XCTAssertTrue(gateway.documents(under: "users/cloud-wildcard-user/memory_facts").isEmpty)
     }
 
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
