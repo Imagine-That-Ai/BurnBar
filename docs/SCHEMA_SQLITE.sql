@@ -316,6 +316,16 @@ CREATE TABLE memory_source_tombstones (
 
 CREATE INDEX memory_source_tombstones_thread_idx ON memory_source_tombstones(thread_logical_id);
 
+CREATE TABLE memory_fact_tombstones (
+  id         TEXT NOT NULL PRIMARY KEY,
+  memory_id  TEXT NOT NULL,
+  user_id    TEXT,
+  reason     TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX memory_fact_tombstones_memory_idx ON memory_fact_tombstones(memory_id);
+
 CREATE TABLE memory_audit (
   seq         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   ts          TEXT NOT NULL,

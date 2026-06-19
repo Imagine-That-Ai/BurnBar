@@ -183,5 +183,24 @@ extension OpenBurnBarDatabase {
                 """
             )
         }
+        migrator.registerMigration("v53_memory_fact_tombstones") { db in
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS memory_fact_tombstones (
+                    id TEXT PRIMARY KEY,
+                    memory_id TEXT NOT NULL,
+                    user_id TEXT,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS memory_fact_tombstones_memory_idx
+                ON memory_fact_tombstones(memory_id)
+                """
+            )
+        }
     }
 }

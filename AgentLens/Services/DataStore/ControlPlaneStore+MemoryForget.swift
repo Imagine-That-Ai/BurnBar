@@ -4,6 +4,14 @@ import Foundation
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
+    struct MemoryFactTombstoneRecord: Sendable, Equatable {
+        let id: String
+        let memoryID: MemoryID
+        let userID: String?
+        let reason: String
+        let createdAt: Date
+    }
+
     func recordMemorySourceTombstone(
         threadLogicalID: String,
         messageID: String?,
@@ -25,6 +33,26 @@ extension ControlPlaneStore {
                 messageID: messageID,
                 contentHash: contentHash,
                 reason: reason,
+                now: now
+            )
+        }
+        return id
+    }
+
+    func recordMemoryFactTombstone(
+        memoryID: MemoryID,
+        userID: String? = nil,
+        reason: String,
+        now: Date = Date()
+    ) async throws -> String {
+        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason
+        let id = Self.memoryFactTombstoneID(memoryID: memoryID, reason: normalizedReason)
+        try await dbQueue.write { db in
+            try Self.insertMemoryFactTombstone(
+                db: db,
+                memoryID: memoryID,
+                userID: userID,
+                reason: normalizedReason,
                 now: now
             )
         }
@@ -86,6 +114,69 @@ extension ControlPlaneStore {
         }
     }
 
+    func fetchMemorySourceTombstones() async throws -> [MemorySourceTombstoneRecord] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_source_tombstones
+                ORDER BY created_at ASC, id ASC
+                """
+            )
+            return rows.compactMap(Self.memorySourceTombstone(from:))
+        }
+    }
+
+    func fetchMemoryFactTombstones(userID: String? = nil) async throws -> [MemoryFactTombstoneRecord] {
+        try await dbQueue.read { db in
+            var predicates: [String] = []
+            var arguments: [any DatabaseValueConvertible] = []
+            if let userID {
+                predicates.append("user_id = ?")
+                arguments.append(userID)
+            }
+            let whereClause = predicates.isEmpty ? "" : "WHERE \(predicates.joined(separator: " AND "))"
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_fact_tombstones
+                \(whereClause)
+                ORDER BY created_at ASC, id ASC
+                """,
+                arguments: StatementArguments(arguments)
+            )
+            return rows.compactMap(Self.memoryFactTombstone(from:))
+        }
+    }
+
+    func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
+        let ids = try await dbQueue.read { db in
+            var predicates = ["source_kind = ?", "project_id = ?"]
+            var arguments: [any DatabaseValueConvertible] = [
+                MemorySourceKind.chat.rawValue,
+                Self.memoryStorageProjectID(for: scope)
+            ]
+            Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
+            return try String.fetchAll(
+                db,
+                sql: """
+                SELECT id
+                FROM agent_memories
+                WHERE \(predicates.joined(separator: " AND "))
+                ORDER BY valid_from ASC, id ASC
+                """,
+                arguments: StatementArguments(arguments)
+            )
+        }
+        var deleted = 0
+        for id in ids where try await deleteChatMemoryAuthorityRecord(id: id, now: now) {
+            deleted += 1
+        }
+        return deleted
+    }
+
     func memoryHasTombstonedSource(id: MemoryID) async throws -> Bool {
         try await dbQueue.read { db in
             let count = try Int.fetchOne(
@@ -132,6 +223,31 @@ extension ControlPlaneStore {
         )
     }
 
+    static func insertMemoryFactTombstone(
+        db: Database,
+        memoryID: MemoryID,
+        userID: String?,
+        reason: String,
+        now: Date
+    ) throws {
+        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : reason
+        try db.execute(
+            sql: """
+            INSERT INTO memory_fact_tombstones (
+                id, memory_id, user_id, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            arguments: [
+                memoryFactTombstoneID(memoryID: memoryID, reason: normalizedReason),
+                memoryID,
+                userID,
+                normalizedReason,
+                now
+            ]
+        )
+    }
+
     private static func memorySourceTombstoneID(
         threadLogicalID: String,
         messageID: String?,
@@ -147,8 +263,47 @@ extension ControlPlaneStore {
         return "memory-source-tombstone-\(sha256HexForTombstone(material))"
     }
 
+    private static func memoryFactTombstoneID(memoryID: MemoryID, reason: String) -> String {
+        "memory-fact-tombstone-\(sha256HexForTombstone("\(memoryID)|\(reason)"))"
+    }
+
     private static func sha256HexForTombstone(_ string: String) -> String {
         let digest = SHA256.hash(data: Data(string.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func memorySourceTombstone(from row: Row) -> MemorySourceTombstoneRecord? {
+        guard let id: String = row["id"],
+              let threadLogicalID: String = row["thread_logical_id"],
+              let reason: String = row["reason"],
+              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"])
+        else {
+            return nil
+        }
+        return MemorySourceTombstoneRecord(
+            id: id,
+            threadLogicalID: threadLogicalID,
+            messageID: row["message_id"],
+            contentHash: row["content_hash"],
+            reason: reason,
+            createdAt: createdAt
+        )
+    }
+
+    private static func memoryFactTombstone(from row: Row) -> MemoryFactTombstoneRecord? {
+        guard let id: String = row["id"],
+              let memoryID: String = row["memory_id"],
+              let reason: String = row["reason"],
+              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"])
+        else {
+            return nil
+        }
+        return MemoryFactTombstoneRecord(
+            id: id,
+            memoryID: memoryID,
+            userID: row["user_id"],
+            reason: reason,
+            createdAt: createdAt
+        )
     }
 }
