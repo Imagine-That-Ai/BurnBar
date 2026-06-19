@@ -1824,7 +1824,11 @@ async function printStatus() {
   try {
     const testFlightBuild = await getLatestValidBuild(APP.testFlightVersion);
     testFlightBuildReadback = await getBuild(testFlightBuild.id);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith("No valid App Store eligible iOS build")) {
+      throw error;
+    }
     testFlightBuildReadback = null;
   }
   const reviewDetail = await getReviewDetail(version.id);
