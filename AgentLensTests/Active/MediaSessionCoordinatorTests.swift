@@ -142,6 +142,7 @@ final class MediaSessionCoordinatorTests: XCTestCase {
     func testActiveScreenShareStopsWhenAdmissionIsRevoked() async throws {
         let gate = MutableMediaCapabilityGate()
         let encoder = RecordingVideoEncoder()
+        let screenCapture = RecordingScreenCaptureSession()
         let coordinator = MediaSessionCoordinator(
             capabilityGate: gate,
             admissionRecheckIntervalNanoseconds: UInt64.max,
@@ -149,14 +150,14 @@ final class MediaSessionCoordinatorTests: XCTestCase {
                 MediaSessionCoordinatorTestFixtures.runtimeHealth
             },
             screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() },
-            // Keep this focused on admission revocation; virtualized CI Macs
-            // can reject the real VideoToolbox encoder independently.
             videoEncoderFactory: { _, _ in encoder }
         )
 
-        try await coordinator.startScreenShare(
+        coordinator.seedActiveScreenShareForTesting(
             peerDeviceID: "iphone",
-            sink: RecordingMediaSink()
+            sink: RecordingMediaSink(),
+            screenCapture: screenCapture,
+            videoEncoder: encoder
         )
         XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
 
@@ -164,6 +165,7 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         await coordinator.recheckActiveAdmissionForTesting()
 
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
+        XCTAssertTrue(screenCapture.didStop)
         XCTAssertTrue(encoder.didStop)
     }
 }

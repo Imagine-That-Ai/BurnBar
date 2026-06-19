@@ -42,6 +42,16 @@ openburnbar_app_test_has_concrete_xctest_failure() {
     return 1
 }
 
+openburnbar_app_test_has_terminal_concrete_xctest_failure() {
+    local log_path="$1"
+
+    if is_xcode_false_negative_pass "$log_path"; then
+        return 1
+    fi
+
+    openburnbar_app_test_has_concrete_xctest_failure "$log_path"
+}
+
 openburnbar_app_test_has_assertion_failure() {
     local log_path="$1"
 

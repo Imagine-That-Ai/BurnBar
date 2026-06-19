@@ -297,6 +297,33 @@ final class MediaSessionCoordinator: ObservableObject {
         await recheckActiveAdmission()
     }
 
+    func seedActiveScreenShareForTesting(
+        peerDeviceID: String,
+        sink: any MediaStreamSink,
+        screenCapture: any ScreenCaptureSession,
+        videoEncoder: any VideoEncoding
+    ) {
+        admissionMonitorTask?.cancel()
+        admissionMonitorTask = nil
+        activeStreamClass = .screenVideo
+        activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration()
+        streamSinks = [peerDeviceID: sink]
+        self.screenCapture = screenCapture
+        self.videoEncoder = videoEncoder
+        sessionMetadata = MediaSessionMetadata(
+            sessionID: UUID().uuidString,
+            feature: .screenShare,
+            streamClass: .screenVideo,
+            peerDeviceID: peerDeviceID
+        )
+        activeAdmissionRequest = ActiveAdmissionRequest(
+            feature: .screenShare,
+            sessionDurationLimitSeconds: 60 * 60,
+            sessionByteBudget: nil
+        )
+        phase = .active(feature: .screenShare)
+    }
+
     private func handleEncodedFrame(_ encodedFrame: VideoEncoder.EncodedFrame) async {
         var outbound = encodedFrame.frame
         if activeStreamClass == .controlSurfaceFrame {
