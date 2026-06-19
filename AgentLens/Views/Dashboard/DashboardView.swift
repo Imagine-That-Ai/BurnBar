@@ -601,11 +601,10 @@ struct DashboardView: View {
         }
     }
 
-    /// Chat-memory scope for the signed-in user, derived the same way as
-    /// `MemorySettingsService.resetScope`: a blank/absent user id collapses to nil
-    /// so the inbox reads the device-local (unscoped-user) bucket.
+    /// Chat-memory extraction writes app-scoped quarantined rows. The review inbox
+    /// must read that same bucket so signed-in users can approve extracted memories.
     private var memoryReviewScope: MemoryScope {
-        MemorySettingsService.resetScope(userID: accountManager.userID)
+        MemoryScope(appID: "openburnbar")
     }
 
     @ViewBuilder

@@ -11,8 +11,8 @@ import Foundation
 // Kept as a dedicated type (rather than reusing `SummaryAPIKeyResolver`) so the
 // memory subsystem owns its own egress seam and a future divergence in provider set
 // or key precedence does not couple the two features. Local providers (`.local`,
-// `.mlx`) never resolve a key — they are on-device and the cloud daily cap never
-// applies to them, which is what makes the hard local-first default free.
+// `.mlx`) never resolve a key. Memory extraction is local-only in v1; cloud
+// transcript egress needs a separate explicit consent gate.
 struct MemoryExtractionAPIKeyResolver: Sendable {
     let providerAPIKeyStore: ProviderAPIKeyStore
 

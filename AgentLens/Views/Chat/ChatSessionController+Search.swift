@@ -26,6 +26,9 @@ extension ChatSessionController {
         streamError = nil
         selectedContext = nil
         conversationJumpTargets = []
+        lastRecalledMemorySnippets = []
+        pendingMemoryJumpMessageID = nil
+        memoryJumpHighlightMessageID = nil
         revokeDesktopControl()
 
         activeThreadID = threadID

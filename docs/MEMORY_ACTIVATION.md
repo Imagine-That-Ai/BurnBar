@@ -138,7 +138,7 @@ cloud-sync.** Each leg below names the file and the guarantee it provides.
    +Memory.swift:1614                                              (15-min lease; singleton)
         │
         ▼
- ChatTranscriptExtractor (the @Sendable closure)  ──► local-first LLM round-trip ──► [MemoryAddRequest]
+ ChatTranscriptExtractor (the @Sendable closure)  ──► local-only LLM round-trip ──► [MemoryAddRequest]
    ChatTranscriptExtractor.swift                       (no DB lock held across the call)
         │
         ▼
@@ -219,7 +219,7 @@ synchronously from the UI.
 is the `@Sendable (MemoryExtractionJob) async throws -> [MemoryAddRequest]`
 closure the worker invokes. It reads the transcript from the **same**
 `ControlPlaneStore` the worker writes to (`extension ControlPlaneStore:
-ChatExtractionTranscriptReading`, `+Memory.swift:1799`), runs a local-first LLM
+ChatExtractionTranscriptReading`, `+Memory.swift:1799`), runs a local-only LLM
 round-trip via `MemoryExtractionLLMClient`
 (`AgentLens/Services/Memory/MemoryExtractionLLMClient.swift`), assembles the
 prompt with `MemoryExtractionPromptBuilder`, and parses output with
@@ -227,16 +227,13 @@ prompt with `MemoryExtractionPromptBuilder`, and parses output with
 `Sendable` `MemoryExtractionSettingsSnapshot` pushed in via the `NSLock`-guarded
 `MemoryExtractionSettingsBox` (`MemoryExtractionPolicy.swift:118`).
 
-**Local-first is a HARD default, not a user preference**
+**Local-only is a HARD default, not a user preference**
 (`MemoryExtractionEngine.localFirstProviderOrder`, `MemoryExtractionEngine.swift:339`).
 The input transcript (possibly carrying secrets/PII) is sent to the provider
-**before** any scan — the G7 gate is **output-only** — so on-device providers
-always lead and a configured cloud-first summary order is overridden for memory.
-Any cloud fallback is gated by a **separate** memory daily cap
-(`MemoryExtractionPolicy.defaultDailyCapUSD = $0.50`,
-`effectiveDailyCapUSD`/`SummaryCostEstimator`) so memory cannot starve summary
-spend, and the cost read is fail-closed (a spend-read error skips the paid call,
-never defaults to 0). This is the accepted input-side exfil residual (see §7.8).
+**before** any scan — the G7 gate is **output-only** — so memory extraction drops
+cloud providers entirely. A configured cloud-first summary order is overridden for
+memory; cloud transcript egress requires a separate, explicit consent/go-live gate
+before it can exist.
 
 The failure taxonomy: benign empties (terminal message not found, empty
 transcript/output, all candidates dropped, all providers unavailable) return `[]`
@@ -564,18 +561,16 @@ green.** Cloud-sync (#5) additionally requires #2.
    `memory.candidate_dropped` audit trail (carrying stable finding IDs, not secret
    text) provides signal for post-activation corpus tuning.
 
-8. **Cost ceiling + provider order for fleet enable. — _owner: TBD._**
-   Current code: local-first hard default + a separate
-   `defaultDailyCapUSD = $0.50` memory cap. **Recommendation:** confirm
-   local/Ollama-first and the separate cap before fleet enable so memory does not
-   starve summary spend and most installs spend $0.
+8. **Cloud transcript egress is a separate go-live decision. — _owner: TBD._**
+   Current code is local-only for memory extraction. **Recommendation:** keep it
+   that way until there is a separate cloud-transcript consent gate, cumulative
+   memory spend ledger, and product copy that names the provider behavior plainly.
 
 9. **Input-side exfil acceptance. — _owner: TBD._**
-   Full untrusted transcripts (possible secrets/PII) go to a cloud provider
-   **before** any scan when a cloud provider is configured (the G7 gate is
-   output-only — same posture as the summary feature). **Recommendation:** accept
-   the risk **only** with local-first as the hard default (§2.4), and document it.
-   If unacceptable, gate cloud extraction for secret-bearing transcripts.
+   Full untrusted transcripts may contain secrets/PII before any output-side G7
+   scan. Current local-only extraction avoids cloud transcript exfiltration. If a
+   future build adds cloud fallback, gate it explicitly and document the accepted
+   residual risk before fleet enable.
 
 ---
 

@@ -96,6 +96,19 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         XCTAssertFalse(rendered.contains("[m0]"))
     }
 
+    func test_promptBuilder_truncatesSingleOversizedRecentLine() {
+        let lines = [
+            MemoryExtractionPromptBuilder.TranscriptLine(
+                messageID: "huge",
+                role: "user",
+                text: String(repeating: "x", count: 200)
+            )
+        ]
+        let rendered = MemoryExtractionPromptBuilder.renderTranscript(lines: lines, maxChars: 80)
+        XCTAssertLessThanOrEqual(rendered.count, 80)
+        XCTAssertTrue(rendered.hasPrefix("[huge] user: "))
+    }
+
     func test_promptBuilder_embedsUntrustedFenceAndNoFabricateRule() {
         let lines = [
             MemoryExtractionPromptBuilder.TranscriptLine(messageID: "m1", role: "user", text: "Hi")
@@ -210,7 +223,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         XCTAssertEqual(row?["thread_logical_id"] as? String, "thread-logical-prov")
     }
 
-    func test_worker_dropsCitationWhenMessageIdNotInTranscriptButKeepsFact() async throws {
+    func test_worker_dropsFactWhenMessageIdNotInTranscript() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -261,9 +274,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
                 arguments: ["memory-\(jobID)-0"]
             ) ?? -1
         }
-        // Citation dropped (never fabricated)...
         XCTAssertEqual(provenanceCount, 0)
-        // ...but the fact itself still persisted (quarantined, no provenance).
         let factCount = try await queue.read { db in
             try Int.fetchOne(
                 db,
@@ -271,12 +282,12 @@ final class MemoryExtractionExtractorTests: XCTestCase {
                 arguments: ["memory-\(jobID)-0"]
             ) ?? -1
         }
-        XCTAssertEqual(factCount, 1)
+        XCTAssertEqual(factCount, 0, "unsupported facts are dropped instead of becoming recallable without provenance")
     }
 
     // MARK: - End-to-end extractor closure with a stubbed local HTTP model
 
-    func test_extractor_endToEnd_dropsSecretCandidateAndThreadsResolvedCitation() async throws {
+    func test_extractor_endToEndThreadsResolvedCitationAndDefersSecretDropToWorker() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -347,8 +358,9 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         )
 
         let requests = try await extractor.extract(job)
-        // The secret candidate is dropped by the G7 gate; only the safe one survives.
-        XCTAssertEqual(requests.count, 1)
+        // Secret candidate DROP/audit is owned by the worker; the extractor only
+        // validates provenance and maps model output into requests.
+        XCTAssertEqual(requests.count, 2)
         XCTAssertEqual(requests[0].text, "User prefers Swift over Python.")
         XCTAssertEqual(requests[0].kind, .preference)
         // The claimed (and transcript-present) message id is threaded through for the

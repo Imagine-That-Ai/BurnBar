@@ -40,7 +40,16 @@ final class MemoryReviewInboxModelTests: XCTestCase {
                 memory.reviewStatus = row.status
                 return memory
             }
-            return MemoryPage(items: items, page: request.page, pageSize: request.pageSize, total: items.count)
+            .sorted { $0.id < $1.id }
+            let pageSize = max(1, request.pageSize)
+            let page = max(1, request.page)
+            let start = max(0, (page - 1) * pageSize)
+            return MemoryPage(
+                items: Array(items.dropFirst(start).prefix(pageSize)),
+                page: page,
+                pageSize: pageSize,
+                total: items.count
+            )
         }
 
         func openBody(_ id: MemoryID) async throws -> String? {
@@ -181,5 +190,20 @@ final class MemoryReviewInboxModelTests: XCTestCase {
         await model.approve("q1")
         XCTAssertEqual(model.pendingCount, 1)
         XCTAssertEqual(model.pendingCount, model.pending.count)
+    }
+
+    func testPendingLoadPagesPastApprovedRows() async {
+        var rows: [MemoryID: Row] = [:]
+        for index in 0 ..< 210 {
+            let id = String(format: "a%03d", index)
+            rows[id] = Row(memory: makeMemory(id: id, status: .approved), body: "Approved \(index)", status: .approved)
+        }
+        rows["q999"] = Row(memory: makeMemory(id: "q999", status: .quarantined), body: "Needs review", status: .quarantined)
+        let store = FakeStore(rows: rows)
+        let model = makeModel(store: store)
+
+        await model.load()
+
+        XCTAssertTrue(model.pending.contains { $0.id == "q999" })
     }
 }

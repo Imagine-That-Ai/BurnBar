@@ -7,7 +7,7 @@ import OpenBurnBarCore
 //
 // Proves the PR-D2 must-fixes of the memory-activation build plan at their
 // deterministic core — the worker pump, the Sendable kill-switch atomic, the failed-job
-// read seam, and the local-first provider ordering. The `MemoryExtractionEngine` itself
+// read seam, and the local-only provider ordering. The `MemoryExtractionEngine` itself
 // is a thin `@MainActor` scheduler over these pieces; the load-bearing correctness is
 // here, where it can be driven without a full app graph.
 //
@@ -20,7 +20,7 @@ import OpenBurnBarCore
 //      and read LIVE (never cached): flipping it between ticks changes behavior.
 //   #3 A failed job is observable only via its terminal status (errors do not propagate
 //      through `drainNext`); `mostRecentFailedMemoryExtractionJob` is that seam.
-//   #7 Provider order is forced local-first regardless of the user's summary order.
+//   #7 Provider order is forced local-only regardless of the user's summary order.
 //
 // The whole feature ships OFF; these tests force the gates ON explicitly to exercise the
 // dormant machinery, mirroring the PR-D1 extractor tests.
@@ -417,16 +417,15 @@ final class MemoryExtractionEngineTests: XCTestCase {
         XCTAssertFalse(_v7)
     }
 
-    // MARK: - #7 Local-first provider ordering (pure policy)
+    // MARK: - #7 Local-only provider ordering (pure policy)
 
-    func test_localFirstProviderOrder_forcesOnDeviceProvidersFirst() {
+    func test_localFirstProviderOrder_dropsCloudProviders() {
         // A deliberately CLOUD-FIRST user configuration.
         let cloudFirst: [SummaryProviderID] = [.openrouter, .zai, .local, .minimax, .mlx, .ollama]
         let ordered = MemoryExtractionEngine.localFirstProviderOrder(cloudFirst)
 
-        // On-device providers lead, in their original relative order; cloud follows.
-        XCTAssertEqual(Array(ordered.prefix(3)), [.local, .mlx, .ollama])
-        XCTAssertEqual(ordered, [.local, .mlx, .ollama, .openrouter, .zai, .minimax])
+        // On-device providers are preserved in their original relative order; cloud is dropped.
+        XCTAssertEqual(ordered, [.local, .mlx, .ollama])
         // No duplicates.
         XCTAssertEqual(Set(ordered).count, ordered.count)
     }
@@ -434,8 +433,7 @@ final class MemoryExtractionEngineTests: XCTestCase {
     func test_localFirstProviderOrder_injectsLocalWhenUserRemovedAllOnDevice() {
         let cloudOnly: [SummaryProviderID] = [.openrouter, .zai]
         let ordered = MemoryExtractionEngine.localFirstProviderOrder(cloudOnly)
-        XCTAssertEqual(ordered.first, .local, "at least one on-device provider must lead")
-        XCTAssertEqual(ordered, [.local, .openrouter, .zai])
+        XCTAssertEqual(ordered, [.local], "at least one on-device provider must remain")
     }
 
     func test_localFirstProviderOrder_emptyConfigFallsBackToAllLocalFirst() {

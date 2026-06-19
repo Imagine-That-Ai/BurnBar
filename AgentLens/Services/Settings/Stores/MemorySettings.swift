@@ -13,7 +13,10 @@ final class MemorySettings {
 
     /// User toggle: automatic extraction on terminal assistant commit (default ON).
     var automaticExtraction: Bool = true {
-        didSet { persistence.set(automaticExtraction, forKey: "memoryAutomaticExtraction") }
+        didSet {
+            persistence.set(automaticExtraction, forKey: "memoryAutomaticExtraction")
+            propagateExtractionGate()
+        }
     }
 
     /// Opt-in sub-toggle: high-recall per-reply (default OFF).
@@ -36,7 +39,11 @@ final class MemorySettings {
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fail-closed: a fetch error flips this false.
-    var remoteConfigExtractionEnabled: Bool = true
+    var remoteConfigExtractionEnabled: Bool = true {
+        didSet {
+            propagateExtractionGate()
+        }
+    }
 
     /// User consent (gate G0, default OFF): the user has affirmatively opted in to
     /// chat-memory extraction via the first-run consent prompt. Until this is true
@@ -47,6 +54,7 @@ final class MemorySettings {
         didSet {
             persistence.set(consentGranted, forKey: "memoryConsentGranted")
             if consentGranted { consentShown = true }
+            propagateExtractionGate()
         }
     }
 
@@ -75,6 +83,17 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryConsentGranted") {
             self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
         }
+        propagateExtractionGate()
+    }
+
+    private func propagateExtractionGate() {
+        MemoryExtractionKillSwitchRegistry.setAll(
+            MemoryExtractionGate.isEnabled(
+                consentGranted: consentGranted,
+                automaticExtraction: automaticExtraction,
+                remoteConfigEnabled: remoteConfigExtractionEnabled
+            )
+        )
     }
 }
 

@@ -39,10 +39,8 @@ enum MemoryExtractionPolicy {
     /// separately and far more tightly by `ChatTranscriptExtractor.maxWallClock`.
     static let maxPumpDuration: TimeInterval = 4 * 60
 
-    /// Separate daily USD cap for memory extraction (integrated build plan §5.7) so
-    /// memory cannot starve summary spend. Low by design: most installs run local-first
-    /// and spend $0; this only bounds the cloud-fallback tail. Gates any cloud provider
-    /// via `SummaryCostEstimator`.
+    /// Reserved daily USD cap for a future explicit cloud-egress gate. Local-only v1
+    /// does not send transcripts to cloud providers.
     static let defaultDailyCapUSD: Double = 0.50
 
     /// Default per-request timeout (seconds) for the extraction LLM round-trip when no
@@ -98,6 +96,33 @@ final class MemoryExtractionKillSwitch: Sendable {
         lock.lock()
         defer { lock.unlock() }
         return allowed
+    }
+}
+
+@MainActor
+private final class WeakMemoryExtractionKillSwitch {
+    weak var value: MemoryExtractionKillSwitch?
+
+    init(_ value: MemoryExtractionKillSwitch) {
+        self.value = value
+    }
+}
+
+@MainActor
+enum MemoryExtractionKillSwitchRegistry {
+    private static var switches: [WeakMemoryExtractionKillSwitch] = []
+
+    static func register(_ killSwitch: MemoryExtractionKillSwitch, initiallyAllowed: Bool) {
+        switches.removeAll { $0.value == nil }
+        switches.append(WeakMemoryExtractionKillSwitch(killSwitch))
+        killSwitch.set(initiallyAllowed)
+    }
+
+    static func setAll(_ allowed: Bool) {
+        switches.removeAll { $0.value == nil }
+        for entry in switches {
+            entry.value?.set(allowed)
+        }
     }
 }
 

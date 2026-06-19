@@ -10,9 +10,8 @@ import Foundation
 // is UNTRUSTED user/assistant content. It is wrapped in an explicit fenced region
 // and the instructions tell the model to treat everything inside as data, never as
 // instructions. This does not make a cloud call safe to exfiltrate secrets (the
-// scanner is output-side only) — that residual is handled by the hard local-first
-// default and the G7 candidate-DROP gate downstream — but it does harden against the
-// transcript steering the extractor's own output schema.
+// scanner is output-side only) — memory extraction is local-only in v1 — but it
+// does harden against the transcript steering the extractor's own output schema.
 //
 // CITATION CONTRACT (PR-D1 must-fix #1): the model is told to copy a `messageId`
 // VERBATIM from the transcript it is given, and that any fact whose `messageId` is
@@ -92,6 +91,10 @@ enum MemoryExtractionPromptBuilder {
         var kept: [String] = []
         var used = 0
         for entry in rendered.reversed() {
+            if entry.count > maxChars, kept.isEmpty {
+                kept.append(String(entry.prefix(maxChars)))
+                break
+            }
             let cost = entry.count + 1 // +1 for the joining newline
             if used + cost > maxChars, kept.isEmpty == false {
                 break

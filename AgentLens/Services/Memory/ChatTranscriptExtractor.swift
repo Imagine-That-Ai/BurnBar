@@ -5,12 +5,9 @@ import OpenBurnBarCore
 //
 // Builds the `MemoryExtractionWorker.Extractor` closure: the
 // `@Sendable (MemoryExtractionJob) async throws -> [MemoryAddRequest]` the worker
-// drains. Owns the LLM call path (mirrors `SummaryWorker`'s provider loop: local/MLX
-// first, then cloud providers gated by the daily cost cap), strict-JSON parsing, and
-// the G7 candidate-DROP gate. It is the input/transform stage only — the worker is the
-// sole provenance authority (PR-D1 must-fix #1/#3) and recomputes every citation hash
-// after this closure returns, so the citations produced here carry ONLY the model's
-// claimed `messageID` (a lookup key) with placeholder hashes the worker overwrites.
+// drains. Owns the local-only LLM call path, strict-JSON parsing, and candidate
+// mapping. It is the input/transform stage only — the worker owns candidate DROP
+// audit/counting and is the sole provenance authority (PR-D1 must-fix #1/#3).
 //
 // FAILURE TAXONOMY (PR-D1 must-fix, kept from spec):
 //   * Return `[]` (job SUCCEEDS) on benign empties: transcript not found, empty
@@ -18,8 +15,8 @@ import OpenBurnBarCore
 //     every provider unavailable/uncalled. There is nothing to retry — re-running the
 //     same transcript yields the same empty, and a "failed" status would spin the
 //     retry loop forever on a transcript that simply has no durable memory.
-//   * THROW only on a genuine transient infra fault we expect to clear (the cost-cap
-//     spend read failing). The worker marks the job failed with a retry backoff.
+//   * THROW only on a genuine transient infra fault we expect to clear. The worker
+//     marks the job failed with a retry backoff.
 //
 // WALL-CLOCK BOUND (PR-D1 must-fix #5): the whole extraction is raced against a
 // deadline strictly below the 15-min job lease, so an in-flight extraction can never
@@ -32,9 +29,8 @@ protocol ChatExtractionTranscriptReading: Sendable {
     func fetchChatTranscriptForExtraction(threadID: String) async throws -> [ChatTranscriptMessage]
 }
 
-// The cloud daily-cap spend read reuses the summary feature's `SummaryDailySpendReading`
-// seam (identical fail-closed signature) so memory and summary share ONE spend source;
-// a failed read must never default to 0 and silently bypass the cap.
+// `SummaryDailySpendReading` remains injected for the future explicit cloud-egress
+// path; local-only v1 never consults it.
 
 /// One transcript message the extractor reasons over and the worker later cites. The
 /// `body` is the canonical text the citation's `contentHash` will be computed from.
@@ -140,10 +136,9 @@ struct ChatTranscriptExtractor: Sendable {
 
     // MARK: - Candidate → request mapping (with G7 DROP gate)
 
-    /// Map validated candidates to `MemoryAddRequest`s, applying the G7 gate as a
-    /// per-candidate DROP filter (PR-D1 must-fix #4) so one secret-bearing candidate
-    /// does not poison the rest of the batch. Provenance is intentionally a stub here;
-    /// the worker recomputes it.
+    /// Map validated candidates to `MemoryAddRequest`s. Candidate DROP/audit is owned
+    /// by the worker so real extractor drops and fake-extractor test drops share one
+    /// telemetry path. Provenance is intentionally a stub here; the worker recomputes it.
     private func mapCandidatesToRequests(
         _ candidates: [ExtractedMemoryCandidate],
         job: ControlPlaneStore.MemoryExtractionJob,
@@ -151,18 +146,11 @@ struct ChatTranscriptExtractor: Sendable {
     ) -> [MemoryAddRequest] {
         var requests: [MemoryAddRequest] = []
         for candidate in candidates {
-            // G7 candidate-DROP gate. `.reject` (default, fail-closed) is also what an
-            // unavailable corpus returns, so a missing corpus drops every candidate
-            // rather than leaking one. Only `.allow` (nothing found) passes.
-            guard case .allow = MemorySecretPIIGate.evaluate(candidate.text, policy: .reject) else {
-                continue
-            }
-
             // Thread ONLY the model's claimed message id through as a lookup key. If it
-            // is not in the transcript, carry no citation at all (never fabricate); the
-            // worker drops unresolvable citations too, but filtering here keeps the
-            // placeholder honest and avoids handing the worker a known-bad id.
+            // is not in the transcript, discard the candidate; unsupported facts are not
+            // recallable memory.
             let citations = provenanceStub(for: candidate, job: job, transcriptIDs: transcriptIDs)
+            guard citations.isEmpty == false else { continue }
 
             requests.append(
                 MemoryAddRequest(
@@ -204,11 +192,10 @@ struct ChatTranscriptExtractor: Sendable {
         ]
     }
 
-    // MARK: - Provider loop (local-first, cost-capped)
+    // MARK: - Provider loop (local-only)
 
-    /// Try providers in `settings.providerOrder`. Local/MLX never read a key and never
-    /// hit the cap; cloud providers are gated by the fail-closed spend read + daily
-    /// cap (mirrors `SummaryWorker`). Returns the first non-nil raw model output.
+    /// Try providers in `settings.providerOrder`. The engine resolves that order to
+    /// on-device providers only; cloud transcript egress needs a separate consent gate.
     private func callModel(
         systemPrompt: String,
         userPrompt: String,
@@ -320,8 +307,9 @@ struct ChatTranscriptExtractor: Sendable {
         }
     }
 
-    /// OpenAI-compatible call wrapper that enforces the cloud daily cap with a
-    /// fail-closed spend read (mirrors `SummaryWorker.summarizeWithOpenAICompatibleProvider`).
+    /// OpenAI-compatible call wrapper retained for on-device OpenAI-compatible
+    /// endpoints and future explicitly gated cloud egress. Memory extraction's active
+    /// provider order is local-only, so cloud providers do not reach this path in v1.
     private func callOpenAICompatible(
         provider: SummaryProviderID,
         baseURL: String,
@@ -334,7 +322,7 @@ struct ChatTranscriptExtractor: Sendable {
     ) async -> String? {
         guard model.isEmpty == false else { return nil }
 
-        if provider != .local, provider != .mlx {
+        if provider != .local, provider != .mlx, provider != .ollama {
             let estimatedInputTokens = max(userPrompt.count / 4, 1)
             let estimatedOutputTokens = max(settings.maxOutputTokens / 2, 100)
             let estimatedCost = SummaryCostEstimator.estimateCostUSD(
@@ -343,7 +331,7 @@ struct ChatTranscriptExtractor: Sendable {
                 inputTokens: estimatedInputTokens,
                 outputTokens: estimatedOutputTokens
             )
-            // Fail-closed: a failed spend read skips the paid call rather than
+            // Future cloud-egress path: fail closed on spend-read errors rather than
             // defaulting to 0 and silently blowing past the cap.
             let spentToday: Double
             do {

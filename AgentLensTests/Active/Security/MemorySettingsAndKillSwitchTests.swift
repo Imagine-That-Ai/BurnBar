@@ -61,6 +61,19 @@ final class MemorySettingsAndKillSwitchTests: XCTestCase {
         XCTAssertTrue(settings.memoryExtractionEnabled, "Granting consent (other levers on) enables the gate.")
     }
 
+    func testSettingsChangesPropagateToRegisteredKillSwitchImmediately() throws {
+        let killSwitch = MemoryExtractionKillSwitch()
+        MemoryExtractionKillSwitchRegistry.register(killSwitch, initiallyAllowed: false)
+        let settings = SettingsManager(defaults: try makeDefaults())
+        XCTAssertFalse(killSwitch.isAllowed())
+
+        settings.memoryConsentGranted = true
+        XCTAssertTrue(killSwitch.isAllowed(), "granting consent opens the registered live worker gate")
+
+        settings.memoryExtractionRemoteConfigEnabled = false
+        XCTAssertFalse(killSwitch.isAllowed(), "fleet kill closes the registered live worker gate immediately")
+    }
+
     func testUserToggleDisablesGate() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
         settings.memoryConsentGranted = true

@@ -719,7 +719,7 @@ struct PrivacyIndexingSettingsView: View {
         if let store = runtimeContext?.chatMemoryStore {
             MemoryReviewInboxView(
                 model: MemoryReviewInboxModel(
-                    scope: MemorySettingsService.resetScope(userID: accountManager.userID),
+                    scope: MemoryScope(appID: "openburnbar"),
                     loadPage: { request in try await store.chatMemoryPage(request) },
                     openBody: { id in try await store.openChatMemoryBody(id: id) },
                     setStatus: { id, status in

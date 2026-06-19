@@ -362,7 +362,7 @@ extension ControlPlaneStore {
                     AND not_before <= ?
                 ) OR (
                     status = 'running'
-                    AND attempts <= ?
+                    AND attempts < ?
                     AND lease_expires_at IS NOT NULL
                     AND lease_expires_at <= ?
                 )
@@ -872,12 +872,47 @@ extension ControlPlaneStore {
     }
 
     func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
-        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+        let records = try await fetchAllChatMemoryAuthorityRecordsForDeletion(scope: scope)
         var deleted = 0
         for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
             deleted += 1
         }
         return deleted
+    }
+
+    private func fetchAllChatMemoryAuthorityRecordsForDeletion(scope: MemoryScope) async throws -> [Memory] {
+        try await dbQueue.read { db in
+            var predicates = ["source_kind = ?", "project_id = ?"]
+            var arguments: [any DatabaseValueConvertible] = [
+                MemorySourceKind.chat.rawValue,
+                Self.memoryStorageProjectID(for: scope)
+            ]
+            Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM agent_memories
+                WHERE \(predicates.joined(separator: " AND "))
+                ORDER BY created_at ASC, id ASC
+                """,
+                arguments: StatementArguments(arguments)
+            )
+            return try rows.compactMap { row in
+                guard let id: String = row["id"] else { return nil }
+                let citationRows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM memory_provenance
+                    WHERE memory_id = ?
+                    ORDER BY authored_at ASC, occurrence ASC, id ASC
+                    """,
+                    arguments: [id]
+                )
+                return Self.memory(from: row, citations: citationRows.compactMap(Self.memoryCitation(from:)))
+            }
+        }
     }
 
     func listChatMemoryEntities() async throws -> [MemoryEntity] {
@@ -1722,6 +1757,9 @@ actor MemoryExtractionWorker {
                     for: request,
                     job: job
                 )
+                guard authoritativeCitations.isEmpty == false else {
+                    continue
+                }
 
                 var quarantined = request
                 quarantined.scope = job.scope

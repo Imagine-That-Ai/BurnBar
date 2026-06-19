@@ -8,16 +8,13 @@ import Foundation
 // feature); the `MemoryExtractionEngine` (PR-D2) builds this on the MainActor and
 // hands it to the extractor closure.
 //
-// Local-first is a v1 *requirement*, not a preference (integrated build plan,
-// PR-D1 must-fix #6 / §6): the default `providerOrder` leads with the on-device
-// Ollama/MLX providers and the cloud daily cap (`SummaryCostEstimator`) gates any
-// paid call. The snapshot does not itself enforce ordering — it carries whatever
-// the engine resolved — but the default factory below encodes the local-first
-// posture so a misconfigured engine still fails safe.
+// Local-only is a v1 *requirement*, not a preference: the consent copy promises
+// local processing, so the engine resolves `providerOrder` to on-device providers
+// only. Cloud transcript egress needs a separate explicit consent gate later.
 
 /// Immutable, `Sendable` view of the settings the extractor reads per drain.
 struct MemoryExtractionSettingsSnapshot: Sendable, Equatable {
-    /// Provider attempt order. Local/Ollama-first by hard default (see file note).
+    /// Provider attempt order. On-device only by hard default (see file note).
     let providerOrder: [SummaryProviderID]
     let localBaseURL: String
     let localModel: String
@@ -33,8 +30,7 @@ struct MemoryExtractionSettingsSnapshot: Sendable, Equatable {
     /// Hard ceiling on transcript characters fed to the model (input-side bound).
     let maxPromptChars: Int
     let maxOutputTokens: Int
-    /// Separate daily USD cap so memory extraction cannot starve summary spend
-    /// (integrated build plan §5.7). Gates any cloud provider via `SummaryCostEstimator`.
+    /// Reserved for a future cloud-egress gate. Local-only v1 never consults it.
     let dailyCapUSD: Double
     let retryCount: Int
     /// Upper bound on candidates persisted per job; a defensive ceiling against a

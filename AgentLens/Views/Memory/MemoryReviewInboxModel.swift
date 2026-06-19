@@ -117,18 +117,28 @@ final class MemoryReviewInboxModel {
         includeQuarantined: Bool,
         keep status: MemoryReviewStatus
     ) async throws -> [Item] {
-        let request = MemoryPageRequest(
-            scope: scope,
-            page: 1,
-            pageSize: pageSize,
-            includeQuarantined: includeQuarantined
-        )
-        let page = try await loadPage(request)
         var items: [Item] = []
-        items.reserveCapacity(page.items.count)
-        for memory in page.items where memory.reviewStatus == status {
-            let body = (try? await openBody(memory.id)) ?? nil
-            items.append(Item(memory: memory, body: body ?? ""))
+        items.reserveCapacity(pageSize)
+
+        var nextPage = 1
+        while items.count < pageSize {
+            let request = MemoryPageRequest(
+                scope: scope,
+                page: nextPage,
+                pageSize: pageSize,
+                includeQuarantined: includeQuarantined
+            )
+            let page = try await loadPage(request)
+            guard page.items.isEmpty == false else { break }
+
+            for memory in page.items where memory.reviewStatus == status {
+                let body = (try? await openBody(memory.id)) ?? nil
+                items.append(Item(memory: memory, body: body ?? ""))
+                if items.count >= pageSize { break }
+            }
+
+            if nextPage * pageSize >= page.total { break }
+            nextPage += 1
         }
         return items
     }

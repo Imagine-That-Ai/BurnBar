@@ -44,8 +44,8 @@ import Foundation
 //      the controller's `memoryServiceForExtraction == nil` gate).
 //   #6 Per-pump `maxJobsPerPump` ceiling AND a wall-clock deadline bound a large backlog
 //      so one foreground drain cannot fire an unbounded serial chain of (paid) calls.
-//   #7 Provider order is forced local-first as a HARD default (not the user's summary
-//      order, which may be cloud-first); the input-side exfil residual is documented below.
+//   #7 Provider order is forced local-only as a HARD default; transcript cloud egress
+//      needs a separate explicit consent gate.
 
 /// Snapshot of the outcome of one pump, surfaced for observation/tests.
 struct MemoryExtractionPumpReport: Equatable, Sendable {
@@ -109,7 +109,7 @@ final class MemoryExtractionEngine {
     ///     used by `OpenBurnBarMemoryService`, so extraction reads the transcript from and
     ///     writes memories to the one store — the basis for the worker being the sole
     ///     provenance authority without a second store).
-    ///   - dataStore: live spend source for the cloud daily cap (fail-closed).
+    ///   - dataStore: reserved spend source for a future explicit cloud-egress gate.
     ///   - authorityWritesGoLiveEnabled: the SECOND, human-owned dormancy lever (PR-D FIX
     ///     #1). Defaults to the static `chatMemoryAuthorityWritesEnabledByDefault` (false),
     ///     so durable writes stay blocked until a human flips the go-live flag — EVEN WHEN
@@ -133,6 +133,10 @@ final class MemoryExtractionEngine {
         let killSwitch = MemoryExtractionKillSwitch(
             initiallyAllowed: settingsManager.memoryExtractionEnabled
         )
+        MemoryExtractionKillSwitchRegistry.register(
+            killSwitch,
+            initiallyAllowed: settingsManager.memoryExtractionEnabled
+        )
         self.killSwitch = killSwitch
 
         // Seed the settings box on the MainActor (legal here). The off-main extractor
@@ -142,8 +146,8 @@ final class MemoryExtractionEngine {
         )
         self.settingsBox = settingsBox
 
-        // Build the extractor closure (run off-main per drain). The live spend source
-        // feeds the fail-closed cloud daily cap; local providers never read it.
+        // Build the extractor closure (run off-main per drain). The spend source is
+        // injected for the future cloud-egress path; local-only v1 never reads it.
         let resolver = MemoryExtractionAPIKeyResolver(providerAPIKeyStore: providerAPIKeyStore)
         let extractor = ChatTranscriptExtractor(
             transcriptReader: chatMemoryStore,
@@ -299,18 +303,16 @@ final class MemoryExtractionEngine {
         )
     }
 
-    // MARK: - Settings snapshot (local-first HARD default — must-fix #7)
+    // MARK: - Settings snapshot (local-only HARD default — must-fix #7)
 
     /// Build an immutable `Sendable` snapshot of every setting the extractor needs, read
     /// on the MainActor (where `SettingsManager` access is legal). The engine pushes the
     /// result into `settingsBox` before each drain; the extractor's `@Sendable` provider
     /// reads the box off-main.
     ///
-    /// LOCAL-FIRST IS A HARD DEFAULT, not the user's configurable summary order: the input
-    /// transcript (possibly secrets/PII) is sent to the provider BEFORE any scan (the G7
-    /// gate is output-only), so the residual input-side exfil risk (integrated build plan
-    /// §5.8) is accepted ONLY with on-device providers leading. Cloud providers are kept
-    /// as a strictly-after fallback, gated by the separate memory daily cap.
+    /// LOCAL-ONLY IS A HARD DEFAULT, not the user's configurable summary order: the input
+    /// transcript is sent to the provider before any scan, and the consent copy promises
+    /// local processing. Cloud fallback needs a separate explicit transcript-egress gate.
     private static func makeSettingsSnapshot(
         settingsManager: SettingsManager
     ) -> MemoryExtractionSettingsSnapshot {
@@ -329,8 +331,7 @@ final class MemoryExtractionEngine {
             requestTimeoutSeconds: effectiveRequestTimeout(settingsManager),
             maxPromptChars: MemoryExtractionPolicy.clampedPromptChars(settingsManager.summaryMaxPromptChars),
             maxOutputTokens: MemoryExtractionPolicy.clampedOutputTokens(settingsManager.summaryMaxOutputTokens),
-            // SEPARATE memory cap so extraction cannot starve summary spend (§5.7). A
-            // configured summary cap of 0 means "no cloud spend"; honor that as 0 too.
+            // Reserved for a future explicit cloud-egress gate.
             dailyCapUSD: effectiveDailyCapUSD(settingsManager),
             retryCount: max(settingsManager.summaryRetryCount, 0),
             maxCandidatesPerJob: MemoryExtractionPolicy.maxCandidatesPerJob,
@@ -338,20 +339,16 @@ final class MemoryExtractionEngine {
         )
     }
 
-    /// Force on-device providers (`.local`, `.mlx`, `.ollama`) to the front of whatever
-    /// order the user configured for summaries, preserving relative order within each
-    /// group and de-duplicating. A configured cloud-first order therefore still attempts
-    /// local first for memory extraction.
+    /// Restrict memory extraction to on-device providers (`.local`, `.mlx`, `.ollama`),
+    /// preserving their configured relative order and dropping cloud providers entirely.
     static func localFirstProviderOrder(_ configured: [SummaryProviderID]) -> [SummaryProviderID] {
         let onDevice: Set<SummaryProviderID> = [.local, .mlx, .ollama]
         let source = configured.isEmpty ? SummaryProviderID.allCases : configured
         var seen = Set<SummaryProviderID>()
         let deduped = source.filter { seen.insert($0).inserted }
         let local = deduped.filter { onDevice.contains($0) }
-        let cloud = deduped.filter { !onDevice.contains($0) }
         // Guarantee at least one on-device provider leads even if the user removed them.
-        let leadingLocal = local.isEmpty ? [.local] : local
-        var result = leadingLocal + cloud
+        var result = local.isEmpty ? [.local] : local
         // Re-dedupe in case `.local` was injected above.
         seen.removeAll()
         result = result.filter { seen.insert($0).inserted }
