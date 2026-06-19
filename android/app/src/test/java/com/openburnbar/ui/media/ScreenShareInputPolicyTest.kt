@@ -159,6 +159,41 @@ class ScreenShareInputPolicyTest {
     }
 
     @Test
+    fun remoteKeyboardCaptureSuppressesDuplicateRawValueButKeepsIntentionalDoubleLetters() {
+        var state = RemoteKeyboardCaptureState()
+
+        val first = remoteKeyboardCaptureChange(state = state, newText = "l")
+        assertEquals("l", first.insertedText)
+        assertEquals(0, first.deletedCount)
+        state = first.nextState
+
+        val duplicate = remoteKeyboardCaptureChange(state = state, newText = "l")
+        assertEquals("", duplicate.insertedText)
+        assertEquals(0, duplicate.deletedCount)
+        state = duplicate.nextState
+
+        val intentionalDoubleLetter = remoteKeyboardCaptureChange(state = state, newText = "ll")
+        assertEquals("l", intentionalDoubleLetter.insertedText)
+        assertEquals(0, intentionalDoubleLetter.deletedCount)
+    }
+
+    @Test
+    fun remoteKeyboardCaptureSuppressesDuplicateRawValueAfterBufferReset() {
+        val longText = "x".repeat(257)
+
+        val first = remoteKeyboardCaptureChange(
+            state = RemoteKeyboardCaptureState(),
+            newText = longText,
+        )
+        assertEquals(longText, first.insertedText)
+        assertEquals("", first.nextState.retainedText)
+
+        val duplicate = remoteKeyboardCaptureChange(state = first.nextState, newText = longText)
+        assertEquals("", duplicate.insertedText)
+        assertEquals(0, duplicate.deletedCount)
+    }
+
+    @Test
     fun remoteKeyboardDispatchRoutesControlKeysSeparatelyFromText() {
         val events = mutableListOf<String>()
 
