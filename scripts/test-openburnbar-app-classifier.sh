@@ -196,6 +196,17 @@ xcodebuild: error: Could not resolve package dependencies:
 LOG
 )"
 
+interleaved_security_failure_log="$(write_fixture interleaved-security-failure <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-19 03:17:42.489.
+2026-06-19 03:20:49.210291+0000 OpenBurnBar[80/Users/runner/work/BurnBar/BurnBar/AgentLensTests/Active/ComputerUse/PhoneControlReceiverTests.swift:1449: error: -[OpenBurnBarTests.PhoneControlReceiverTests testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation] : XCTAssertEqual failed: ("accepted") is not equal to ("denied")
+/Users/runner/work/BurnBar/BurnBar/AgentLensTests/Active/ComputerUse/PhoneControlReceiverTests.swift:1450: error: -[OpenBurnBarTests.PhoneControlReceiverTests testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("mac_attestation_unbound")")
+Test Case '-[OpenBurnBarTests.PhoneControlReceiverTests testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation]' failed (0.068 seconds).
+Test Suite 'PhoneControlReceiverTests' failed at 2026-06-19 03:20:49.246.
+	 Executed 22 tests, with 6 failures (0 unexpected) in 2.059 (2.086) seconds
+LOG
+)"
+
+assert_true "interleaved security assertion failure is concrete XCTest failure" openburnbar_app_test_has_concrete_xctest_failure "$interleaved_security_failure_log"
 assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xcode_false_negative_pass "$false_negative_log"
 assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
