@@ -983,6 +983,149 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(active.map(\.id), ["mem-approved-winner"])
     }
 
+    func test_memoryServingRecallReturnsApprovedActiveScopeWithinBudget() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let now = Date(timeIntervalSince1970: 1_800_000_380)
+        let scope = MemoryScope(userID: "recall-user", appID: "recall-app")
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "User prefers concise backend memory status updates.",
+                kind: .preference,
+                scope: scope,
+                confidence: 0.91,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-recall-approved",
+                        threadLogicalID: "thread-recall-approved",
+                        messageID: "message-recall-approved",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-recall-approved",
+                        crossDeviceHMAC: "hmac-recall-approved"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-recall-approved",
+            now: now,
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Quarantined fact mentions concise backend memory but cannot inject.",
+                kind: .fact,
+                scope: scope,
+                confidence: 0.99,
+                reviewStatus: .quarantined
+            ),
+            id: "mem-recall-quarantined",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Other scope also prefers concise backend status.",
+                kind: .preference,
+                scope: MemoryScope(userID: "other-recall-user", appID: "recall-app"),
+                confidence: 0.99,
+                reviewStatus: .approved
+            ),
+            id: "mem-recall-other-scope",
+            now: now.addingTimeInterval(2),
+            enabled: true
+        )
+
+        let snippets = try await service.recallForPrompt(
+            MemoryRecallRequest(
+                query: "concise backend status",
+                scope: scope,
+                tokenBudget: 80,
+                limit: 5
+            )
+        )
+        XCTAssertEqual(snippets.map(\.memoryID), ["mem-recall-approved"])
+        XCTAssertEqual(snippets.first?.text, "User prefers concise backend memory status updates.")
+        XCTAssertEqual(snippets.first?.trustTier, .untrusted)
+        XCTAssertEqual(snippets.first?.citations.map(\.crossDeviceHMAC), ["hmac-recall-approved"])
+
+        let tinyBudget = try await service.recallForPrompt(
+            MemoryRecallRequest(query: "concise backend status", scope: scope, tokenBudget: 2, limit: 5)
+        )
+        XCTAssertTrue(tinyBudget.isEmpty)
+    }
+
+    func test_memoryServingCrudEventsReviewAndExtractionEnqueue() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let scope = MemoryScope(userID: "service-user", appID: "service-app")
+
+        let addEvent = try await service.add(
+            MemoryAddRequest(
+                text: "Service stores a quarantined memory.",
+                kind: .fact,
+                scope: scope,
+                confidence: 0.62,
+                reviewStatus: .quarantined
+            )
+        )
+        let addStatus = try await service.eventStatus(addEvent)
+        XCTAssertEqual(addStatus, .succeeded)
+
+        let hiddenPage = try await service.getAll(MemoryPageRequest(scope: scope, includeQuarantined: false))
+        XCTAssertTrue(hiddenPage.items.isEmpty)
+        let reviewPage = try await service.getAll(MemoryPageRequest(scope: scope, includeQuarantined: true))
+        let memoryID = try XCTUnwrap(reviewPage.items.first?.id)
+
+        let approveEvent = try await service.approve(id: memoryID)
+        let approveStatus = try await service.eventStatus(approveEvent)
+        let approvedMemory = try await service.get(id: memoryID)
+        XCTAssertEqual(approveStatus, .succeeded)
+        XCTAssertEqual(approvedMemory?.reviewStatus, .approved)
+
+        let updateEvent = try await service.update(
+            id: memoryID,
+            MemoryPatch(text: "Service stores an approved memory.", kind: .preference, confidence: 0.88)
+        )
+        let updateStatus = try await service.eventStatus(updateEvent)
+        let updatedMemory = try await service.get(id: memoryID)
+        let updatedBody = try await store.openChatMemoryBody(id: memoryID)
+        XCTAssertEqual(updateStatus, .succeeded)
+        XCTAssertEqual(updatedMemory?.kind, .preference)
+        XCTAssertEqual(updatedBody, "Service stores an approved memory.")
+
+        let entities = try await service.listEntities()
+        XCTAssertTrue(entities.contains(MemoryEntity(keyName: "user_id", value: "service-user", count: 1)))
+
+        try await service.enqueueExtraction(
+            ExtractionIntent(
+                threadID: "thread-service",
+                threadLogicalID: "thread-logical-service",
+                messageID: "message-service",
+                scope: scope,
+                promptVersion: "memory-extract-v1",
+                idempotencyKey: "service-idem"
+            )
+        )
+        let queuedJobs = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs WHERE idempotency_key = 'service-idem'") ?? 0
+        }
+        XCTAssertEqual(queuedJobs, 1)
+
+        let deleteEvent = try await service.delete(id: memoryID)
+        let deleteStatus = try await service.eventStatus(deleteEvent)
+        let deletedMemory = try await service.get(id: memoryID)
+        XCTAssertEqual(deleteStatus, .succeeded)
+        XCTAssertNil(deletedMemory)
+    }
+
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
