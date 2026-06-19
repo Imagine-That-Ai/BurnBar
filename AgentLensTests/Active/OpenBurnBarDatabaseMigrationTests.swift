@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v51_chat_memory_authority",
+            "v52_memory_extraction_job_intent_and_lease",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -153,6 +153,59 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("memory_embedding_refs_version_idx"))
         XCTAssertTrue(indexes.contains("memory_body_snapshots_source_idx"))
         XCTAssertTrue(indexes.contains("memory_source_tombstones_thread_idx"))
+    }
+
+    func test_v52MemoryExtractionJobsBackfillsIntentAndAddsLease() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v51_chat_memory_authority")
+        let now = Date(timeIntervalSince1970: 1_800_000_120)
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO memory_extraction_jobs (
+                    id, idempotency_key, thread_id, message_id, scope_json,
+                    status, attempts, last_error, not_before, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'running', 1, NULL, NULL, ?, ?)
+                """,
+                arguments: [
+                    "memory-extraction-legacy",
+                    "legacy-idem",
+                    "legacy-thread",
+                    "legacy-message",
+                    #"{"userID":"legacy-user"}"#,
+                    now,
+                    now
+                ]
+            )
+        }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let columns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_extraction_jobs")
+        }
+        XCTAssertTrue(columns.contains("thread_logical_id"))
+        XCTAssertTrue(columns.contains("prompt_version"))
+        XCTAssertTrue(columns.contains("lease_expires_at"))
+        let row = try await queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT thread_logical_id, prompt_version, lease_expires_at FROM memory_extraction_jobs"
+            )
+        }
+        XCTAssertEqual(row?["thread_logical_id"] as? String, "legacy-thread")
+        XCTAssertEqual(row?["prompt_version"] as? String, "legacy-unknown")
+        XCTAssertNotNil(row?["lease_expires_at"] as? String)
+        let indexes = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index'")
+        }
+        XCTAssertTrue(indexes.contains("memory_extraction_jobs_lease_idx"))
+        let store = ControlPlaneStore(dbQueue: queue)
+        let reclaimed = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(1))
+        XCTAssertEqual(reclaimed?.id, "memory-extraction-legacy")
+        XCTAssertEqual(reclaimed?.threadLogicalID, "legacy-thread")
+        XCTAssertEqual(reclaimed?.promptVersion, "legacy-unknown")
+        XCTAssertEqual(reclaimed?.attempts, 2)
     }
 
     func test_v51ChatMemoryAuthority_quarantinesNewRowsByDefaultButPreservesLegacyCodeRows() async throws {
@@ -504,6 +557,392 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 .dimensionMismatch(expected: 3, actual: 2)
             )
         }
+    }
+
+    func test_memorySecretGateRejectsPrePersistenceWithLabelOnlyAudit() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let secret = "sk-ant-1234567890abcdef1234567890"
+        let body = "User pasted \(secret) and this must never persist as memory."
+
+        do {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(text: body, scope: MemoryScope(userID: "secret-user")),
+                id: "mem-secret",
+                enabled: true
+            )
+            XCTFail("Expected secret-bearing memory to be rejected before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.ChatMemoryAuthorityError,
+                .secretRejected(labels: ["anthropic_api_key"])
+            )
+        }
+
+        let persisted = try await queue.read { db -> (agentCount: Int, snapshotCount: Int, audit: String, auditRow: Row?) in
+            let agentCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE id = 'mem-secret'") ?? 0
+            let snapshotCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM memory_body_snapshots WHERE memory_id = 'mem-secret'"
+            ) ?? 0
+            let audit = try String.fetchAll(
+                db,
+                sql: "SELECT action || '|' || labels_json FROM memory_audit WHERE subject_id = 'mem-secret'"
+            ).joined(separator: "\n")
+            let auditRow = try Row.fetchOne(db, sql: "SELECT * FROM memory_audit WHERE subject_id = 'mem-secret'")
+            return (agentCount, snapshotCount, audit, auditRow)
+        }
+        XCTAssertEqual(persisted.agentCount, 0)
+        XCTAssertEqual(persisted.snapshotCount, 0)
+        XCTAssertTrue(persisted.audit.contains("memory.secret_rejected"))
+        XCTAssertTrue(persisted.audit.contains("anthropic_api_key"))
+        XCTAssertFalse(persisted.audit.contains(secret))
+        let labelsJSON = try XCTUnwrap(persisted.auditRow?["labels_json"] as String?)
+        let labels = try JSONDecoder().decode([String].self, from: Data(labelsJSON.utf8))
+        XCTAssertTrue(labels.contains("labels:anthropic_api_key"))
+        try assertMemoryAuditRowRecomputes(persisted.auditRow)
+
+        do {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: "Embedded key apiKey_sk-abcdefghijklmnopqrstuvwxyz1234567890 must still be rejected.",
+                    scope: MemoryScope(userID: "secret-user")
+                ),
+                id: "mem-embedded-secret",
+                enabled: true
+            )
+            XCTFail("Expected embedded secret-bearing memory to be rejected before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.ChatMemoryAuthorityError,
+                .secretRejected(labels: ["openai_api_key"])
+            )
+        }
+    }
+
+    func test_memoryExtractionOutboxIsDurableAndIdempotent() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_200)
+        let intent = ExtractionIntent(
+            threadID: "thread-pr3",
+            threadLogicalID: "thread-logical-pr3",
+            messageID: "message-pr3",
+            scope: MemoryScope(userID: "user-pr3", appID: "app-pr3"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "idem-pr3"
+        )
+
+        let firstID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let secondID = try await store.enqueueMemoryExtraction(intent, now: now.addingTimeInterval(1))
+        XCTAssertEqual(firstID, secondID)
+
+        let rowsAfterDuplicate = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs") ?? 0
+        }
+        XCTAssertEqual(rowsAfterDuplicate, 1)
+
+        let claimed = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(2))
+        XCTAssertEqual(claimed?.id, firstID)
+        XCTAssertEqual(claimed?.threadLogicalID, "thread-logical-pr3")
+        XCTAssertEqual(claimed?.promptVersion, "memory-extract-v1")
+        XCTAssertEqual(claimed?.status, .running)
+        XCTAssertEqual(claimed?.attempts, 1)
+        XCTAssertEqual(claimed?.leaseExpiresAt, now.addingTimeInterval(2 + ControlPlaneStore.MemoryExtractionJob.defaultLeaseDuration))
+
+        let secondClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(3))
+        XCTAssertNil(secondClaim, "Running jobs must not be claimed twice.")
+
+        try await store.markMemoryExtractionJobSucceeded(firstID, now: now.addingTimeInterval(4))
+        let status = try await store.memoryExtractionJobStatus(id: firstID)
+        XCTAssertEqual(status, .succeeded)
+    }
+
+    func test_memoryExtractionOutboxRetriesFailedJobsAfterBackoffUntilBounded() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_250)
+        let intent = ExtractionIntent(
+            threadID: "thread-retry-pr3",
+            threadLogicalID: "thread-logical-retry-pr3",
+            messageID: "message-retry-pr3",
+            scope: MemoryScope(userID: "retry-user", appID: "retry-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "retry-idem-pr3"
+        )
+
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let firstClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(1), maxAttempts: 3)
+        XCTAssertEqual(firstClaim?.attempts, 1)
+        try await store.markMemoryExtractionJobFailed(
+            jobID,
+            error: "temporary_model_error",
+            retryAfter: 60,
+            now: now.addingTimeInterval(2)
+        )
+
+        let earlyRetry = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(30), maxAttempts: 3)
+        XCTAssertNil(earlyRetry)
+
+        let secondClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(63), maxAttempts: 3)
+        XCTAssertEqual(secondClaim?.id, jobID)
+        XCTAssertEqual(secondClaim?.status, .running)
+        XCTAssertEqual(secondClaim?.attempts, 2)
+        try await store.markMemoryExtractionJobFailed(
+            jobID,
+            error: "temporary_model_error",
+            retryAfter: 60,
+            now: now.addingTimeInterval(64)
+        )
+
+        let thirdClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(125), maxAttempts: 3)
+        XCTAssertEqual(thirdClaim?.id, jobID)
+        XCTAssertEqual(thirdClaim?.attempts, 3)
+        try await store.markMemoryExtractionJobFailed(
+            jobID,
+            error: "terminal_model_error",
+            retryAfter: 60,
+            now: now.addingTimeInterval(126)
+        )
+
+        let exhaustedClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(187), maxAttempts: 3)
+        XCTAssertNil(exhaustedClaim)
+        let finalStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(finalStatus, .failed)
+
+        let revivedJobID = try await store.enqueueMemoryExtraction(intent, now: now.addingTimeInterval(188))
+        XCTAssertEqual(revivedJobID, jobID)
+        let revivedClaim = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(189), maxAttempts: 3)
+        XCTAssertEqual(revivedClaim?.id, jobID)
+        XCTAssertEqual(revivedClaim?.status, .running)
+        XCTAssertEqual(revivedClaim?.attempts, 1)
+    }
+
+    func test_memoryExtractionOutboxReclaimsStaleRunningLease() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_275)
+        let staleIdempotency = ["stale", "idem", "pr3"].joined(separator: "-")
+        let intent = ExtractionIntent(
+            threadID: "thread-stale-pr3",
+            threadLogicalID: "thread-logical-stale-pr3",
+            messageID: "message-stale-pr3",
+            scope: MemoryScope(userID: "stale-user", appID: "stale-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: staleIdempotency
+        )
+
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let firstClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(1),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(firstClaim?.id, jobID)
+        XCTAssertEqual(firstClaim?.leaseExpiresAt, now.addingTimeInterval(11))
+
+        let beforeLeaseExpiry = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(10),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertNil(beforeLeaseExpiry)
+
+        let reclaimed = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(12),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(reclaimed?.id, jobID)
+        XCTAssertEqual(reclaimed?.status, .running)
+        XCTAssertEqual(reclaimed?.attempts, 2)
+        XCTAssertEqual(reclaimed?.leaseExpiresAt, now.addingTimeInterval(22))
+    }
+
+    func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_300)
+        let intent = ExtractionIntent(
+            threadID: "thread-worker-pr3",
+            threadLogicalID: "thread-logical-worker-pr3",
+            messageID: "message-worker-pr3",
+            scope: MemoryScope(userID: "worker-user", appID: "worker-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "worker-idem-pr3"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { true },
+            extractor: { job in
+            [
+                MemoryAddRequest(
+                    text: "Worker extracted a durable preference.",
+                    kind: .preference,
+                    scope: MemoryScope(userID: "wrong-user", appID: "wrong-app"),
+                    confidence: 0.77,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-\(job.id)",
+                            threadLogicalID: "thread-logical-worker-pr3",
+                            messageID: job.messageID,
+                            role: "assistant",
+                            authoredAt: now,
+                            contentHash: job.idempotencyKey,
+                            crossDeviceHMAC: "hmac-\(job.id)"
+                        )
+                    ],
+                    reviewStatus: .approved
+                )
+            ]
+        })
+
+        let drained = try await worker.drainOne()
+        XCTAssertTrue(drained)
+        let status = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(status, .succeeded)
+        let row = try await queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT review_status, body_ref, user_id, app_id FROM agent_memories WHERE source_kind = 'chat'"
+            )
+        }
+        XCTAssertEqual(row?["review_status"] as? String, MemoryReviewStatus.quarantined.rawValue)
+        XCTAssertEqual(row?["body_ref"] as? String, "memory_body_snapshots:memory-memory-\(jobID)-0")
+        XCTAssertEqual(row?["user_id"] as? String, "worker-user")
+        XCTAssertEqual(row?["app_id"] as? String, "worker-app")
+    }
+
+    func test_memoryExtractionWorkerSkipsExistingDeterministicRowsOnRetry() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_320)
+        let intent = ExtractionIntent(
+            threadID: "thread-idempotent-pr3",
+            threadLogicalID: "thread-logical-idempotent-pr3",
+            messageID: "message-idempotent-pr3",
+            scope: MemoryScope(userID: "idempotent-user", appID: "idempotent-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "idempotent-idem-pr3"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Previously persisted first extracted memory.",
+                kind: .fact,
+                scope: intent.scope,
+                confidence: 0.9,
+                reviewStatus: .quarantined
+            ),
+            id: "memory-\(jobID)-0",
+            now: now,
+            enabled: true
+        )
+
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now.addingTimeInterval(1) },
+            authorityWritesEnabled: { true },
+            extractor: { job in
+            [
+                MemoryAddRequest(text: "Duplicate first extracted memory.", scope: job.scope),
+                MemoryAddRequest(text: "New second extracted memory.", kind: .preference, scope: job.scope)
+            ]
+        })
+
+        let drained = try await worker.drainOne()
+        XCTAssertTrue(drained)
+        let rows = try await queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT id, kind FROM agent_memories WHERE source_kind = 'chat' ORDER BY id"
+            )
+        }
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.map { $0["id"] as? String }, ["memory-\(jobID)-0", "memory-\(jobID)-1"])
+        XCTAssertEqual(rows.map { $0["kind"] as? String }, ["fact", "preference"])
+        let status = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(status, .succeeded)
+    }
+
+    func test_memoryExtractionWorkerPreflightsBatchBeforeWritingSecretBearingRequest() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_340)
+        let intent = ExtractionIntent(
+            threadID: "thread-secret-pr3",
+            threadLogicalID: "thread-logical-secret-pr3",
+            messageID: "message-secret-pr3",
+            scope: MemoryScope(userID: "secret-worker-user", appID: "secret-worker-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "secret-worker-idem-pr3"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { true },
+            extractor: { job in
+            [
+                MemoryAddRequest(text: "Safe first memory should not be persisted.", scope: job.scope),
+                MemoryAddRequest(text: "Secret sk-ant-1234567890abcdef1234567890 must reject the whole batch.", scope: job.scope)
+            ]
+        })
+
+        let drained = try await worker.drainOne()
+        XCTAssertFalse(drained)
+        let count = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        }
+        XCTAssertEqual(count, 0)
+        let status = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(status, .failed)
+    }
+
+    func test_memoryExtractionWorkerRespectsAuthorityWriteKillSwitch() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_360)
+        let intent = ExtractionIntent(
+            threadID: "thread-disabled-pr3",
+            threadLogicalID: "thread-logical-disabled-pr3",
+            messageID: "message-disabled-pr3",
+            scope: MemoryScope(userID: "disabled-worker-user", appID: "disabled-worker-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: "disabled-worker-idem-pr3"
+        )
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let worker = MemoryExtractionWorker(store: store, nowProvider: { now }, extractor: { _ in
+            XCTFail("Extractor must not run while chat memory authority writes are disabled.")
+            return []
+        })
+
+        let drained = try await worker.drainOne()
+        XCTAssertFalse(drained)
+        let status = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(status, .pending)
+        let count = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        }
+        XCTAssertEqual(count, 0)
     }
 
     /// A database genuinely behind the latest migration must take a pre-migration

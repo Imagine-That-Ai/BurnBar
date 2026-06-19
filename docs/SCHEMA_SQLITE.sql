@@ -264,17 +264,21 @@ CREATE TABLE memory_extraction_jobs (
   id              TEXT NOT NULL PRIMARY KEY,
   idempotency_key TEXT NOT NULL UNIQUE,
   thread_id       TEXT NOT NULL,
+  thread_logical_id TEXT NOT NULL,
   message_id      TEXT NOT NULL,
+  prompt_version  TEXT NOT NULL,
   scope_json      TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'pending',
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
   not_before      TEXT,
+  lease_expires_at TEXT,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL
 );
 
 CREATE INDEX memory_extraction_jobs_status_idx ON memory_extraction_jobs(status, not_before);
+CREATE INDEX memory_extraction_jobs_lease_idx ON memory_extraction_jobs(status, lease_expires_at);
 
 CREATE TABLE memory_embedding_refs (
   memory_id            TEXT NOT NULL,
