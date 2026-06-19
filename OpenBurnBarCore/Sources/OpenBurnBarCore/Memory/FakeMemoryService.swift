@@ -175,7 +175,7 @@ public actor FakeMemoryService: MemoryServing {
 
     private static let fixtureText: [MemoryID: String] = [
         "mem_fixture_1": "User prefers terse answers without preamble.",
-        "mem_fixture_2": "User's primary project is OpenBurnBar, a local-first macOS app.",
+        "mem_fixture_2": "User's primary project is OpenBurnBar, a local-first macOS app."
     ]
 
     private static func seedFixtures() -> [Memory] {
@@ -225,7 +225,7 @@ public actor FakeMemoryService: MemoryServing {
                 validFrom: now,
                 createdAt: now,
                 updatedAt: now
-            ),
+            )
         ]
     }
 }
