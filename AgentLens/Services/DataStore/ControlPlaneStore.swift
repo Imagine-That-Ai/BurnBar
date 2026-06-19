@@ -9,7 +9,7 @@ import OpenBurnBarCore
 final class ControlPlaneStore: Sendable {
     static let chatMemoryAuthorityWritesEnabledByDefault = false
 
-    private let dbQueue: any DatabaseWriter
+    let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
@@ -882,6 +882,7 @@ final class ControlPlaneStore: Sendable {
         var scored: [(memory: Memory, score: Double)] = []
         scored.reserveCapacity(records.count)
         for memory in records {
+            guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
             let body = try await openChatMemoryBody(id: memory.id) ?? ""
             scored.append((memory, Self.memoryTextScore(query: query.text, text: body) + memory.confidence))
         }
@@ -900,6 +901,7 @@ final class ControlPlaneStore: Sendable {
         var ranked: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
         ranked.reserveCapacity(records.count)
         for memory in records {
+            guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
             guard let body = try await openChatMemoryBody(id: memory.id), body.isEmpty == false else {
                 continue
             }
@@ -1065,6 +1067,12 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
+            try Self.insertMemorySourceTombstonesForMemory(
+                db: db,
+                memoryID: id,
+                reason: "user_delete",
+                now: now
+            )
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
@@ -1371,7 +1379,7 @@ final class ControlPlaneStore: Sendable {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func iso8601String(_ date: Date) -> String {
+    static func iso8601String(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
@@ -1725,7 +1733,7 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    private static func insertMemoryAuditEvent(
+    static func insertMemoryAuditEvent(
         db: Database,
         action: String,
         projectID: String,
