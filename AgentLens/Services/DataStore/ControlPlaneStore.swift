@@ -343,6 +343,31 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
+    enum MemoryEmbeddingStoreError: Error, LocalizedError, Equatable {
+        case emptyVector
+        case dimensionMismatch(expected: Int, actual: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyVector:
+                "Memory embedding vector is empty."
+            case .dimensionMismatch(let expected, let actual):
+                "Memory embedding dimension mismatch: expected \(expected), got \(actual)."
+            }
+        }
+    }
+
+    struct MemoryEmbeddingRegistration: Equatable, Sendable {
+        let modelID: String
+        let versionID: String
+        let dimension: Int
+    }
+
+    struct MemoryEmbeddingMatch: Equatable, Sendable {
+        let memoryID: MemoryID
+        let score: Double
+    }
+
     func addChatMemoryAuthorityRecord(
         _ request: MemoryAddRequest,
         id: MemoryID = UUID().uuidString,
@@ -554,6 +579,139 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
+    func registerMemoryEmbeddingVersion(
+        descriptor: EmbeddingModelDescriptor,
+        isActive: Bool = true,
+        now: Date = Date()
+    ) async throws -> MemoryEmbeddingRegistration {
+        let modelID = EmbeddingIdentity.modelID(for: descriptor)
+        let versionID = EmbeddingIdentity.versionID(for: descriptor)
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_models (
+                    id, provider, modelName, dimensions, distanceMetric, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    provider = excluded.provider,
+                    modelName = excluded.modelName,
+                    dimensions = excluded.dimensions,
+                    distanceMetric = excluded.distanceMetric,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    modelID,
+                    descriptor.provider,
+                    descriptor.modelName,
+                    descriptor.dimensions,
+                    descriptor.distanceMetric.rawValue,
+                    now,
+                    now
+                ]
+            )
+            if isActive {
+                try db.execute(
+                    sql: "UPDATE embedding_versions SET isActive = 0, updatedAt = ? WHERE modelID = ?",
+                    arguments: [now, modelID]
+                )
+            }
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_versions (
+                    id, modelID, versionTag, chunkerVersion, normalizationVersion,
+                    promptVersion, isActive, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    modelID = excluded.modelID,
+                    versionTag = excluded.versionTag,
+                    chunkerVersion = excluded.chunkerVersion,
+                    normalizationVersion = excluded.normalizationVersion,
+                    promptVersion = excluded.promptVersion,
+                    isActive = excluded.isActive,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    versionID,
+                    modelID,
+                    descriptor.versionTag,
+                    descriptor.chunkerVersion,
+                    descriptor.normalizationVersion,
+                    descriptor.promptVersion,
+                    isActive,
+                    now,
+                    now
+                ]
+            )
+        }
+        return MemoryEmbeddingRegistration(
+            modelID: modelID,
+            versionID: versionID,
+            dimension: descriptor.dimensions
+        )
+    }
+
+    func upsertMemoryEmbeddingRef(
+        memoryID: MemoryID,
+        embeddingVersionID: String,
+        vector: [Float],
+        now: Date = Date()
+    ) async throws {
+        guard vector.isEmpty == false else { throw MemoryEmbeddingStoreError.emptyVector }
+        let vectorBlob = Self.floatVectorBlob(vector)
+        let norm = Self.vectorNorm(vector)
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO memory_embedding_refs (
+                    memory_id, embedding_version_id, dimension, vector, norm, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(memory_id, embedding_version_id) DO UPDATE SET
+                    dimension = excluded.dimension,
+                    vector = excluded.vector,
+                    norm = excluded.norm,
+                    created_at = excluded.created_at
+                """,
+                arguments: [memoryID, embeddingVersionID, vector.count, vectorBlob, norm, now]
+            )
+        }
+    }
+
+    func memoryEmbeddingMatches(
+        queryVector: [Float],
+        embeddingVersionID: String,
+        dimension: Int,
+        limit: Int = 20
+    ) async throws -> [MemoryEmbeddingMatch] {
+        guard queryVector.count == dimension else {
+            throw MemoryEmbeddingStoreError.dimensionMismatch(expected: dimension, actual: queryVector.count)
+        }
+        return try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT memory_id, vector
+                FROM memory_embedding_refs
+                WHERE embedding_version_id = ? AND dimension = ?
+                """,
+                arguments: [embeddingVersionID, dimension]
+            )
+            return rows.compactMap { row -> MemoryEmbeddingMatch? in
+                guard let memoryID: String = row["memory_id"],
+                      let data: Data = row["vector"],
+                      let vector = Self.floatVector(from: data, dimension: dimension) else {
+                    return nil
+                }
+                return MemoryEmbeddingMatch(memoryID: memoryID, score: Self.cosine(queryVector, vector))
+            }
+            .sorted { lhs, rhs in
+                if lhs.score == rhs.score { return lhs.memoryID < rhs.memoryID }
+                return lhs.score > rhs.score
+            }
+            .prefix(max(1, limit))
+            .map { $0 }
+        }
+    }
+
     func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void
@@ -730,6 +888,40 @@ final class ControlPlaneStore: Sendable {
             crossDeviceHMAC: crossDeviceHMAC,
             citationState: citationState
         )
+    }
+
+    private static func floatVectorBlob(_ vector: [Float]) -> Data {
+        var copy = vector
+        return copy.withUnsafeBufferPointer { Data(buffer: $0) }
+    }
+
+    private static func floatVector(from data: Data, dimension: Int) -> [Float]? {
+        guard dimension > 0, data.count == dimension * MemoryLayout<Float>.size else { return nil }
+        return data.withUnsafeBytes { rawBuffer in
+            Array(rawBuffer.bindMemory(to: Float.self))
+        }
+    }
+
+    private static func vectorNorm(_ vector: [Float]) -> Double {
+        vector.reduce(0.0) { partial, value in
+            partial + Double(value * value)
+        }.squareRoot()
+    }
+
+    private static func cosine(_ lhs: [Float], _ rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count, lhs.isEmpty == false else { return -1 }
+        var dot = 0.0
+        var left = 0.0
+        var right = 0.0
+        for index in lhs.indices {
+            let l = Double(lhs[index])
+            let r = Double(rhs[index])
+            dot += l * r
+            left += l * l
+            right += r * r
+        }
+        let denominator = left.squareRoot() * right.squareRoot()
+        return denominator > 0 ? dot / denominator : -1
     }
 }
 
