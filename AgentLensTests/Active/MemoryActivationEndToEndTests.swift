@@ -58,12 +58,12 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
         // The service wired through the TRANSACTIONAL slot, sharing `store` with the engine.
         let service = OpenBurnBarMemoryService(store: store)
-        // Sanity: the service really conforms to the transactional protocol, so the atomic
-        // branch (not the async fallback) is selected by `saveChatMessage`.
-        XCTAssertNotNil(
-            service as? any TransactionalMemoryExtractionServing,
-            "OpenBurnBarMemoryService must take the transactional enqueue branch (must-fix #2)"
-        )
+        // `OpenBurnBarMemoryService` conforms to `TransactionalMemoryExtractionServing`
+        // at COMPILE TIME (since #602), so `saveChatMessage` selects the atomic enqueue
+        // branch, never the async fallback. This typed binding fails to compile if that
+        // conformance ever regresses; the atomic commit itself is proven below
+        // (`jobRows == 1` in the same write transaction as the chat row). Must-fix #2.
+        let _: any TransactionalMemoryExtractionServing = service
 
         // The engine over the SAME store. It builds a real extractor + LLM client; the HTTP
         // stub answers the OpenAI-compatible /chat/completions the local provider calls.
@@ -134,15 +134,23 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertTrue(MemoryActivationHTTPStub.requestCount >= 1, "the real extractor called the (stubbed) model")
 
         // The job is terminal-succeeded.
-        let jobID = try await XCTUnwrapAsync(Self.onlyJobID(queue))
+        let jobIDValue = try await Self.onlyJobID(queue)
+        let jobID = try XCTUnwrap(jobIDValue)
         let status = try await store.memoryExtractionJobStatus(id: jobID)
         XCTAssertEqual(status, .succeeded, "job committed to a terminal success")
 
         // (3) SECRET DROPPED + CLEAN FACT QUARANTINED. Exactly ONE memory persisted (the
         // secret candidate was dropped by the G7 gate, not stored). Deterministic id holds.
         let memoryID = "memory-\(jobID)-0"
-        let memory = try await XCTUnwrapAsync(store.fetchChatMemoryAuthorityRecord(id: memoryID))
-        XCTAssertEqual(memory.bodyRedacted, "User prefers Swift over Python for new services.")
+        let memoryValue = try await store.fetchChatMemoryAuthorityRecord(id: memoryID)
+        let memory = try XCTUnwrap(memoryValue)
+        // G1 (frozen MemoryServing contract): bodyRedacted is a SEALED reference, never
+        // plaintext at rest. The fact text lives only in the sealed store and is opened
+        // transiently. Asserting the ref shape here is the at-rest privacy invariant.
+        XCTAssertTrue(memory.bodyRedacted.hasPrefix("memory_body_snapshots:"),
+                      "G1: bodyRedacted must be a sealed-snapshot reference, never plaintext")
+        let openedBody = try await store.openChatMemoryBody(id: memoryID)
+        XCTAssertEqual(openedBody, "User prefers Swift over Python for new services.")
         XCTAssertEqual(memory.kind, .preference)
         // Must-fix #3: the worker forced `.quarantined`, overriding the model's `.approved`.
         XCTAssertEqual(memory.reviewStatus, .quarantined, "the worker quarantines; it never trusts the model's review status")
@@ -241,8 +249,10 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertEqual(report.stoppedReason, .killSwitchOff)
         XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "no LLM egress when extraction is off")
 
-        let jobID = try await XCTUnwrapAsync(Self.onlyJobID(queue))
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .pending, "a closed gate must not claim (burn an attempt on) the job")
+        let jobIDValue = try await Self.onlyJobID(queue)
+        let jobID = try XCTUnwrap(jobIDValue)
+        let closedGateStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(closedGateStatus, .pending, "a closed gate must not claim (burn an attempt on) the job")
         let memCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
         }
@@ -327,9 +337,11 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
         // The job is NOT silently succeeded — it stays claimable (`pending`) for a future
         // drain after go-live is flipped. This is the "does not succeed as if it wrote" half.
-        let jobID = try await XCTUnwrapAsync(Self.onlyJobID(queue))
+        let jobIDValue = try await Self.onlyJobID(queue)
+        let jobID = try XCTUnwrap(jobIDValue)
+        let goLiveOffStatus = try await store.memoryExtractionJobStatus(id: jobID)
         XCTAssertEqual(
-            try await store.memoryExtractionJobStatus(id: jobID), .pending,
+            goLiveOffStatus, .pending,
             "an off go-live lever must not claim or terminally complete the job"
         )
 
@@ -348,7 +360,7 @@ final class MemoryActivationEndToEndTests: XCTestCase {
     private static let scope = MemoryScope(appID: "openburnbar")
 
     private static var recallRequest: MemoryRecallRequest {
-        MemoryRecallRequest(query: "language preference", scope: scope, limit: 5, tokenBudget: 4_000)
+        MemoryRecallRequest(query: "language preference", scope: scope, tokenBudget: 4_000, limit: 5)
     }
 
     /// An isolated `SettingsManager` (its own ephemeral `UserDefaults`) with both G4
@@ -398,12 +410,6 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             try String.fetchOne(db, sql: "SELECT id FROM memory_extraction_jobs LIMIT 1")
         }
     }
-
-    /// `XCTUnwrap` for an async-throwing optional (XCTest's is sync-only).
-    private func XCTUnwrapAsync<T>(_ expression: @autoclosure () async throws -> T?, file: StaticString = #filePath, line: UInt = #line) async throws -> T {
-        let value = try await expression()
-        return try XCTUnwrap(value, file: file, line: line)
-    }
 }
 
 // MARK: - Local model HTTP stub
@@ -413,8 +419,10 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 /// Keeps the end-to-end test hermetic (no real network), mirroring the PR-D1 stub.
 private final class MemoryActivationHTTPStub: URLProtocol {
     private static let lock = NSLock()
-    private static var _requestCount = 0
-    private static var _responseJSON = "{\"memories\":[]}"
+    // Lock-guarded below; `nonisolated(unsafe)` tells StrictConcurrency the safety is
+    // hand-managed (every access goes through `lock`), not a data race.
+    nonisolated(unsafe) private static var _requestCount = 0
+    nonisolated(unsafe) private static var _responseJSON = "{\"memories\":[]}"
 
     static var requestCount: Int {
         lock.lock(); defer { lock.unlock() }

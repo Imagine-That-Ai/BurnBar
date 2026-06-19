@@ -187,7 +187,8 @@ final class MemoryExtractionExtractorTests: XCTestCase {
             }
         )
 
-        XCTAssertTrue(try await worker.drainOne())
+        let _v0 = try await worker.drainOne()
+        XCTAssertTrue(_v0)
 
         let row = try await queue.read { db in
             try Row.fetchOne(
@@ -251,7 +252,8 @@ final class MemoryExtractionExtractorTests: XCTestCase {
             }
         )
 
-        XCTAssertTrue(try await worker.drainOne())
+        let _v1 = try await worker.drainOne()
+        XCTAssertTrue(_v1)
         let provenanceCount = try await queue.read { db in
             try Int.fetchOne(
                 db,

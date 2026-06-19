@@ -200,7 +200,7 @@ final class MemoryExtractionEngineTests: XCTestCase {
         // the extractor pre-filter entirely: the closure hands it straight to the worker.
         let secret = "sk-ant-deadbeefdeadbeefdeadbeef0001"
 
-        func candidate(_ text: String) -> MemoryAddRequest {
+        @Sendable func candidate(_ text: String) -> MemoryAddRequest {
             MemoryAddRequest(
                 text: text,
                 kind: .fact,
@@ -241,15 +241,20 @@ final class MemoryExtractionEngineTests: XCTestCase {
         // The job SUCCEEDS even though one candidate was dropped — a dropped secret is not a
         // job failure; the clean facts still committed.
         XCTAssertEqual(outcome, .drained, "the job succeeds; the secret is dropped, not failed")
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .succeeded)
+        let _v0 = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(_v0, .succeeded)
 
         // Index 0 and 2 persisted with their clean bodies; index 1 (the secret) did NOT.
         let mem0 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-0")
         let mem1 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-1")
         let mem2 = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-2")
-        XCTAssertEqual(mem0?.bodyRedacted, "User prefers concise answers.")
+        XCTAssertTrue(mem0?.bodyRedacted.hasPrefix("memory_body_snapshots:") ?? false, "G1: sealed reference, not plaintext")
+        let body0 = try await store.openChatMemoryBody(id: "memory-\(jobID)-0")
+        XCTAssertEqual(body0, "User prefers concise answers.")
         XCTAssertNil(mem1, "the secret-bearing candidate was DROPPED by the worker's G7 gate")
-        XCTAssertEqual(mem2?.bodyRedacted, "User works in the Pacific time zone.")
+        XCTAssertTrue(mem2?.bodyRedacted.hasPrefix("memory_body_snapshots:") ?? false, "G1: sealed reference, not plaintext")
+        let body2 = try await store.openChatMemoryBody(id: "memory-\(jobID)-2")
+        XCTAssertEqual(body2, "User works in the Pacific time zone.")
 
         // Exactly two clean memories total — the secret never reached `agent_memories`.
         let total = try await queue.read { db in
@@ -349,15 +354,19 @@ final class MemoryExtractionEngineTests: XCTestCase {
         )
 
         // Tick 1: closed -> idle, job untouched.
-        XCTAssertEqual(try await worker.drainNext(), .idle)
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .pending)
+        let _v1 = try await worker.drainNext()
+        XCTAssertEqual(_v1, .idle)
+        let _v2 = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(_v2, .pending)
 
         // Flip the atomic OPEN (as the MainActor would on a toggle / Remote Config change).
         killSwitch.set(true)
 
         // Tick 2: the worker sees the NEW value with no reconstruction -> drains.
-        XCTAssertEqual(try await worker.drainNext(), .drained)
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .succeeded)
+        let _v3 = try await worker.drainNext()
+        XCTAssertEqual(_v3, .drained)
+        let _v4 = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(_v4, .succeeded)
     }
 
     // MARK: - #3 Failed-job read seam
@@ -367,7 +376,8 @@ final class MemoryExtractionEngineTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_900_000_400)
         let jobID = try await enqueue(store, threadID: "thread-mr", messageID: "msg-mr", idempotencyKey: "idem-mr", now: now)
 
-        XCTAssertNil(try await store.mostRecentFailedMemoryExtractionJob(), "no failures yet")
+        let _v5 = try await store.mostRecentFailedMemoryExtractionJob()
+        XCTAssertNil(_v5, "no failures yet")
 
         let worker = MemoryExtractionWorker(
             store: store,
@@ -399,10 +409,12 @@ final class MemoryExtractionEngineTests: XCTestCase {
         )
         let drained = try await worker.drainOne()
         XCTAssertTrue(drained, "drainOne returns true on a successful drain")
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: okJob), .succeeded)
+        let _v6 = try await store.memoryExtractionJobStatus(id: okJob)
+        XCTAssertEqual(_v6, .succeeded)
 
         // Nothing left -> drainOne returns false (idle).
-        XCTAssertFalse(try await worker.drainOne())
+        let _v7 = try await worker.drainOne()
+        XCTAssertFalse(_v7)
     }
 
     // MARK: - #7 Local-first provider ordering (pure policy)
