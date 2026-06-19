@@ -7,6 +7,15 @@ import OpenBurnBarCore
 @MainActor
 final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
+    private struct ChatMemoryPersistentPayloads {
+        let agent: String
+        let provenance: String
+        let audit: String
+        let snapshot: String
+        let projectSnapshotCount: Int
+        let auditRow: Row?
+    }
+
     // MARK: - Integrity Check
 
     func test_runMigrationsSafely_runsMigrations_onFreshDB() async throws {
@@ -278,14 +287,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let openedBody = try await store.openChatMemoryBody(id: written.id)
         XCTAssertEqual(openedBody, body)
 
-        let persistentPayloads = try await queue.read { db -> (
-            agent: String,
-            provenance: String,
-            audit: String,
-            snapshot: String,
-            projectSnapshotCount: Int,
-            auditRow: Row?
-        ) in
+        let persistentPayloads = try await queue.read { db -> ChatMemoryPersistentPayloads in
             let agent = try String.fetchAll(
                 db,
                 sql: """
@@ -326,7 +328,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 WHERE subject_id = 'mem-pr1'
                 """
             )
-            return (agent, provenance, audit, snapshot, projectSnapshotCount, auditRow)
+            return ChatMemoryPersistentPayloads(
+                agent: agent,
+                provenance: provenance,
+                audit: audit,
+                snapshot: snapshot,
+                projectSnapshotCount: projectSnapshotCount,
+                auditRow: auditRow
+            )
         }
 
         XCTAssertFalse(persistentPayloads.agent.contains(body))
