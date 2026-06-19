@@ -10,7 +10,7 @@ import OpenBurnBarCore
 /// Many sources render the canonical (live, jumpable) citation + a "+N more" count.
 struct MemoryCitationChipView: View {
     let citations: [MemoryCitation]
-    var onJumpToLocal: ((String) -> Void)? = nil
+    var onJumpToLocal: ((String) -> Void)?
 
     var body: some View {
         if let resolved = MemoryCitationResolver.canonicalAndExtra(from: citations) {

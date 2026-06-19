@@ -270,7 +270,7 @@ final class PromptInjectionHardeningTests: XCTestCase {
             PromptTokenSection(id: .toolDefs, content: ""),
             PromptTokenSection(id: .focus, content: ""),
             PromptTokenSection(id: .evidence, content: ""),
-            PromptTokenSection(id: .memory, content: memorySection),
+            PromptTokenSection(id: .memory, content: memorySection)
         ])
 
         XCTAssertTrue(assembled.systemPrompt.contains(persona), "Persona must be retained.")

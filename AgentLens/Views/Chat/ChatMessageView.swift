@@ -53,7 +53,7 @@ struct ChatMessageView: View {
     var memoryCitations: [MemoryCitation] = []
     /// F-3: jump callback for a same-device citation. When nil, jumpable chips
     /// render disabled (never a dead link).
-    var onJumpToLocal: ((String) -> Void)? = nil
+    var onJumpToLocal: ((String) -> Void)?
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript

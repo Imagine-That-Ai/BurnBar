@@ -209,6 +209,43 @@ extension ChatSessionController {
         }.joined(separator: "\n\n")
     }
 
+    /// Builds the pinned focus-session prompt section (empty when no context is selected).
+    private func focusSessionSection(retrievalResults: [RetrievalResult]) -> String {
+        guard let ctx = selectedContext else { return "" }
+        let pinnedInEvidence = retrievalResults.contains { $0.conversation?.id == ctx.id }
+        return Self.buildFocusSessionPromptSection(
+            projectName: ctx.projectName,
+            title: ctx.inferredTaskTitle,
+            id: ctx.id,
+            fullText: ctx.fullText,
+            pinnedInEvidence: pinnedInEvidence
+        )
+    }
+
+    /// Builds the G9 prompt token arbiter for the active backend, reserving the history +
+    /// user-turn payload and the system-prompt wrapper before the system prompt is budgeted.
+    private func makePromptArbiter(
+        requestModel: String,
+        multiTurnHistory: [ChatMessageRecord],
+        userMessage: String
+    ) -> PromptTokenArbiter {
+        let arbiterFamily = Self.memoryArbiterModelFamily(
+            backend: chatBackend,
+            resolvedModel: requestModel,
+            hermesFamily: settingsManager.selectedHermesModel
+        )
+        let payloadTokens = Self.promptPayloadTokenReserve(history: multiTurnHistory, userMessage: userMessage)
+        let wrapperTokens = Self.promptSystemWrapperTokenReserve(
+            backend: chatBackend,
+            piAgentInstanceID: settingsManager.piAgentSelectedInstanceID
+        )
+        return PromptTokenArbiter.make(
+            model: arbiterFamily,
+            historyAndUserTurnTokens: payloadTokens,
+            systemWrapperTokens: wrapperTokens
+        )
+    }
+
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
@@ -559,19 +596,7 @@ extension ChatSessionController {
             health: retrievalHealthSnapshot
         )
 
-        let focusSection: String
-        if let ctx = selectedContext {
-            let pinnedInEvidence = retrievalResults.contains { $0.conversation?.id == ctx.id }
-            focusSection = Self.buildFocusSessionPromptSection(
-                projectName: ctx.projectName,
-                title: ctx.inferredTaskTitle,
-                id: ctx.id,
-                fullText: ctx.fullText,
-                pinnedInEvidence: pinnedInEvidence
-            )
-        } else {
-            focusSection = ""
-        }
+        let focusSection = focusSessionSection(retrievalResults: retrievalResults)
 
         ensureChatWorkspaceDirectoryExists()
         let workspacePath = chatWorkspaceURL.path
@@ -588,23 +613,10 @@ extension ChatSessionController {
         // turn are reserved out of the model's context window so they are never
         // starved. Conservative floor for ollama / unknown local backends.
         let requestModel = effectiveChatModel(for: chatBackend)
-        let arbiterFamily = Self.memoryArbiterModelFamily(
-            backend: chatBackend,
-            resolvedModel: requestModel,
-            hermesFamily: settingsManager.selectedHermesModel
-        )
-        let payloadTokens = Self.promptPayloadTokenReserve(
-            history: multiTurnHistory,
+        let promptArbiter = makePromptArbiter(
+            requestModel: requestModel,
+            multiTurnHistory: multiTurnHistory,
             userMessage: trimmed
-        )
-        let wrapperTokens = Self.promptSystemWrapperTokenReserve(
-            backend: chatBackend,
-            piAgentInstanceID: settingsManager.piAgentSelectedInstanceID
-        )
-        let promptArbiter = PromptTokenArbiter.make(
-            model: arbiterFamily,
-            historyAndUserTurnTokens: payloadTokens,
-            systemWrapperTokens: wrapperTokens
         )
         let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
         let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
