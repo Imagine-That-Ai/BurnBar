@@ -134,8 +134,20 @@ extension DataStore {
         try await actor.conversationStore.saveChatMessage(message, threadID: Self.legacyChatThreadID)
     }
 
-    func saveChatMessage(_ message: ChatMessageRecord, threadID: String) async throws {
-        try await actor.conversationStore.saveChatMessage(message, threadID: threadID)
+    func saveChatMessage(
+        _ message: ChatMessageRecord,
+        threadID: String,
+        isTerminalAssistantCommit: Bool = false,
+        memoryService: (any MemoryServing)? = nil,
+        extractionContext: MemoryExtractionContext? = nil
+    ) async throws {
+        try await actor.conversationStore.saveChatMessage(
+            message,
+            threadID: threadID,
+            isTerminalAssistantCommit: isTerminalAssistantCommit,
+            memoryService: memoryService,
+            extractionContext: extractionContext
+        )
     }
 
     func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) async throws -> String {
