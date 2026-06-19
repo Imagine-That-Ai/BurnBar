@@ -178,7 +178,13 @@ extension ChatSessionController {
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
-        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming, !sendInFlight else { return }
+
+        // Synchronous reentrancy sentinel: set before any await so a second
+        // programmatic/relay `send()` arriving in the await window before
+        // `isStreaming` flips is rejected. Cleared on every return path.
+        sendInFlight = true
+        defer { sendInFlight = false }
 
         streamError = nil
         completedFusionSessionToken = nil
@@ -445,7 +451,13 @@ extension ChatSessionController {
             let assistant = ChatMessageRecord(role: .assistant, content: finalResponse)
             messages.append(assistant)
             do {
-                try await dataStore.saveChatMessage(assistant, threadID: activeThreadID)
+                try await dataStore.saveChatMessage(
+                    assistant,
+                    threadID: activeThreadID,
+                    isTerminalAssistantCommit: true,
+                    memoryService: memoryService,
+                    extractionContext: makeMemoryExtractionContext()
+                )
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
             }
@@ -768,7 +780,13 @@ extension ChatSessionController {
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         let final = self.messages[idx]
                         do {
-                            try await self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
+                            try await self.dataStore.saveChatMessage(
+                                final,
+                                threadID: self.activeThreadID,
+                                isTerminalAssistantCommit: true,
+                                memoryService: self.memoryService,
+                                extractionContext: self.makeMemoryExtractionContext()
+                            )
                             await self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,

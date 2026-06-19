@@ -1,13 +1,52 @@
 import Foundation
 import GRDB
+import CryptoKit
 import OpenBurnBarCore
+
+// MARK: - Memory extraction trigger context (G3)
+//
+// The terminal assistant-commit event fires from the `saveChatMessage` chokepoint
+// (persistence), never from UI streaming state, so it survives the planned
+// `send()` de-godding. The controller builds this context at the terminal commit
+// sites and passes it through; the store constructs the `ExtractionIntent` and
+// calls `MemoryServing.enqueueExtraction` (idempotent on `idempotencyKey`).
+
+/// Scope + identity needed to build an `ExtractionIntent` at the persistence seam.
+struct MemoryExtractionContext: Sendable {
+    let scope: MemoryScope
+    /// Content-derived, cross-device stable thread id. v1 uses the device-local
+    /// `activeThreadID` (same-device); a content-addressed id is a backend/F-3 refinement.
+    let threadLogicalID: String
+    /// System-prompt assembly version; re-extraction under a new prompt version is a
+    /// distinct event (keeps the idempotency key honest when injection changes).
+    let promptVersion: String
+}
+
+enum MemoryExtraction {
+    /// `idempotency_key = HMAC-SHA256(threadLogicalID | messageID | promptVersion)`, hex.
+    /// Deterministic so a replayed commit (e.g. re-save) collapses to one backend
+    /// outbox event. The key scopes idempotency (not auth), so a stable app-wide
+    /// HMAC key is sufficient.
+    static func idempotencyKey(threadLogicalID: String, messageID: String, promptVersion: String) -> String {
+        let payload = Data("\(threadLogicalID)|\(messageID)|\(promptVersion)".utf8)
+        let key = SymmetricKey(data: Data("openburnbar-memory-extraction-v1".utf8))
+        let mac = HMAC<SHA256>.authenticationCode(for: payload, using: key)
+        return mac.map { String(format: "%02x", $0) }.joined()
+    }
+}
 
 // MARK: - ConversationStore Chat
 
 extension ConversationStore {
         // MARK: - Chat Messages
 
-        func saveChatMessage(_ message: ChatMessageRecord, threadID: String) async throws {
+        func saveChatMessage(
+            _ message: ChatMessageRecord,
+            threadID: String,
+            isTerminalAssistantCommit: Bool = false,
+            memoryService: (any MemoryServing)? = nil,
+            extractionContext: MemoryExtractionContext? = nil
+        ) async throws {
             let piecesJSON: String?
             if message.transcriptPieces.isEmpty {
                 piecesJSON = nil
@@ -40,6 +79,36 @@ extension ConversationStore {
                         attachmentsJSON
                     ]
                 )
+            }
+
+            // G3: emit the extraction trigger from the persistence chokepoint, not
+            // UI streaming state. Fires only for a terminal, non-empty assistant
+            // commit, and only when a memory service is wired. Until the backend
+            // (PR-5) lands, production wires no service, so this is a no-op in app
+            // builds; tests inject `FakeMemoryService` to assert it fires.
+            // Extraction failure must never fail the chat save or block the caller.
+            if isTerminalAssistantCommit,
+               message.role == .assistant,
+               !message.content.isEmpty,
+               let memoryService,
+               let extractionContext {
+                let intent = ExtractionIntent(
+                    threadID: threadID,
+                    threadLogicalID: extractionContext.threadLogicalID,
+                    messageID: message.id,
+                    scope: extractionContext.scope,
+                    promptVersion: extractionContext.promptVersion,
+                    idempotencyKey: MemoryExtraction.idempotencyKey(
+                        threadLogicalID: extractionContext.threadLogicalID,
+                        messageID: message.id,
+                        promptVersion: extractionContext.promptVersion
+                    )
+                )
+                do {
+                    try await memoryService.enqueueExtraction(intent)
+                } catch {
+                    AppLogger.chat.silentFailure("memory enqueueExtraction", error: error)
+                }
             }
         }
 
