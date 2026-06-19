@@ -234,14 +234,6 @@ CREATE TABLE agent_memories (
 
 CREATE INDEX agent_memories_project_idx ON agent_memories(project_id, scope, updated_at);
 
-CREATE VIRTUAL TABLE agent_memories_fts USING fts5(
-  memoryID UNINDEXED,
-  projectID UNINDEXED,
-  bodyText,
-  tags,
-  tokenize='porter unicode61'
-);
-
 CREATE TABLE memory_audit (
   seq         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   ts          TEXT NOT NULL,

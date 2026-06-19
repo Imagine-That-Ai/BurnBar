@@ -1947,6 +1947,14 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v51a_drop_body_fts") { db in
+            // Project/chat memory bodies must live only behind sealed references.
+            // v50 briefly declared this vestigial body-search index; the daemon
+            // bootstrap already drops it, and the app migrator now keeps the
+            // shared schema in lockstep for databases that applied v50.
+            try db.execute(sql: "DROP TABLE IF EXISTS agent_memories_fts")
+        }
+
         return migrator
     }
 

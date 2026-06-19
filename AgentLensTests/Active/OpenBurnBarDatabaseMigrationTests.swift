@@ -72,9 +72,38 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v50_project_code_memory_schema",
+            "v51a_drop_body_fts",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
+    }
+
+    func test_v51aDropBodyFts_removesVestigialAgentMemoriesFts() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v50_project_code_memory_schema")
+
+        let existsBeforeDrop = try await queue.read { db in
+            try Self.tableExists(db, "agent_memories_fts")
+        }
+        XCTAssertTrue(existsBeforeDrop, "v50 seeded the vestigial body FTS table this migration must repair.")
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let existsAfterDrop = try await queue.read { db in
+            try Self.tableExists(db, "agent_memories_fts")
+        }
+        XCTAssertFalse(existsAfterDrop, "Memory bodies must not survive in a persistent FTS table.")
+    }
+
+    func test_projectCodeMemorySchemaDoesNotLeaveBodyFtsOnFreshDatabase() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+
+        try database.runMigrationsSafely()
+
+        let exists = try await queue.read { db in
+            try Self.tableExists(db, "agent_memories_fts")
+        }
+        XCTAssertFalse(exists, "Fresh databases must end without the body-bearing agent_memories_fts table.")
     }
 
     /// A database genuinely behind the latest migration must take a pre-migration
@@ -107,7 +136,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
         }
         XCTAssertTrue(
-            applied.contains("v50_project_code_memory_schema"),
+            applied.contains(OpenBurnBarDatabase.migrator.migrations.last!),
             "runMigrationsSafely must apply migrations through the latest schema after backing up."
         )
     }
@@ -605,6 +634,15 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 providerID
             ]
         )
+    }
+
+    nonisolated private static func tableExists(_ db: Database, _ table: String) throws -> Bool {
+        let count = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arguments: [table]
+        ) ?? 0
+        return count > 0
     }
 
     private static let migrationIdentifiersThroughV35 = [
