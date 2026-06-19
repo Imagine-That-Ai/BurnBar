@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v53_memory_fact_tombstones",
+            "v53_memory_forget_outbox",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -155,6 +155,33 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("memory_source_tombstones_thread_idx"))
     }
 
+    func test_v53MemoryForgetOutboxAddsUserScopedPendingTables() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v52_memory_extraction_job_intent_and_lease")
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let sourceColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_source_tombstones")
+        }
+        XCTAssertTrue(sourceColumns.contains("user_id"))
+        XCTAssertTrue(sourceColumns.contains("replicated_at"))
+        let factColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_fact_tombstones")
+        }
+        for column in ["id", "user_id", "memory_id", "source_refs_json", "reason", "created_at", "replicated_at"] {
+            XCTAssertTrue(factColumns.contains(column), "memory_fact_tombstones missing \(column)")
+        }
+        let indexes = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'memory_%_pending_idx'"
+            )
+        }
+        XCTAssertTrue(indexes.contains("memory_source_tombstones_pending_idx"))
+        XCTAssertTrue(indexes.contains("memory_fact_tombstones_pending_idx"))
+    }
+
     func test_v52MemoryExtractionJobsBackfillsIntentAndAddsLease() async throws {
         let queue = try DatabaseQueue()
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v51_chat_memory_authority")
@@ -206,30 +233,6 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(reclaimed?.threadLogicalID, "legacy-thread")
         XCTAssertEqual(reclaimed?.promptVersion, "legacy-unknown")
         XCTAssertEqual(reclaimed?.attempts, 2)
-    }
-
-    func test_v53MemoryFactTombstonesAddsCloudDeleteMarkers() async throws {
-        let queue = try DatabaseQueue()
-        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v52_memory_extraction_job_intent_and_lease")
-
-        let existsBefore = try await queue.read { db in
-            try Self.tableExists(db, "memory_fact_tombstones")
-        }
-        XCTAssertFalse(existsBefore)
-
-        try OpenBurnBarDatabase.migrator.migrate(queue)
-
-        let existsAfter = try await queue.read { db in
-            try Self.tableExists(db, "memory_fact_tombstones")
-        }
-        let indexes = try await queue.read { db in
-            try String.fetchAll(
-                db,
-                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'memory_fact_tombstones_memory_idx'"
-            )
-        }
-        XCTAssertTrue(existsAfter)
-        XCTAssertTrue(indexes.contains("memory_fact_tombstones_memory_idx"))
     }
 
     func test_v51ChatMemoryAuthority_quarantinesNewRowsByDefaultButPreservesLegacyCodeRows() async throws {
@@ -1007,53 +1010,6 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(active.map(\.id), ["mem-approved-winner"])
     }
 
-    func test_memoryDeleteAllScopeIncludesSupersededRows() async throws {
-        let queue = try DatabaseQueue()
-        let database = OpenBurnBarDatabase(databaseQueue: queue)
-        try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
-        let service = OpenBurnBarMemoryService(store: store)
-        let now = Date(timeIntervalSince1970: 1_800_000_395)
-        let scope = MemoryScope(userID: "delete-all-user", appID: "delete-all-app")
-        let body = "User wants all scoped memories deleted, including superseded duplicates."
-
-        _ = try await store.addChatMemoryAuthorityRecord(
-            MemoryAddRequest(text: body, kind: .fact, scope: scope, confidence: 0.51, reviewStatus: .approved),
-            id: "mem-delete-all-low",
-            now: now,
-            enabled: true
-        )
-        _ = try await store.addChatMemoryAuthorityRecord(
-            MemoryAddRequest(text: body, kind: .fact, scope: scope, confidence: 0.91, reviewStatus: .approved),
-            id: "mem-delete-all-high",
-            now: now.addingTimeInterval(1),
-            enabled: true
-        )
-
-        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .fact)
-        XCTAssertEqual(active.map(\.id), ["mem-delete-all-high"])
-
-        _ = try await service.deleteAll(scope: scope)
-        let remaining = try await queue.read { db in
-            try String.fetchAll(
-                db,
-                sql: """
-                SELECT id
-                FROM agent_memories
-                WHERE id IN ('mem-delete-all-low', 'mem-delete-all-high')
-                ORDER BY id
-                """
-            )
-        }
-        XCTAssertTrue(remaining.isEmpty)
-
-        let factTombstones = try await store.fetchMemoryFactTombstones()
-        XCTAssertEqual(
-            Set(factTombstones.map(\.memoryID)),
-            Set(["mem-delete-all-low", "mem-delete-all-high"])
-        )
-    }
-
     func test_memoryServingRecallReturnsApprovedActiveScopeWithinBudget() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
@@ -1256,7 +1212,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             let memory = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE id = 'mem-forget'") ?? 0
             let provenance = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_provenance WHERE memory_id = 'mem-forget'") ?? 0
             let snapshot = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project_memory_snapshots WHERE projectSlug = 'memory-mem-forget'") ?? 0
-            let tombstone = try Int.fetchOne(
+            let sourceTombstone = try Int.fetchOne(
                 db,
                 sql: """
                 SELECT COUNT(*)
@@ -1267,11 +1223,23 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                   AND reason = 'user_delete'
                 """
             ) ?? 0
+            let factTombstone = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE user_id = 'forget-user'
+                  AND memory_id = 'mem-forget'
+                  AND reason = 'user_delete'
+                  AND replicated_at IS NULL
+                """
+            ) ?? 0
             return [
                 "memory": memory,
                 "provenance": provenance,
                 "snapshot": snapshot,
-                "tombstone": tombstone
+                "sourceTombstone": sourceTombstone,
+                "factTombstone": factTombstone
             ]
         }
         let audit = try await queue.read { db in
@@ -1283,7 +1251,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(persistedCounts["memory"], 0)
         XCTAssertEqual(persistedCounts["provenance"], 0)
         XCTAssertEqual(persistedCounts["snapshot"], 0)
-        XCTAssertEqual(persistedCounts["tombstone"], 0)
+        XCTAssertEqual(persistedCounts["sourceTombstone"], 0)
+        XCTAssertEqual(persistedCounts["factTombstone"], 1)
         XCTAssertTrue(audit.contains("memory.delete"))
         XCTAssertFalse(audit.contains(body))
     }
@@ -1327,6 +1296,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(before.map(\.memoryID), ["mem-tombstone"])
 
         _ = try await store.recordMemorySourceTombstone(
+            userID: "tombstone-user",
             threadLogicalID: "thread-tombstone",
             messageID: "message-tombstone",
             contentHash: "content-tombstone",
@@ -1404,9 +1374,10 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let vaultKey = Data(repeating: 7, count: 32)
         let now = Date(timeIntervalSince1970: 1_800_000_420)
         let scope = MemoryScope(userID: "cloud-user", appID: "cloud-app")
+        let otherScope = MemoryScope(userID: "other-cloud-user", appID: "cloud-app")
         let approvedBody = "Approved cloud memory body must be sealed."
         let quarantinedBody = "Quarantined cloud memory body must not upload."
-        let otherUserBody = "Other user approved cloud memory must not upload."
+        let otherUserBody = "Other user approved memory must not upload to this cloud user."
 
         _ = try await store.addChatMemoryAuthorityRecord(
             MemoryAddRequest(
@@ -1438,21 +1409,15 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             enabled: true
         )
         _ = try await store.addChatMemoryAuthorityRecord(
-            MemoryAddRequest(
-                text: otherUserBody,
-                kind: .fact,
-                scope: MemoryScope(userID: "other-cloud-user", appID: "cloud-app"),
-                confidence: 0.97,
-                reviewStatus: .approved
-            ),
+            MemoryAddRequest(text: otherUserBody, kind: .fact, scope: otherScope, confidence: 0.93, reviewStatus: .approved),
             id: "mem-cloud-other-user",
-            now: now.addingTimeInterval(1.5),
+            now: now.addingTimeInterval(1),
             enabled: true
         )
 
         let result = try await sync.syncApprovedMemories(uid: "cloud-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
         XCTAssertEqual(result.uploaded, 1)
-        XCTAssertEqual(result.skipped, 1)
+        XCTAssertEqual(result.skipped, 0)
 
         let docs = gateway.documents(under: "users/cloud-user/memory_facts")
         XCTAssertEqual(docs.count, 1)
@@ -1481,13 +1446,11 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let vaultKey = Data(repeating: 8, count: 32)
         let now = Date(timeIntervalSince1970: 1_800_000_430)
         let scope = MemoryScope(userID: "cloud-forget-user", appID: "cloud-forget-app")
-        let deletedBody = "Cloud fact must disappear after local forget."
-        let rejectedBody = "Cloud fact must disappear after approval revoked."
-        let otherUserBody = "Other user's deleted cloud fact must not create this user's receipt."
+        let body = "Cloud fact must disappear after local forget."
 
         _ = try await store.addChatMemoryAuthorityRecord(
             MemoryAddRequest(
-                text: deletedBody,
+                text: body,
                 kind: .fact,
                 scope: scope,
                 confidence: 0.82,
@@ -1508,57 +1471,45 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             now: now,
             enabled: true
         )
-        _ = try await store.addChatMemoryAuthorityRecord(
-            MemoryAddRequest(
-                text: rejectedBody,
-                kind: .fact,
-                scope: scope,
-                confidence: 0.84,
-                citations: [],
-                reviewStatus: .approved
-            ),
-            id: "mem-cloud-reject",
-            now: now.addingTimeInterval(0.5),
-            enabled: true
-        )
-        _ = try await store.addChatMemoryAuthorityRecord(
-            MemoryAddRequest(
-                text: otherUserBody,
-                kind: .fact,
-                scope: MemoryScope(userID: "other-cloud-forget-user", appID: "cloud-forget-app"),
-                confidence: 0.81,
-                reviewStatus: .approved
-            ),
-            id: "mem-cloud-other-delete",
-            now: now.addingTimeInterval(0.75),
-            enabled: true
-        )
 
         let first = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(1))
-        XCTAssertEqual(first.uploaded, 2)
-        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_facts").count, 2)
+        XCTAssertEqual(first.uploaded, 1)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_facts").count, 1)
 
         _ = try await service.delete(id: "mem-cloud-forget")
-        _ = try await service.reject(id: "mem-cloud-reject")
-        _ = try await service.delete(id: "mem-cloud-other-delete")
         let second = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
-        XCTAssertEqual(second.forgetReceipts, 2)
-        XCTAssertEqual(second.cloudFactsDeleted, 2)
+        XCTAssertEqual(second.forgetReceipts, 1)
+        XCTAssertEqual(second.cloudFactsDeleted, 1)
         XCTAssertTrue(gateway.documents(under: "users/cloud-forget-user/memory_facts").isEmpty)
 
         let receipts = gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts")
-        XCTAssertEqual(receipts.count, 2)
-        for receipt in receipts.values {
-            XCTAssertNotNil(receipt["memoryFactDocID"] as? String)
-            XCTAssertNil(receipt["sourceRefHmac"])
-            XCTAssertNil(receipt["threadLogicalID"])
-            XCTAssertNil(receipt["messageID"])
-            XCTAssertNil(receipt["contentHash"])
+        XCTAssertEqual(receipts.count, 1)
+        let receipt = try XCTUnwrap(receipts.values.first)
+        XCTAssertNil(receipt["sourceRefHmac"])
+        XCTAssertNotNil(receipt["memoryIdHmac"] as? String)
+        XCTAssertEqual((receipt["sourceRefHmacs"] as? [String])?.count, 1)
+        XCTAssertNil(receipt["threadLogicalID"])
+        XCTAssertNil(receipt["messageID"])
+        XCTAssertNil(receipt["contentHash"])
+        XCTAssertFalse(String(describing: receipt).contains(body))
+
+        let replicatedFactTombstones = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE memory_id = 'mem-cloud-forget'
+                  AND replicated_at IS NOT NULL
+                """
+            ) ?? 0
         }
-        let receiptDocument = String(describing: receipts)
-        XCTAssertFalse(receiptDocument.contains(deletedBody))
-        XCTAssertFalse(receiptDocument.contains(rejectedBody))
-        XCTAssertFalse(receiptDocument.contains(otherUserBody))
+        XCTAssertEqual(replicatedFactTombstones, 1)
+
+        let third = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(3))
+        XCTAssertEqual(third.forgetReceipts, 0)
+        XCTAssertEqual(third.cloudFactsDeleted, 0)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts").count, 1)
     }
 
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {

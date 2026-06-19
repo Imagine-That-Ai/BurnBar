@@ -2606,8 +2606,9 @@ service cloud.firestore {
           "uid",
           "receiptID",
           "schemaVersion",
+          "memoryIdHmac",
           "sourceRefHmac",
-          "memoryFactDocID",
+          "sourceRefHmacs",
           "reason",
           "createdAt",
           "replicatedAt"
@@ -2630,15 +2631,26 @@ service cloud.firestore {
           (
             request.resource.data.sourceRefHmac is string
             && request.resource.data.sourceRefHmac.matches("^[a-f0-9]{64}$")
-            && !("memoryFactDocID" in request.resource.data)
+            && !("memoryIdHmac" in request.resource.data)
+            && !("sourceRefHmacs" in request.resource.data)
           )
-          || (
-            request.resource.data.memoryFactDocID is string
-            && request.resource.data.memoryFactDocID.matches("^[a-f0-9]{64}$")
+          ||
+          (
+            request.resource.data.memoryIdHmac is string
+            && request.resource.data.memoryIdHmac.matches("^[a-f0-9]{64}$")
+            && request.resource.data.sourceRefHmacs is list
+            && request.resource.data.sourceRefHmacs.size() <= 50
             && !("sourceRefHmac" in request.resource.data)
           )
         )
-        && request.resource.data.reason in ["user_delete", "approval_revoked", "clear_history", "gc_30d", "unknown"]
+        && request.resource.data.reason in [
+          "user_delete",
+          "review_status_quarantined",
+          "review_status_rejected",
+          "clear_history",
+          "gc_30d",
+          "unknown"
+        ]
         && request.resource.data.createdAt is timestamp
         && request.resource.data.replicatedAt is timestamp;
       allow delete: if ownsUserNamespace(userId);

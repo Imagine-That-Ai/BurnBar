@@ -393,15 +393,6 @@ final class ControlPlaneStore: Sendable {
         let updatedAt: Date
     }
 
-    struct MemorySourceTombstoneRecord: Equatable, Sendable {
-        let id: String
-        let threadLogicalID: String
-        let messageID: String?
-        let contentHash: String?
-        let reason: String
-        let createdAt: Date
-    }
-
     enum MemorySecretScanner {
         private static let patterns = makePatterns()
 
@@ -943,18 +934,6 @@ final class ControlPlaneStore: Sendable {
         return snippets
     }
 
-    func cloudSyncEligibleChatMemories(userID: String? = nil) async throws -> [Memory] {
-        var eligible: [Memory] = []
-        for memory in try await fetchActiveChatMemoryAuthorityRecords()
-            where memory.reviewStatus == .approved && memory.validTo == nil {
-            if let userID, memory.scope.userID != userID { continue }
-            if try await memoryHasTombstonedSource(id: memory.id) == false {
-                eligible.append(memory)
-            }
-        }
-        return eligible
-    }
-
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
         guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1057,12 +1036,13 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
-            if status == .rejected {
+            if existing.reviewStatus == .approved,
+               status != .approved,
+               existing.scope.userID != nil {
                 try Self.insertMemoryFactTombstone(
                     db: db,
-                    memoryID: id,
-                    userID: existing.scope.userID,
-                    reason: "approval_revoked",
+                    memory: existing,
+                    reason: "review_status_\(status.rawValue)",
                     now: now
                 )
             }
@@ -1097,13 +1077,15 @@ final class ControlPlaneStore: Sendable {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
-            try Self.insertMemoryFactTombstone(
-                db: db,
-                memoryID: id,
-                userID: existing.scope.userID,
-                reason: "user_delete",
-                now: now
-            )
+            if existing.reviewStatus == .approved,
+               existing.scope.userID != nil {
+                try Self.insertMemoryFactTombstone(
+                    db: db,
+                    memory: existing,
+                    reason: "user_delete",
+                    now: now
+                )
+            }
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
@@ -1119,6 +1101,15 @@ final class ControlPlaneStore: Sendable {
             )
         }
         return true
+    }
+
+    func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
+        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+        var deleted = 0
+        for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
+            deleted += 1
+        }
+        return deleted
     }
 
     func listChatMemoryEntities() async throws -> [MemoryEntity] {
@@ -1325,7 +1316,7 @@ final class ControlPlaneStore: Sendable {
         "memory_body_snapshots:\(slug)"
     }
 
-    static func memoryStorageProjectID(for scope: MemoryScope) -> String {
+    private static func memoryStorageProjectID(for scope: MemoryScope) -> String {
         scope.projectID ?? "chat:\(scope.userID ?? scope.appID ?? "unscoped")"
     }
 
@@ -1500,7 +1491,7 @@ final class ControlPlaneStore: Sendable {
         )
     }
 
-    static func appendScopePredicates(
+    private static func appendScopePredicates(
         _ scope: MemoryScope,
         tableAlias: String = "",
         to predicates: inout [String],

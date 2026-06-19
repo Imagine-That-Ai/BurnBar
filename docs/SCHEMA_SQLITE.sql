@@ -307,24 +307,29 @@ CREATE INDEX memory_body_snapshots_source_idx ON memory_body_snapshots(source_ki
 
 CREATE TABLE memory_source_tombstones (
   id                TEXT NOT NULL PRIMARY KEY,
+  user_id           TEXT,
   thread_logical_id TEXT NOT NULL,
   message_id        TEXT,
   content_hash      TEXT,
   reason            TEXT NOT NULL,
-  created_at        TEXT NOT NULL
+  created_at        TEXT NOT NULL,
+  replicated_at     TEXT
 );
 
 CREATE INDEX memory_source_tombstones_thread_idx ON memory_source_tombstones(thread_logical_id);
+CREATE INDEX memory_source_tombstones_pending_idx ON memory_source_tombstones(user_id, replicated_at, created_at);
 
 CREATE TABLE memory_fact_tombstones (
-  id         TEXT NOT NULL PRIMARY KEY,
-  memory_id  TEXT NOT NULL,
-  user_id    TEXT,
-  reason     TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  id               TEXT NOT NULL PRIMARY KEY,
+  user_id          TEXT NOT NULL,
+  memory_id        TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  reason           TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  replicated_at    TEXT
 );
 
-CREATE INDEX memory_fact_tombstones_memory_idx ON memory_fact_tombstones(memory_id);
+CREATE INDEX memory_fact_tombstones_pending_idx ON memory_fact_tombstones(user_id, replicated_at, created_at);
 
 CREATE TABLE memory_audit (
   seq         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
