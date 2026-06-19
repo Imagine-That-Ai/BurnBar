@@ -701,6 +701,8 @@ for (const [section, note, allowlistHelperName] of [
     "validSessionLogManifestKeys",
   ],
   ["function validProjectMemorySnapshotKeys()", "project_memory_snapshots lacks keys().hasOnly allowlist"],
+  ["function validMemoryFactKeys()", "memory_facts lacks keys().hasOnly allowlist"],
+  ["function validMemoryForgetReceiptKeys()", "memory_forget_receipts lacks keys().hasOnly allowlist"],
   ["function validMediaSessionEventKeys()", "media_session_events lacks keys().hasOnly allowlist"],
   ["function validMediaAttachmentManifestKeys()", "media_attachment_manifests lacks keys().hasOnly allowlist"],
 ]) {
@@ -841,6 +843,33 @@ assertSectionIncludes(
   '!("sourceSlug" in request.resource.data)',
   "knowledge_repos must reject client-supplied cleartext sourceSlug",
 );
+
+// ── memory_facts / memory_forget_receipts: sealed facts + opaque receipts ───
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/memory_facts/{memoryDocId}",
+  "match /users/{userId}/memory_forget_receipts/{receiptId}",
+  "validCloudSealedBlob(",
+  "memory_facts must require a CloudVault sealed fact envelope",
+);
+for (const field of ["text", "body", "citations", "vector", "cloakedVector", "embedding"]) {
+  assertSectionIncludes(
+    "firestore.rules",
+    "match /users/{userId}/memory_facts/{memoryDocId}",
+    "match /users/{userId}/memory_forget_receipts/{receiptId}",
+    `!("${field}" in request.resource.data)`,
+    `memory_facts must reject plaintext/raw-vector field ${field}`,
+  );
+}
+for (const field of ["threadLogicalID", "messageID", "contentHash", "text", "body"]) {
+  assertSectionIncludes(
+    "firestore.rules",
+    "match /users/{userId}/memory_forget_receipts/{receiptId}",
+    "match /users/{userId}/knowledge_sync_manifests/{sourceManifestId}",
+    `!("${field}" in request.resource.data)`,
+    `memory_forget_receipts must reject source/plaintext field ${field}`,
+  );
+}
 
 // ── connectKnowledgeRepo (Admin SDK) must NOT persist a cleartext sourceSlug ──
 // firestore.rules BANS sourceSlug on client writes, but the connectKnowledgeRepo
@@ -1567,6 +1596,17 @@ function assertRegistryPrivacyHonesty() {
     }
     if (!pensieve.serverSees.some((v) => /opaque/i.test(v) && /match token/i.test(v))) {
       fail("packages/data-domains/registry.json: pensieve must declare the opaque repo match token");
+    }
+    for (const name of ["memory_facts", "memory_forget_receipts"]) {
+      if (!pensieve.firestorePaths.includes(name)) {
+        fail(`packages/data-domains/registry.json: pensieve must own the ${name} path`);
+      }
+    }
+    if (!pensieve.serverSees.some((v) => /forget receipt hashes/i.test(v))) {
+      fail("packages/data-domains/registry.json: pensieve serverSees must describe memory forget receipt hashes");
+    }
+    if (!pensieve.deviceOnly.some((v) => /chat memory fact bodies/i.test(v))) {
+      fail("packages/data-domains/registry.json: pensieve deviceOnly must list chat memory fact bodies");
     }
     if (!/NOTE:/.test(pensieve.summary) || !/webhook/i.test(pensieve.summary)) {
       fail("packages/data-domains/registry.json: pensieve summary must carry the webhook-routing caveat");
