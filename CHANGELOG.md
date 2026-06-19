@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-06-19
+
+### Release
+
+- Cut macOS `1.0.5` from `origin/main` after the June 2026 security,
+  reliability, analytics-consent, memory, and daemon-routing hardening work.
+- Prepared a fresh iOS TestFlight build line as `1.0.2 (75)` without
+  auto-releasing the already-approved `1.0.1` App Store version.
+- Fixed Claude Code Anthropic overload handling so upstream `529 overload`
+  responses cool down the saturated route and fail over to the next healthy
+  key instead of surfacing avoidable user-visible failures.
+
 ### Removed
 
 - Removed the experimental interactive-Claude meter-bypass path (Part B0 + B2): the `ClaudeInteractiveSessionExecutor` gateway executor, the `ClaudeInteractiveMeterExperiment` diagnostic + its `claude-meter-experiment` CLI command, the `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE` opt-in and its Settings UI toggle. Claude Code's first-run workspace-trust dialog cannot be driven reliably from a headless PTY (verified against 2.1.183), so the path no longer worked and is gone rather than patched. The legitimate human-driven `claude-handoff` feature (B1) is retained; its `ClaudeCodeJSONLUsageProbe` and claude-binary discovery helpers were relocated into the handoff service.

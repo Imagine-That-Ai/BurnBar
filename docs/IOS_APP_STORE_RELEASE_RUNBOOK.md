@@ -9,11 +9,11 @@ repo commands plus a short web-only App Store Connect pass.
 - App: `OpenBurnBar`
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
-- iOS version: `1.0`
-- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-18 after build `16`
-  was uploaded, attached, and resubmitted as review submission
-  `5470c33e-958d-4435-8490-f82af825f8e1`.
-- Linked build: `16`
+- iOS version: `1.0.1`
+- iOS version state: `PENDING_DEVELOPER_RELEASE` as of 2026-06-19, with
+  manual release enabled so approval does not publish to customers
+  automatically.
+- Linked build: `56`
 - Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.cloud.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
 - Subscription state: `WAITING_FOR_REVIEW` as of 2026-05-18 with an App Review
@@ -42,6 +42,12 @@ Status readback:
 ```bash
 npm --prefix tools/app-store-connect run status
 ```
+
+Internal TestFlight assignment uses the current `OpenBurnBarMobile`
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` from `project.yml` by
+default. Override with `APP_STORE_TESTFLIGHT_VERSION` or
+`APP_STORE_BUILD_VERSION` only when intentionally assigning a different
+pre-release/build line.
 
 App Store Server Notifications test readback:
 
