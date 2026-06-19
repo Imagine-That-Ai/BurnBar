@@ -45,6 +45,10 @@ openburnbar_app_test_has_concrete_xctest_failure() {
 openburnbar_app_test_has_terminal_concrete_xctest_failure() {
     local log_path="$1"
 
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+        return 1
+    fi
+
     if is_xcode_false_negative_pass "$log_path"; then
         return 1
     fi
