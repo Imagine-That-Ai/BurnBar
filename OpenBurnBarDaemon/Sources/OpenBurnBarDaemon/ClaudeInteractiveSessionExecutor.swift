@@ -198,7 +198,27 @@ public final class ClaudeInteractiveSessionExecutor: Sendable {
         let cwd = fileSystem.temporaryDirectory
             .appendingPathComponent("obb-claude-interactive-\(UUID().uuidString)", isDirectory: true)
         try fileSystem.createDirectory(at: cwd, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        defer { try? fileSystem.removeItem(at: cwd) }
+
+        // Claude Code keys workspace trust by the *resolved* cwd (realpath), so
+        // resolve symlinks (e.g. /var/folders → /private/var/folders) to match
+        // the exact key it will consult.
+        let resolvedCwdPath = Self.trustProjectKey(for: cwd)
+
+        // Pre-trust this ephemeral cwd in `~/.claude.json` BEFORE spawning. A
+        // fresh temp dir has never been trusted, so without this Claude Code
+        // renders its first-run "do you trust the files in this folder" dialog
+        // every turn. The dialog cannot be answered reliably from a headless
+        // PTY, and the prompt line we send gets swallowed as the dialog's
+        // confirmation (accepting trust but losing the prompt) — the root cause
+        // of the historical retry loop. See `pretrustWorkspace` for details.
+        Self.pretrustWorkspace(resolvedPath: resolvedCwdPath)
+        defer {
+            try? fileSystem.removeItem(at: cwd)
+            // Drop the ephemeral trust entry and any session-log dir so the
+            // shared config does not accumulate orphan `obb-claude-interactive-*`
+            // entries (the previous behavior left one per turn, forever).
+            Self.untrustWorkspace(resolvedPath: resolvedCwdPath)
+        }
 
         let projectDir = ClaudeInteractiveHandoffService.claudeProjectDirectory(for: cwd.path)
 
@@ -291,16 +311,161 @@ public final class ClaudeInteractiveSessionExecutor: Sendable {
     or execute commands unless the user explicitly asks.
     """
 
-    /// Sends a single Enter if the transcript looks like Claude Code's first-run
-    /// "do you trust the files in this folder" confirmation. Conservative — only
-    /// fires on a recognizable prompt so we never inject stray input.
+    /// Last-resort fallback for Claude Code's first-run workspace-trust dialog.
+    ///
+    /// The primary mechanism is `pretrustWorkspace`, which seeds the trust entry
+    /// before launch so the dialog never renders (verified against Claude Code
+    /// 2.1.183). This scraper exists only as defense-in-depth for a future
+    /// version that might surface a trust gate the pre-seed does not cover. It
+    /// runs once, before the user prompt is sent, so a stray Enter can never
+    /// contaminate real assistant output.
+    ///
+    /// Detection is whitespace-insensitive: the TUI renders inter-word spacing
+    /// with cursor-positioning escapes, so `plainTranscriptText()` concatenates
+    /// words ("Yes,Itrustthisfolder"). The markers target the current (post
+    /// 2.1.x) dialog copy; the old "do you trust the files" markers no longer
+    /// match and were silently failing, which masked the loop.
     static func dismissTrustPromptIfPresent(_ session: PTYInteractiveSession) {
-        let lower = session.plainTranscriptText().lowercased()
-        if lower.contains("do you trust")
-            || lower.contains("trust the files")
-            || lower.contains("yes, proceed") {
-            try? session.sendLine("")
+        let compact = session.plainTranscriptText().filter { !$0.isWhitespace }.lowercased()
+        let trustDialogMarkers = [
+            "issthisaprojectyoucreated", // "Is this a project you created..."
+            "yes,itrustthisfolder",
+            "no,exit"
+        ]
+        guard trustDialogMarkers.contains(where: { compact.contains($0) }) else { return }
+        try? session.sendLine("")
+    }
+
+    // MARK: - Workspace trust
+
+    /// Location of the Claude Code global config that records per-workspace trust.
+    static func claudeConfigURL(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        homeDirectory.appendingPathComponent(".claude.json", isDirectory: false)
+    }
+
+    /// The realpath key Claude Code uses for a working directory's trust entry.
+    /// `~/.claude.json` `projects` is keyed by `process.cwd()`, which is the
+    /// kernel-resolved realpath (symlinks fully expanded). On macOS the temp
+    /// tree is `/var/folders → /private/var/folders`. Foundation's
+    /// `URL.resolvingSymlinksInPath()` does NOT always reproduce that (it left
+    /// the `/var` symlink unresolved in practice), so we call `realpath(3)`
+    /// directly to match the exact key Claude Code consults. Requires the path
+    /// to exist (the temp cwd is created before seeding); falls back to
+    /// Foundation if `realpath` fails (e.g. a race removed the dir).
+    static func trustProjectKey(for workingDirectory: URL) -> String {
+        let path = workingDirectory.path
+        if let resolved = path.withCString({ realpath($0, nil) }) {
+            defer { free(resolved) }
+            return String(cString: resolved)
         }
+        return workingDirectory.resolvingSymlinksInPath().path
+    }
+
+    /// Atomically pre-trust `resolvedPath` in `~/.claude.json` so Claude Code
+    /// skips its first-run workspace-trust dialog for that directory.
+    ///
+    /// Claude Code persists the result of clicking "Yes, I trust this folder" as
+    /// `projects[<resolved-cwd>].hasTrustDialogAccepted = true` and consults it
+    /// on startup to decide whether to render the gate. Setting it before launch
+    /// is exactly that — verified to suppress the dialog against Claude Code
+    /// 2.1.183. `resolvedPath` MUST be the realpath form (see `trustProjectKey`)
+    /// because that is the key Claude Code uses.
+    ///
+    /// Concurrency: `~/.claude.json` is also written by the Claude Code desktop
+    /// app and other daemon turns. We take an exclusive `flock` for the RMW
+    /// window and commit via an atomic write, mutating only the single
+    /// `projects[resolvedPath]` entry. Any read/parse/serialize failure aborts
+    /// (best-effort) — the file is never replaced with partial or lossy content.
+    /// Failures are logged, not thrown, so the caller still proceeds and the
+    /// scrape fallback remains in play.
+    static func pretrustWorkspace(
+        resolvedPath: String,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "claude-interactive-executor")
+    ) {
+        mutateClaudeConfigProjects(resolvedPath: resolvedPath, homeDirectory: homeDirectory, logger: logger) { projects in
+            var entry = (projects[resolvedPath] as? [String: Any]) ?? [:]
+            entry["hasTrustDialogAccepted"] = true
+            entry["hasCompletedProjectOnboarding"] = true
+            projects[resolvedPath] = entry
+        }
+    }
+
+    /// Inverse of `pretrustWorkspace`: removes the ephemeral trust entry so the
+    /// shared config does not accumulate one orphan `obb-claude-interactive-*`
+    /// entry per turn (the previous behavior left cruft forever), and deletes
+    /// any session-log dir Claude Code created for this cwd.
+    static func untrustWorkspace(
+        resolvedPath: String,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "claude-interactive-executor")
+    ) {
+        let encoded = resolvedPath.replacingOccurrences(of: "/", with: "-")
+        let sessionDir = homeDirectory
+            .appendingPathComponent(".claude/projects", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
+        try? FileManager.default.removeItem(at: sessionDir)
+
+        mutateClaudeConfigProjects(resolvedPath: resolvedPath, homeDirectory: homeDirectory, logger: logger) { projects in
+            projects.removeValue(forKey: resolvedPath)
+        }
+    }
+
+    /// Read-mutate-write the `projects` subtree of `~/.claude.json` under an
+    /// exclusive advisory lock with an atomic commit. All failures are swallowed
+    /// (logged) so trust seeding can never corrupt the shared config.
+    private static func mutateClaudeConfigProjects(
+        resolvedPath: String,
+        homeDirectory: URL,
+        logger: BurnBarDaemonLogger,
+        mutate: (_ projects: inout [String: Any]) -> Void
+    ) {
+        let configURL = claudeConfigURL(homeDirectory: homeDirectory)
+        guard configURL.isFileURL, configURL.path == configURL.standardizedFileURL.path else {
+            // Defensive: never operate on a non-resolved/escaped path.
+            return
+        }
+
+        let fd = configURL.path.withCString { open($0, O_RDWR) }
+        guard fd >= 0 else {
+            logger.warning("claude_trust_open_failed", metadata: ["errno": "\(errno)"])
+            return
+        }
+        defer { close(fd) }
+
+        guard flock(fd, LOCK_EX) == 0 else {
+            logger.warning("claude_trust_lock_failed", metadata: ["errno": "\(errno)"])
+            return
+        }
+        defer { flock(fd, LOCK_UN) }
+
+        guard let data = try? Data(contentsOf: configURL) else {
+            logger.warning("claude_trust_read_failed")
+            return
+        }
+        guard var root = (try? JSONSerialization.jsonObject(with: data, options: [.allowFragments])) as? [String: Any] else {
+            logger.warning("claude_trust_parse_failed")
+            return
+        }
+        var projects = (root["projects"] as? [String: Any]) ?? [:]
+        mutate(&projects)
+        root["projects"] = projects
+
+        guard let outgoing = try? JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys]
+        ) else {
+            logger.warning("claude_trust_serialize_failed")
+            return
+        }
+
+        // Atomic write (temp + rename) preserves integrity if we crash mid-write.
+        guard (try? outgoing.write(to: configURL, options: [.atomic])) != nil else {
+            logger.warning("claude_trust_write_failed")
+            return
+        }
+        // The config carries identity/session data; keep it owner-only.
+        _ = configURL.path.withCString { chmod($0, 0o600) }
     }
 
     // MARK: - Environment
