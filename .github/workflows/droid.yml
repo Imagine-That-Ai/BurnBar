@@ -6,17 +6,22 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    types: [opened]
   pull_request_review:
     types: [submitted]
   pull_request:
     types: [opened, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   droid:
     if: |
       (
         github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request == null &&
         contains(github.event.comment.body, '@droid') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
@@ -42,6 +47,7 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
     permissions:
