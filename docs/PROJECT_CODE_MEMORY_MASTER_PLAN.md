@@ -234,11 +234,14 @@ Each phase ends at an **acceptance gate** (§13). Phases 0–3 = parity; Phase 4
 ### Phase 1 — Agent Memory (reconcile + extend)
 - RPC: `memory.remember`, `memory.recall`, `memory.forget`, `memory.auditTrail`, `memory.analytics`.
 - `remember` → routes through Pensieve `memoryHook` (sealed/dedup/confidence) + `project_memory_snapshots`; writes a sealed-envelope reference into `agent_memories` (local index, §6.2). **No plaintext durable-memories table.**
+- Hermes / CLI-bridge chat memory is part of this same Phase-1 agent-memory lane, not a new store: the app writes `source_kind='chat'` rows into the unified `agent_memories` sealed-reference authority, while daemon Project Code Memory remains `source_kind='code'`. The companion integrity tables are `memory_provenance`, `memory_extraction_jobs`, `memory_embedding_refs`, and `memory_source_tombstones`; all preserve the same sealed-body discipline.
+- PR-0 for the chat-memory backend reconciles this plan with `docs/MEMORY_BACKEND_PLAN.md`: the vestigial body-bearing `agent_memories_fts` table is dropped by the app migrator (`v51a_drop_body_fts`) and remains absent from daemon bootstrap and `docs/SCHEMA_SQLITE.sql`. Memory lexical recall may use redacted metadata only; raw fact bodies never enter persistent FTS, audit, logs, or cloud fields.
 - `recall` → router/superset over `semantic_search_conversations` + cloud variant + Pensieve `search_knowledge`, by `source` + `MemoryScope` + `project_id`; reuses `_active_deterministic_embedding` (`server.py:971`).
 - `forget` → §5.8 two-phase cross-tier delete.
 - `context_pack` → reuse the shipped ContextPack exporter + token-budget accounting.
 - `memory_analytics` → aggregate over `agent_memories`/snapshots.
 - All writes via fail-closed RPC (§5.2), through the secret gate (§5.3), audited label-only (§5.4).
+- App GRDB migrations are the source of truth for the shared SQLite schema; `scripts/ci/verify-sqlite-schema-doc.mjs` must read the app migrator, daemon bootstrap, and Python MCP bootstrap, then compare the final schema after historical drops against `docs/SCHEMA_SQLITE.sql`.
 - MCP tool names: `burnbar_remember/recall/forget/context_pack/audit_trail/memory_analytics` (decide alias strategy, §16).
 
 ### Phase 2 — Code Memory, lexical tier (TRUE PARITY)
@@ -330,7 +333,7 @@ Per new hosted tool: declare `requiredScopes` + `costClass` in `toolRegistry.ts`
 | Three memory stores diverge | §7.1 single sealed-envelope index, no plaintext store |
 
 ## 16. Open decisions (need Alberto's call — defaults chosen, change if wanted)
-1. **`remember` backing store** *(default: by kind — durable/project facts → `project_memory_snapshots`; personal/cross-project → Pensieve sealed knowledge; `agent_memories` is the local index over both)*.
+1. **`remember` backing store** *(default: by kind — durable/project facts → `project_memory_snapshots`; personal/cross-project → Pensieve sealed knowledge; `agent_memories` is the local index over both; Hermes/CLI chat facts use the same authority table with `source_kind='chat'` rather than a sibling body store)*.
 2. **Hosted code sync** *(default: LOCAL-ONLY for v1; hosted is Phase 4 behind the threat-model gate)*.
 3. **Phase 4 language set & order** *(default: Swift → TS → Python)*.
 4. **Tool naming** *(default: BurnBar-native `burnbar_*` names with total-memory names as documented aliases, so existing agent configs work)*.

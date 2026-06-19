@@ -6,9 +6,17 @@ import { dirname, resolve } from "node:path";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 
-const sourcePaths = [
-  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
-  "tools/openburnbar-mcp/project_code_memory.py",
+const sourceSpecs = [
+  {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
+    startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
+  },
+  {
+    path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
+  },
+  {
+    path: "tools/openburnbar-mcp/project_code_memory.py",
+  },
 ];
 
 function readRepoFile(path) {
@@ -19,6 +27,19 @@ function addMatches(set, text, regex) {
   for (const match of text.matchAll(regex)) {
     set.add(match[1]);
   }
+}
+
+function sourceText(spec) {
+  const text = readRepoFile(spec.path);
+  if (!spec.startMarker) {
+    return text;
+  }
+  const markerIndex = text.indexOf(spec.startMarker);
+  if (markerIndex === -1) {
+    console.error(`${spec.path} is missing schema verifier marker: ${spec.startMarker}`);
+    process.exit(1);
+  }
+  return text.slice(markerIndex);
 }
 
 function documentedTables() {
@@ -37,14 +58,20 @@ function schemaDocText() {
 
 function sourceTables() {
   const tables = new Set();
-  for (const sourcePath of sourcePaths) {
-    const text = readRepoFile(sourcePath);
-    addMatches(tables, text, /\bcreate\(table:\s*"([^"]+)"/g);
-    addMatches(
-      tables,
-      text,
-      /\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi,
-    );
+  for (const spec of sourceSpecs) {
+    const text = sourceText(spec);
+    const tableOperationPattern =
+      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+    for (const match of text.matchAll(tableOperationPattern)) {
+      const createdTable = match[1] ?? match[2];
+      const droppedTable = match[3];
+      if (createdTable) {
+        tables.add(createdTable);
+      }
+      if (droppedTable) {
+        tables.delete(droppedTable);
+      }
+    }
   }
   return tables;
 }
@@ -70,6 +97,15 @@ if (missing.length > 0) {
 }
 
 const schema = schemaDocText();
+for (const forbidden of ["agent_memories_fts"]) {
+  if (schema.includes(forbidden)) {
+    console.error(
+      `docs/SCHEMA_SQLITE.sql must not document ${forbidden}; memory bodies stay behind sealed references only.`,
+    );
+    process.exit(1);
+  }
+}
+
 const pcmColumnChecks = {
   agent_memories: ["body_ref", "body_redacted", "valid_from", "superseded_by"],
   memory_audit: ["seq", "prev_hash", "hash"],

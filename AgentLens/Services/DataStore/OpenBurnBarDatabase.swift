@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
-
 // MARK: - Shared Database Spine
 
 /// Owns the shared database writer (DatabasePool in production, DatabaseQueue in tests),
@@ -1947,6 +1946,7 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v51a_drop_body_fts") { db in try db.execute(sql: "DROP TABLE IF EXISTS agent_memories_fts") }
         return migrator
     }
 
