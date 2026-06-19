@@ -848,7 +848,7 @@ private fun MirrorControlShelfScreenExtras(params: MirrorControlShelfParams) {
 
 @Composable
 internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (String) -> Unit, onKey: (String) -> Unit, onDismiss: () -> Unit) {
-    var capturedText by remember { mutableStateOf("") }
+    var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
     var hasFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -868,14 +868,14 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
     }
 
     BasicTextField(
-        value = capturedText,
+        value = captureState.retainedText,
         onValueChange = { newText ->
-            val diff = remoteKeyboardDiff(capturedText, newText)
-            repeat(diff.deletedCount.coerceAtMost(64)) {
+            val change = remoteKeyboardCaptureChange(captureState, newText)
+            captureState = change.nextState
+            repeat(change.deletedCount.coerceAtMost(64)) {
                 onKey("delete")
             }
-            dispatchRemoteKeyboardText(diff.insertedText, onText = onText, onKey = onKey)
-            capturedText = if (newText.length > 256) "" else newText
+            dispatchRemoteKeyboardText(change.insertedText, onText = onText, onKey = onKey)
         },
         modifier =
         modifier

@@ -413,6 +413,17 @@ internal data class RemoteKeyboardDiff(
     val deletedCount: Int,
 )
 
+internal data class RemoteKeyboardCaptureState(
+    val retainedText: String = "",
+    val lastRawText: String? = null,
+)
+
+internal data class RemoteKeyboardCaptureChange(
+    val nextState: RemoteKeyboardCaptureState,
+    val insertedText: String,
+    val deletedCount: Int,
+)
+
 internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboardDiff {
     var prefix = 0
     val commonPrefixLimit = minOf(oldText.length, newText.length)
@@ -434,6 +445,27 @@ internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboar
     return RemoteKeyboardDiff(
         insertedText = newText.substring(prefix, newSuffix),
         deletedCount = oldSuffix - prefix,
+    )
+}
+
+internal fun remoteKeyboardCaptureChange(state: RemoteKeyboardCaptureState, newText: String, retainedTextLimit: Int = 256): RemoteKeyboardCaptureChange {
+    if (state.lastRawText == newText) {
+        return RemoteKeyboardCaptureChange(
+            nextState = state,
+            insertedText = "",
+            deletedCount = 0,
+        )
+    }
+
+    val diff = remoteKeyboardDiff(oldText = state.retainedText, newText = newText)
+    val retainedText = if (newText.length > retainedTextLimit) "" else newText
+    return RemoteKeyboardCaptureChange(
+        nextState = RemoteKeyboardCaptureState(
+            retainedText = retainedText,
+            lastRawText = newText,
+        ),
+        insertedText = diff.insertedText,
+        deletedCount = diff.deletedCount,
     )
 }
 

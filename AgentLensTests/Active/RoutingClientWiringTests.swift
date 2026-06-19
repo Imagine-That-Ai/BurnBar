@@ -246,6 +246,56 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(change.configURL, tempHome.appendingPathComponent(".codex/config.toml"))
     }
 
+    func test_wireCodexIncludesNativeGPTFallbacksAndResponsesGatewayModels() throws {
+        let wiring = makeWiring()
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: exampleGateway(token: "codex-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.5",
+                    displayName: "GPT-5.5 via OpenBurnBar",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/responses"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "claude-opus-4-8",
+                    displayName: "Claude Opus 4.8",
+                    providerID: "anthropic",
+                    providerName: "Anthropic",
+                    formatFamily: "anthropic",
+                    servedEndpoints: ["/v1/messages"],
+                    capabilities: ["anthropic"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "chat-only-model",
+                    displayName: "Chat Only",
+                    providerID: "test",
+                    providerName: "Test",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ]
+        )
+
+        let profileText = try String(
+            contentsOf: tempHome.appendingPathComponent(".codex/openburnbar.config.toml"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(profileText.contains("model = \"openburnbar/gpt-5.5\""))
+
+        let catalog = try loadJSONObject(at: tempHome.appendingPathComponent(".codex/openburnbar-model-catalog.json"))
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.4" })
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/gpt-5.5" })
+        XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/claude-opus-4-8" })
+        XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/chat-only-model" })
+    }
+
     func test_wireCodex_preservesPriorUserTOML() throws {
         let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
@@ -265,6 +315,35 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(text.contains("[profiles.work]"))
         XCTAssertTrue(text.contains("model = \"gpt-5.4\""))
         XCTAssertTrue(text.contains("[model_providers.openburnbar]"))
+    }
+
+    func test_wireCodex_replacesLegacyOpenBurnBarProviderWithoutSentinel() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        [profiles.work]
+        model = "gpt-5.4"
+
+        [model_providers.openburnbar]
+        name = "OpenBurnBar Hydrant"
+        base_url = "http://127.0.0.1:8317/v1"
+        env_key = "OPENBURNBAR_GATEWAY_TOKEN"
+        wire_api = "chat"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        _ = try makeWiring().wire(target: .codex, gateway: exampleGateway(token: "tok"))
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("[profiles.work]"))
+        XCTAssertTrue(text.contains("model = \"gpt-5.4\""))
+        XCTAssertFalse(text.contains("OpenBurnBar Hydrant"))
+        XCTAssertFalse(text.contains("wire_api = \"chat\""))
+        XCTAssertEqual(text.components(separatedBy: "[model_providers.openburnbar]").count - 1, 1)
+        XCTAssertTrue(text.contains("name = \"OpenBurnBar Gateway\""))
+        XCTAssertTrue(text.contains("wire_api = \"responses\""))
     }
 
     func test_isWired_codex_detectsSentinel() throws {
@@ -846,6 +925,53 @@ final class RoutingClientWiringTests: XCTestCase {
         )
 
         XCTAssertEqual(status, .current(modelIDs: ["glm-5.2"]))
+    }
+
+    func test_wireClaudeCodeFiltersCatalogToMessagesEndpointModels() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "claude-token")
+        let advertisedModels = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.5",
+                displayName: "GPT-5.5",
+                providerID: "codex",
+                providerName: "Codex",
+                servedEndpoints: ["/v1/responses"],
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "claude-opus-4-8",
+                displayName: "Claude Opus 4.8",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                formatFamily: "anthropic",
+                servedEndpoints: ["/v1/messages"],
+                capabilities: ["anthropic"],
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "chat-only-model",
+                displayName: "Chat Only",
+                providerID: "test",
+                providerName: "Test",
+                servedEndpoints: ["/v1/chat/completions"],
+                routeEligible: true
+            )
+        ]
+
+        _ = try wiring.wire(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: advertisedModels
+        )
+
+        let root = try loadJSONObject(at: tempHome.appendingPathComponent(".claude/settings.json"))
+        let env = try XCTUnwrap(root["env"] as? [String: Any])
+        XCTAssertEqual(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String, "claude-opus-4-8")
+        XCTAssertEqual(
+            wiring.modelSyncStatus(target: .claudeCode, gateway: gateway, advertisedModels: advertisedModels),
+            .current(modelIDs: ["claude-opus-4-8"])
+        )
     }
 
     func test_probeCodexUsesResponsesWithOpenBurnBarModelAlias() async throws {

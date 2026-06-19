@@ -58,14 +58,13 @@ public struct BurnBarCodexSystemProcessRunner: BurnBarCodexProcessRunning {
     }
 
     private static func defaultCodexExecutableURL() -> URL {
-        var candidates = [
-            FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/codex")
-                .path,
+        var candidates = userCLIPathEntries()
+            .map { URL(fileURLWithPath: $0).appendingPathComponent("codex").path }
+        candidates.append(contentsOf: [
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
             "/usr/bin/codex"
-        ]
+        ])
         let pathCandidates = (ProcessInfo.processInfo.environment["PATH"] ?? "")
             .split(separator: ":")
             .map { URL(fileURLWithPath: String($0)).appendingPathComponent("codex").path }
@@ -74,6 +73,33 @@ public struct BurnBarCodexSystemProcessRunner: BurnBarCodexProcessRunning {
             return URL(fileURLWithPath: candidate)
         }
         return URL(fileURLWithPath: "/usr/bin/env")
+    }
+
+    fileprivate static func userCLIPathEntries() -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var entries = [
+            home.appendingPathComponent(".local/bin").path
+        ]
+        entries.append(contentsOf: nvmNodeBinDirectories(home: home))
+        entries.append(contentsOf: [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
+        ])
+        var seen = Set<String>()
+        return entries.filter { seen.insert($0).inserted }
+    }
+
+    private static func nvmNodeBinDirectories(home: URL) -> [String] {
+        let versionsURL = home.appendingPathComponent(".nvm/versions/node", isDirectory: true)
+        guard let names = try? FileManager.default.contentsOfDirectory(
+            atPath: versionsURL.path
+        ) else { return [] }
+        return names
+            .filter { !$0.hasPrefix(".") }
+            .sorted { $0.localizedStandardCompare($1) == .orderedDescending }
+            .map { versionsURL.appendingPathComponent($0).appendingPathComponent("bin").path }
     }
 
     private static func runSynchronously(
@@ -319,9 +345,10 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
                 environment[key] = value
             }
         }
-        if environment["PATH"] == nil {
-            environment["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-        }
+        environment["PATH"] = mergedSearchPath(
+            preferredEntries: BurnBarCodexSystemProcessRunner.userCLIPathEntries(),
+            existingPath: environment["PATH"]
+        )
         environment["HOME"] = NSHomeDirectory()
         // Codex authenticates from its local login (`~/.codex/auth.json`) when no
         // key is configured. A configured key (if any) is passed through so a
@@ -332,6 +359,18 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             environment["OPENAI_API_KEY"] = trimmedKey
         }
         return environment
+    }
+
+    private static func mergedSearchPath(preferredEntries: [String], existingPath: String?) -> String {
+        var entries = preferredEntries
+        if let existingPath, !existingPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            entries.append(contentsOf: existingPath.split(separator: ":").map(String.init))
+        }
+        var seen = Set<String>()
+        return entries
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .filter { seen.insert($0).inserted }
+            .joined(separator: ":")
     }
 
     // MARK: - Prompt assembly
