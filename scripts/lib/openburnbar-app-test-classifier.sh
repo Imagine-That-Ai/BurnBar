@@ -42,6 +42,16 @@ openburnbar_app_test_has_concrete_xctest_failure() {
     return 1
 }
 
+openburnbar_app_test_has_terminal_concrete_xctest_failure() {
+    local log_path="$1"
+
+    if is_xcode_false_negative_pass "$log_path"; then
+        return 1
+    fi
+
+    openburnbar_app_test_has_concrete_xctest_failure "$log_path"
+}
+
 openburnbar_app_test_has_assertion_failure() {
     local log_path="$1"
 
@@ -197,6 +207,10 @@ is_xcode_false_negative_pass() {
     # exit, then leave a stale "Failing tests:" footer from the dead host even
     # though the final selected-suite pass is clean. That is still an
     # infrastructure false negative, but only when a runner restart is present.
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+        return 1
+    fi
+
     openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
 
     if openburnbar_app_test_has_concrete_failure_after_final_selected_start "$log_path"; then
