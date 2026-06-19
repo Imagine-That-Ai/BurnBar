@@ -1120,9 +1120,9 @@ final class ControlPlaneStore: Sendable {
     }
 
     func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
-        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+        let ids = try await chatMemoryAuthorityDeletionIDs(scope: scope)
         var deleted = 0
-        for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
+        for id in ids where try await deleteChatMemoryAuthorityRecord(id: id, now: now) {
             deleted += 1
         }
         return deleted
@@ -1332,7 +1332,7 @@ final class ControlPlaneStore: Sendable {
         "memory_body_snapshots:\(slug)"
     }
 
-    private static func memoryStorageProjectID(for scope: MemoryScope) -> String {
+    static func memoryStorageProjectID(for scope: MemoryScope) -> String {
         scope.projectID ?? "chat:\(scope.userID ?? scope.appID ?? "unscoped")"
     }
 
@@ -1507,7 +1507,7 @@ final class ControlPlaneStore: Sendable {
         )
     }
 
-    private static func appendScopePredicates(
+    static func appendScopePredicates(
         _ scope: MemoryScope,
         tableAlias: String = "",
         to predicates: inout [String],
@@ -1520,7 +1520,7 @@ final class ControlPlaneStore: Sendable {
         appendNullableScopePredicate(column: "\(prefix)app_id", value: scope.appID, to: &predicates, arguments: &arguments)
     }
 
-    private static func appendNullableScopePredicate(
+    static func appendNullableScopePredicate(
         column: String,
         value: String?,
         to predicates: inout [String],
