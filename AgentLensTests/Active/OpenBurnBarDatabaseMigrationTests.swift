@@ -911,6 +911,78 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(superseded, ["mem-stable-b:mem-stable-a", "mem-stable-c:mem-stable-a"])
     }
 
+    func test_memoryDedupKeepsApprovedWinnerOverHigherConfidenceQuarantine() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_390)
+        let scope = MemoryScope(userID: "review-winner-user", appID: "review-winner-app")
+        let body = "User wants approved memory to stay injectable after duplicate extraction."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.62,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-approved",
+                        threadLogicalID: "thread-approved",
+                        messageID: "message-approved",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-approved",
+                        crossDeviceHMAC: "hmac-approved"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-approved-winner",
+            now: now,
+            enabled: true
+        )
+
+        let quarantined = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.99,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-quarantined",
+                        threadLogicalID: "thread-quarantined",
+                        messageID: "message-quarantined",
+                        role: "assistant",
+                        authoredAt: now.addingTimeInterval(1),
+                        contentHash: "content-quarantined",
+                        crossDeviceHMAC: "hmac-quarantined"
+                    )
+                ],
+                reviewStatus: .quarantined
+            ),
+            id: "mem-quarantined-duplicate",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        XCTAssertEqual(quarantined.supersededBy, "mem-approved-winner")
+        XCTAssertNotNil(quarantined.validTo)
+
+        let approved = try await store.fetchChatMemoryAuthorityRecord(id: "mem-approved-winner")
+        XCTAssertNil(approved?.supersededBy)
+        XCTAssertNil(approved?.validTo)
+        XCTAssertEqual(
+            Set(approved?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(["hmac-approved", "hmac-quarantined"])
+        )
+
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .preference)
+        XCTAssertEqual(active.map(\.id), ["mem-approved-winner"])
+    }
+
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

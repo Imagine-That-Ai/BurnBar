@@ -483,6 +483,7 @@ final class ControlPlaneStore: Sendable {
                 duplicateRows: duplicateRows,
                 newID: id,
                 newConfidence: request.confidence,
+                newReviewStatus: request.reviewStatus,
                 newValidFrom: now
             )
             let newSupersededBy = winnerID == id ? nil : winnerID
@@ -1253,23 +1254,40 @@ final class ControlPlaneStore: Sendable {
         duplicateRows: [Row],
         newID: MemoryID,
         newConfidence: Double,
+        newReviewStatus: MemoryReviewStatus,
         newValidFrom: Date
     ) -> MemoryID {
-        var candidates: [(id: MemoryID, confidence: Double, validFrom: Date)] = duplicateRows.compactMap { row in
+        var candidates: [(id: MemoryID, confidence: Double, reviewStatus: MemoryReviewStatus, validFrom: Date)] = duplicateRows.compactMap { row in
             guard let id: String = row["id"],
                   let confidence: Double = row["confidence"],
+                  let reviewStatusRaw: String = row["review_status"],
+                  let reviewStatus = MemoryReviewStatus(rawValue: reviewStatusRaw),
                   let validFrom = OpenBurnBarDatabase.parseDateValue(row["valid_from"])
             else {
                 return nil
             }
-            return (id, confidence, validFrom)
+            return (id, confidence, reviewStatus, validFrom)
         }
-        candidates.append((newID, newConfidence, newValidFrom))
+        candidates.append((newID, newConfidence, newReviewStatus, newValidFrom))
         return candidates.min { lhs, rhs in
+            let lhsRank = memoryReviewDedupRank(lhs.reviewStatus)
+            let rhsRank = memoryReviewDedupRank(rhs.reviewStatus)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
             if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
             if lhs.validFrom != rhs.validFrom { return lhs.validFrom < rhs.validFrom }
             return lhs.id < rhs.id
         }?.id ?? newID
+    }
+
+    private static func memoryReviewDedupRank(_ status: MemoryReviewStatus) -> Int {
+        switch status {
+        case .approved:
+            return 0
+        case .quarantined:
+            return 1
+        case .rejected:
+            return 2
+        }
     }
 
     private static func mergeDuplicateChatMemories(
