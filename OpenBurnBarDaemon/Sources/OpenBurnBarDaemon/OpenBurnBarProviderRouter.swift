@@ -880,6 +880,9 @@ public struct BurnBarProviderRouter: Sendable {
 
         if configuration.provider.id.lowercased() == "ollama",
            let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
+            guard ollamaCloudMayClaimModelID(directCloudModelID) else {
+                return nil
+            }
             let exactCloudModel = configuration.preferredModels.first(where: {
                 $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
             })
@@ -925,6 +928,9 @@ public struct BurnBarProviderRouter: Sendable {
         if configuration.provider.id.lowercased() == "ollama",
            matchedModel.id == "ollama-cloud-family",
            let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
+            guard ollamaCloudMayClaimModelID(directCloudModelID) else {
+                return nil
+            }
             return BurnBarCatalogModel(
                 id: directCloudModelID,
                 displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1123,6 +1129,49 @@ public struct BurnBarProviderRouter: Sendable {
             return candidate.isEmpty ? nil : candidate
         }
         return nil
+    }
+
+    private func ollamaCloudMayClaimModelID(_ modelID: String) -> Bool {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let lastPathComponent = trimmed
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .last
+            .map(String.init)
+        let baseCandidates = ([lastPathComponent, Optional(trimmed)] as [String?])
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let candidates = baseCandidates.flatMap { candidate -> [String] in
+            var values = [candidate]
+            for level in BurnBarThinkingLevel.allCases {
+                let suffix = "-\(level.slug)"
+                if candidate.lowercased().hasSuffix(suffix) {
+                    let base = String(candidate.dropLast(suffix.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !base.isEmpty {
+                        values.append(base)
+                    }
+                }
+            }
+            return values
+        }
+
+        for candidate in candidates {
+            if candidate.lowercased().contains("claude") {
+                return false
+            }
+            guard let vendor = configStore.catalogSupport.catalog.vendorForModel(named: candidate) else {
+                continue
+            }
+            if vendor.id.caseInsensitiveCompare("ollama") == .orderedSame {
+                return true
+            }
+            if vendor.id.caseInsensitiveCompare("anthropic") == .orderedSame
+                || vendor.formatFamily == .anthropic {
+                return false
+            }
+        }
+        return true
     }
 
     private func resolveRequiredCanonicalModelID(

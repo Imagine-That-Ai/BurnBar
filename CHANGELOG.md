@@ -104,6 +104,7 @@ A cross-surface performance/quality pass (website, Android, iOS/iPadOS, macOS, d
 
 ### Fixed
 
+- **Droid routed Claude models through OpenBurnBar** — the local gateway no longer lets Ollama Cloud's dynamic `:cloud` fallback claim Anthropic-owned Claude model IDs such as `claude-opus-4-8-max`. Claude requests now fail closed to an Anthropic route/no-route error instead of being rewritten to Ollama Cloud, while unlisted Ollama Cloud aliases such as `glm-5.2:cloud` still route dynamically.
 - **Droid custom models (Anthropic BYOK)** — the local gateway now accepts the gateway bearer token via `x-api-key` as well as `Authorization: Bearer`, matching Factory Droid's Anthropic adapter. Routed Claude custom models (`provider: anthropic` in `~/.factory/settings.local.json`) no longer fail with `401 unauthorized` / `Exec failed`.
 - **Mobile Hermes Gateway replies** — BurnBar Cloud gateway replies now reopen the exact Hermes thread, persist replies before rendering mobile reply cards, hide older duplicate reconnect entries for the same device, and show the answering provider badge in notifications and gateway status UI.
 

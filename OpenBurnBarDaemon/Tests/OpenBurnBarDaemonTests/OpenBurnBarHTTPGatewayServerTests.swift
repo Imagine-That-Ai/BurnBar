@@ -3137,6 +3137,35 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
+    func testGatewayDoesNotRouteClaudeMessagesToOllamaCloudFallback() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureOllamaProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-opus-4-8-max","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503, String(decoding: body, as: UTF8.self))
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("No eligible route"))
+        XCTAssertFalse(
+            GatewayUpstreamURLProtocol.recordedRequests().contains { $0.path == "/api/chat" },
+            "Claude-owned Anthropic Messages requests must not be rewritten to Ollama Cloud"
+        )
+    }
+
     func testGatewayRejectsOllamaCloudLengthResponseWithoutAssistantText() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]

@@ -129,6 +129,34 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(dashRoute.modelCapabilityClassID, "some-new-model")
     }
 
+    func testRouterDoesNotLetOllamaCloudClaimAnthropicCatalogModel() async throws {
+        let harness = try makeHarness(name: "ollama-cloud-foreign-catalog")
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["ollama-cloud-family"]
+            )
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "claude-opus-4-8:cloud", preferredProviderID: "ollama")
+            XCTFail("Ollama Cloud must not synthesize routes for Anthropic-owned catalog models")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(modelID, "claude-opus-4-8:cloud")
+        }
+
+        let unlistedCloudRoute = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(unlistedCloudRoute.providerID, "ollama")
+        XCTAssertEqual(unlistedCloudRoute.resolvedModelID, "some-new-model")
+    }
+
     func testRouterDoesNotRouteUnsuffixedModelToOllamaCloud() async throws {
         let harness = try makeHarness(name: "ollama-cloud-unsuffixed")
         try await harness.configStore.setSecret("ollama-key", for: "ollama")

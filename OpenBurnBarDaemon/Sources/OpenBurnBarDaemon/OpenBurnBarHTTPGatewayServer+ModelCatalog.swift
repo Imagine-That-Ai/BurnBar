@@ -218,6 +218,9 @@ extension BurnBarHTTPGatewayServer {
         guard let canonicalCloudModelID = canonicalOllamaCloudModelID(requestedModel.modelID) else {
             return [:]
         }
+        guard ollamaCloudMayClaimModelID(canonicalCloudModelID) else {
+            return [:]
+        }
 
         var routeKeys = Set<String>()
         for configuration in try await configStore.resolvedConfigurations()
@@ -315,6 +318,9 @@ extension BurnBarHTTPGatewayServer {
         guard !requested.isEmpty else { return nil }
         let lowercased = requested.lowercased()
         guard !lowercased.hasSuffix(":cloud"), !lowercased.hasSuffix("-cloud") else {
+            return nil
+        }
+        guard ollamaCloudMayClaimModelID(requested) else {
             return nil
         }
 
@@ -569,5 +575,55 @@ extension BurnBarHTTPGatewayServer {
             return base.isEmpty ? nil : "\(base):cloud"
         }
         return nil
+    }
+
+    func ollamaCloudMayClaimModelID(_ rawID: String) -> Bool {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let unsuffixed: String
+        if let canonicalCloudID = canonicalOllamaCloudModelID(trimmed) {
+            unsuffixed = String(canonicalCloudID.dropLast(":cloud".count))
+        } else {
+            unsuffixed = trimmed
+        }
+
+        let lastPathComponent = unsuffixed
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .last
+            .map(String.init)
+        let baseCandidates = ([lastPathComponent, Optional(unsuffixed)] as [String?])
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let candidates = baseCandidates.flatMap { candidate -> [String] in
+            var values = [candidate]
+            for level in BurnBarThinkingLevel.allCases {
+                let suffix = "-\(level.slug)"
+                if candidate.lowercased().hasSuffix(suffix) {
+                    let base = String(candidate.dropLast(suffix.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !base.isEmpty {
+                        values.append(base)
+                    }
+                }
+            }
+            return values
+        }
+
+        for candidate in candidates {
+            if candidate.lowercased().contains("claude") {
+                return false
+            }
+            guard let vendor = configStore.catalogSupport.catalog.vendorForModel(named: candidate) else {
+                continue
+            }
+            if vendor.id.caseInsensitiveCompare("ollama") == .orderedSame {
+                return true
+            }
+            if vendor.id.caseInsensitiveCompare("anthropic") == .orderedSame
+                || vendor.formatFamily == .anthropic {
+                return false
+            }
+        }
+        return true
     }
 }
