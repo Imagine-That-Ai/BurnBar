@@ -693,21 +693,37 @@ final class ProjectionChunkerTests: XCTestCase {
         }
     }
 
-    // MARK: - Performance Characteristics Tests
+    // MARK: - Large-Document Correctness (formerly a measure{} perf test)
 
-    func test_chunker_100ChunksCompletesQuickly() {
-        let text = String(repeating: "Word word word. ", count: 1000)
+    /// Chunking a large (~16k-char) document must terminate with a deterministic,
+    /// bounded, well-formed chunk set. This replaces an XCTest `measure {}` wall-clock
+    /// assertion that flaked/crashed under concurrent bundle execution (the 10x measure
+    /// loop overran the runner's execution-time allowance). Correctness + bounded-work
+    /// assertions encode the original intent ("big doc, fast + correct") without a clock.
+    func test_chunker_largeDocument_producesBoundedDeterministicChunks() {
+        let text = String(repeating: "Word word word. ", count: 1000) // 16,000 chars
         let chunker = makeChunker(maxChunkCharacters: 200, minChunkCharacters: 100, overlapCharacters: 30)
-
-        measure {
-            _ = chunker.makeChunks(
+        let fixedDate = Date(timeIntervalSince1970: 1_742_600_000)
+        let make: () -> [SearchChunkRecord] = {
+            chunker.makeChunks(
                 text: text,
                 sourceKind: .agentDoc,
                 sourceID: "perf-test",
                 sourceVersionID: "v1",
                 documentID: "doc-perf",
-                createdAt: Date()
+                createdAt: fixedDate
             )
+        }
+        let chunks = make()
+
+        // Terminates with a non-empty, bounded chunk set (no pathological blowup).
+        XCTAssertFalse(chunks.isEmpty, "large document must produce chunks")
+        XCTAssertLessThanOrEqual(chunks.count, text.count / 100, "chunk count must stay bounded relative to document size")
+        // Deterministic: identical input yields an identical chunk set (SearchChunkRecord is Equatable).
+        XCTAssertEqual(chunks, make(), "chunking must be deterministic")
+        // Well-formed: no empty chunks.
+        for chunk in chunks {
+            XCTAssertFalse(chunk.text.isEmpty, "chunks must be non-empty")
         }
     }
 

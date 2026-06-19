@@ -1283,10 +1283,14 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         /// Normalize provider-scoped ids (`anthropic/claude-sonnet-4-6`) and
         /// bare ids against the allowed set.
         func allows(_ modelID: String) -> Bool {
-            let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return false }
+            // Compare the caller-supplied id verbatim against the normalized allowlist.
+            // Entries are trimmed at init; callers must pass an already-trimmed id (the
+            // sole production caller does). We deliberately do NOT re-trim the input here:
+            // silently normalizing untrusted input inside a security allowlist would let a
+            // whitespace-padded id slip past intent (see CLIBridgeTests).
+            guard !modelID.isEmpty else { return false }
             if modelIDs.isEmpty { return true }
-            let lower = trimmed.lowercased()
+            let lower = modelID.lowercased()
             for allowed in modelIDs {
                 if allowed.lowercased() == lower { return true }
                 let scoped = allowed.split(separator: "/").map(String.init)

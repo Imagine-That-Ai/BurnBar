@@ -16,7 +16,10 @@ final class CursorConnectorTests: XCTestCase {
 
         XCTAssertEqual(ConnectorProvider.ollama.displayName, "Ollama Cloud")
         XCTAssertEqual(ConnectorProvider.ollama.defaultBaseURL, "https://ollama.com/api")
-        XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(3)), ["deepseek-v4-flash", "qwen3.6:27b-coding-nvfp4", "gpt-oss:120b"])
+        // Durable: the first two suggestions are stable; later catalog additions
+        // (e.g. kimi-k2.7-code added at index 2 via PR #578) must not break this test.
+        XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(2)), ["deepseek-v4-flash", "qwen3.6:27b-coding-nvfp4"])
+        XCTAssertTrue(ConnectorProvider.ollama.suggestedModels.contains("gpt-oss:120b"))
     }
 
     func test_supportedModel_allowsSupportedProvidersOnly() {
