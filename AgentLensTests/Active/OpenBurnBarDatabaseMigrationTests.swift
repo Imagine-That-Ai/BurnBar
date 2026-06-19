@@ -767,6 +767,222 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(reclaimed?.leaseExpiresAt, now.addingTimeInterval(22))
     }
 
+    func test_memoryDedupSupersedesDuplicateBodyWithDeterministicWinnerAndProvenanceUnion() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_350)
+        let scope = MemoryScope(userID: "dedup-user", appID: "dedup-app")
+        let body = "User prefers concise status updates for backend memory work."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.61,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-dedup-low",
+                        threadLogicalID: "thread-dedup-low",
+                        messageID: "message-dedup-low",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-low",
+                        crossDeviceHMAC: "hmac-low"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-dedup-low",
+            now: now,
+            enabled: true
+        )
+
+        let high = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.92,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-dedup-high",
+                        threadLogicalID: "thread-dedup-high",
+                        messageID: "message-dedup-high",
+                        role: "assistant",
+                        authoredAt: now.addingTimeInterval(1),
+                        contentHash: "content-high",
+                        crossDeviceHMAC: "hmac-high"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-dedup-high",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        XCTAssertNil(high.supersededBy)
+        let low = try await store.fetchChatMemoryAuthorityRecord(id: "mem-dedup-low")
+        let winner = try await store.fetchChatMemoryAuthorityRecord(id: "mem-dedup-high")
+        XCTAssertEqual(low?.supersededBy, "mem-dedup-high")
+        XCTAssertNotNil(low?.validTo)
+        XCTAssertNil(winner?.supersededBy)
+        XCTAssertNil(winner?.validTo)
+        XCTAssertEqual(
+            Set(winner?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(["hmac-low", "hmac-high"])
+        )
+
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .preference)
+        XCTAssertEqual(active.map(\.id), ["mem-dedup-high"])
+
+        let audit = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT action || '|' || labels_json FROM memory_audit WHERE subject_id IN ('mem-dedup-low', 'mem-dedup-high')"
+            ).joined(separator: "\n")
+        }
+        XCTAssertTrue(audit.contains("memory.supersede"))
+        XCTAssertTrue(audit.contains("memory.merge"))
+        XCTAssertTrue(audit.contains("duplicate_body_hash"))
+        XCTAssertFalse(audit.contains(body))
+    }
+
+    func test_memoryDedupDeadbandKeepsStableWinnerOnEqualConfidenceDuplicates() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_360)
+        let scope = MemoryScope(userID: "stable-user", appID: "stable-app")
+        let body = "User wants memory review before prompt injection."
+
+        for (index, id) in ["mem-stable-a", "mem-stable-b", "mem-stable-c"].enumerated() {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: body,
+                    kind: .fact,
+                    scope: scope,
+                    confidence: 0.8,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-\(id)",
+                            threadLogicalID: "thread-\(id)",
+                            messageID: "message-\(id)",
+                            role: "user",
+                            authoredAt: now.addingTimeInterval(TimeInterval(index)),
+                            contentHash: "content-\(id)",
+                            crossDeviceHMAC: "hmac-\(id)"
+                        )
+                    ],
+                    reviewStatus: .approved
+                ),
+                id: id,
+                now: index < 2 ? now : now.addingTimeInterval(2),
+                enabled: true
+            )
+        }
+
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .fact)
+        XCTAssertEqual(active.map(\.id), ["mem-stable-a"])
+        XCTAssertEqual(
+            Set(active.first?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(["hmac-mem-stable-a", "hmac-mem-stable-b", "hmac-mem-stable-c"])
+        )
+
+        let superseded = try await queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, superseded_by
+                FROM agent_memories
+                WHERE id IN ('mem-stable-b', 'mem-stable-c')
+                ORDER BY id
+                """
+            ).map { row -> String in
+                let id: String = row["id"]
+                let supersededBy: String = row["superseded_by"]
+                return "\(id):\(supersededBy)"
+            }
+        }
+        XCTAssertEqual(superseded, ["mem-stable-b:mem-stable-a", "mem-stable-c:mem-stable-a"])
+    }
+
+    func test_memoryDedupKeepsApprovedWinnerOverHigherConfidenceQuarantine() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_390)
+        let scope = MemoryScope(userID: "review-winner-user", appID: "review-winner-app")
+        let body = "User wants approved memory to stay injectable after duplicate extraction."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.62,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-approved",
+                        threadLogicalID: "thread-approved",
+                        messageID: "message-approved",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-approved",
+                        crossDeviceHMAC: "hmac-approved"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-approved-winner",
+            now: now,
+            enabled: true
+        )
+
+        let quarantined = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.99,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-quarantined",
+                        threadLogicalID: "thread-quarantined",
+                        messageID: "message-quarantined",
+                        role: "assistant",
+                        authoredAt: now.addingTimeInterval(1),
+                        contentHash: "content-quarantined",
+                        crossDeviceHMAC: "hmac-quarantined"
+                    )
+                ],
+                reviewStatus: .quarantined
+            ),
+            id: "mem-quarantined-duplicate",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        XCTAssertEqual(quarantined.supersededBy, "mem-approved-winner")
+        XCTAssertNotNil(quarantined.validTo)
+
+        let approved = try await store.fetchChatMemoryAuthorityRecord(id: "mem-approved-winner")
+        XCTAssertNil(approved?.supersededBy)
+        XCTAssertNil(approved?.validTo)
+        XCTAssertEqual(
+            Set(approved?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(["hmac-approved", "hmac-quarantined"])
+        )
+
+        let active = try await store.fetchActiveChatMemoryAuthorityRecords(scope: scope, kind: .preference)
+        XCTAssertEqual(active.map(\.id), ["mem-approved-winner"])
+    }
+
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

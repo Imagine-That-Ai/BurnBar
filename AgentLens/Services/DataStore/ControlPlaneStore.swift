@@ -470,9 +470,24 @@ final class ControlPlaneStore: Sendable {
             "review_status:\(request.reviewStatus.rawValue)",
             "source_kind:\(MemorySourceKind.chat.rawValue)"
         ].sorted()
-        let labelsJSON = try Self.auditLabelsJSON(auditLabels)
 
-        try await dbQueue.write { db in
+        let dedupState = try await dbQueue.write { db -> (validTo: Date?, supersededBy: MemoryID?) in
+            let duplicateRows = try Self.chatMemoryDuplicateCandidates(
+                db: db,
+                bodyHash: bodyHash,
+                storageProjectID: storageProjectID,
+                kind: request.kind,
+                scope: request.scope
+            )
+            let winnerID = Self.memoryDedupWinnerID(
+                duplicateRows: duplicateRows,
+                newID: id,
+                newConfidence: request.confidence,
+                newReviewStatus: request.reviewStatus,
+                newValidFrom: now
+            )
+            let newSupersededBy = winnerID == id ? nil : winnerID
+            let newValidTo = newSupersededBy == nil ? nil : now
             try db.execute(
                 sql: """
                 INSERT INTO memory_body_snapshots (
@@ -502,7 +517,7 @@ final class ControlPlaneStore: Sendable {
                     id, project_id, kind, scope, confidence, body_ref, body_redacted,
                     tags_json, source_path, valid_from, valid_to, superseded_by, created_at, updated_at,
                     source_kind, review_status, user_id, agent_id, run_id, app_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     id,
@@ -515,6 +530,8 @@ final class ControlPlaneStore: Sendable {
                     "[]",
                     nil,
                     now,
+                    newValidTo,
+                    newSupersededBy,
                     now,
                     now,
                     MemorySourceKind.chat.rawValue,
@@ -550,43 +567,24 @@ final class ControlPlaneStore: Sendable {
                     ]
                 )
             }
-            let previousAudit = try Row.fetchOne(
-                db,
-                sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: "memory.add",
+                projectID: storageProjectID,
+                subjectID: id,
+                labels: auditLabels,
+                nowString: nowString
             )
-            let prevHash: String? = previousAudit?["hash"]
-            let previousSequence: Int = previousAudit?["seq"] ?? 0
-            let auditHash = try Self.sha256Hex(
-                Self.auditPayloadData(
-                    sequence: previousSequence + 1,
-                    timestamp: nowString,
-                    actor: "app",
-                    action: "memory.add",
-                    domain: "memory",
-                    projectID: storageProjectID,
-                    subjectID: id,
-                    labels: auditLabels,
-                    prevHash: prevHash
-                )
+            try Self.mergeDuplicateChatMemories(
+                db: db,
+                duplicateRows: duplicateRows,
+                newID: id,
+                winnerID: winnerID,
+                storageProjectID: storageProjectID,
+                now: now,
+                nowString: nowString
             )
-            try db.execute(
-                sql: """
-                INSERT INTO memory_audit (
-                    ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                arguments: [
-                    nowString,
-                    "app",
-                    "memory.add",
-                    "memory",
-                    storageProjectID,
-                    id,
-                    labelsJSON,
-                    prevHash,
-                    auditHash
-                ]
-            )
+            return (newValidTo, newSupersededBy)
         }
 
         return Memory(
@@ -599,6 +597,8 @@ final class ControlPlaneStore: Sendable {
             reviewStatus: request.reviewStatus,
             citations: citations,
             validFrom: now,
+            validTo: dedupState.validTo,
+            supersededBy: dedupState.supersededBy,
             createdAt: now,
             updatedAt: now
         )
@@ -812,6 +812,46 @@ final class ControlPlaneStore: Sendable {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             return try decoder.decode(MemoryBodySnapshot.self, from: data).body
+        }
+    }
+
+    func fetchActiveChatMemoryAuthorityRecords(scope: MemoryScope? = nil, kind: MemoryKind? = nil) async throws -> [Memory] {
+        try await dbQueue.read { db in
+            var predicates = ["source_kind = ?", "valid_to IS NULL"]
+            var arguments: [any DatabaseValueConvertible] = [MemorySourceKind.chat.rawValue]
+            if let kind {
+                predicates.append("kind = ?")
+                arguments.append(kind.rawValue)
+            }
+            if let scope {
+                predicates.append("project_id = ?")
+                arguments.append(Self.memoryStorageProjectID(for: scope))
+                Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
+            }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM agent_memories
+                WHERE \(predicates.joined(separator: " AND "))
+                ORDER BY confidence DESC, valid_from ASC, id ASC
+                """,
+                arguments: StatementArguments(arguments)
+            )
+            return try rows.compactMap { row in
+                guard let id: String = row["id"] else { return nil }
+                let citationRows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM memory_provenance
+                    WHERE memory_id = ?
+                    ORDER BY authored_at ASC, occurrence ASC, id ASC
+                    """,
+                    arguments: [id]
+                )
+                return Self.memory(from: row, citations: citationRows.compactMap(Self.memoryCitation(from:)))
+            }
         }
     }
 
@@ -1145,6 +1185,240 @@ final class ControlPlaneStore: Sendable {
         )
     }
 
+    private static func appendScopePredicates(
+        _ scope: MemoryScope,
+        tableAlias: String = "",
+        to predicates: inout [String],
+        arguments: inout [any DatabaseValueConvertible]
+    ) {
+        let prefix = tableAlias.isEmpty ? "" : "\(tableAlias)."
+        appendNullableScopePredicate(column: "\(prefix)user_id", value: scope.userID, to: &predicates, arguments: &arguments)
+        appendNullableScopePredicate(column: "\(prefix)agent_id", value: scope.agentID, to: &predicates, arguments: &arguments)
+        appendNullableScopePredicate(column: "\(prefix)run_id", value: scope.runID, to: &predicates, arguments: &arguments)
+        appendNullableScopePredicate(column: "\(prefix)app_id", value: scope.appID, to: &predicates, arguments: &arguments)
+    }
+
+    private static func appendNullableScopePredicate(
+        column: String,
+        value: String?,
+        to predicates: inout [String],
+        arguments: inout [any DatabaseValueConvertible]
+    ) {
+        if let value {
+            predicates.append("\(column) = ?")
+            arguments.append(value)
+        } else {
+            predicates.append("\(column) IS NULL")
+        }
+    }
+
+    private static func chatMemoryDuplicateCandidates(
+        db: Database,
+        bodyHash: String,
+        storageProjectID: String,
+        kind: MemoryKind,
+        scope: MemoryScope
+    ) throws -> [Row] {
+        var predicates = [
+            "m.source_kind = ?",
+            "m.kind = ?",
+            "m.project_id = ?",
+            "m.valid_to IS NULL",
+            "s.body_hash = ?",
+            "s.source_kind = ?"
+        ]
+        var arguments: [any DatabaseValueConvertible] = [
+            MemorySourceKind.chat.rawValue,
+            kind.rawValue,
+            storageProjectID,
+            bodyHash,
+            MemorySourceKind.chat.rawValue
+        ]
+        appendScopePredicates(scope, tableAlias: "m", to: &predicates, arguments: &arguments)
+
+        return try Row.fetchAll(
+            db,
+            sql: """
+            SELECT m.*
+            FROM agent_memories m
+            JOIN memory_body_snapshots s
+              ON s.memory_id = m.id
+            WHERE \(predicates.joined(separator: " AND "))
+            ORDER BY m.confidence DESC, m.valid_from ASC, m.id ASC
+            """,
+            arguments: StatementArguments(arguments)
+        )
+    }
+
+    private static func memoryDedupWinnerID(
+        duplicateRows: [Row],
+        newID: MemoryID,
+        newConfidence: Double,
+        newReviewStatus: MemoryReviewStatus,
+        newValidFrom: Date
+    ) -> MemoryID {
+        var candidates: [(id: MemoryID, confidence: Double, reviewStatus: MemoryReviewStatus, validFrom: Date)] = duplicateRows.compactMap { row in
+            guard let id: String = row["id"],
+                  let confidence: Double = row["confidence"],
+                  let reviewStatusRaw: String = row["review_status"],
+                  let reviewStatus = MemoryReviewStatus(rawValue: reviewStatusRaw),
+                  let validFrom = OpenBurnBarDatabase.parseDateValue(row["valid_from"])
+            else {
+                return nil
+            }
+            return (id, confidence, reviewStatus, validFrom)
+        }
+        candidates.append((newID, newConfidence, newReviewStatus, newValidFrom))
+        return candidates.min { lhs, rhs in
+            let lhsRank = memoryReviewDedupRank(lhs.reviewStatus)
+            let rhsRank = memoryReviewDedupRank(rhs.reviewStatus)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
+            if lhs.validFrom != rhs.validFrom { return lhs.validFrom < rhs.validFrom }
+            return lhs.id < rhs.id
+        }?.id ?? newID
+    }
+
+    private static func memoryReviewDedupRank(_ status: MemoryReviewStatus) -> Int {
+        switch status {
+        case .approved:
+            return 0
+        case .quarantined:
+            return 1
+        case .rejected:
+            return 2
+        }
+    }
+
+    private static func mergeDuplicateChatMemories(
+        db: Database,
+        duplicateRows: [Row],
+        newID: MemoryID,
+        winnerID: MemoryID,
+        storageProjectID: String,
+        now: Date,
+        nowString: String
+    ) throws {
+        guard duplicateRows.isEmpty == false else { return }
+        let duplicateIDs: [MemoryID] = duplicateRows.compactMap { row in row["id"] }
+        let loserIDs = (duplicateIDs + [newID]).filter { $0 != winnerID }.uniqued()
+        guard loserIDs.isEmpty == false else { return }
+
+        for loserID in loserIDs {
+            try db.execute(
+                sql: """
+                UPDATE agent_memories
+                SET valid_to = COALESCE(valid_to, ?),
+                    superseded_by = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND source_kind = ?
+                """,
+                arguments: [now, winnerID, now, loserID, MemorySourceKind.chat.rawValue]
+            )
+            try copyMemoryProvenance(db: db, from: loserID, to: winnerID, now: now)
+            let auditLabels = [
+                "reason:duplicate_body_hash",
+                "source_kind:\(MemorySourceKind.chat.rawValue)",
+                "winner_id:\(winnerID)"
+            ]
+            try insertMemoryAuditEvent(
+                db: db,
+                action: "memory.supersede",
+                projectID: storageProjectID,
+                subjectID: loserID,
+                labels: auditLabels,
+                nowString: nowString
+            )
+        }
+
+        let mergeLabels = [
+            "merged_ids:\(loserIDs.joined(separator: ","))",
+            "reason:duplicate_body_hash",
+            "source_kind:\(MemorySourceKind.chat.rawValue)",
+            "winner_id:\(winnerID)"
+        ]
+        try insertMemoryAuditEvent(
+            db: db,
+            action: "memory.merge",
+            projectID: storageProjectID,
+            subjectID: winnerID,
+            labels: mergeLabels,
+            nowString: nowString
+        )
+    }
+
+    private static func copyMemoryProvenance(
+        db: Database,
+        from loserID: MemoryID,
+        to winnerID: MemoryID,
+        now: Date
+    ) throws {
+        guard loserID != winnerID else { return }
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT *
+            FROM memory_provenance
+            WHERE memory_id = ?
+            ORDER BY authored_at ASC, occurrence ASC, id ASC
+            """,
+            arguments: [loserID]
+        )
+        for row in rows {
+            guard let sourceID: String = row["id"],
+                  let sourceKind: String = row["source_kind"],
+                  let threadLogicalID: String = row["thread_logical_id"],
+                  let role: String = row["role"],
+                  let authoredAt = OpenBurnBarDatabase.parseDateValue(row["authored_at"]),
+                  let contentHash: String = row["content_hash"],
+                  let occurrence: Int = row["occurrence"],
+                  let xdeviceHMAC: String = row["xdevice_hmac"],
+                  let citationState: String = row["citation_state"]
+            else {
+                continue
+            }
+            let messageID: String? = row["message_id"]
+            let existing = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_provenance
+                WHERE memory_id = ?
+                  AND xdevice_hmac = ?
+                  AND occurrence = ?
+                """,
+                arguments: [winnerID, xdeviceHMAC, occurrence]
+            ) ?? 0
+            guard existing == 0 else { continue }
+
+            let copyID = "dedup-\(winnerID)-\(sha256Hex("\(loserID)|\(sourceID)"))"
+            try db.execute(
+                sql: """
+                INSERT INTO memory_provenance (
+                    id, memory_id, source_kind, thread_logical_id, message_id, role,
+                    authored_at, content_hash, occurrence, xdevice_hmac, citation_state, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                arguments: [
+                    copyID,
+                    winnerID,
+                    sourceKind,
+                    threadLogicalID,
+                    messageID,
+                    role,
+                    authoredAt,
+                    contentHash,
+                    occurrence,
+                    xdeviceHMAC,
+                    citationState,
+                    now
+                ]
+            )
+        }
+    }
+
     private func appendMemoryAuditEvent(
         action: String,
         projectID: String,
@@ -1153,47 +1427,66 @@ final class ControlPlaneStore: Sendable {
         now: Date
     ) async throws {
         let auditLabels = labels.map { "\($0.key):\($0.value)" }.sorted()
-        let labelsJSON = try Self.auditLabelsJSON(auditLabels)
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
-            let previousAudit = try Row.fetchOne(
-                db,
-                sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
-            )
-            let prevHash: String? = previousAudit?["hash"]
-            let previousSequence: Int = previousAudit?["seq"] ?? 0
-            let auditHash = try Self.sha256Hex(
-                Self.auditPayloadData(
-                    sequence: previousSequence + 1,
-                    timestamp: nowString,
-                    actor: "app",
-                    action: action,
-                    domain: "memory",
-                    projectID: projectID,
-                    subjectID: subjectID,
-                    labels: auditLabels,
-                    prevHash: prevHash
-                )
-            )
-            try db.execute(
-                sql: """
-                INSERT INTO memory_audit (
-                    ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                arguments: [
-                    nowString,
-                    "app",
-                    action,
-                    "memory",
-                    projectID,
-                    subjectID,
-                    labelsJSON,
-                    prevHash,
-                    auditHash
-                ]
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: action,
+                projectID: projectID,
+                subjectID: subjectID,
+                labels: auditLabels,
+                nowString: nowString
             )
         }
+    }
+
+    private static func insertMemoryAuditEvent(
+        db: Database,
+        action: String,
+        projectID: String,
+        subjectID: String,
+        labels: [String],
+        nowString: String
+    ) throws {
+        let normalizedLabels = labels.sorted()
+        let labelsJSON = try auditLabelsJSON(normalizedLabels)
+        let previousAudit = try Row.fetchOne(
+            db,
+            sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
+        )
+        let prevHash: String? = previousAudit?["hash"]
+        let previousSequence: Int = previousAudit?["seq"] ?? 0
+        let auditHash = try sha256Hex(
+            auditPayloadData(
+                sequence: previousSequence + 1,
+                timestamp: nowString,
+                actor: "app",
+                action: action,
+                domain: "memory",
+                projectID: projectID,
+                subjectID: subjectID,
+                labels: normalizedLabels,
+                prevHash: prevHash
+            )
+        )
+        try db.execute(
+            sql: """
+            INSERT INTO memory_audit (
+                ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [
+                nowString,
+                "app",
+                action,
+                "memory",
+                projectID,
+                subjectID,
+                labelsJSON,
+                prevHash,
+                auditHash
+            ]
+        )
     }
 
     private func updateMemoryExtractionJob(
