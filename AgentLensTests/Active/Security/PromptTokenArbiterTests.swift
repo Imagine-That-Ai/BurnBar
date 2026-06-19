@@ -51,6 +51,26 @@ final class PromptTokenArbiterTests: XCTestCase {
                           "reserved history + user turn must subtract from the system budget")
     }
 
+    func testFloorDoesNotExceedRemainingContext() {
+        // ollama window 8192, output reserve 2048, history 5000 leaves only 1144.
+        let arbiter = PromptTokenArbiter.make(model: .ollama, historyAndUserTurnTokens: 5_000)
+        XCTAssertEqual(
+            arbiter.augmentedSystemBudget,
+            1_144,
+            "floor must not allocate more system prompt than remains in the context window"
+        )
+    }
+
+    func testSystemWrapperReserveShrinksSystemBudget() {
+        let noWrapper = PromptTokenArbiter.make(model: .ollama, historyAndUserTurnTokens: 4_000)
+        let withWrapper = PromptTokenArbiter.make(
+            model: .ollama,
+            historyAndUserTurnTokens: 4_000,
+            systemWrapperTokens: 400
+        )
+        XCTAssertEqual(withWrapper.augmentedSystemBudget, noWrapper.augmentedSystemBudget - 400)
+    }
+
     // MARK: - Never exceeds ceiling
 
     func testAssembledPromptNeverExceedsCeilingWhenCoreAndToolDefsFit() {
@@ -176,6 +196,21 @@ final class PromptTokenArbiterTests: XCTestCase {
         XCTAssertTrue(result.truncatedSections.isEmpty, "nothing should be truncated when everything fits")
     }
 
+    func testRollupsDropAfterEvidenceAndMemory() {
+        let arbiter = PromptTokenArbiter.make(model: .ollama, historyAndUserTurnTokens: 4_000)
+        let result = arbiter.assemble([
+            PromptTokenSection(id: .core, content: "Persona."),
+            PromptTokenSection(id: .toolDefs, content: "Tools."),
+            PromptTokenSection(id: .evidence, content: "EVIDENCE_MARKER " + Self.repeatingText(length: 6_000)),
+            PromptTokenSection(id: .memory, content: "MEMORY_MARKER " + Self.repeatingText(length: 2_000)),
+            PromptTokenSection(id: .rollups, content: "ROLLUP_MARKER " + Self.repeatingText(length: 60_000))
+        ])
+        XCTAssertTrue(result.systemPrompt.contains("EVIDENCE_MARKER"))
+        XCTAssertTrue(result.systemPrompt.contains("MEMORY_MARKER"))
+        XCTAssertTrue(result.droppedSections.contains(.rollups), "volatile rollups must drop before evidence or memory")
+        XCTAssertFalse(result.systemPrompt.contains("ROLLUP_MARKER"))
+    }
+
     // MARK: - Truncation marker
 
     func testTruncatedSectionGetsMarkerAndStaysWithinBudget() {
@@ -216,9 +251,56 @@ final class PromptTokenArbiterTests: XCTestCase {
         XCTAssertNotEqual(family, .ollama, "non-ollama cloud backend must not get the ollama floor")
     }
 
+    func testArbiterModelFamilyDetectsCommonLocalModelNames() {
+        for model in ["llama3.1", "mistral-small", "qwen2.5", "deepseek-r1", "gemma3"] {
+            XCTAssertEqual(
+                ChatSessionController.memoryArbiterModelFamily(backend: .hermes, resolvedModel: model, hermesFamily: nil),
+                .ollama,
+                "\(model) should use the local-model budget"
+            )
+        }
+    }
+
+    func testArbiterModelFamilyResolvedModelWinsOverStaleHermesFamily() {
+        XCTAssertEqual(
+            ChatSessionController.memoryArbiterModelFamily(
+                backend: .hermes,
+                resolvedModel: "qwen2.5:latest",
+                hermesFamily: .codex
+            ),
+            .ollama,
+            "the resolved concrete model must override stale family state"
+        )
+    }
+
     func testArbiterModelFamilyHermesWithoutFamilyDefaultsToCloud() {
         let family = ChatSessionController.memoryArbiterModelFamily(backend: .hermes, resolvedModel: "hermes", hermesFamily: nil)
         XCTAssertNotEqual(family, .ollama, "Hermes without explicit family defaults to cloud (gateway router), not the ollama floor")
+    }
+
+    func testPayloadReserveUsesOnlySentCliUserTurn() {
+        let oldHistory = [
+            ChatMessageRecord(role: .user, content: Self.repeatingText(length: 30_000))
+        ]
+        let reserve = ChatSessionController.promptPayloadTokenReserve(history: [], userMessage: "current turn")
+        let oldHistoryReserve = ChatSessionController.promptPayloadTokenReserve(history: oldHistory, userMessage: "current turn")
+        XCTAssertLessThan(reserve, oldHistoryReserve)
+        XCTAssertEqual(reserve, PromptTokenArbiter.estimateProseTokens("current turn"))
+    }
+
+    func testPayloadReserveIncludesSentAttachmentCosts() {
+        let attachment = HermesAttachment(
+            kind: .pdf,
+            displayName: "brief.pdf",
+            mimeType: "application/pdf",
+            byteSize: 1024,
+            workspaceRelativePath: "attachments/brief.pdf"
+        )
+        let history = [
+            ChatMessageRecord(role: .user, content: "summarize this", attachments: [attachment])
+        ]
+        let reserve = ChatSessionController.promptPayloadTokenReserve(history: history, userMessage: "ignored")
+        XCTAssertGreaterThanOrEqual(reserve, attachment.estimatedTokenCost)
     }
 
     // MARK: - Helpers

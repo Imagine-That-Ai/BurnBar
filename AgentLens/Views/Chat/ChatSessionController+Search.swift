@@ -502,7 +502,7 @@ extension ChatSessionController {
             aggregateSection: aggregateSection
         )
 
-        let basePrompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
+        let promptSections = await ContextBuilder.buildDatabaseAnalystSystemPromptSections(
             from: dataStore,
             intelligenceService: searchSvc,
             indexingEnabled: settingsManager.conversationIndexingEnabled,
@@ -527,6 +527,9 @@ extension ChatSessionController {
         let workspacePath = chatWorkspaceURL.path
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
+        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
+            ? messages
+            : []
 
         // G9: assemble augmentedSystem under one token-aware arbiter so a future
         // memory-injection section (F-2) subtracts from a shared retrieval pool
@@ -540,16 +543,27 @@ extension ChatSessionController {
             resolvedModel: requestModel,
             hermesFamily: settingsManager.selectedHermesModel
         )
-        let historyChars = messages.reduce(0) { $0 + $1.content.count }
-        let historyTokens = TokenExtractionUtility.estimatedTokenCount(for: historyChars, charsPerToken: 3.5)
-        let promptArbiter = PromptTokenArbiter.make(model: arbiterFamily, historyAndUserTurnTokens: historyTokens)
+        let payloadTokens = Self.promptPayloadTokenReserve(
+            history: multiTurnHistory,
+            userMessage: trimmed
+        )
+        let wrapperTokens = Self.promptSystemWrapperTokenReserve(
+            backend: chatBackend,
+            piAgentInstanceID: settingsManager.piAgentSelectedInstanceID
+        )
+        let promptArbiter = PromptTokenArbiter.make(
+            model: arbiterFamily,
+            historyAndUserTurnTokens: payloadTokens,
+            systemWrapperTokens: wrapperTokens
+        )
         let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
         let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
         let assembledPrompt = promptArbiter.assemble([
-            PromptTokenSection(id: .core, content: basePrompt),
+            PromptTokenSection(id: .core, content: promptSections.core),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
             PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
+            PromptTokenSection(id: .rollups, content: promptSections.ephemeralRollups)
             // `.memory` is injected in F-2 via recallForPrompt, wrapped with
             // LLMSafeContent.wrapUntrusted (G8). Never concatenated into `.core`.
         ])
@@ -580,10 +594,6 @@ extension ChatSessionController {
         firstAssistantBadgeShown = true
         messages.append(placeholder)
         let streamStartedAt = Date()
-
-        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
-            ? messages.filter { $0.id != assistantId }
-            : []
 
         // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
         // Load bytes for any attachments referenced by history. We load lazily
