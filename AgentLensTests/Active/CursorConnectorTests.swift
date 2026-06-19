@@ -16,7 +16,7 @@ final class CursorConnectorTests: XCTestCase {
 
         XCTAssertEqual(ConnectorProvider.ollama.displayName, "Ollama Cloud")
         XCTAssertEqual(ConnectorProvider.ollama.defaultBaseURL, "https://ollama.com/api")
-        XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(3)), ["deepseek-v4-flash", "qwen3.6:27b-coding-nvfp4", "gpt-oss:120b"])
+        XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(3)), ["deepseek-v4-flash", "qwen3.6:27b-coding-nvfp4", "kimi-k2.7-code"])
     }
 
     func test_supportedModel_allowsSupportedProvidersOnly() {
