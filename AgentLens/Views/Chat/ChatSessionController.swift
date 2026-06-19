@@ -535,6 +535,28 @@ final class ChatSessionController {
         }
     }
 
+    /// Resolve the model family used to pick the prompt token arbiter's context
+    /// window + ceiling (G9). Ollama and genuinely unknown local backends get the
+    /// conservative floor; all other backends route to cloud models and receive the
+    /// large-context ceiling. Static + param-driven so it is unit-testable.
+    nonisolated static func memoryArbiterModelFamily(
+        backend: ChatBackendID,
+        resolvedModel: String,
+        hermesFamily: HermesModelID?
+    ) -> HermesModelID {
+        if backend == .hermes, let family = hermesFamily {
+            return family
+        }
+        let lower = resolvedModel.lowercased()
+        if lower.contains("ollama") {
+            return .ollama
+        }
+        // All other shipped backends (and Hermes without an explicit family) route to
+        // cloud models; use a generic cloud family so they receive the large-context
+        // ceiling rather than the ollama floor.
+        return .codex
+    }
+
     func liveAdvertisedModels(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
         switch backend {
         case .hermes:
