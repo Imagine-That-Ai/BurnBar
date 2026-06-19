@@ -15,7 +15,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -40,7 +40,17 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Swift 6.2 (Xcode 26+) made swift_task_isCurrentExecutor crash on an
+	     isolation mismatch where it previously returned false. Until the
+	     concurrency-isolation migration is complete, restore the legacy
+	     non-crashing behavior so startup (GRDB prepare hooks, AppDelegate
+	     executor checks) does not SIGTRAP/SIGBUS under the new runtime. -->
+	<key>LSEnvironment</key>
+	<dict>
+		<key>SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE</key>
+		<string>legacy</string>
+	</dict>
 	<key>OpenBurnBarDirectUpdateFeedURL</key>
 	<string>https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json</string>
 	<key>SUFeedURL</key>

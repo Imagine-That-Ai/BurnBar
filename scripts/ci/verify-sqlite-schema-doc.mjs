@@ -6,9 +6,20 @@ import { dirname, resolve } from "node:path";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 
-const sourcePaths = [
-  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
-  "tools/openburnbar-mcp/project_code_memory.py",
+const sourceSpecs = [
+  {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
+    startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
+  },
+  {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
+  },
+  {
+    path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
+  },
+  {
+    path: "tools/openburnbar-mcp/project_code_memory.py",
+  },
 ];
 
 function readRepoFile(path) {
@@ -19,6 +30,19 @@ function addMatches(set, text, regex) {
   for (const match of text.matchAll(regex)) {
     set.add(match[1]);
   }
+}
+
+function sourceText(spec) {
+  const text = readRepoFile(spec.path);
+  if (!spec.startMarker) {
+    return text;
+  }
+  const markerIndex = text.indexOf(spec.startMarker);
+  if (markerIndex === -1) {
+    console.error(`${spec.path} is missing schema verifier marker: ${spec.startMarker}`);
+    process.exit(1);
+  }
+  return text.slice(markerIndex);
 }
 
 function documentedTables() {
@@ -37,14 +61,20 @@ function schemaDocText() {
 
 function sourceTables() {
   const tables = new Set();
-  for (const sourcePath of sourcePaths) {
-    const text = readRepoFile(sourcePath);
-    addMatches(tables, text, /\bcreate\(table:\s*"([^"]+)"/g);
-    addMatches(
-      tables,
-      text,
-      /\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi,
-    );
+  for (const spec of sourceSpecs) {
+    const text = sourceText(spec);
+    const tableOperationPattern =
+      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+    for (const match of text.matchAll(tableOperationPattern)) {
+      const createdTable = match[1] ?? match[2];
+      const droppedTable = match[3];
+      if (createdTable) {
+        tables.add(createdTable);
+      }
+      if (droppedTable) {
+        tables.delete(droppedTable);
+      }
+    }
   }
   return tables;
 }
@@ -70,8 +100,33 @@ if (missing.length > 0) {
 }
 
 const schema = schemaDocText();
+for (const forbidden of ["agent_memories_fts"]) {
+  if (schema.includes(forbidden)) {
+    console.error(
+      `docs/SCHEMA_SQLITE.sql must not document ${forbidden}; memory bodies stay behind sealed references only.`,
+    );
+    process.exit(1);
+  }
+}
+
 const pcmColumnChecks = {
-  agent_memories: ["body_ref", "body_redacted", "valid_from", "superseded_by"],
+  agent_memories: [
+    "body_ref",
+    "body_redacted",
+    "valid_from",
+    "superseded_by",
+    "source_kind",
+    "review_status",
+    "user_id",
+    "agent_id",
+    "run_id",
+    "app_id",
+  ],
+  memory_provenance: ["memory_id", "thread_logical_id", "xdevice_hmac", "citation_state"],
+  memory_extraction_jobs: ["idempotency_key", "scope_json", "not_before"],
+  memory_embedding_refs: ["memory_id", "embedding_version_id", "dimension", "vector", "norm"],
+  memory_body_snapshots: ["memory_id", "body_ref", "snapshot_json", "body_hash", "source_kind"],
+  memory_source_tombstones: ["thread_logical_id", "message_id", "content_hash", "reason"],
   memory_audit: ["seq", "prev_hash", "hash"],
   pcm_projects: ["project_id", "identity_version", "identity_fingerprint", "primary_path"],
   pcm_project_aliases: ["project_id", "alias_path", "path_hash", "first_seen_at", "last_seen_at"],
@@ -95,6 +150,14 @@ for (const [table, columns] of Object.entries(pcmColumnChecks)) {
 
 for (const indexName of [
   "agent_memories_project_idx",
+  "agent_memories_chat_scope_idx",
+  "memory_provenance_memory_idx",
+  "memory_provenance_hmac_idx",
+  "memory_provenance_msg_idx",
+  "memory_extraction_jobs_status_idx",
+  "memory_embedding_refs_version_idx",
+  "memory_body_snapshots_source_idx",
+  "memory_source_tombstones_thread_idx",
   "pcm_projects_fingerprint_idx",
   "pcm_project_aliases_path_hash_idx",
   "pcm_project_aliases_project_idx",

@@ -215,7 +215,15 @@ extension BurnBarHTTPGatewayServer {
            providerID.caseInsensitiveCompare("ollama") != .orderedSame {
             return [:]
         }
-        guard let canonicalCloudModelID = canonicalOllamaCloudModelID(requestedModel.modelID) else {
+        guard let canonicalCloudModelID = OllamaCloudModelRoutingPolicy.canonicalCloudModelID(
+            requestedModel.modelID
+        ) else {
+            return [:]
+        }
+        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+            canonicalCloudModelID,
+            catalog: configStore.catalogSupport.catalog
+        ) else {
             return [:]
         }
 
@@ -315,6 +323,12 @@ extension BurnBarHTTPGatewayServer {
         guard !requested.isEmpty else { return nil }
         let lowercased = requested.lowercased()
         guard !lowercased.hasSuffix(":cloud"), !lowercased.hasSuffix("-cloud") else {
+            return nil
+        }
+        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+            requested,
+            catalog: configStore.catalogSupport.catalog
+        ) else {
             return nil
         }
 
@@ -523,10 +537,10 @@ extension BurnBarHTTPGatewayServer {
 
         let supportsOllamaCloudAliases = providerID.caseInsensitiveCompare("ollama") == .orderedSame
         let advertisedCloudID = supportsOllamaCloudAliases
-            ? canonicalOllamaCloudModelID(normalizedAdvertisedModelID)
+            ? OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalizedAdvertisedModelID)
             : nil
         let requestedCloudID = supportsOllamaCloudAliases
-            ? canonicalOllamaCloudModelID(normalizedRequestedModelID)
+            ? OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalizedRequestedModelID)
             : nil
         if let advertisedCloudID, let requestedCloudID, advertisedCloudID == requestedCloudID {
             return true
@@ -544,7 +558,7 @@ extension BurnBarHTTPGatewayServer {
                 let normalized = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 guard !normalized.isEmpty else { return [] }
                 if supportsOllamaCloudAliases,
-                   let cloudID = canonicalOllamaCloudModelID(normalized) {
+                   let cloudID = OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalized) {
                     return [normalized, cloudID]
                 }
                 return [normalized]
@@ -556,18 +570,4 @@ extension BurnBarHTTPGatewayServer {
         }
     }
 
-    func canonicalOllamaCloudModelID(_ rawID: String) -> String? {
-        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if trimmed.hasSuffix(":cloud") {
-            let base = String(trimmed.dropLast(":cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return base.isEmpty ? nil : "\(base):cloud"
-        }
-        if trimmed.hasSuffix("-cloud") {
-            let base = String(trimmed.dropLast("-cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return base.isEmpty ? nil : "\(base):cloud"
-        }
-        return nil
-    }
 }

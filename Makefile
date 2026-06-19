@@ -47,13 +47,13 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 		echo "==> Initializing Vendor/libsignal submodule…"; \
 		git submodule update --init --recursive; \
 	fi
-	@if [ -d Vendor/OpenBurnBarSignalFfi.xcframework ]; then \
-		echo "==> OpenBurnBarSignalFfi.xcframework already present — bootstrap complete."; \
+	@if [ -d Vendor/OpenBurnBarSignalFfi.xcframework ] || { [ -d Vendor/OpenBurnBarSignalFfiIOS.xcframework ] && [ -d Vendor/OpenBurnBarSignalFfiMac.xcframework ]; }; then \
+		echo "==> Signal FFI XCFramework artifacts already present — bootstrap complete."; \
 	else \
 		command -v protoc >/dev/null 2>&1 || { echo "ERROR: protoc not found. Building the vendored libsignal FFI requires it — install with 'brew install protobuf' and re-run 'make bootstrap'."; exit 1; }; \
 		{ command -v cargo >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/cargo" ]; } || { echo "ERROR: Rust (cargo) not found. Building the vendored libsignal FFI requires it — install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
 		{ command -v rustup >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/rustup" ]; } || { echo "ERROR: rustup not found. The libsignal FFI build uses it to add Apple build targets — install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
-		echo "==> Building OpenBurnBarSignalFfi.xcframework (first run can take 20+ minutes)…"; \
+		echo "==> Building Signal FFI XCFramework artifacts (first run can take 20+ minutes)…"; \
 		SIGNAL_FFI_BUILD_PROFILE="$${SIGNAL_FFI_BUILD_PROFILE:-release}" bash scripts/lib/prepare-signal-ffi-xcframework.sh; \
 	fi
 

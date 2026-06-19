@@ -4,18 +4,15 @@
   "files": [
     {
       "path": "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
-      "lines": 2197,
-      "justification": "Database schema and connection bootstrap remain centralized after the accretive data-store hardening merge. Keep as a ratchet baseline while schema/connection helpers are extracted into smaller database extensions."
+      "lines": 2197
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift",
-      "lines": 2085,
-      "justification": "Provider routing policy, quota-aware scoring, and explanation assembly are still colocated to preserve route-selection auditability. Lower after routing policy, quota inputs, and explanation rendering are split behind tested seams."
+      "lines": 2084
     },
     {
       "path": "AgentLens/App/AgentLensApp.swift",
-      "lines": 2013,
-      "justification": "Mac app composition root remains above target after accretive launch/service wiring. Lower by extracting service registration and startup recovery wiring while keeping dependency injection explicit."
+      "lines": 2024
     }
   ]
 }

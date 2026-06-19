@@ -527,6 +527,107 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(preferred.contains("claude-opus-4-7-family"))
     }
 
+    /// Regression: a `provider-config.json` written before a catalog shrink
+    /// still references models that `catalog.json` no longer defines. Loading
+    /// such a config must NOT throw — otherwise `snapshot()` fails and the HTTP
+    /// gateway returns 500 for the *entire* `/v1/models` response, hiding every
+    /// provider's models. The load path self-heals by pruning the stale IDs.
+    func testSnapshotPrunesStalePreferredModelIDsInsteadOfThrowing() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-stale-codex-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let fileURL = rootURL.appendingPathComponent("provider-config.json", isDirectory: false)
+
+        // Derive the codex models the *current* catalog actually defines, so the
+        // test stays correct across catalog revisions (the IDs codex ships have
+        // changed over time). The stale on-disk config preferences every real
+        // codex model plus synthetic IDs that no catalog will ever define —
+        // standing in for models removed by a catalog shrink.
+        let catalogSupportForSetup = BurnBarProviderCatalogSupport(catalog: BurnBarCatalogLoader.bundledCatalog)
+        let realCodexModelIDs = BurnBarCatalogLoader.bundledCatalog.models(forProviderID: "codex").map(\.id)
+        XCTAssertFalse(realCodexModelIDs.isEmpty, "Catalog must define at least one codex model for this test")
+        let removedCodexModelIDs = [
+            "codex-removed-by-catalog-shrink-alpha-family",
+            "codex-removed-by-catalog-shrink-beta-family",
+            "codex-removed-by-catalog-shrink-gamma-family"
+        ]
+        for removed in removedCodexModelIDs {
+            XCTAssertFalse(
+                catalogSupportForSetup.supportsModelID(removed, providerID: "codex"),
+                "Synthetic removed ID \(removed) must not be a real catalog model"
+            )
+        }
+        let staleCodex = BurnBarProviderSettings(
+            providerID: "codex",
+            isEnabled: true,
+            baseURL: "codex-cli://local",
+            preferredModelIDs: realCodexModelIDs + removedCodexModelIDs,
+            disabledAdvertisedModelIDs: Array(removedCodexModelIDs.prefix(2))
+        )
+        let staleSnapshot = BurnBarProviderConfigurationSnapshot(
+            providers: [staleCodex],
+            routerMode: .providerFamilyFailover
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(staleSnapshot).write(to: fileURL, options: .atomic)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+
+        // Must not throw — the whole point of the fix.
+        let snapshot = try await configStore.snapshot()
+        let codexPreferred = try XCTUnwrap(snapshot.providerSettings(id: "codex")?.preferredModelIDs)
+
+        // Only catalog-supported IDs survive; the synthetic removed models are gone.
+        let catalogSupport = BurnBarProviderCatalogSupport(catalog: BurnBarCatalogLoader.bundledCatalog)
+        for modelID in codexPreferred {
+            XCTAssertTrue(
+                catalogSupport.supportsModelID(modelID, providerID: "codex"),
+                "Stale model \(modelID) should have been pruned from preferredModelIDs"
+            )
+        }
+        for removed in removedCodexModelIDs {
+            XCTAssertFalse(
+                codexPreferred.contains(removed),
+                "Removed catalog model \(removed) must not survive normalization"
+            )
+        }
+
+        // Codex still advertises its surviving catalog models.
+        XCTAssertFalse(codexPreferred.isEmpty, "Codex must retain at least its catalog-backed models")
+    }
+
+    /// Companion to the regression test: the explicit `upsertProvider` write
+    /// path must STILL reject unknown model IDs (the public validation contract
+    /// is unchanged — only the load/self-heal path prunes).
+    func testUpsertProviderStillRejectsUnsupportedPreferredModel() async throws {
+        let harness = try makeHarness(name: "upsert-rejects-stale-codex")
+        let bogusModelID = "codex-removed-by-catalog-shrink-alpha-family"
+        do {
+            _ = try await harness.configStore.upsertProvider(
+                BurnBarProviderSettings(
+                    providerID: "codex",
+                    isEnabled: true,
+                    baseURL: "codex-cli://local",
+                    preferredModelIDs: [bogusModelID]
+                )
+            )
+            XCTFail("Expected unsupported model error for removed codex model")
+        } catch let error as BurnBarConfigStoreError {
+            guard case .unsupportedModel(let providerID, let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(providerID, "codex")
+            XCTAssertEqual(modelID, bogusModelID)
+        }
+    }
+
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-config-store-\(name)-\(UUID().uuidString)", isDirectory: true)

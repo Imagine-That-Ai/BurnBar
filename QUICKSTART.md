@@ -36,7 +36,7 @@ make install
 Notes:
 
 - `make build` / `make install` run `bootstrap` automatically; running it yourself first just makes the slow step (compiling libsignal with Rust) explicit. Subsequent runs are instant.
-- On an Apple Silicon Mac building only the macOS app, `SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin make bootstrap` skips the Intel and iOS slices and is much faster.
+- On an Apple Silicon Mac building only the macOS app, `SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin make bootstrap` builds only `Vendor/OpenBurnBarSignalFfiMac.xcframework` and skips the Intel and iOS slices.
 - **Signing:** `make install` signs with your Apple Development certificate if one is in the keychain (or with `OPENBURNBAR_DEVELOPMENT_TEAM=<your 10-char team id>` set). Without either, it produces an ad-hoc-signed build that runs locally but skips provisioned entitlements such as keychain-backed cloud sign-in.
 
 This builds a Release .app and copies it to `/Applications`. Then run:

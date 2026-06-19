@@ -28,12 +28,6 @@ public actor BurnBarHTTPGatewayServer {
 
     let factoryExecutor: FactoryDroidProviderExecutor
 
-    /// Experimental, off-by-default interactive-Claude path (Part B2). Non-nil
-    /// only when `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE` opts in. When
-    /// present, eligible Anthropic OAuth routes are served by driving a genuine
-    /// interactive `claude` TUI instead of the metered programmatic API.
-    let interactiveClaudeExecutor: ClaudeInteractiveSessionExecutor?
-
     /// Opt-in, off-by-default cross-vendor degrade safety net (Part B3). When
     /// enabled, an OpenAI-chat request whose requested model is unavailable can
     /// fall back to an allow-listed OpenAI-compatible vendor on the user's own
@@ -71,7 +65,6 @@ public actor BurnBarHTTPGatewayServer {
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
-        interactiveClaudeExecutor: ClaudeInteractiveSessionExecutor? = ClaudeInteractiveSessionExecutor.makeIfEnabled(),
         crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .fromEnvironment(),
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogSession: URLSession = .shared,
@@ -87,7 +80,6 @@ public actor BurnBarHTTPGatewayServer {
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor
-        self.interactiveClaudeExecutor = interactiveClaudeExecutor
         self.crossVendorDegradePolicy = crossVendorDegradePolicy
         self.modelHealthStore = modelHealthStore
         self.catalogSource = GatewayModelCatalogSource(

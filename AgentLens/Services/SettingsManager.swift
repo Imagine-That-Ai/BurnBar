@@ -47,6 +47,7 @@ final class SettingsManager {
     let crossEncoder: CrossEncoderSettings
     let cloudSync: CloudSyncSettings
     let cliAssistant: CLIAssistantSettings
+    let memory: MemorySettings
     let summary: SummarySettings
     let quotas: QuotaSettings
     let providerPath: ProviderPathSettings
@@ -95,6 +96,7 @@ final class SettingsManager {
         self.crossEncoder = CrossEncoderSettings(persistence: coordinator)
         self.cloudSync = CloudSyncSettings(persistence: coordinator)
         self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
+        self.memory = MemorySettings(persistence: coordinator)
         self.summary = SummarySettings(persistence: coordinator)
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
@@ -244,6 +246,10 @@ final class SettingsManager {
         // "computer_use_trusted_scopes_allowed": NSNumber(value: true),
         // "computer_use_audit_export_allowed": NSNumber(value: true),
         "media_kill_switch": NSNumber(value: true),
+        // Memory extraction fleet kill switch. Default true (extraction allowed);
+        // Remote Config sets false to halt extraction instantly. A fetch error
+        // fail-closes the gate (see refreshComputerUseRemoteConfigOnce).
+        "memory_extraction_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -280,7 +286,9 @@ final class SettingsManager {
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             mediaKillSwitch = true
+            memoryExtractionRemoteConfigEnabled = false
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
+            NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
             return
         }
 
@@ -305,6 +313,12 @@ final class SettingsManager {
         ).boolValue
 
         mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
+
+        let memoryRCEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        memoryExtractionRemoteConfigEnabled = memoryRCEnabled
+        if !memoryRCEnabled {
+            NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+        }
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -543,13 +557,6 @@ final class SettingsManager {
         ]
     }
 
-    /// Experimental: route Anthropic subscription traffic through an interactive
-    /// `claude` TUI (gray-area). Off by default; applied at daemon launch.
-    var experimentalInteractiveClaudeEnabled: Bool {
-        get { gateway.experimentalInteractiveClaudeEnabled }
-        set { gateway.experimentalInteractiveClaudeEnabled = newValue }
-    }
-
     /// Experimental: substitute an allow-listed OpenAI-compatible vendor on the
     /// user's own key when the requested model can't be served. Off by default;
     /// applied at daemon launch.
@@ -689,6 +696,36 @@ final class SettingsManager {
     var cliAssistantConsentShown: Bool {
         get { cliAssistant.cliAssistantConsentShown }
         set { cliAssistant.cliAssistantConsentShown = newValue }
+    }
+
+    // MARK: Memory (G4: user toggle + Remote Config fleet kill switch)
+
+    /// User toggle: automatic extraction on terminal assistant commit (default ON).
+    var memoryAutomaticExtraction: Bool {
+        get { memory.automaticExtraction }
+        set { memory.automaticExtraction = newValue }
+    }
+
+    /// Opt-in sub-toggle: high-recall per-reply (default OFF).
+    var memoryHighRecallPerReply: Bool {
+        get { memory.highRecallPerReply }
+        set { memory.highRecallPerReply = newValue }
+    }
+
+    /// Remote Config `memory_extraction_enabled`. Not user-settable; written by
+    /// the RC refresh. Fail-closed (false) on fetch error or fleet kill.
+    var memoryExtractionRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigExtractionEnabled }
+        set { memory.remoteConfigExtractionEnabled = newValue }
+    }
+
+    /// Combined extraction gate (G4): user toggle AND fleet kill switch both
+    /// must allow. This is the single value the extraction chokepoint consults.
+    var memoryExtractionEnabled: Bool {
+        MemoryExtractionGate.isEnabled(
+            automaticExtraction: memory.automaticExtraction,
+            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
+        )
     }
 
     // MARK: Chat Backend

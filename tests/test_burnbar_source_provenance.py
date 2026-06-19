@@ -4,6 +4,8 @@ from scripts.ci.write_burnbar_source_provenance import (
     REQUIRED_SOURCE_PATHS,
     build_source_provenance_manifest,
     release_preflight_blockers,
+    runtime_readiness_blockers,
+    source_integrity_blockers,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +84,13 @@ def test_release_preflight_blocks_dirty_or_not_ready_manifest() -> None:
 
     assert release_preflight_blockers(manifest) == [
         "git working tree must be clean for release provenance (2 dirty path(s))",
+        "runtimeReadiness.status must be 'ready', found 'not_ready'",
+        "runtimeReadiness has incomplete gate(s): rust_core_bridge, store_and_counsel_approval",
+    ]
+    assert source_integrity_blockers(manifest) == [
+        "git working tree must be clean for release provenance (2 dirty path(s))",
+    ]
+    assert runtime_readiness_blockers(manifest) == [
         "runtimeReadiness.status must be 'ready', found 'not_ready'",
         "runtimeReadiness has incomplete gate(s): rust_core_bridge, store_and_counsel_approval",
     ]

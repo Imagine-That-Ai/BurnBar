@@ -1038,8 +1038,19 @@ struct OpenBurnBarApp: App {
             )
         }
 
+        // F-2/F-3 (PR-5): wire the real recall/extraction service. Behavior stays gated
+        // by the G4 kill switch (`settings.memoryExtractionEnabled`) inside the controller,
+        // and authority writes default off (`chatMemoryAuthorityWritesEnabledByDefault`),
+        // so this is dormant until the memory feature is enabled fleet-wide.
+        let chatMemoryService = OpenBurnBarMemoryService(
+            store: ControlPlaneStore(dbQueue: initializedStore.actor.dbQueue)
+        )
         let controller = StartupProfiler.interval("chat_controller_init") {
-            ChatSessionController(dataStore: initializedStore, settingsManager: settings)
+            ChatSessionController(
+                dataStore: initializedStore,
+                settingsManager: settings,
+                memoryService: chatMemoryService
+            )
         }
         let layer = StartupProfiler.interval("operating_layer_init") {
             OpenBurnBarOperatingLayer(

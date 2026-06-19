@@ -900,6 +900,76 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertTrue(deniedFrames.isEmpty)
     }
 
+    func testDuplicateSignedTypeIntentIdDispatchesOnlyOnce() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        let clientIntentId = "type-once-\(UUID().uuidString)"
+        var firstIntent = HermesRealtimeRelayInputIntent(
+            kind: .type,
+            text: "hello",
+            clientIntentId: clientIntentId,
+            authority: placeholder
+        )
+        let firstSigned = try signer.sign(
+            intent: firstIntent,
+            peerNodeId: "phone-peer-type-idempotent",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        firstIntent.authority = envelope(from: firstSigned)
+
+        var secondIntent = HermesRealtimeRelayInputIntent(
+            kind: .type,
+            text: "hello",
+            clientIntentId: clientIntentId,
+            authority: placeholder
+        )
+        let secondSigned = try signer.sign(
+            intent: secondIntent,
+            peerNodeId: "phone-peer-type-idempotent",
+            counter: 2,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        secondIntent.authority = envelope(from: secondSigned)
+
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-type-idempotent", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-type-idempotent"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(firstIntent))
+        await receiver.ingest(frame(secondIntent))
+
+        let actions = await capture.actions()
+        XCTAssertEqual(actions.count, 1)
+        guard case let .macInput(action) = actions.first?.action else {
+            XCTFail("expected first type intent to dispatch as macInput")
+            return
+        }
+        XCTAssertEqual(action.kind, .type)
+        XCTAssertEqual(action.text, "hello")
+
+        let deniedFrames = await capture.deniedFrames()
+        XCTAssertEqual(deniedFrames.count, 1)
+        XCTAssertEqual(deniedFrames.first?.control?.denied?.reason, .counterReplay)
+        XCTAssertEqual(deniedFrames.first?.control?.denied?.detail, "duplicate_client_intent")
+    }
+
     func testSignedPointerMoveIntentDispatchesMacPointerMoveDelta() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()
@@ -1395,6 +1465,7 @@ final class PhoneControlReceiverTests: XCTestCase {
                 auditBaseDirectory: FileManager.default.temporaryDirectory
                     .appendingPathComponent("computer-use-clipboard-attestation-\(UUID().uuidString)", isDirectory: true),
                 macAppVersion: "test",
+                phoneControlAttestationRequired: true,
                 clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(

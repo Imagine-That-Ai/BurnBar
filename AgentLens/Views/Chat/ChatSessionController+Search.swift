@@ -178,10 +178,91 @@ extension ChatSessionController {
         Task { await send() }
     }
 
+    /// F-2 (G8): recall memory snippets for the current turn and wrap each via
+    /// `LLMSafeContent.wrapUntrusted` so they land in the evidence region only —
+    /// never the trusted persona block. Returns "" when no service is wired or
+    /// recall yields nothing.
+    ///
+    /// Memory text is ALWAYS untrusted regardless of the snippet's `trustTier`
+    /// (defense-in-depth): the tier is server-resolved against the canonical chat
+    /// row and carried on the snippet for provenance, but it is never a license
+    /// to skip wrapping or to inject into persona voice. If the source row is
+    /// missing/non-user/non-assistant the backend pins the tier to
+    /// `.untrusted`/`.assistantDerived`; the frontend treats both as untrusted.
+    func recallMemorySection(query: String, tokenBudget: Int) async -> String {
+        // Gate recall by the same G4 kill switch as extraction so a fleet kill (or the
+        // user toggle) immediately stops surfacing memories — even already-stored ones.
+        guard settingsManager.memoryExtractionEnabled, let memoryService else { return "" }
+        let scope = makeMemoryExtractionContext().scope
+        let request = MemoryRecallRequest(query: query, scope: scope, tokenBudget: max(tokenBudget, 1))
+        let snippets: [MemorySnippet]
+        do {
+            snippets = try await memoryService.recallForPrompt(request)
+        } catch {
+            AppLogger.chat.silentFailure("memory recallForPrompt", error: error)
+            self.lastRecalledMemorySnippets = []
+            return ""
+        }
+        self.lastRecalledMemorySnippets = snippets
+        guard !snippets.isEmpty else { return "" }
+        return snippets.map { snippet in
+            let jumpID = snippet.citations.first?.messageID ?? snippet.citations.first?.crossDeviceHMAC
+            let provenance = "memory:\(snippet.memoryID)@\(jumpID ?? "unresolved")"
+            return LLMSafeContent.wrapUntrusted(snippet.text, provenance: provenance)
+        }.joined(separator: "\n\n")
+    }
+
+    /// Builds the pinned focus-session prompt section (empty when no context is selected).
+    private func focusSessionSection(retrievalResults: [RetrievalResult]) -> String {
+        guard let ctx = selectedContext else { return "" }
+        let pinnedInEvidence = retrievalResults.contains { $0.conversation?.id == ctx.id }
+        return Self.buildFocusSessionPromptSection(
+            projectName: ctx.projectName,
+            title: ctx.inferredTaskTitle,
+            id: ctx.id,
+            fullText: ctx.fullText,
+            pinnedInEvidence: pinnedInEvidence
+        )
+    }
+
+    /// Builds the G9 prompt token arbiter for the active backend, reserving the history +
+    /// user-turn payload and the system-prompt wrapper before the system prompt is budgeted.
+    private func makePromptArbiter(
+        requestModel: String,
+        multiTurnHistory: [ChatMessageRecord],
+        userMessage: String
+    ) -> PromptTokenArbiter {
+        let arbiterFamily = Self.memoryArbiterModelFamily(
+            backend: chatBackend,
+            resolvedModel: requestModel,
+            hermesFamily: settingsManager.selectedHermesModel
+        )
+        let payloadTokens = Self.promptPayloadTokenReserve(history: multiTurnHistory, userMessage: userMessage)
+        let wrapperTokens = Self.promptSystemWrapperTokenReserve(
+            backend: chatBackend,
+            piAgentInstanceID: settingsManager.piAgentSelectedInstanceID
+        )
+        return PromptTokenArbiter.make(
+            model: arbiterFamily,
+            historyAndUserTurnTokens: payloadTokens,
+            systemWrapperTokens: wrapperTokens
+        )
+    }
+
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
-        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty else { return }
+        guard !isSendBusy else {
+            streamError = "A chat response is already in progress. Wait for it to finish, then send again."
+            return
+        }
+
+        // Synchronous reentrancy sentinel: set before any await so a second
+        // programmatic/relay `send()` arriving in the await window before
+        // `isStreaming` flips is rejected. Cleared on every return path.
+        sendInFlight = true
+        defer { sendInFlight = false }
 
         streamError = nil
         completedFusionSessionToken = nil
@@ -453,7 +534,13 @@ extension ChatSessionController {
             let assistant = ChatMessageRecord(role: .assistant, content: finalResponse)
             messages.append(assistant)
             do {
-                try await dataStore.saveChatMessage(assistant, threadID: activeThreadID)
+                try await dataStore.saveChatMessage(
+                    assistant,
+                    threadID: activeThreadID,
+                    isTerminalAssistantCommit: true,
+                    memoryService: memoryServiceForExtraction,
+                    extractionContext: makeMemoryExtractionContext()
+                )
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
             }
@@ -510,36 +597,63 @@ extension ChatSessionController {
             aggregateSection: aggregateSection
         )
 
-        let basePrompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
+        let promptSections = await ContextBuilder.buildDatabaseAnalystSystemPromptSections(
             from: dataStore,
             intelligenceService: searchSvc,
             indexingEnabled: settingsManager.conversationIndexingEnabled,
             health: retrievalHealthSnapshot
         )
 
-        let focusSection: String
-        if let ctx = selectedContext {
-            let pinnedInEvidence = retrievalResults.contains { $0.conversation?.id == ctx.id }
-            focusSection = Self.buildFocusSessionPromptSection(
-                projectName: ctx.projectName,
-                title: ctx.inferredTaskTitle,
-                id: ctx.id,
-                fullText: ctx.fullText,
-                pinnedInEvidence: pinnedInEvidence
-            )
-        } else {
-            focusSection = ""
-        }
+        let focusSection = focusSessionSection(retrievalResults: retrievalResults)
 
-        var augmentedSystem = basePrompt + "\n\n" + evidencePack + oracleContextSection + focusSection
         ensureChatWorkspaceDirectoryExists()
         let workspacePath = chatWorkspaceURL.path
-        augmentedSystem += Self.burnBarWorkspacePromptSection(path: workspacePath)
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
-        if let activeDesktopGrant {
-            augmentedSystem += Self.desktopControlPromptSection(for: activeDesktopGrant)
+        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
+            ? messages
+            : []
+
+        // G9: assemble augmentedSystem under one token-aware arbiter so a future
+        // memory-injection section (F-2) subtracts from a shared retrieval pool
+        // instead of becoming an uncapped seventh block. Persona (`.core`) and tool
+        // definitions (`.toolDefs`) are never dropped; the conversation history + user
+        // turn are reserved out of the model's context window so they are never
+        // starved. Conservative floor for ollama / unknown local backends.
+        let requestModel = effectiveChatModel(for: chatBackend)
+        let promptArbiter = makePromptArbiter(
+            requestModel: requestModel,
+            multiTurnHistory: multiTurnHistory,
+            userMessage: trimmed
+        )
+        let desktopControlSection = activeDesktopGrant.map { Self.desktopControlPromptSection(for: $0) } ?? ""
+        let toolDefsSection = Self.burnBarWorkspacePromptSection(path: workspacePath) + desktopControlSection
+        // F-2 (G8): recall + wrap memory snippets into the `.memory` section. They
+        // share the evidence+memory pool under the arbiter (G9) and are wrapped via
+        // LLMSafeContent.wrapUntrusted so they never enter the trusted `.core` persona.
+        let memorySection = await recallMemorySection(query: trimmed, tokenBudget: promptArbiter.memoryBudget)
+        let assembledPrompt = promptArbiter.assemble([
+            PromptTokenSection(id: .core, content: promptSections.core),
+            PromptTokenSection(id: .toolDefs, content: toolDefsSection),
+            PromptTokenSection(id: .focus, content: focusSection),
+            PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
+            // F-2 recall snippets (wrapped, G8) + ephemeral usage rollups both share the
+            // arbiter's pool below evidence; neither enters the trusted `.core`.
+            PromptTokenSection(id: .memory, content: memorySection),
+            PromptTokenSection(id: .rollups, content: promptSections.ephemeralRollups)
+        ])
+        if !assembledPrompt.droppedSections.isEmpty || !assembledPrompt.truncatedSections.isEmpty {
+            AppLogger.chat.info(
+                "prompt token arbiter adjusted prompt",
+                metadata: [
+                    "dropped": assembledPrompt.droppedSections.map(\.rawValue).joined(separator: ","),
+                    "truncated": assembledPrompt.truncatedSections.map(\.rawValue).joined(separator: ","),
+                    "tokens": String(assembledPrompt.estimatedTokens),
+                    "budget": String(assembledPrompt.augmentedSystemBudget)
+                ]
+            )
         }
+        let augmentedSystem = assembledPrompt.systemPrompt
 
         isStreaming = true
         let assistantId = UUID().uuidString
@@ -556,11 +670,7 @@ extension ChatSessionController {
         messages.append(placeholder)
         let streamStartedAt = Date()
 
-        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
-            ? messages.filter { $0.id != assistantId }
-            : []
-
-        let requestModel = effectiveChatModel(for: chatBackend)
+        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
         // Load bytes for any attachments referenced by history. We load lazily
         // so re-opened threads don't pay the cost when nothing was attached.
         let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
@@ -757,7 +867,13 @@ extension ChatSessionController {
                             "has_tools": .bool(final.transcriptPieces.contains { $0.kind == .toolUse })
                         ])
                         do {
-                            try await self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
+                            try await self.dataStore.saveChatMessage(
+                                final,
+                                threadID: self.activeThreadID,
+                                isTerminalAssistantCommit: true,
+                                memoryService: self.memoryServiceForExtraction,
+                                extractionContext: self.makeMemoryExtractionContext()
+                            )
                             await self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,

@@ -23,7 +23,7 @@
 #                                           Force the CI-style unsigned simulator host locally.
 #   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
 #                                           Skip Signal FFI prep when the caller
-#                                           already prepared Vendor/OpenBurnBarSignalFfi.xcframework.
+#                                           already prepared the Signal FFI XCFramework artifacts.
 #   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
 #                                           Disable Xcode automatic profile/device updates on physical-device runs.
 #
@@ -486,8 +486,8 @@ fi
 : > "$attempt_log_path"
 
 if [[ "${OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP:-}" == "1" ]]; then
-    if [[ ! -d "$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
-        echo "ERROR: OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 but Vendor/OpenBurnBarSignalFfi.xcframework is missing." >&2
+    if [[ ! -d "$repo_root/Vendor/OpenBurnBarSignalFfiIOS.xcframework" && ! -d "$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 but no iOS Signal FFI XCFramework artifact is present." >&2
         exit 66
     fi
     echo ">>> Reusing prebuilt Signal FFI XCFramework."
@@ -555,6 +555,18 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     set -e
     attempt_end_epoch="$(date +%s)"
     attempt_duration=$((attempt_end_epoch - attempt_start_epoch))
+
+    if openburnbar_app_test_has_concrete_xctest_failure "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "test_failure" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Detected concrete XCTest failure in xcodebuild log; failing mobile attempt even though xcodebuild exited $last_test_exit_code."
+        final_exit_code="$last_test_exit_code"
+        if [ "$final_exit_code" -eq 0 ]; then
+            final_exit_code=65
+        fi
+        final_outcome="test_failure"
+        final_xcresult="$attempt_xcresult"
+        break
+    fi
 
     if [ "$last_test_exit_code" -eq 0 ]; then
         if is_zero_test_pass "$xcodebuild_log"; then

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the experimental interactive-Claude meter-bypass path (Part B0 + B2): the `ClaudeInteractiveSessionExecutor` gateway executor, the `ClaudeInteractiveMeterExperiment` diagnostic + its `claude-meter-experiment` CLI command, the `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE` opt-in and its Settings UI toggle. Claude Code's first-run workspace-trust dialog cannot be driven reliably from a headless PTY (verified against 2.1.183), so the path no longer worked and is gone rather than patched. The legitimate human-driven `claude-handoff` feature (B1) is retained; its `ClaudeCodeJSONLUsageProbe` and claude-binary discovery helpers were relocated into the handoff service.
+
 ### Quota Freshness
 
 - Audited all 16 adapters in `QuotaRefreshActor.adapters` for eager-fetch capability. Every adapter can produce a snapshot on first launch when credentials are present: API-key adapters (MiniMax, ZAI, DeepSeek, Copilot, Kimi, OpenAI, Mimo, Warp) hit their provider endpoints directly; cookie/session adapters (Cursor, Ollama, Factory) resolve from keychain or local stores; local-file adapters (Factory droid sessions, Codex rollout scan, Claude JSONL, Antigravity history, Aider analytics, Kilo Code, Forge) read on disk with no prior-usage dependency. The three trigger-adjacent adapters already have eager fallback paths: Claude (JSONL scan + OAuth usage API), Codex (OAuth usage API + rollout scan), XAI (Management API for GrokBuild, pacing log for SuperGrok).
@@ -44,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an animated BurnBar launch identity: a 3D isometric glass-cube logo formation where converging dots assemble the flame, the flame solidifies inside an Apple Liquid Glass cube (with an obsidian-glass fallback) lit by a domain-warped oil-on-water sheen, and three color-matched provider dot-glyphs drift beneath the glass and re-form on collision. Shipped as a shared SwiftUI component (`BurnBarLogoFormationView`) plus a Jetpack Compose port (`BurnBarLogoFormation`), now driving the iOS/iPad sign-in hero, the macOS first-launch onboarding popover, and the Android login screen.
 - Added a one-shot full-screen iOS launch splash (`View.burnBarLaunchSplash()`) that plays the logo formation over a dark backdrop on cold start, then crossfades to reveal the app; skipped entirely under Reduce Motion.
 - Added routed-model parity for Codex CLI and Claude Code. Their model pickers now keep native GPT/Codex and Claude rows visible while appending every route-ready OpenBurnBar proxy model from the live local gateway catalog; Codex proxy rows route through `model_providers.openburnbar` with `wire_api = "responses"`, and Claude Code gateway discovery uses `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` plus Claude-safe `anthropic.openburnbar.<base64url-route-id>` aliases backed by `/v1/messages`.
+- Added current routed-client catalog rows for Codex GPT-5.5/GPT-5.4 and Ollama Cloud `kimi-k2.7-code:cloud` / `glm-5.2:cloud`, including route eligibility coverage and modality/context metadata.
 - Added explicit Codex CLI and Claude Code `Connect + Sync` / `Sync models` lifecycle parity with Droid/Factory, including stale-catalog state, preserved user config, OpenBurnBar-owned markers/sidecars only, routed-client sentry refresh, and one-token probes against `/v1/responses` for Codex and `/v1/messages` for Claude Code.
 - Polished the Settings Connections routed-client rows into a "routing cockpit" instrument surface. Each row now reads as a precise, three-zone control: a pulsing status indicator (animated glow ring during busy states), an identity cluster with provider logo and endpoint-shape badge (Messages, Responses, Chat Completions), a status cluster with connection/freshness/source badges plus a monospace metadata strip for model counts and probe endpoint, and a primary action with icons (Connect + Sync, Sync models, Retry probe, Disconnect). Hover states, gentle spring transitions for state changes, and degraded-state color semantics (amber for stale, red for failed) give all three CLI clients equal visual weight and instant scannability.
 - Hardened routed-client parity after launch-readiness review: Claude Code, Codex, and Droid readiness now key off bridge endpoint capability instead of native upstream family, stale catalog and probe failure states have distinct recovery actions, and Factory/Droid provider adapter selection stays tied to provider/model family so bridged endpoint metadata cannot misclassify custom models.
@@ -104,6 +109,8 @@ A cross-surface performance/quality pass (website, Android, iOS/iPadOS, macOS, d
 
 ### Fixed
 
+- **Droid routed Claude models through OpenBurnBar** — the local gateway no longer lets Ollama Cloud's dynamic `:cloud` fallback claim Anthropic-owned Claude model IDs such as `claude-opus-4-8-max`. Claude requests now fail closed to an Anthropic route/no-route error instead of being rewritten to Ollama Cloud, while unlisted Ollama Cloud aliases such as `glm-5.2:cloud` still route dynamically.
+- **Android Mercury remote keyboard duplicate typing** — the hidden screen-share keyboard now suppresses repeated raw IME callbacks for the same buffer value while preserving intentional double letters (`l` -> `ll`), and the Mac receiver has explicit signed text-intent replay coverage.
 - **Droid custom models (Anthropic BYOK)** — the local gateway now accepts the gateway bearer token via `x-api-key` as well as `Authorization: Bearer`, matching Factory Droid's Anthropic adapter. Routed Claude custom models (`provider: anthropic` in `~/.factory/settings.local.json`) no longer fail with `401 unauthorized` / `Exec failed`.
 - **Mobile Hermes Gateway replies** — BurnBar Cloud gateway replies now reopen the exact Hermes thread, persist replies before rendering mobile reply cards, hide older duplicate reconnect entries for the same device, and show the answering provider badge in notifications and gateway status UI.
 
@@ -117,6 +124,21 @@ A cross-surface performance/quality pass (website, Android, iOS/iPadOS, macOS, d
 - **Hermes Gateway E2EE remediation** — paired BurnBar Cloud gateway links now treat the relay as untrusted: new writes require production `relayEnvelope` (v2/v3) or `ratchetEnvelope` for text/control when both peers publish ratchet material; message/attachment IDs round-trip for AAD binding; replay ledgers record only after successful open; both-key 128-bit safety codes include ratchet identities when available; macOS Keychain holds agent relay/ratchet private keys; setup no longer silently enables allow-all users. Proof gate: `bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh` (privacy scanner, focused Functions vitest, Firestore rules, schema drift, v2/v3 fixture mirrors, adapter mirror, local gateway smoke, 211 external Hermes pytest). See [`docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md`](docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md) for the honest claim boundary (not whole-product SOTA E2EE).
   - Post-implementation principal review found and fixed a control-dispatch gap: iOS E2E sends for `model_switch`/`approval_decision`/`oversight_mode` now emit `kind` (and control fields) at the root of the sealed payload so the agent's pinned open path dispatches to the special sealed handlers instead of dropping as empty chat text or leaking as JSON messages. Added unit coverage and updated oversight E2E delivery. All gates re-verified green.
 - Sealed the remaining same-pattern cloud privacy surfaces: approval-policy labels/paths/globs, CLI session snapshot file/path labels, rollback request scopes/errors, agent identity persona text, subscription topic labels, and Hermes Gateway typing/private routing metadata. Mac, iOS/iPadOS, Android, functions, Firestore rules, privacy scans, and registry tests cover the sealed-only contract.
+
+## [1.0.4] - 2026-06-18
+
+### Security
+
+- Shipped the Firebase rules release fix that keeps shared-artifact sealed-payload
+  and mission fanout integrity rules deployable in production without weakening
+  the enforced Firestore and Storage App Check posture.
+- Verified the live Firebase project remains App Check enforced for both
+  Firestore and Cloud Storage after the production rules deployment.
+
+### Changed
+
+- Advanced macOS direct-download release metadata to `1.0.4` build `44`.
+- Advanced iOS/TestFlight, widget, and keyboard metadata to `1.0.2` build `74`.
 
 ## [1.0.3] - 2026-06-18
 

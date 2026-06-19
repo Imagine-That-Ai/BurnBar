@@ -175,8 +175,8 @@ final class AgentContextTargetReceiver: Sendable {
             }
             chatController.refreshHistory()
 
-            // Automatically trigger agent execution loop if it's not streaming!
-            if !chatController.isStreaming {
+            // Automatically trigger agent execution loop if it is not already busy.
+            if !chatController.isSendBusy {
                 chatController.fireAndForgetSend()
             }
 

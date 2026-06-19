@@ -17,7 +17,8 @@ This can be completed by counsel, an OSS compliance specialist, or Alberto as ex
 
 - [ ] `.gitmodules`
 - [ ] `Vendor/libsignal/`
-- [ ] `Vendor/OpenBurnBarSignalFfi.xcframework/`
+- [ ] `Vendor/OpenBurnBarSignalFfiIOS.xcframework/`
+- [ ] `Vendor/OpenBurnBarSignalFfiMac.xcframework/`
 - [ ] `scripts/build-signal-ffi-xcframework.sh`
 - [ ] `OpenBurnBarCore/Package.swift`
 - [ ] `Vendor/libsignal/swift/Package.swift`

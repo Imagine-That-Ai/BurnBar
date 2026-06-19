@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Privacy & Indexing Settings View
 
@@ -7,11 +8,17 @@ struct PrivacyIndexingSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var dataStore: DataStore
     var sharedFeaturesAvailable: Bool
+    /// Wired when a memory backend is available (nil today, until backend PR-5).
+    /// When nil, "Reset memory" is disabled — extraction is already a no-op.
+    var memoryService: (any MemoryServing)?
+    var accountManager: AccountManager = .shared
     @State private var storageBytes: Int64 = 0
     @State private var conversationCount: Int = 0
     @State private var sourceArtifactCount: Int = 0
     @State private var deleteConfirm = false
     @State private var deleteErrorMessage: String?
+    @State private var memoryResetConfirm = false
+    @State private var memoryResetStatus: String?
     @State private var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
     @State private var embeddingModels: [EmbeddingModelRecord] = []
     @State private var embeddingVersions: [EmbeddingVersionRecord] = []
@@ -68,6 +75,60 @@ struct PrivacyIndexingSettingsView: View {
                     subtitle: chatContentBackupSubtitle,
                     isOn: chatContentBackupBinding
                 )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                // MARK: - Memory (G4: user toggle + fleet kill switch)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    SettingsToggle(
+                        title: "Memory",
+                        subtitle: "OpenBurnBar learns preferences from your chats and recalls them in future turns. Memories are never injected as trusted instructions — they ride in the untrusted evidence region.",
+                        isOn: $settingsManager.memoryAutomaticExtraction
+                    )
+
+                    if settingsManager.memoryAutomaticExtraction {
+                        SettingsToggle(
+                            title: "High-recall (per reply)",
+                            subtitle: "Opt in to deeper per-reply memory recall. Uses more of your context budget.",
+                            isOn: $settingsManager.memoryHighRecallPerReply
+                        )
+                    }
+
+                    if !settingsManager.memoryExtractionRemoteConfigEnabled {
+                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(DesignSystem.Colors.warning)
+                                .padding(.top, 2)
+                            Text("Memory extraction is temporarily disabled by your admin. Your chats are unaffected.")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                        .background(DesignSystem.Colors.warning.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                    }
+
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button(role: .destructive) {
+                            memoryResetConfirm = true
+                        } label: {
+                            Text("Reset memory")
+                                .font(DesignSystem.Typography.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(memoryService == nil)
+
+                        if let memoryResetStatus {
+                            Text(memoryResetStatus)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, DesignSystem.Spacing.lg)
 
                 if !retrievalHealthSnapshot.degradedModes.isEmpty {
                     Divider().background(DesignSystem.Colors.border)
@@ -404,6 +465,31 @@ struct PrivacyIndexingSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Token usage totals are kept. Only locally indexed transcripts are removed.")
+        }
+        .confirmationDialog(
+            "Reset all memories?",
+            isPresented: $memoryResetConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Reset", role: .destructive) {
+                Task { @MainActor in
+                    do {
+                        let service = MemorySettingsService()
+                        let scope = MemorySettingsService.resetScope(userID: accountManager.userID)
+                        let eventID = try await service.resetAllMemories(memoryService: memoryService, scope: scope)
+                        guard eventID != nil else {
+                            memoryResetStatus = "Memory reset is unavailable until the memory backend is connected."
+                            return
+                        }
+                        memoryResetStatus = "Memories reset. Your chats are untouched."
+                    } catch {
+                        memoryResetStatus = "Failed to reset memories: \(error.localizedDescription)"
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes learned preferences from the memory store. Chat transcripts and token usage are not affected.")
         }
     }
 

@@ -110,7 +110,13 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
   },
   pensieve: {
     encryptionTier: "end_to_end",
-    firestoreCollections: ["cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"],
+    firestoreCollections: [
+      "cloud_search_knowledge",
+      "knowledge_sync_manifests",
+      "knowledge_repos",
+      "memory_facts",
+      "memory_forget_receipts",
+    ],
     storagePrefixes: [],
   },
   provider_accounts: {

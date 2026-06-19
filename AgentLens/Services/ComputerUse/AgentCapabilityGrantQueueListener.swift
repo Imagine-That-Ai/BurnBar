@@ -14,7 +14,7 @@ final class AgentCapabilityGrantQueueListener {
     /// Injected so the receipt-write path (including the denied-receipt write
     /// in `process`'s catch block) is exercisable without a live Firestore
     /// `DocumentReference`. `requestPath` is used only for log correlation.
-    typealias ReceiptPayloadWriter = @Sendable (
+    typealias ReceiptPayloadWriter = @MainActor @Sendable (
         _ requestPath: String,
         _ payload: [String: Any]
     ) async throws -> Void

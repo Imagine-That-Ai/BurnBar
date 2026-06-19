@@ -800,17 +800,22 @@ private enum RemoteAccessTyper {
     }
 
     private static func post(character: String, source: CGEventSource) throws {
-        var utf16 = Array(character.utf16)
-        guard !utf16.isEmpty else { return }
-        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
-            throw AgentError.eventCreationFailed
-        }
-        down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
-        up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
         let tap = keyboardEventTap()
-        down.post(tap: tap)
-        up.post(tap: tap)
+        for typingEvent in RemoteAccessUnicodeTypingPlan.events(for: character) {
+            guard let event = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: 0,
+                keyDown: typingEvent.isKeyDown
+            ) else {
+                throw AgentError.eventCreationFailed
+            }
+            if typingEvent.carriesUnicodeText {
+                var utf16 = Array(typingEvent.text.utf16)
+                guard !utf16.isEmpty else { continue }
+                event.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
+            }
+            event.post(tap: tap)
+        }
     }
 
     private static func postReturn(source: CGEventSource) throws {

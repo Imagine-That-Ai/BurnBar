@@ -19,12 +19,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LEGAL_EVIDENCE = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
 
 
-def source_provenance_blockers(repo_root: Path) -> list[str]:
+def source_provenance_blockers(repo_root: Path, *, include_runtime_readiness: bool = True) -> list[str]:
     sys.path.insert(0, str(repo_root))
     try:
         from scripts.ci.write_burnbar_source_provenance import (
             build_source_provenance_manifest,
             release_preflight_blockers,
+            source_integrity_blockers,
         )
     finally:
         sys.path.pop(0)
@@ -33,7 +34,9 @@ def source_provenance_blockers(repo_root: Path) -> list[str]:
         manifest = build_source_provenance_manifest(repo_root=repo_root)
     except Exception as exc:  # pragma: no cover - defensive aggregation path
         return [f"source provenance could not be generated: {exc}"]
-    return release_preflight_blockers(manifest)
+    if include_runtime_readiness:
+        return release_preflight_blockers(manifest)
+    return source_integrity_blockers(manifest)
 
 
 def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
@@ -62,10 +65,17 @@ def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
     return [f"legal release review: {error}" for error in validate_legal_release_review(data, require_approved=True)]
 
 
-def collect_blockers(*, repo_root: Path, legal_evidence: Path) -> list[str]:
+def collect_blockers(
+    *,
+    repo_root: Path,
+    legal_evidence: Path,
+    include_runtime_readiness: bool = True,
+    include_legal_review: bool = True,
+) -> list[str]:
     blockers = []
-    blockers.extend(source_provenance_blockers(repo_root))
-    blockers.extend(legal_review_blockers(legal_evidence, repo_root))
+    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=include_runtime_readiness))
+    if include_legal_review:
+        blockers.extend(legal_review_blockers(legal_evidence, repo_root))
     return blockers
 
 
@@ -73,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--legal-evidence", type=Path, default=DEFAULT_LEGAL_EVIDENCE)
+    parser.add_argument(
+        "--source-provenance-only",
+        action="store_true",
+        help="Validate clean release source and required corresponding-source files without runtime/legal holds.",
+    )
     args = parser.parse_args(argv)
 
     repo_root = args.repo_root.resolve()
@@ -80,14 +95,25 @@ def main(argv: list[str] | None = None) -> int:
     if not legal_evidence.is_absolute():
         legal_evidence = repo_root / legal_evidence
 
-    blockers = collect_blockers(repo_root=repo_root, legal_evidence=legal_evidence)
+    blockers = collect_blockers(
+        repo_root=repo_root,
+        legal_evidence=legal_evidence,
+        include_runtime_readiness=not args.source_provenance_only,
+        include_legal_review=not args.source_provenance_only,
+    )
     if blockers:
-        print("HOLD: BurnBar product release preflight is not ready", file=sys.stderr)
+        if args.source_provenance_only:
+            print("HOLD: BurnBar source provenance preflight is not ready", file=sys.stderr)
+        else:
+            print("HOLD: BurnBar product release preflight is not ready", file=sys.stderr)
         for blocker in blockers:
             print(f"- {blocker}", file=sys.stderr)
         return 1
 
-    print("PASS: BurnBar product release preflight is ready")
+    if args.source_provenance_only:
+        print("PASS: BurnBar source provenance preflight is ready")
+    else:
+        print("PASS: BurnBar product release preflight is ready")
     return 0
 
 

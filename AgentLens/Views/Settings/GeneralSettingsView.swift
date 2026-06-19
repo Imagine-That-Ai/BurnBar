@@ -375,7 +375,8 @@ struct IndexingOverviewDetailView: View {
             PrivacyIndexingSettingsView(
                 settingsManager: settingsManager,
                 dataStore: dataStore,
-                sharedFeaturesAvailable: sharedFeaturesAvailable
+                sharedFeaturesAvailable: sharedFeaturesAvailable,
+                memoryService: nil
             )
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)

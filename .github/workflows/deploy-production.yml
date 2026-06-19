@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_hold_bypass_reason:
+        description: "Explicit owner-approved reason to bypass runtime/legal release holds for this manual run."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: deploy-production
@@ -84,8 +89,37 @@ jobs:
           bash scripts/ci/verify-resilience-wiring.sh
           bash scripts/ci/verify-production-deploy-auth.sh
 
+      - name: BurnBar source provenance preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
+
+      - name: Validate release hold bypass reason
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
+        env:
+          RELEASE_HOLD_BYPASS_REASON: ${{ inputs.release_hold_bypass_reason }}
+        run: |
+          compact="${RELEASE_HOLD_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::release_hold_bypass_reason must contain non-whitespace text."
+            exit 1
+          fi
+
       - name: BurnBar product release preflight
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '') }}
         run: python3 scripts/ci/check_burnbar_release_preflight.py
+
+      - name: Record owner-approved release hold bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
+        env:
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
+          RELEASE_HOLD_BYPASS_REASON: ${{ inputs.release_hold_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing BurnBar product release preflight for manual functions deploy ${TAG_NAME}: ${RELEASE_HOLD_BYPASS_REASON}"
+          {
+            echo "## Owner-approved release hold bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Reason: ${RELEASE_HOLD_BYPASS_REASON}"
+            echo "- Scope: runtime-readiness and legal-release-review holds only; build, resilience, auth, WIF, deploy, and health gates still run."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Security config gate — nonce replay defense must not be explicitly disabled
         # F-RR04-002: requireHighRiskNonce defaults to true in production (looksProd).

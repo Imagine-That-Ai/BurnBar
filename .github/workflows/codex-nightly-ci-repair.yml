@@ -328,6 +328,14 @@ jobs:
           - In the final message, include a compact loop ledger: open Codex
             feedback, open Cursor feedback, active autofix state, files changed,
             validations run, and residual risk.
+          - Leave a visible "Cross-agent receipt" in the repair PR comment/final
+            message whenever Cursor/Bugbot reviewed the PR, Cursor pushed a fix,
+            Codex reacted to Cursor feedback, or another agent is still running.
+            Keep it short: saw, reaction, status, next owner.
+          - The receipt must name the review/comment/thread ids and commit SHAs
+            you reacted to when available. Example: "Saw Cursor Bugbot review
+            123 and Cursor fix abc123; Codex verified the finding with actionlint;
+            status: no Cursor findings remain."
 
           Repair loop state:
           PROMPT

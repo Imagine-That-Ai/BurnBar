@@ -175,14 +175,18 @@ def build_source_provenance_manifest(*, repo_root: Path = ROOT) -> dict[str, Any
     }
 
 
-def release_preflight_blockers(manifest: dict[str, Any]) -> list[str]:
+def source_integrity_blockers(manifest: dict[str, Any]) -> list[str]:
     blockers: list[str] = []
     git = manifest.get("git", {})
     if git.get("dirty") is True:
         dirty_paths = git.get("dirtyPaths", [])
         count = len(dirty_paths) if isinstance(dirty_paths, list) else "unknown"
         blockers.append(f"git working tree must be clean for release provenance ({count} dirty path(s))")
+    return blockers
 
+
+def runtime_readiness_blockers(manifest: dict[str, Any]) -> list[str]:
+    blockers: list[str] = []
     readiness = manifest.get("runtimeReadiness", {})
     if readiness.get("status") != "ready":
         blockers.append(f"runtimeReadiness.status must be 'ready', found {readiness.get('status')!r}")
@@ -190,6 +194,10 @@ def release_preflight_blockers(manifest: dict[str, Any]) -> list[str]:
     if incomplete:
         blockers.append("runtimeReadiness has incomplete gate(s): " + ", ".join(str(gate) for gate in incomplete))
     return blockers
+
+
+def release_preflight_blockers(manifest: dict[str, Any]) -> list[str]:
+    return source_integrity_blockers(manifest) + runtime_readiness_blockers(manifest)
 
 
 def write_manifest(output: Path, *, repo_root: Path = ROOT) -> None:

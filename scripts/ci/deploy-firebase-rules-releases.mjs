@@ -116,9 +116,10 @@ async function patchExistingRelease(token, releaseName, update) {
     try {
       return await firebaseRulesJson(releaseName, token, {
         method: "PATCH",
+        // Match firebase-tools' Rules API PATCH shape. The live API rejects an
+        // updateMask here even though older REST docs still describe one.
         body: JSON.stringify({
           release: update,
-          updateMask: "ruleset_name",
         }),
       });
     } catch (error) {

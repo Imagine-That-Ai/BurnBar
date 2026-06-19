@@ -47,6 +47,13 @@ struct ChatMessageView: View {
     var assistantModelKey: String?
     /// Display mode: rich agent bubbles or raw CLI output.
     var viewMode: ChatViewMode = .agent
+    /// F-3: memory citations to surface below this assistant turn (empty by
+    /// default so existing call sites are unaffected). The chat view passes the
+    /// controller's `lastRecalledMemorySnippets` citations for the latest turn.
+    var memoryCitations: [MemoryCitation] = []
+    /// F-3: jump callback for a same-device citation. When nil, jumpable chips
+    /// render disabled (never a dead link).
+    var onJumpToLocal: ((String) -> Void)?
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -217,6 +224,13 @@ struct ChatMessageView: View {
                         )
                     }
                 }
+            }
+
+            // F-3: surface memory citations below the assistant turn. Never a
+            // dead link — the resolver degrades to cross-device / unavailable.
+            if !memoryCitations.isEmpty {
+                MemoryCitationChipView(citations: memoryCitations, onJumpToLocal: onJumpToLocal)
+                    .padding(.top, 2)
             }
         }
     }

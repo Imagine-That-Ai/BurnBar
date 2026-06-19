@@ -6,13 +6,14 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 prepare_libsignal_ffi() {
   local libsignal_dir="${repo_root}/Vendor/libsignal"
-  local xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
+  local macos_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework"
+  local legacy_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
   local build_script="${libsignal_dir}/swift/build_ffi.sh"
   local cargo_cmd=()
   local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
 
-  if [[ -d "${xcframework}" ]]; then
-    echo "Using prebuilt OpenBurnBarSignalFfi.xcframework."
+  if [[ -d "${macos_xcframework}" || -d "${legacy_xcframework}" ]]; then
+    echo "Using prebuilt Signal FFI XCFramework."
     return
   fi
 
@@ -65,7 +66,7 @@ fi
 
 prepare_libsignal_ffi
 libsignal_linker_flags=()
-if [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
+if [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework" && ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
   libsignal_linker_flags=(-Xlinker "-L${repo_root}/Vendor/libsignal/target/debug")
 fi
 

@@ -30,6 +30,65 @@ require_absent() {
   fi
 }
 
+find_sqlcipher_release_test_bundle() {
+  local scratch_path="$1"
+  local bundle_name
+  local bundle_path
+
+  for bundle_name in SQLCipherPackageTests.xctest SQLCipherTests.xctest; do
+    bundle_path="$(
+      find "$scratch_path" \
+        -type d \
+        -name "$bundle_name" \
+        \( -path '*/release/*' -o -path '*/Release/*' \) \
+        -print \
+        -quit 2>/dev/null || true
+    )"
+    if [[ -n "$bundle_path" ]]; then
+      printf '%s\n' "$bundle_path"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+run_self_test() {
+  local scratch
+  local expected
+  local actual
+
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "${scratch:-}"' EXIT
+
+  expected="${scratch}/arm64-apple-macosx/release/SQLCipherPackageTests.xctest"
+  mkdir -p "$expected"
+  actual="$(find_sqlcipher_release_test_bundle "$scratch")"
+  [[ "$actual" == "$expected" ]] || fail "modern SwiftPM bundle discovery returned ${actual:-<empty>}"
+
+  rm -rf "$scratch"
+  scratch="$(mktemp -d)"
+  expected="${scratch}/out/Products/Release/SQLCipherTests.xctest"
+  mkdir -p "$expected"
+  actual="$(find_sqlcipher_release_test_bundle "$scratch")"
+  [[ "$actual" == "$expected" ]] || fail "legacy SwiftPM bundle discovery returned ${actual:-<empty>}"
+
+  rm -rf "$scratch"
+  scratch="$(mktemp -d)"
+  mkdir -p "${scratch}/arm64-apple-macosx/debug/SQLCipherPackageTests.xctest"
+  if actual="$(find_sqlcipher_release_test_bundle "$scratch")"; then
+    fail "debug SwiftPM bundle was incorrectly accepted: $actual"
+  fi
+  rm -rf "$scratch"
+
+  echo "PASS: SQLCipher test bundle discovery self-test passed."
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  run_self_test
+  exit 0
+fi
+
 require_pattern 'SQLCipher:' project.yml "project.yml must declare the SQLCipher package"
 require_pattern 'https://github\.com/sqlcipher/SQLCipher\.swift\.git' project.yml "project.yml must use the official SQLCipher Swift package"
 require_pattern 'exactVersion: 4\.16\.0' project.yml "project.yml must pin SQLCipher exactly"
@@ -146,8 +205,9 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
     --configuration release \
     --scratch-path "$sqlcipher_scratch" \
     --build-tests
-  sqlcipher_test_bundle="${sqlcipher_scratch}/out/Products/Release/SQLCipherTests.xctest"
-  if [[ ! -d "$sqlcipher_test_bundle" ]]; then
+  if ! sqlcipher_test_bundle="$(find_sqlcipher_release_test_bundle "$sqlcipher_scratch")"; then
+    echo "SQLCipher Release test bundles found under scratch path:" >&2
+    find "$sqlcipher_scratch" -type d -name '*.xctest' -print >&2 || true
     fail "SQLCipher Release test bundle was not produced"
   fi
   mkdir -p "${sqlcipher_test_bundle}/Contents/Frameworks"

@@ -1088,7 +1088,7 @@ struct RoutingClientWiring {
         let url = configURL(for: .codex)
         let existing = readText(at: url) ?? ""
         var stripped = stripSentinelBlock(in: existing)
-        stripped = stripOpenBurnBarLegacyCodexProfile(in: stripped)
+        stripped = stripOpenBurnBarLegacyCodexSections(in: stripped)
         if migrateExistingVibeProxy {
             stripped = stripVibeProxyTOMLSections(
                 in: stripped,
@@ -1343,8 +1343,7 @@ struct RoutingClientWiring {
         [
             codexNativeFallbackCatalogRow(slug: "gpt-5.5", displayName: "GPT-5.5", priority: 100),
             codexNativeFallbackCatalogRow(slug: "gpt-5.5-codex", displayName: "GPT-5.5 Codex", priority: 90),
-            codexNativeFallbackCatalogRow(slug: "gpt-5.4", displayName: "GPT-5.4", priority: 80),
-            codexNativeFallbackCatalogRow(slug: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", priority: 70)
+            codexNativeFallbackCatalogRow(slug: "gpt-5.4", displayName: "GPT-5.4", priority: 80)
         ]
     }
 
@@ -1723,7 +1722,7 @@ struct RoutingClientWiring {
         return stripped
     }
 
-    private func stripOpenBurnBarLegacyCodexProfile(in source: String) -> String {
+    private func stripOpenBurnBarLegacyCodexSections(in source: String) -> String {
         var output: [String] = []
         var block: [String] = []
 
@@ -1734,7 +1733,9 @@ struct RoutingClientWiring {
             let isLegacyOpenBurnBarProfile = header == "[profiles.openburnbar]"
                 && text.contains("model_provider")
                 && text.contains("openburnbar")
-            if !isLegacyOpenBurnBarProfile {
+            let isLegacyOpenBurnBarProvider = header == "[model_providers.openburnbar]"
+                && text.contains("base_url")
+            if !isLegacyOpenBurnBarProfile && !isLegacyOpenBurnBarProvider {
                 output.append(contentsOf: block)
             }
             block.removeAll(keepingCapacity: true)

@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 import Observation
 @preconcurrency import FirebaseAuth
-import FirebaseFunctions
+@preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
 // MARK: - Data Control Center view model
@@ -325,10 +325,11 @@ final class DataControlCenterViewModel {
         actionError = nil
         defer { isMutating = false }
         do {
-            let result = try await functions().httpsCallable("setupRecovery").call([
+            let body = [
                 "method": method.rawValue,
-                "payload": payload
-            ])
+                "payload": payload as NSDictionary
+            ] as NSDictionary
+            let result = try await functions().httpsCallable("setupRecovery").call(body)
             guard let dict = result.data as? [String: Any],
                   let recoveryId = dict["recoveryId"] as? String else {
                 throw DataControlError.malformedResponse
@@ -374,7 +375,7 @@ final class DataControlCenterViewModel {
         do {
             var payload: [String: Any] = ["recoveryId": recoveryId]
             if let verificationHash { payload["verificationHash"] = verificationHash }
-            _ = try await functions().httpsCallable("confirmRecovery").call(payload)
+            _ = try await functions().httpsCallable("confirmRecovery").call(payload as NSDictionary)
             await refreshRecovery()
             return true
         } catch {
@@ -454,7 +455,7 @@ final class DataControlCenterViewModel {
         do {
             var payload: [String: Any] = ["limit": 100]
             if reset == false, let cursor = auditNextCursor { payload["cursor"] = cursor }
-            let result = try await functions().httpsCallable("getAuditLog").call(payload)
+            let result = try await functions().httpsCallable("getAuditLog").call(payload as NSDictionary)
             guard let dict = result.data as? [String: Any],
                   let events = dict["events"] as? [[String: Any]] else { return }
             let parsed = events.compactMap { Self.parseAuditEvent($0) }
