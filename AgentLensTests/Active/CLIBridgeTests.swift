@@ -479,6 +479,41 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(allowlist.allows("  hermes  "))
     }
 
+    func test_runStreamRejectsPaddedAllowedModelBeforeRequest() async {
+        CLIBridgeNetworkTrapURLProtocol.reset()
+        _ = URLProtocol.registerClass(CLIBridgeNetworkTrapURLProtocol.self)
+        defer { URLProtocol.unregisterClass(CLIBridgeNetworkTrapURLProtocol.self) }
+
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let client = OpenAICompatibleChatGatewayClient(runtime: runtime)
+        let streamID = await runtime.nextHTTPStreamID()
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            Task {
+                await client.runStream(
+                    baseURL: URL(string: "https://openburnbar.invalid")!,
+                    model: "  hermes  ",
+                    systemPrompt: "You are OpenBurnBar.",
+                    history: [],
+                    bearerToken: nil,
+                    unavailableError: .hermesUnavailable,
+                    missingModelError: .noSelectedModel("OpenAI-compatible gateway"),
+                    httpStreamID: streamID,
+                    allowedModels: .init(modelIDs: ["hermes"]),
+                    continuation: continuation
+                )
+            }
+        }
+
+        let error = await Self.thrownError(from: stream)
+        guard case .disallowedModel(let backend, let model) = error as? CLIBridgeError else {
+            XCTFail("Expected disallowed model error, got \(String(describing: error))")
+            return
+        }
+        XCTAssertEqual(backend, "OpenAI-compatible gateway")
+        XCTAssertEqual(model, "  hermes  ")
+        XCTAssertEqual(CLIBridgeNetworkTrapURLProtocol.requestCount, 0)
+    }
+
     func test_agentToolBroker_deniesWorkspaceReadThroughSymlinkEscape() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
@@ -1885,6 +1920,15 @@ final class CLIBridgeTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    private static func thrownError(from stream: AsyncThrowingStream<CLIChatStreamEvent, Error>) async -> Error? {
+        do {
+            for try await _ in stream {}
+            return nil
+        } catch {
+            return error
+        }
+    }
+
     private func jsonArguments(_ object: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
@@ -1899,6 +1943,33 @@ private func realpathString(_ url: URL) -> String {
     }
     #endif
     return url.resolvingSymlinksInPath().path
+}
+
+private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let requestCountBox = Locked(0)
+
+    static var requestCount: Int {
+        requestCountBox.read()
+    }
+
+    static func reset() {
+        requestCountBox.write(0)
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.requestCountBox.withLock { $0 += 1 }
+        client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+    }
+
+    override func stopLoading() {}
 }
 
 /// Thread-safe recorder for the privileged-action approver in A1 tests.

@@ -68,7 +68,7 @@ These are gates. A PR that violates one does not merge. Each maps to a test in �
 
 ## 3. The seam — `MemoryServing` (backend implements, frontend depends on)
 
-Define in `AgentLens/Services/Memory/MemoryServing.swift`. This is the **only** surface the frontend touches.
+Define in `OpenBurnBarCore/Sources/OpenBurnBarCore/Memory/MemoryServing.swift`. This is the **only** surface the frontend touches.
 
 ```swift
 public protocol MemoryServing: Sendable {
@@ -222,7 +222,7 @@ Build `CanonicalSourceEvent`: `{schema_version, thread_logical_id (content‑der
 `MemorySyncService` reusing `ChatThreadSyncService` sealed‑payload + `CloudVaultCrypto` AAD:
 - **Vectors local‑only by default.** If cloud recall is enabled, replicate via the **shipped Pensieve cloak path** (`embed.ts` Householder cloak → seal → `commitKnowledgeBatch`), carrying `embeddingModelVersion`; never a raw vector mirror.
 - **G4:** only `review_status='approved'` replicates; `commitKnowledgeBatch`/`knowledgeMemory.ts:395` already requires explicit approval — honor it, don't enqueue un‑committable work.
-- **G5 forget:** `delete(id)` = local hard‑delete (record + provenance + embedding_ref + sealed body section) **and**, if replicated, device‑authed cloud delete‑by‑HMAC of the sealed row + cloaked vector, with receipt + tombstone surfaced in doctor. **Fact‑level** (per‑citation), not `deleteKnowledgeSource`‑coarse. Lands + tested before replication ships.
+- **G5 forget:** `delete(id)` = local hard‑delete (record + provenance + embedding_ref + sealed body section) **and**, if replicated, device‑authed cloud delete‑by‑HMAC of the sealed row + cloaked vector, with receipt + tombstone surfaced in doctor. **Fact‑level** (per‑citation), not `deleteKnowledgeSource`‑coarse. `deleteAll(scope:)` enumerates active and superseded rows, and a signed‑in app reset also clears the v1 app‑only local scope for that app so same-device memories are not stranded. Lands + tested before replication ships.
 - **G7 secret/PII gate:** `MemorySecretScanner` (reuse/share the daemon secret corpus + add injection‑sentinel patterns) runs pre‑persistence; register new fields in `packages/data-domains/registry.json` at `end_to_end` + extend `scan-chat-cloud-plaintext.mjs` + `firestore.rules` allowlist.
 
 ---

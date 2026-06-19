@@ -29,6 +29,7 @@ final class MediaSessionCoordinator: ObservableObject {
         VideoEncoder.Configuration,
         @escaping VideoEncoder.EncodedHandler
     ) -> any VideoEncoding
+    typealias RuntimeHealthProvider = @MainActor @Sendable () -> MercuryRuntimeHealthSnapshot
 
     enum Phase: Equatable, Sendable {
         case idle
@@ -50,6 +51,7 @@ final class MediaSessionCoordinator: ObservableObject {
     private let screenCaptureFactory: ScreenCaptureSessionFactory
     private var screenCapture: (any ScreenCaptureSession)?
     private let videoEncoderFactory: VideoEncoderFactory
+    private let runtimeHealthProvider: RuntimeHealthProvider
     private var videoEncoder: (any VideoEncoding)?
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
@@ -67,6 +69,9 @@ final class MediaSessionCoordinator: ObservableObject {
         capabilityGate: any MediaCapabilityGate,
         defaultBitrateSteps: BitrateController.Steps = .screenShare,
         admissionRecheckIntervalNanoseconds: UInt64 = 5_000_000_000,
+        runtimeHealthProvider: @escaping RuntimeHealthProvider = {
+            MercuryRuntimeHealthProbe.snapshot()
+        },
         screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
             ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
         },
@@ -76,6 +81,7 @@ final class MediaSessionCoordinator: ObservableObject {
     ) {
         self.capabilityGate = capabilityGate
         self.admissionRecheckIntervalNanoseconds = admissionRecheckIntervalNanoseconds
+        self.runtimeHealthProvider = runtimeHealthProvider
         self.screenCaptureFactory = screenCaptureFactory
         self.videoEncoderFactory = videoEncoderFactory
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
@@ -124,7 +130,7 @@ final class MediaSessionCoordinator: ObservableObject {
                     local: localStreamingCapabilities,
                     remote: remoteStreamingCapabilities,
                     policy: codecPolicy,
-                    runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+                    runtimeHealth: runtimeHealthProvider()
                 )
                 guard route.status == .routed else {
                     phase = .ended(reason: .error)
@@ -145,7 +151,7 @@ final class MediaSessionCoordinator: ObservableObject {
                     timestampMillis: UInt64(Date().timeIntervalSince1970 * 1000),
                     codec: .hevc,
                     wireVersion: .v1,
-                    runtimeHealth: MercuryRuntimeHealthProbe.snapshot()
+                    runtimeHealth: runtimeHealthProvider()
                 )
             }
             sessionMetadata = MediaSessionMetadata(
@@ -291,6 +297,33 @@ final class MediaSessionCoordinator: ObservableObject {
         await recheckActiveAdmission()
     }
 
+    func seedActiveScreenShareForTesting(
+        peerDeviceID: String,
+        sink: any MediaStreamSink,
+        screenCapture: any ScreenCaptureSession,
+        videoEncoder: any VideoEncoding
+    ) {
+        admissionMonitorTask?.cancel()
+        admissionMonitorTask = nil
+        activeStreamClass = .screenVideo
+        activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration()
+        streamSinks = [peerDeviceID: sink]
+        self.screenCapture = screenCapture
+        self.videoEncoder = videoEncoder
+        sessionMetadata = MediaSessionMetadata(
+            sessionID: UUID().uuidString,
+            feature: .screenShare,
+            streamClass: .screenVideo,
+            peerDeviceID: peerDeviceID
+        )
+        activeAdmissionRequest = ActiveAdmissionRequest(
+            feature: .screenShare,
+            sessionDurationLimitSeconds: 60 * 60,
+            sessionByteBudget: nil
+        )
+        phase = .active(feature: .screenShare)
+    }
+
     private func handleEncodedFrame(_ encodedFrame: VideoEncoder.EncodedFrame) async {
         var outbound = encodedFrame.frame
         if activeStreamClass == .controlSurfaceFrame {
@@ -392,7 +425,7 @@ final class MediaSessionCoordinator: ObservableObject {
         stats.pacerQueueDepth = shadowDecision?.pacerQueueDepth ?? stats.pacerQueueDepth
         stats.presentTimeErrorMillis = shadowDecision?.presentTimeErrorMillis ?? stats.presentTimeErrorMillis
         stats.freezeCount = freezeCount
-        stats.runtimeHealth = MercuryRuntimeHealthProbe.snapshot()
+        stats.runtimeHealth = runtimeHealthProvider()
         streamingStats = stats
     }
 

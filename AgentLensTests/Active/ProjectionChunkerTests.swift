@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 import GRDB
 import OpenBurnBarCore
@@ -693,16 +694,16 @@ final class ProjectionChunkerTests: XCTestCase {
         }
     }
 
-    // MARK: - Large-Document Correctness (formerly a measure{} perf test)
+    // MARK: - Large-Document Correctness
 
-    /// Chunking a large (~16k-char) document must terminate with a deterministic,
-    /// bounded, well-formed chunk set. This replaces an XCTest `measure {}` wall-clock
-    /// assertion that flaked/crashed under concurrent bundle execution (the 10x measure
-    /// loop overran the runner's execution-time allowance). Correctness + bounded-work
-    /// assertions encode the original intent ("big doc, fast + correct") without a clock.
     func test_chunker_largeDocument_producesBoundedDeterministicChunks() {
-        let text = String(repeating: "Word word word. ", count: 1000) // 16,000 chars
-        let chunker = makeChunker(maxChunkCharacters: 200, minChunkCharacters: 100, overlapCharacters: 30)
+        let text = String(repeating: "Word word word. ", count: 1000)
+        let chunker = makeChunker(
+            maxChunkCharacters: 200,
+            minChunkCharacters: 100,
+            overlapCharacters: 30,
+            maxChunksPerDocument: 128
+        )
         let fixedDate = Date(timeIntervalSince1970: 1_742_600_000)
         let make: () -> [SearchChunkRecord] = {
             chunker.makeChunks(
@@ -716,14 +717,20 @@ final class ProjectionChunkerTests: XCTestCase {
         }
         let chunks = make()
 
-        // Terminates with a non-empty, bounded chunk set (no pathological blowup).
-        XCTAssertFalse(chunks.isEmpty, "large document must produce chunks")
-        XCTAssertLessThanOrEqual(chunks.count, text.count / 100, "chunk count must stay bounded relative to document size")
-        // Deterministic: identical input yields an identical chunk set (SearchChunkRecord is Equatable).
+        XCTAssertFalse(chunks.isEmpty)
+        XCTAssertLessThanOrEqual(chunks.count, 128)
+        XCTAssertEqual(chunks.first?.startOffset, 0)
+        XCTAssertEqual(chunks.last?.endOffset, (text as NSString).length)
+        XCTAssertEqual(chunks.map(\.ordinal), Array(chunks.indices))
         XCTAssertEqual(chunks, make(), "chunking must be deterministic")
-        // Well-formed: no empty chunks.
+
+        var previousStart = -1
         for chunk in chunks {
-            XCTAssertFalse(chunk.text.isEmpty, "chunks must be non-empty")
+            XCTAssertFalse(chunk.text.isEmpty)
+            XCTAssertLessThanOrEqual(chunk.text.count, chunker.maxChunkCharacters)
+            XCTAssertGreaterThan(chunk.startOffset, previousStart)
+            XCTAssertGreaterThan(chunk.endOffset, chunk.startOffset)
+            previousStart = chunk.startOffset
         }
     }
 

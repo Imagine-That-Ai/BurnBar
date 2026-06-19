@@ -1257,6 +1257,119 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(audit.contains(body))
     }
 
+    func test_memoryDeleteAllSignedInScopeDeletesAppOnlyAndSupersededRows() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let now = Date(timeIntervalSince1970: 1_800_000_395)
+        let appOnlyScope = MemoryScope(appID: "openburnbar")
+        let signedInScope = MemoryScope(userID: "signed-in-user", appID: "openburnbar")
+
+        for (index, id) in ["mem-reset-app-low", "mem-reset-app-high"].enumerated() {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: "Same-device memory reset must delete duplicate lineage.",
+                    kind: .preference,
+                    scope: appOnlyScope,
+                    confidence: index == 0 ? 0.62 : 0.91,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-\(id)",
+                            threadLogicalID: "thread-\(id)",
+                            messageID: "message-\(id)",
+                            role: "assistant",
+                            authoredAt: now.addingTimeInterval(TimeInterval(index)),
+                            contentHash: "content-\(id)",
+                            crossDeviceHMAC: "hmac-\(id)"
+                        )
+                    ],
+                    reviewStatus: .approved
+                ),
+                id: id,
+                now: now.addingTimeInterval(TimeInterval(index)),
+                enabled: true
+            )
+        }
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Signed-in reset must delete exact user scoped memory.",
+                kind: .fact,
+                scope: signedInScope,
+                confidence: 0.83,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-reset-user",
+                        threadLogicalID: "thread-reset-user",
+                        messageID: "message-reset-user",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-reset-user",
+                        crossDeviceHMAC: "hmac-reset-user"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-reset-user",
+            now: now.addingTimeInterval(2),
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Other users in the same app must survive reset.",
+                scope: MemoryScope(userID: "other-user", appID: "openburnbar"),
+                confidence: 0.7,
+                reviewStatus: .approved
+            ),
+            id: "mem-reset-other-user",
+            now: now.addingTimeInterval(3),
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Other app local memories must survive reset.",
+                scope: MemoryScope(appID: "other-app"),
+                confidence: 0.7,
+                reviewStatus: .approved
+            ),
+            id: "mem-reset-other-app",
+            now: now.addingTimeInterval(4),
+            enabled: true
+        )
+
+        let eventID = try await service.deleteAll(scope: signedInScope)
+        let eventStatus = try await service.eventStatus(eventID)
+        XCTAssertEqual(eventStatus, .succeeded)
+
+        let remainingIDs = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                SELECT id
+                FROM agent_memories
+                WHERE source_kind = 'chat'
+                ORDER BY id
+                """
+            )
+        }
+        XCTAssertEqual(remainingIDs, ["mem-reset-other-app", "mem-reset-other-user"])
+
+        let userFactTombstones = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_fact_tombstones
+                WHERE user_id = 'signed-in-user'
+                  AND memory_id = 'mem-reset-user'
+                  AND replicated_at IS NULL
+                """
+            ) ?? 0
+        }
+        XCTAssertEqual(userFactTombstones, 1)
+    }
+
     func test_memorySourceTombstoneSuppressesRecallAndReconcilesActiveFacts() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

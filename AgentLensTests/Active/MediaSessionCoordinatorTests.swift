@@ -6,6 +6,17 @@ import ScreenCaptureKit
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
+private enum MediaSessionCoordinatorTestFixtures {
+    static let runtimeHealth = MercuryRuntimeHealthSnapshot(
+        timestampMillis: 1_742_600_000_000,
+        cpuUsagePercent: nil,
+        batteryLevelPercent: nil,
+        isCharging: nil,
+        isLowPowerModeEnabled: false,
+        thermalState: .nominal
+    )
+}
+
 @MainActor
 final class MediaSessionCoordinatorTests: XCTestCase {
     #if canImport(ScreenCaptureKit)
@@ -80,6 +91,9 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         var encoders: [RecordingVideoEncoder] = []
         let coordinator = MediaSessionCoordinator(
             capabilityGate: AlwaysAllowMediaCapabilityGate(),
+            runtimeHealthProvider: {
+                MediaSessionCoordinatorTestFixtures.runtimeHealth
+            },
             screenCaptureFactory: { _, _ in
                 starts += 1
                 if starts == 1 {
@@ -128,18 +142,22 @@ final class MediaSessionCoordinatorTests: XCTestCase {
     func testActiveScreenShareStopsWhenAdmissionIsRevoked() async throws {
         let gate = MutableMediaCapabilityGate()
         let encoder = RecordingVideoEncoder()
+        let screenCapture = RecordingScreenCaptureSession()
         let coordinator = MediaSessionCoordinator(
             capabilityGate: gate,
             admissionRecheckIntervalNanoseconds: UInt64.max,
+            runtimeHealthProvider: {
+                MediaSessionCoordinatorTestFixtures.runtimeHealth
+            },
             screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() },
-            // Keep this focused on admission revocation; virtualized CI Macs
-            // can reject the real VideoToolbox encoder independently.
             videoEncoderFactory: { _, _ in encoder }
         )
 
-        try await coordinator.startScreenShare(
+        coordinator.seedActiveScreenShareForTesting(
             peerDeviceID: "iphone",
-            sink: RecordingMediaSink()
+            sink: RecordingMediaSink(),
+            screenCapture: screenCapture,
+            videoEncoder: encoder
         )
         XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
 
@@ -147,6 +165,7 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         await coordinator.recheckActiveAdmissionForTesting()
 
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
+        XCTAssertTrue(screenCapture.didStop)
         XCTAssertTrue(encoder.didStop)
     }
 }
