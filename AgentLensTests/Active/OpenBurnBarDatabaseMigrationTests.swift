@@ -604,7 +604,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error as? ControlPlaneStore.ChatMemoryAuthorityError,
-                .secretRejected(labels: ["anthropic_api_key"])
+                .secretRejected(labels: ["anthropic-api-key"])
             )
         }
 
@@ -624,11 +624,11 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(persisted.agentCount, 0)
         XCTAssertEqual(persisted.snapshotCount, 0)
         XCTAssertTrue(persisted.audit.contains("memory.secret_rejected"))
-        XCTAssertTrue(persisted.audit.contains("anthropic_api_key"))
+        XCTAssertTrue(persisted.audit.contains("anthropic-api-key"))
         XCTAssertFalse(persisted.audit.contains(secret))
         let labelsJSON = try XCTUnwrap(persisted.auditRow?["labels_json"] as String?)
         let labels = try JSONDecoder().decode([String].self, from: Data(labelsJSON.utf8))
-        XCTAssertTrue(labels.contains("labels:anthropic_api_key"))
+        XCTAssertTrue(labels.contains("labels:anthropic-api-key"))
         try assertMemoryAuditRowRecomputes(persisted.auditRow)
 
         do {
@@ -644,7 +644,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error as? ControlPlaneStore.ChatMemoryAuthorityError,
-                .secretRejected(labels: ["openai_api_key"])
+                .secretRejected(labels: ["openai-api-key"])
             )
         }
     }

@@ -83,36 +83,15 @@ extension ControlPlaneStore {
         let updatedAt: Date
     }
 
-    enum MemorySecretScanner {
-        private static let patterns = makePatterns()
-
-        static func labels(in text: String) -> [String] {
-            let range = NSRange(text.startIndex..<text.endIndex, in: text)
-            return patterns.compactMap { pattern in
-                pattern.regex.firstMatch(in: text, range: range) == nil ? nil : pattern.label
-            }
-        }
-
-        private static func makePatterns() -> [(label: String, regex: NSRegularExpression)] {
-            do {
-                return [
-                    ("openai_api_key", try NSRegularExpression(pattern: #"sk-(?!ant-)[A-Za-z0-9_-]{20,}"#)),
-                    ("anthropic_api_key", try NSRegularExpression(pattern: #"sk-ant-[A-Za-z0-9_-]{16,}"#)),
-                    ("github_token", try NSRegularExpression(pattern: #"gh[pousr]_[A-Za-z0-9_]{20,}"#)),
-                    ("pem_private_key", try NSRegularExpression(pattern: #"-----BEGIN [A-Z ]*PRIVATE KEY-----"#)),
-                    (
-                        "email",
-                        try NSRegularExpression(
-                            pattern: #"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"#,
-                            options: [.caseInsensitive]
-                        )
-                    ),
-                    ("us_ssn", try NSRegularExpression(pattern: #"\b\d{3}-\d{2}-\d{4}\b"#))
-                ]
-            } catch {
-                preconditionFailure("Invalid memory secret scanner regex: \(error)")
-            }
-        }
+    // Chat-memory secret/PII gating is delegated to the shared, fail-closed
+    // `MemorySecretPIIGate` in OpenBurnBarCore (single source of truth, shared
+    // with the daemon). The chat persistence + audit contract keys off the
+    // stable dashed finding id (e.g. `openai-api-key`), so chat call sites
+    // project `MemoryGateFinding.id` via `memoryGateFindingIDs(in:)`. The legacy
+    // 6-regex `MemorySecretScanner` was removed in PR-C1 to kill the two-scanner
+    // drift; the gate adds entropy + decode-rescan + Luhn/IPv4 validation.
+    static func memoryGateFindingIDs(in text: String) -> [String] {
+        MemorySecretPIIGate.findingIDs(in: text)
     }
 
     func addChatMemoryAuthorityRecord(
@@ -125,7 +104,7 @@ extension ControlPlaneStore {
         let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
 
-        let secretLabels = MemorySecretScanner.labels(in: body)
+        let secretLabels = Self.memoryGateFindingIDs(in: body)
         if secretLabels.isEmpty == false {
             try await appendMemoryAuditEvent(
                 action: "memory.secret_rejected",
@@ -632,7 +611,7 @@ extension ControlPlaneStore {
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let patchedBody {
             guard patchedBody.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
-            let secretLabels = MemorySecretScanner.labels(in: patchedBody)
+            let secretLabels = Self.memoryGateFindingIDs(in: patchedBody)
             if secretLabels.isEmpty == false {
                 try await appendMemoryAuditEvent(
                     action: "memory.secret_rejected",
@@ -1578,11 +1557,16 @@ actor MemoryExtractionWorker {
     }
 
     private static func preflight(_ requests: [MemoryAddRequest]) throws {
+        // PR-C1 must-fix #5: this is a cheap, non-scanning admission early-out only.
+        // The authoritative secret/PII scan is unavoidable at
+        // `addChatMemoryAuthorityRecord` (which every persisted record passes
+        // through). Re-running the full corpus scan here would mean a second
+        // base64/hex decode pass over every candidate on the hot path for no
+        // safety gain, so preflight is reduced to the empty/length guard that the
+        // authority path would otherwise reach only after work.
         for request in requests {
             let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard body.isEmpty == false else { throw ControlPlaneStore.ChatMemoryAuthorityError.emptyBody }
-            let labels = ControlPlaneStore.MemorySecretScanner.labels(in: body)
-            guard labels.isEmpty else { throw ControlPlaneStore.ChatMemoryAuthorityError.secretRejected(labels: labels) }
         }
     }
 }

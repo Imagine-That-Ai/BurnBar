@@ -363,6 +363,22 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(rejection?.labels.joined(separator: " ").contains("sk-") ?? true)
     }
 
+    func testSharedSecretGateIsAvailableInDaemonTarget() {
+        // PR-C1 must-fix #2: the secret/PII corpus now lives in OpenBurnBarCore and
+        // is loaded via Bundle.module (flat filename) with a filesystem fallback.
+        // The executable's Bundle.module resource synthesis is a known risk, so we
+        // assert the gate is live (not fail-closed) from inside the daemon test
+        // target. A fail-closed gate would emit the synthetic unavailable finding
+        // for every input and silently brick the daemon's secret scanning.
+        XCTAssertTrue(
+            MemorySecretPIIGate.isAvailable,
+            "Shared secret/PII gate is fail-closed in the daemon target — corpus did not load."
+        )
+        let labels = MemorySecretPIIGate.labels(in: "token sk-abcdefghijklmnopqrstuvwxyz123456")
+        XCTAssertEqual(labels, ["OpenAI API key detected"])
+        XCTAssertNotEqual(labels, [MemorySecretPIIGate.corpusUnavailableLabel])
+    }
+
     func testProjectPartitionPreventsCodeAndMemoryBleedAcrossRepos() throws {
         let fixture = try makeFixture()
         let repoA = fixture.root.appendingPathComponent("RepoA", isDirectory: true)
