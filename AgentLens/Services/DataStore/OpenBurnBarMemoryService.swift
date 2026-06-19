@@ -2,11 +2,18 @@ import OpenBurnBarCore
 
 actor OpenBurnBarMemoryService: MemoryServing {
     private let store: ControlPlaneStore
+    private let authorityWritesEnabled: @Sendable () -> Bool
     private var events: [MemoryEventID: MemoryEventStatus] = [:]
     private var sequence = 0
 
-    init(store: ControlPlaneStore) {
+    init(
+        store: ControlPlaneStore,
+        authorityWritesEnabled: @escaping @Sendable () -> Bool = {
+            ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+        }
+    ) {
         self.store = store
+        self.authorityWritesEnabled = authorityWritesEnabled
     }
 
     private func nextEvent(_ status: MemoryEventStatus = .succeeded) -> MemoryEventID {
@@ -17,7 +24,7 @@ actor OpenBurnBarMemoryService: MemoryServing {
     }
 
     func add(_ request: MemoryAddRequest) async throws -> MemoryEventID {
-        _ = try await store.addChatMemoryAuthorityRecord(request, enabled: true)
+        _ = try await store.addChatMemoryAuthorityRecord(request, enabled: authorityWritesEnabled())
         return nextEvent(.succeeded)
     }
 
