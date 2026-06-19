@@ -535,6 +535,57 @@ final class ChatSessionController {
         }
     }
 
+    /// Resolve the model family used to pick the prompt token arbiter's context
+    /// window + ceiling (G9). Ollama and genuinely unknown local backends get the
+    /// conservative floor; all other backends route to cloud models and receive the
+    /// large-context ceiling. Static + param-driven so it is unit-testable.
+    nonisolated static func memoryArbiterModelFamily(
+        backend: ChatBackendID,
+        resolvedModel: String,
+        hermesFamily: HermesModelID?
+    ) -> HermesModelID {
+        if let family = hermesFamilyHint(for: resolvedModel) {
+            return family
+        }
+        if backend == .hermes, let family = hermesFamily {
+            return family
+        }
+        // All other shipped backends (and Hermes without an explicit family) route to
+        // cloud models; use a generic cloud family so they receive the large-context
+        // ceiling rather than the ollama floor.
+        return .codex
+    }
+
+    nonisolated static func promptPayloadTokenReserve(
+        history: [ChatMessageRecord],
+        userMessage: String
+    ) -> Int {
+        if history.isEmpty {
+            return PromptTokenArbiter.estimateProseTokens(userMessage)
+        }
+        let contentChars = history.reduce(0) { partial, message in
+            partial + message.content.count
+        }
+        let attachmentTokens = history.reduce(0) { partial, message in
+            partial + message.attachments.reduce(0) { $0 + $1.estimatedTokenCost }
+        }
+        return TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
+    }
+
+    nonisolated static func promptSystemWrapperTokenReserve(
+        backend: ChatBackendID,
+        piAgentInstanceID: String
+    ) -> Int {
+        switch backend {
+        case .hermes:
+            return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
+        case .piAgent:
+            return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+            return 0
+        }
+    }
+
     func liveAdvertisedModels(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
         switch backend {
         case .hermes:
@@ -606,7 +657,7 @@ final class ChatSessionController {
         return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    static func hermesFamilyHint(for model: String) -> HermesModelID? {
+    nonisolated static func hermesFamilyHint(for model: String) -> HermesModelID? {
         let normalized = model
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -1124,10 +1175,15 @@ final class ChatSessionController {
     /// Appends a `Pi agent context` block to the system prompt so responses
     /// can be attributed to the active Pi instance.
     static func piSystemPrompt(base: String, instanceID: String) -> String {
-        let trimmedInstance = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedInstance.isEmpty else { return base }
-        return base + """
+        let wrapper = piSystemPromptWrapper(instanceID: instanceID)
+        guard !wrapper.isEmpty else { return base }
+        return base + "\n\n" + wrapper
+    }
 
+    nonisolated static func piSystemPromptWrapper(instanceID: String) -> String {
+        let trimmedInstance = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInstance.isEmpty else { return "" }
+        return """
         ## Pi agent context
         You are responding through the Pi agent instance `\(trimmedInstance)`. When the user asks which instance is answering, name this instance explicitly and remind them that OpenBurnBar can switch instances from Settings → Chat Gateway → Pi Agent Instances.
         """
