@@ -606,13 +606,14 @@ public struct BurnBarProviderRouter: Sendable {
                 return
             }
             let lowerBody = body.lowercased()
-            if statusCode == 401 || statusCode == 403 {
+            if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                status = .coolingDown; cooldownUntil = Calendar.current.date(byAdding: .minute, value: 1, to: now)
+            } else if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
                 cooldownUntil = nil
             } else if statusCode == 402
                 || lowerBody.contains("quota")
-                || lowerBody.contains("insufficient")
-                || lowerBody.contains("exhaust") {
+                || lowerBody.contains("insufficient") || lowerBody.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
             } else if statusCode == 429 || lowerBody.contains("rate limit") || lowerBody.contains("rate_limit") {
@@ -630,8 +631,7 @@ public struct BurnBarProviderRouter: Sendable {
             }
             let lowercasedDescription = error.localizedDescription.lowercased()
             if lowercasedDescription.contains("quota")
-                || lowercasedDescription.contains("insufficient")
-                || lowercasedDescription.contains("exhaust") {
+                || lowercasedDescription.contains("insufficient") || lowercasedDescription.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
             } else if lowercasedDescription.contains("rate limit")
