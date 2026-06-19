@@ -56,6 +56,17 @@ enum MemoryExtractionGate {
 /// out of the settings store itself.
 @MainActor
 final class MemorySettingsService {
+    enum ResetError: LocalizedError {
+        case incomplete(MemoryEventStatus)
+
+        var errorDescription: String? {
+            switch self {
+            case .incomplete(let status):
+                "Memory reset did not complete; backend event status is \(status.rawValue)."
+            }
+        }
+    }
+
     /// Routes "Reset memory" through backend `deleteAll(scope:)`. Two-phase
     /// forget (soft-delete then hard-delete) is a backend outbox concern; the
     /// frontend simply requests deletion. Canonical chat data is untouched —
@@ -66,6 +77,33 @@ final class MemorySettingsService {
         scope: MemoryScope
     ) async throws -> MemoryEventID? {
         guard let memoryService else { return nil }
-        return try await memoryService.deleteAll(scope: scope)
+        let eventID = try await memoryService.deleteAll(scope: scope)
+        let terminalStatus = try await awaitTerminalStatus(eventID, memoryService: memoryService)
+        switch terminalStatus {
+        case .succeeded, .merged, .superseded:
+            return eventID
+        case .pending, .running, .failed, .skipped:
+            throw ResetError.incomplete(terminalStatus)
+        }
+    }
+
+    static func resetScope(userID: String?) -> MemoryScope {
+        let normalizedUserID = userID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return MemoryScope(
+            userID: normalizedUserID?.isEmpty == false ? normalizedUserID : nil,
+            appID: "openburnbar"
+        )
+    }
+
+    private func awaitTerminalStatus(
+        _ eventID: MemoryEventID,
+        memoryService: any MemoryServing
+    ) async throws -> MemoryEventStatus {
+        var status = try await memoryService.eventStatus(eventID)
+        for _ in 0..<5 where status == .pending || status == .running {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            status = try await memoryService.eventStatus(eventID)
+        }
+        return status
     }
 }

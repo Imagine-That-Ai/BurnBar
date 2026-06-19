@@ -182,6 +182,10 @@ final class ChatSessionController {
         )
     }
 
+    var memoryServiceForExtraction: (any MemoryServing)? {
+        settingsManager.memoryExtractionEnabled ? memoryService : nil
+    }
+
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 
     /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.

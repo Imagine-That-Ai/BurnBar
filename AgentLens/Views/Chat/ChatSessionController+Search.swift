@@ -459,7 +459,7 @@ extension ChatSessionController {
                     assistant,
                     threadID: activeThreadID,
                     isTerminalAssistantCommit: true,
-                    memoryService: memoryService,
+                    memoryService: memoryServiceForExtraction,
                     extractionContext: makeMemoryExtractionContext()
                 )
             } catch {
@@ -755,7 +755,7 @@ extension ChatSessionController {
                                 final,
                                 threadID: self.activeThreadID,
                                 isTerminalAssistantCommit: true,
-                                memoryService: self.memoryService,
+                                memoryService: self.memoryServiceForExtraction,
                                 extractionContext: self.makeMemoryExtractionContext()
                             )
                             await self.saveUsageIfNeeded(

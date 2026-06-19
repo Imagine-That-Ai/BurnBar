@@ -10,7 +10,8 @@ struct PrivacyIndexingSettingsView: View {
     var sharedFeaturesAvailable: Bool
     /// Wired when a memory backend is available (nil today, until backend PR-5).
     /// When nil, "Reset memory" is disabled — extraction is already a no-op.
-    var memoryService: (any MemoryServing)? = nil
+    var memoryService: (any MemoryServing)?
+    var accountManager: AccountManager = .shared
     @State private var storageBytes: Int64 = 0
     @State private var conversationCount: Int = 0
     @State private var sourceArtifactCount: Int = 0
@@ -439,8 +440,12 @@ struct PrivacyIndexingSettingsView: View {
                 Task { @MainActor in
                     do {
                         let service = MemorySettingsService()
-                        let scope = MemoryScope(appID: "openburnbar")
-                        _ = try await service.resetAllMemories(memoryService: memoryService, scope: scope)
+                        let scope = MemorySettingsService.resetScope(userID: accountManager.userID)
+                        let eventID = try await service.resetAllMemories(memoryService: memoryService, scope: scope)
+                        guard eventID != nil else {
+                            memoryResetStatus = "Memory reset is unavailable until the memory backend is connected."
+                            return
+                        }
                         memoryResetStatus = "Memories reset. Your chats are untouched."
                     } catch {
                         memoryResetStatus = "Failed to reset memories: \(error.localizedDescription)"
