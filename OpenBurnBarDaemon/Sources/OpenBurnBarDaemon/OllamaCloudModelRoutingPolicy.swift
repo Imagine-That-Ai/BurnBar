@@ -1,0 +1,70 @@
+import OpenBurnBarCore
+import Foundation
+
+enum OllamaCloudModelRoutingPolicy {
+    static func cloudAliasBaseModelID(from rawID: String) -> String? {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasSuffix(":cloud") {
+            let candidate = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        if lowercased.hasSuffix("-cloud") {
+            let candidate = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        return nil
+    }
+
+    static func canonicalCloudModelID(_ rawID: String) -> String? {
+        guard let baseID = cloudAliasBaseModelID(from: rawID) else { return nil }
+        let normalizedBaseID = baseID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedBaseID.isEmpty ? nil : "\(normalizedBaseID):cloud"
+    }
+
+    static func mayClaimModelID(_ rawID: String, catalog: BurnBarCatalog) -> Bool {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let unsuffixed = cloudAliasBaseModelID(from: trimmed) ?? trimmed
+        let lastPathComponent = unsuffixed
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .last
+            .map(String.init)
+        let baseCandidates = ([lastPathComponent, Optional(unsuffixed)] as [String?])
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let candidates = baseCandidates.flatMap { candidate -> [String] in
+            var values = [candidate]
+            for level in BurnBarThinkingLevel.allCases {
+                let suffix = "-\(level.slug)"
+                if candidate.lowercased().hasSuffix(suffix) {
+                    let base = String(candidate.dropLast(suffix.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !base.isEmpty {
+                        values.append(base)
+                    }
+                }
+            }
+            return values
+        }
+
+        for candidate in candidates {
+            if candidate.lowercased().contains("claude") {
+                return false
+            }
+            guard let vendor = catalog.vendorForModel(named: candidate) else {
+                continue
+            }
+            if vendor.id.caseInsensitiveCompare("ollama") == .orderedSame {
+                return true
+            }
+            if vendor.id.caseInsensitiveCompare("anthropic") == .orderedSame
+                || vendor.formatFamily == .anthropic {
+                return false
+            }
+        }
+        return true
+    }
+}

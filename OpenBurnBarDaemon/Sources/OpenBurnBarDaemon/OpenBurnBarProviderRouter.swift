@@ -874,13 +874,16 @@ public struct BurnBarProviderRouter: Sendable {
 
         if configuration.provider.id.lowercased() == "ollama",
            isOllamaCloudBaseURL(configuration.settings.baseURL),
-           normalizedOllamaCloudModelID(from: modelName) == nil {
+           OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) == nil {
             return nil
         }
 
         if configuration.provider.id.lowercased() == "ollama",
-           let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
-            guard ollamaCloudMayClaimModelID(directCloudModelID) else {
+           let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) {
+            guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+                directCloudModelID,
+                catalog: configStore.catalogSupport.catalog
+            ) else {
                 return nil
             }
             let exactCloudModel = configuration.preferredModels.first(where: {
@@ -927,8 +930,11 @@ public struct BurnBarProviderRouter: Sendable {
 
         if configuration.provider.id.lowercased() == "ollama",
            matchedModel.id == "ollama-cloud-family",
-           let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
-            guard ollamaCloudMayClaimModelID(directCloudModelID) else {
+           let directCloudModelID = OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) {
+            guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+                directCloudModelID,
+                catalog: configStore.catalogSupport.catalog
+            ) else {
                 return nil
             }
             return BurnBarCatalogModel(
@@ -1115,65 +1121,6 @@ public struct BurnBarProviderRouter: Sendable {
         )
     }
 
-    private func normalizedOllamaCloudModelID(from modelName: String) -> String? {
-        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowercased = trimmed.lowercased()
-        if lowercased.hasSuffix(":cloud") {
-            let candidate = String(trimmed.dropLast(":cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return candidate.isEmpty ? nil : candidate
-        }
-        if lowercased.hasSuffix("-cloud") {
-            let candidate = String(trimmed.dropLast("-cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return candidate.isEmpty ? nil : candidate
-        }
-        return nil
-    }
-
-    private func ollamaCloudMayClaimModelID(_ modelID: String) -> Bool {
-        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        let lastPathComponent = trimmed
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .last
-            .map(String.init)
-        let baseCandidates = ([lastPathComponent, Optional(trimmed)] as [String?])
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let candidates = baseCandidates.flatMap { candidate -> [String] in
-            var values = [candidate]
-            for level in BurnBarThinkingLevel.allCases {
-                let suffix = "-\(level.slug)"
-                if candidate.lowercased().hasSuffix(suffix) {
-                    let base = String(candidate.dropLast(suffix.count))
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !base.isEmpty {
-                        values.append(base)
-                    }
-                }
-            }
-            return values
-        }
-
-        for candidate in candidates {
-            if candidate.lowercased().contains("claude") {
-                return false
-            }
-            guard let vendor = configStore.catalogSupport.catalog.vendorForModel(named: candidate) else {
-                continue
-            }
-            if vendor.id.caseInsensitiveCompare("ollama") == .orderedSame {
-                return true
-            }
-            if vendor.id.caseInsensitiveCompare("anthropic") == .orderedSame
-                || vendor.formatFamily == .anthropic {
-                return false
-            }
-        }
-        return true
-    }
-
     private func resolveRequiredCanonicalModelID(
         explicitCanonicalModelID: String?,
         modelName: String,
@@ -1210,7 +1157,7 @@ public struct BurnBarProviderRouter: Sendable {
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
-        if normalizedOllamaCloudModelID(from: modelName) != nil {
+        if OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: modelName) != nil {
             let ollamaMatches = configurations.filter { configuration in
                 configuration.provider.id.lowercased() == "ollama"
                     && configuration.settings.isEnabled

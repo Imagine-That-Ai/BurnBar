@@ -215,10 +215,15 @@ extension BurnBarHTTPGatewayServer {
            providerID.caseInsensitiveCompare("ollama") != .orderedSame {
             return [:]
         }
-        guard let canonicalCloudModelID = canonicalOllamaCloudModelID(requestedModel.modelID) else {
+        guard let canonicalCloudModelID = OllamaCloudModelRoutingPolicy.canonicalCloudModelID(
+            requestedModel.modelID
+        ) else {
             return [:]
         }
-        guard ollamaCloudMayClaimModelID(canonicalCloudModelID) else {
+        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+            canonicalCloudModelID,
+            catalog: configStore.catalogSupport.catalog
+        ) else {
             return [:]
         }
 
@@ -320,7 +325,10 @@ extension BurnBarHTTPGatewayServer {
         guard !lowercased.hasSuffix(":cloud"), !lowercased.hasSuffix("-cloud") else {
             return nil
         }
-        guard ollamaCloudMayClaimModelID(requested) else {
+        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
+            requested,
+            catalog: configStore.catalogSupport.catalog
+        ) else {
             return nil
         }
 
@@ -529,10 +537,10 @@ extension BurnBarHTTPGatewayServer {
 
         let supportsOllamaCloudAliases = providerID.caseInsensitiveCompare("ollama") == .orderedSame
         let advertisedCloudID = supportsOllamaCloudAliases
-            ? canonicalOllamaCloudModelID(normalizedAdvertisedModelID)
+            ? OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalizedAdvertisedModelID)
             : nil
         let requestedCloudID = supportsOllamaCloudAliases
-            ? canonicalOllamaCloudModelID(normalizedRequestedModelID)
+            ? OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalizedRequestedModelID)
             : nil
         if let advertisedCloudID, let requestedCloudID, advertisedCloudID == requestedCloudID {
             return true
@@ -550,7 +558,7 @@ extension BurnBarHTTPGatewayServer {
                 let normalized = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 guard !normalized.isEmpty else { return [] }
                 if supportsOllamaCloudAliases,
-                   let cloudID = canonicalOllamaCloudModelID(normalized) {
+                   let cloudID = OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalized) {
                     return [normalized, cloudID]
                 }
                 return [normalized]
@@ -562,68 +570,4 @@ extension BurnBarHTTPGatewayServer {
         }
     }
 
-    func canonicalOllamaCloudModelID(_ rawID: String) -> String? {
-        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if trimmed.hasSuffix(":cloud") {
-            let base = String(trimmed.dropLast(":cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return base.isEmpty ? nil : "\(base):cloud"
-        }
-        if trimmed.hasSuffix("-cloud") {
-            let base = String(trimmed.dropLast("-cloud".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return base.isEmpty ? nil : "\(base):cloud"
-        }
-        return nil
-    }
-
-    func ollamaCloudMayClaimModelID(_ rawID: String) -> Bool {
-        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        let unsuffixed: String
-        if let canonicalCloudID = canonicalOllamaCloudModelID(trimmed) {
-            unsuffixed = String(canonicalCloudID.dropLast(":cloud".count))
-        } else {
-            unsuffixed = trimmed
-        }
-
-        let lastPathComponent = unsuffixed
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .last
-            .map(String.init)
-        let baseCandidates = ([lastPathComponent, Optional(unsuffixed)] as [String?])
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let candidates = baseCandidates.flatMap { candidate -> [String] in
-            var values = [candidate]
-            for level in BurnBarThinkingLevel.allCases {
-                let suffix = "-\(level.slug)"
-                if candidate.lowercased().hasSuffix(suffix) {
-                    let base = String(candidate.dropLast(suffix.count))
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !base.isEmpty {
-                        values.append(base)
-                    }
-                }
-            }
-            return values
-        }
-
-        for candidate in candidates {
-            if candidate.lowercased().contains("claude") {
-                return false
-            }
-            guard let vendor = configStore.catalogSupport.catalog.vendorForModel(named: candidate) else {
-                continue
-            }
-            if vendor.id.caseInsensitiveCompare("ollama") == .orderedSame {
-                return true
-            }
-            if vendor.id.caseInsensitiveCompare("anthropic") == .orderedSame
-                || vendor.formatFamily == .anthropic {
-                return false
-            }
-        }
-        return true
-    }
 }
