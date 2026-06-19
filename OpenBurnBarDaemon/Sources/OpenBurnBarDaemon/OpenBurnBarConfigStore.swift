@@ -169,7 +169,14 @@ public actor BurnBarConfigStore {
     public func upsertProvider(_ settings: BurnBarProviderSettings) throws -> BurnBarProviderSettings {
         let defaultSnapshot = try makeDefaultSnapshot()
         var snapshot = try snapshot()
-        let normalizedSettings = try normalize(settings, defaults: defaultSnapshot)
+        // An explicit caller-supplied provider write must reject unknown model
+        // IDs (preserves the public validation contract). The load/bulk paths
+        // self-heal by pruning instead — see `UnsupportedPreferredModelHandling`.
+        let normalizedSettings = try normalize(
+            settings,
+            defaults: defaultSnapshot,
+            unsupportedPreferredModels: .reject
+        )
 
         if let index = snapshot.providers.firstIndex(where: { $0.providerID == settings.providerID }) {
             snapshot.providers[index] = normalizedSettings
@@ -910,9 +917,26 @@ public actor BurnBarConfigStore {
         )
     }
 
+    /// Controls how `normalize` reacts to `preferredModelIDs` that the active
+    /// catalog no longer recognizes.
+    ///
+    /// - `.reject`: throw `unsupportedModel`. Used for the explicit
+    ///   `upsertProvider` write path so a caller supplying a bogus model ID
+    ///   gets a hard error instead of a silent drop.
+    /// - `.prune`: silently drop the unknown IDs (model variants and aliases
+    ///   are already filtered this way). Used for the config *load* path so a
+    ///   catalog that shrinks — e.g. a Codex model removed from `catalog.json`
+    ///   while a stale `provider-config.json` still references it — never throws
+    ///   out of `snapshot()` and bricks `/v1/models` for *every* provider.
+    enum UnsupportedPreferredModelHandling {
+        case reject
+        case prune
+    }
+
     private func normalize(
         _ settings: BurnBarProviderSettings,
-        defaults defaultSnapshot: BurnBarProviderConfigurationSnapshot
+        defaults defaultSnapshot: BurnBarProviderConfigurationSnapshot,
+        unsupportedPreferredModels: UnsupportedPreferredModelHandling = .prune
     ) throws -> BurnBarProviderSettings {
         guard catalogSupport.isSupported(providerID: settings.providerID) else {
             throw BurnBarConfigStoreError.unsupportedProvider(settings.providerID)
@@ -926,15 +950,24 @@ public actor BurnBarConfigStore {
             }
         }
 
-        for modelID in settings.preferredModelIDs {
-            guard catalogSupport.supportsModelID(modelID, providerID: settings.providerID) else {
-                throw BurnBarConfigStoreError.unsupportedModel(providerID: settings.providerID, modelID: modelID)
+        let configuredPreferredModelIDs: [String]
+        switch unsupportedPreferredModels {
+        case .reject:
+            for modelID in settings.preferredModelIDs {
+                guard catalogSupport.supportsModelID(modelID, providerID: settings.providerID) else {
+                    throw BurnBarConfigStoreError.unsupportedModel(providerID: settings.providerID, modelID: modelID)
+                }
+            }
+            configuredPreferredModelIDs = settings.preferredModelIDs
+        case .prune:
+            configuredPreferredModelIDs = settings.preferredModelIDs.filter {
+                catalogSupport.supportsModelID($0, providerID: settings.providerID)
             }
         }
 
         let fallbackModels = defaultSnapshot.providerSettings(id: settings.providerID)?.preferredModelIDs ?? []
         let preferredModelIDs = Self.mergedPreferredModelIDs(
-            configured: settings.preferredModelIDs,
+            configured: configuredPreferredModelIDs,
             defaults: fallbackModels
         )
         let normalizedSlots = settings.credentialSlots.map { slot in
