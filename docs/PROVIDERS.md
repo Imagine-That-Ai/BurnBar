@@ -136,9 +136,7 @@ are off by default:
 |---|---|---|---|
 | Console API key route | On | Add `sk-ant-api…` in Accounts | Legit default; bills the Console plan, not the subscription window. |
 | Interactive handoff (B1) | Manual | `openburnbar-cli claude-handoff …` | Human-driven real `claude` session; companion reconciles the subscription-window token delta. |
-| PTY interactive executor (B2) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_EXPERIMENTAL_INTERACTIVE_CLAUDE=1`) | Experimental, brittle, subscription (`sk-ant-oat…`) routes only. UI toggle persists and restarts the daemon to apply. |
 | Cross-vendor degrade (B3) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1` + optional `…_VENDORS`) | Substitutes an allow-listed OpenAI-compatible vendor on the user's own key when the requested model cannot be served. |
-| Meter-pool diagnostic (B0) | Manual | `openburnbar-cli claude-meter-experiment` | Reports whether an interactive turn drew from the subscription window or the metered credit. |
 
 ### Relay and hosted chat gateway — both sealed end-to-end (honest label)
 

@@ -369,7 +369,7 @@ public final class ClaudeInteractiveHandoffService: Sendable {
 
     static func resolveClaude() throws -> URL {
         do {
-            return try ClaudeInteractiveMeterExperiment.resolveClaudeExecutable()
+            return try Self.resolveClaudeExecutable()
         } catch {
             throw HandoffError.claudeNotFound
         }
@@ -386,4 +386,151 @@ public final class ClaudeInteractiveHandoffService: Sendable {
     Treat the first user message as the canonical task briefing. Work on the user's machine \
     as a normal interactive session; the human is driving and will approve actions.
     """
+}
+
+// MARK: - Claude executable discovery
+
+extension ClaudeInteractiveHandoffService {
+
+    /// Resolves the `claude` CLI the handoff will drive. Searches common install
+    /// locations (Homebrew, `.local/bin`, `.bun/bin`, nvm-managed Node versions)
+    /// plus `$PATH`, returning the first executable match.
+    static func resolveClaudeExecutable() throws -> URL {
+        let candidates = claudeExecutableCandidatePaths()
+        for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
+            return URL(fileURLWithPath: candidate)
+        }
+        throw PTYInteractiveSessionError.executableNotFound("claude (not found on PATH or common install locations)")
+    }
+
+    static func claudeExecutableCandidatePaths(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        var candidates = [
+            homeDirectory.appendingPathComponent(".local/bin/claude").path,
+            homeDirectory.appendingPathComponent(".homebrew/bin/claude").path,
+            homeDirectory.appendingPathComponent(".bun/bin/claude").path,
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            "/usr/bin/claude"
+        ]
+        candidates.append(contentsOf: nvmClaudeCandidatePaths(homeDirectory: homeDirectory, fileManager: fileManager))
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)).appendingPathComponent("claude").path }
+        candidates.append(contentsOf: pathEntries)
+        return Self.dedupe(candidates)
+    }
+
+    private static func nvmClaudeCandidatePaths(homeDirectory: URL, fileManager: FileManager) -> [String] {
+        let nodeVersions = homeDirectory
+            .appendingPathComponent(".nvm", isDirectory: true)
+            .appendingPathComponent("versions", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+        guard let versionNames = try? fileManager.contentsOfDirectory(atPath: nodeVersions.path) else {
+            return []
+        }
+        return versionNames
+            .filter { !$0.hasPrefix(".") }
+            .map { nodeVersions.appendingPathComponent($0, isDirectory: true) }
+            .filter { url in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .map { $0.appendingPathComponent("bin", isDirectory: true).appendingPathComponent("claude").path }
+    }
+
+    private static func dedupe(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { return false }
+            seen.insert(trimmed)
+            return true
+        }
+    }
+}
+
+// MARK: - ClaudeCodeJSONLUsageProbe
+
+/// Lean reader of `~/.claude/projects/*.jsonl` that sums token usage across
+/// recently-modified session files. Used by the handoff (B1) to snapshot and
+/// reconcile a companion session's token delta against the user's own
+/// subscription window. Bounded by an mtime cutoff so it never walks a huge
+/// history.
+struct ClaudeCodeJSONLUsageProbe: Sendable {
+    let projectsDirectory: URL
+    let recencyCutoff: TimeInterval
+
+    init(
+        projectsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects", isDirectory: true),
+        recencyCutoff: TimeInterval = 6 * 60 * 60
+    ) {
+        self.projectsDirectory = projectsDirectory
+        self.recencyCutoff = recencyCutoff
+    }
+
+    struct Snapshot: Sendable {
+        /// Per-session-file token sums (path → tokens).
+        let perFileTokens: [String: Int]
+        var totalTokens: Int { perFileTokens.values.reduce(0, +) }
+    }
+
+    func snapshot() -> Snapshot {
+        let fileManager = FileManager.default
+        guard let projectDirs = try? fileManager.contentsOfDirectory(
+            at: projectsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else {
+            return Snapshot(perFileTokens: [:])
+        }
+        let cutoff = Date().addingTimeInterval(-recencyCutoff)
+        var perFile: [String: Int] = [:]
+        for dir in projectDirs where dir.hasDirectoryPath {
+            guard let files = try? fileManager.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey]
+            ) else { continue }
+            for file in files where file.pathExtension == "jsonl" {
+                let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate ?? .distantPast
+                guard modified >= cutoff else { continue }
+                perFile[file.path] = Self.sumTokens(in: file)
+            }
+        }
+        return Snapshot(perFileTokens: perFile)
+    }
+
+    /// Session file paths whose token sum changed (or appeared) between snapshots.
+    static func changedSessions(before: Snapshot, after: Snapshot) -> [String] {
+        var changed: [String] = []
+        for (path, afterTokens) in after.perFileTokens where before.perFileTokens[path] != afterTokens {
+            changed.append((path as NSString).lastPathComponent)
+        }
+        return changed.sorted()
+    }
+
+    private static func sumTokens(in file: URL) -> Int {
+        guard let content = try? String(contentsOf: file, encoding: .utf8) else { return 0 }
+        var total = 0
+        content.enumerateLines { line, _ in
+            guard let data = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return
+            }
+            guard let message = object["message"] as? [String: Any],
+                  let usage = message["usage"] as? [String: Any] else {
+                return
+            }
+            for key in ["input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"] {
+                if let v = usage[key] as? Int { total += v } else if let v = usage[key] as? Double { total += Int(v) }
+            }
+        }
+        return total
+    }
 }
