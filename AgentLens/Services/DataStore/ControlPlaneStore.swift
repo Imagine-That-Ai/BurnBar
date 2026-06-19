@@ -345,12 +345,15 @@ final class ControlPlaneStore: Sendable {
 
     enum MemoryEmbeddingStoreError: Error, LocalizedError, Equatable {
         case emptyVector
+        case unknownEmbeddingVersion(String)
         case dimensionMismatch(expected: Int, actual: Int)
 
         var errorDescription: String? {
             switch self {
             case .emptyVector:
                 "Memory embedding vector is empty."
+            case .unknownEmbeddingVersion(let versionID):
+                "Memory embedding version is not registered: \(versionID)."
             case .dimensionMismatch(let expected, let actual):
                 "Memory embedding dimension mismatch: expected \(expected), got \(actual)."
             }
@@ -657,9 +660,25 @@ final class ControlPlaneStore: Sendable {
         now: Date = Date()
     ) async throws {
         guard vector.isEmpty == false else { throw MemoryEmbeddingStoreError.emptyVector }
-        let vectorBlob = BurnBarVectorBlobCodec.encode(vector)
-        let norm = Self.vectorNorm(vector)
         try await dbQueue.write { db in
+            let expectedDimension = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT embedding_models.dimensions
+                FROM embedding_versions
+                JOIN embedding_models ON embedding_models.id = embedding_versions.modelID
+                WHERE embedding_versions.id = ?
+                """,
+                arguments: [embeddingVersionID]
+            )
+            guard let expectedDimension else {
+                throw MemoryEmbeddingStoreError.unknownEmbeddingVersion(embeddingVersionID)
+            }
+            guard vector.count == expectedDimension else {
+                throw MemoryEmbeddingStoreError.dimensionMismatch(expected: expectedDimension, actual: vector.count)
+            }
+            let vectorBlob = BurnBarVectorBlobCodec.encode(vector)
+            let norm = Self.vectorNorm(vector)
             try db.execute(
                 sql: """
                 INSERT INTO memory_embedding_refs (
@@ -671,7 +690,7 @@ final class ControlPlaneStore: Sendable {
                     norm = excluded.norm,
                     created_at = excluded.created_at
                 """,
-                arguments: [memoryID, embeddingVersionID, vector.count, vectorBlob, norm, now]
+                arguments: [memoryID, embeddingVersionID, expectedDimension, vectorBlob, norm, now]
             )
         }
     }
