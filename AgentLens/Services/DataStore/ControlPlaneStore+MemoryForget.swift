@@ -226,6 +226,54 @@ extension ControlPlaneStore {
         }
     }
 
+    func chatMemoryAuthorityDeletionIDs(scope: MemoryScope) async throws -> [MemoryID] {
+        try await dbQueue.read { db in
+            var ids: [MemoryID] = []
+            var seen = Set<MemoryID>()
+
+            func appendIDs(matching targetScope: MemoryScope) throws {
+                var predicates = [
+                    "source_kind = ?",
+                    "project_id = ?"
+                ]
+                var arguments: [any DatabaseValueConvertible] = [
+                    MemorySourceKind.chat.rawValue,
+                    Self.memoryStorageProjectID(for: targetScope)
+                ]
+                Self.appendScopePredicates(targetScope, to: &predicates, arguments: &arguments)
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT id
+                    FROM agent_memories
+                    WHERE \(predicates.joined(separator: " AND "))
+                    ORDER BY updated_at DESC, id ASC
+                    """,
+                    arguments: StatementArguments(arguments)
+                )
+                for row in rows {
+                    guard let id: String = row["id"], seen.insert(id).inserted else { continue }
+                    ids.append(id)
+                }
+            }
+
+            try appendIDs(matching: scope)
+
+            // Chat memory v1 was initially same-device scoped by app only. When
+            // a signed-in user resets the app's memories, clear those local rows
+            // too so the reset cannot leave pre-auth memories stranded.
+            if scope.userID != nil,
+               scope.agentID == nil,
+               scope.runID == nil,
+               scope.projectID == nil,
+               let appID = scope.appID {
+                try appendIDs(matching: MemoryScope(appID: appID))
+            }
+
+            return ids
+        }
+    }
+
     static func insertMemorySourceTombstone(
         db: Database,
         id: String,
