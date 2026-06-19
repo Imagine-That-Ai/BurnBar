@@ -207,6 +207,10 @@ is_xcode_false_negative_pass() {
     # exit, then leave a stale "Failing tests:" footer from the dead host even
     # though the final selected-suite pass is clean. That is still an
     # infrastructure false negative, but only when a runner restart is present.
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+        return 1
+    fi
+
     openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
 
     if openburnbar_app_test_has_concrete_failure_after_final_selected_start "$log_path"; then

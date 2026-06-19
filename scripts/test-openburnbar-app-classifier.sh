@@ -220,6 +220,7 @@ assert_false "runner-restart final-run assertion failure is not hidden" is_xcode
 assert_true "runner-restart final-run assertion failure remains terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
+assert_false "test-host timeout relaunch is not accepted as false-negative pass" is_xcode_false_negative_pass "$timeout_restart_log"
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
 assert_false "test-host timeout relaunch with assertion failure is not hidden" is_known_hang "$timeout_restart_with_assertion_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
