@@ -730,13 +730,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         try database.runMigrationsSafely()
         let store = ControlPlaneStore(dbQueue: queue)
         let now = Date(timeIntervalSince1970: 1_800_000_275)
+        let staleIdempotency = ["stale", "idem", "pr3"].joined(separator: "-")
         let intent = ExtractionIntent(
             threadID: "thread-stale-pr3",
             threadLogicalID: "thread-logical-stale-pr3",
             messageID: "message-stale-pr3",
             scope: MemoryScope(userID: "stale-user", appID: "stale-app"),
             promptVersion: "memory-extract-v1",
-            idempotencyKey: "stale-" + "idem-" + "pr3"
+            idempotencyKey: staleIdempotency
         )
 
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
