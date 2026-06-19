@@ -2546,6 +2546,93 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Approved chat semantic memories. The client may write only sealed fact
+    // envelopes and opaque source HMACs; no plaintext bodies, citations, or raw
+    // vectors are valid fields.
+    match /users/{userId}/memory_facts/{memoryDocId} {
+      function validMemoryFactKeys() {
+        return request.resource.data.keys().hasOnly([
+          "uid",
+          "docID",
+          "schemaVersion",
+          "sourceKind",
+          "kind",
+          "reviewStatus",
+          "sealedMemory",
+          "sourceRefHmacs",
+          "citationCount",
+          "validFrom",
+          "updatedAt",
+          "replicatedAt"
+        ]);
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && validMemoryFactKeys()
+        && request.resource.data.uid == userId
+        && request.resource.data.docID == memoryDocId
+        && !("text" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("citations" in request.resource.data)
+        && !("vector" in request.resource.data)
+        && !("cloakedVector" in request.resource.data)
+        && !("embedding" in request.resource.data)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.sourceKind == "chat"
+        && request.resource.data.kind in ["fact", "preference", "event", "profile", "relationship", "other"]
+        && request.resource.data.reviewStatus == "approved"
+        && validCloudSealedBlob(
+          request.resource.data.sealedMemory,
+          cloudVaultAADContext(userId, "memory_facts", memoryDocId, "sealedMemory")
+        )
+        && request.resource.data.sourceRefHmacs is list
+        && request.resource.data.sourceRefHmacs.size() <= 50
+        && request.resource.data.citationCount is int
+        && request.resource.data.citationCount >= 0
+        && request.resource.data.citationCount <= 50
+        && request.resource.data.validFrom is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.replicatedAt is timestamp;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Fact-level forget receipts. Receipts carry only opaque source HMACs and
+    // coarse reasons; source thread/message ids and fact bodies stay device-only.
+    match /users/{userId}/memory_forget_receipts/{receiptId} {
+      function validMemoryForgetReceiptKeys() {
+        return request.resource.data.keys().hasOnly([
+          "uid",
+          "receiptID",
+          "schemaVersion",
+          "sourceRefHmac",
+          "reason",
+          "createdAt",
+          "replicatedAt"
+        ]);
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && validMemoryForgetReceiptKeys()
+        && request.resource.data.uid == userId
+        && request.resource.data.receiptID == receiptId
+        && !("threadLogicalID" in request.resource.data)
+        && !("messageID" in request.resource.data)
+        && !("contentHash" in request.resource.data)
+        && !("text" in request.resource.data)
+        && !("body" in request.resource.data)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.sourceRefHmac is string
+        && request.resource.data.sourceRefHmac.matches("^[a-f0-9]{64}$")
+        && request.resource.data.reason in ["user_delete", "clear_history", "gc_30d", "unknown"]
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.replicatedAt is timestamp;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     // Pensieve sync manifests (no plaintext): chunk/byte counts + sync health,
     // written by the knowledgeMemory callables. Owner-readable for the UI.
     match /users/{userId}/knowledge_sync_manifests/{sourceManifestId} {

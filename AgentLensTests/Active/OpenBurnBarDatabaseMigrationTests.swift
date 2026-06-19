@@ -1323,6 +1323,125 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(audit.contains(body))
     }
 
+    func test_memoryCloudSyncReplicatesOnlyApprovedSealedFacts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 7, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_420)
+        let scope = MemoryScope(userID: "cloud-user", appID: "cloud-app")
+        let approvedBody = "Approved cloud memory body must be sealed."
+        let quarantinedBody = "Quarantined cloud memory body must not upload."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: approvedBody,
+                kind: .preference,
+                scope: scope,
+                confidence: 0.86,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-cloud-approved",
+                        threadLogicalID: "thread-cloud-approved",
+                        messageID: "message-cloud-approved",
+                        role: "user",
+                        authoredAt: now,
+                        contentHash: "content-cloud-approved",
+                        crossDeviceHMAC: "hmac-cloud-approved"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-approved",
+            now: now,
+            enabled: true
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: quarantinedBody, kind: .fact, scope: scope, confidence: 0.99, reviewStatus: .quarantined),
+            id: "mem-cloud-quarantined",
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+
+        let result = try await sync.syncApprovedMemories(uid: "cloud-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertEqual(result.skipped, 1)
+
+        let docs = gateway.documents(under: "users/cloud-user/memory_facts")
+        XCTAssertEqual(docs.count, 1)
+        let data = try XCTUnwrap(docs.values.first)
+        XCTAssertNil(data["text"])
+        XCTAssertNil(data["body"])
+        XCTAssertNil(data["vector"])
+        XCTAssertNil(data["cloakedVector"])
+        XCTAssertEqual(data["reviewStatus"] as? String, MemoryReviewStatus.approved.rawValue)
+        XCTAssertNotNil(data["sealedMemory"] as? [String: Any])
+        XCTAssertEqual((data["sourceRefHmacs"] as? [String])?.count, 1)
+        let outerDocument = String(describing: data)
+        XCTAssertFalse(outerDocument.contains(approvedBody))
+        XCTAssertFalse(outerDocument.contains(quarantinedBody))
+    }
+
+    func test_memoryCloudForgetReceiptDeletesMatchingCloudFact() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(store: store)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 8, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_430)
+        let scope = MemoryScope(userID: "cloud-forget-user", appID: "cloud-forget-app")
+        let body = "Cloud fact must disappear after local forget."
+
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .fact,
+                scope: scope,
+                confidence: 0.82,
+                citations: [
+                    MemoryCitation(
+                        id: "cite-cloud-forget",
+                        threadLogicalID: "thread-cloud-forget",
+                        messageID: "message-cloud-forget",
+                        role: "assistant",
+                        authoredAt: now,
+                        contentHash: "content-cloud-forget",
+                        crossDeviceHMAC: "hmac-cloud-forget"
+                    )
+                ],
+                reviewStatus: .approved
+            ),
+            id: "mem-cloud-forget",
+            now: now,
+            enabled: true
+        )
+
+        let first = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(1))
+        XCTAssertEqual(first.uploaded, 1)
+        XCTAssertEqual(gateway.documents(under: "users/cloud-forget-user/memory_facts").count, 1)
+
+        _ = try await service.delete(id: "mem-cloud-forget")
+        let second = try await sync.syncApprovedMemories(uid: "cloud-forget-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
+        XCTAssertEqual(second.forgetReceipts, 1)
+        XCTAssertEqual(second.cloudFactsDeleted, 1)
+        XCTAssertTrue(gateway.documents(under: "users/cloud-forget-user/memory_facts").isEmpty)
+
+        let receipts = gateway.documents(under: "users/cloud-forget-user/memory_forget_receipts")
+        XCTAssertEqual(receipts.count, 1)
+        let receipt = try XCTUnwrap(receipts.values.first)
+        XCTAssertNotNil(receipt["sourceRefHmac"] as? String)
+        XCTAssertNil(receipt["threadLogicalID"])
+        XCTAssertNil(receipt["messageID"])
+        XCTAssertNil(receipt["contentHash"])
+        XCTAssertFalse(String(describing: receipt).contains(body))
+    }
+
     func test_memoryExtractionWorkerDrainsJobIntoQuarantinedAuthorityRecord() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
