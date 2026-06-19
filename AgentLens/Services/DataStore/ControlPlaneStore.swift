@@ -332,6 +332,7 @@ final class ControlPlaneStore: Sendable {
     enum ChatMemoryAuthorityError: Error, LocalizedError, Equatable {
         case disabled
         case emptyBody
+        case secretRejected(labels: [String])
 
         var errorDescription: String? {
             switch self {
@@ -339,6 +340,8 @@ final class ControlPlaneStore: Sendable {
                 "Chat memory authority writes are disabled."
             case .emptyBody:
                 "Chat memory body is empty."
+            case .secretRejected(let labels):
+                "Chat memory body was rejected by the secret scanner: \(labels.joined(separator: ", "))."
             }
         }
     }
@@ -371,6 +374,57 @@ final class ControlPlaneStore: Sendable {
         let score: Double
     }
 
+    struct MemoryExtractionJob: Equatable, Sendable {
+        static let defaultLeaseDuration: TimeInterval = 15 * 60
+
+        let id: String
+        let idempotencyKey: String
+        let threadID: String
+        let threadLogicalID: String
+        let messageID: String
+        let promptVersion: String
+        let scope: MemoryScope
+        let status: MemoryEventStatus
+        let attempts: Int
+        let lastError: String?
+        let notBefore: Date?
+        let leaseExpiresAt: Date?
+        let createdAt: Date
+        let updatedAt: Date
+    }
+
+    enum MemorySecretScanner {
+        private static let patterns = makePatterns()
+
+        static func labels(in text: String) -> [String] {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            return patterns.compactMap { pattern in
+                pattern.regex.firstMatch(in: text, range: range) == nil ? nil : pattern.label
+            }
+        }
+
+        private static func makePatterns() -> [(label: String, regex: NSRegularExpression)] {
+            do {
+                return [
+                    ("openai_api_key", try NSRegularExpression(pattern: #"sk-(?!ant-)[A-Za-z0-9_-]{20,}"#)),
+                    ("anthropic_api_key", try NSRegularExpression(pattern: #"sk-ant-[A-Za-z0-9_-]{16,}"#)),
+                    ("github_token", try NSRegularExpression(pattern: #"gh[pousr]_[A-Za-z0-9_]{20,}"#)),
+                    ("pem_private_key", try NSRegularExpression(pattern: #"-----BEGIN [A-Z ]*PRIVATE KEY-----"#)),
+                    (
+                        "email",
+                        try NSRegularExpression(
+                            pattern: #"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"#,
+                            options: [.caseInsensitive]
+                        )
+                    ),
+                    ("us_ssn", try NSRegularExpression(pattern: #"\b\d{3}-\d{2}-\d{4}\b"#))
+                ]
+            } catch {
+                preconditionFailure("Invalid memory secret scanner regex: \(error)")
+            }
+        }
+    }
+
     func addChatMemoryAuthorityRecord(
         _ request: MemoryAddRequest,
         id: MemoryID = UUID().uuidString,
@@ -380,6 +434,22 @@ final class ControlPlaneStore: Sendable {
         guard enabled else { throw ChatMemoryAuthorityError.disabled }
         let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
+
+        let secretLabels = MemorySecretScanner.labels(in: body)
+        if secretLabels.isEmpty == false {
+            try await appendMemoryAuditEvent(
+                action: "memory.secret_rejected",
+                projectID: Self.memoryStorageProjectID(for: request.scope),
+                subjectID: id,
+                labels: [
+                    "memory_id": id,
+                    "source_kind": MemorySourceKind.chat.rawValue,
+                    "labels": secretLabels.joined(separator: ",")
+                ],
+                now: now
+            )
+            throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+        }
 
         let bodyHash = Self.sha256Hex(body)
         let snapshotSlug = Self.memorySnapshotSlug(id)
@@ -532,6 +602,169 @@ final class ControlPlaneStore: Sendable {
             createdAt: now,
             updatedAt: now
         )
+    }
+
+    func enqueueMemoryExtraction(_ intent: ExtractionIntent, now: Date = Date()) async throws -> String {
+        let id = "memory-extraction-\(Self.sha256Hex(intent.idempotencyKey))"
+        let encoder = JSONEncoder()
+        let scopeData = try encoder.encode(intent.scope)
+        guard let scopeJSON = String(data: scopeData, encoding: .utf8) else {
+            throw NSError(domain: "OpenBurnBar.MemoryExtraction", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Extraction scope could not be encoded as UTF-8."
+            ])
+        }
+
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO memory_extraction_jobs (
+                    id, idempotency_key, thread_id, thread_logical_id, message_id,
+                    prompt_version, scope_json, status, attempts, last_error,
+                    not_before, lease_expires_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL, NULL, ?, ?)
+                ON CONFLICT(idempotency_key) DO UPDATE SET
+                    thread_id = excluded.thread_id,
+                    thread_logical_id = excluded.thread_logical_id,
+                    message_id = excluded.message_id,
+                    prompt_version = excluded.prompt_version,
+                    scope_json = excluded.scope_json,
+                    status = CASE
+                        WHEN memory_extraction_jobs.status = 'failed' THEN 'pending'
+                        ELSE memory_extraction_jobs.status
+                    END,
+                    attempts = CASE
+                        WHEN memory_extraction_jobs.status = 'failed' THEN 0
+                        ELSE memory_extraction_jobs.attempts
+                    END,
+                    last_error = CASE
+                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                        ELSE memory_extraction_jobs.last_error
+                    END,
+                    not_before = CASE
+                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                        ELSE memory_extraction_jobs.not_before
+                    END,
+                    lease_expires_at = CASE
+                        WHEN memory_extraction_jobs.status = 'failed' THEN NULL
+                        ELSE memory_extraction_jobs.lease_expires_at
+                    END,
+                    updated_at = excluded.updated_at
+                """,
+                arguments: [
+                    id,
+                    intent.idempotencyKey,
+                    intent.threadID,
+                    intent.threadLogicalID,
+                    intent.messageID,
+                    intent.promptVersion,
+                    scopeJSON,
+                    now,
+                    now
+                ]
+            )
+        }
+        return id
+    }
+
+    func claimNextMemoryExtractionJob(
+        now: Date = Date(),
+        maxAttempts: Int = 3,
+        leaseDuration: TimeInterval = MemoryExtractionJob.defaultLeaseDuration
+    ) async throws -> MemoryExtractionJob? {
+        try await dbQueue.write { db in
+            let boundedMaxAttempts = max(1, maxAttempts)
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_extraction_jobs
+                WHERE (
+                    status = 'pending'
+                    AND (not_before IS NULL OR not_before <= ?)
+                ) OR (
+                    status = 'failed'
+                    AND attempts < ?
+                    AND not_before IS NOT NULL
+                    AND not_before <= ?
+                ) OR (
+                    status = 'running'
+                    AND attempts < ?
+                    AND lease_expires_at IS NOT NULL
+                    AND lease_expires_at <= ?
+                )
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """,
+                arguments: [now, boundedMaxAttempts, now, boundedMaxAttempts, now]
+            ),
+                  var job = Self.memoryExtractionJob(from: row) else {
+                return nil
+            }
+            let leaseExpiresAt = now.addingTimeInterval(max(1, leaseDuration))
+            try db.execute(
+                sql: """
+                UPDATE memory_extraction_jobs
+                SET status = 'running', attempts = attempts + 1, lease_expires_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                arguments: [leaseExpiresAt, now, job.id]
+            )
+            job = MemoryExtractionJob(
+                id: job.id,
+                idempotencyKey: job.idempotencyKey,
+                threadID: job.threadID,
+                threadLogicalID: job.threadLogicalID,
+                messageID: job.messageID,
+                promptVersion: job.promptVersion,
+                scope: job.scope,
+                status: .running,
+                attempts: job.attempts + 1,
+                lastError: job.lastError,
+                notBefore: job.notBefore,
+                leaseExpiresAt: leaseExpiresAt,
+                createdAt: job.createdAt,
+                updatedAt: now
+            )
+            return job
+        }
+    }
+
+    func markMemoryExtractionJobSucceeded(_ id: String, now: Date = Date()) async throws {
+        try await updateMemoryExtractionJob(
+            id,
+            status: .succeeded,
+            lastError: nil,
+            notBefore: nil,
+            now: now
+        )
+    }
+
+    func markMemoryExtractionJobFailed(
+        _ id: String,
+        error: String,
+        retryAfter: TimeInterval,
+        now: Date = Date()
+    ) async throws {
+        try await updateMemoryExtractionJob(
+            id,
+            status: .failed,
+            lastError: error,
+            notBefore: now.addingTimeInterval(retryAfter),
+            now: now
+        )
+    }
+
+    func memoryExtractionJobStatus(id: String) async throws -> MemoryEventStatus? {
+        try await dbQueue.read { db in
+            guard let raw = try String.fetchOne(
+                db,
+                sql: "SELECT status FROM memory_extraction_jobs WHERE id = ?",
+                arguments: [id]
+            ) else {
+                return nil
+            }
+            return MemoryEventStatus(rawValue: raw)
+        }
     }
 
     func fetchChatMemoryAuthorityRecord(id: MemoryID) async throws -> Memory? {
@@ -912,6 +1145,118 @@ final class ControlPlaneStore: Sendable {
         )
     }
 
+    private func appendMemoryAuditEvent(
+        action: String,
+        projectID: String,
+        subjectID: String,
+        labels: [String: String],
+        now: Date
+    ) async throws {
+        let auditLabels = labels.map { "\($0.key):\($0.value)" }.sorted()
+        let labelsJSON = try Self.auditLabelsJSON(auditLabels)
+        let nowString = Self.iso8601String(now)
+        try await dbQueue.write { db in
+            let previousAudit = try Row.fetchOne(
+                db,
+                sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
+            )
+            let prevHash: String? = previousAudit?["hash"]
+            let previousSequence: Int = previousAudit?["seq"] ?? 0
+            let auditHash = try Self.sha256Hex(
+                Self.auditPayloadData(
+                    sequence: previousSequence + 1,
+                    timestamp: nowString,
+                    actor: "app",
+                    action: action,
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: subjectID,
+                    labels: auditLabels,
+                    prevHash: prevHash
+                )
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO memory_audit (
+                    ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    nowString,
+                    "app",
+                    action,
+                    "memory",
+                    projectID,
+                    subjectID,
+                    labelsJSON,
+                    prevHash,
+                    auditHash
+                ]
+            )
+        }
+    }
+
+    private func updateMemoryExtractionJob(
+        _ id: String,
+        status: MemoryEventStatus,
+        lastError: String?,
+        notBefore: Date?,
+        now: Date
+    ) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE memory_extraction_jobs
+                SET status = ?, last_error = ?, not_before = ?, lease_expires_at = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                arguments: [status.rawValue, lastError, notBefore, now, id]
+            )
+        }
+    }
+
+    private static func memoryExtractionJob(from row: Row) -> MemoryExtractionJob? {
+        guard let id: String = row["id"],
+              let idempotencyKey: String = row["idempotency_key"],
+              let threadID: String = row["thread_id"],
+              let threadLogicalID: String = row["thread_logical_id"],
+              let messageID: String = row["message_id"],
+              let promptVersion: String = row["prompt_version"],
+              let scopeJSON: String = row["scope_json"],
+              let scopeData = scopeJSON.data(using: .utf8),
+              let statusRaw: String = row["status"],
+              let status = MemoryEventStatus(rawValue: statusRaw),
+              let attempts: Int = row["attempts"],
+              let createdAt = OpenBurnBarDatabase.parseDateValue(row["created_at"]),
+              let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updated_at"])
+        else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        let scope: MemoryScope
+        do {
+            scope = try decoder.decode(MemoryScope.self, from: scopeData)
+        } catch {
+            return nil
+        }
+        return MemoryExtractionJob(
+            id: id,
+            idempotencyKey: idempotencyKey,
+            threadID: threadID,
+            threadLogicalID: threadLogicalID,
+            messageID: messageID,
+            promptVersion: promptVersion,
+            scope: scope,
+            status: status,
+            attempts: attempts,
+            lastError: row["last_error"],
+            notBefore: OpenBurnBarDatabase.parseDateValue(row["not_before"]),
+            leaseExpiresAt: OpenBurnBarDatabase.parseDateValue(row["lease_expires_at"]),
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
     private static func vectorNorm(_ vector: [Float]) -> Double {
         vector.reduce(0.0) { partial, value in
             partial + Double(value * value)
@@ -923,5 +1268,117 @@ private extension Array where Element: Hashable {
     func uniqued() -> [Element] {
         var seen = Set<Element>()
         return filter { seen.insert($0).inserted }
+    }
+}
+
+actor MemoryExtractionAdmissionController {
+    private let maxConcurrent: Int
+    private var inFlight = 0
+
+    init(maxConcurrent: Int = 1) {
+        self.maxConcurrent = max(1, maxConcurrent)
+    }
+
+    func tryEnter() -> Bool {
+        guard inFlight < maxConcurrent else { return false }
+        inFlight += 1
+        return true
+    }
+
+    func leave() {
+        inFlight = max(0, inFlight - 1)
+    }
+}
+
+actor MemoryExtractionWorker {
+    typealias Extractor = @Sendable (ControlPlaneStore.MemoryExtractionJob) async throws -> [MemoryAddRequest]
+
+    private let store: ControlPlaneStore
+    private let admission: MemoryExtractionAdmissionController
+    private let extractor: Extractor
+    private let authorityWritesEnabled: @Sendable () -> Bool
+    private let nowProvider: @Sendable () -> Date
+
+    init(
+        store: ControlPlaneStore,
+        admission: MemoryExtractionAdmissionController = MemoryExtractionAdmissionController(),
+        nowProvider: @escaping @Sendable () -> Date = Date.init,
+        authorityWritesEnabled: @escaping @Sendable () -> Bool = {
+            ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+        },
+        extractor: @escaping Extractor
+    ) {
+        self.store = store
+        self.admission = admission
+        self.nowProvider = nowProvider
+        self.authorityWritesEnabled = authorityWritesEnabled
+        self.extractor = extractor
+    }
+
+    func drainOne() async throws -> Bool {
+        guard await admission.tryEnter() else { return false }
+        do {
+            let drained = try await drainClaimedJob()
+            await admission.leave()
+            return drained
+        } catch {
+            await admission.leave()
+            throw error
+        }
+    }
+
+    private func drainClaimedJob() async throws -> Bool {
+        guard authorityWritesEnabled() else { return false }
+        let now = nowProvider()
+        guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return false }
+        do {
+            let requests = try await extractor(job)
+            try Self.preflight(requests)
+            for (index, request) in requests.enumerated() {
+                let memoryID = Self.memoryID(for: job, index: index)
+                if try await store.fetchChatMemoryAuthorityRecord(id: memoryID) != nil {
+                    continue
+                }
+                var quarantined = request
+                quarantined.scope = job.scope
+                quarantined.reviewStatus = .quarantined
+                _ = try await store.addChatMemoryAuthorityRecord(
+                    quarantined,
+                    id: memoryID,
+                    now: nowProvider(),
+                    enabled: authorityWritesEnabled()
+                )
+            }
+            try await store.markMemoryExtractionJobSucceeded(job.id, now: nowProvider())
+            return true
+        } catch {
+            try await store.markMemoryExtractionJobFailed(
+                job.id,
+                error: Self.failureLabel(for: error),
+                retryAfter: 60,
+                now: nowProvider()
+            )
+            return false
+        }
+    }
+
+    private static func failureLabel(for error: Error) -> String {
+        if case .secretRejected(let labels) = error as? ControlPlaneStore.ChatMemoryAuthorityError {
+            return "secret_rejected:\(labels.joined(separator: ","))"
+        }
+        return String(reflecting: type(of: error))
+    }
+
+    private static func memoryID(for job: ControlPlaneStore.MemoryExtractionJob, index: Int) -> MemoryID {
+        "memory-\(job.id)-\(index)"
+    }
+
+    private static func preflight(_ requests: [MemoryAddRequest]) throws {
+        for request in requests {
+            let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard body.isEmpty == false else { throw ControlPlaneStore.ChatMemoryAuthorityError.emptyBody }
+            let labels = ControlPlaneStore.MemorySecretScanner.labels(in: body)
+            guard labels.isEmpty else { throw ControlPlaneStore.ChatMemoryAuthorityError.secretRejected(labels: labels) }
+        }
     }
 }
