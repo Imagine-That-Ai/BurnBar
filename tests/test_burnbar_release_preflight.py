@@ -172,9 +172,24 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
 
     assert "bash scripts/ci/smoke-openburnbar-release-dmg.sh \"$DMG_PATH\"" in workflow
     assert "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI" in workflow
-    assert "--identifier com.openburnbar.daemon" in workflow
-    assert "--identifier com.openburnbar.cli" in workflow
+    assert '--identifier "$identifier"' in workflow
+    assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in workflow
+    assert 'sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in workflow
+    assert "com.openburnbar.privileged-input-execution" in workflow
+    assert "com.openburnbar.virtual-hid-bridge" in workflow
     assert "--options runtime,library" in workflow
+    assert "codesign --force --timestamp --deep --options runtime,library" not in workflow
+    assert "assert_peer_signature" in workflow
+    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"' in workflow
+    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"' in workflow
+    assert (
+        'assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" '
+        '"com.openburnbar.privileged-input-execution"'
+    ) in workflow
+    assert (
+        'assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" '
+        '"com.openburnbar.virtual-hid-bridge"'
+    ) in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"' in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarCLI"' in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"' in website_release
@@ -195,7 +210,8 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'SQLCipher.framework was not mirrored to installed daemon rpath directory' in script
     assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
     assert "com.openburnbar.daemon.release-smoke" in script
-    assert '"$installed_cli_bin" health' in script
+    assert 'python3 - "$installed_cli_bin"' in script
+    assert '[cli, "health"]' in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
