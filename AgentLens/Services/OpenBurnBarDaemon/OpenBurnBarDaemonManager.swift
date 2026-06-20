@@ -10,6 +10,7 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
 
     let supportDirectory: URL
     let daemonDirectory: URL
+    let frameworksDirectory: URL
     let installedBinaryURL: URL
     let socketURL: URL
     let logURL: URL
@@ -76,6 +77,7 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         return OpenBurnBarDaemonRuntimePaths(
             supportDirectory: supportDirectory,
             daemonDirectory: daemonDirectory,
+            frameworksDirectory: supportDirectory.appendingPathComponent("Frameworks", isDirectory: true),
             installedBinaryURL: daemonDirectory.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false),
             socketURL: supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false),
             logURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.log", isDirectory: false),

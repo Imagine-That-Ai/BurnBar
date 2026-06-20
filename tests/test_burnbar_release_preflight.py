@@ -163,3 +163,43 @@ def test_release_attestation_verifier_uses_sigstore_blob_bundles():
     assert "download_pattern \"*.predicate.json\"" in body
     assert "artifact.sha256" in body
     assert "release.ref" in body
+
+
+def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_assumption():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/ci/smoke-openburnbar-release-dmg.sh").read_text(encoding="utf-8")
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
+
+    assert "bash scripts/ci/smoke-openburnbar-release-dmg.sh \"$DMG_PATH\"" in workflow
+    assert "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI" in workflow
+    assert "--identifier com.openburnbar.daemon" in workflow
+    assert "--identifier com.openburnbar.cli" in workflow
+    assert "--options runtime,library" in workflow
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"' in workflow
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarCLI"' in workflow
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"' in website_release
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"' in website_release
+    assert 'cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"' in workflow
+    assert 'cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"' in website_release
+    assert "Contents/Helpers/OpenBurnBarDaemon" in script
+    assert "Contents/Helpers/OpenBurnBarCLI" in script
+    assert "Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle" in script
+    assert "Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json" in script
+    assert 'installed_daemon_dir="$support_dir/daemon"' in script
+    assert 'installed_frameworks_dir="$support_dir/Frameworks"' in script
+    assert 'installed_daemon_bin="$installed_daemon_dir/OpenBurnBarDaemon"' in script
+    assert 'installed_cli_bin="$installed_daemon_dir/OpenBurnBarCLI"' in script
+    assert 'cp "$daemon_bin" "$installed_daemon_bin"' in script
+    assert 'cp "$cli_bin" "$installed_cli_bin"' in script
+    assert 'for framework in "$app_path"/Contents/Frameworks/*.framework; do' in script
+    assert 'SQLCipher.framework was not mirrored to installed daemon rpath directory' in script
+    assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
+    assert "com.openburnbar.daemon.release-smoke" in script
+    assert '"$installed_cli_bin" health' in script
+    assert '"${installed_daemon_bin}"' in script
+    assert '"$cli_bin" health' not in script
+    assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
+    assert "import socket" not in script
+    assert "\"method\": \"daemon.health\"" not in script
+    assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
+    assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow

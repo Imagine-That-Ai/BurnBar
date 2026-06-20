@@ -1190,6 +1190,53 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(resolved?.standardizedFileURL, resourcesBundleURL.standardizedFileURL)
     }
 
+    @MainActor
+    func test_installFilesMirrorsAppFrameworksForInstalledDaemonRpath() async throws {
+        let harness = try makeRuntimePathsHarness(name: "installed-daemon-frameworks")
+        defer { harness.cleanup() }
+
+        let appBundleURL = harness.rootURL.appendingPathComponent("OpenBurnBar.app", isDirectory: true)
+        let helpersURL = appBundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true)
+        let resourcesURL = appBundleURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let appFrameworksURL = appBundleURL.appendingPathComponent("Contents/Frameworks", isDirectory: true)
+        let sourceBinaryURL = helpersURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        let sourceSQLCipherURL = appFrameworksURL
+            .appendingPathComponent("SQLCipher.framework", isDirectory: true)
+            .appendingPathComponent("Versions/A/SQLCipher", isDirectory: false)
+        let sourceResourceBundleURL = resourcesURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.resourceBundleName,
+            isDirectory: true
+        )
+        let sourceCorpusURL = resourcesURL
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+
+        try FileManager.default.createDirectory(at: helpersURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceSQLCipherURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceResourceBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "#!/bin/sh\nexit 0\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try Data([0x53, 0x51, 0x4c, 0x43]).write(to: sourceSQLCipherURL)
+        try #"{"version":"test","patterns":[]}"#.write(to: sourceCorpusURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { sourceBinaryURL }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        try manager.installFilesIfNeeded()
+
+        let installedSQLCipherURL = harness.paths.frameworksDirectory
+            .appendingPathComponent("SQLCipher.framework", isDirectory: true)
+            .appendingPathComponent("Versions/A/SQLCipher", isDirectory: false)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: installedSQLCipherURL.path),
+            "Install must mirror app-bundled frameworks to \(harness.paths.frameworksDirectory.path) for @executable_path/../Frameworks."
+        )
+    }
+
     func test_projectCodeMemoryCorpusResolverFindsBundledAppResource() async throws {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("BurnBarDaemonCorpusResolver-\(UUID().uuidString)", isDirectory: true)
@@ -1228,6 +1275,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         let paths = OpenBurnBarDaemonRuntimePaths(
             supportDirectory: supportDirectory,
             daemonDirectory: daemonDirectory,
+            frameworksDirectory: supportDirectory.appendingPathComponent("Frameworks", isDirectory: true),
             installedBinaryURL: daemonDirectory.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false),
             socketURL: supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false),
             logURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.log", isDirectory: false),

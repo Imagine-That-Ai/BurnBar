@@ -101,6 +101,7 @@ final class PrivilegedSocketTrustTests: XCTestCase {
         for id in OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers {
             XCTAssertTrue(req.contains("identifier \"\(id)\""))
         }
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"))
         XCTAssertFalse(req.contains("com.openburnbar.*"))
     }
 }

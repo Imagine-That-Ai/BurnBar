@@ -117,6 +117,7 @@ final class PrivilegedPeerAuthenticatorTests: XCTestCase {
         }
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.daemon"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.app"))
+        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"))
     }
 
     func test_hardenedRuntimeAndLibraryValidationFlagConstants() {

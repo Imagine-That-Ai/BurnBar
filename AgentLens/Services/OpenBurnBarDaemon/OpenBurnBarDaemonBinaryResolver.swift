@@ -42,6 +42,60 @@ enum OpenBurnBarDaemonBinaryResolver {
         return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
     }
 
+    /// Locates framework bundles that must be copied into the daemon install tree.
+    ///
+    /// Release builds install `OpenBurnBarDaemon` under Application Support at:
+    /// `.../OpenBurnBar/daemon/OpenBurnBarDaemon`. The helper's hardened-runtime
+    /// rpath is `@executable_path/../Frameworks`, so frameworks embedded in the
+    /// `.app` bundle must also be mirrored to `.../OpenBurnBar/Frameworks`.
+    static func resolveRuntimeFrameworks(
+        nearBinaryURL: URL,
+        appBundleURL: URL,
+        fileManager: FileManager
+    ) -> [URL] {
+        let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
+        let binaryParent = binaryDirectory.deletingLastPathComponent()
+        let appParent = appBundleURL.deletingLastPathComponent()
+        let frameworkDirectories = [
+            binaryParent.appendingPathComponent("Frameworks", isDirectory: true),
+            appBundleURL.appendingPathComponent("Contents/Frameworks", isDirectory: true),
+            binaryDirectory.appendingPathComponent("Frameworks", isDirectory: true),
+            appParent.appendingPathComponent("PackageFrameworks", isDirectory: true)
+        ]
+
+        var seen = Set<URL>()
+        var frameworks: [URL] = []
+        for directory in frameworkDirectories {
+            guard fileManager.fileExists(atPath: directory.path) else {
+                continue
+            }
+            let children: [URL]
+            do {
+                children = try fileManager.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
+            } catch {
+                AppLogger.network.error(
+                    "daemon_framework_directory_unreadable",
+                    metadata: [
+                        "directory": directory.lastPathComponent,
+                        "errorClass": "\(String(describing: type(of: error)))"
+                    ]
+                )
+                continue
+            }
+            for child in children where child.pathExtension == "framework" {
+                let standardized = child.standardizedFileURL
+                guard !seen.contains(standardized) else { continue }
+                seen.insert(standardized)
+                frameworks.append(child)
+            }
+        }
+        return frameworks
+    }
+
     /// Locates the OpenBurnBarCore resource bundle that must be installed alongside the daemon binary.
     static func resolveResourceBundle(
         nearBinaryURL: URL,
