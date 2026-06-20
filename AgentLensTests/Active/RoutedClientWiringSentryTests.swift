@@ -185,6 +185,98 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     }
 
     @MainActor
+    func test_start_adoptsExistingDroidOpenBurnBarWiringAndRefreshesStaleCatalog() async throws {
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let staleModels = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.4",
+                displayName: "GPT-5.4",
+                providerID: "openai",
+                providerName: "OpenAI",
+                routeEligible: true
+            )
+        ]
+        let refreshedModels = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.5",
+                displayName: "GPT-5.5",
+                providerID: "openai",
+                providerName: "OpenAI",
+                routeEligible: true
+            )
+        ]
+        _ = try makeWiring().wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: staleModels
+        )
+        XCTAssertFalse(
+            settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue),
+            "This reproduces an older install where Droid was wired before startup adoption recorded enrollment."
+        )
+
+        sentry = makeSentry(advertisedModels: refreshedModels)
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        XCTAssertTrue(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue))
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
+
+        let root = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
+        let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
+        XCTAssertEqual(customModels.map { $0["model"] as? String }, ["gpt-5.5"])
+        XCTAssertTrue(
+            customModels.allSatisfy { model in
+                (model["id"] as? String)?.hasPrefix("custom:OpenBurnBar-") == true
+                    || ((model["displayName"] as? String)?.hasPrefix("OBB ") == true)
+            },
+            "OpenBurnBar-owned Droid rows must retain an explicit ownership marker."
+        )
+    }
+
+    @MainActor
+    func test_start_doesNotAdoptLocalDroidProxyWithoutOpenBurnBarMarker() async throws {
+        let url = tempHome.appendingPathComponent(".factory/settings.local.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let proxyRoot: [String: Any] = [
+            "customModels": [
+                [
+                    "id": "custom:manual-loopback",
+                    "model": "gpt-4o",
+                    "baseUrl": "http://127.0.0.1:8317/v1",
+                    "apiKey": "user-owned-token",
+                    "displayName": "Manual loopback proxy",
+                    "provider": "openai"
+                ]
+            ]
+        ]
+        let proxyData = try JSONSerialization.data(withJSONObject: proxyRoot)
+        try proxyData.write(to: url)
+
+        XCTAssertTrue(
+            makeWiring().isWired(target: .droid),
+            "The UI detector can still show a broad local Droid gateway as wired."
+        )
+
+        sentry = makeSentry()
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
+
+        let root = try loadJSONObject(at: url)
+        let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
+        let model = try XCTUnwrap(customModels.first)
+        XCTAssertEqual(model["id"] as? String, "custom:manual-loopback")
+        XCTAssertEqual(model["apiKey"] as? String, "user-owned-token")
+        XCTAssertEqual(model["displayName"] as? String, "Manual loopback proxy")
+    }
+
+    @MainActor
     func test_start_doesNotRepairWhenAutoRepairDisabled() async throws {
         let url = tempHome.appendingPathComponent(".claude/settings.json")
         try FileManager.default.createDirectory(

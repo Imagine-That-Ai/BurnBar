@@ -219,6 +219,21 @@ extension RoutingClientWiring {
                 && isGatewayEntry)
     }
 
+    func hasOpenBurnBarDroidOwnershipMarker(_ entry: [String: Any]) -> Bool {
+        let provider = (entry["provider"] as? String)?.lowercased()
+        let id = (entry["id"] as? String)?.lowercased()
+        let displayName = (entry["displayName"] as? String)?.lowercased()
+            ?? (entry["model_display_name"] as? String)?.lowercased()
+        let model = (entry["model"] as? String)?.lowercased()
+
+        return provider == "openburnbar"
+            || id?.hasPrefix("custom:openburnbar") == true
+            || id?.hasPrefix("openburnbar:") == true
+            || displayName?.hasPrefix("openburnbar ") == true
+            || displayName?.hasPrefix("obb ") == true
+            || model?.hasPrefix("openburnbar:") == true
+    }
+
     func updateDroidDefaultModelIfManaged(
         root: inout [String: Any],
         fallbackModelID: String?

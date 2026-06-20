@@ -568,7 +568,7 @@ struct RoutingClientWiring {
                 if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
                     let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
                     let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
-                    if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
+                    if (settingsModels + configModels).contains(where: { hasOpenBurnBarDroidOwnershipMarker($0) }) {
                         return true
                     }
                 }
@@ -634,7 +634,7 @@ struct RoutingClientWiring {
                 if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
                     let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
                     let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
-                    if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
+                    if (settingsModels + configModels).contains(where: { hasOpenBurnBarDroidOwnershipMarker($0) }) {
                         return true
                     }
                 }
