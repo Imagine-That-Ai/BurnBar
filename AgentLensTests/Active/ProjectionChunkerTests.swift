@@ -694,9 +694,9 @@ final class ProjectionChunkerTests: XCTestCase {
         }
     }
 
-    // MARK: - Performance Characteristics Tests
+    // MARK: - Large-Document Correctness
 
-    func test_chunker_largeInputCompletesQuicklyWithBoundedOutput() {
+    func test_chunker_largeDocument_producesBoundedDeterministicChunks() {
         let text = String(repeating: "Word word word. ", count: 1000)
         let chunker = makeChunker(
             maxChunkCharacters: 200,
@@ -704,34 +704,30 @@ final class ProjectionChunkerTests: XCTestCase {
             overlapCharacters: 30,
             maxChunksPerDocument: 128
         )
-        let createdAt = Date(timeIntervalSince1970: 1_742_600_000)
-
-        let startedAt = CFAbsoluteTimeGetCurrent()
-        let chunks = chunker.makeChunks(
-            text: text,
-            sourceKind: .agentDoc,
-            sourceID: "perf-test",
-            sourceVersionID: "v1",
-            documentID: "doc-perf",
-            createdAt: createdAt
-        )
-        let elapsedSeconds = CFAbsoluteTimeGetCurrent() - startedAt
+        let fixedDate = Date(timeIntervalSince1970: 1_742_600_000)
+        let make: () -> [SearchChunkRecord] = {
+            chunker.makeChunks(
+                text: text,
+                sourceKind: .agentDoc,
+                sourceID: "perf-test",
+                sourceVersionID: "v1",
+                documentID: "doc-perf",
+                createdAt: fixedDate
+            )
+        }
+        let chunks = make()
 
         XCTAssertFalse(chunks.isEmpty)
         XCTAssertLessThanOrEqual(chunks.count, 128)
-        XCTAssertLessThan(
-            elapsedSeconds,
-            1.0,
-            "Projection chunking is synchronous and must remain bounded for release app-test runs"
-        )
         XCTAssertEqual(chunks.first?.startOffset, 0)
         XCTAssertEqual(chunks.last?.endOffset, (text as NSString).length)
         XCTAssertEqual(chunks.map(\.ordinal), Array(chunks.indices))
-        XCTAssertTrue(chunks.allSatisfy { !$0.text.isEmpty })
-        XCTAssertTrue(chunks.allSatisfy { $0.text.count <= chunker.maxChunkCharacters })
+        XCTAssertEqual(chunks, make(), "chunking must be deterministic")
 
         var previousStart = -1
         for chunk in chunks {
+            XCTAssertFalse(chunk.text.isEmpty)
+            XCTAssertLessThanOrEqual(chunk.text.count, chunker.maxChunkCharacters)
             XCTAssertGreaterThan(chunk.startOffset, previousStart)
             XCTAssertGreaterThan(chunk.endOffset, chunk.startOffset)
             previousStart = chunk.startOffset

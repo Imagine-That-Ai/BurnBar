@@ -70,6 +70,9 @@ struct ChatMessagesStream: View {
                 .padding(.vertical, verticalPadding)
             }
             .onChange(of: controller.messages.count) { _, _ in
+                // A citation jump may open a different thread; its rows land here,
+                // so retry the pending scroll once they exist before tailing.
+                if performPendingMemoryJump(using: proxy) { return }
                 if let last = controller.messages.last {
                     Task { @MainActor in
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -87,7 +90,43 @@ struct ChatMessagesStream: View {
                     }
                 }
             }
+            // E1: a citation tap bumps `memoryJumpRequestToken` (even when the id
+            // is unchanged), so observing the token re-fires scroll + flash on a
+            // repeat tap of the same in-view source.
+            .onChange(of: controller.memoryJumpRequestToken) { _, _ in
+                _ = performPendingMemoryJump(using: proxy)
+            }
         }
+    }
+
+    /// E1 (citation jump): scroll to the pending cited row and flash it gold.
+    ///
+    /// Returns `true` when it consumed a pending target whose row is present in
+    /// `messages` (so the count-change handler can skip its tail-scroll and not
+    /// fight this navigation). Returns `false` when there is nothing pending or the
+    /// row has not loaded yet — in the cross-thread case the row arrives on a later
+    /// `messages.count` change, which re-invokes this.
+    @discardableResult
+    private func performPendingMemoryJump(using proxy: ScrollViewProxy) -> Bool {
+        guard let target = controller.pendingMemoryJumpMessageID else { return false }
+        guard controller.messages.contains(where: { $0.id == target }) else { return false }
+
+        controller.pendingMemoryJumpMessageID = nil
+        let token = controller.memoryJumpRequestToken
+        Task { @MainActor in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(target, anchor: .center)
+                controller.memoryJumpHighlightMessageID = target
+            }
+            // Hold the gold flash briefly, then fade it — but only if no newer jump
+            // superseded this one (guard on the token captured at request time).
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            guard controller.memoryJumpRequestToken == token else { return }
+            withAnimation(.easeOut(duration: 0.45)) {
+                controller.memoryJumpHighlightMessageID = nil
+            }
+        }
+        return true
     }
 
     @ViewBuilder
@@ -136,15 +175,19 @@ struct ChatMessagesStream: View {
                     assistantModelKey: chatAssistantModelKey(for: msg),
                     viewMode: controller.chatViewMode,
                     // F-3: surface recalled-memory citations on the latest
-                    // completed assistant turn. Jump navigation is wired in a
-                    // follow-up; until then jumpable chips render disabled
-                    // (never a dead link).
+                    // completed assistant turn. E1 wires the jump: tapping a
+                    // device-local source opens its owning thread (recall is
+                    // app-wide) and scrolls to the cited row.
                     memoryCitations: isLatestAssistant
                         ? controller.lastRecalledMemorySnippets.flatMap(\.citations)
                         : [],
-                    onJumpToLocal: nil
+                    onJumpToLocal: { [weak controller] messageID in
+                        guard let controller else { return }
+                        Task { await controller.jumpToMemoryCitation(messageID: messageID) }
+                    }
                 )
                 .id(msg.id)
+                .modifier(MemoryJumpHighlight(isActive: controller.memoryJumpHighlightMessageID == msg.id))
             }
             if !controller.isStreaming, !controller.conversationJumpTargets.isEmpty {
                 ChatConversationJumpSection(
@@ -161,5 +204,27 @@ struct ChatMessagesStream: View {
         case .hermes, .openclaw: return controller.hermesModelName
         default: return nil
         }
+    }
+}
+
+/// E1 (citation jump): the gold "you landed here" flash painted on the cited row
+/// after a memory-citation jump. A soft aureate fill + ring that the stream fades
+/// out after a short window. Purely cosmetic — it never gates or alters content,
+/// and animates from the `isActive` binding so it cannot strand a permanent tint.
+private struct MemoryJumpHighlight: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, DesignSystem.Spacing.xs)
+            .padding(.vertical, DesignSystem.Spacing.xxs)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.hermesAureate.opacity(isActive ? 0.16 : 0))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .strokeBorder(DesignSystem.Colors.hermesAureate.opacity(isActive ? 0.55 : 0), lineWidth: 1)
+            )
     }
 }

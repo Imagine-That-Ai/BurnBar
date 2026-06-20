@@ -249,3 +249,8 @@ docs/security/*HANDOFF*.md
 docs/security/*REMEDIATION*.md
 docs/security/*findings*.md
 docs/security/SOTA_*_SIGNOFF.md
+
+# libsignal Swift FFI prebuilt xcframeworks — build outputs (CI builds libsignal
+# from the Vendor/libsignal submodule via Rust+protobuf); multi-GB, never committed.
+Vendor/OpenBurnBarSignalFfiIOS.xcframework/
+Vendor/OpenBurnBarSignalFfiMac.xcframework/

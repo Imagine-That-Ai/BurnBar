@@ -136,6 +136,12 @@ extension DashboardView {
                 stateCaption: "Indexed conversations · ask the corpus",
                 helpText: "Full-text indexed conversations."
             )
+        case .memoryReview:
+            return ResolvedWorkspaceContext(
+                routeName: "Memory",
+                stateCaption: "Review what OpenBurnBar learned",
+                helpText: "Approve or reject extracted memories before they can be used."
+            )
         case .chat:
             return ResolvedWorkspaceContext(
                 routeName: "Chat",

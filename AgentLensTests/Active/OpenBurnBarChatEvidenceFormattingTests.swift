@@ -119,6 +119,39 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertTrue(s.contains("truncated") || s.contains("…"))
     }
 
+    func test_truncatedEvidenceBlockKeepsUntrustedSeal() async throws {
+        let now = Date()
+        let result = RetrievalResult(
+            chunkID: "sealed-cut",
+            documentID: "doc",
+            sourceKind: .skillDoc,
+            sourceID: "source",
+            provider: nil,
+            providerRawValue: nil,
+            projectName: nil,
+            title: "Oversized evidence",
+            subtitle: nil,
+            snippet: String(repeating: "oversized evidence ", count: 200),
+            sectionPath: nil,
+            startOffset: 0,
+            endOffset: 1,
+            sourceUpdatedAt: nil,
+            indexedAt: now,
+            lexicalRank: nil,
+            semanticScore: nil,
+            rerankScore: 1,
+            conversation: nil
+        )
+
+        let s = OpenBurnBarChatEvidenceFormatting.formatPack(results: [result], maxTotalChars: 1_200)
+        let opens = s.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
+        let closes = s.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
+        XCTAssertGreaterThan(opens, 0, "precondition: the truncated evidence block should still be present")
+        XCTAssertEqual(opens, closes, "pre-arbiter evidence truncation must not leave unsealed blocks")
+        XCTAssertTrue(s.contains(LLMSafeContent.criticalRule))
+        XCTAssertTrue(s.contains("…"))
+    }
+
     @MainActor
     func test_memorySyncBoundary_isExplicitlyLocalFirst() async throws {
         let queue = try DatabaseQueue()

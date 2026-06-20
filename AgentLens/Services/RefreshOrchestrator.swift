@@ -19,6 +19,12 @@ actor RefreshOrchestrator {
     let sessionMirror: ICloudSessionMirrorService?
     let quotaService: ProviderQuotaService
     let usageAPIService: ProviderUsageAPIService?
+    /// Optional approved-memory cloud replication lane (PR-E2). Scheduled in the
+    /// post-persistence cadence alongside the other sync domains, but gated OFF by
+    /// default (`memoryApprovedCloudBackupEnabled`): when nil or when its own gate
+    /// is closed it performs zero egress. Independent of `cloudSync`/coordinator —
+    /// it owns the chat-memory `ControlPlaneStore`, not the usage/conversation store.
+    let memoryCloudSyncDomain: MemoryCloudSyncDomain?
 
     init(
         dataStore: DataStore,
@@ -27,7 +33,8 @@ actor RefreshOrchestrator {
         cloudSync: CloudSyncService? = nil,
         sessionMirror: ICloudSessionMirrorService? = nil,
         quotaService: ProviderQuotaService,
-        usageAPIService: ProviderUsageAPIService? = nil
+        usageAPIService: ProviderUsageAPIService? = nil,
+        memoryCloudSyncDomain: MemoryCloudSyncDomain? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
@@ -36,6 +43,7 @@ actor RefreshOrchestrator {
         self.sessionMirror = sessionMirror
         self.quotaService = quotaService
         self.usageAPIService = usageAPIService
+        self.memoryCloudSyncDomain = memoryCloudSyncDomain
     }
 
     func indexConversations(_ conversations: [ConversationRecord]) async -> Int {
@@ -169,6 +177,13 @@ actor RefreshOrchestrator {
             await cloudSync.syncTextExpansionSnippets()
             await cloudSync.syncSharedArtifacts()
         }
+
+        // 3a. Approved-memory cloud replication (PR-E2). Same cadence as the other
+        // sync domains, but a no-op unless the user opted in AND the fleet ceiling
+        // allows AND the account is sync-ready — so it ships dormant (zero egress)
+        // and only the chat-memory store, not the usage/conversation store, is ever
+        // touched. The domain owns its own gate + reentrancy guard.
+        await memoryCloudSyncDomain?.sync()
 
         // 4. Session mirror sync
         await sessionMirror?.syncIfNeeded()

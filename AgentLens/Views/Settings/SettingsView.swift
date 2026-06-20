@@ -197,7 +197,8 @@ struct SettingsView: View {
             IndexingOverviewDetailView(
                 settingsManager: settingsManager,
                 dataStore: dataStore,
-                sharedFeaturesAvailable: accountManager.isSignedIn
+                sharedFeaturesAvailable: accountManager.isSignedIn,
+                runtimeContext: runtimeContext
             )
         case .sessionSummaries:
             SessionSummariesDetailView(settingsManager: settingsManager)
@@ -338,7 +339,8 @@ struct SettingsView: View {
                 dataStore: dataStore,
                 sharedFeaturesAvailable: accountManager.isSignedIn,
                 cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService
+                iCloudSessionMirrorService: iCloudSessionMirrorService,
+                runtimeContext: runtimeContext
             )
                 .navigationTitle("General")
         case .updates:

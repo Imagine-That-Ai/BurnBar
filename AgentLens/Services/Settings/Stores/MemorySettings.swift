@@ -13,7 +13,10 @@ final class MemorySettings {
 
     /// User toggle: automatic extraction on terminal assistant commit (default ON).
     var automaticExtraction: Bool = true {
-        didSet { persistence.set(automaticExtraction, forKey: "memoryAutomaticExtraction") }
+        didSet {
+            persistence.set(automaticExtraction, forKey: "memoryAutomaticExtraction")
+            propagateExtractionGate()
+        }
     }
 
     /// Opt-in sub-toggle: high-recall per-reply (default OFF).
@@ -21,10 +24,45 @@ final class MemorySettings {
         didSet { persistence.set(highRecallPerReply, forKey: "memoryHighRecallPerReply") }
     }
 
+    /// Opt-in: replicate **approved** sealed memory facts to the user's cloud
+    /// vault (default OFF — PR-E2 / residual decision §5.5). Cloud egress of
+    /// derived memory is consent-gated independently of local extraction:
+    /// enabling local extraction does not imply consent to upload memory off the
+    /// device, even sealed. When false, `MemoryCloudSyncDomain.sync()` early-exits
+    /// before any candidate is read or any Firestore handle is touched, so there
+    /// is zero cloud egress out of the box. This switch is additionally clamped by
+    /// the fleet ceiling (`remoteConfigExtractionEnabled`) at the sync boundary.
+    var approvedCloudBackupEnabled: Bool = false {
+        didSet { persistence.set(approvedCloudBackupEnabled, forKey: "memoryApprovedCloudBackupEnabled") }
+    }
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fail-closed: a fetch error flips this false.
-    var remoteConfigExtractionEnabled: Bool = true
+    var remoteConfigExtractionEnabled: Bool = true {
+        didSet {
+            propagateExtractionGate()
+        }
+    }
+
+    /// User consent (gate G0, default OFF): the user has affirmatively opted in to
+    /// chat-memory extraction via the first-run consent prompt. Until this is true
+    /// no transcript is read, no LLM extraction runs, and no `agent_memories` row is
+    /// written — it is ANDed into `MemoryExtractionGate`, so it gates the whole loop
+    /// (extraction AND recall). Granting consent implies the prompt has been shown.
+    var consentGranted: Bool = false {
+        didSet {
+            persistence.set(consentGranted, forKey: "memoryConsentGranted")
+            if consentGranted { consentShown = true }
+            propagateExtractionGate()
+        }
+    }
+
+    /// Whether the first-run memory consent prompt has been presented (so it is not
+    /// shown again). Set when consent is granted, or when the user declines.
+    var consentShown: Bool = false {
+        didSet { persistence.set(consentShown, forKey: "memoryConsentShown") }
+    }
 
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
@@ -34,18 +72,45 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryHighRecallPerReply") {
             self.highRecallPerReply = persistence.bool(forKey: "memoryHighRecallPerReply")
         }
+        if persistence.objectExists(forKey: "memoryApprovedCloudBackupEnabled") {
+            self.approvedCloudBackupEnabled = persistence.bool(forKey: "memoryApprovedCloudBackupEnabled")
+        }
+        // Load `consentShown` before `consentGranted` so the granted-didSet's
+        // implicit `consentShown = true` never races a stale persisted value.
+        if persistence.objectExists(forKey: "memoryConsentShown") {
+            self.consentShown = persistence.bool(forKey: "memoryConsentShown")
+        }
+        if persistence.objectExists(forKey: "memoryConsentGranted") {
+            self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
+        }
+        propagateExtractionGate()
+    }
+
+    private func propagateExtractionGate() {
+        MemoryExtractionKillSwitchRegistry.setAll(
+            MemoryExtractionGate.isEnabled(
+                consentGranted: consentGranted,
+                automaticExtraction: automaticExtraction,
+                remoteConfigEnabled: remoteConfigExtractionEnabled
+            )
+        )
     }
 }
 
 // MARK: - Memory extraction gate (G4 kill switch)
 
-/// Pure gate: extraction is enabled only when the user toggle is ON **and** the
-/// fleet Remote Config kill switch has not disabled it. Either lever off ->
-/// extraction halted (fail-closed). Kept pure so the gate logic is testable
-/// without Firebase or a SettingsManager.
+/// Pure gate: extraction is enabled only when the user has CONSENTED **and** the
+/// user toggle is ON **and** the fleet Remote Config kill switch has not disabled
+/// it. Any lever off -> extraction halted (fail-closed). Kept pure so the gate
+/// logic is testable without Firebase or a SettingsManager. Consent (G0) is the
+/// outermost lever: with it false (the default) the whole loop is dormant.
 enum MemoryExtractionGate {
-    static func isEnabled(automaticExtraction: Bool, remoteConfigEnabled: Bool) -> Bool {
-        automaticExtraction && remoteConfigEnabled
+    static func isEnabled(
+        consentGranted: Bool,
+        automaticExtraction: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        consentGranted && automaticExtraction && remoteConfigEnabled
     }
 }
 

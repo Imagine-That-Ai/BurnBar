@@ -8,14 +8,14 @@ import ViewInspector
 @MainActor
 final class DashboardWorkspaceNavStripTests: XCTestCase {
 
-    func test_rendersSixNavButtons() throws {
+    func test_rendersSevenNavButtons() throws {
         let view = DashboardWorkspaceNavStrip(
             currentRoute: .overview,
             onNavigate: { _ in }
         )
         let sut = try view.inspect()
         let buttons = try sut.findAll(ViewType.Button.self)
-        XCTAssertEqual(buttons.count, 6, "Should render 6 workspace nav buttons (chat + quota + database + projects + missions + session logs)")
+        XCTAssertEqual(buttons.count, 7, "Should render 7 workspace nav buttons (chat + quota + database + projects + missions + session logs + memory)")
     }
 
     func test_chatButtonNavigatesToChat() throws {
@@ -88,5 +88,27 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         let buttons = try sut.findAll(ViewType.Button.self)
         try buttons[5].tap()
         XCTAssertEqual(navigatedRoute, .sessionLogs)
+    }
+
+    func test_memoryButtonNavigatesToMemoryReview() throws {
+        var navigatedRoute: DashboardMainRoute?
+        let view = DashboardWorkspaceNavStrip(
+            currentRoute: .overview,
+            onNavigate: { navigatedRoute = $0 }
+        )
+        let sut = try view.inspect()
+        let buttons = try sut.findAll(ViewType.Button.self)
+        try buttons[6].tap()
+        XCTAssertEqual(navigatedRoute, .memoryReview)
+    }
+
+    func test_memoryButtonShowsPendingMemoryBadge() throws {
+        let view = DashboardWorkspaceNavStrip(
+            currentRoute: .overview,
+            pendingMemoryCount: 7,
+            onNavigate: { _ in }
+        )
+
+        XCTAssertNoThrow(try view.inspect().find(text: "7"))
     }
 }

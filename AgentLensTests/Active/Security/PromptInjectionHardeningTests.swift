@@ -237,6 +237,7 @@ final class PromptInjectionHardeningTests: XCTestCase {
         let store = try makeEmptyDataStore()
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "\(Self.self)-\(UUID().uuidString)"))
         let settings = SettingsManager(defaults: defaults)
+        settings.memoryConsentGranted = true
         let fake = FakeMemoryService(seeded: true)
         let controller = ChatSessionController(dataStore: store, settingsManager: settings, memoryService: fake)
 

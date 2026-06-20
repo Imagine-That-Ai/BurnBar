@@ -12,6 +12,10 @@ struct GeneralSettingsView: View {
     var sharedFeaturesAvailable: Bool
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    /// Live runtime context, forwarded into the indexing detail so its memory
+    /// controls can reach the shared store. Optional (default nil) so existing
+    /// call sites compile unchanged.
+    var runtimeContext: OpenBurnBarRuntimeContext?
 
     private var setupGuide: OpenBurnBarSetupGuideSnapshot {
         OpenBurnBarSetupGuideBuilder.build(
@@ -106,7 +110,8 @@ struct GeneralSettingsView: View {
                     IndexingOverviewDetailView(
                         settingsManager: settingsManager,
                         dataStore: dataStore,
-                        sharedFeaturesAvailable: sharedFeaturesAvailable
+                        sharedFeaturesAvailable: sharedFeaturesAvailable,
+                        runtimeContext: runtimeContext
                     )
                 } label: {
                     SettingsDrillRow(
@@ -369,6 +374,18 @@ struct IndexingOverviewDetailView: View {
     @Bindable var settingsManager: SettingsManager
     let dataStore: DataStore
     let sharedFeaturesAvailable: Bool
+    /// Live runtime context, threaded so the memory controls (Reset memory, the
+    /// review inbox link) bind to the shared `ControlPlaneStore`. Optional with a
+    /// nil default so callers that lack a runtime context still compile; the memory
+    /// service is derived from it on demand.
+    var runtimeContext: OpenBurnBarRuntimeContext?
+
+    /// Derives a `MemoryServing` from the shared store when available. Enables the
+    /// "Reset memory" action (which is otherwise disabled when nil). Cheap to build:
+    /// the actor only wraps the already-constructed store.
+    private var memoryService: (any MemoryServing)? {
+        runtimeContext?.chatMemoryStore.map { OpenBurnBarMemoryService(store: $0) }
+    }
 
     var body: some View {
         SettingsDeepLinkScrollContainer(route: .indexing) { _ in
@@ -376,7 +393,8 @@ struct IndexingOverviewDetailView: View {
                 settingsManager: settingsManager,
                 dataStore: dataStore,
                 sharedFeaturesAvailable: sharedFeaturesAvailable,
-                memoryService: nil
+                memoryService: memoryService,
+                runtimeContext: runtimeContext
             )
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -17,6 +17,10 @@ final class DashboardContext {
     let aggregator: UsageAggregator?
     let cloudSyncService: CloudSyncService?
     let iCloudSessionMirrorService: ICloudSessionMirrorService?
+    /// The shared runtime context that publishes the memory `ControlPlaneStore`. Must be
+    /// forwarded so a `DashboardView` built from this bundle can reach the memory inbox;
+    /// omitting it renders the Memory tab permanently "unavailable".
+    let runtimeContext: OpenBurnBarRuntimeContext?
 
     init(
         dataStore: DataStoreCoordinator,
@@ -27,7 +31,8 @@ final class DashboardContext {
         navigationCoordinator: NavigationCoordinator,
         aggregator: UsageAggregator? = nil,
         cloudSyncService: CloudSyncService? = nil,
-        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
+        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
@@ -38,5 +43,6 @@ final class DashboardContext {
         self.aggregator = aggregator
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
+        self.runtimeContext = runtimeContext
     }
 }
