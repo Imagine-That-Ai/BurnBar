@@ -120,8 +120,14 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     ) in body
     assert "Sign checksums (legacy GPG, optional)" in body
     assert "Verify checksum GPG signature (when configured)" in body
-    assert "SLSA provenance attestations (SBOM + VEX + checksums + binaries)" in body
-    assert "cosign attest --yes \"$CHECKSUMS_PATH\"" in body
+    assert "Sigstore blob attestations (SBOM + VEX + checksums + binaries)" in body
+    assert "cosign attest-blob --yes" in body
+    assert "--predicate \"$predicate_path\"" in body
+    assert "--bundle \"$bundle_path\"" in body
+    assert "release-provenance-v${VERSION}" in body
+    assert "Upload release provenance bundles artifact" in body
+    assert "PROVENANCE_PATHS" in body
+    assert "cosign attest --yes \"$CHECKSUMS_PATH\"" not in body
     assert "if: steps.provenance-policy.outputs.gpg_configured == 'true'" in body
     assert "if [[ -z \"${SIGNATURE_PATH:-}\" || ! -f \"$SIGNATURE_PATH\" ]]" in body
 
@@ -131,5 +137,5 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     checksums_index = body.index("Compute artifact checksums")
     policy_index = body.index("Resolve release provenance policy")
     sbom_index = body.index("Generate SBOM")
-    cosign_index = body.index("SLSA provenance attestations")
+    cosign_index = body.index("Sigstore blob attestations")
     assert checksums_index < policy_index < sbom_index < cosign_index

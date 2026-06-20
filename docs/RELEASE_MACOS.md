@@ -136,9 +136,9 @@ The workflow will:
 10. Optionally GPG-sign checksums if `RELEASE_SIGNING_KEY` is configured, and fail closed if that
     configured signing path does not produce a valid detached signature
 11. Generate SPDX SBOM from SwiftPM, npm, Cargo, and Android/Gradle dependencies
-12. Generate required keyless Sigstore/SLSA attestations for the SBOM, VEX, checksums, binaries, source archive, and update feeds
+12. Generate required keyless Sigstore blob attestations and verification bundles for the SBOM, VEX, checksums, binaries, source archive, and update feeds
 13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
-14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
+14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
 16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
 
@@ -155,16 +155,19 @@ Each release includes:
 | `checksums-vVERSION.txt` | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata |
 | `checksums-vVERSION.txt.asc` | GPG detached signature (if configured) |
 | `sbom-vVERSION.spdx.json` | Software Bill of Materials (SPDX format) |
+| `*.sigstore.json` | Sigstore verification bundles for keyless blob attestations |
+| `*.predicate.json` | Release-artifact predicates bound into the Sigstore blob attestations |
 | `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services |
 | `release-metadata.json` | Build provenance: version, commit, timestamp, update feed, runner |
 
 ## Release provenance
 
-Sigstore keyless attestations are the required release provenance control. They bind the release artifacts
-to GitHub Actions OIDC identity, the release workflow, and the source commit without storing a long-lived
-provenance signing key in the repository. GPG checksum signatures are optional legacy compatibility
-artifacts; if `RELEASE_SIGNING_KEY` is configured, the workflow verifies that the detached checksum
-signature was actually produced.
+Sigstore keyless blob attestations are the required release provenance control. They bind the release
+artifacts to GitHub Actions OIDC identity, the release workflow, and the source commit without storing a
+long-lived provenance signing key in the repository. The workflow uses `cosign attest-blob` for files on
+disk and publishes the resulting `.sigstore.json` verification bundles plus the release-artifact predicate
+JSON files. GPG checksum signatures are optional legacy compatibility artifacts; if `RELEASE_SIGNING_KEY`
+is configured, the workflow verifies that the detached checksum signature was actually produced.
 
 ### Checksum verification
 

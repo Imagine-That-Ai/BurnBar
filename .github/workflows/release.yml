@@ -847,7 +847,8 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
 
-      - name: SLSA provenance attestations (SBOM + VEX + checksums + binaries)
+      - name: Sigstore blob attestations (SBOM + VEX + checksums + binaries)
+        id: sigstore-provenance
         env:
           SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
           VEX_PATH: ${{ steps.vex.outputs.vex_path }}
@@ -857,27 +858,85 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cosign attest --yes "$SBOM_PATH"
-          cosign attest --yes "$VEX_PATH"
-          if [[ -f "$CHECKSUMS_PATH" ]]; then
-            cosign attest --yes "$CHECKSUMS_PATH"
-          fi
-          if [[ -f "$DMG_PATH" ]]; then
-            cosign attest --yes "$DMG_PATH"
-          fi
-          if [[ -f "$ZIP_PATH" ]]; then
-            cosign attest --yes "$ZIP_PATH"
-          fi
-          if [[ -f "$SOURCE_PATH" ]]; then
-            cosign attest --yes "$SOURCE_PATH"
-          fi
-          if [[ -f "$APPCAST_PATH" ]]; then
-            cosign attest --yes "$APPCAST_PATH"
-          fi
-          if [[ -f "$LATEST_PATH" ]]; then
-            cosign attest --yes "$LATEST_PATH"
-          fi
+          set -euo pipefail
+
+          PROVENANCE_DIR="$RUNNER_TEMP/release-provenance-v${VERSION}"
+          PREDICATE_TYPE="https://openburnbar.dev/attestations/release-artifact/v1"
+          mkdir -p "$PROVENANCE_DIR"
+
+          attest_release_blob() {
+            local artifact_path="$1"
+            local artifact_name="$2"
+
+            if [[ -z "$artifact_path" || ! -f "$artifact_path" ]]; then
+              echo "::error::Release provenance artifact missing: $artifact_name ($artifact_path)"
+              exit 1
+            fi
+
+            local safe_name="${artifact_name//[^A-Za-z0-9._-]/_}"
+            local predicate_path="$PROVENANCE_DIR/${safe_name}.predicate.json"
+            local bundle_path="$PROVENANCE_DIR/${safe_name}.sigstore.json"
+
+            python3 - "$artifact_path" "$artifact_name" "$predicate_path" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          artifact_path = Path(sys.argv[1])
+          artifact_name = sys.argv[2]
+          predicate_path = Path(sys.argv[3])
+          sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
+          predicate = {
+              "schemaVersion": 1,
+              "predicateType": "https://openburnbar.dev/attestations/release-artifact/v1",
+              "artifact": {
+                  "name": artifact_name,
+                  "fileName": artifact_path.name,
+                  "sha256": sha256,
+                  "sizeBytes": artifact_path.stat().st_size,
+              },
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "commit": commit,
+                  "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+                  "ref": os.environ.get("GITHUB_REF", ""),
+                  "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+                  "runID": os.environ.get("GITHUB_RUN_ID", ""),
+                  "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+          }
+          predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+            cosign attest-blob --yes \
+              --predicate "$predicate_path" \
+              --type "$PREDICATE_TYPE" \
+              --bundle "$bundle_path" \
+              "$artifact_path"
+
+            if [[ ! -s "$bundle_path" ]]; then
+              echo "::error::cosign did not write a Sigstore bundle for $artifact_name"
+              exit 1
+            fi
+          }
+
+          attest_release_blob "$SBOM_PATH" "sbom-v${VERSION}.spdx.json"
+          attest_release_blob "$VEX_PATH" "openburnbar-v${VERSION}.vex.json"
+          attest_release_blob "$CHECKSUMS_PATH" "checksums-v${VERSION}.txt"
+          attest_release_blob "$DMG_PATH" "${DMG_PATH##*/}"
+          attest_release_blob "$ZIP_PATH" "${ZIP_PATH##*/}"
+          attest_release_blob "$SOURCE_PATH" "${SOURCE_PATH##*/}"
+          attest_release_blob "$APPCAST_PATH" "${APPCAST_PATH##*/}"
+          attest_release_blob "$LATEST_PATH" "${LATEST_PATH##*/}"
+
+          echo "provenance_dir=$PROVENANCE_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Verify Apple privacy manifests in release bundles
         env:
@@ -1039,6 +1098,13 @@ jobs:
         with:
           name: vex-v${{ steps.version.outputs.version }}
           path: ${{ steps.vex.outputs.vex_path }}
+          if-no-files-found: error
+
+      - name: Upload release provenance bundles artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: release-provenance-v${{ steps.version.outputs.version }}
+          path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
           if-no-files-found: error
 
       - name: Upload NOTICES artifact
@@ -1208,6 +1274,7 @@ jobs:
           SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
+          mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -maxdepth 1 -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"
@@ -1240,6 +1307,11 @@ jobs:
           [[ -n "$SOURCE_PATH" && -f "$SOURCE_PATH" ]] && ASSETS+=("$SOURCE_PATH")
           [[ -n "$SOURCE_SHA256_PATH" && -f "$SOURCE_SHA256_PATH" ]] && ASSETS+=("$SOURCE_SHA256_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
+          if ((${#PROVENANCE_PATHS[@]} == 0)); then
+            echo "::error::Release provenance bundles missing after artifact download."
+            exit 1
+          fi
+          ASSETS+=("${PROVENANCE_PATHS[@]}")
 
           # Decide prerelease + latest flags up front. A prerelease (-beta etc.)
           # tag is ALWAYS published as a prerelease and NEVER repoints "latest",
