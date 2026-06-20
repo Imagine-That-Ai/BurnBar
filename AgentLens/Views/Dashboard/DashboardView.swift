@@ -31,6 +31,9 @@ struct DashboardView: View {
     @State var overviewAppeared = false
     @State private var overviewEmptyStateAppeared = false
     @State var deviceCount = 0
+    /// Quarantined chat-memory count for the Memory nav-strip badge (m2). Refreshed on
+    /// appear and on every navigation so the user is nudged that memories await approval.
+    @State private var pendingMemoryCount = 0
     @State var sidebarAppeared = false
     @State var chatPanelOpen = false
     @State private var showIndexingConsent = false
@@ -85,7 +88,8 @@ struct DashboardView: View {
             iCloudSessionMirrorService: context.iCloudSessionMirrorService,
             chatController: context.chatController,
             operatingLayer: context.operatingLayer,
-            settingsManager: context.settingsManager
+            settingsManager: context.settingsManager,
+            runtimeContext: context.runtimeContext
         )
     }
 
@@ -564,10 +568,20 @@ struct DashboardView: View {
     private var dashboardWorkspaceNavStrip: some View {
         DashboardWorkspaceNavStrip(
             currentRoute: mainRoute,
-            activeChatBackend: chatController.chatBackend
+            activeChatBackend: chatController.chatBackend,
+            pendingMemoryCount: pendingMemoryCount
         ) { route in
             navigate(to: route)
         }
+        .task(id: mainRoute) { await refreshPendingMemoryCount() }
+    }
+
+    /// Refresh the quarantined-memory count behind the nav-strip badge (m2). Best-effort:
+    /// a nil store (test-stub scene) or a query error simply leaves the count at 0.
+    func refreshPendingMemoryCount() async {
+        guard let store = runtimeContext?.chatMemoryStore else { return }
+        let count = (try? await store.chatMemoryPendingReviewCount(scope: memoryReviewScope)) ?? 0
+        if count != pendingMemoryCount { pendingMemoryCount = count }
     }
 
     // MARK: - Memory Review

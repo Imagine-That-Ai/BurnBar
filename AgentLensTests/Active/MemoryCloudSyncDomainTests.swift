@@ -148,9 +148,17 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
 
         let docs = gateway.documents(under: "users/\(uid)/memory_facts")
         XCTAssertEqual(docs.count, 1)
-        // The wrapped service seals the body; the plaintext must never appear.
-        let outer = String(describing: docs)
-        XCTAssertFalse(outer.contains("Approved memory body"))
+        // Structural seal invariant (m5): the uploaded document must carry the sealed
+        // ciphertext envelope and NO cleartext body/text/vector field — asserting the seal
+        // exists, not merely that one known plaintext substring is absent.
+        let fields = try XCTUnwrap(docs.values.first)
+        XCTAssertNotNil(fields["sealedMemory"], "Uploaded memory fact must carry a sealedMemory envelope.")
+        XCTAssertNil(fields["text"], "Plaintext `text` must never be a cleartext Firestore field.")
+        XCTAssertNil(fields["body"], "Plaintext `body` must never be a cleartext Firestore field.")
+        XCTAssertNil(fields["vector"], "Raw embedding `vector` must never be a cleartext Firestore field.")
+        XCTAssertEqual(fields["reviewStatus"] as? String, MemoryReviewStatus.approved.rawValue)
+        // Belt-and-suspenders: the known plaintext body must not appear anywhere in the doc.
+        XCTAssertFalse(String(describing: docs).contains("Approved memory body"))
         XCTAssertNotNil(domain.lastSyncDate)
         XCTAssertNil(domain.lastSyncError)
     }

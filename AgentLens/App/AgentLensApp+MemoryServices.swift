@@ -28,16 +28,16 @@ import Foundation
 //      `memoryExtractionEnabled` flips, which is an EARLIER switch than authority-writes.
 //
 // THE FEATURE SHIPS OFF. `startMemoryExtractionIfNeeded` is a no-op whenever the combined
-// gate `settingsManager.memoryExtractionEnabled` is false — but that gate DEFAULTS TRUE, so
-// it is NOT the lever that keeps the feature dormant out of the box. The dormancy guarantee
-// comes from the SECOND, human-owned lever:
-// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, default FALSE),
-// which the engine AND-s into the worker's authority closure (PR-D FIX #1). With that flag
-// false, the worker's pre-claim guard returns idle and `addChatMemoryAuthorityRecord` is
-// called with `enabled: false` (which throws `.disabled`), so NO durable `agent_memories`
-// row is written even when extraction is enabled and the loop runs. This file flips nothing
-// on; it only constructs the dormant machinery and, when BOTH levers allow, lets the
-// existing drain run.
+// gate `settingsManager.memoryExtractionEnabled` is false — and that gate DEFAULTS FALSE,
+// because user CONSENT (G0) is off until the user opts in, so out of the box there is no
+// transcript read and no LLM egress. Durable WRITES carry a SECOND, independent guarantee
+// from the human-owned lever `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault`
+// (static, default FALSE), which the engine AND-s into the worker's authority closure
+// (PR-D FIX #1): even if a user consents + enables extraction, the worker's pre-claim guard
+// returns idle and `addChatMemoryAuthorityRecord` is called with `enabled: false` (which
+// throws `.disabled`), so NO durable `agent_memories` row is written until an operator flips
+// go-live. This file flips nothing on; it only constructs the dormant machinery and, when
+// the levers allow, lets the existing drain run.
 extension OpenBurnBarApp {
 
     /// Bundle of the memory services that share one `ControlPlaneStore`. Built once in

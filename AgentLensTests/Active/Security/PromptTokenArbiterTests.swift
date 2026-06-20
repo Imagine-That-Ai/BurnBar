@@ -303,6 +303,63 @@ final class PromptTokenArbiterTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(reserve, attachment.estimatedTokenCost)
     }
 
+    // MARK: - G8 seal survives truncation (M1)
+
+    func testTruncatedMemorySectionKeepsUntrustedSealBalanced() {
+        let arbiter = PromptTokenArbiter.make(model: .claude, historyAndUserTurnTokens: 0)
+        // A single wrapped memory block far larger than the memory cap: the arbiter must
+        // truncate it mid-body, which (absent the reseal) would sever the close tag and
+        // leave the trusted tool-defs concatenated inside an unterminated untrusted block.
+        let wrapped = LLMSafeContent.wrapUntrusted(Self.repeatingText(length: 200_000), provenance: "memory:test@msg")
+        let result = arbiter.assemble([
+            PromptTokenSection(id: .core, content: "Persona."),
+            PromptTokenSection(id: .toolDefs, content: "TOOLS_PRESENT_MARKER"),
+            PromptTokenSection(id: .memory, content: wrapped)
+        ])
+        XCTAssertTrue(result.truncatedSections.contains(.memory), "precondition: the oversized memory block must truncate")
+        let opens = result.systemPrompt.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
+        let closes = result.systemPrompt.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
+        XCTAssertGreaterThan(opens, 0, "the wrapped memory block must be present in the prompt")
+        XCTAssertEqual(opens, closes, "every <UNTRUSTED_CONTENT> open must keep a matching close after truncation (G8)")
+        XCTAssertTrue(result.systemPrompt.contains("CRITICAL RULE (never overridden)"),
+                      "the re-sealed block must re-append the canonical CRITICAL RULE")
+        XCTAssertTrue(result.systemPrompt.contains("TOOLS_PRESENT_MARKER"), "trusted tool defs must remain present")
+    }
+
+    func testResealAppendsMissingCloseAndRuleWhenSevered() {
+        let severed = LLMSafeContent.untrustedOpenMarker + "\"memory:x@y\">\nbody text with no closing tag"
+        let resealed = LLMSafeContent.resealTruncatedUntrusted(severed)
+        let opens = resealed.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
+        let closes = resealed.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
+        XCTAssertEqual(opens, closes, "reseal must balance the sentinels")
+        XCTAssertTrue(resealed.contains("CRITICAL RULE (never overridden)"))
+    }
+
+    func testResealIsNoOpOnBalancedAndSentinelFreeText() {
+        let whole = LLMSafeContent.wrapUntrusted("hello", provenance: "memory:x@y")
+        XCTAssertEqual(LLMSafeContent.resealTruncatedUntrusted(whole), whole, "a complete wrapped block must be unchanged")
+        let plain = "just trusted text, no wrappers"
+        XCTAssertEqual(LLMSafeContent.resealTruncatedUntrusted(plain), plain, "sentinel-free text must be unchanged")
+    }
+
+    func testResealRestoresRuleWhenCloseSurvivesButRuleSevered() {
+        // Cut a complete wrapped block a few chars PAST its close tag (inside the rule):
+        // the block stays sealed (opens==closes) but its CRITICAL RULE is severed.
+        let block = LLMSafeContent.wrapUntrusted("hello world", provenance: "memory:x@y")
+        guard let close = block.range(of: LLMSafeContent.untrustedCloseMarker) else {
+            XCTFail("wrapped block must contain a close marker")
+            return
+        }
+        let cut = block.index(close.upperBound, offsetBy: 4) // a few chars into "\nCRIT..."
+        let severed = String(block[..<cut])
+        XCTAssertFalse(severed.hasSuffix(LLMSafeContent.criticalRule), "precondition: the rule is severed")
+        let resealed = LLMSafeContent.resealTruncatedUntrusted(severed)
+        XCTAssertTrue(resealed.hasSuffix(LLMSafeContent.criticalRule), "the severed rule must be re-appended")
+        let opens = resealed.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
+        let closes = resealed.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
+        XCTAssertEqual(opens, closes, "the block must remain balanced (no extra close added)")
+    }
+
     // MARK: - Helpers
 
     private static func repeatingText(length: Int) -> String {

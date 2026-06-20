@@ -103,6 +103,14 @@ public enum MemorySecretPIIGate {
     /// per-pattern id of its own).
     public static let highEntropyFindingID = "high-entropy-token"
 
+    /// Stable id for hex-charset high-entropy findings. Pure base-16 tokens cap at
+    /// log2(16)=4.0 bits/char, strictly below the general `entropy.minShannonEntropy`
+    /// (4.2), so they are mathematically invisible to the general entropy gate. A
+    /// dedicated lower-threshold hex branch (mirroring detect-secrets'
+    /// `HexHighEntropyString` plugin) catches Twilio auth tokens, hex API secrets, and
+    /// raw key material rendered as hex.
+    public static let hexHighEntropyFindingID = "high-entropy-hex-token"
+
     /// Maximum number of redaction passes before the gate fails closed. Bounds the
     /// re-gate loop so a pathological input cannot spin.
     static let maxRedactionPasses = 8
@@ -349,30 +357,63 @@ public enum MemorySecretPIIGate {
 
     private static func entropyFindings(in text: String, locatable: Bool) -> [ScanFinding] {
         guard let entropy = corpus.entropy, entropy.enabled, let regex = secretLikeTokenRegex else { return [] }
+        let hexEntropy = corpus.hexEntropy
         let nsText = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
         var results: [ScanFinding] = []
         for match in regex.matches(in: text, range: fullRange) {
             guard let swiftRange = Range(match.range, in: text) else { continue }
             let token = String(text[swiftRange])
-            guard token.count >= entropy.minLength,
-                  token.count <= entropy.maxLength,
-                  Set(token).count >= 10,
-                  token.contains(where: { $0.isLetter }),
-                  token.contains(where: { $0.isNumber }),
-                  shannonEntropy(token) >= entropy.minShannonEntropy else {
+            // General high-entropy path (mixed-charset secrets: base64, mixed alnum).
+            if token.count >= entropy.minLength,
+               token.count <= entropy.maxLength,
+               Set(token).count >= 10,
+               token.contains(where: { $0.isLetter }),
+               token.contains(where: { $0.isNumber }),
+               shannonEntropy(token) >= entropy.minShannonEntropy {
+                results.append(
+                    ScanFinding(
+                        id: highEntropyFindingID,
+                        label: entropy.label,
+                        kind: entropy.kind,
+                        range: locatable ? swiftRange : nil
+                    )
+                )
                 continue
             }
-            results.append(
-                ScanFinding(
-                    id: highEntropyFindingID,
-                    label: entropy.label,
-                    kind: entropy.kind,
-                    range: locatable ? swiftRange : nil
+            // Hex-charset path. A base-16 string's Shannon entropy ceiling is
+            // log2(16)=4.0 < the general 4.2 threshold, so pure-hex credentials
+            // (e.g. 32-char Twilio auth tokens, hex API secrets, raw key material)
+            // can NEVER trip the general gate. Mirror detect-secrets'
+            // `HexHighEntropyString` plugin: a dedicated lower threshold (~3.0) over a
+            // hex-only token of sufficient length. The 3.0 floor still excludes
+            // low-entropy repeating hex (e.g. "deadbeef"×8 ≈ 2.16). Conservative by
+            // design: a long hex run in a durable fact is dropped (DROP-on-hit), which
+            // may also drop a bare git SHA — acceptable for a secret gate.
+            if let hexEntropy, hexEntropy.enabled,
+               token.count >= hexEntropy.minLength,
+               token.count <= hexEntropy.maxLength,
+               isHexToken(token),
+               shannonEntropy(token) >= hexEntropy.minShannonEntropy {
+                results.append(
+                    ScanFinding(
+                        id: hexHighEntropyFindingID,
+                        label: hexEntropy.label,
+                        kind: hexEntropy.kind,
+                        range: locatable ? swiftRange : nil
+                    )
                 )
-            )
+            }
         }
         return results
+    }
+
+    /// True when every character is an ASCII hex digit (0-9, a-f, A-F).
+    private static func isHexToken(_ token: String) -> Bool {
+        guard token.isEmpty == false else { return false }
+        return token.utf8.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 70) || (byte >= 97 && byte <= 102)
+        }
     }
 
     /// Order-preserving dedup by id, mapping internal findings to the public type.
@@ -522,6 +563,7 @@ public enum MemorySecretPIIGate {
         let version: String
         let patterns: [CompiledPattern]
         let entropy: EntropyConfig?
+        let hexEntropy: EntropyConfig?
         let decoding: DecodingConfig?
         let available: Bool
 
@@ -529,6 +571,7 @@ public enum MemorySecretPIIGate {
             version: "",
             patterns: [],
             entropy: nil,
+            hexEntropy: nil,
             decoding: nil,
             available: false
         )
@@ -581,19 +624,23 @@ public enum MemorySecretPIIGate {
             )
         }
 
-        let entropy: EntropyConfig? = decoded.entropy.flatMap { raw in
-            guard let kind = MemoryGateFindingKind(rawValue: raw.kind ?? MemoryGateFindingKind.secret.rawValue) else {
-                return nil
+        func entropyConfig(from raw: RawCorpus.Entropy?) -> EntropyConfig? {
+            raw.flatMap { raw in
+                guard let kind = MemoryGateFindingKind(rawValue: raw.kind ?? MemoryGateFindingKind.secret.rawValue) else {
+                    return nil
+                }
+                return EntropyConfig(
+                    enabled: raw.enabled,
+                    label: raw.label,
+                    kind: kind,
+                    minLength: raw.minLength,
+                    maxLength: raw.maxLength,
+                    minShannonEntropy: raw.minShannonEntropy
+                )
             }
-            return EntropyConfig(
-                enabled: raw.enabled,
-                label: raw.label,
-                kind: kind,
-                minLength: raw.minLength,
-                maxLength: raw.maxLength,
-                minShannonEntropy: raw.minShannonEntropy
-            )
         }
+        let entropy = entropyConfig(from: decoded.entropy)
+        let hexEntropy = entropyConfig(from: decoded.hexEntropy)
         let decoding = decoded.decoding.map { raw in
             DecodingConfig(enabled: raw.enabled, maxCandidates: raw.maxCandidates, maxDecodedBytes: raw.maxDecodedBytes)
         }
@@ -602,6 +649,7 @@ public enum MemorySecretPIIGate {
             version: decoded.version,
             patterns: compiled,
             entropy: entropy,
+            hexEntropy: hexEntropy,
             decoding: decoding,
             available: true
         )
@@ -761,6 +809,7 @@ public enum MemorySecretPIIGate {
         let version: String
         let patterns: [Pattern]
         let entropy: Entropy?
+        let hexEntropy: Entropy?
         let decoding: DecodingConfig?
     }
 }

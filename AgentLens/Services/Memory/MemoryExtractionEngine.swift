@@ -9,26 +9,29 @@ import Foundation
 // in the worker + `ChatTranscriptExtractor`; this type stays MainActor-isolated so it can
 // be observed and so the kill switch is updated synchronously from the UI.
 //
-// THE FEATURE SHIPS OFF. Durable writes are gated by TWO independent fail-closed levers.
-// The worker's authority closure is the AND of both, so NO durable `agent_memories` row is
-// written until BOTH allow:
-//   1. `settingsManager.memoryExtractionEnabled` — the combined G4 gate (user toggle AND
-//      Firebase Remote Config fleet kill switch; DEFAULTS TRUE). The engine mirrors this
-//      into a `Sendable` atomic (`MemoryExtractionKillSwitch`) the worker reads off-main.
-//      This is the instant fleet kill; it gates whether the LLM round-trip runs at all.
+// THE FEATURE SHIPS OFF. Durable writes are gated by THREE fail-closed levers. The user
+// CONSENT lever (G0) folds into `memoryExtractionEnabled` alongside the user toggle and the
+// fleet kill switch; the worker's authority closure then ANDs that combined gate with the
+// human-owned go-live flag. NO durable `agent_memories` row is written until BOTH allow:
+//   1. `settingsManager.memoryExtractionEnabled` — the combined G0+G4 gate (user CONSENT
+//      AND user toggle AND Firebase Remote Config fleet kill switch; DEFAULTS FALSE because
+//      consent (G0) is off until the user opts in). The engine mirrors this into a
+//      `Sendable` atomic (`MemoryExtractionKillSwitch`) the worker reads off-main. This is
+//      the instant fleet kill; it gates whether the LLM round-trip runs at all.
 //   2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, DEFAULTS
 //      FALSE) — the human-owned go-live switch. Threaded through `init` and AND-ed into
 //      the worker's authority closure (PR-D FIX #1). Because it defaults false, durable
 //      writes stay blocked EVEN WHEN extraction is enabled: the loop may claim + drain +
 //      run the model, but `recomputeProvenance` → `addChatMemoryAuthorityRecord(enabled:)`
 //      is called with `false`, which throws `.disabled` and persists nothing.
-// This engine flips NOTHING on; it only reflects whatever those two levers currently say.
+// This engine flips NOTHING on; it only reflects whatever those levers currently say.
 //
-// WHY THE AND IS REQUIRED (the bug this FIX closes): lever #1 defaults TRUE, so wiring the
-// worker gate to `{ killSwitch.isAllowed() }` alone would make durable writes depend ONLY
-// on the default-true extraction toggle — the feature would ship ON. The static default-
-// false go-live flag is the second, human-owned lever; it MUST be AND-ed in so that
-// enabling extraction (to observe the loop) does not by itself enable durable writes.
+// WHY THE AND IS REQUIRED: even once a user grants consent + enables the toggle (so
+// `memoryExtractionEnabled` becomes true to observe the loop), durable writes must STILL
+// require the separate, human-owned go-live flag. Wiring the worker gate to
+// `{ killSwitch.isAllowed() }` alone would let a consenting user's extraction toggle by
+// itself enable durable writes before the operator has signed off on go-live. The static
+// default-false go-live flag is that second, human-owned lever; it MUST be AND-ed in.
 //
 // PR-D2 must-fixes folded in:
 //   #1 The pump loops on the worker's tri-state `DrainOutcome`, NOT a `Bool`, so one
@@ -164,7 +167,8 @@ final class MemoryExtractionEngine {
             // Re-establish the kill switch at the WORKER boundary (PR-D2 must-fix #4): the
             // worker reads the LIVE atomic, never a cached or main-isolated value. AND it
             // with the human-owned go-live lever (PR-D FIX #1) so durable writes require
-            // BOTH the (default-true) extraction gate AND the (default-false) go-live flag.
+            // BOTH the extraction gate (consent+toggle+RC; default-false until the user
+            // opts in) AND the (default-false) go-live flag.
             // `authorityWritesGoLiveEnabled` is captured by value: it is a static go-live
             // switch flipped by a deliberate code/config change + restart, not a per-tick
             // toggle, so it does not need the live-atomic treatment the fleet kill needs.
