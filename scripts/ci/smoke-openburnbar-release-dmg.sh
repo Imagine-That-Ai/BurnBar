@@ -239,8 +239,12 @@ PY
 
 health_passed=0
 last_health_output=""
+health_deadline_seconds=30
+health_deadline_epoch=$(($(date +%s) + health_deadline_seconds))
+attempt=0
 echo "Polling installed-layout daemon health via signed OpenBurnBarCLI"
-for attempt in {1..60}; do
+while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]; do
+  attempt=$((attempt + 1))
   if health_output="$(run_cli_health_probe 2>&1)"; then
     last_health_output="$health_output"
     if grep -q "ok=true" <<<"$health_output"; then
@@ -260,7 +264,7 @@ for attempt in {1..60}; do
 done
 
 if [[ "$health_passed" != "1" ]]; then
-  echo "::error::Timed out waiting for installed-layout OpenBurnBar daemon health response from signed OpenBurnBarCLI"
+  echo "::error::Timed out after ${health_deadline_seconds}s waiting for installed-layout OpenBurnBar daemon health response from signed OpenBurnBarCLI"
   if [[ -n "$last_health_output" ]]; then
     printf '%s\n' "$last_health_output"
   fi
