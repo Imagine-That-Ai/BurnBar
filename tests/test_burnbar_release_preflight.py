@@ -214,6 +214,9 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert '[cli, "health"]' in script
     assert "subprocess.TimeoutExpired" in script
     assert "timeout=2" in script
+    assert "health_deadline_seconds=30" in script
+    assert "while [[ \"$(date +%s)\" -lt \"$health_deadline_epoch\" ]]" in script
+    assert "for attempt in {1..60}" not in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script

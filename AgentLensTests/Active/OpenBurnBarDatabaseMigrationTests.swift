@@ -604,7 +604,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error as? ControlPlaneStore.ChatMemoryAuthorityError,
-                .secretRejected(labels: ["anthropic_api_key"])
+                .secretRejected(labels: ["anthropic-api-key"])
             )
         }
 
@@ -624,11 +624,11 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(persisted.agentCount, 0)
         XCTAssertEqual(persisted.snapshotCount, 0)
         XCTAssertTrue(persisted.audit.contains("memory.secret_rejected"))
-        XCTAssertTrue(persisted.audit.contains("anthropic_api_key"))
+        XCTAssertTrue(persisted.audit.contains("anthropic-api-key"))
         XCTAssertFalse(persisted.audit.contains(secret))
         let labelsJSON = try XCTUnwrap(persisted.auditRow?["labels_json"] as String?)
         let labels = try JSONDecoder().decode([String].self, from: Data(labelsJSON.utf8))
-        XCTAssertTrue(labels.contains("labels:anthropic_api_key"))
+        XCTAssertTrue(labels.contains("labels:anthropic-api-key"))
         try assertMemoryAuditRowRecomputes(persisted.auditRow)
 
         do {
@@ -644,7 +644,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error as? ControlPlaneStore.ChatMemoryAuthorityError,
-                .secretRejected(labels: ["openai_api_key"])
+                .secretRejected(labels: ["openai-api-key"])
             )
         }
     }
@@ -792,6 +792,107 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(reclaimed?.status, .running)
         XCTAssertEqual(reclaimed?.attempts, 2)
         XCTAssertEqual(reclaimed?.leaseExpiresAt, now.addingTimeInterval(22))
+    }
+
+    func test_memoryExtractionOutboxTerminalizesExpiredRunningJobAtMaxAttempts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_300)
+        let dedupeMarker = ["stale", "max", "outbox"].joined(separator: "-")
+        let intent = ExtractionIntent(
+            threadID: "thread-stale-max-pr613",
+            threadLogicalID: "thread-logical-stale-max-pr613",
+            messageID: "message-stale-max-pr613",
+            scope: MemoryScope(userID: "stale-max-user", appID: "stale-max-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: dedupeMarker
+        )
+
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let firstClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(1),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(firstClaim?.id, jobID)
+        XCTAssertEqual(firstClaim?.attempts, 1)
+
+        let secondClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(12),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(secondClaim?.id, jobID)
+        XCTAssertEqual(secondClaim?.attempts, 2)
+
+        let thirdClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(23),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(thirdClaim?.id, jobID)
+        XCTAssertEqual(thirdClaim?.attempts, 3)
+
+        let exhaustedClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(34),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertNil(exhaustedClaim)
+        let finalStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(finalStatus, .failed)
+        let terminalError = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT last_error FROM memory_extraction_jobs WHERE id = ?",
+                arguments: [jobID]
+            )
+        }
+        XCTAssertEqual(terminalError, "lease_exhausted")
+    }
+
+    func test_pendingChatMemoryReviewCountCountsOnlyQuarantinedRows() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_320)
+        let scope = MemoryScope(userID: "review-count-user", appID: "review-count-app")
+
+        func addMemory(id: MemoryID, status: MemoryReviewStatus) async throws {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: "Review count body \(id)",
+                    kind: .fact,
+                    scope: scope,
+                    confidence: 0.8,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-\(id)",
+                            threadLogicalID: "thread-\(id)",
+                            messageID: "message-\(id)",
+                            role: "user",
+                            authoredAt: now,
+                            contentHash: "content-\(id)",
+                            crossDeviceHMAC: "hmac-\(id)"
+                        )
+                    ],
+                    reviewStatus: status
+                ),
+                id: id,
+                now: now,
+                enabled: true
+            )
+        }
+
+        try await addMemory(id: "mem-count-pending", status: .quarantined)
+        try await addMemory(id: "mem-count-approved", status: .approved)
+        try await addMemory(id: "mem-count-rejected", status: .rejected)
+
+        let count = try await store.pendingChatMemoryReviewCount(scope: scope)
+        XCTAssertEqual(count, 1)
     }
 
     func test_memoryDedupSupersedesDuplicateBodyWithDeterministicWinnerAndProvenanceUnion() async throws {
@@ -1071,7 +1172,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             MemoryRecallRequest(
                 query: "concise backend status",
                 scope: scope,
-                tokenBudget: 80,
+                tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80,
                 limit: 5
             )
         )
@@ -1404,7 +1505,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
 
         let before = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertEqual(before.map(\.memoryID), ["mem-tombstone"])
 
@@ -1417,7 +1518,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             now: now.addingTimeInterval(1)
         )
         let suppressedBeforeReconcile = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(suppressedBeforeReconcile.isEmpty)
         let searchBeforeReconcile = try await service.search(
@@ -1450,19 +1551,19 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             enabled: true
         )
         let quarantinedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(quarantinedRecall.isEmpty)
 
         _ = try await service.approve(id: "mem-review")
         let approvedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertEqual(approvedRecall.map(\.memoryID), ["mem-review"])
 
         _ = try await service.reject(id: "mem-review")
         let rejectedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(rejectedRecall.isEmpty)
 
@@ -1863,6 +1964,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "worker-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "Worker extracted a durable preference.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         let worker = MemoryExtractionWorker(
             store: store,
@@ -1921,6 +2030,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "idempotent-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "The user has idempotent memory extraction facts.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         _ = try await store.addChatMemoryAuthorityRecord(
             MemoryAddRequest(
@@ -1928,6 +2045,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 kind: .fact,
                 scope: intent.scope,
                 confidence: 0.9,
+                citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)],
                 reviewStatus: .quarantined
             ),
             id: "memory-\(jobID)-0",
@@ -1941,8 +2059,17 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             authorityWritesEnabled: { true },
             extractor: { job in
             [
-                MemoryAddRequest(text: "Duplicate first extracted memory.", scope: job.scope),
-                MemoryAddRequest(text: "New second extracted memory.", kind: .preference, scope: job.scope)
+                MemoryAddRequest(
+                    text: "Duplicate first extracted memory.",
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)]
+                ),
+                MemoryAddRequest(
+                    text: "New second extracted memory.",
+                    kind: .preference,
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)]
+                )
             ]
         })
 
@@ -1961,7 +2088,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(status, .succeeded)
     }
 
-    func test_memoryExtractionWorkerPreflightsBatchBeforeWritingSecretBearingRequest() async throws {
+    func test_memoryExtractionWorkerDropsSecretBearingCandidateButKeepsSafeOnes() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -1975,6 +2102,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "secret-worker-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "The user has safe memory facts alongside a rejected secret candidate.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         let worker = MemoryExtractionWorker(
             store: store,
@@ -1982,19 +2117,41 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             authorityWritesEnabled: { true },
             extractor: { job in
             [
-                MemoryAddRequest(text: "Safe first memory should not be persisted.", scope: job.scope),
-                MemoryAddRequest(text: "Secret sk-ant-1234567890abcdef1234567890 must reject the whole batch.", scope: job.scope)
+                MemoryAddRequest(
+                    text: "Safe first memory should persist.",
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
+                ),
+                MemoryAddRequest(
+                    text: "Secret sk-ant-1234567890abcdef1234567890 must be dropped, not poison the batch.",
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
+                ),
+                MemoryAddRequest(
+                    text: "Safe third memory should persist.",
+                    kind: .preference,
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
+                )
             ]
         })
 
+        // PR-D1 must-fix #4: the G7 gate is a per-candidate DROP filter — one
+        // secret-bearing candidate is dropped, the safe candidates persist, and the
+        // job SUCCEEDS (a single bad candidate does not fail the whole batch).
         let drained = try await worker.drainOne()
-        XCTAssertFalse(drained)
-        let count = try await queue.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        XCTAssertTrue(drained)
+        let rows = try await queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT id FROM agent_memories WHERE source_kind = 'chat' ORDER BY id"
+            )
         }
-        XCTAssertEqual(count, 0)
+        // Indices 0 and 2 survive; index 1 (the secret) is dropped. The deterministic
+        // ids preserve the original candidate index so a later retry stays idempotent.
+        XCTAssertEqual(rows.map { $0["id"] as? String }, ["memory-\(jobID)-0", "memory-\(jobID)-2"])
         let status = try await store.memoryExtractionJobStatus(id: jobID)
-        XCTAssertEqual(status, .failed)
+        XCTAssertEqual(status, .succeeded)
     }
 
     func test_memoryExtractionWorkerRespectsAuthorityWriteKillSwitch() async throws {
@@ -2608,6 +2765,45 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     nonisolated private static func columnNames(_ db: Database, table: String) throws -> Set<String> {
         let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
         return Set(rows.compactMap { $0["name"] as? String })
+    }
+
+    private func insertChatMessage(
+        _ queue: DatabaseQueue,
+        threadID: String,
+        id: String,
+        role: String,
+        body: String,
+        at date: Date
+    ) async throws {
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
+                arguments: [threadID, date, date]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO chat_messages (id, role, content, timestamp, threadId)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [id, role, body, date, threadID]
+            )
+        }
+    }
+
+    nonisolated private static func sourceCitation(
+        for intent: ExtractionIntent,
+        body: String,
+        at date: Date
+    ) -> MemoryCitation {
+        MemoryCitation(
+            id: "source-\(intent.messageID)",
+            threadLogicalID: intent.threadLogicalID,
+            messageID: intent.messageID,
+            role: "assistant",
+            authoredAt: date,
+            contentHash: SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined(),
+            crossDeviceHMAC: "test-hmac-\(intent.messageID)"
+        )
     }
 
     private static let migrationIdentifiersThroughV35 = [

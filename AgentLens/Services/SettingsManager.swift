@@ -712,6 +712,20 @@ final class SettingsManager {
         set { memory.highRecallPerReply = newValue }
     }
 
+    /// User consent to chat-memory extraction (gate G0, default OFF). Setting this
+    /// true also marks the consent prompt as shown. Until granted, the whole
+    /// memory loop is dormant (see `memoryExtractionEnabled`).
+    var memoryConsentGranted: Bool {
+        get { memory.consentGranted }
+        set { memory.consentGranted = newValue }
+    }
+
+    /// Whether the first-run memory consent prompt has already been presented.
+    var memoryConsentShown: Bool {
+        get { memory.consentShown }
+        set { memory.consentShown = newValue }
+    }
+
     /// Remote Config `memory_extraction_enabled`. Not user-settable; written by
     /// the RC refresh. Fail-closed (false) on fetch error or fleet kill.
     var memoryExtractionRemoteConfigEnabled: Bool {
@@ -719,13 +733,35 @@ final class SettingsManager {
         set { memory.remoteConfigExtractionEnabled = newValue }
     }
 
-    /// Combined extraction gate (G4): user toggle AND fleet kill switch both
-    /// must allow. This is the single value the extraction chokepoint consults.
+    /// Combined extraction gate (G0 + G4): user CONSENT **and** the user toggle
+    /// **and** the fleet kill switch must all allow. This is the single value the
+    /// extraction chokepoint consults; with consent default OFF the whole loop is
+    /// dormant out of the box.
     var memoryExtractionEnabled: Bool {
         MemoryExtractionGate.isEnabled(
+            consentGranted: memory.consentGranted,
             automaticExtraction: memory.automaticExtraction,
             remoteConfigEnabled: memory.remoteConfigExtractionEnabled
         )
+    }
+
+    /// Raw user opt-in to replicate approved sealed memory facts to the cloud
+    /// vault (default OFF — PR-E2). This is the persisted toggle only; the value
+    /// the cloud-sync scheduler actually consults is `memoryApprovedCloudBackupEnabled`,
+    /// which additionally clamps this under the fleet ceiling.
+    var memoryApprovedCloudBackupOptIn: Bool {
+        get { memory.approvedCloudBackupEnabled }
+        set { memory.approvedCloudBackupEnabled = newValue }
+    }
+
+    /// Combined cloud-backup gate for derived memory: the explicit user opt-in
+    /// AND the Remote Config fleet ceiling (`remoteConfigExtractionEnabled`).
+    /// Folding the egress switch under the same fleet kill switch that halts
+    /// extraction means one Remote Config flip stops both producing new memory
+    /// and shipping existing memory off-device. Default OFF (the opt-in defaults
+    /// false), so `MemoryCloudSyncDomain` performs zero egress out of the box.
+    var memoryApprovedCloudBackupEnabled: Bool {
+        memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
     }
 
     // MARK: Chat Backend

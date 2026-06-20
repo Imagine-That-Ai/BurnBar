@@ -9,6 +9,7 @@ enum DashboardMainRoute: Hashable {
     case projects
     case missions
     case sessionLogs
+    case memoryReview
     case chat
     case quota
     case provider(AgentProvider)
@@ -57,6 +58,7 @@ final class DashboardNavigationModel {
         case .projects: return "Projects"
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
+        case .memoryReview: return "Memory"
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .provider(let provider): return provider.displayName
@@ -72,7 +74,7 @@ final class DashboardNavigationModel {
     }
 
     func sidebarRouteOrder(providerSummaries: [ProviderSummary], modelSummaries: [ModelSummary]) -> [DashboardMainRoute] {
-        var routes: [DashboardMainRoute] = [.overview, .insights, .chat, .quota]
+        var routes: [DashboardMainRoute] = [.overview, .insights, .chat, .quota, .memoryReview]
         if viewMode == .agents {
             routes.append(contentsOf: providerSummaries.map { .provider($0.provider) })
         } else {

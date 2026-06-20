@@ -111,6 +111,7 @@ const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   "hermes-realtime-relay-redis-prod-secure";
 const REQUIRED_BRANCH_CHECKS = [
   "Fast Feedback Gate",
+  "App build + test (AgentLens)",
   "guard",
   "BurnBar AGPL product posture",
   "Secret Detection (gitleaks)",
@@ -125,6 +126,10 @@ const REQUIRED_BRANCH_CHECKS = [
   "Hosted MCP Isolation Proofs (local, deterministic)",
   "Firestore Security Rules Tests",
   "Android ktlint",
+  "Analyze (javascript-typescript)",
+  "Analyze (python)",
+];
+const REQUIRED_CODEQL_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
 ];

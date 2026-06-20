@@ -25,46 +25,73 @@ final class MemorySettingsAndKillSwitchTests: XCTestCase {
 
     // MARK: - Pure gate
 
-    func testGateEnabledWhenBothLeversOn() {
-        XCTAssertTrue(MemoryExtractionGate.isEnabled(automaticExtraction: true, remoteConfigEnabled: true))
+    func testGateEnabledWhenAllLeversOn() {
+        XCTAssertTrue(MemoryExtractionGate.isEnabled(consentGranted: true, automaticExtraction: true, remoteConfigEnabled: true))
+    }
+
+    func testGateDisabledWhenConsentMissing() {
+        // Consent (G0) is the outermost lever: without it the loop is dormant even
+        // with the user toggle and the fleet switch both ON.
+        XCTAssertFalse(MemoryExtractionGate.isEnabled(consentGranted: false, automaticExtraction: true, remoteConfigEnabled: true))
     }
 
     func testGateDisabledWhenUserToggleOff() {
-        XCTAssertFalse(MemoryExtractionGate.isEnabled(automaticExtraction: false, remoteConfigEnabled: true))
+        XCTAssertFalse(MemoryExtractionGate.isEnabled(consentGranted: true, automaticExtraction: false, remoteConfigEnabled: true))
     }
 
     func testGateDisabledWhenRemoteConfigKills() {
-        XCTAssertFalse(MemoryExtractionGate.isEnabled(automaticExtraction: true, remoteConfigEnabled: false))
+        XCTAssertFalse(MemoryExtractionGate.isEnabled(consentGranted: true, automaticExtraction: true, remoteConfigEnabled: false))
     }
 
-    func testGateDisabledWhenBothOff() {
-        XCTAssertFalse(MemoryExtractionGate.isEnabled(automaticExtraction: false, remoteConfigEnabled: false))
+    func testGateDisabledWhenAllOff() {
+        XCTAssertFalse(MemoryExtractionGate.isEnabled(consentGranted: false, automaticExtraction: false, remoteConfigEnabled: false))
     }
 
     // MARK: - SettingsManager defaults + levers
 
-    func testSettingsDefaultsAreExtractionOn() throws {
+    func testSettingsDefaultsAreDormantUntilConsent() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
         XCTAssertTrue(settings.memoryAutomaticExtraction, "User toggle defaults ON.")
         XCTAssertFalse(settings.memoryHighRecallPerReply, "High-recall sub-toggle defaults OFF.")
         XCTAssertTrue(settings.memoryExtractionRemoteConfigEnabled, "RC kill switch defaults allowed (true).")
-        XCTAssertTrue(settings.memoryExtractionEnabled, "Combined gate defaults enabled.")
+        XCTAssertFalse(settings.memoryConsentGranted, "Consent (G0) defaults OFF.")
+        XCTAssertFalse(settings.memoryExtractionEnabled, "Combined gate is DORMANT until the user grants consent.")
+
+        settings.memoryConsentGranted = true
+        XCTAssertTrue(settings.memoryExtractionEnabled, "Granting consent (other levers on) enables the gate.")
+    }
+
+    func testSettingsChangesPropagateToRegisteredKillSwitchImmediately() throws {
+        let killSwitch = MemoryExtractionKillSwitch()
+        MemoryExtractionKillSwitchRegistry.register(killSwitch, initiallyAllowed: false)
+        let settings = SettingsManager(defaults: try makeDefaults())
+        XCTAssertFalse(killSwitch.isAllowed())
+
+        settings.memoryConsentGranted = true
+        XCTAssertTrue(killSwitch.isAllowed(), "granting consent opens the registered live worker gate")
+
+        settings.memoryExtractionRemoteConfigEnabled = false
+        XCTAssertFalse(killSwitch.isAllowed(), "fleet kill closes the registered live worker gate immediately")
     }
 
     func testUserToggleDisablesGate() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
+        settings.memoryConsentGranted = true
+        XCTAssertTrue(settings.memoryExtractionEnabled, "Consent + default levers ⇒ enabled.")
         settings.memoryAutomaticExtraction = false
         XCTAssertFalse(settings.memoryExtractionEnabled)
     }
 
     func testRemoteConfigKillSwitchDisablesGate() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
+        settings.memoryConsentGranted = true
         settings.memoryExtractionRemoteConfigEnabled = false
-        XCTAssertFalse(settings.memoryExtractionEnabled, "A fleet kill switch must halt extraction even if the user toggle is ON.")
+        XCTAssertFalse(settings.memoryExtractionEnabled, "A fleet kill switch must halt extraction even with consent + the user toggle ON.")
     }
 
     func testChatControllerUsesCombinedGateForExtractionService() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
+        settings.memoryConsentGranted = true
         let controller = ChatSessionController(
             dataStore: try makeInMemoryStore(),
             settingsManager: settings,
@@ -77,6 +104,9 @@ final class MemorySettingsAndKillSwitchTests: XCTestCase {
         settings.memoryAutomaticExtraction = true
         settings.memoryExtractionRemoteConfigEnabled = false
         XCTAssertNil(controller.memoryServiceForExtraction)
+        settings.memoryExtractionRemoteConfigEnabled = true
+        settings.memoryConsentGranted = false
+        XCTAssertNil(controller.memoryServiceForExtraction, "Revoking consent closes the gate.")
     }
 
     func testUserTogglePersistsAcrossInstances() throws {

@@ -102,6 +102,16 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// Whether text expansion snippets sync to Firestore.
     var textExpansionCloudSyncEnabled: Bool { get }
 
+    /// User opt-in (default OFF) to replicate approved sealed memory facts to the
+    /// cloud vault. Persisted toggle only — the scheduler consults the clamped
+    /// `memoryApprovedCloudBackupEnabled` gate instead.
+    var memoryApprovedCloudBackupOptIn: Bool { get set }
+
+    /// Combined cloud-backup gate for derived memory: the user opt-in AND the
+    /// Remote Config fleet ceiling. Default OFF. The cloud-sync scheduler reads
+    /// this; false ⇒ zero memory egress.
+    var memoryApprovedCloudBackupEnabled: Bool { get }
+
     // MARK: - CLI Assistant
 
     /// Whether CLI assistant is allowed.

@@ -85,6 +85,17 @@ struct DashboardDetailView: View {
                         preferredChatModelKey: chatController.hermesModelName
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .memoryReview:
+                    // Parallel/legacy detail surface (not on the live `DashboardView`
+                    // path, which wires the inbox to the shared `ControlPlaneStore`).
+                    // This context carries no memory store, so render the graceful
+                    // unavailable state to keep the route exhaustive.
+                    ContentUnavailableView(
+                        "Memory is unavailable",
+                        systemImage: "brain.head.profile",
+                        description: Text("Open Memory from the main dashboard to review extracted memories.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .chat:
                     DashboardChatWorkspaceView(
                         controller: chatController,

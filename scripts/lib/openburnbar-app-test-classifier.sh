@@ -45,6 +45,11 @@ openburnbar_app_test_has_concrete_xctest_failure() {
 openburnbar_app_test_has_terminal_concrete_xctest_failure() {
     local log_path="$1"
 
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path" &&
+        openburnbar_app_test_final_selected_summary_is_green "$log_path"; then
+        return 1
+    fi
+
     if is_xcode_false_negative_pass "$log_path"; then
         return 1
     fi
@@ -83,7 +88,7 @@ openburnbar_app_test_final_selected_summary_is_green() {
     local log_path="$1"
 
     awk '
-        /Test Suite '\''Selected tests'\'' passed/ {
+        /Test Suite '\''Selected tests'\'' (passed|failed)/ {
             waiting_for_summary = 1
             green = 0
             next
@@ -193,7 +198,8 @@ is_known_hang() {
     local log_path="$1"
     local pattern
 
-    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path" &&
+        openburnbar_app_test_final_selected_summary_is_green "$log_path"; then
         return 0
     fi
 

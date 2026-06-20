@@ -25,23 +25,19 @@ final class DataStoreTests: XCTestCase {
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
         for d in 1...7 {
-            let day = cal.date(byAdding: .day, value: -d, to: today)!
-            usages.append(
-                TokenUsage(
-                    provider: .factory,
-                    sessionId: "s\(d)",
-                    projectName: "p",
-                    model: "m",
-                    inputTokens: 100,
-                    outputTokens: 100,
-                    costUSD: Double(d),
-                    startTime: day.addingTimeInterval(3600),
-                    endTime: day.addingTimeInterval(7200)
-                )
+            let day = cal.date(byAdding: Calendar.Component.day, value: -d, to: today)!
+            let usage = makeUsage(
+                sessionId: "s\(d)",
+                costUSD: Double(d),
+                startTime: day.addingTimeInterval(3600),
+                endTime: day.addingTimeInterval(7200),
+                inputTokens: 100,
+                outputTokens: 100
             )
+            usages.append(usage)
         }
         store.replaceUsages(usages)
-        let expected = (1.0 + 2.0 + 3.0 + 4.0 + 5.0 + 6.0 + 7.0) / 7.0
+        let expected: Double = 4.0
         XCTAssertEqual(store.rollingDailyAverage, expected, accuracy: 0.0001)
     }
 
@@ -362,8 +358,7 @@ final class DataStoreTests: XCTestCase {
     private func moodFixture(today: Double, rollingAvg: Double) -> [TokenUsage] {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
-        let yesterday = cal.date(byAdding: .day, value: -1, to: todayStart)!
-        let older = cal.date(byAdding: .day, value: -2, to: todayStart)!
+        let yesterday = cal.date(byAdding: Calendar.Component.day, value: -1, to: todayStart)!
 
         var usages: [TokenUsage] = []
 
@@ -410,5 +405,26 @@ final class DataStoreTests: XCTestCase {
         }
 
         return usages
+    }
+
+    private func makeUsage(
+        sessionId: String,
+        costUSD: Double,
+        startTime: Date,
+        endTime: Date,
+        inputTokens: Int = 1,
+        outputTokens: Int = 1
+    ) -> TokenUsage {
+        TokenUsage(
+            provider: .factory,
+            sessionId: sessionId,
+            projectName: "p",
+            model: "m",
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            costUSD: costUSD,
+            startTime: startTime,
+            endTime: endTime
+        )
     }
 }

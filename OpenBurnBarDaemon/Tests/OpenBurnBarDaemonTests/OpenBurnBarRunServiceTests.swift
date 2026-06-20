@@ -110,6 +110,23 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(retriedDetail.run?.phase, .completed)
     }
 
+    func testRunExecutionFailoverTreatsAnthropic529AsTransientCapacity() async throws {
+        let harness = try makeHarness(name: "anthropic-529-failover")
+        let emptyBody529Failover = await harness.runService.shouldFailOverProviderError(
+            BurnBarProviderExecutorError.upstreamError(529, "")
+        )
+        let overloadBody529Failover = await harness.runService.shouldFailOverProviderError(
+            BurnBarProviderExecutorError.upstreamError(529, #"{"type":"overloaded_error"}"#)
+        )
+        let generic500Failover = await harness.runService.shouldFailOverProviderError(
+            BurnBarProviderExecutorError.upstreamError(500, "temporary backend failure")
+        )
+
+        XCTAssertTrue(emptyBody529Failover)
+        XCTAssertTrue(overloadBody529Failover)
+        XCTAssertFalse(generic500Failover)
+    }
+
     // MARK: - VAL-EXEC-011: Run-level failover continuity preserves idempotent usage accounting
 
     func test_VAL_EXEC_011_usageAccountingIsIdempotentUnderFailover() async throws {
