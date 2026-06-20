@@ -101,6 +101,58 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     }
 
     @MainActor
+    func test_start_adoptsExistingClaudeWiringAndRefreshesStaleDiscoveryCatalog() async throws {
+        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let staleRoot: [String: Any] = [
+            "theme": "dark",
+            "env": [
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:8317",
+                "ANTHROPIC_AUTH_TOKEN": "old-token",
+                "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+                "ANTHROPIC_CUSTOM_HEADERS": "X-OpenBurnBar-Client: claude-code",
+                "OPENBURNBAR_MODEL_CATALOG_IDS": "claude-opus-4-8,claude-opus-4-8-high",
+                "OPENBURNBAR_MODEL_CATALOG_FINGERPRINT": "stale-fingerprint",
+                "OPENBURNBAR_WIRED": "1"
+            ]
+        ]
+        let staleData = try JSONSerialization.data(withJSONObject: staleRoot)
+        try staleData.write(to: url)
+        XCTAssertFalse(
+            settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue),
+            "This reproduces an older install where Claude Code was wired before the durability sentry recorded enrollment."
+        )
+
+        let liveModels = [
+            RoutingClientAdvertisedModel(
+                id: "anthropic.openburnbar.Y29kZXgvY29kZXgtZ3B0LTUuNS1mYW1pbHk",
+                displayName: "GPT-5.5 · Codex · via OpenBurnBar",
+                providerID: "codex",
+                providerName: "Codex",
+                formatFamily: "openai_compat",
+                servedEndpoints: ["/v1/messages", "/v1/responses", "/v1/chat/completions"],
+                routeEligible: true
+            )
+        ]
+        sentry = makeSentry(advertisedModels: liveModels)
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        XCTAssertTrue(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue))
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+
+        let root = try loadJSONObject(at: url)
+        let env = try XCTUnwrap(root["env"] as? [String: Any])
+        let catalogIDs = try XCTUnwrap(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String)
+        XCTAssertEqual(catalogIDs, "anthropic.openburnbar.Y29kZXgvY29kZXgtZ3B0LTUuNS1mYW1pbHk")
+        XCTAssertFalse(catalogIDs.contains("claude-opus-4-8"))
+        XCTAssertEqual(root["theme"] as? String, "dark", "non-BurnBar keys must survive adoption repair")
+    }
+
+    @MainActor
     func test_start_doesNotRepairWhenAutoRepairDisabled() async throws {
         let url = tempHome.appendingPathComponent(".claude/settings.json")
         try FileManager.default.createDirectory(
