@@ -560,48 +560,106 @@ jobs:
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
           ENTITLEMENTS="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+          PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
+          VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"
             exit 1
           fi
 
+          sign_one() {
+            local path="$1"
+            local options="${2:-runtime}"
+            local identifier="${3:-}"
+            [[ -e "$path" ]] || return 0
+            local args=(--force --timestamp --options "$options" --sign "$SIGNING_IDENTITY")
+            if [[ -n "$identifier" ]]; then
+              args+=(--identifier "$identifier")
+            fi
+            codesign "${args[@]}" "$path"
+          }
+
+          sign_one_with_entitlements() {
+            local path="$1"
+            local entitlements_path="$2"
+            local options="${3:-runtime}"
+            local identifier="${4:-}"
+            [[ -e "$path" ]] || return 0
+            local args=(--force --timestamp --options "$options" --entitlements "$entitlements_path" --sign "$SIGNING_IDENTITY")
+            if [[ -n "$identifier" ]]; then
+              args+=(--identifier "$identifier")
+            fi
+            codesign "${args[@]}" "$path"
+          }
+
+          assert_peer_signature() {
+            local path="$1"
+            local expected_identifier="$2"
+            local signature
+
+            [[ -e "$path" ]] || return 0
+            signature="$(codesign -d -vvv "$path" 2>&1)"
+            if ! grep -q "Identifier=$expected_identifier" <<<"$signature"; then
+              echo "::error::$path is signed with the wrong identifier; expected $expected_identifier."
+              printf '%s\n' "$signature"
+              exit 1
+            fi
+            if ! grep -q "flags=.*runtime" <<<"$signature" || ! grep -q "flags=.*library-validation" <<<"$signature"; then
+              echo "::error::$path must be signed with hardened runtime and library validation for privileged socket policy."
+              printf '%s\n' "$signature"
+              exit 1
+            fi
+          }
+
           if [[ -d "$FRAMEWORKS_DIR" ]]; then
             while IFS= read -r -d '' item; do
-              codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$item"
-            done < <(find "$FRAMEWORKS_DIR" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' -o -name '*.bundle' \) -print0 | sort -z)
+              sign_one "$item"
+            done < <(
+              find "$FRAMEWORKS_DIR" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' -o -name '*.bundle' \) -print0 \
+                | python3 -c 'import sys; paths=[p for p in sys.stdin.buffer.read().split(b"\0") if p]; paths.sort(key=lambda p: (p.count(b"/"), len(p)), reverse=True); sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))'
+            )
           fi
 
           if [[ -d "$HELPERS_DIR" ]]; then
             while IFS= read -r -d '' item; do
-              codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$item"
-            done < <(find "$HELPERS_DIR" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' -o -name '*.bundle' \) -print0 | sort -z)
+              sign_one "$item"
+            done < <(
+              find "$HELPERS_DIR" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' -o -name '*.bundle' \) -print0 \
+                | python3 -c 'import sys; paths=[p for p in sys.stdin.buffer.read().split(b"\0") if p]; paths.sort(key=lambda p: (p.count(b"/"), len(p)), reverse=True); sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))'
+            )
           fi
 
-          if [[ -f "$HELPERS_DIR/libOpenBurnBarCore.dylib" ]]; then
-            codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
-          fi
+          sign_one "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+          sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
+          sign_one_with_entitlements \
+            "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" \
+            "$PRIVILEGED_INPUT_ENTITLEMENTS" \
+            "runtime,library" \
+            "com.openburnbar.privileged-input-execution"
+          sign_one_with_entitlements \
+            "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" \
+            "$VIRTUAL_HID_BRIDGE_ENTITLEMENTS" \
+            "runtime,library" \
+            "com.openburnbar.virtual-hid-bridge"
+          sign_one \
+            "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
+            "runtime,library" \
+            "com.openburnbar.privileged-input-killswitch-watchdog"
 
-          if [[ -f "$HELPERS_DIR/OpenBurnBarDaemon" ]]; then
-            codesign --force --timestamp --options runtime,library \
-              --identifier com.openburnbar.daemon \
-              --sign "$SIGNING_IDENTITY" \
-              "$HELPERS_DIR/OpenBurnBarDaemon"
-          fi
-
-          if [[ -f "$HELPERS_DIR/OpenBurnBarCLI" ]]; then
-            codesign --force --timestamp --options runtime,library \
-              --identifier com.openburnbar.cli \
-              --sign "$SIGNING_IDENTITY" \
-              "$HELPERS_DIR/OpenBurnBarCLI"
-          fi
-
-          codesign --force --timestamp --deep --options runtime,library \
+          codesign --force --timestamp --options runtime,library \
             --entitlements "$ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          assert_peer_signature "$APP_PATH" "com.openburnbar.app"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
           spctl --assess --type execute -vv "$APP_PATH" || true
 
       - name: Create DMG
