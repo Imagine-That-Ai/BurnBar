@@ -1863,6 +1863,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "worker-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "Worker extracted a durable preference.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         let worker = MemoryExtractionWorker(
             store: store,
@@ -1921,6 +1929,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "idempotent-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "The user has idempotent memory extraction facts.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         _ = try await store.addChatMemoryAuthorityRecord(
             MemoryAddRequest(
@@ -1928,6 +1944,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 kind: .fact,
                 scope: intent.scope,
                 confidence: 0.9,
+                citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)],
                 reviewStatus: .quarantined
             ),
             id: "memory-\(jobID)-0",
@@ -1941,8 +1958,17 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             authorityWritesEnabled: { true },
             extractor: { job in
             [
-                MemoryAddRequest(text: "Duplicate first extracted memory.", scope: job.scope),
-                MemoryAddRequest(text: "New second extracted memory.", kind: .preference, scope: job.scope)
+                MemoryAddRequest(
+                    text: "Duplicate first extracted memory.",
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)]
+                ),
+                MemoryAddRequest(
+                    text: "New second extracted memory.",
+                    kind: .preference,
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has idempotent memory extraction facts.", at: now)]
+                )
             ]
         })
 
@@ -1975,6 +2001,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             promptVersion: "memory-extract-v1",
             idempotencyKey: "secret-worker-idem-pr3"
         )
+        try await insertChatMessage(
+            queue,
+            threadID: intent.threadID,
+            id: intent.messageID,
+            role: "assistant",
+            body: "The user has safe memory facts alongside a rejected secret candidate.",
+            at: now
+        )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
         let worker = MemoryExtractionWorker(
             store: store,
@@ -1982,12 +2016,22 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             authorityWritesEnabled: { true },
             extractor: { job in
             [
-                MemoryAddRequest(text: "Safe first memory should persist.", scope: job.scope),
+                MemoryAddRequest(
+                    text: "Safe first memory should persist.",
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
+                ),
                 MemoryAddRequest(
                     text: "Secret sk-ant-1234567890abcdef1234567890 must be dropped, not poison the batch.",
-                    scope: job.scope
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
                 ),
-                MemoryAddRequest(text: "Safe third memory should persist.", kind: .preference, scope: job.scope)
+                MemoryAddRequest(
+                    text: "Safe third memory should persist.",
+                    kind: .preference,
+                    scope: job.scope,
+                    citations: [Self.sourceCitation(for: intent, body: "The user has safe memory facts alongside a rejected secret candidate.", at: now)]
+                )
             ]
         })
 
@@ -2620,6 +2664,45 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     nonisolated private static func columnNames(_ db: Database, table: String) throws -> Set<String> {
         let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
         return Set(rows.compactMap { $0["name"] as? String })
+    }
+
+    private func insertChatMessage(
+        _ queue: DatabaseQueue,
+        threadID: String,
+        id: String,
+        role: String,
+        body: String,
+        at date: Date
+    ) async throws {
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
+                arguments: [threadID, date, date]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO chat_messages (id, role, content, timestamp, threadId)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [id, role, body, date, threadID]
+            )
+        }
+    }
+
+    private static func sourceCitation(
+        for intent: ExtractionIntent,
+        body: String,
+        at date: Date
+    ) -> MemoryCitation {
+        MemoryCitation(
+            id: "source-\(intent.messageID)",
+            threadLogicalID: intent.threadLogicalID,
+            messageID: intent.messageID,
+            role: "assistant",
+            authoredAt: date,
+            contentHash: SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined(),
+            crossDeviceHMAC: "test-hmac-\(intent.messageID)"
+        )
     }
 
     private static let migrationIdentifiersThroughV35 = [

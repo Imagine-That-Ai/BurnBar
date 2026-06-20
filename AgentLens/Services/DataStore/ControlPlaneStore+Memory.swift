@@ -872,7 +872,13 @@ extension ControlPlaneStore {
     }
 
     func deleteChatMemoryAuthorityRecords(scope: MemoryScope, now: Date = Date()) async throws -> Int {
-        let records = try await fetchAllChatMemoryAuthorityRecordsForDeletion(scope: scope)
+        let ids = try await chatMemoryAuthorityDeletionIDs(scope: scope)
+        var records: [Memory] = []
+        for id in ids {
+            if let record = try await fetchChatMemoryAuthorityRecord(id: id) {
+                records.append(record)
+            }
+        }
         var deleted = 0
         for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
             deleted += 1
