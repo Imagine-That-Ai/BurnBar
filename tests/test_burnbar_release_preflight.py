@@ -116,7 +116,7 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert "Resolve release provenance policy" in body
     assert (
         "RELEASE_SIGNING_KEY is not configured; using required keyless "
-        "Sigstore/SLSA attestations for release provenance."
+        "Sigstore blob attestations for release provenance."
     ) in body
     assert "Sign checksums (legacy GPG, optional)" in body
     assert "Verify checksum GPG signature (when configured)" in body
@@ -127,6 +127,14 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert "release-provenance-v${VERSION}" in body
     assert "Upload release provenance bundles artifact" in body
     assert "PROVENANCE_PATHS" in body
+    assert (
+        'find "$RUNNER_TEMP" -type f \\( -name "*.sigstore.json" -o -name "*.predicate.json" \\)'
+        in body
+    )
+    assert (
+        'find "$RUNNER_TEMP" -maxdepth 1 -type f \\( -name "*.sigstore.json" -o -name "*.predicate.json" \\)'
+        not in body
+    )
     assert "cosign attest --yes \"$CHECKSUMS_PATH\"" not in body
     assert "if: steps.provenance-policy.outputs.gpg_configured == 'true'" in body
     assert "if [[ -z \"${SIGNATURE_PATH:-}\" || ! -f \"$SIGNATURE_PATH\" ]]" in body
@@ -137,5 +145,21 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     checksums_index = body.index("Compute artifact checksums")
     policy_index = body.index("Resolve release provenance policy")
     sbom_index = body.index("Generate SBOM")
-    cosign_index = body.index("Sigstore blob attestations")
+    cosign_index = body.index("- name: Sigstore blob attestations")
     assert checksums_index < policy_index < sbom_index < cosign_index
+
+
+def test_release_attestation_verifier_uses_sigstore_blob_bundles():
+    body = (ROOT / "scripts/ci/verify-release-attestations.sh").read_text(encoding="utf-8")
+
+    assert "cosign verify-blob-attestation" in body
+    assert "gh attestation verify" not in body
+    assert "OPENBURNBAR_RELEASE_CERTIFICATE_IDENTITY" in body
+    assert "OPENBURNBAR_RELEASE_CERTIFICATE_OIDC_ISSUER" in body
+    assert "OPENBURNBAR_RELEASE_PREDICATE_TYPE" in body
+    assert "certificate_issuer=" in body
+    assert "predicate_type=" in body
+    assert "download_pattern \"*.sigstore.json\"" in body
+    assert "download_pattern \"*.predicate.json\"" in body
+    assert "artifact.sha256" in body
+    assert "release.ref" in body

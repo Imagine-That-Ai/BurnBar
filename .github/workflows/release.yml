@@ -779,7 +779,7 @@ jobs:
             echo "Legacy GPG checksum signing is configured; detached checksum signature will be generated and verified."
           else
             echo "gpg_configured=false" >> "$GITHUB_OUTPUT"
-            echo "RELEASE_SIGNING_KEY is not configured; using required keyless Sigstore/SLSA attestations for release provenance."
+            echo "RELEASE_SIGNING_KEY is not configured; using required keyless Sigstore blob attestations for release provenance."
           fi
 
       - name: Sign checksums (legacy GPG, optional)
@@ -1274,7 +1274,7 @@ jobs:
           SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
-          mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -maxdepth 1 -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"

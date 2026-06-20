@@ -1,15 +1,15 @@
-# Supply chain provenance (SLSA + cosign)
+# Supply chain provenance (Sigstore + release predicates)
 
-OpenBurnBar ships privileged-input capabilities. Release artifacts therefore carry **SLSA build provenance** and **Sigstore cosign attestations** in addition to SPDX SBOMs and OpenVEX sidecars.
+OpenBurnBar ships privileged-input capabilities. Release artifacts therefore carry **Sigstore keyless blob attestations** with release-artifact predicates in addition to SPDX SBOMs and OpenVEX sidecars.
 
 ## What we attest
 
 | Artifact | Provenance | Attestation |
 |----------|------------|-------------|
-| Release DMG + ZIP | GitHub Actions OIDC → SLSA v1 predicate | `cosign attest` (keyless via `id-token: write`) |
-| SPDX SBOM | Same workflow job as release build | Attached attestation + GitHub artifact |
-| Checksums file | SHA-256/512 in `checksums-v*.txt` | Signed blob attestation |
-| OpenVEX sidecar | Generated from SBOM at build time | Uploaded alongside SBOM |
+| Release DMG + ZIP | GitHub Actions OIDC → release-artifact predicate | `cosign attest-blob` bundle (keyless via `id-token: write`) |
+| SPDX SBOM | Same workflow job as release build | `cosign attest-blob` bundle + GitHub Release asset |
+| Checksums file | SHA-256/512 in `checksums-v*.txt` | `cosign attest-blob` bundle |
+| OpenVEX sidecar | Generated from SBOM at build time | `cosign attest-blob` bundle + GitHub Release asset |
 
 Workflows:
 
@@ -28,7 +28,7 @@ permissions:
   attestations: write
 ```
 
-Cosign uses GitHub's OIDC identity (`sigstore/cosign-installer` + `cosign attest`). No long-lived signing key is stored in the repository. Operators may additionally configure `RELEASE_SIGNING_KEY` (GPG) for checksum `.asc` files — that path is legacy-compatible, not a substitute for Sigstore attestations.
+Cosign uses GitHub's OIDC identity (`sigstore/cosign-installer` + `cosign attest-blob`). No long-lived signing key is stored in the repository. Operators may additionally configure `RELEASE_SIGNING_KEY` (GPG) for checksum `.asc` files — that path is legacy-compatible, not a substitute for Sigstore attestations.
 
 ## SBOM + VEX on every PR and release
 
@@ -62,8 +62,8 @@ Rationale (aligned with [`plans/2026-05-30-sota-security-remediation.md`](../../
 
 What we **do** pursue instead:
 
-- **SLSA provenance** tying each release artifact to a specific Git commit, workflow run, and builder identity.
-- **Cosign attestations** over DMG/ZIP/SBOM digests for downstream verification.
+- **Sigstore blob attestations** tying each release artifact to a specific Git commit, workflow run, builder identity, and file digest.
+- **Release-artifact predicates** for DMG/ZIP/SBOM/VEX/checksum/source/update-feed digests and metadata.
 - **Pre-sign payload checksums** (`checksums-v*.txt`) for integrity before notarization transforms the outer container.
 - Optional **pre-signing reproducibility experiments** on unsigned `.app` bundles — informative only, not a release gate.
 
@@ -79,15 +79,16 @@ If Apple or the community ships practical notarized-repro tooling, revisit in a 
 ./scripts/generate-sbom.py --version dev --repo-root . --output /tmp/openburnbar-dev.spdx.json
 python3 scripts/supply-chain/generate-vex.py --sbom /tmp/openburnbar-dev.spdx.json --output /tmp/openburnbar-dev.vex.json
 
-# Verify GitHub/Sigstore attestations for published release assets.
+# Verify Sigstore blob attestations for published release assets.
 scripts/ci/verify-release-attestations.sh vX.Y.Z
 
-# For one-off asset inspection, pin the signer workflow and tag source ref.
-gh attestation verify OpenBurnBar-X.Y.Z-macOS.dmg \
-  --repo Imagine-That-Ai/BurnBar \
-  --signer-workflow github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml \
-  --source-ref refs/tags/vX.Y.Z \
-  --deny-self-hosted-runners
+# For one-off asset inspection, pin the signer workflow identity and OIDC issuer.
+cosign verify-blob-attestation \
+  --bundle OpenBurnBar-X.Y.Z-macOS.dmg.sigstore.json \
+  --type https://openburnbar.dev/attestations/release-artifact/v1 \
+  --certificate-identity https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml@refs/tags/vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  OpenBurnBar-X.Y.Z-macOS.dmg
 ```
 
 Do not check the SOTA release-attestation signoff box until the script exits 0

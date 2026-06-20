@@ -142,6 +142,10 @@ The workflow will:
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
 16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
 
+Run the release workflow from the release tag ref (for example
+`gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
+identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
 ## Release artifacts
 
 Each release includes:
