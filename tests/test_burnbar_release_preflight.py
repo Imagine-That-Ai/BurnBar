@@ -163,3 +163,24 @@ def test_release_attestation_verifier_uses_sigstore_blob_bundles():
     assert "download_pattern \"*.predicate.json\"" in body
     assert "artifact.sha256" in body
     assert "release.ref" in body
+
+
+def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_assumption():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/ci/smoke-openburnbar-release-dmg.sh").read_text(encoding="utf-8")
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
+
+    assert "bash scripts/ci/smoke-openburnbar-release-dmg.sh \"$DMG_PATH\"" in workflow
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"' in workflow
+    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"' in website_release
+    assert 'cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"' in workflow
+    assert 'cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"' in website_release
+    assert "Contents/Helpers/OpenBurnBarDaemon" in script
+    assert "Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle" in script
+    assert "Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json" in script
+    assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
+    assert "com.openburnbar.daemon.release-smoke" in script
+    assert "\"method\": \"daemon.health\"" in script
+    assert "Authenticated daemon health RPC passed" in script
+    assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
+    assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow

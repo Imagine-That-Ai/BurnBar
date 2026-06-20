@@ -45,6 +45,7 @@ checksums_path="$release_dir/checksums-v${version}.txt"
 metadata_path="$release_dir/release-metadata.json"
 sbom_path="$release_dir/sbom-v${version}.spdx.json"
 default_update_base_url="$(
+  # shellcheck disable=SC2016 # reason: JavaScript template literals must be passed to node without shell expansion.
   node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const read=(name)=>source.match(new RegExp(`${name}:\\s*"([^"]+)"`))?.[1]; console.log(read("macUpdateBaseUrl") || read("macDownloadBaseUrl") || "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download");'
 )"
 update_base_url="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-${OPENBURNBAR_R2_PUBLIC_BASE_URL:-$default_update_base_url}}"
@@ -136,6 +137,29 @@ cp "$daemon_bin" "$helpers_dir/OpenBurnBarDaemon"
 chmod +x "$helpers_dir/OpenBurnBarDaemon"
 if [[ -f "$daemon_core_dylib" ]]; then
   cp "$daemon_core_dylib" "$helpers_dir/libOpenBurnBarCore.dylib"
+fi
+daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
+daemon_helper_resource_bundle="$helpers_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
+project_code_memory_dir="$app_path/Contents/Resources/ProjectCodeMemory"
+if [[ ! -d "$daemon_resource_bundle" ]]; then
+  echo "ERROR: OpenBurnBarDaemon resource bundle missing at $daemon_resource_bundle" >&2
+  exit 1
+fi
+if [[ ! -d "$project_code_memory_dir" ]]; then
+  echo "ERROR: OpenBurnBarDaemon Project Code Memory resources missing at $project_code_memory_dir" >&2
+  exit 1
+fi
+rm -rf "$daemon_helper_resource_bundle" "$helpers_dir/ProjectCodeMemory"
+cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"
+cp -R "$project_code_memory_dir" "$helpers_dir/ProjectCodeMemory"
+if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
+  if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
+    echo "ERROR: OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
+    exit 1
+  fi
+  if ! otool -l "$helpers_dir/OpenBurnBarDaemon" | grep -q '@executable_path/../Frameworks'; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"
+  fi
 fi
 
 core_framework="$derived_data/Build/Products/$configuration/PackageFrameworks/OpenBurnBarCore.framework"
@@ -247,6 +271,14 @@ if [[ -d "$frameworks_dir" ]]; then
     sign_one "$item"
   done < <(
     find "$frameworks_dir" -mindepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" \) -print0 \
+      | python3 -c 'import sys; paths=[p for p in sys.stdin.buffer.read().split(b"\0") if p]; paths.sort(key=lambda p: (p.count(b"/"), len(p)), reverse=True); sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))'
+  )
+fi
+if [[ -d "$helpers_dir" ]]; then
+  while IFS= read -r -d '' item; do
+    sign_one "$item"
+  done < <(
+    find "$helpers_dir" -mindepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" \) -print0 \
       | python3 -c 'import sys; paths=[p for p in sys.stdin.buffer.read().split(b"\0") if p]; paths.sort(key=lambda p: (p.count(b"/"), len(p)), reverse=True); sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))'
   )
 fi
