@@ -99,6 +99,26 @@ Failing tests:
 LOG
 )"
 
+xcode_exit65_final_green_after_stale_failures_log="$(write_fixture xcode-exit65-final-green-after-stale-failures <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-20 01:54:33.024.
+Test Case '-[OpenBurnBarTests.MediaSessionCoordinatorTests testActiveScreenShareStopsWhenAdmissionIsRevoked]' failed (0.112 seconds).
+Test Case '-[OpenBurnBarTests.ProjectionPipelineServiceMattersTests test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable]' failed (0.141 seconds).
+Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-20 02:33:40.655.
+	 Executed 1736 tests, with 0 failures (0 unexpected) in 124.034 (126.282) seconds
+Test Suite 'Selected tests' passed at 2026-06-20 02:33:40.655.
+	 Executed 1736 tests, with 0 failures (0 unexpected) in 124.034 (126.284) seconds
+Test session results, code coverage, and logs:
+	/var/folders/.../OpenBurnBarTests-attempt-1.xcresult
+
+Failing tests:
+	ChatSessionControllerSearchStateTests.test_performSearch_ignoresStaleOutOfOrderResults()
+	MediaSessionCoordinatorTests.testActiveScreenShareStopsWhenAdmissionIsRevoked()
+	ProjectionPipelineServiceMattersTests.test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable()
+
+** TEST FAILED **
+LOG
+)"
+
 restarted_final_green_with_stale_footer_log="$(write_fixture restarted-final-green-with-stale-footer <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-14 17:50:09.282.
 Test Case '-[OpenBurnBarTests.CLIBridgeTests test_agentToolBroker_shellRunCannotWriteOutsideWorkspace]' failed (1.011 seconds).
@@ -214,6 +234,8 @@ assert_true "concrete XCTest failure remains terminal after false-negative guard
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
 assert_true "final green bundle and Selected tests summaries override a stale failing-tests footer" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
+assert_true "final green bundle and Selected tests summaries override stale earlier failures plus stale failing footer" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
+assert_false "stale earlier failures plus final green summaries are not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
 assert_true "runner-restart stale failing footer is accepted when final Selected tests run is green" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
 assert_false "runner-restart stale failing footer is not terminal concrete failure when final run is green" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
 assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
@@ -222,6 +244,7 @@ assert_true "runner crash without concrete XCTest failure is retryable" is_known
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
 assert_false "test-host timeout relaunch is not accepted as false-negative pass" is_xcode_false_negative_pass "$timeout_restart_log"
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
+assert_false "test-host timeout relaunch with stale failing footer is not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_log"
 assert_false "test-host timeout relaunch with assertion failure is not hidden" is_known_hang "$timeout_restart_with_assertion_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
 assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
