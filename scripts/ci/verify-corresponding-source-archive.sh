@@ -81,6 +81,7 @@ required=(
   "REUSE.toml"
   "docs/legal/agpl-compliance.md"
   "scripts/create-corresponding-source.sh"
+  "scripts/ci/build-corresponding-source-archive.sh"
   "scripts/generate-sbom.py"
   "scripts/supply-chain/generate-vex.py"
   "scripts/supply-chain/run-ecosystem-deny-checks.sh"
