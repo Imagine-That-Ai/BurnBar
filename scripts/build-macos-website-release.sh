@@ -158,7 +158,6 @@ if [[ ! -d "$project_code_memory_dir" ]]; then
 fi
 rm -rf "$daemon_helper_resource_bundle" "$helpers_dir/ProjectCodeMemory"
 cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"
-cp -R "$project_code_memory_dir" "$helpers_dir/ProjectCodeMemory"
 if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
   if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
     echo "ERROR: OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2

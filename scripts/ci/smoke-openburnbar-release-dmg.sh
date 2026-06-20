@@ -82,7 +82,6 @@ cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
 project_code_memory_corpus="$app_path/Contents/Resources/ProjectCodeMemory/secret-pattern-corpus.json"
 helper_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle"
-helper_project_code_memory_corpus="$app_path/Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json"
 installed_resource_bundle="$installed_daemon_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
 installed_project_code_memory_corpus="$installed_daemon_dir/ProjectCodeMemory/secret-pattern-corpus.json"
 
@@ -108,10 +107,6 @@ if [[ ! -f "$project_code_memory_corpus" ]]; then
 fi
 if [[ ! -d "$helper_resource_bundle" ]]; then
   echo "::error::Helper-side daemon resource bundle not found at $helper_resource_bundle"
-  exit 1
-fi
-if [[ ! -f "$helper_project_code_memory_corpus" ]]; then
-  echo "::error::Helper-side Project Code Memory corpus not found at $helper_project_code_memory_corpus"
   exit 1
 fi
 

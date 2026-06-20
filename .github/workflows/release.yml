@@ -483,7 +483,6 @@ jobs:
           fi
           rm -rf "$DAEMON_HELPER_RESOURCE_BUNDLE" "$HELPERS_DIR/ProjectCodeMemory"
           cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"
-          cp -R "$PROJECT_CODE_MEMORY_DIR" "$HELPERS_DIR/ProjectCodeMemory"
           if otool -L "$HELPERS_DIR/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
             if [[ ! -d "$APP_PATH/Contents/Frameworks/SQLCipher.framework" ]]; then
               echo "::error::OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework"
