@@ -98,7 +98,8 @@ if ! /usr/libexec/PlistBuddy -c "Print :com.apple.developer.hid.virtual.device" 
   exit 1
 fi
 
-swift build --package-path OpenBurnBarDaemon -c release
+swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
+swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
 
 set -o pipefail
 if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
@@ -128,13 +129,19 @@ frameworks_dir="$app_path/Contents/Frameworks"
 mkdir -p "$helpers_dir" "$frameworks_dir"
 
 daemon_bin="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+daemon_cli_bin="OpenBurnBarDaemon/.build/release/OpenBurnBarCLI"
 daemon_core_dylib="OpenBurnBarDaemon/.build/release/libOpenBurnBarCore.dylib"
 if [[ ! -x "$daemon_bin" ]]; then
   echo "ERROR: Daemon binary missing at $daemon_bin" >&2
   exit 1
 fi
+if [[ ! -x "$daemon_cli_bin" ]]; then
+  echo "ERROR: Daemon CLI binary missing at $daemon_cli_bin" >&2
+  exit 1
+fi
 cp "$daemon_bin" "$helpers_dir/OpenBurnBarDaemon"
-chmod +x "$helpers_dir/OpenBurnBarDaemon"
+cp "$daemon_cli_bin" "$helpers_dir/OpenBurnBarCLI"
+chmod +x "$helpers_dir/OpenBurnBarDaemon" "$helpers_dir/OpenBurnBarCLI"
 if [[ -f "$daemon_core_dylib" ]]; then
   cp "$daemon_core_dylib" "$helpers_dir/libOpenBurnBarCore.dylib"
 fi
@@ -159,6 +166,15 @@ if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; th
   fi
   if ! otool -l "$helpers_dir/OpenBurnBarDaemon" | grep -q '@executable_path/../Frameworks'; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"
+  fi
+fi
+if otool -L "$helpers_dir/OpenBurnBarCLI" | grep -q 'SQLCipher.framework'; then
+  if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
+    echo "ERROR: OpenBurnBarCLI links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
+    exit 1
+  fi
+  if ! otool -l "$helpers_dir/OpenBurnBarCLI" | grep -q '@executable_path/../Frameworks'; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"
   fi
 fi
 
@@ -284,6 +300,7 @@ if [[ -d "$helpers_dir" ]]; then
 fi
 sign_one "$helpers_dir/libOpenBurnBarCore.dylib"
 sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+sign_one "$helpers_dir/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
 sign_one "$helpers_dir/OpenBurnBarVirtualHIDBridge" "runtime,library" "com.openburnbar.virtual-hid-bridge"
 sign_one_with_entitlements \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
@@ -301,6 +318,7 @@ codesign --force --timestamp --options runtime,library \
 codesign --verify --deep --strict --verbose=2 "$app_path"
 assert_peer_signature "$app_path" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.daemon"
+assert_peer_signature "$helpers_dir/OpenBurnBarCLI" "com.openburnbar.cli"
 assert_peer_signature "$helpers_dir/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
 assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
 

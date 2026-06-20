@@ -44,6 +44,7 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     public static let privilegedPeerBundleIdentifiers: [String] = [
         "com.openburnbar.app",
         "com.openburnbar.daemon",
+        "com.openburnbar.cli",
         "com.openburnbar.privileged-input-execution",
         "com.openburnbar.virtual-hid-bridge"
     ]

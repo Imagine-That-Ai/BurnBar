@@ -412,8 +412,10 @@ jobs:
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
 
-      - name: Build daemon (SPM release binary)
-        run: swift build --package-path OpenBurnBarDaemon -c release
+      - name: Build daemon (SPM release binaries)
+        run: |
+          swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
+          swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
 
       - name: Resolve Xcode packages
         run: |
@@ -450,18 +452,24 @@ jobs:
           mkdir -p "$HELPERS_DIR"
 
           DAEMON_BIN="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+          DAEMON_CLI_BIN="OpenBurnBarDaemon/.build/release/OpenBurnBarCLI"
           DAEMON_CORE_DYLIB="OpenBurnBarDaemon/.build/release/libOpenBurnBarCore.dylib"
           if [[ ! -f "$DAEMON_BIN" ]]; then
             echo "::error::Daemon binary not found at $DAEMON_BIN"
             exit 1
           fi
+          if [[ ! -f "$DAEMON_CLI_BIN" ]]; then
+            echo "::error::Daemon CLI binary not found at $DAEMON_CLI_BIN"
+            exit 1
+          fi
           cp "$DAEMON_BIN" "$HELPERS_DIR/OpenBurnBarDaemon"
+          cp "$DAEMON_CLI_BIN" "$HELPERS_DIR/OpenBurnBarCLI"
           if [[ -f "$DAEMON_CORE_DYLIB" ]]; then
             cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
           else
             echo "No daemon support dylib found at $DAEMON_CORE_DYLIB; daemon is statically linked."
           fi
-          chmod +x "$HELPERS_DIR/OpenBurnBarDaemon"
+          chmod +x "$HELPERS_DIR/OpenBurnBarDaemon" "$HELPERS_DIR/OpenBurnBarCLI"
           DAEMON_RESOURCE_BUNDLE="$APP_PATH/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
           DAEMON_HELPER_RESOURCE_BUNDLE="$HELPERS_DIR/OpenBurnBarCore_OpenBurnBarCore.bundle"
           PROJECT_CODE_MEMORY_DIR="$APP_PATH/Contents/Resources/ProjectCodeMemory"
@@ -483,6 +491,15 @@ jobs:
             fi
             if ! otool -l "$HELPERS_DIR/OpenBurnBarDaemon" | grep -q '@executable_path/../Frameworks'; then
               install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"
+            fi
+          fi
+          if otool -L "$HELPERS_DIR/OpenBurnBarCLI" | grep -q 'SQLCipher.framework'; then
+            if [[ ! -d "$APP_PATH/Contents/Frameworks/SQLCipher.framework" ]]; then
+              echo "::error::OpenBurnBarCLI links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework"
+              exit 1
+            fi
+            if ! otool -l "$HELPERS_DIR/OpenBurnBarCLI" | grep -q '@executable_path/../Frameworks'; then
+              install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarCLI"
             fi
           fi
 
@@ -566,10 +583,20 @@ jobs:
           fi
 
           if [[ -f "$HELPERS_DIR/OpenBurnBarDaemon" ]]; then
-            codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$HELPERS_DIR/OpenBurnBarDaemon"
+            codesign --force --timestamp --options runtime,library \
+              --identifier com.openburnbar.daemon \
+              --sign "$SIGNING_IDENTITY" \
+              "$HELPERS_DIR/OpenBurnBarDaemon"
           fi
 
-          codesign --force --timestamp --deep --options runtime \
+          if [[ -f "$HELPERS_DIR/OpenBurnBarCLI" ]]; then
+            codesign --force --timestamp --options runtime,library \
+              --identifier com.openburnbar.cli \
+              --sign "$SIGNING_IDENTITY" \
+              "$HELPERS_DIR/OpenBurnBarCLI"
+          fi
+
+          codesign --force --timestamp --deep --options runtime,library \
             --entitlements "$ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"

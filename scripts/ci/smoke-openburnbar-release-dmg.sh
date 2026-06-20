@@ -73,6 +73,7 @@ mounted=1
 
 app_path="$mountpoint/OpenBurnBar.app"
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
+cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
 project_code_memory_corpus="$app_path/Contents/Resources/ProjectCodeMemory/secret-pattern-corpus.json"
 helper_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle"
@@ -84,6 +85,10 @@ if [[ ! -d "$app_path" ]]; then
 fi
 if [[ ! -x "$daemon_bin" ]]; then
   echo "::error::Embedded daemon helper not found at $daemon_bin"
+  exit 1
+fi
+if [[ ! -x "$cli_bin" ]]; then
+  echo "::error::Embedded daemon CLI helper not found at $cli_bin"
   exit 1
 fi
 if [[ ! -d "$daemon_resource_bundle" ]]; then
@@ -156,46 +161,34 @@ launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$uid" "$launch_plist"
 launchctl kickstart -k "gui/$uid/$launch_label"
 
-if ! python3 - <<PY
-import json
-import socket
-import sys
-import time
+health_passed=0
+last_health_output=""
+for _ in {1..150}; do
+  if health_output="$(
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN="$socket_auth_token" \
+    OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_dir" \
+    "$cli_bin" health 2>&1
+  )"; then
+    last_health_output="$health_output"
+    if grep -q "ok=true" <<<"$health_output"; then
+      echo "Authenticated daemon health RPC passed via packaged OpenBurnBarCLI"
+      health_passed=1
+      break
+    fi
+    last_health_output="OpenBurnBarCLI health returned without ok=true: $health_output"
+  else
+    last_health_output="$health_output"
+  fi
+  sleep 0.2
+done
 
-path = "${socket_path}"
-token = "${socket_auth_token}"
-last_error = None
-
-for _ in range(150):
-    try:
-        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        client.settimeout(5)
-        client.connect(path)
-        client.sendall(json.dumps({
-            "id": "release-smoke-health",
-            "method": "daemon.health",
-            "authToken": token,
-        }).encode() + b"\\n")
-        response = client.recv(65536).decode().strip()
-        client.close()
-        if not response:
-            raise RuntimeError("OpenBurnBar daemon returned an empty health response")
-        payload = json.loads(response)
-        if payload.get("error"):
-            raise RuntimeError(f"OpenBurnBar daemon health smoke failed: {payload['error']}")
-        if not payload.get("result", {}).get("ok"):
-            raise RuntimeError(f"OpenBurnBar daemon health smoke returned unhealthy payload: {payload}")
-        print("Authenticated daemon health RPC passed")
-        break
-    except Exception as exc:
-        last_error = exc
-        time.sleep(0.2)
-else:
-    raise SystemExit(f"Timed out waiting for packaged OpenBurnBar daemon health response: {last_error}")
-PY
-then
+if [[ "$health_passed" != "1" ]]; then
+  echo "::error::Timed out waiting for packaged OpenBurnBar daemon health response from signed OpenBurnBarCLI"
+  if [[ -n "$last_health_output" ]]; then
+    printf '%s\n' "$last_health_output"
+  fi
   print_failure_diagnostics
   exit 1
 fi
 
-echo "Smoke test passed: DMG mounted, app launched, packaged daemon helper started, authenticated daemon RPC succeeded"
+echo "Smoke test passed: DMG mounted, app launched, packaged daemon helper started, signed CLI authenticated to daemon"
