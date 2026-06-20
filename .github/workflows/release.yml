@@ -769,16 +769,29 @@ jobs:
 
           echo "checksums_path=$CHECKSUMS_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Sign checksums (release provenance)
+      - name: Resolve release provenance policy
+        id: provenance-policy
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          if [[ -n "${RELEASE_SIGNING_KEY:-}" ]]; then
+            echo "gpg_configured=true" >> "$GITHUB_OUTPUT"
+            echo "Legacy GPG checksum signing is configured; detached checksum signature will be generated and verified."
+          else
+            echo "gpg_configured=false" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_SIGNING_KEY is not configured; using required keyless Sigstore/SLSA attestations for release provenance."
+          fi
+
+      - name: Sign checksums (legacy GPG, optional)
         id: sign-checksums
         env:
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
           VERSION: ${{ steps.version.outputs.version }}
-        # Fail closed: GPG signing is required for release provenance. If the
-        # signing key is missing, the release must not ship without a signature.
-        # Closes OPUS-F-016.
-        if: env.RELEASE_SIGNING_KEY != ''
+        # Sigstore keyless attestations below are the required SOTA provenance
+        # control. GPG checksum signatures are retained as an optional legacy
+        # compatibility artifact when operators configure RELEASE_SIGNING_KEY.
+        if: steps.provenance-policy.outputs.gpg_configured == 'true'
         run: |
           # Import the GPG signing key
           echo "$RELEASE_SIGNING_KEY" | base64 --decode | gpg --import --batch --passphrase ""
@@ -791,11 +804,18 @@ jobs:
           echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
           echo "Checksums signed successfully."
 
-      - name: Verify GPG signing (fail closed)
-        if: env.RELEASE_SIGNING_KEY == ''
+      - name: Verify checksum GPG signature (when configured)
+        if: steps.provenance-policy.outputs.gpg_configured == 'true'
+        env:
+          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+          SIGNATURE_PATH: ${{ steps.sign-checksums.outputs.sig_path }}
         run: |
-          echo "::error::RELEASE_SIGNING_KEY is not set. GPG checksum signing is required for release provenance. Refusing to ship unsigned checksums."
-          exit 1
+          if [[ -z "${SIGNATURE_PATH:-}" || ! -f "$SIGNATURE_PATH" ]]; then
+            echo "::error::RELEASE_SIGNING_KEY is configured, but the detached checksum signature was not produced."
+            exit 1
+          fi
+          gpg --batch --verify "$SIGNATURE_PATH" "$CHECKSUMS_PATH"
+          echo "Checksum GPG signature verified."
 
       - name: Generate SBOM
         id: sbom

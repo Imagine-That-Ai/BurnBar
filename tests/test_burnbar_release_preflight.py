@@ -108,3 +108,28 @@ def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
     assert "deploy-firebase-rules-releases.mjs" in body
     assert "updateMask:" not in deployer
     assert "live API rejects an" in deployer
+
+
+def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "Resolve release provenance policy" in body
+    assert (
+        "RELEASE_SIGNING_KEY is not configured; using required keyless "
+        "Sigstore/SLSA attestations for release provenance."
+    ) in body
+    assert "Sign checksums (legacy GPG, optional)" in body
+    assert "Verify checksum GPG signature (when configured)" in body
+    assert "SLSA provenance attestations (SBOM + VEX + checksums + binaries)" in body
+    assert "cosign attest --yes \"$CHECKSUMS_PATH\"" in body
+    assert "if: steps.provenance-policy.outputs.gpg_configured == 'true'" in body
+    assert "if [[ -z \"${SIGNATURE_PATH:-}\" || ! -f \"$SIGNATURE_PATH\" ]]" in body
+
+    assert "RELEASE_SIGNING_KEY is not set. GPG checksum signing is required" not in body
+    assert "if: env.RELEASE_SIGNING_KEY == ''" not in body
+
+    checksums_index = body.index("Compute artifact checksums")
+    policy_index = body.index("Resolve release provenance policy")
+    sbom_index = body.index("Generate SBOM")
+    cosign_index = body.index("SLSA provenance attestations")
+    assert checksums_index < policy_index < sbom_index < cosign_index

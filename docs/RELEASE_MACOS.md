@@ -133,12 +133,14 @@ The workflow will:
 7. Notarize + staple DMG using `notarytool` with App Store Connect API key
 8. Generate the signed Sparkle-compatible appcast and latest-macOS JSON feed
 9. Compute SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata
-10. Sign checksums with GPG key (if `RELEASE_SIGNING_KEY` secret is configured)
+10. Optionally GPG-sign checksums if `RELEASE_SIGNING_KEY` is configured, and fail closed if that
+    configured signing path does not produce a valid detached signature
 11. Generate SPDX SBOM from SwiftPM, npm, Cargo, and Android/Gradle dependencies
-12. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
-13. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
-14. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
-15. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
+12. Generate required keyless Sigstore/SLSA attestations for the SBOM, VEX, checksums, binaries, source archive, and update feeds
+13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
+14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
+15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
+16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
 
 ## Release artifacts
 
@@ -157,6 +159,12 @@ Each release includes:
 | `release-metadata.json` | Build provenance: version, commit, timestamp, update feed, runner |
 
 ## Release provenance
+
+Sigstore keyless attestations are the required release provenance control. They bind the release artifacts
+to GitHub Actions OIDC identity, the release workflow, and the source commit without storing a long-lived
+provenance signing key in the repository. GPG checksum signatures are optional legacy compatibility
+artifacts; if `RELEASE_SIGNING_KEY` is configured, the workflow verifies that the detached checksum
+signature was actually produced.
 
 ### Checksum verification
 
