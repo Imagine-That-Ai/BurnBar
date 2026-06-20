@@ -185,10 +185,20 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "Contents/Helpers/OpenBurnBarCLI" in script
     assert "Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle" in script
     assert "Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json" in script
+    assert 'installed_daemon_dir="$support_dir/daemon"' in script
+    assert 'installed_frameworks_dir="$support_dir/Frameworks"' in script
+    assert 'installed_daemon_bin="$installed_daemon_dir/OpenBurnBarDaemon"' in script
+    assert 'installed_cli_bin="$installed_daemon_dir/OpenBurnBarCLI"' in script
+    assert 'cp "$daemon_bin" "$installed_daemon_bin"' in script
+    assert 'cp "$cli_bin" "$installed_cli_bin"' in script
+    assert 'for framework in "$app_path"/Contents/Frameworks/*.framework; do' in script
+    assert 'SQLCipher.framework was not mirrored to installed daemon rpath directory' in script
     assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
     assert "com.openburnbar.daemon.release-smoke" in script
-    assert '"$cli_bin" health' in script
-    assert "Authenticated daemon health RPC passed via packaged OpenBurnBarCLI" in script
+    assert '"$installed_cli_bin" health' in script
+    assert '"${installed_daemon_bin}"' in script
+    assert '"$cli_bin" health' not in script
+    assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
     assert "import socket" not in script
     assert "\"method\": \"daemon.health\"" not in script
     assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow

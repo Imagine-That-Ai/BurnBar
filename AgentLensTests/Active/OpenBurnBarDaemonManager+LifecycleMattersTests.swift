@@ -41,6 +41,7 @@ final class OpenBurnBarDaemonManagerLifecycleMattersTests: XCTestCase {
         let paths = OpenBurnBarDaemonRuntimePaths(
             supportDirectory: supportDirectory,
             daemonDirectory: daemonDirectory,
+            frameworksDirectory: supportDirectory.appendingPathComponent("Frameworks", isDirectory: true),
             installedBinaryURL: installedURL,
             socketURL: supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false),
             logURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.log", isDirectory: false),

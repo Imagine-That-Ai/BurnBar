@@ -141,6 +141,7 @@ extension OpenBurnBarDaemonManager {
 
     func installFilesIfNeeded() throws {
         try dependencies.fileManager.createDirectory(at: paths.daemonDirectory, withIntermediateDirectories: true)
+        try dependencies.fileManager.createDirectory(at: paths.frameworksDirectory, withIntermediateDirectories: true)
         try dependencies.fileManager.createDirectory(
             at: paths.launchAgentPlistURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -155,6 +156,7 @@ extension OpenBurnBarDaemonManager {
         if sourceBinaryURL.standardizedFileURL != paths.installedBinaryURL.standardizedFileURL {
             try atomicallyInstallBinary(from: sourceBinaryURL, to: paths.installedBinaryURL)
         }
+        try installRuntimeFrameworksIfAvailable(near: sourceBinaryURL)
         try validateDaemonBinary(at: paths.installedBinaryURL)
 
         // Copy the OpenBurnBarCore resource bundle next to the daemon binary so that
@@ -204,6 +206,39 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    func installRuntimeFrameworksIfAvailable(near sourceBinaryURL: URL) throws {
+        let frameworkURLs = OpenBurnBarDaemonBinaryResolver.resolveRuntimeFrameworks(
+            nearBinaryURL: sourceBinaryURL,
+            appBundleURL: Bundle.main.bundleURL,
+            fileManager: dependencies.fileManager
+        )
+        guard !frameworkURLs.isEmpty else { return }
+
+        try dependencies.fileManager.createDirectory(at: paths.frameworksDirectory, withIntermediateDirectories: true)
+        let installedFrameworkNames = Set(frameworkURLs.map(\.lastPathComponent))
+        for frameworkURL in frameworkURLs {
+            let destinationURL = paths.frameworksDirectory.appendingPathComponent(
+                frameworkURL.lastPathComponent,
+                isDirectory: true
+            )
+            if frameworkURL.standardizedFileURL == destinationURL.standardizedFileURL {
+                continue
+            }
+            try atomicallyInstallDirectory(from: frameworkURL, to: destinationURL)
+        }
+
+        let existingFrameworks = (try? dependencies.fileManager.contentsOfDirectory(
+            at: paths.frameworksDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        for existingFramework in existingFrameworks
+            where existingFramework.pathExtension == "framework"
+            && !installedFrameworkNames.contains(existingFramework.lastPathComponent) {
+            try dependencies.fileManager.removeItem(at: existingFramework)
+        }
+    }
+
     /// Atomically replaces the installed daemon binary so `launchd` (KeepAlive: true)
     /// can never observe a missing binary mid-swap and flap into a crash loop.
     ///
@@ -243,6 +278,32 @@ extension OpenBurnBarDaemonManager {
                 [.posixPermissions: 0o755],
                 ofItemAtPath: destinationURL.path
             )
+        } catch {
+            try? fileManager.removeItem(at: tempURL) // try?-ok(temp cleanup on error)
+            throw error
+        }
+    }
+
+    func atomicallyInstallDirectory(from sourceURL: URL, to destinationURL: URL) throws {
+        let fileManager = dependencies.fileManager
+        let parentDirectory = destinationURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
+        let tempURL = parentDirectory.appendingPathComponent(
+            ".\(destinationURL.lastPathComponent).incoming-\(UUID().uuidString)",
+            isDirectory: true
+        )
+
+        if fileManager.fileExists(atPath: tempURL.path) {
+            try? fileManager.removeItem(at: tempURL) // try?-ok(stale temp cleanup)
+        }
+
+        do {
+            try fileManager.copyItem(at: sourceURL, to: tempURL)
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                _ = try fileManager.replaceItemAt(destinationURL, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: destinationURL)
+            }
         } catch {
             try? fileManager.removeItem(at: tempURL) // try?-ok(temp cleanup on error)
             throw error
