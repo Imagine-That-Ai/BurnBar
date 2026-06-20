@@ -598,8 +598,9 @@ final class OpenBurnBarRuntimeContext {
     /// Boot the durability sentry that keeps Claude Code / Codex / Forge /
     /// OpenCode / Droid wired through the local BurnBar gateway after
     /// external rewrites (Claude Code's atomic settings.json save, plugin
-    /// installs, dotfile syncs). The sentry is a no-op until at least one CLI
-    /// has been Connected; it picks up the persisted intent automatically.
+    /// installs, dotfile syncs). The sentry follows persisted Connect intent
+    /// and also adopts already-wired configs from older builds so stale client
+    /// catalogs can self-heal after upgrades.
     func startRoutedClientWiringSentry() {
         let sentry: RoutedClientWiringSentry
         if let existing = routedClientWiringSentry {
