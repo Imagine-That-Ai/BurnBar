@@ -195,7 +195,10 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'SQLCipher.framework was not mirrored to installed daemon rpath directory' in script
     assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
     assert "com.openburnbar.daemon.release-smoke" in script
-    assert '"$installed_cli_bin" health' in script
+    assert 'python3 - "$installed_cli_bin"' in script
+    assert '[cli, "health"]' in script
+    assert "subprocess.TimeoutExpired" in script
+    assert "timeout=2" in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
