@@ -717,16 +717,11 @@ struct PrivacyIndexingSettingsView: View {
     @ViewBuilder
     private var memoryReviewDestination: some View {
         if let store = runtimeContext?.chatMemoryStore {
-            MemoryReviewInboxView(
-                model: MemoryReviewInboxModel(
-                    scope: MemoryScope(appID: "openburnbar"),
-                    loadPage: { request in try await store.chatMemoryPage(request) },
-                    openBody: { id in try await store.openChatMemoryBody(id: id) },
-                    setStatus: { id, status in
-                        try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
-                    }
-                )
+            MemoryReviewInboxHost(
+                store: store,
+                scope: MemoryScope(appID: "openburnbar")
             )
+            .id(ObjectIdentifier(store))
             .navigationTitle("Memory")
         } else {
             ContentUnavailableView(

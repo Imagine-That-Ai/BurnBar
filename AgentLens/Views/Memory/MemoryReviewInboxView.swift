@@ -209,6 +209,38 @@ struct MemoryReviewInboxView: View {
     }
 }
 
+// MARK: - Stable model host
+
+/// Owns the inbox model for a concrete store/scope pair. Keeping the
+/// `MemoryReviewInboxModel` in `@State` prevents parent view refreshes (for
+/// example the dashboard pending-count badge update after an approve/reject)
+/// from replacing a loaded model with a fresh empty one.
+@MainActor
+struct MemoryReviewInboxHost: View {
+    @State private var model: MemoryReviewInboxModel
+
+    init(
+        store: ControlPlaneStore,
+        scope: MemoryScope,
+        afterStatusChange: @escaping @MainActor () async -> Void = {}
+    ) {
+        self._model = State(initialValue: MemoryReviewInboxModel(
+            scope: scope,
+            loadPage: { request in try await store.chatMemoryPage(request) },
+            openBody: { id in try await store.openChatMemoryBody(id: id) },
+            setStatus: { id, status in
+                let changed = try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                await afterStatusChange()
+                return changed
+            }
+        ))
+    }
+
+    var body: some View {
+        MemoryReviewInboxView(model: model)
+    }
+}
+
 // MARK: - Empty state
 
 /// Mirrors `QuotaEmptyState`'s structure (glow SF Symbol + title + body) sized for the

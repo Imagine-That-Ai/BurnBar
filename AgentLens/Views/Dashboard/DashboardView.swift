@@ -584,18 +584,12 @@ struct DashboardView: View {
     @ViewBuilder
     private var memoryReviewView: some View {
         if let store = runtimeContext?.chatMemoryStore {
-            MemoryReviewInboxView(
-                model: MemoryReviewInboxModel(
-                    scope: memoryReviewScope,
-                    loadPage: { request in try await store.chatMemoryPage(request) },
-                    openBody: { id in try await store.openChatMemoryBody(id: id) },
-                    setStatus: { id, status in
-                        let changed = try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
-                        await refreshPendingMemoryReviewCount()
-                        return changed
-                    }
-                )
+            MemoryReviewInboxHost(
+                store: store,
+                scope: memoryReviewScope,
+                afterStatusChange: { await refreshPendingMemoryReviewCount() }
             )
+            .id(ObjectIdentifier(store))
         } else {
             ContentUnavailableView(
                 "Memory is unavailable",

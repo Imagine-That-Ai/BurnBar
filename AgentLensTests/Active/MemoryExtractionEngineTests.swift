@@ -463,7 +463,8 @@ final class MemoryExtractionEngineTests: XCTestCase {
         // dead-letter it (not leave it wedged) and return nil (nothing claimable).
         let afterExhaustion = try await store.claimNextMemoryExtractionJob(now: now, maxAttempts: 3, leaseDuration: lease)
         XCTAssertNil(afterExhaustion, "an exhausted running job must not be re-claimed")
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .failed,
+        let terminalStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(terminalStatus, .failed,
                        "the zombie must be dead-lettered to a terminal failed state")
         let failed = try await store.mostRecentFailedMemoryExtractionJob()
         XCTAssertEqual(failed?.id, jobID)
@@ -486,7 +487,8 @@ final class MemoryExtractionEngineTests: XCTestCase {
         let later = t0.addingTimeInterval(lease + 1)
         let reaped = try await store.reapStaleRunningMemoryExtractionJobs(now: later, maxAttempts: 3)
         XCTAssertEqual(reaped, 0, "a running job with attempts remaining must stay reclaimable, not be dead-lettered")
-        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .running)
+        let runningStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(runningStatus, .running)
     }
 
     // MARK: - M2: recall budget charges the wrapUntrusted envelope
