@@ -227,11 +227,11 @@ extension OpenBurnBarDaemonManager {
             try atomicallyInstallDirectory(from: frameworkURL, to: destinationURL)
         }
 
-        let existingFrameworks = (try? dependencies.fileManager.contentsOfDirectory(
+        let existingFrameworks = try dependencies.fileManager.contentsOfDirectory(
             at: paths.frameworksDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
-        )) ?? []
+        )
         for existingFramework in existingFrameworks
             where existingFramework.pathExtension == "framework"
             && !installedFrameworkNames.contains(existingFramework.lastPathComponent) {

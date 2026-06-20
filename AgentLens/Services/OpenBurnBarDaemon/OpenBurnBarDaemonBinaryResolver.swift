@@ -66,11 +66,24 @@ enum OpenBurnBarDaemonBinaryResolver {
         var seen = Set<URL>()
         var frameworks: [URL] = []
         for directory in frameworkDirectories {
-            guard let children = try? fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else {
+            guard fileManager.fileExists(atPath: directory.path) else {
+                continue
+            }
+            let children: [URL]
+            do {
+                children = try fileManager.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
+            } catch {
+                AppLogger.network.error(
+                    "daemon_framework_directory_unreadable",
+                    metadata: [
+                        "directory": directory.lastPathComponent,
+                        "errorClass": "\(String(describing: type(of: error)))"
+                    ]
+                )
                 continue
             }
             for child in children where child.pathExtension == "framework" {
