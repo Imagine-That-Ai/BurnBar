@@ -68,11 +68,19 @@ enum LLMSafeContent {
             }
             return result
         }
-        // Sealed but the trailing block's CRITICAL RULE was cut (truncation landed after the
-        // close tag, inside the rule): the block is closed (no boundary breakout) but lost
-        // its never-overridden guard. Re-append the rule so every wrapped block carries it.
-        if opens > 0, text.hasSuffix(criticalRule) == false {
-            return text + "\n\(criticalRule)"
+        // Sealed, but the trailing block's CRITICAL RULE may have been cut (truncation
+        // landed after the close tag, inside the rule): the block is closed (no boundary
+        // breakout) but lost its guard. Re-append ONLY the missing remainder, and only when
+        // the text after the last close tag is a proper prefix of the expected "\n + rule"
+        // — so a cut at a clean block boundary (tail is a separator, not a rule prefix) is
+        // correctly left untouched rather than getting a duplicate rule.
+        guard opens > 0, let lastClose = text.range(of: untrustedCloseMarker, options: .backwards) else {
+            return text
+        }
+        let tail = String(text[lastClose.upperBound...])
+        let expected = "\n\(criticalRule)"
+        if expected.hasPrefix(tail), tail != expected {
+            return text + String(expected.dropFirst(tail.count))
         }
         return text
     }
@@ -853,7 +861,15 @@ struct PromptTokenArbiter {
         if content.count <= totalMaxChars {
             return content
         }
-        let bodyMax = max(0, totalMaxChars - marker.count)
+        // Reserve room for the truncation marker AND the worst-case reseal footer (close
+        // tag + CRITICAL RULE) when this section carries wrapped untrusted blocks, so the
+        // re-sealed + marked result still honors `tokens`. A prefix cut can leave at most
+        // the final block unterminated, so one footer is the worst case. Non-wrapped
+        // sections reserve only the marker.
+        let resealReserve = content.contains(LLMSafeContent.untrustedOpenMarker)
+            ? "\n\(LLMSafeContent.untrustedCloseMarker)\n\(LLMSafeContent.criticalRule)".count
+            : 0
+        let bodyMax = max(0, totalMaxChars - marker.count - resealReserve)
         // Re-seal any `<UNTRUSTED_CONTENT>` block whose close tag was severed by the raw
         // prefix cut, so budget-driven truncation cannot break the G8 wrap invariant: an
         // unterminated untrusted block would otherwise absorb the trusted sections

@@ -738,7 +738,10 @@ extension ControlPlaneStore {
             return lhs.score > rhs.score
         }) {
             guard snippets.count < request.limit else { break }
-            let wrappedCost = item.tokenEstimate + wrapperOverhead
+            // Cost the WRAPPED snippet in the arbiter's prose token units (chars/3.5),
+            // matching how PromptTokenArbiter measures the .memory section, so a set that
+            // fits this budget also fits the arbiter cap (request.tokenBudget IS that cap).
+            let wrappedCost = PromptTokenArbiter.estimateProseTokens(item.text) + wrapperOverhead
             guard wrappedCost <= request.tokenBudget - spent else { continue }
             spent += wrappedCost
             snippets.append(

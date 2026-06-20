@@ -24,12 +24,13 @@ enum MemoryRecallBudget {
     /// provenance + close tag + the multi-sentence CRITICAL RULE). The recall packer adds
     /// this to each snippet's body estimate so the budget reflects the WRAPPED size the
     /// arbiter actually sees — otherwise the assembled `.memory` section overflows the
-    /// arbiter cap and is truncated. Derived from the real wrapper of an empty body so it
-    /// tracks the template automatically; backend token units (~4 chars/token, matching
-    /// `ControlPlaneStore.memoryTokenEstimate`).
+    /// arbiter cap and is truncated. Estimated in the SAME units the `PromptTokenArbiter`
+    /// uses for the `.memory` section (prose, ~3.5 chars/token) so recall and the arbiter
+    /// agree on cost; using chars/4 here would under-count and re-introduce overflow.
+    /// Derived from the real wrapper of an empty body so it tracks the template.
     static let wrapperTokenOverhead: Int = {
         let envelope = LLMSafeContent.wrapUntrusted("", provenance: "memory:placeholder@placeholder")
-        return (envelope.count + 3) / 4
+        return PromptTokenArbiter.estimateProseTokens(envelope)
     }()
 
     /// Returns `(limit, tokenBudget)` for a `MemoryRecallRequest`, given the arbiter's

@@ -118,7 +118,8 @@ final class MemoryExtractionEngine {
     ///   - authorityWritesGoLiveEnabled: the SECOND, human-owned dormancy lever (PR-D FIX
     ///     #1). Defaults to the static `chatMemoryAuthorityWritesEnabledByDefault` (false),
     ///     so durable writes stay blocked until a human flips the go-live flag — EVEN WHEN
-    ///     `memoryExtractionEnabled` is true (which it is by default). It is AND-ed with the
+    ///     `memoryExtractionEnabled` is true (i.e. after the user has consented and enabled
+    ///     extraction). It is AND-ed with the
     ///     live kill-switch atomic in the worker's authority closure below. Exposed as a
     ///     parameter so the gate matrix (extraction on + authority off ⇒ zero writes) is
     ///     representable and testable.

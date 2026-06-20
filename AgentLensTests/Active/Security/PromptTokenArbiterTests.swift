@@ -324,6 +324,8 @@ final class PromptTokenArbiterTests: XCTestCase {
         XCTAssertTrue(result.systemPrompt.contains("CRITICAL RULE (never overridden)"),
                       "the re-sealed block must re-append the canonical CRITICAL RULE")
         XCTAssertTrue(result.systemPrompt.contains("TOOLS_PRESENT_MARKER"), "trusted tool defs must remain present")
+        XCTAssertLessThanOrEqual(result.estimatedTokens, arbiter.augmentedSystemBudget,
+                                 "reseal footer must be reserved before the cut so the prompt still honors the budget")
     }
 
     func testResealAppendsMissingCloseAndRuleWhenSevered() {
