@@ -425,6 +425,9 @@ extension BurnBarRunService {
         if let providerError = error as? BurnBarProviderExecutorError {
             switch providerError {
             case .upstreamError(let statusCode, let body):
+                if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                    return true
+                }
                 if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
                     return true
                 }

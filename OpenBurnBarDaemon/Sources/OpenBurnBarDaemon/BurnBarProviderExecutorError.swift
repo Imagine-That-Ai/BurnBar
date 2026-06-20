@@ -16,9 +16,8 @@ public enum BurnBarProviderExecutorError: Error, LocalizedError {
         }
     }
 
-    static func isTransientCapacityFailure(statusCode: Int, body: String) -> Bool {
-        let normalizedBody = body.lowercased()
-        return statusCode == 529 && normalizedBody.contains("overload")
+    static func isTransientCapacityFailure(statusCode: Int, body _: String) -> Bool {
+        return statusCode == 529
     }
 
     /// Rejects non-HTTP(S) provider endpoints (e.g. `file://`, `javascript:`) before outbound requests.
