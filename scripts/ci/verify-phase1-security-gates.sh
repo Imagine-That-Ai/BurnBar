@@ -81,7 +81,7 @@ require_pattern "cosign attest in release lane" \
   'cosign attest' \
   .github/workflows/release.yml
 require_pattern "release attestation verifier script" \
-  'gh attestation verify' \
+  'cosign verify-blob-attestation' \
   scripts/ci/verify-release-attestations.sh
 bash -n scripts/ci/verify-release-attestations.sh
 
