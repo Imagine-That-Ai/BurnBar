@@ -196,10 +196,13 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"' in website_release
     assert 'cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"' in workflow
     assert 'cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"' in website_release
+    assert 'cp -R "$PROJECT_CODE_MEMORY_DIR" "$HELPERS_DIR/ProjectCodeMemory"' not in workflow
+    assert 'cp -R "$project_code_memory_dir" "$helpers_dir/ProjectCodeMemory"' not in website_release
     assert "Contents/Helpers/OpenBurnBarDaemon" in script
     assert "Contents/Helpers/OpenBurnBarCLI" in script
     assert "Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle" in script
-    assert "Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json" in script
+    assert "Contents/Resources/ProjectCodeMemory/secret-pattern-corpus.json" in script
+    assert "Contents/Helpers/ProjectCodeMemory/secret-pattern-corpus.json" not in script
     assert 'installed_daemon_dir="$support_dir/daemon"' in script
     assert 'installed_frameworks_dir="$support_dir/Frameworks"' in script
     assert 'installed_daemon_bin="$installed_daemon_dir/OpenBurnBarDaemon"' in script
