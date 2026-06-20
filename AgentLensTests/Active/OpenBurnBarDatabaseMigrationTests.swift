@@ -2689,7 +2689,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }
     }
 
-    private static func sourceCitation(
+    nonisolated private static func sourceCitation(
         for intent: ExtractionIntent,
         body: String,
         at date: Date
