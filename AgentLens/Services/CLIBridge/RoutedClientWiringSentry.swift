@@ -124,7 +124,8 @@ final class RoutedClientWiringSentry {
     // MARK: - Lifecycle
 
     /// Start the sentry against the given settings manager. Re-runs are safe;
-    /// the second call is a no-op other than the initial sweep.
+    /// repeated calls adopt existing OpenBurnBar-owned configs and trigger the
+    /// initial sweep.
     func start(settingsManager: SettingsManager) {
         self.settingsManager = settingsManager
         guard !isStarted else {
@@ -155,7 +156,7 @@ final class RoutedClientWiringSentry {
         var adopted: [String] = []
         for target in RoutingClientWiringTarget.allCases.sorted(by: { $0.rawValue < $1.rawValue }) {
             guard !intent.enrolledTargets.contains(target.rawValue),
-                  wiring.isWired(target: target) else {
+                  wiring.hasOpenBurnBarOwnershipMarker(target: target) else {
                 continue
             }
             intent.enroll(targetRawValue: target.rawValue)

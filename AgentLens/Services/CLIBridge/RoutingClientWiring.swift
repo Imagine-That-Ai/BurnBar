@@ -601,6 +601,57 @@ struct RoutingClientWiring {
         }
     }
 
+    /// Returns true only when the target config carries an OpenBurnBar-owned
+    /// marker. This is stricter than `isWired(...)`, which also accepts broad
+    /// localhost gateway hints for UI status.
+    func hasOpenBurnBarOwnershipMarker(target: RoutingClientWiringTarget) -> Bool {
+        let url = configURL(for: target)
+        switch target {
+        case .claudeCode:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not OpenBurnBar-owned)
+            if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
+               let env = root["env"] as? [String: Any] {
+                if env["OPENBURNBAR_WIRED"] != nil { return true }
+                if env[Self.claudeCatalogIDsKey] != nil { return true }
+                if env[Self.claudeCatalogFingerprintKey] != nil { return true }
+                if let headers = env["ANTHROPIC_CUSTOM_HEADERS"] as? String,
+                   headers.localizedCaseInsensitiveContains(Self.claudeCodeClientHeader) {
+                    return true
+                }
+            }
+            return text.contains(Self.sentinelStart)
+        case .opencode:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not OpenBurnBar-owned)
+            return text.contains("\"openburnbar\"") && text.localizedCaseInsensitiveContains("OpenBurnBar Gateway")
+        case .droid:
+            return droidConfigURLs().contains { url in
+                guard fileManager.fileExists(atPath: url.path),
+                      let text = try? String(contentsOf: url, encoding: .utf8) else { // try?-ok(unreadable means not OpenBurnBar-owned)
+                    return false
+                }
+                if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
+                    let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
+                    let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+                    if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
+                        return true
+                    }
+                }
+                return (text.contains("\"customModels\"") || text.contains("\"custom_models\""))
+                    && (text.localizedCaseInsensitiveContains("custom:OpenBurnBar")
+                        || text.localizedCaseInsensitiveContains("openburnbar:")
+                        || text.localizedCaseInsensitiveContains("OpenBurnBar "))
+            }
+        case .codex, .forge, .grok:
+            guard fileManager.fileExists(atPath: url.path),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not OpenBurnBar-owned)
+            return text.contains(Self.sentinelStart)
+        case .antigravity, .cursorAgent:
+            return false
+        }
+    }
+
     /// Compares a routed client's on-disk OpenBurnBar model entries with the
     /// live route-eligible catalog. Droid caches concrete BYOK rows, Codex uses
     /// an OpenBurnBar-owned sidecar `model_catalog_json`, and Claude Code caches

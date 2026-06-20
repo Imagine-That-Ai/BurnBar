@@ -153,6 +153,38 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     }
 
     @MainActor
+    func test_start_doesNotAdoptLocalClaudeProxyWithoutOpenBurnBarMarker() async throws {
+        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let proxyRoot: [String: Any] = [
+            "theme": "dark",
+            "env": [
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:8317",
+                "ANTHROPIC_AUTH_TOKEN": "not-openburnbar"
+            ]
+        ]
+        let proxyData = try JSONSerialization.data(withJSONObject: proxyRoot)
+        try proxyData.write(to: url)
+
+        sentry = makeSentry()
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+
+        let root = try loadJSONObject(at: url)
+        let env = try XCTUnwrap(root["env"] as? [String: Any])
+        XCTAssertEqual(env["ANTHROPIC_AUTH_TOKEN"] as? String, "not-openburnbar")
+        XCTAssertNil(env["OPENBURNBAR_WIRED"])
+        XCTAssertNil(env["OPENBURNBAR_MODEL_CATALOG_IDS"])
+        XCTAssertEqual(root["theme"] as? String, "dark")
+    }
+
+    @MainActor
     func test_start_doesNotRepairWhenAutoRepairDisabled() async throws {
         let url = tempHome.appendingPathComponent(".claude/settings.json")
         try FileManager.default.createDirectory(
