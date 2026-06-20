@@ -215,8 +215,12 @@ enum OpenBurnBarChatEvidenceFormatting {
     private static func truncateBlock(_ block: String, maxChars: Int) -> String {
         guard block.count > maxChars else { return block }
         let marker = "\n…"
-        let bodyMax = max(0, maxChars - marker.count)
-        return LLMSafeContent.resealTruncatedUntrusted(String(block.prefix(bodyMax))) + marker
+        let resealReserve = block.contains(LLMSafeContent.untrustedOpenMarker)
+            ? "\n\(LLMSafeContent.untrustedCloseMarker)\n\(LLMSafeContent.criticalRule)".count
+            : 0
+        let bodyMax = max(0, maxChars - marker.count - resealReserve)
+        let sealedBody = LLMSafeContent.resealTruncatedUntrusted(String(block.prefix(bodyMax)))
+        return sealedBody + marker
     }
 
     /// Deterministic aggregate counts over `conversations.fullText` (for “how many times…” questions).

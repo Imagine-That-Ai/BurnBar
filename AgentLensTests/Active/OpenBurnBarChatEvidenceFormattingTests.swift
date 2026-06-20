@@ -119,10 +119,10 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertTrue(s.contains("truncated") || s.contains("…"))
     }
 
-    func test_truncatedEvidenceBlockKeepsUntrustedSealBalanced() async throws {
+    func test_truncatedEvidenceBlockKeepsUntrustedSeal() async throws {
         let now = Date()
         let result = RetrievalResult(
-            chunkID: "huge",
+            chunkID: "sealed-cut",
             documentID: "doc",
             sourceKind: .skillDoc,
             sourceID: "source",
@@ -131,7 +131,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
             projectName: nil,
             title: "Oversized evidence",
             subtitle: nil,
-            snippet: String(repeating: "large retrieved evidence ", count: 200),
+            snippet: String(repeating: "oversized evidence ", count: 200),
             sectionPath: nil,
             startOffset: 0,
             endOffset: 1,
@@ -143,13 +143,13 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
             conversation: nil
         )
 
-        let evidence = OpenBurnBarChatEvidenceFormatting.formatPack(results: [result], maxTotalChars: 650)
-        let opens = evidence.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
-        let closes = evidence.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
+        let s = OpenBurnBarChatEvidenceFormatting.formatPack(results: [result], maxTotalChars: 1_200)
+        let opens = s.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count - 1
+        let closes = s.components(separatedBy: LLMSafeContent.untrustedCloseMarker).count - 1
         XCTAssertGreaterThan(opens, 0, "precondition: the truncated evidence block should still be present")
-        XCTAssertEqual(opens, closes, "pre-arbiter evidence truncation must not leave an unsealed block")
-        XCTAssertTrue(evidence.contains(LLMSafeContent.criticalRule))
-        XCTAssertTrue(evidence.contains("…"))
+        XCTAssertEqual(opens, closes, "pre-arbiter evidence truncation must not leave unsealed blocks")
+        XCTAssertTrue(s.contains(LLMSafeContent.criticalRule))
+        XCTAssertTrue(s.contains("…"))
     }
 
     @MainActor
