@@ -74,6 +74,7 @@ hdiutil attach "$dmg_path" \
   -nobrowse \
   -readonly
 mounted=1
+echo "Mounted release DMG at $mountpoint"
 
 app_path="$mountpoint/OpenBurnBar.app"
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
@@ -167,6 +168,7 @@ if [[ ! -s "$smoke_app_pids_path" ]]; then
   print_failure_diagnostics
   exit 1
 fi
+echo "OpenBurnBar app launched from mounted DMG with pid(s): $(tr '\n' ' ' < "$smoke_app_pids_path")"
 
 python3 - <<PY
 from pathlib import Path
@@ -198,26 +200,61 @@ PY
 chmod 600 "$launch_plist"
 
 launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
+echo "Bootstrapping installed-layout daemon with launch label $launch_label"
 launchctl bootstrap "gui/$uid" "$launch_plist"
 launchctl kickstart -k "gui/$uid/$launch_label"
 
+run_cli_health_probe() {
+  OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN="$socket_auth_token" \
+  OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_dir" \
+  python3 - "$installed_cli_bin" <<'PY'
+import os
+import subprocess
+import sys
+
+cli = sys.argv[1]
+try:
+    completed = subprocess.run(
+        [cli, "health"],
+        env=os.environ.copy(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=2,
+    )
+except subprocess.TimeoutExpired as exc:
+    output = exc.stdout or ""
+    if isinstance(output, bytes):
+        output = output.decode(errors="replace")
+    if output:
+        print(output, end="")
+    print("OpenBurnBarCLI health timed out after 2s", file=sys.stderr)
+    sys.exit(124)
+
+if completed.stdout:
+    print(completed.stdout, end="")
+sys.exit(completed.returncode)
+PY
+}
+
 health_passed=0
 last_health_output=""
-for _ in {1..150}; do
-  if health_output="$(
-    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN="$socket_auth_token" \
-    OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_dir" \
-    "$installed_cli_bin" health 2>&1
-  )"; then
+echo "Polling installed-layout daemon health via signed OpenBurnBarCLI"
+for attempt in {1..60}; do
+  if health_output="$(run_cli_health_probe 2>&1)"; then
     last_health_output="$health_output"
     if grep -q "ok=true" <<<"$health_output"; then
       echo "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI"
       health_passed=1
       break
     fi
-    last_health_output="OpenBurnBarCLI health returned without ok=true: $health_output"
+    last_health_output="OpenBurnBarCLI health attempt $attempt returned without ok=true: $health_output"
   else
-    last_health_output="$health_output"
+    exit_code=$?
+    last_health_output="OpenBurnBarCLI health attempt $attempt failed with exit $exit_code: $health_output"
+    if [[ "$exit_code" == "124" || "$attempt" == "1" || $((attempt % 10)) -eq 0 ]]; then
+      printf '%s\n' "$last_health_output"
+    fi
   fi
   sleep 0.2
 done
