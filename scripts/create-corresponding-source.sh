@@ -99,6 +99,7 @@ required=(
   "LICENSES/Nous-hermes-agent-MIT.txt"
   "docs/legal/agpl-compliance.md"
   "scripts/create-corresponding-source.sh"
+  "scripts/ci/build-corresponding-source-archive.sh"
 )
 
 for rel in "${required[@]}"; do

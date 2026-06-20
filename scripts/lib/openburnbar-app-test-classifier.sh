@@ -49,6 +49,10 @@ openburnbar_app_test_has_terminal_concrete_xctest_failure() {
         return 1
     fi
 
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+        return 1
+    fi
+
     openburnbar_app_test_has_concrete_xctest_failure "$log_path"
 }
 
@@ -150,24 +154,34 @@ is_swiftpm_dependency_resolution_transient() {
     grep -Eiq "downloadError\\(\"The request timed out\\.\"\\)|Failed to connect to .* port 443|Couldn'?t connect to server|Connection (reset|timed out)|network connection was lost|TLS handshake timeout|HTTP (502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|fatal: cannot change to .+: No such file or directory|binary target .*OpenBurnBarSignalFfi.* could not be mapped to an artifact with expected name .*OpenBurnBarSignalFfi" "$log_path"
 }
 
-openburnbar_app_test_has_concrete_failure_after_final_selected_start() {
+openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary() {
     local log_path="$1"
 
     awk '
-        /Test Suite '\''Selected tests'\'' started/ {
-            saw_selected = 1
+        /Test Suite '\''Selected tests'\'' passed/ {
+            waiting_for_summary = 1
+            after_green_summary = 0
             failed = 0
             next
         }
-        saw_selected && /Test Case '\''-\[[^]]+\]'\'' failed/ {
+        waiting_for_summary && /Executed [0-9]+ tests?/ {
+            if ($0 ~ /Executed [1-9][0-9]* tests?, with ([0-9]+ tests? skipped and )?0 failures/) {
+                after_green_summary = 1
+            } else {
+                after_green_summary = 0
+            }
+            waiting_for_summary = 0
+            next
+        }
+        after_green_summary && /Test Case '\''-\[[^]]+\]'\'' failed/ {
             failed = 1
             next
         }
-        saw_selected && /Test Suite '\''Selected tests'\'' failed/ {
+        after_green_summary && /Test Suite '\''Selected tests'\'' failed/ {
             failed = 1
             next
         }
-        saw_selected && /Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[1-9][0-9]* failures?/ {
+        after_green_summary && /Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[1-9][0-9]* failures?/ {
             failed = 1
             next
         }
@@ -213,7 +227,7 @@ is_xcode_false_negative_pass() {
 
     openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
 
-    if openburnbar_app_test_has_concrete_failure_after_final_selected_start "$log_path"; then
+    if openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary "$log_path"; then
         return 1
     fi
 

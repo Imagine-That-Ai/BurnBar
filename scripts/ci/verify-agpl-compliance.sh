@@ -24,6 +24,7 @@ require_file scripts/require-agpl-store-legal-review.sh
 require_file scripts/generate-sbom.py
 require_file scripts/supply-chain/generate-vex.py
 require_file scripts/supply-chain/run-ecosystem-deny-checks.sh
+require_file scripts/ci/build-corresponding-source-archive.sh
 require_file scripts/ci/verify-corresponding-source-archive.sh
 require_file scripts/ci/verify-libsignal-pin.sh
 require_file scripts/ci/verify-libsignal-runtime-readiness.sh
@@ -118,6 +119,7 @@ grep -q 'legal/source' website/src/pages/legal/source.astro || fail "website sou
 grep -q 'runtime-readiness' website/src/pages/legal/source.astro || fail "website source-offer page missing libsignal runtime readiness notice"
 
 bash -n scripts/create-corresponding-source.sh
+bash -n scripts/ci/build-corresponding-source-archive.sh
 bash -n scripts/require-agpl-store-legal-review.sh
 bash -n scripts/ci/verify-corresponding-source-archive.sh
 bash -n scripts/ci/verify-libsignal-pin.sh
@@ -129,6 +131,19 @@ python3 -m py_compile scripts/generate-sbom.py scripts/supply-chain/generate-vex
 
 bash scripts/ci/verify-libsignal-pin.sh
 bash scripts/ci/verify-corresponding-source-archive.sh --version compliance-test
+
+dirty_marker="$(mktemp .openburnbar-source-dirty.XXXXXX)"
+dirty_archive_tmp="$(mktemp -d)"
+cleanup_dirty_archive_test() {
+  rm -f "$dirty_marker"
+  rm -rf "$dirty_archive_tmp"
+}
+trap cleanup_dirty_archive_test EXIT
+bash scripts/ci/build-corresponding-source-archive.sh \
+  --version compliance-dirty-worktree \
+  --output "$dirty_archive_tmp/source.tar.gz" >/dev/null
+cleanup_dirty_archive_test
+trap - EXIT
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
