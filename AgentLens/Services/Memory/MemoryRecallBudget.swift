@@ -29,8 +29,16 @@ enum MemoryRecallBudget {
     /// agree on cost; using chars/4 here would under-count and re-introduce overflow.
     /// Derived from the real wrapper of an empty body so it tracks the template.
     static let wrapperTokenOverhead: Int = {
-        let envelope = LLMSafeContent.wrapUntrusted("", provenance: "memory:placeholder@placeholder")
-        return PromptTokenArbiter.estimateProseTokens(envelope)
+        // Price a WORST-CASE provenance: the real one assembled in
+        // ChatSessionController+Search.recallMemorySection is "memory:<memoryID>@<jumpID>",
+        // where memoryID is a UUID / "memory-<uuid>-<n>" and jumpID can be a message UUID
+        // or a "v1-local:<sha256-hex>" cross-device tag — up to ~130 chars, far longer than
+        // a short placeholder. Over-pricing the provenance (plus +1 token for the per-snippet
+        // "\n\n" join) keeps the recall budget CONSERVATIVE vs the actual wrapped string, so
+        // the assembled .memory section cannot overflow the arbiter cap and get truncated.
+        let worstCaseProvenance = "memory:" + String(repeating: "x", count: 140)
+        let envelope = LLMSafeContent.wrapUntrusted("", provenance: worstCaseProvenance)
+        return PromptTokenArbiter.estimateProseTokens(envelope) + 1
     }()
 
     /// Returns `(limit, tokenBudget)` for a `MemoryRecallRequest`, given the arbiter's
