@@ -332,6 +332,16 @@ struct MemoryReviewRow: View {
         return trimmed.isEmpty ? "(Memory contents unavailable)" : trimmed
     }
 
+    private var approveButtonGradient: LinearGradient {
+        item.canApprove
+            ? DesignSystem.Colors.primaryGradient
+            : LinearGradient(
+                colors: [DesignSystem.Colors.textMuted.opacity(0.35), DesignSystem.Colors.textMuted.opacity(0.22)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+    }
+
     private var kindBadge: some View {
         Text(item.memory.kind.rawValue)
             .font(DesignSystem.Typography.tiny)
@@ -384,10 +394,11 @@ struct MemoryReviewRow: View {
                     .padding(.vertical, DesignSystem.Spacing.xs)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(DesignSystem.Colors.primaryGradient)
+                            .fill(approveButtonGradient)
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(!item.canApprove)
             }
         } else {
             HStack(spacing: DesignSystem.Spacing.sm) {

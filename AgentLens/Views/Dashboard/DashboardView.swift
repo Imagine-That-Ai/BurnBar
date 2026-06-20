@@ -49,6 +49,7 @@ struct DashboardView: View {
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
     @State private var showMacWandComposer = false
+    @State private var pendingMemoryReviewCount: Int?
 
     init(
         dataStore: DataStore,
@@ -174,6 +175,7 @@ struct DashboardView: View {
             if missionConsoleController == nil {
                 missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
             }
+            Task { await refreshPendingMemoryReviewCount() }
         }
         .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
@@ -564,7 +566,8 @@ struct DashboardView: View {
     private var dashboardWorkspaceNavStrip: some View {
         DashboardWorkspaceNavStrip(
             currentRoute: mainRoute,
-            activeChatBackend: chatController.chatBackend
+            activeChatBackend: chatController.chatBackend,
+            pendingMemoryCount: pendingMemoryReviewCount
         ) { route in
             navigate(to: route)
         }
@@ -586,7 +589,9 @@ struct DashboardView: View {
                     loadPage: { request in try await store.chatMemoryPage(request) },
                     openBody: { id in try await store.openChatMemoryBody(id: id) },
                     setStatus: { id, status in
-                        try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                        let changed = try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                        await refreshPendingMemoryReviewCount()
+                        return changed
                     }
                 )
             )
@@ -605,6 +610,19 @@ struct DashboardView: View {
     /// must read that same bucket so signed-in users can approve extracted memories.
     private var memoryReviewScope: MemoryScope {
         MemoryScope(appID: "openburnbar")
+    }
+
+    @MainActor
+    private func refreshPendingMemoryReviewCount() async {
+        guard let store = runtimeContext?.chatMemoryStore else {
+            pendingMemoryReviewCount = nil
+            return
+        }
+        do {
+            pendingMemoryReviewCount = try await store.pendingChatMemoryReviewCount(scope: memoryReviewScope)
+        } catch {
+            pendingMemoryReviewCount = nil
+        }
     }
 
     @ViewBuilder

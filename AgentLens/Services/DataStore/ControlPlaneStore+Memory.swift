@@ -347,6 +347,20 @@ extension ControlPlaneStore {
     ) async throws -> MemoryExtractionJob? {
         try await dbQueue.write { db in
             let boundedMaxAttempts = max(1, maxAttempts)
+            try db.execute(
+                sql: """
+                UPDATE memory_extraction_jobs
+                SET status = 'failed',
+                    last_error = 'lease_exhausted',
+                    lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE status = 'running'
+                  AND attempts >= ?
+                  AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at <= ?
+                """,
+                arguments: [now, boundedMaxAttempts, now]
+            )
             guard let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -629,6 +643,12 @@ extension ControlPlaneStore {
             pageSize: pageSize,
             total: records.count
         )
+    }
+
+    func pendingChatMemoryReviewCount(scope: MemoryScope) async throws -> Int {
+        try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+            .filter { $0.reviewStatus == .quarantined }
+            .count
     }
 
     func searchChatMemoryAuthorityRecords(_ query: MemoryQuery) async throws -> [Memory] {

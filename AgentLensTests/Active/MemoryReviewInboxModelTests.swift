@@ -14,7 +14,7 @@ final class MemoryReviewInboxModelTests: XCTestCase {
     /// One row in the fake: the authority record, its sealed body, and current status.
     private struct Row {
         var memory: Memory
-        var body: String
+        var body: String?
         var status: MemoryReviewStatus
     }
 
@@ -23,6 +23,7 @@ final class MemoryReviewInboxModelTests: XCTestCase {
     private final class FakeStore {
         var rows: [MemoryID: Row]
         var shouldThrowOnLoad = false
+        var bodyOpenFailures: Set<MemoryID> = []
         private(set) var setStatusCalls: [(MemoryID, MemoryReviewStatus)] = []
 
         init(rows: [MemoryID: Row]) {
@@ -53,7 +54,8 @@ final class MemoryReviewInboxModelTests: XCTestCase {
         }
 
         func openBody(_ id: MemoryID) async throws -> String? {
-            rows[id]?.body
+            if bodyOpenFailures.contains(id) { throw FakeError.bodyOpen }
+            return rows[id]?.body
         }
 
         func setStatus(_ id: MemoryID, _ status: MemoryReviewStatus) async throws -> Bool {
@@ -66,7 +68,15 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
     private enum FakeError: LocalizedError {
         case load
-        var errorDescription: String? { "fake load failure" }
+        case bodyOpen
+        var errorDescription: String? {
+            switch self {
+            case .load:
+                return "fake load failure"
+            case .bodyOpen:
+                return "fake body-open failure"
+            }
+        }
     }
 
     // MARK: - Fixtures
@@ -136,7 +146,42 @@ final class MemoryReviewInboxModelTests: XCTestCase {
         // Bodies were opened transiently for display.
         let q2 = model.pending.first { $0.id == "q2" }
         XCTAssertEqual(q2?.body, "Lives in Madrid")
+        XCTAssertTrue(q2?.canApprove ?? false)
         XCTAssertEqual(model.approved.first?.body, "Uses Swift daily")
+    }
+
+    func testUnavailableBodyBlocksApproval() async {
+        let store = makeStore()
+        store.bodyOpenFailures.insert("q1")
+        let model = makeModel(store: store)
+
+        await model.load()
+        let unavailable = model.pending.first { $0.id == "q1" }
+        XCTAssertEqual(unavailable?.body, "")
+        XCTAssertEqual(unavailable?.bodyLoadState, .unavailable)
+        XCTAssertFalse(unavailable?.canApprove ?? true)
+
+        await model.approve("q1")
+
+        XCTAssertTrue(store.setStatusCalls.isEmpty)
+        XCTAssertEqual(model.errorMessage, "Memory contents are unavailable. Reject it or reload before approving.")
+        XCTAssertTrue(model.pending.contains { $0.id == "q1" })
+    }
+
+    func testMissingBodyBlocksApproval() async {
+        let store = makeStore()
+        store.rows["q2"]?.body = nil
+        let model = makeModel(store: store)
+
+        await model.load()
+        let unavailable = model.pending.first { $0.id == "q2" }
+        XCTAssertEqual(unavailable?.bodyLoadState, .unavailable)
+        XCTAssertFalse(unavailable?.canApprove ?? true)
+
+        await model.approve("q2")
+
+        XCTAssertTrue(store.setStatusCalls.isEmpty)
+        XCTAssertEqual(model.errorMessage, "Memory contents are unavailable. Reject it or reload before approving.")
     }
 
     func testApproveMovesItemFromPendingToApproved() async {
