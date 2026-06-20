@@ -69,6 +69,24 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         XCTAssertTrue(MemoryExtractionParser.parse("{\"memories\":[]}", maxCandidates: 10).isEmpty)
     }
 
+    func test_parser_dropsStructurallyMalformedCandidatesWithoutDroppingSiblings() {
+        let json = """
+        {"memories":[
+          {"text":"User prefers concise status updates.","kind":"preference","confidence":0.8,"messageId":"m1"},
+          {"kind":"fact","confidence":0.9,"messageId":"missing-text"},
+          {"text":123,"kind":"fact","confidence":0.9,"messageId":"wrong-type"},
+          42,
+          {"text":"User deploys on Fridays.","kind":"fact","confidence":0.7,"messageId":"m2"}
+        ]}
+        """
+        let candidates = MemoryExtractionParser.parse(json, maxCandidates: 10)
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertEqual(candidates[0].text, "User prefers concise status updates.")
+        XCTAssertEqual(candidates[0].claimedMessageID, "m1")
+        XCTAssertEqual(candidates[1].text, "User deploys on Fridays.")
+        XCTAssertEqual(candidates[1].claimedMessageID, "m2")
+    }
+
     func test_parser_respectsCandidateCap() {
         let json = """
         {"memories":[

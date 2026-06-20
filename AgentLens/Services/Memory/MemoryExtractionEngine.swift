@@ -68,6 +68,8 @@ struct MemoryExtractionPumpReport: Equatable, Sendable {
         case killSwitchOff
         /// The task was cancelled (app teardown).
         case cancelled
+        /// A transient infrastructure fault aborted this pump before backlog exhaustion.
+        case transientFailure
     }
 }
 
@@ -249,7 +251,7 @@ final class MemoryExtractionEngine {
                 // Record it and stop this pump — the job stays claimable for the next one.
                 recordTransientFailure(error)
                 report.failed += 1
-                report.stoppedReason = .idle
+                report.stoppedReason = .transientFailure
                 break
             }
 

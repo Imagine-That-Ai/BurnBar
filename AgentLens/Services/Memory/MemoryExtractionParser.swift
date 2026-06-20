@@ -69,7 +69,8 @@ enum MemoryExtractionParser {
     // MARK: - Validation
 
     private static func validate(_ raw: RawExtractionPayload.Memory) -> ExtractedMemoryCandidate? {
-        let body = raw.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text = raw.text else { return nil }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { return nil }
         let bounded = String(body.prefix(maxFactChars))
 
@@ -96,12 +97,42 @@ enum MemoryExtractionParser {
 
     private struct RawExtractionPayload: Decodable {
         struct Memory: Decodable {
-            let text: String
+            let text: String?
             let kind: String?
             let confidence: Double?
             let messageId: String?
+
+            enum CodingKeys: String, CodingKey {
+                case text
+                case kind
+                case confidence
+                case messageId
+            }
+
+            init(from decoder: Decoder) throws {
+                guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { // try?-ok(non-object memory element is dropped)
+                    text = nil
+                    kind = nil
+                    confidence = nil
+                    messageId = nil
+                    return
+                }
+                text = try? container.decode(String.self, forKey: .text) // try?-ok(malformed candidate field is dropped)
+                kind = try? container.decode(String.self, forKey: .kind) // try?-ok(malformed optional kind falls back to fact)
+                confidence = try? container.decode(Double.self, forKey: .confidence) // try?-ok(malformed optional confidence falls back)
+                messageId = try? container.decode(String.self, forKey: .messageId) // try?-ok(malformed optional message id is ignored)
+            }
         }
 
         let memories: [Memory]
+
+        enum CodingKeys: String, CodingKey {
+            case memories
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            memories = (try? container.decode([Memory].self, forKey: .memories)) ?? [] // try?-ok(malformed memories array yields benign empty)
+        }
     }
 }

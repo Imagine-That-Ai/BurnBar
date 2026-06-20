@@ -1120,6 +1120,16 @@ extension ControlPlaneStore {
         memoryStorageProjectID(for: scope)
     }
 
+    /// Internal shim for reset/forget helpers split into another file.
+    static func appendMemoryExtractionScopePredicates(
+        _ scope: MemoryScope,
+        tableAlias: String = "",
+        to predicates: inout [String],
+        arguments: inout [any DatabaseValueConvertible]
+    ) {
+        appendScopePredicates(scope, tableAlias: tableAlias, to: &predicates, arguments: &arguments)
+    }
+
     private static func memoryBodySnapshotJSON(
         memoryID: MemoryID,
         body: String,

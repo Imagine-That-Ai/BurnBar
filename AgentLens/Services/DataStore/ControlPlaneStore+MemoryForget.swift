@@ -238,9 +238,9 @@ extension ControlPlaneStore {
                 ]
                 var arguments: [any DatabaseValueConvertible] = [
                     MemorySourceKind.chat.rawValue,
-                    Self.memoryStorageProjectID(for: targetScope)
+                    Self.memoryExtractionProjectID(for: targetScope)
                 ]
-                Self.appendScopePredicates(targetScope, to: &predicates, arguments: &arguments)
+                Self.appendMemoryExtractionScopePredicates(targetScope, to: &predicates, arguments: &arguments)
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
