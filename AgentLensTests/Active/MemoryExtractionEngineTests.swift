@@ -441,4 +441,74 @@ final class MemoryExtractionEngineTests: XCTestCase {
         XCTAssertEqual(Array(ordered.prefix(3)), [.local, .mlx, .ollama])
         XCTAssertEqual(Set(ordered).count, ordered.count)
     }
+
+    // MARK: - M3 dead-letter: a lease-exhausted running job must not wedge forever
+
+    func test_leaseExhaustedRunningJob_isDeadLetteredAndRevivable() async throws {
+        let (store, _) = try makeStore()
+        let lease: TimeInterval = 60
+        let t0 = Date(timeIntervalSince1970: 1_900_000_000)
+        let jobID = try await enqueue(store, threadID: "t", messageID: "m", idempotencyKey: "idem-zombie", now: t0)
+
+        // Simulate a worker that claims then dies mid-drain (never marks terminal),
+        // maxAttempts times — each reclaim happens after the prior lease expired.
+        var now = t0
+        for attempt in 1...3 {
+            let claimed = try await store.claimNextMemoryExtractionJob(now: now, maxAttempts: 3, leaseDuration: lease)
+            XCTAssertEqual(claimed?.id, jobID, "attempt \(attempt) should (re)claim the same job")
+            now = now.addingTimeInterval(lease + 1)
+        }
+
+        // Attempts are now exhausted and the row is stuck `.running`. The next claim must
+        // dead-letter it (not leave it wedged) and return nil (nothing claimable).
+        let afterExhaustion = try await store.claimNextMemoryExtractionJob(now: now, maxAttempts: 3, leaseDuration: lease)
+        XCTAssertNil(afterExhaustion, "an exhausted running job must not be re-claimed")
+        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .failed,
+                       "the zombie must be dead-lettered to a terminal failed state")
+        let failed = try await store.mostRecentFailedMemoryExtractionJob()
+        XCTAssertEqual(failed?.id, jobID)
+        XCTAssertEqual(failed?.lastError, ControlPlaneStore.memoryExtractionLeaseExhaustedError)
+
+        // Recoverability: a fresh enqueue of the same message resets it to pending
+        // (ON CONFLICT failed -> pending), so a later terminal commit can re-extract it.
+        _ = try await enqueue(store, threadID: "t", messageID: "m", idempotencyKey: "idem-zombie", now: now)
+        let revived = try await store.claimNextMemoryExtractionJob(now: now, maxAttempts: 3, leaseDuration: lease)
+        XCTAssertEqual(revived?.id, jobID, "a re-enqueued zombie must become claimable again")
+    }
+
+    func test_reaper_leavesRunningJobWithAttemptsRemaining() async throws {
+        let (store, _) = try makeStore()
+        let lease: TimeInterval = 60
+        let t0 = Date(timeIntervalSince1970: 1_900_000_000)
+        let jobID = try await enqueue(store, threadID: "t", messageID: "m", idempotencyKey: "idem-live", now: t0)
+        // One claim: running, attempts=1 (< max), lease then expires.
+        _ = try await store.claimNextMemoryExtractionJob(now: t0, maxAttempts: 3, leaseDuration: lease)
+        let later = t0.addingTimeInterval(lease + 1)
+        let reaped = try await store.reapStaleRunningMemoryExtractionJobs(now: later, maxAttempts: 3)
+        XCTAssertEqual(reaped, 0, "a running job with attempts remaining must stay reclaimable, not be dead-lettered")
+        XCTAssertEqual(try await store.memoryExtractionJobStatus(id: jobID), .running)
+    }
+
+    // MARK: - M2: recall budget charges the wrapUntrusted envelope
+
+    func test_recallBudget_chargesWrapperEnvelope_soFewerSnippetsFitTightBudget() async throws {
+        let (store, _) = try makeStore()
+        let scope = MemoryScope(userID: "m2-user", appID: "m2-app")
+        // Two short, distinct approved facts. Each body is only a few tokens.
+        for text in ["the user prefers tabs over spaces", "the user is based in Berlin"] {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(text: text, scope: scope, reviewStatus: .approved),
+                enabled: true
+            )
+        }
+        // Budget fits BOTH raw bodies (a few tokens each) but only ONE WRAPPED snippet,
+        // because each wrapper adds wrapperTokenOverhead (~150+) tokens. Body-only
+        // accounting (the M2 bug) would return 2; envelope-aware accounting returns 1.
+        let budget = MemoryRecallBudget.wrapperTokenOverhead + 20
+        let snippets = try await store.recallChatMemorySnippets(
+            MemoryRecallRequest(query: "user", scope: scope, tokenBudget: budget, limit: 8)
+        )
+        XCTAssertEqual(snippets.count, 1,
+                       "the wrapper envelope must be charged so only one wrapped snippet fits the tight budget")
+    }
 }

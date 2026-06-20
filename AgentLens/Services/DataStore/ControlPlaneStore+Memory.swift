@@ -181,6 +181,11 @@ extension ControlPlaneStore {
                     now
                 ]
             )
+            // G1 at-rest: BOTH `body_ref` and `body_redacted` store the SEALED REFERENCE
+            // (`bodyRef` = "memory_body_snapshots:<slug>"), never plaintext and never a
+            // redacted body — the column name `body_redacted` is legacy and is a misnomer
+            // here. The only plaintext fact body lives in `memory_body_snapshots.snapshot_json`
+            // inside the SQLCipher-encrypted database, opened transiently via `openChatMemoryBody`.
             try db.execute(
                 sql: """
                 INSERT INTO agent_memories (
@@ -347,20 +352,9 @@ extension ControlPlaneStore {
     ) async throws -> MemoryExtractionJob? {
         try await dbQueue.write { db in
             let boundedMaxAttempts = max(1, maxAttempts)
-            try db.execute(
-                sql: """
-                UPDATE memory_extraction_jobs
-                SET status = 'failed',
-                    last_error = 'lease_exhausted',
-                    lease_expires_at = NULL,
-                    updated_at = ?
-                WHERE status = 'running'
-                  AND attempts >= ?
-                  AND lease_expires_at IS NOT NULL
-                  AND lease_expires_at <= ?
-                """,
-                arguments: [now, boundedMaxAttempts, now]
-            )
+            // Self-healing dead-letter sweep (runs on every claim): rescue jobs wedged
+            // `.running` by a worker process that died mid-drain. See `reapExhaustedRunningJobs`.
+            try Self.reapExhaustedRunningJobs(db, now: now, boundedMaxAttempts: boundedMaxAttempts)
             guard let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -440,6 +434,48 @@ extension ControlPlaneStore {
             notBefore: now.addingTimeInterval(retryAfter),
             now: now
         )
+    }
+
+    /// Diagnostic `last_error` stamped on jobs dead-lettered by the reaper.
+    static let memoryExtractionLeaseExhaustedError = "lease_exhausted"
+
+    /// Dead-letter zombie jobs. A row left `.running` after a worker process died
+    /// mid-drain keeps its bumped attempt count but is never marked terminal. Once
+    /// `attempts` reaches the cap, the running-reclaim branch in
+    /// `claimNextMemoryExtractionJob` (which requires `attempts < max`) can no longer
+    /// pick it, so without this it would wedge `.running` forever (no janitor, and the
+    /// `ON CONFLICT failed -> pending` enqueue reset only revives `.failed` rows).
+    /// Transition such lease-expired, attempt-exhausted rows to a terminal `.failed`
+    /// with a diagnostic so they are observable AND revivable by a fresh enqueue.
+    /// Returns the number of rows dead-lettered. Idempotent and cheap (single UPDATE).
+    @discardableResult
+    static func reapExhaustedRunningJobs(_ db: Database, now: Date, boundedMaxAttempts: Int) throws -> Int {
+        try db.execute(
+            sql: """
+            UPDATE memory_extraction_jobs
+            SET status = 'failed',
+                last_error = ?,
+                not_before = NULL,
+                lease_expires_at = NULL,
+                updated_at = ?
+            WHERE status = 'running'
+              AND attempts >= ?
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at <= ?
+            """,
+            arguments: [memoryExtractionLeaseExhaustedError, now, boundedMaxAttempts, now]
+        )
+        return db.changesCount
+    }
+
+    /// Standalone reaper entry point for a periodic janitor or tests. Wraps
+    /// `reapExhaustedRunningJobs` in its own write transaction. Returns the number of
+    /// zombie jobs dead-lettered.
+    @discardableResult
+    func reapStaleRunningMemoryExtractionJobs(now: Date = Date(), maxAttempts: Int = 3) async throws -> Int {
+        try await dbQueue.write { db in
+            try Self.reapExhaustedRunningJobs(db, now: now, boundedMaxAttempts: max(1, maxAttempts))
+        }
     }
 
     func memoryExtractionJobStatus(id: String) async throws -> MemoryEventStatus? {
@@ -687,13 +723,23 @@ extension ControlPlaneStore {
 
         var spent = 0
         var snippets: [MemorySnippet] = []
+        // Each snippet is wrapped in the LLMSafeContent.wrapUntrusted envelope (open tag +
+        // provenance + close tag + the multi-sentence CRITICAL RULE) before it reaches the
+        // prompt. Charge that fixed per-snippet overhead here so the budget reflects the
+        // WRAPPED size that the arbiter actually sees — otherwise the assembled `.memory`
+        // section overflows the arbiter's memory cap and gets truncated (M2 audit finding).
+        let wrapperOverhead = MemoryRecallBudget.wrapperTokenOverhead
         for item in ranked.sorted(by: { lhs, rhs in
             if lhs.score == rhs.score { return lhs.memory.id < rhs.memory.id }
             return lhs.score > rhs.score
         }) {
             guard snippets.count < request.limit else { break }
-            guard item.tokenEstimate <= request.tokenBudget - spent else { continue }
-            spent += item.tokenEstimate
+            // Cost the WRAPPED snippet in the arbiter's prose token units (chars/3.5),
+            // matching how PromptTokenArbiter measures the .memory section, so a set that
+            // fits this budget also fits the arbiter cap (request.tokenBudget IS that cap).
+            let wrappedCost = PromptTokenArbiter.estimateProseTokens(item.text) + wrapperOverhead
+            guard wrappedCost <= request.tokenBudget - spent else { continue }
+            spent += wrappedCost
             snippets.append(
                 MemorySnippet(
                     memoryID: item.memory.id,
@@ -748,7 +794,6 @@ extension ControlPlaneStore {
                     citations: existing.citations,
                     createdAt: existing.createdAt
                 )
-                try db.execute(sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?", arguments: [snapshotSlug])
                 try db.execute(
                     sql: """
                     INSERT INTO memory_body_snapshots (
@@ -858,7 +903,6 @@ extension ControlPlaneStore {
 
     func deleteChatMemoryAuthorityRecord(id: MemoryID, now: Date = Date()) async throws -> Bool {
         guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
-        let snapshotSlug = Self.memorySnapshotSlug(id)
         let auditLabels = [
             "memory_id:\(id)",
             "source_kind:\(MemorySourceKind.chat.rawValue)"
@@ -877,7 +921,6 @@ extension ControlPlaneStore {
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
-            try db.execute(sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?", arguments: [snapshotSlug])
             try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
             try Self.insertMemoryAuditEvent(
                 db: db,

@@ -86,7 +86,8 @@ struct DashboardView: View {
             iCloudSessionMirrorService: context.iCloudSessionMirrorService,
             chatController: context.chatController,
             operatingLayer: context.operatingLayer,
-            settingsManager: context.settingsManager
+            settingsManager: context.settingsManager,
+            runtimeContext: context.runtimeContext
         )
     }
 

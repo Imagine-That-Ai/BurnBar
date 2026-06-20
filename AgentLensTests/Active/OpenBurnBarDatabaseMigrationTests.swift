@@ -1172,7 +1172,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             MemoryRecallRequest(
                 query: "concise backend status",
                 scope: scope,
-                tokenBudget: 80,
+                tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80,
                 limit: 5
             )
         )
@@ -1505,7 +1505,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
 
         let before = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertEqual(before.map(\.memoryID), ["mem-tombstone"])
 
@@ -1518,7 +1518,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             now: now.addingTimeInterval(1)
         )
         let suppressedBeforeReconcile = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "tombstoned source facts", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(suppressedBeforeReconcile.isEmpty)
         let searchBeforeReconcile = try await service.search(
@@ -1551,19 +1551,19 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             enabled: true
         )
         let quarantinedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(quarantinedRecall.isEmpty)
 
         _ = try await service.approve(id: "mem-review")
         let approvedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertEqual(approvedRecall.map(\.memoryID), ["mem-review"])
 
         _ = try await service.reject(id: "mem-review")
         let rejectedRecall = try await service.recallForPrompt(
-            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: 80, limit: 5)
+            MemoryRecallRequest(query: "reviewed memories", scope: scope, tokenBudget: MemoryRecallBudget.wrapperTokenOverhead + 80, limit: 5)
         )
         XCTAssertTrue(rejectedRecall.isEmpty)
 

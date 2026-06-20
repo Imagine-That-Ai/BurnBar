@@ -27,10 +27,14 @@ final class MemoryRecallBudgetTests: XCTestCase {
         XCTAssertGreaterThan(on.limit, off.limit)
     }
 
-    func test_onMode_tokenBudgetIsLargerThanOff() {
+    func test_onMode_tokenBudgetTracksArbiterCap_notDoubled() {
+        // High-recall raises the LIMIT, not the token budget: the arbiter caps the wrapped
+        // .memory section at its own memoryBudget regardless, so a doubled ask only forced
+        // overflow + truncation (M2). The token budget tracks the arbiter allocation.
         let off = MemoryRecallBudget.forReply(arbiterBudget: 500, highRecall: false)
         let on = MemoryRecallBudget.forReply(arbiterBudget: 500, highRecall: true)
-        XCTAssertGreaterThan(on.tokenBudget, off.tokenBudget)
+        XCTAssertEqual(on.tokenBudget, off.tokenBudget)
+        XCTAssertEqual(on.tokenBudget, 500)
     }
 
     func test_onMode_limitEqualsHighRecallConstant() {
@@ -38,10 +42,20 @@ final class MemoryRecallBudgetTests: XCTestCase {
         XCTAssertEqual(on.limit, MemoryRecallBudget.highRecallLimit)
     }
 
-    func test_onMode_tokenBudgetIsApproximatelyDoubled() {
+    func test_tokenBudgetEqualsArbiterAllocationInBothModes() {
         let arbiter = 800
-        let on = MemoryRecallBudget.forReply(arbiterBudget: arbiter, highRecall: true)
-        XCTAssertEqual(on.tokenBudget, 1600)
+        XCTAssertEqual(MemoryRecallBudget.forReply(arbiterBudget: arbiter, highRecall: true).tokenBudget, arbiter)
+        XCTAssertEqual(MemoryRecallBudget.forReply(arbiterBudget: arbiter, highRecall: false).tokenBudget, arbiter)
+    }
+
+    // MARK: - Wrapper envelope overhead (M2)
+
+    func test_wrapperTokenOverhead_isAccountedAndReasonable() {
+        // The wrapper envelope (tags + provenance + CRITICAL RULE) is non-trivial; the
+        // recall packer must charge it so the wrapped section fits the arbiter cap. Sanity
+        // bounds: at least 100 tokens (the rule alone is ~150 words) and under 400.
+        XCTAssertGreaterThan(MemoryRecallBudget.wrapperTokenOverhead, 100)
+        XCTAssertLessThan(MemoryRecallBudget.wrapperTokenOverhead, 400)
     }
 
     // MARK: - Both modes: positive values
