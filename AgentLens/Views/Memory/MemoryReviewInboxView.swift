@@ -219,6 +219,7 @@ private struct MemoryReviewEmptyState: View {
     let title: String
     let message: String
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var glow = false
 
     var body: some View {
@@ -238,14 +239,17 @@ private struct MemoryReviewEmptyState: View {
                     )
                     .frame(width: 168, height: 168)
                     .blur(radius: 18)
-                    .scaleEffect(glow ? 1.06 : 0.94)
-                    .opacity(glow ? 1 : 0.7)
+                    .scaleEffect(reduceMotion ? 1.0 : (glow ? 1.06 : 0.94))
+                    .opacity(reduceMotion ? 0.9 : (glow ? 1 : 0.7))
 
                 Image(systemName: icon)
                     .font(.system(size: 64, weight: .light))
                     .foregroundStyle(DesignSystem.Colors.primaryGradient)
             }
             .onAppear {
+                // Reduce-motion users get a calm static halo instead of an
+                // infinite pulse — matches `ConstellationBackgroundView`.
+                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
                     glow = true
                 }
@@ -286,6 +290,28 @@ struct MemoryReviewRow: View {
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
+    }
+
+    /// Honest gauge: the needle tracks the actual confidence (the static
+    /// `50percent` symbol would show the same needle for a 5% and a 95% fact).
+    /// Mirrors `BurnRailBudgetChip`'s threshold→symbol idiom.
+    private var confidenceSymbol: String {
+        switch confidencePercent {
+        case 90...: return "gauge.with.dots.needle.100percent"
+        case 67...: return "gauge.with.dots.needle.67percent"
+        case 34...: return "gauge.with.dots.needle.50percent"
+        default:    return "gauge.with.dots.needle.33percent"
+        }
+    }
+
+    /// Higher confidence reads as more trustworthy (success tint); low confidence
+    /// stays muted so a weak fact doesn't borrow the authority of a strong one.
+    private var confidenceTint: Color {
+        switch confidencePercent {
+        case 67...: return DesignSystem.Colors.success
+        case 34...: return DesignSystem.Colors.textSecondary
+        default:    return DesignSystem.Colors.textMuted
+        }
     }
 
     var body: some View {
@@ -351,12 +377,13 @@ struct MemoryReviewRow: View {
 
     private var confidenceHint: some View {
         HStack(spacing: DesignSystem.Spacing.xxs) {
-            Image(systemName: "gauge.with.dots.needle.50percent")
+            Image(systemName: confidenceSymbol)
                 .font(.system(size: 9, weight: .medium))
             Text("\(confidencePercent)%")
                 .font(DesignSystem.Typography.tiny)
         }
-        .foregroundStyle(DesignSystem.Colors.textMuted)
+        .foregroundStyle(confidenceTint)
+        .help("How confident the model is this is a durable fact worth keeping")
     }
 
     @ViewBuilder

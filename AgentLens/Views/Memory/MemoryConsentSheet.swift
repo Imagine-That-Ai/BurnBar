@@ -68,7 +68,7 @@ struct MemoryConsentSheet: View {
                 bullet(
                     icon: "lock",
                     tint: DesignSystem.Colors.textMuted,
-                    text: "Nothing leaves your device. Change this anytime in Settings → Privacy."
+                    text: "Stored encrypted on this Mac. An optional cloud backup of approved memories is off by default — you control it in Settings → Privacy."
                 )
             }
 
@@ -87,6 +87,20 @@ struct MemoryConsentSheet: View {
                 .tint(DesignSystem.Colors.ember)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+
+            // Staged rollout notice: the feature is behind a gradual fleet
+            // rollout, so consent may be recorded before extraction is active on
+            // this device. Surfacing this prevents the consent from feeling like a
+            // no-op when the rollout has not yet reached the user.
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("This feature is in staged rollout. Your consent is recorded and extraction will activate when the rollout reaches you.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 420)

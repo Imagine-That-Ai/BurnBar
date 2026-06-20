@@ -59,7 +59,11 @@ struct MemoryCitationChipView: View {
 
     private static func foreground(for a: MemoryCitationAffordance) -> Color {
         switch a {
-        case .jumpToLocal: return DesignSystem.Colors.hermesAureate
+        // The memory identity accent (amber) — the same color the review inbox
+        // uses for kind badges, so a chat citation and an approved memory read
+        // as one subsystem. Previously `hermesAureate` (Mercury gunmetal), which
+        // mis-attributed memory citations to the Hermes tool surface.
+        case .jumpToLocal: return DesignSystem.Colors.amber
         case .crossDeviceOnly: return DesignSystem.Colors.textSecondary
         case .sourceUnavailable: return DesignSystem.Colors.textMuted
         }
@@ -67,7 +71,7 @@ struct MemoryCitationChipView: View {
 
     private static func background(for a: MemoryCitationAffordance) -> Color {
         switch a {
-        case .jumpToLocal: return DesignSystem.Colors.hermesAureate.opacity(0.10)
+        case .jumpToLocal: return DesignSystem.Colors.amber.opacity(0.10)
         case .crossDeviceOnly: return DesignSystem.Colors.surfaceElevated
         case .sourceUnavailable: return DesignSystem.Colors.surfaceElevated.opacity(0.5)
         }
