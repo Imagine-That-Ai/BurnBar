@@ -183,6 +183,26 @@ Restarting after unexpected exit, crash, or test timeout; summary will include t
 LOG
 )"
 
+timeout_restart_final_failure_summary_log="$(write_fixture timeout-restart-final-failure-summary <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-12 22:42:42.654.
+Test Case '-[OpenBurnBarTests.SomeTests test_slowCleanup]' exceeded execution time allowance of 10 minutes. The test may have hung.
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+Test Suite 'Selected tests' failed at 2026-06-12 22:56:21.884.
+     Executed 2032 tests, with 3 tests skipped and 1 failure (0 unexpected) in 194.596 (196.137) seconds
+LOG
+)"
+
+timeout_restart_stale_green_then_failed_log="$(write_fixture timeout-restart-stale-green-then-failed <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-12 22:42:42.654.
+Test Case '-[OpenBurnBarTests.SomeTests test_slowCleanup]' exceeded execution time allowance of 10 minutes. The test may have hung.
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+Test Suite 'Selected tests' passed at 2026-06-12 22:51:04.111.
+     Executed 2032 tests, with 3 tests skipped and 0 failures (0 unexpected) in 194.596 (196.137) seconds
+Test Suite 'Selected tests' failed at 2026-06-12 22:56:21.884.
+     Executed 2032 tests, with 3 tests skipped and 1 failure (0 unexpected) in 194.596 (196.137) seconds
+LOG
+)"
+
 unknown_failure_log="$(write_fixture unknown-failure <<'LOG'
 ** TEST FAILED **
 LOG
@@ -243,9 +263,15 @@ assert_true "runner-restart final-run assertion failure remains terminal concret
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
 assert_false "test-host timeout relaunch is not accepted as false-negative pass" is_xcode_false_negative_pass "$timeout_restart_log"
+assert_false "test-host timeout relaunch with stale failing footer is not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_log"
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
 assert_false "test-host timeout relaunch with stale failing footer is not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_log"
 assert_false "test-host timeout relaunch with assertion failure is not hidden" is_known_hang "$timeout_restart_with_assertion_log"
+assert_true "test-host timeout relaunch with final failure summary remains terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_final_failure_summary_log"
+assert_false "test-host timeout relaunch with final failure summary is not retryable" is_known_hang "$timeout_restart_final_failure_summary_log"
+assert_false "later failed Selected tests summary resets stale green state" openburnbar_app_test_final_selected_summary_is_green "$timeout_restart_stale_green_then_failed_log"
+assert_true "later failed Selected tests summary remains terminal after stale green summary" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_stale_green_then_failed_log"
+assert_false "later failed Selected tests summary is not retryable after stale green summary" is_known_hang "$timeout_restart_stale_green_then_failed_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
 assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
 assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
