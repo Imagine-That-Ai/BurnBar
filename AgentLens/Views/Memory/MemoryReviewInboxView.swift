@@ -185,8 +185,8 @@ struct MemoryReviewInboxView: View {
                         MemoryReviewRow(
                             item: item,
                             isPending: model.filter == .pending,
-                            onApprove: { Task { await model.approve(item.id) } },
-                            onReject: { Task { await model.reject(item.id) } }
+                            onApprove: { await model.approve(item.id) },
+                            onReject: { await model.reject(item.id) }
                         )
                     }
                 }
@@ -283,10 +283,14 @@ private struct MemoryReviewEmptyState: View {
 struct MemoryReviewRow: View {
     let item: MemoryReviewInboxModel.Item
     let isPending: Bool
-    let onApprove: () -> Void
-    let onReject: () -> Void
+    let onApprove: () async -> Void
+    let onReject: () async -> Void
 
     @State private var confirmingReject = false
+    /// Guards a transition in flight (approve / reject / revoke). While true the
+    /// row's action buttons disable and the tapped action shows a spinner, so the
+    /// user sees the write land instead of a dead-feeling tap-then-vanish.
+    @State private var isTransitioning = false
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
@@ -344,7 +348,7 @@ struct MemoryReviewRow: View {
             isPresented: $confirmingReject,
             titleVisibility: .visible
         ) {
-            Button("Reject", role: .destructive) { onReject() }
+            Button("Reject", role: .destructive) { runTransition(onReject) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("It won't be remembered or used in any chat. You can't undo this.")
@@ -398,12 +402,20 @@ struct MemoryReviewRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DesignSystem.Colors.error)
+                .disabled(isTransitioning)
 
-                Button(action: onApprove) {
+                Button {
+                    runTransition(onApprove)
+                } label: {
                     HStack(spacing: DesignSystem.Spacing.xs) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Approve")
+                        if isTransitioning {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        Text(isTransitioning ? "Approving" : "Approve")
                             .font(DesignSystem.Typography.caption)
                     }
                     .foregroundStyle(.white)
@@ -415,6 +427,7 @@ struct MemoryReviewRow: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(isTransitioning)
             }
         } else {
             HStack(spacing: DesignSystem.Spacing.sm) {
@@ -422,15 +435,32 @@ struct MemoryReviewRow: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.success)
 
-                Button(role: .destructive) {
-                    confirmingReject = true
-                } label: {
-                    Text("Revoke")
-                        .font(DesignSystem.Typography.caption)
+                if isTransitioning {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Button(role: .destructive) {
+                        confirmingReject = true
+                    } label: {
+                        Text("Revoke")
+                            .font(DesignSystem.Typography.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+        }
+    }
+
+    /// Runs a review transition with in-flight feedback: disable the row's actions
+    /// and show a spinner until the store write + reload settles. The subsequent
+    /// reload removes the row from its current bucket, so `isTransitioning` only
+    /// needs to bridge the write window.
+    private func runTransition(_ action: @escaping () async -> Void) {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        Task {
+            defer { isTransitioning = false }
+            await action()
         }
     }
 }
