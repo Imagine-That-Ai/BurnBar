@@ -301,6 +301,7 @@ private var corpus: MemorySecretPIIGate.LoadedCorpus {
         version: "test-sentinel",
         patterns: [],
         entropy: nil,
+        hexEntropy: nil,
         decoding: nil,
         available: true
     )
