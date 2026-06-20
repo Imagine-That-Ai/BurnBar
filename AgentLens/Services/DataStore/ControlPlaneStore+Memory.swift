@@ -681,11 +681,7 @@ extension ControlPlaneStore {
         )
     }
 
-    /// Count of chat-memory records awaiting human review (`.quarantined`) for `scope`.
-    /// Backs the Memory nav-strip pending badge: because quarantined memories can never be
-    /// recalled until approved here, a user with no nudge could leave the feature
-    /// permanently inert. Cheap (in-memory filter over the active records).
-    func chatMemoryPendingReviewCount(scope: MemoryScope) async throws -> Int {
+    func pendingChatMemoryReviewCount(scope: MemoryScope) async throws -> Int {
         try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
             .filter { $0.reviewStatus == .quarantined }
             .count

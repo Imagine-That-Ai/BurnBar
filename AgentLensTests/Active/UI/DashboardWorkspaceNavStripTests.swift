@@ -101,4 +101,14 @@ final class DashboardWorkspaceNavStripTests: XCTestCase {
         try buttons[6].tap()
         XCTAssertEqual(navigatedRoute, .memoryReview)
     }
+
+    func test_memoryButtonShowsPendingMemoryBadge() throws {
+        let view = DashboardWorkspaceNavStrip(
+            currentRoute: .overview,
+            pendingMemoryCount: 7,
+            onNavigate: { _ in }
+        )
+
+        XCTAssertNoThrow(try view.inspect().find(text: "7"))
+    }
 }

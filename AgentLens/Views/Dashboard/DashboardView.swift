@@ -31,9 +31,6 @@ struct DashboardView: View {
     @State var overviewAppeared = false
     @State private var overviewEmptyStateAppeared = false
     @State var deviceCount = 0
-    /// Quarantined chat-memory count for the Memory nav-strip badge (m2). Refreshed on
-    /// appear and on every navigation so the user is nudged that memories await approval.
-    @State private var pendingMemoryCount = 0
     @State var sidebarAppeared = false
     @State var chatPanelOpen = false
     @State private var showIndexingConsent = false
@@ -52,6 +49,7 @@ struct DashboardView: View {
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
     @State private var showMacWandComposer = false
+    @State private var pendingMemoryReviewCount: Int?
 
     init(
         dataStore: DataStore,
@@ -178,6 +176,7 @@ struct DashboardView: View {
             if missionConsoleController == nil {
                 missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
             }
+            Task { await refreshPendingMemoryReviewCount() }
         }
         .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
@@ -569,19 +568,10 @@ struct DashboardView: View {
         DashboardWorkspaceNavStrip(
             currentRoute: mainRoute,
             activeChatBackend: chatController.chatBackend,
-            pendingMemoryCount: pendingMemoryCount
+            pendingMemoryCount: pendingMemoryReviewCount
         ) { route in
             navigate(to: route)
         }
-        .task(id: mainRoute) { await refreshPendingMemoryCount() }
-    }
-
-    /// Refresh the quarantined-memory count behind the nav-strip badge (m2). Best-effort:
-    /// a nil store (test-stub scene) or a query error simply leaves the count at 0.
-    func refreshPendingMemoryCount() async {
-        guard let store = runtimeContext?.chatMemoryStore else { return }
-        let count = (try? await store.chatMemoryPendingReviewCount(scope: memoryReviewScope)) ?? 0
-        if count != pendingMemoryCount { pendingMemoryCount = count }
     }
 
     // MARK: - Memory Review
@@ -600,7 +590,9 @@ struct DashboardView: View {
                     loadPage: { request in try await store.chatMemoryPage(request) },
                     openBody: { id in try await store.openChatMemoryBody(id: id) },
                     setStatus: { id, status in
-                        try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                        let changed = try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+                        await refreshPendingMemoryReviewCount()
+                        return changed
                     }
                 )
             )
@@ -619,6 +611,19 @@ struct DashboardView: View {
     /// must read that same bucket so signed-in users can approve extracted memories.
     private var memoryReviewScope: MemoryScope {
         MemoryScope(appID: "openburnbar")
+    }
+
+    @MainActor
+    private func refreshPendingMemoryReviewCount() async {
+        guard let store = runtimeContext?.chatMemoryStore else {
+            pendingMemoryReviewCount = nil
+            return
+        }
+        do {
+            pendingMemoryReviewCount = try await store.pendingChatMemoryReviewCount(scope: memoryReviewScope)
+        } catch {
+            pendingMemoryReviewCount = nil
+        }
     }
 
     @ViewBuilder

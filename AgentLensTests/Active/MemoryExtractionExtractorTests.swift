@@ -388,6 +388,96 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         XCTAssertTrue(MemoryExtractionExtractorHTTPStub.requestCount >= 1)
     }
 
+    func test_extractorRefusesNonLoopbackLocalEndpointBeforeTranscriptEgress() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_100_250)
+
+        let threadID = "thread-remote-url"
+        let sourceID = "msg-remote-url-1"
+        try await insertChatMessage(
+            queue,
+            threadID: threadID,
+            id: sourceID,
+            role: "user",
+            body: "Remember my passport number is not for remote models.",
+            at: now
+        )
+        MemoryExtractionExtractorHTTPStub.responseJSON = """
+        {"memories":[{"text":"This must not be reached.","kind":"fact","confidence":0.9,"messageId":"\(sourceID)"}]}
+        """
+
+        let settings = MemoryExtractionSettingsSnapshot(
+            providerOrder: [.mlx],
+            localBaseURL: "http://127.0.0.1:11434",
+            localModel: "",
+            mlxBaseURL: "https://remote.example",
+            mlxModel: "test-model",
+            minimaxModel: "",
+            openRouterPrimaryModel: "",
+            openRouterFallbackModel: "",
+            zaiModel: "",
+            ollamaBaseURL: "",
+            ollamaModel: "",
+            requestTimeoutSeconds: 5,
+            maxPromptChars: 4_000,
+            maxOutputTokens: 256,
+            dailyCapUSD: 100,
+            retryCount: 0,
+            maxCandidatesPerJob: 8,
+            promptVersion: "memory-extract-v1"
+        )
+        let extractor = ChatTranscriptExtractor(
+            transcriptReader: store,
+            spendReader: ZeroSpendReader(),
+            keyResolver: MemoryExtractionAPIKeyResolver(providerAPIKeyStore: ProviderAPIKeyStore()),
+            settingsProvider: { settings }
+        )
+
+        let job = ControlPlaneStore.MemoryExtractionJob(
+            id: "memory-extraction-remote-url",
+            idempotencyKey: "remote-url-idem",
+            threadID: threadID,
+            threadLogicalID: "thread-logical-remote-url",
+            messageID: sourceID,
+            promptVersion: "memory-extract-v1",
+            scope: MemoryScope(appID: "openburnbar"),
+            status: .running,
+            attempts: 1,
+            lastError: nil,
+            notBefore: nil,
+            leaseExpiresAt: now.addingTimeInterval(900),
+            createdAt: now,
+            updatedAt: now
+        )
+
+        let requests = try await extractor.extract(job)
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(MemoryExtractionExtractorHTTPStub.requestCount, 0)
+    }
+
+    func test_localLLMEndpointPolicy_allowsLoopbackAndRejectsRemoteOrAmbiguousHosts() {
+        XCTAssertEqual(
+            LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL(" http://127.0.0.1:11434/ "),
+            "http://127.0.0.1:11434"
+        )
+        XCTAssertEqual(
+            LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("http://localhost:8080"),
+            "http://localhost:8080"
+        )
+        XCTAssertEqual(
+            LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("http://[::1]:8080"),
+            "http://[::1]:8080"
+        )
+
+        XCTAssertNil(LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("https://remote.example"))
+        XCTAssertNil(LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("http://192.168.1.10:11434"))
+        XCTAssertNil(LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("http://example.com@127.0.0.1:11434"))
+        XCTAssertNil(LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL("127.0.0.1:11434"))
+    }
+
     func test_extractor_returnsEmptyWhenTranscriptMissingTerminalMessage() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

@@ -99,10 +99,6 @@ final class MemorySettings {
 
 // MARK: - Memory extraction gate (G4 kill switch)
 
-/// Pure gate: extraction is enabled only when the user toggle is ON **and** the
-/// fleet Remote Config kill switch has not disabled it. Either lever off ->
-/// extraction halted (fail-closed). Kept pure so the gate logic is testable
-/// without Firebase or a SettingsManager.
 /// Pure gate: extraction is enabled only when the user has CONSENTED **and** the
 /// user toggle is ON **and** the fleet Remote Config kill switch has not disabled
 /// it. Any lever off -> extraction halted (fail-closed). Kept pure so the gate

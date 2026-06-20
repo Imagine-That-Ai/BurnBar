@@ -794,6 +794,107 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(reclaimed?.leaseExpiresAt, now.addingTimeInterval(22))
     }
 
+    func test_memoryExtractionOutboxTerminalizesExpiredRunningJobAtMaxAttempts() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_300)
+        let dedupeMarker = ["stale", "max", "outbox"].joined(separator: "-")
+        let intent = ExtractionIntent(
+            threadID: "thread-stale-max-pr613",
+            threadLogicalID: "thread-logical-stale-max-pr613",
+            messageID: "message-stale-max-pr613",
+            scope: MemoryScope(userID: "stale-max-user", appID: "stale-max-app"),
+            promptVersion: "memory-extract-v1",
+            idempotencyKey: dedupeMarker
+        )
+
+        let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
+        let firstClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(1),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(firstClaim?.id, jobID)
+        XCTAssertEqual(firstClaim?.attempts, 1)
+
+        let secondClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(12),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(secondClaim?.id, jobID)
+        XCTAssertEqual(secondClaim?.attempts, 2)
+
+        let thirdClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(23),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertEqual(thirdClaim?.id, jobID)
+        XCTAssertEqual(thirdClaim?.attempts, 3)
+
+        let exhaustedClaim = try await store.claimNextMemoryExtractionJob(
+            now: now.addingTimeInterval(34),
+            maxAttempts: 3,
+            leaseDuration: 10
+        )
+        XCTAssertNil(exhaustedClaim)
+        let finalStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(finalStatus, .failed)
+        let terminalError = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT last_error FROM memory_extraction_jobs WHERE id = ?",
+                arguments: [jobID]
+            )
+        }
+        XCTAssertEqual(terminalError, "lease_exhausted")
+    }
+
+    func test_pendingChatMemoryReviewCountCountsOnlyQuarantinedRows() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let now = Date(timeIntervalSince1970: 1_800_000_320)
+        let scope = MemoryScope(userID: "review-count-user", appID: "review-count-app")
+
+        func addMemory(id: MemoryID, status: MemoryReviewStatus) async throws {
+            _ = try await store.addChatMemoryAuthorityRecord(
+                MemoryAddRequest(
+                    text: "Review count body \(id)",
+                    kind: .fact,
+                    scope: scope,
+                    confidence: 0.8,
+                    citations: [
+                        MemoryCitation(
+                            id: "cite-\(id)",
+                            threadLogicalID: "thread-\(id)",
+                            messageID: "message-\(id)",
+                            role: "user",
+                            authoredAt: now,
+                            contentHash: "content-\(id)",
+                            crossDeviceHMAC: "hmac-\(id)"
+                        )
+                    ],
+                    reviewStatus: status
+                ),
+                id: id,
+                now: now,
+                enabled: true
+            )
+        }
+
+        try await addMemory(id: "mem-count-pending", status: .quarantined)
+        try await addMemory(id: "mem-count-approved", status: .approved)
+        try await addMemory(id: "mem-count-rejected", status: .rejected)
+
+        let count = try await store.pendingChatMemoryReviewCount(scope: scope)
+        XCTAssertEqual(count, 1)
+    }
+
     func test_memoryDedupSupersedesDuplicateBodyWithDeterministicWinnerAndProvenanceUnion() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

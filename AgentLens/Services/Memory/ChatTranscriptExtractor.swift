@@ -223,8 +223,9 @@ struct ChatTranscriptExtractor: Sendable {
     ) async -> String? {
         switch provider {
         case .local:
+            guard let baseURL = LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL(settings.localBaseURL) else { return nil }
             let (text, _) = await llmClient.callOllama(
-                baseURL: settings.localBaseURL,
+                baseURL: baseURL,
                 model: settings.localModel,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
@@ -234,8 +235,8 @@ struct ChatTranscriptExtractor: Sendable {
             return text
 
         case .mlx:
-            let base = normalizedBase(settings.mlxBaseURL)
-            guard base.isEmpty == false, settings.mlxModel.isEmpty == false else { return nil }
+            guard let base = LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL(settings.mlxBaseURL),
+                  settings.mlxModel.isEmpty == false else { return nil }
             return await callOpenAICompatible(
                 provider: .mlx,
                 baseURL: base + "/v1",
@@ -292,8 +293,8 @@ struct ChatTranscriptExtractor: Sendable {
             )
 
         case .ollama:
-            let base = normalizedBase(settings.ollamaBaseURL)
-            guard base.isEmpty == false, settings.ollamaModel.isEmpty == false else { return nil }
+            guard let base = LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL(settings.ollamaBaseURL),
+                  settings.ollamaModel.isEmpty == false else { return nil }
             let apiKey = await keyResolver.resolveAPIKey(for: .ollama)
             return await callOpenAICompatible(
                 provider: .ollama,
@@ -372,9 +373,41 @@ struct ChatTranscriptExtractor: Sendable {
         return nil
     }
 
-    private func normalizedBase(_ raw: String) -> String {
-        raw
+}
+
+/// Enforces the v1 "local-only" transcript egress contract at the endpoint
+/// boundary, before raw chat text is ever posted to an LLM-compatible server.
+struct LocalLLMEndpointPolicy: Sendable {
+    static func sanitizedLoopbackBaseURL(_ raw: String) -> String? {
+        let trimmed = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard trimmed.isEmpty == false,
+              let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              components.user == nil,
+              components.password == nil,
+              isLoopbackHost(host) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    static func isLoopbackHost(_ host: String) -> Bool {
+        let normalized = host
+            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            .lowercased()
+
+        if normalized == "localhost" ||
+            normalized == "::1" ||
+            normalized == "0:0:0:0:0:0:0:1" {
+            return true
+        }
+
+        let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts.first == "127" else { return false }
+        return parts.dropFirst().allSatisfy { Int(String($0)).map { (0 ... 255).contains($0) } == true }
     }
 }

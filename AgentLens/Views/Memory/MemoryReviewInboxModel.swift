@@ -19,9 +19,19 @@ final class MemoryReviewInboxModel {
 
     /// One reviewable memory: the authority record plus its transiently-opened body.
     struct Item: Identifiable, Equatable {
+        enum BodyLoadState: Equatable {
+            case loaded
+            case unavailable
+        }
+
         let memory: Memory          // OpenBurnBarCore.Memory
         let body: String            // transiently-opened sealed body (display only)
+        let bodyLoadState: BodyLoadState
         var id: MemoryID { memory.id }
+        var canApprove: Bool {
+            bodyLoadState == .loaded &&
+                body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
     }
 
     /// Which bucket the inbox is showing.
@@ -54,6 +64,7 @@ final class MemoryReviewInboxModel {
     private let pageSize = 200
 
     private static let defaultErrorMessage = "Something went wrong loading your memories. Please try again."
+    private static let unavailableBodyApprovalMessage = "Memory contents are unavailable. Reject it or reload before approving."
 
     init(
         scope: MemoryScope,
@@ -94,6 +105,10 @@ final class MemoryReviewInboxModel {
 
     /// Approves a memory, then reloads so it moves from pending to approved.
     func approve(_ id: MemoryID) async {
+        guard pending.first(where: { $0.id == id })?.canApprove == true else {
+            errorMessage = Self.unavailableBodyApprovalMessage
+            return
+        }
         await transition(id, to: .approved)
     }
 
@@ -132,8 +147,18 @@ final class MemoryReviewInboxModel {
             guard page.items.isEmpty == false else { break }
 
             for memory in page.items where memory.reviewStatus == status {
-                let body = (try? await openBody(memory.id)) ?? nil
-                items.append(Item(memory: memory, body: body ?? ""))
+                let bodyState: (String, Item.BodyLoadState)
+                do {
+                    if let body = try await openBody(memory.id),
+                       body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        bodyState = (body, .loaded)
+                    } else {
+                        bodyState = ("", .unavailable)
+                    }
+                } catch {
+                    bodyState = ("", .unavailable)
+                }
+                items.append(Item(memory: memory, body: bodyState.0, bodyLoadState: bodyState.1))
                 if items.count >= pageSize { break }
             }
 
