@@ -185,6 +185,21 @@ export async function run(request) {
     expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toEqual([]);
   });
 
+  it("allows high-risk owner action guards when they bind the matching payload UID first", () => {
+    const repoRoot = writeSyntheticRepo(`
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
+
+export async function run(request) {
+  const { uid, documentId } = request.data;
+  await enforceHighRiskOwnerAction(request, uid, { actionKind: "provider_account_delete", subjectId: documentId });
+  return db.collection("users").doc(uid).collection("documents").doc(documentId).get();
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toEqual([]);
+  });
+
   it("allows client-supplied user namespace only when an explicit ownership guard is present", () => {
     const repoRoot = writeSyntheticRepo(`
 import { assertOwnership } from "../auth.js";

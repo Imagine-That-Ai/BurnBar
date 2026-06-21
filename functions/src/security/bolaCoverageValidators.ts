@@ -19,7 +19,7 @@ const USER_TEMPLATE_NAMESPACE = /users\/\$\{([^}]+)\}/gu;
 const USER_COLLECTION_DOC_NAMESPACE = /\.collection\(\s*["']users["']\s*\)\s*\.doc\(\s*([^)\n]+)\)/gu;
 const EXPORT_SCOPE_BOUNDARY = /^\s*export\s+(?:async\s+)?(?:function|const|let|var)\b/gmu;
 const OWNERSHIP_GUARD_CALL =
-  /\b(?:assertOwnership|enforceAuthAndAppCheck|enforceHighRiskComputerUseCallable(?:WithNonce)?)\s*\(([^)]*)\)/gu;
+  /\b(?:assertOwnership|enforceAuthAndAppCheck|enforceHighRiskComputerUseCallable(?:WithNonce)?|enforceHighRiskOwnerAction)\s*\(([^)]*)\)/gu;
 const SIMPLE_IDENTIFIER = /^[A-Za-z_$][\w$]*$/u;
 
 type HandlerScope = {
