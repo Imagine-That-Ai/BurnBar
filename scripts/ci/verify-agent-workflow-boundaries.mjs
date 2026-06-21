@@ -400,10 +400,6 @@ function topLevelMappingHasEntry(source, sectionName, key, expectedValue) {
   );
 }
 
-function directEntryIncludes(block, key, needle) {
-  return directEntryValue(block, key)?.includes(needle) ?? false;
-}
-
 function normalizedCondition(condition) {
   return condition.replace(/\s+/gu, " ").trim();
 }
@@ -593,19 +589,24 @@ function maskShellStringsAndComments(body) {
 
 function shellBlockHasTopLevelNonzeroExit(body) {
   const executableBody = maskShellStringsAndComments(body);
-  const tokenPattern = /\bif\b|\belif\b|\belse\b|\bfi\b|\bexit\s+[1-9][0-9]*\b/gu;
+  const tokenPattern = /\bif\b|\belif\b|\belse\b|\bfi\b|\bexit\s+[1-9][0-9]*\b|\(|\)/gu;
   let depth = 0;
+  let parenDepth = 0;
   let match = tokenPattern.exec(executableBody);
   while (match) {
     const token = match[0];
-    if (token === "if") {
+    if (token === "(") {
+      parenDepth += 1;
+    } else if (token === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+    } else if (token === "if") {
       depth += 1;
     } else if ((token === "elif" || token === "else") && depth === 0) {
       return false;
     } else if (token === "fi") {
       if (depth === 0) return false;
       depth -= 1;
-    } else if (depth === 0) {
+    } else if (depth === 0 && parenDepth === 0) {
       return true;
     }
     match = tokenPattern.exec(executableBody);
@@ -635,6 +636,17 @@ function hasDroidReviewOidcException(step) {
     mappingHasEntry(step, "with", "github_token", "${{ github.token }}") &&
     mappingHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")
   );
+}
+
+function issueCommentScopeStepVerifiesSameRepository(scopeStep) {
+  const run = stepRunValue(scopeStep);
+  const assignsHeadRepoFromGhApi = /^ *head_repo="\$\(gh api "\$\{PR_URL\}" --jq '\.head\.repo\.full_name'\)" *$/mu.test(
+    run,
+  );
+  const rejectsDifferentRepository =
+    /^ *if \[\[ "\$\{head_repo\}" != "\$\{REPOSITORY\}" \]\]; then *$/mu.test(run) &&
+    /^ *allowed=false *$/mu.test(run);
+  return assignsHeadRepoFromGhApi && rejectsDifferentRepository;
 }
 
 for (const file of workflowFiles()) {
@@ -827,7 +839,7 @@ for (const file of workflowFiles()) {
       ) {
         fail(file, "issue-comment agent workflow must look up PR metadata before running on PR comments");
       }
-      if (!directEntryIncludes(scopeStep, "run", ".head.repo.full_name")) {
+      if (!issueCommentScopeStepVerifiesSameRepository(scopeStep)) {
         fail(file, "issue-comment agent workflow must verify PR comments come from same-repository pull requests");
       }
     }

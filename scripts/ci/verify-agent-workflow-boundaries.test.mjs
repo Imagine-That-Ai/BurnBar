@@ -403,6 +403,25 @@ expect(
 );
 
 expect(
+  "PR comment same-repo scope echo-only bypass fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      [
+        '            head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"',
+        '            if [[ "${head_repo}" != "${REPOSITORY}" ]]; then',
+        "              allowed=false",
+        "            fi",
+      ].join("\n"),
+      [
+        '            echo "checking .head.repo.full_name"',
+        "            allowed=true",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "Factory key availability always-true action gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -600,6 +619,26 @@ expect(
       [
         '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
         '            echo "exit 1"',
+        "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI empty-key preflight with subshell exit fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        "            (exit 1)",
         "          fi",
       ].join("\n"),
     ),
