@@ -1227,6 +1227,138 @@ expect(
 );
 
 expect(
+  "Droid action function-wrapped secrets context input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ toJSON(secrets) }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action function-wrapped github context input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ toJSON(github) }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action uppercase secret context input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_api_key: ${{ SECRETS.OPENAI_API_KEY }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action vars token input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_api_key: ${{ vars.OPENAI_API_KEY }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action prior GITHUB_OUTPUT secret export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - name: Run Droid Exec\n",
+      '      - name: Export helper output\n        id: helper\n        run: echo "secret_val=${{ secrets.OPENAI_API_KEY }}" >> "$GITHUB_OUTPUT"\n      - name: Run Droid Exec\n',
+    ).replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ steps.helper.outputs.secret_val }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action prior GITHUB_OUTPUT non-shell secret env export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - name: Run Droid Exec\n",
+      [
+        "      - name: Export helper output",
+        "        id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        "        run: |",
+        "          python3 - <<'PY'",
+        "          import os",
+        '          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:',
+        "              output.write(f\"secret_val={os.environ['DATA']}\\n\")",
+        "          PY",
+        "      - name: Run Droid Exec",
+        "",
+      ].join("\n"),
+    ).replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ steps.helper.outputs.secret_val }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action cross-job GITHUB_OUTPUT secret export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare.outputs.payload }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action benign prior GITHUB_OUTPUT cache key passes",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - name: Run Droid Exec\n",
+      [
+        "      - name: Export cache metadata",
+        "        id: cache-meta",
+        '        run: echo "cache_key=deps-${{ hashFiles(\'**/package-lock.json\') }}" >> "$GITHUB_OUTPUT"',
+        "      - name: Run Droid Exec",
+        "",
+      ].join("\n"),
+    ).replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ steps.cache-meta.outputs.cache_key }}\n",
+    ),
+  },
+  0,
+);
+
+expect(
   "Droid action first-line env mapping token fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -1339,6 +1471,59 @@ expect(
       "  wiki-refresh:\n",
       "  wiki-refresh:\n    env:\n      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}\n",
     ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI prior GITHUB_ENV parameter expansion secret export fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      '      - name: Export helper secret\n        env:\n          DATA: ${{ secrets.OPENAI_API_KEY }}\n        run: echo "OPENAI_API_KEY=${DATA:-fallback}" >> "$GITHUB_ENV"\n      - name: Generate Wiki\n',
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI prior GITHUB_OUTPUT parameter expansion secret export fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      '      - name: Export helper output\n        env:\n          DATA: ${{ secrets.OPENAI_API_KEY }}\n        run: echo "secret_val=${DATA:-fallback}" >> "$GITHUB_OUTPUT"\n      - name: Generate Wiki\n',
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI cross-job GITHUB_OUTPUT secret export fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  wiki-refresh:\n", "  wiki-refresh:\n    needs: prepare\n")
+      .replace(
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n          EXTRA_PAYLOAD: ${{ needs.prepare.outputs.payload }}\n",
+      )
+      .replace(
+        '          droid exec --auto medium "/wiki"',
+        '          droid exec --auto medium "/wiki" "$EXTRA_PAYLOAD"',
+      ),
   },
   1,
 );
