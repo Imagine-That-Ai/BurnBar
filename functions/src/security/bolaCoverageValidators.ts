@@ -15,6 +15,32 @@ const RUNTIME_BODY_MARKERS = [
   /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial|tier2CallableProof)\b/u,
 ] as const;
 
+const USER_TEMPLATE_NAMESPACE = /users\/\$\{([^}]+)\}/gu;
+const USER_COLLECTION_DOC_NAMESPACE = /\.collection\(\s*["']users["']\s*\)\s*\.doc\(\s*([^)\n]+)\)/gu;
+const EXPORT_SCOPE_BOUNDARY = /^\s*export\s+(?:async\s+)?(?:function|const|let|var)\b/gmu;
+const OWNERSHIP_GUARD_CALL =
+  /\b(?:assertOwnership|enforceAuthAndAppCheck|enforceHighRiskComputerUseCallable(?:WithNonce)?|enforceHighRiskOwnerAction)\s*\(([^)]*)\)/gu;
+const SIMPLE_IDENTIFIER = /^[A-Za-z_$][\w$]*$/u;
+
+type HandlerScope = {
+  source: string;
+  start: number;
+};
+
+type NamespaceBindings = {
+  payloadAliases: Map<string, string>;
+  payloadObjectAliases: Set<string>;
+  trustedAliases: Set<string>;
+};
+
+type UserNamespaceMatch = {
+  name: string;
+  expression: string;
+  index: number;
+  scopeSource: string;
+  guardCandidates: Set<string>;
+};
+
 function matchesStaticHighRiskCoverage(
   source: string,
   titles: Set<string>,
@@ -135,6 +161,224 @@ function validateRuntimeCovers(entry: EndpointAuthorizationEntry, ref: BolaCover
   return [];
 }
 
+function normalizeNamespaceExpression(value: string): string {
+  let normalized = value.trim().replace(/;$/u, "");
+  while (normalized.startsWith("(") && normalized.endsWith(")")) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+  return normalized.replace(/\s+/gu, "");
+}
+
+function candidatePattern(candidate: string): RegExp {
+  const normalized = normalizeNamespaceExpression(candidate);
+  return SIMPLE_IDENTIFIER.test(normalized)
+    ? new RegExp(`\\b${escapeRegExp(normalized)}\\b`, "u")
+    : new RegExp(escapeRegExp(normalized), "u");
+}
+
+function expressionContainsCandidate(expression: string, candidate: string): boolean {
+  return candidatePattern(candidate).test(normalizeNamespaceExpression(expression));
+}
+
+function parseDestructuredBindings(bindings: string): Array<{ property: string; alias: string }> {
+  return bindings.split(",").flatMap((rawBinding) => {
+    const binding = rawBinding.trim().replace(/\s*=.*$/u, "");
+    if (binding.length === 0 || binding.startsWith("...")) return [];
+    const [rawProperty, rawAlias = rawProperty] = binding.split(":").map((part) => part.trim());
+    if (!SIMPLE_IDENTIFIER.test(rawProperty) || !SIMPLE_IDENTIFIER.test(rawAlias)) return [];
+    return [{ property: rawProperty, alias: rawAlias }];
+  });
+}
+
+function expressionUsesPayloadObjectAlias(expression: string, aliases: Set<string>): boolean {
+  return [...aliases].some((alias) =>
+    new RegExp(`\\b${escapeRegExp(alias)}\\.[A-Za-z_$][\\w$]*`, "u").test(expression),
+  );
+}
+
+function expressionUsesAlias(expression: string, aliases: Iterable<string>): boolean {
+  return [...aliases].some((alias) => candidatePattern(alias).test(normalizeNamespaceExpression(expression)));
+}
+
+function collectNamespaceBindings(source: string): NamespaceBindings {
+  const payloadAliases = new Map<string, string>();
+  const payloadObjectAliases = new Set<string>();
+  const trustedAliases = new Set<string>();
+
+  for (const match of source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*request\.data\b/gu)) {
+    payloadObjectAliases.add(match[1]);
+  }
+
+  for (const match of source.matchAll(/\b(?:const|let|var)\s*\{([^}]+)\}\s*=\s*([^;\n]*request\.data[^;\n]*)/gu)) {
+    for (const { property, alias } of parseDestructuredBindings(match[1])) {
+      payloadAliases.set(alias, `request.data.${property}`);
+    }
+  }
+
+  for (const match of source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/gu)) {
+    const [, alias, rawExpression] = match;
+    const expression = normalizeNamespaceExpression(rawExpression);
+    if (expression === "request.data") {
+      payloadObjectAliases.add(alias);
+      continue;
+    }
+    if (expression.includes("request.auth.uid")) {
+      trustedAliases.add(alias);
+      continue;
+    }
+    if (
+      expression.includes("request.data") ||
+      expressionUsesPayloadObjectAlias(expression, payloadObjectAliases) ||
+      expressionUsesAlias(expression, payloadAliases.keys())
+    ) {
+      payloadAliases.set(alias, expression);
+    }
+  }
+
+  return { payloadAliases, payloadObjectAliases, trustedAliases };
+}
+
+function expressionIsTrustedNamespace(expression: string, bindings: NamespaceBindings): boolean {
+  const normalized = normalizeNamespaceExpression(expression);
+  return (
+    normalized.includes("request.auth.uid") ||
+    (SIMPLE_IDENTIFIER.test(normalized) && bindings.trustedAliases.has(normalized))
+  );
+}
+
+function expressionIsPayloadControlled(expression: string, bindings: NamespaceBindings): boolean {
+  const normalized = normalizeNamespaceExpression(expression);
+  return (
+    normalized.includes("request.data") ||
+    expressionUsesPayloadObjectAlias(normalized, bindings.payloadObjectAliases) ||
+    (SIMPLE_IDENTIFIER.test(normalized) && bindings.payloadAliases.has(normalized)) ||
+    expressionUsesAlias(normalized, bindings.payloadAliases.keys())
+  );
+}
+
+function addEquivalentPayloadAliases(
+  candidates: Set<string>,
+  bindings: NamespaceBindings,
+  sourceExpression: string,
+): void {
+  const normalizedSource = normalizeNamespaceExpression(sourceExpression);
+  for (const [alias, expression] of bindings.payloadAliases) {
+    if (normalizeNamespaceExpression(expression) === normalizedSource) {
+      candidates.add(alias);
+    }
+  }
+}
+
+function addPayloadPropertyCandidates(candidates: Set<string>, expression: string, bindings: NamespaceBindings): void {
+  for (const match of expression.matchAll(/\brequest\.data\.[A-Za-z_$][\w$]*/gu)) {
+    candidates.add(match[0]);
+    addEquivalentPayloadAliases(candidates, bindings, match[0]);
+  }
+  for (const objectAlias of bindings.payloadObjectAliases) {
+    const pattern = new RegExp(`\\b${escapeRegExp(objectAlias)}\\.[A-Za-z_$][\\w$]*`, "gu");
+    for (const match of expression.matchAll(pattern)) {
+      candidates.add(match[0]);
+      addEquivalentPayloadAliases(candidates, bindings, match[0]);
+    }
+  }
+}
+
+function guardCandidatesForExpression(expression: string, bindings: NamespaceBindings): Set<string> {
+  const candidates = new Set<string>();
+  const normalized = normalizeNamespaceExpression(expression);
+  candidates.add(normalized);
+  addPayloadPropertyCandidates(candidates, normalized, bindings);
+
+  for (const [alias, sourceExpression] of bindings.payloadAliases) {
+    if (expressionContainsCandidate(normalized, alias)) {
+      candidates.add(alias);
+      candidates.add(sourceExpression);
+      addPayloadPropertyCandidates(candidates, sourceExpression, bindings);
+    }
+  }
+
+  addEquivalentPayloadAliases(candidates, bindings, normalized);
+  return candidates;
+}
+
+function getHandlerScope(source: string, index: number): HandlerScope {
+  const boundaries = [...source.matchAll(EXPORT_SCOPE_BOUNDARY)].map((match) => match.index ?? 0);
+  const start = boundaries.filter((boundary) => boundary <= index).at(-1) ?? 0;
+  const end = boundaries.find((boundary) => boundary > index) ?? source.length;
+  return { source: source.slice(start, end), start };
+}
+
+function rawUserNamespaceMatches(source: string): UserNamespaceMatch[] {
+  const matches: UserNamespaceMatch[] = [];
+  for (const match of source.matchAll(USER_TEMPLATE_NAMESPACE)) {
+    matches.push({
+      name: "template users/${...}",
+      expression: match[1],
+      index: match.index ?? 0,
+      scopeSource: source,
+      guardCandidates: new Set(),
+    });
+  }
+  for (const match of source.matchAll(USER_COLLECTION_DOC_NAMESPACE)) {
+    matches.push({
+      name: 'collection("users").doc(...)',
+      expression: match[1],
+      index: match.index ?? 0,
+      scopeSource: source,
+      guardCandidates: new Set(),
+    });
+  }
+  return matches;
+}
+
+function clientControlledUserNamespaceMatches(handlerSource: string): UserNamespaceMatch[] {
+  return rawUserNamespaceMatches(handlerSource).flatMap((rawMatch) => {
+    const scope = getHandlerScope(handlerSource, rawMatch.index);
+    const localExpressionIndex = rawMatch.index - scope.start;
+    const bindings = collectNamespaceBindings(scope.source);
+    if (expressionIsTrustedNamespace(rawMatch.expression, bindings)) return [];
+    if (!expressionIsPayloadControlled(rawMatch.expression, bindings)) return [];
+    return [
+      {
+        ...rawMatch,
+        index: localExpressionIndex,
+        scopeSource: scope.source,
+        guardCandidates: guardCandidatesForExpression(rawMatch.expression, bindings),
+      },
+    ];
+  });
+}
+
+function hasPriorOwnershipGuard(source: string, match: UserNamespaceMatch): boolean {
+  const prefix = source.slice(0, match.index);
+  for (const guard of prefix.matchAll(OWNERSHIP_GUARD_CALL)) {
+    const args = normalizeNamespaceExpression(guard[1]);
+    if ([...match.guardCandidates].some((candidate) => expressionContainsCandidate(args, candidate))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateHandlerUserNamespaceBinding(entry: EndpointAuthorizationEntry, handlerSource: string): string[] {
+  const errors: string[] = [];
+  if (entry.objectIdsFromClient.length === 0) return errors;
+
+  const unsafeMatches = clientControlledUserNamespaceMatches(handlerSource).filter((match) => {
+    return !hasPriorOwnershipGuard(match.scopeSource, match);
+  });
+  if (unsafeMatches.length > 0) {
+    errors.push(
+      `${entry.exportedName}: handler constructs a user namespace from callable payload data (${unsafeMatches
+        .map(({ name }) => name)
+        .join(
+          ", ",
+        )}); derive users/{uid} from request.auth.uid or add an explicit ownership guard before Admin SDK access`,
+    );
+  }
+  return errors;
+}
+
 function validateBolaCoverageRef(
   entry: EndpointAuthorizationEntry,
   ref: BolaCoverageRef,
@@ -238,13 +482,7 @@ export function validateEndpointBolaCoverage(
     const handlerPath = resolve(repoRoot, "functions/src", entry.handlerModule);
     if (existsSync(handlerPath)) {
       const handlerSource = readFileSync(handlerPath, "utf8");
-      if (
-        /users\/\$\{[^}]*request\.data/u.test(handlerSource) &&
-        !/assertOwnership\s*\(/u.test(handlerSource) &&
-        entry.exportedName === "validateOpenTimestampsProof"
-      ) {
-        // validateOpenTimestampsProof binds via enforceHighRiskComputerUseCallable — allowed.
-      }
+      errors.push(...validateHandlerUserNamespaceBinding(entry, handlerSource));
     }
   }
 
