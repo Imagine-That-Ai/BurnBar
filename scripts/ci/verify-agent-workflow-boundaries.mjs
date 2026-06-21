@@ -767,29 +767,35 @@ function hasDroidReviewOidcException(step) {
 }
 
 function issueCommentScopeStepVerifiesSameRepository(scopeStep) {
-  const lines = stepRunValue(scopeStep)
+  const lines = maskShellHeredocBodies(stepRunValue(scopeStep))
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+  const allowedInitIndex = lines.indexOf("allowed=true");
+  const issueCommentCheckIndex = lines.indexOf(
+    'if [[ "${GITHUB_EVENT_NAME}" == "issue_comment" && "${ISSUE_IS_PR}" == "true" ]]; then',
+  );
   const headRepoIndex = lines.indexOf('head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"');
   const repositoryCheckIndex = lines.indexOf('if [[ "${head_repo}" != "${REPOSITORY}" ]]; then');
   const rejectIndex = lines.indexOf("allowed=false");
   const rejectFiIndex = lines.indexOf("fi", rejectIndex + 1);
+  const issueCommentFiIndex = lines.indexOf("fi", rejectFiIndex + 1);
   const outputIndex = lines.indexOf('echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"');
 
   if (
-    headRepoIndex === -1 ||
+    allowedInitIndex === -1 ||
+    issueCommentCheckIndex !== allowedInitIndex + 1 ||
+    headRepoIndex !== issueCommentCheckIndex + 1 ||
     repositoryCheckIndex !== headRepoIndex + 1 ||
     rejectIndex !== repositoryCheckIndex + 1 ||
     rejectFiIndex !== rejectIndex + 1 ||
-    outputIndex <= rejectFiIndex
+    issueCommentFiIndex !== rejectFiIndex + 1 ||
+    outputIndex !== issueCommentFiIndex + 1
   ) {
     return false;
   }
 
-  return !lines
-    .slice(rejectFiIndex + 1, outputIndex)
-    .some((line) => /^(allowed|head_repo)=/u.test(line));
+  return true;
 }
 
 for (const file of workflowFiles()) {

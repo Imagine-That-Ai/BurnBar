@@ -469,6 +469,39 @@ expect(
 );
 
 expect(
+  "PR comment same-repo scope in heredoc text only fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      [
+        "          allowed=true",
+        '          if [[ "${GITHUB_EVENT_NAME}" == "issue_comment" && "${ISSUE_IS_PR}" == "true" ]]; then',
+        '            head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"',
+        '            if [[ "${head_repo}" != "${REPOSITORY}" ]]; then',
+        "              allowed=false",
+        "            fi",
+        "          fi",
+        '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+      ].join("\n"),
+      [
+        "          cat <<EOF",
+        "          allowed=true",
+        '          if [[ "${GITHUB_EVENT_NAME}" == "issue_comment" && "${ISSUE_IS_PR}" == "true" ]]; then',
+        '          head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"',
+        '          if [[ "${head_repo}" != "${REPOSITORY}" ]]; then',
+        "          allowed=false",
+        "          fi",
+        "          fi",
+        '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+        "          EOF",
+        "          allowed=true",
+        '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "Factory key availability always-true action gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
