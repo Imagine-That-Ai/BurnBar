@@ -13,15 +13,18 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   buildDesired,
+  listMarkdown,
   planActions,
   chunkMarkdown,
   firstH1,
+  isContainedPath,
   deriveCategory,
   sha256,
   WHOLE_FILE_MAX_LINES,
@@ -31,6 +34,37 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WIKI_ROOT = join(REPO_ROOT, "droid-wiki");
 const MANIFEST = JSON.parse(readFileSync(join(WIKI_ROOT, ".mem0-manifest.json"), "utf8"));
+
+test("listMarkdown does not follow symlinked files or directories", () => {
+  const root = mkdtempSync(join(tmpdir(), "verbatim-chunker-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "verbatim-chunker-outside-"));
+  try {
+    writeFileSync(join(root, "safe.md"), "# Safe\n\nSafe page.\n");
+    writeFileSync(join(outside, "secret.md"), "# Secret\n\nMust not be read.\n");
+    mkdirSync(join(outside, "secret-dir"));
+    writeFileSync(join(outside, "secret-dir", "nested.md"), "# Nested\n\nMust not be read.\n");
+    symlinkSync(join(outside, "secret.md"), join(root, "leak.md"));
+    symlinkSync(join(outside, "secret-dir"), join(root, "leak-dir"));
+
+    assert.deepEqual(listMarkdown(root).map((path) => basename(path)), ["safe.md"]);
+
+    const desired = buildDesired(root, null);
+    assert.deepEqual([...desired.keys()], ["safe.md#0"]);
+    assert.equal(desired.get("safe.md#0").text, "# Safe\n\nSafe page.");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("path containment accepts Windows children without prefix confusion", () => {
+  const root = String.raw`C:\repo\droid-wiki`;
+
+  assert.equal(isContainedPath(root, root, win32), true);
+  assert.equal(isContainedPath(root, String.raw`C:\repo\droid-wiki\apps\index.md`, win32), true);
+  assert.equal(isContainedPath(root, String.raw`C:\repo\droid-wiki-evader\secret.md`, win32), false);
+  assert.equal(isContainedPath(root, String.raw`D:\repo\droid-wiki\apps\index.md`, win32), false);
+});
 
 test("buildDesired reproduces every committed droid-wiki chunk byte-identically", () => {
   const desired = buildDesired(WIKI_ROOT, null);
