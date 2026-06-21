@@ -5,6 +5,8 @@ import Darwin
 import Glibc
 #endif
 
+public typealias BurnBarBrowserHostResolver = @Sendable (String) -> [String]
+
 enum OpenBurnBarBrowserTargetPolicy {
     static func validatedURL(_ rawValue: String, allowDataURL: Bool = false) throws -> URL {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -65,7 +67,7 @@ enum OpenBurnBarBrowserTargetPolicy {
     static func validatedResolvedURL(
         _ rawValue: String,
         allowDataURL: Bool = false,
-        resolver: (String) -> [String] = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
+        resolver: BurnBarBrowserHostResolver = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
     ) throws -> URL {
         let url = try validatedURL(rawValue, allowDataURL: allowDataURL)
         // data: URLs (when allowed) and schemes without a host have no DNS to
@@ -252,13 +254,19 @@ enum OpenBurnBarBrowserTargetPolicy {
         guard bytes.count == 4 else { return true }
         let first = bytes[0]
         let second = bytes[1]
+        let third = bytes[2]
 
         if first == 0 || first == 10 || first == 127 { return true }
         if first == 100 && (64...127).contains(second) { return true }
         if first == 169 && second == 254 { return true }
         if first == 172 && (16...31).contains(second) { return true }
+        if first == 192 && second == 0 && third == 0 { return true }
+        if first == 192 && second == 0 && third == 2 { return true }
+        if first == 192 && second == 88 && third == 99 { return true }
         if first == 192 && second == 168 { return true }
         if first == 198 && (second == 18 || second == 19) { return true }
+        if first == 198 && second == 51 && third == 100 { return true }
+        if first == 203 && second == 0 && third == 113 { return true }
         if first >= 224 { return true }
         if bytes == [255, 255, 255, 255] { return true }
         return false
@@ -285,6 +293,9 @@ enum OpenBurnBarBrowserTargetPolicy {
         if bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80 { return true }
         if (bytes[0] & 0xfe) == 0xfc { return true }
         if bytes[0] == 0xff { return true }
+        if bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0d && bytes[3] == 0xb8 { return true }
+        if bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x02 { return true }
+        if bytes[0] == 0x20 && bytes[1] == 0x02 { return true }
 
         let mappedPrefix = Array(repeating: UInt8(0), count: 10) + [0xff, 0xff]
         if Array(bytes.prefix(12)) == mappedPrefix {

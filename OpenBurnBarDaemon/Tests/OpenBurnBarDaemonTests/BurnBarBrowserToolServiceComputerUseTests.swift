@@ -34,6 +34,7 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
                     elapsedMillis: 42
                 )
             },
+            hostResolver: { _ in ["93.184.216.34"] },
             logger: BurnBarDaemonLogger(category: "browser-cu-tests")
         )
 
@@ -174,8 +175,34 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
         XCTAssertNil(redirectRecorder.request)
     }
 
+    func testRedirectGuardRejectsTargetsThatResolveToBlockedAddressesBeforeFollow() {
+        let guardDelegate = BurnBarBrowserRedirectGuard(resolver: { _ in ["10.0.0.8"] })
+        let originalURL = URL(string: "https://example.com/start")!
+        let blockedRequest = URLRequest(url: URL(string: "https://public-looking.example/admin")!)
+        let task = URLSession.shared.dataTask(with: originalURL)
+        defer { task.cancel() }
+        let response = HTTPURLResponse(
+            url: originalURL,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": blockedRequest.url!.absoluteString]
+        )!
+
+        let redirectRecorder = RedirectRequestRecorder()
+        guardDelegate.urlSession(
+            URLSession.shared,
+            task: task,
+            willPerformHTTPRedirection: response,
+            newRequest: blockedRequest
+        ) { request in
+            redirectRecorder.record(request)
+        }
+
+        XCTAssertNil(redirectRecorder.request)
+    }
+
     func testRedirectGuardAllowsPublicRedirectTargets() {
-        let guardDelegate = BurnBarBrowserRedirectGuard()
+        let guardDelegate = BurnBarBrowserRedirectGuard(resolver: { _ in ["93.184.216.34"] })
         let originalURL = URL(string: "https://example.com/start")!
         let publicRequest = URLRequest(url: URL(string: "https://docs.example.com/page")!)
         let task = URLSession.shared.dataTask(with: originalURL)
@@ -198,6 +225,37 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
         }
 
         XCTAssertEqual(redirectRecorder.request?.url, publicRequest.url)
+    }
+
+    func testFetchDocumentRejectsResolvedPrivateHostBeforeFetcherDispatch() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-browser-cu-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let recorder = BrowserFetchRecorder()
+
+        let service = BurnBarBrowserToolService(
+            fileURL: rootURL.appendingPathComponent("browser-tooling.json"),
+            fetcher: { url in
+                recorder.record(url)
+                let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (Data("<html></html>".utf8), response)
+            },
+            hostResolver: { _ in ["192.168.1.20"] },
+            logger: BurnBarDaemonLogger(category: "browser-cu-tests")
+        )
+
+        do {
+            _ = try await service.performAction(BurnBarBrowserActionRequest(
+                action: .fetchDocument,
+                url: "https://public-looking.example/report",
+                preferredEngine: .urlSession
+            ))
+            XCTFail("Expected DNS-resolved private target to be rejected")
+        } catch {
+            XCTAssertTrue((error as NSError).localizedDescription.contains("anti-rebind"))
+        }
+
+        XCTAssertNil(recorder.url)
     }
 
     func testPlaywrightGotoRejectsBlockedTargetsBeforeExecutorDispatch() async throws {
@@ -254,6 +312,62 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
         XCTAssertNil(recorder.action)
         XCTAssertNil(recorder.arguments)
     }
+
+    func testPlaywrightGotoRejectsResolvedPrivateTargetsBeforeExecutorDispatch() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-browser-cu-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let recorder = PlaywrightCallRecorder()
+
+        let service = BurnBarBrowserToolService(
+            fileURL: rootURL.appendingPathComponent("browser-tooling.json"),
+            locateExecutable: { executable in
+                switch executable {
+                case "playwright": return "/usr/local/bin/playwright"
+                case "node": return "/usr/local/bin/node"
+                default: return nil
+                }
+            },
+            playwrightExecutor: { action, arguments in
+                recorder.record(action: action, arguments: arguments)
+                return OpenBurnBarPlaywrightDriver.Response(
+                    id: 1,
+                    ok: true,
+                    result: .object(["url": .string(arguments.url ?? "")]),
+                    error: nil,
+                    elapsedMillis: 1
+                )
+            },
+            hostResolver: { _ in ["172.20.1.8"] },
+            logger: BurnBarDaemonLogger(category: "browser-cu-tests")
+        )
+
+        _ = try await service.update(BurnBarBrowserToolingUpdateRequest(
+            preferredEngine: .playwright,
+            allowExternalNavigation: true,
+            enginePreferences: [
+                BurnBarBrowserEnginePreference(kind: .systemBrowser, isEnabled: true),
+                BurnBarBrowserEnginePreference(kind: .urlSession, isEnabled: true),
+                BurnBarBrowserEnginePreference(kind: .playwright, isEnabled: true),
+                BurnBarBrowserEnginePreference(kind: .lightpanda, isEnabled: false)
+            ]
+        ))
+
+        do {
+            _ = try await service.performAction(BurnBarBrowserActionRequest(
+                action: .goto,
+                url: "https://public-looking.example/",
+                preferredEngine: .playwright,
+                arguments: BurnBarBrowserActionArguments(url: "https://public-looking.example/")
+            ))
+            XCTFail("Expected DNS-resolved private Playwright target to be rejected")
+        } catch {
+            XCTAssertTrue((error as NSError).localizedDescription.contains("anti-rebind"))
+        }
+
+        XCTAssertNil(recorder.action)
+        XCTAssertNil(recorder.arguments)
+    }
 }
 
 private final class RedirectRequestRecorder: @unchecked Sendable {
@@ -290,6 +404,21 @@ private final class PlaywrightCallRecorder: @unchecked Sendable {
         lock.withLock {
             storedAction = action
             storedArguments = arguments
+        }
+    }
+}
+
+private final class BrowserFetchRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedURL: URL?
+
+    var url: URL? {
+        lock.withLock { storedURL }
+    }
+
+    func record(_ url: URL) {
+        lock.withLock {
+            storedURL = url
         }
     }
 }
