@@ -8,6 +8,8 @@ type BolaExpectedOutcome = "throws" | "no-side-effect";
 /** Endpoints requiring strict denial codes (not generic invalid-argument). */
 export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
   "burnBarHermesGateway",
+  "cancelCredentialTransfer",
+  "completeCredentialTransfer",
   "consumeCredentialTransfer",
   "pollCliLink",
   "triggerVoIPCall",
@@ -29,6 +31,7 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     connectionId: "bob-conn",
     eventId: "bob-event",
     code: "ABCDEFGHJKMN",
+    transferId: `ct_${"b".repeat(24)}`,
     docID: "bob-doc",
     documentID: "bob-doc",
     repoId: "bob-repo",

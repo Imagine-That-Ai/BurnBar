@@ -170,7 +170,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
 
-      - name: Verify production deploy auth is WIF-only
+      - name: Self-test production deploy auth policy
+        run: bash scripts/ci/verify-production-deploy-auth.test.sh
+
+      - name: Verify production deploy auth boundary
         run: bash scripts/ci/verify-production-deploy-auth.sh
 
   codeowners-security-trees:

@@ -106,6 +106,7 @@ jobs:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
           QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
           QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
         run: |

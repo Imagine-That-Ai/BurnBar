@@ -127,6 +127,29 @@ describe("appCheckAttestation", () => {
       }),
     ).toBe(false);
   });
+
+  it("requires live request.app.appId for high-risk callable attestation binding", async () => {
+    const request = fakeRequest();
+    delete request.app;
+
+    await expect(enforceHighRiskComputerUseCallableWithNonce(request, "userA", undefined)).rejects.toThrow(
+      /App Check attestation is required/,
+    );
+  });
+
+  it("rejects obb_app_check claims that do not match the live App Check app id", async () => {
+    const request = fakeRequest();
+    if (!request.auth) throw new Error("fakeRequest must include auth");
+    request.auth.token[APP_CHECK_ATTESTATION_CLAIM_KEY] = {
+      v: 1,
+      appId: "debug-app-id",
+      boundAtMillis: Date.now(),
+    };
+
+    await expect(enforceHighRiskComputerUseCallableWithNonce(request, "userA", undefined)).rejects.toThrow(
+      /does not match this app instance/,
+    );
+  });
 });
 
 describe("high-risk action nonces", () => {

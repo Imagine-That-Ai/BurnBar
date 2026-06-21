@@ -2,8 +2,6 @@ name: Deploy Firestore Rules and Indexes
 
 permissions:
   contents: read
-  id-token: write
-  issues: write
 
 on:
   push:
@@ -15,6 +13,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/deploy-firestore.yml"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/check-firestore-deploy-drift.mjs"
       - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
@@ -37,6 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     env:
       FIREBASE_PROJECT: burnbar
       SHOULD_DEPLOY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true') }}
@@ -60,6 +63,14 @@ jobs:
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
 
+      - name: Prepare Firebase deploy config and CLI before auth
+        run: |
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode firestore \
+            --output "$RUNNER_TEMP/firebase-firestore.ci.json" \
+            --check
+          bash scripts/ci/prepare-firebase-tools.sh
+
       - name: Authenticate to Google Cloud (WIF/OIDC only)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
@@ -80,15 +91,22 @@ jobs:
 
       - name: Deploy Firestore rules, indexes, and Storage rules
         if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        env:
+          FIREBASE_FIRESTORE_CI_CONFIG: ${{ runner.temp }}/firebase-firestore.ci.json
         run: |
           set -euo pipefail
-          # Pinned via functions/package.json devDependencies — a floating npx
-          # install would pull whatever the registry serves into a production
-          # deploy step (diligence 2026-06-11 LB-3 residual).
-          npm ci --prefix functions
-          npm --prefix functions exec -- firebase deploy \
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          if grep -q '"predeploy"' "$FIREBASE_FIRESTORE_CI_CONFIG"; then
+            echo "::error::$FIREBASE_FIRESTORE_CI_CONFIG contains predeploy."
+            exit 1
+          fi
+          "$FIREBASE_TOOLS_BIN" deploy \
             --only firestore:indexes \
             --project "$FIREBASE_PROJECT" \
+            --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
             --non-interactive
           node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
 
@@ -113,8 +131,25 @@ jobs:
             echo "- Scope: firestore.rules, firestore.indexes.json, storage.rules"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  firestore-result:
+    needs: firestore-rules-and-indexes
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Fail when Firestore deploy gate did not succeed
+        if: ${{ needs.firestore-rules-and-indexes.result != 'success' }}
+        run: |
+          echo "::error::firestore-rules-and-indexes result was ${{ needs.firestore-rules-and-indexes.result }}"
+          exit 1
+
       - name: Record Firestore deploy failure (per-lane dedupe; comment, never silent-skip)
-        if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
+        if: failure()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: open
@@ -126,7 +161,7 @@ jobs:
             tested, deployed, and drift-clean.
 
       - name: Close resolved Firestore deploy failure issue
-        if: success() && (github.event_name == 'schedule' || github.event_name == 'push')
+        if: success()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: close

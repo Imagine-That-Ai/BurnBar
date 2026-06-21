@@ -56,4 +56,7 @@ echo "==> privacy invariants gate (run-09) — self-test then enforce"
 node scripts/ci/check-privacy-invariants.test.mjs
 node scripts/ci/check-privacy-invariants.mjs
 
+echo "==> credential-transfer secret boundary"
+bash scripts/ci/verify-credential-transfer-secret-boundary.sh
+
 echo "PASS: ops readiness"

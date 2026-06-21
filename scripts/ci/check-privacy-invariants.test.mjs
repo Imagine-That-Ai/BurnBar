@@ -47,6 +47,12 @@ const GOOD_INDEXES = {
       ttl: true,
       indexes: [],
     },
+    {
+      collectionGroup: "credential_transfers",
+      fieldPath: "expiresAt",
+      ttl: true,
+      indexes: [],
+    },
   ],
 };
 // Inline-typed signatures mirror the real voipPush.ts: the param destructure
@@ -87,6 +93,7 @@ export function buildFcmMessage(args: { event: { id: string; runtime: string; pr
     apns: { payload: { aps: { category: "AGENT_REPLY", sound: "default" } }, headers: { "apns-push-type": "alert", "apns-priority": "10" } },
   };
 }`;
+const GOOD_CREDENTIAL_TRANSFER = "const ref = db.doc(`credential_transfers/${id}`); const doc = { expiresAt: Timestamp.fromMillis(Date.now() + 86400000) };";
 const GOOD_LOGGING = `function redactUidPaths(v){return v;} function scrubString(v){return redactUidPaths(v);}`;
 
 /** Write a fixture tree under a fresh temp dir; `mut` may mutate the files map. */
@@ -97,6 +104,7 @@ function buildTree(mut = (f) => f) {
     "firestore.indexes.json": JSON.stringify(GOOD_INDEXES, null, 2),
     "functions/src/voipPush.ts": GOOD_VOIPPUSH,
     "functions/src/agentNotifications.ts": GOOD_AGENTNOTIF,
+    "functions/src/credentialTransfer.ts": GOOD_CREDENTIAL_TRANSFER,
     "functions/src/logging.ts": GOOD_LOGGING,
   });
   for (const [rel, content] of Object.entries(files)) {
@@ -146,6 +154,19 @@ expect(
     const idx = JSON.parse(f["firestore.indexes.json"]);
     idx.fieldOverrides = idx.fieldOverrides.filter(
       (o) => o.collectionGroup !== "fcm_outbound",
+    );
+    f["firestore.indexes.json"] = JSON.stringify(idx);
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I1 — credential_transfers TTL override removed fails",
+  buildTree((f) => {
+    const idx = JSON.parse(f["firestore.indexes.json"]);
+    idx.fieldOverrides = idx.fieldOverrides.filter(
+      (o) => o.collectionGroup !== "credential_transfers",
     );
     f["firestore.indexes.json"] = JSON.stringify(idx);
     return f;

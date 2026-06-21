@@ -289,6 +289,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "cancelCredentialTransfer",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["transferId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before releasing or cancelling credential_transfers/{transferId}",
+    handlerModule: "callables/credentialTransfer.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "cancelCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["cancelCredentialTransfer"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "claimSignalPrekeyBundle",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -389,6 +411,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         covers: ["completeCliLink"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "completeCredentialTransfer",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["transferId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before consuming credential_transfers/{transferId}",
+    handlerModule: "callables/credentialTransfer.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "completeCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["completeCredentialTransfer"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
       },
     ],
     highRiskComputerUse: false,
@@ -647,8 +691,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     authMethod: "Firebase Auth with callable-level ownership checks",
     appCheck: "required",
     tenantSource: "request.auth.uid",
-    objectIdsFromClient: ["code"],
-    ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    objectIdsFromClient: ["transferId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, rejects legacy code/full-token inputs before lookup, and validates ownerUid on credential_transfers/{transferId}",
     handlerModule: "callables/credentialTransfer.ts",
     bolaCoverage: [
       {
@@ -658,6 +703,27 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         covers: ["consumeCredentialTransfer"],
         expectedOutcome: "throws",
         expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "createCredentialTransfer",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["transferId"],
+    ownershipCheck:
+      "handler derives ownerUid from request.auth.uid, rejects secret-bearing legacy fields, and creates only fresh credential_transfers/{transferId}",
+    handlerModule: "callables/credentialTransfer.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "createCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["createCredentialTransfer"],
+        expectedOutcome: "throws",
       },
     ],
     highRiskComputerUse: false,

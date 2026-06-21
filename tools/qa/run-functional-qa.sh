@@ -195,9 +195,9 @@ if require_env FIREBASE_PLIST_BASE64 && require_env FIREBASE_APP_CHECK_DEBUG_TOK
     "Firebase/App Check config injection" \
     "macOS+iOS app" \
     "qa-auth" \
-    "Decoded and injected Firebase plist plus App Check debug token into app resources." \
+    "Decoded a sanitized Firebase plist and exported the App Check debug token for internal build-product injection." \
     "firebase-config.log" \
-    bash scripts/ci/inject-firebase-config.sh
+    env OPENBURNBAR_USE_DEBUG_APP_CHECK=YES bash scripts/ci/inject-firebase-config.sh
 else
   add_result "Firebase/App Check config injection" "macOS+iOS app" "qa-auth" "FAIL" "FIREBASE_PLIST_BASE64 and FIREBASE_APP_CHECK_DEBUG_TOKEN are required for this check."
 fi

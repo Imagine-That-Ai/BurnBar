@@ -136,6 +136,26 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
         XCTAssertEqual(plan.envelope["credentialKind"] as? String, EscrowCredentialKind.oauthToken.rawValue)
     }
 
+    func test_liveWriterUsesEscrowCollectionsNeverAndroidCredentialTransfers() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent() // Security
+            .deletingLastPathComponent() // Active
+            .deletingLastPathComponent() // AgentLensTests
+        let producerURL = repoRoot
+            .appendingPathComponent("AgentLens")
+            .appendingPathComponent("Services")
+            .appendingPathComponent("CloudSync")
+            .appendingPathComponent("MacEscrowCredentialProducer.swift")
+        let source = try String(contentsOf: producerURL, encoding: .utf8)
+        let writerStart = try XCTUnwrap(source.range(of: "struct MacLiveEscrowEnvelopeWriter"))
+        let writerSource = String(source[writerStart.lowerBound...])
+
+        XCTAssertTrue(writerSource.contains(#"collection("escrow_grants")"#))
+        XCTAssertTrue(writerSource.contains(#"collection("escrow_envelopes")"#))
+        XCTAssertFalse(writerSource.contains("credential_transfers"))
+    }
+
     // MARK: - Producer orchestration / fail-closed
 
     func test_startExport_emitsHonestStagesAndWritesOnce() async throws {

@@ -54,6 +54,10 @@ const CATALOG_OVERRIDES = {
     ],
   },
   consumeCredentialTransfer: {
+    objectIdsFromClient: ["transferId"],
+    handlerModule: "callables/credentialTransfer.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, rejects legacy code/full-token inputs before lookup, and validates ownerUid on credential_transfers/{transferId}",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
@@ -62,6 +66,53 @@ const CATALOG_OVERRIDES = {
         covers: ["consumeCredentialTransfer"],
         expectedOutcome: "throws",
         expectedCode: "permission-denied",
+      },
+    ],
+  },
+  completeCredentialTransfer: {
+    objectIdsFromClient: ["transferId"],
+    handlerModule: "callables/credentialTransfer.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before consuming credential_transfers/{transferId}",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "completeCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["completeCredentialTransfer"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+  },
+  cancelCredentialTransfer: {
+    objectIdsFromClient: ["transferId"],
+    handlerModule: "callables/credentialTransfer.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before releasing or cancelling credential_transfers/{transferId}",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "cancelCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["cancelCredentialTransfer"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+  },
+  createCredentialTransfer: {
+    objectIdsFromClient: ["transferId"],
+    handlerModule: "callables/credentialTransfer.ts",
+    ownershipCheck:
+      "handler derives ownerUid from request.auth.uid, rejects secret-bearing legacy fields, and creates only fresh credential_transfers/{transferId}",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/credentialTransfer.bola.test.ts",
+        test: "createCredentialTransfer rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["createCredentialTransfer"],
+        expectedOutcome: "throws",
       },
     ],
   },

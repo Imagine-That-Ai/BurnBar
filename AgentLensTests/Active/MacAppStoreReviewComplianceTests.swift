@@ -77,6 +77,29 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Quit OpenBurnBar"))
     }
 
+    func testMacProjectCarriesAppCheckDebugTokenReleaseGuards() throws {
+        let source = try bundledTextResource(named: "project", extension: "yml")
+
+        XCTAssertTrue(source.contains("Inject Internal Mac App Check Debug Token"))
+        XCTAssertTrue(source.contains("Block Mac App Check Debug Token In Release"))
+        XCTAssertTrue(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK: \"NO\""))
+        XCTAssertTrue(source.contains("if [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then"))
+        XCTAssertTrue(source.contains("FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES"))
+        XCTAssertTrue(source.contains("AgentLens/Resources/GoogleService-Info.plist"))
+        XCTAssertTrue(source.contains("scripts/ci/verify-apple-appcheck-release-artifact.sh"))
+    }
+
+    func testMacRuntimeGatesDebugAppCheckBehindSharedPolicy() throws {
+        let appSource = try bundledTextResource(named: "AgentLensApp")
+        let factorySource = try bundledTextResource(named: "OpenBurnBarAppCheckProviderFactory")
+
+        XCTAssertFalse(appSource.contains("AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)"))
+        XCTAssertTrue(factorySource.contains("debugAppCheckAllowed("))
+        XCTAssertTrue(factorySource.contains("availableToken("))
+        XCTAssertTrue(factorySource.contains("debugAppCheckAllowed: true"))
+        XCTAssertFalse(factorySource.contains("configureIfAvailable(firebasePlistPath: firebasePlistPath)"))
+    }
+
     private func bundledTextResource(named name: String, extension ext: String = "txt") throws -> String {
         let url = try bundledResourceURL(named: name, extension: ext)
         return try String(contentsOf: url, encoding: .utf8)

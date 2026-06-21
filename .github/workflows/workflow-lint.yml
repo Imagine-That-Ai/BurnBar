@@ -11,6 +11,8 @@ on:
       - ".github/workflows/*.yaml"
       - "scripts/ci/verify-github-action-pins.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
+      - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
+      - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
   push:
     branches:
       - main
@@ -19,6 +21,8 @@ on:
       - ".github/workflows/*.yaml"
       - "scripts/ci/verify-github-action-pins.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
+      - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
+      - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -49,3 +53,9 @@ jobs:
 
       - name: Verify agent repair loop prompts
         run: node scripts/ci/verify-agent-repair-loop-prompts.mjs
+
+      - name: Self-test agent repair loop provenance verifier
+        run: node scripts/ci/verify-agent-repair-loop-provenance.test.mjs
+
+      - name: Verify agent repair loop provenance
+        run: node scripts/ci/verify-agent-repair-loop-provenance.mjs

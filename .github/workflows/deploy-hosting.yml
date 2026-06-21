@@ -1,17 +1,12 @@
 name: Deploy Production (Hosting)
 
 # Deploys Firebase Hosting for the marketing site (burnbar.ai) and the console
-# (app.burnbar.ai). Cloud Functions deploy separately in deploy-production.yml;
-# this workflow intentionally only touches `--only hosting`.
-#
-# Auth mirrors deploy-production.yml: production deploys use OIDC workload
-# identity federation only. Long-lived service account JSON and Firebase token
-# fallbacks are intentionally rejected by scripts/ci/verify-production-deploy-auth.sh.
+# (app.burnbar.ai). Cloud Functions deploy separately in deploy-production.yml.
+# The production credentialed lane never checks out the repo and never runs
+# repository-controlled build, verify, npm lifecycle, or Firebase predeploy code.
 
 permissions:
   contents: read
-  id-token: write
-  issues: write
 
 on:
   push:
@@ -21,11 +16,15 @@ on:
       - "apps/console/**"
       - "firebase.json"
       - ".firebaserc"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - ".github/workflows/deploy-hosting.yml"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build only (no firebase deploy)"
+        description: "Build and validate immutable hosting artifacts only"
         required: false
         type: boolean
         default: false
@@ -35,32 +34,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-hosting:
+  build-hosting-artifacts:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: production
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      # Node 24: satisfies the website's engines (>=22.12) and Next 15 (console).
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 24
 
-      # Install deps for both sites so the firebase.json predeploy hooks
-      # (`npm --prefix website run verify`, `npm --prefix apps/console run build`)
-      # can validate and build during `firebase deploy`.
       - name: Install hosting dependencies
         run: |
           npm ci --prefix website
           npm ci --prefix apps/console
-          # functions/package-lock.json pins firebase-tools for deploy steps.
-          npm ci --prefix functions
 
-      # Defense in depth for the public trust copy: even a bad merge cannot
-      # deploy drifted claims. These mirror the fast-feedback gates — the
-      # crypto-claims `--check` fails on stale/hand-edited/deleted copy, and
-      # the trust.generated.ts regenerate+diff catches registry drift.
       - name: Trust copy drift gates (block deploy)
         run: |
           node website/scripts/generate-crypto-claims.mjs --check
@@ -69,31 +59,173 @@ jobs:
           git diff --exit-code -- website/src/data/trust.generated.ts \
             || { echo "::error::website/src/data/trust.generated.ts is stale — refusing to deploy drifted trust copy."; exit 1; }
 
-      - name: Authenticate to Google Cloud (WIF/OIDC only)
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+      - name: Build immutable hosting outputs
+        env:
+          PUBLIC_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          npm run verify --prefix website
+          npm run build --prefix apps/console
+
+      - name: Stage hosting deploy artifact
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+        run: |
+          set -euo pipefail
+          rm -rf "$ARTIFACT_ROOT"
+          mkdir -p "$ARTIFACT_ROOT/website" "$ARTIFACT_ROOT/apps/console" "$ARTIFACT_ROOT/functions" "$ARTIFACT_ROOT/scripts/ci"
+
+          cp -a website/dist "$ARTIFACT_ROOT/website/dist"
+          cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
+          cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
+          cp functions/package.json functions/package-lock.json "$ARTIFACT_ROOT/functions/"
+          cp -R functions/vendor "$ARTIFACT_ROOT/functions/vendor"
+          cp scripts/ci/prepare-firebase-tools.sh "$ARTIFACT_ROOT/scripts/ci/"
+
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode hosting \
+            --output "$ARTIFACT_ROOT/firebase-hosting.ci.json" \
+            --manifest "$ARTIFACT_ROOT/firebase-hosting-public-dirs.json" \
+            --check
+
+          (
+            cd "$ARTIFACT_ROOT"
+            find . \( -type l -o -type b -o -type c -o -type p -o -type s \) -print -quit | grep -q . \
+              && { echo "::error::Hosting artifact contains a symlink or special file."; exit 1; }
+            find . -type f -links +1 -print -quit | grep -q . \
+              && { echo "::error::Hosting artifact contains a hardlinked file."; exit 1; }
+            find . \( -path "*/node_modules/*" -o -name ".env" -o -name ".env.*" -o -iname "*credential*" \) -print -quit | grep -q . \
+              && { echo "::error::Hosting artifact contains forbidden credential/env/node_modules material."; exit 1; }
+            sums_tmp="$(mktemp)"
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$sums_tmp"
+            mv "$sums_tmp" SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Upload immutable hosting artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: hosting-artifacts-${{ github.sha }}
+          path: ${{ runner.temp }}/hosting-artifact
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
+
+      - name: Dry-run summary
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: echo "dry_run=true — built, stripped, hashed, and uploaded hosting artifacts; skipped production deploy"
+
+  deploy-hosting:
+    needs: build-hosting-artifacts
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download immutable hosting artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        with:
+          name: hosting-artifacts-${{ github.sha }}
+          path: ${{ runner.temp }}/hosting-artifact
+
+      - name: Verify hosting artifact and CI config
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/firebase-hosting.ci.json
+        run: |
+          set -euo pipefail
+          cd "$ARTIFACT_ROOT"
+          find . \( -type l -o -type b -o -type c -o -type p -o -type s \) -print -quit | grep -q . \
+            && { echo "::error::Hosting artifact contains a symlink or special file."; exit 1; }
+          find . -type f -links +1 -print -quit | grep -q . \
+            && { echo "::error::Hosting artifact contains a hardlinked file."; exit 1; }
+          find . \( -path "*/node_modules/*" -o -name ".env" -o -name ".env.*" -o -iname "*credential*" \) -print -quit | grep -q . \
+            && { echo "::error::Hosting artifact contains forbidden credential/env/node_modules material."; exit 1; }
+          sha256sum -c SHA256SUMS
+          test -d website/dist
+          test -d apps/console/out
+          cp firebase-hosting.ci.json "$FIREBASE_HOSTING_CI_CONFIG"
+          python3 - "$FIREBASE_HOSTING_CI_CONFIG" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key == "predeploy":
+                          raise SystemExit("::error::firebase-hosting.ci.json contains predeploy")
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if set(config.keys()) != {"hosting"}:
+              raise SystemExit("::error::firebase-hosting.ci.json must contain only hosting")
+          targets = {entry.get("target"): entry.get("public") for entry in config["hosting"]}
+          expected = {"marketing": "website/dist", "console": "apps/console/out"}
+          if targets != expected:
+              raise SystemExit(f"::error::unexpected hosting public dirs: {targets!r}")
+          walk(config)
+          PY
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 24
+
+      - name: Prepare pinned Firebase CLI before auth
+        run: bash "${{ runner.temp }}/hosting-artifact/scripts/ci/prepare-firebase-tools.sh"
+
+      - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}
           token_format: access_token
           access_token_lifetime: 900s
 
-      # `--only hosting` deploys every configured hosting target (marketing +
-      # console). The per-target build runs via the firebase.json predeploy hook.
       - name: Deploy Hosting (marketing + console)
-        if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
-          PUBLIC_SOURCE_COMMIT: ${{ github.sha }}
+          ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/firebase-hosting.ci.json
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Production hosting deploy requires workload identity federation."
             exit 1
           fi
-          npm --prefix functions exec -- firebase deploy --only hosting --project burnbar --non-interactive
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          cd "$ARTIFACT_ROOT"
+          "$FIREBASE_TOOLS_BIN" deploy \
+            --only hosting \
+            --project burnbar \
+            --config "$FIREBASE_HOSTING_CI_CONFIG" \
+            --non-interactive
+
+  hosting-smoke-result:
+    needs: deploy-hosting
+    if: ${{ always() && github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Fail when deploy job did not succeed
+        if: ${{ needs.deploy-hosting.result != 'success' }}
+        run: |
+          echo "::error::deploy-hosting result was ${{ needs.deploy-hosting.result }}"
+          exit 1
 
       - name: Post-deploy hosting smoke
-        if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           # The signed macOS update feed is produced by release.yml, which
           # fail-closes on its own freshly published feed (verify-live-update-feed
@@ -105,13 +237,6 @@ jobs:
           OPENBURNBAR_REQUIRE_DOWNLOAD_FEED: ${{ vars.OPENBURNBAR_REQUIRE_DOWNLOAD_FEED || 'warn' }}
         run: bash scripts/ci/hosting-smoke.sh
 
-      - name: Dry-run skip deploy
-        if: ${{ github.event.inputs.dry_run == 'true' }}
-        run: |
-          npm run verify --prefix website
-          npm run build --prefix apps/console
-          echo "dry_run=true — verified marketing, built console, skipped firebase deploy"
-
       - name: Deployment summary
         if: always()
         run: |
@@ -120,10 +245,12 @@ jobs:
             echo "- Targets: marketing (burnbar.ai / burnbar.web.app), console (app.burnbar.ai / burnbar-console.web.app)"
             echo "- Project: burnbar"
             echo "- Trigger: ${{ github.event_name }}"
+            echo "- Artifact SHA: ${{ github.sha }}"
             echo ""
             echo "### Rollback"
-            echo "- Firebase Console → Hosting → select the site → Release history → Rollback, or:"
-            echo "  \`firebase hosting:rollback --project burnbar\` (per site)"
+            echo "- Firebase Console -> Hosting -> select the site -> Release history -> Rollback, or:"
+            echo "  \`firebase hosting:rollback --project burnbar --site burnbar\`"
+            echo "  \`firebase hosting:rollback --project burnbar --site burnbar-console\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)

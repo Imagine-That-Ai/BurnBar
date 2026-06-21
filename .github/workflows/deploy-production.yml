@@ -2,7 +2,6 @@ name: Deploy Production (Cloud Functions)
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   push:
@@ -34,6 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      dry_run: ${{ steps.tag.outputs.dry_run }}
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
       # WIF-only: long-lived service account keys and token fallbacks are
@@ -88,6 +93,11 @@ jobs:
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
           bash scripts/ci/verify-production-deploy-auth.sh
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode functions \
+            --output "$RUNNER_TEMP/firebase-functions.ci.json" \
+            --check
+          bash scripts/ci/prepare-firebase-tools.sh
 
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
@@ -142,15 +152,6 @@ jobs:
         env:
           REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
 
-      - name: Authenticate to Google Cloud (WIF/OIDC only)
-        if: steps.tag.outputs.dry_run != 'true'
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
-          token_format: access_token
-          access_token_lifetime: 900s
-
       - name: Sentry release (Functions)
         if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
         env:
@@ -172,6 +173,15 @@ jobs:
             --name "${TAG}-$(date -u +%Y%m%dT%H%M%SZ)" || true
           echo "Sentry release ${RELEASE_NAME} created."
 
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
       - name: Deploy Cloud Functions
         id: deploy
         if: steps.tag.outputs.dry_run != 'true'
@@ -179,6 +189,7 @@ jobs:
           FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
+          FIREBASE_FUNCTIONS_CI_CONFIG: ${{ runner.temp }}/firebase-functions.ci.json
           # H13: Sentry ingest DSN for the functions project. DSNs are
           # low-sensitivity (write-only ingest endpoints, not credentials), but
           # are not public product IDs, so the value lives in an Actions secret
@@ -226,60 +237,25 @@ jobs:
             echo "::error::No Google application credentials from WIF/OIDC auth. Production deploy requires workload identity federation."
             exit 1
           fi
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          if grep -q '"predeploy"' "$FIREBASE_FUNCTIONS_CI_CONFIG"; then
+            echo "::error::$FIREBASE_FUNCTIONS_CI_CONFIG contains predeploy."
+            exit 1
+          fi
 
-          npm --prefix functions exec -- firebase deploy --only functions --project burnbar --non-interactive --force
+          "$FIREBASE_TOOLS_BIN" deploy \
+            --only functions \
+            --project burnbar \
+            --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
+            --non-interactive \
+            --force
 
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
-        run: echo "dry_run=true — skipping firebase deploy"
-
-      - name: Post-deploy health gate
-        id: health_gate
-        env:
-          FIREBASE_PROJECT: burnbar
-          FUNCTIONS_REGION: us-central1
-          DEPLOY_HEALTH_JSON: deploy-health.json
-          DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
-          # H13: on a real production deploy (not a dry run), the runtime config
-          # the deploy step wrote MUST enable Sentry, or crash reporting ships
-          # dark. The gate fails closed when this is 1; dry runs leave it 0 so
-          # the no-deploy lane is not permanently red.
-          HEALTH_GATE_REQUIRE_SENTRY: ${{ steps.tag.outputs.dry_run == 'true' && '0' || '1' }}
-          FUNCTIONS_RUNTIME_ENV_FILE: functions/.env.burnbar
-        run: |
-          # shellcheck source=scripts/ops/resolve-functions-base-url.sh
-          source scripts/ops/resolve-functions-base-url.sh
-          bash scripts/ci/post-deploy-health-gate.sh
-
-      - name: Auto-rollback on failed production deploy
-        # Complete source rollback. If the deploy step or the post-deploy health
-        # gate failed on a REAL (non-dry-run) deploy, revert ALL functions to the
-        # previous good release: scripts/rollback.sh auto-selects the previous
-        # SemVer tag (30-day freshness guard) and redeploys via Firebase, sourcing
-        # the same committed runtime config the deploy lane uses. Fires only on an
-        # actual bad/partial production deploy — never for pre-deploy failures
-        # (build/preflight/auth), since those never shifted production traffic.
-        if: ${{ always() && steps.tag.outputs.dry_run != 'true' && (steps.deploy.outcome == 'failure' || steps.health_gate.outcome == 'failure') }}
-        env:
-          FIREBASE_PROJECT: burnbar
-        run: |
-          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
-            echo "::error::No Google application credentials from WIF/OIDC auth. Production rollback requires workload identity federation."
-            exit 1
-          fi
-          echo "::warning::Production deploy unhealthy (deploy=${{ steps.deploy.outcome }}, health_gate=${{ steps.health_gate.outcome }}) — auto-rolling back to the previous good release."
-          # rollback.sh invokes a bare `firebase`; expose the functions-local CLI
-          # (firebase-tools is a functions devDependency, installed by npm ci).
-          export PATH="${GITHUB_WORKSPACE}/functions/node_modules/.bin:${PATH}"
-          ./scripts/rollback.sh --yes
-
-      - name: Upload deploy health artifact
-        if: always() && hashFiles('deploy-health.json') != ''
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
-        with:
-          name: deploy-health-${{ steps.tag.outputs.tag }}
-          path: deploy-health.json
-          if-no-files-found: ignore
+        run: echo "dry_run=true — skipping production deploy"
 
       - name: Deployment summary
         if: always()
@@ -290,12 +266,38 @@ jobs:
             echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
             echo "- FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}"
             echo "- Project: burnbar"
-            echo "- Health: scripts/ci/post-deploy-health-gate.sh"
+            echo "- Health: functions-health-gate job"
             echo ""
             echo "### On failure — rollback"
-            echo "- AUTOMATED: a failed deploy or post-deploy health gate auto-runs the full source rollback to the previous good release (\`scripts/rollback.sh --yes\`)."
             echo "- MANUAL FAST (sub-minute): pin traffic to a previous-good Cloud Run revision, no rebuild:"
-            echo "  \`./scripts/ops/rollback-revision.sh <cloud-run-service> --yes\`"
+            echo "  \`scripts/ops/rollback-revision.sh <cloud-run-service> --yes\`"
             echo "- MANUAL SLOW (tens of minutes): full source rollback (rebuild + redeploy):"
-            echo "  \`./scripts/rollback.sh --yes\`"
+            echo "  \`scripts/rollback.sh --yes\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  functions-health-gate:
+    needs: deploy-functions
+    if: ${{ always() && needs.deploy-functions.result == 'success' && needs.deploy-functions.outputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Post-deploy health gate
+        env:
+          FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+          DEPLOY_HEALTH_JSON: deploy-health.json
+          DEPLOY_TAG: ${{ needs.deploy-functions.outputs.tag }}
+          HEALTH_GATE_REQUIRE_SENTRY: "1"
+        run: bash scripts/ci/post-deploy-health-gate.sh
+
+      - name: Upload deploy health artifact
+        if: always() && hashFiles('deploy-health.json') != ''
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: deploy-health-${{ needs.deploy-functions.outputs.tag }}
+          path: deploy-health.json
+          if-no-files-found: ignore
