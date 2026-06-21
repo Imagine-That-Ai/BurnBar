@@ -887,35 +887,80 @@ function valueReferencesStepOutput(value, stepId) {
   ).test(normalized);
 }
 
+function stepWritesTaintedMaterialToGithubOutputChannel(
+  step,
+  taintedOutputs,
+  taintedStepIds,
+) {
+  if (!stepWritesToGithubChannel(step, "OUTPUT")) return false;
+  const run = stepRunValue(step);
+  if (valueReferencesSensitiveMaterial(run, taintedOutputs)) return true;
+  if (
+    [...taintedStepIds].some((stepId) => valueReferencesStepOutput(run, stepId))
+  ) {
+    return true;
+  }
+  return mappingEntries(step, "env").some((entry) => {
+    if (!stepRunReferencesEnvName(step, entry.key)) return false;
+    if (valueReferencesSensitiveMaterial(entry.value, taintedOutputs))
+      return true;
+    return [...taintedStepIds].some((stepId) =>
+      valueReferencesStepOutput(entry.value, stepId),
+    );
+  });
+}
+
 function taintedJobOutputsByJobName(jobs, steps) {
   const taintedOutputs = new Map();
-  for (const job of jobs) {
-    const name = jobName(job);
-    if (!name) continue;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const job of jobs) {
+      const name = jobName(job);
+      if (!name) continue;
 
-    const taintedStepIds = new Set(
-      jobSteps(job, steps)
-        .filter(stepWritesSecretOrTokenToGithubOutputChannel)
-        .map((step) => directEntryValue(step, "id"))
-        .filter(Boolean)
-        .map(normalizedContextName),
-    );
-    const outputNames = new Set();
-    for (const entry of mappingEntries(job, "outputs")) {
-      if (valueReferencesSecretOrToken(entry.value)) {
-        outputNames.add(normalizedContextName(entry.key));
-        continue;
+      const currentJobSteps = jobSteps(job, steps);
+      const taintedStepIds = new Set();
+      let stepChanged = true;
+      while (stepChanged) {
+        stepChanged = false;
+        for (const step of currentJobSteps) {
+          const id = directEntryValue(step, "id");
+          if (!id) continue;
+          const normalizedId = normalizedContextName(id);
+          if (taintedStepIds.has(normalizedId)) continue;
+          if (
+            stepWritesTaintedMaterialToGithubOutputChannel(
+              step,
+              taintedOutputs,
+              taintedStepIds,
+            )
+          ) {
+            taintedStepIds.add(normalizedId);
+            stepChanged = true;
+          }
+        }
       }
-      if (
-        [...taintedStepIds].some((stepId) =>
-          valueReferencesStepOutput(entry.value, stepId),
-        )
-      ) {
-        outputNames.add(normalizedContextName(entry.key));
+
+      const normalizedName = normalizedContextName(name);
+      const outputNames = new Set(taintedOutputs.get(normalizedName) ?? []);
+      const previousSize = outputNames.size;
+      for (const entry of mappingEntries(job, "outputs")) {
+        if (
+          valueReferencesSensitiveMaterial(entry.value, taintedOutputs) ||
+          [...taintedStepIds].some((stepId) =>
+            valueReferencesStepOutput(entry.value, stepId),
+          )
+        ) {
+          outputNames.add(normalizedContextName(entry.key));
+        }
       }
-    }
-    if (outputNames.size > 0) {
-      taintedOutputs.set(normalizedContextName(name), outputNames);
+      if (outputNames.size > 0) {
+        taintedOutputs.set(normalizedName, outputNames);
+        if (outputNames.size !== previousSize) {
+          changed = true;
+        }
+      }
     }
   }
   return taintedOutputs;
@@ -949,6 +994,14 @@ function valueReferencesNeedsOutputCollection(value, jobNameValue) {
   ).test(normalized);
 }
 
+function valueReferencesNeedsJobObject(value, jobNameValue) {
+  const normalized = normalizeYamlScalar(value);
+  return new RegExp(
+    `\\btoJSON\\s*\\(\\s*${contextPropertyAccessPattern("needs", jobNameValue)}\\s*\\)`,
+    "iu",
+  ).test(normalized);
+}
+
 function valueReferencesTaintedNeedsOutput(value, taintedOutputs) {
   if (taintedOutputs.size === 0 || !valueReferencesNeedsContext(value)) {
     return false;
@@ -957,6 +1010,7 @@ function valueReferencesTaintedNeedsOutput(value, taintedOutputs) {
   if (/\btoJSON\s*\(\s*needs\s*\)/iu.test(normalized)) return true;
   for (const [name, outputs] of taintedOutputs) {
     if (!valueReferencesNeedsJob(value, name)) continue;
+    if (valueReferencesNeedsJobObject(value, name)) return true;
     if (valueReferencesNeedsOutputCollection(value, name)) return true;
     for (const output of outputs) {
       if (valueReferencesNeedsOutput(value, name, output)) return true;
@@ -1509,7 +1563,12 @@ for (const file of workflowFiles()) {
         taintedNeedsOutputs,
       );
       if (!referencesSecretOrToken && !referencesTaintedNeedsOutput) continue;
-      if (referencesSecretOrToken && !sensitiveEnvName(entry.key)) continue;
+      if (
+        referencesSecretOrToken &&
+        !referencesTaintedNeedsOutput &&
+        !sensitiveEnvName(entry.key)
+      )
+        continue;
       if (!shellReferencesEnvName(stepRunValue(step), entry.key)) continue;
       fail(
         file,

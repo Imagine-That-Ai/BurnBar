@@ -1339,6 +1339,95 @@ expect(
 );
 
 expect(
+  "Droid action toJSON needs job tainted output export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ toJSON(needs.prepare) }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action transitive GITHUB_OUTPUT taint export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.relay.outputs.derived }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "      - id: relay",
+        '        run: echo "derived=${{ steps.helper.outputs.payload }}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare.outputs.payload }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action relay job GITHUB_OUTPUT taint export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "  relay:",
+        "    needs: prepare",
+        "    outputs:",
+        "      relayed: ${{ needs.prepare.outputs.payload }}",
+        "    steps:",
+        "      - run: echo relay",
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: relay\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.relay.outputs.relayed }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
   "Droid action benign prior GITHUB_OUTPUT cache key passes",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -1523,6 +1612,37 @@ expect(
       .replace(
         '          droid exec --auto medium "/wiki"',
         '          droid exec --auto medium "/wiki" "$EXTRA_PAYLOAD"',
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI dual-reference inherited tainted env fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  wiki-refresh:\n", "  wiki-refresh:\n    needs: prepare\n")
+      .replace(
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n          BUILDER: ${{ secrets.FACTORY_API_KEY }}-${{ needs.prepare.outputs.payload }}\n",
+      )
+      .replace(
+        '          droid exec --auto medium "/wiki"',
+        '          droid exec --auto medium "/wiki" "$BUILDER"',
       ),
   },
   1,
