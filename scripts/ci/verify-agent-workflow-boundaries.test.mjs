@@ -620,6 +620,20 @@ expect(
 );
 
 expect(
+  "wide-indented workflow-scope Droid review OIDC regression fails",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "jobs:\n",
+      "permissions:\n    contents: read\n    id-token: write\njobs:\n",
+    ).replace(
+      "      id-token: write\n",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
   "OIDC fallback regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("          github_token: ${{ github.token }}\n", ""),

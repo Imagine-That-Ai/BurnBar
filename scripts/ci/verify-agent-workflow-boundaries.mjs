@@ -228,12 +228,14 @@ function topLevelSectionHasEntry(source, sectionName, key, expectedValue) {
   );
   if (sectionIndex === -1) return false;
 
+  let entryIndent = null;
   for (let index = sectionIndex + 1; index < lines.length; index += 1) {
     const line = lines[index];
     if (isBlank(line)) continue;
     const lineIndent = indentOf(line);
     if (lineIndent === 0) break;
-    if (lineIndent !== 2) continue;
+    if (entryIndent === null) entryIndent = lineIndent;
+    if (lineIndent !== entryIndent) continue;
 
     const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
     if (entry?.[1] === key && normalizeYamlScalar(entry[2]) === expectedValue) return true;
