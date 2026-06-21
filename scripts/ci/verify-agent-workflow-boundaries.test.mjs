@@ -1393,6 +1393,33 @@ expect(
 );
 
 expect(
+  "Droid action bracket bare needs job tainted output export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs[\"prepare\"] }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
   "Droid action transitive GITHUB_OUTPUT taint export fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(

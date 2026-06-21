@@ -1005,7 +1005,7 @@ function valueReferencesNeedsJobObject(value, jobNameValue) {
     return true;
   }
   return new RegExp(
-    `${contextPropertyAccessPattern("needs", jobNameValue)}\\b(?!\\s*(?:\\.|\\[))`,
+    `${contextPropertyAccessPattern("needs", jobNameValue)}(?!\\s*(?:\\.|\\[))`,
     "iu",
   ).test(normalized);
 }
