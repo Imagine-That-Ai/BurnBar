@@ -750,7 +750,7 @@ function stepUsesDroidAction(step) {
 }
 
 function valueReferencesSecretOrToken(value) {
-  return /\$\{\{[\s\S]*?(?:\bsecrets\s*(?:\.|\[)|\bgithub\s*(?:\.\s*token|\[\s*['"]token['"]\s*\])|\benv\s*(?:\.|\[))[\s\S]*?\}\}/u.test(
+  return /\$\{\{[\s\S]*?(?:\b(?:secrets|env|vars)\b\s*(?=\.|\[|\)|\}\})|\bgithub\b\s*(?:\.\s*token|\[\s*['"]token['"]\s*\]|\)))[\s\S]*?\}\}/iu.test(
     normalizeYamlScalar(value),
   );
 }
@@ -783,14 +783,15 @@ function sensitiveEnvName(name) {
 
 function shellReferencesEnvName(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(`(?:\\$\\{${escaped}\\}|\\$${escaped}\\b)`, "u").test(
-    source,
-  );
+  return new RegExp(
+    `(?:\\$\\{${escaped}(?:\\}|[^A-Za-z0-9_])|\\$${escaped}\\b)`,
+    "u",
+  ).test(source);
 }
 
-function stepWritesSecretOrTokenToGithubEnv(step) {
+function stepWritesSecretOrTokenToGithubEnvironmentChannel(step) {
   const run = stepRunValue(step);
-  if (!/\bGITHUB_ENV\b/u.test(run)) return false;
+  if (!/\bGITHUB_(?:ENV|OUTPUT)\b/u.test(run)) return false;
   if (valueReferencesSecretOrToken(run)) return true;
   for (const entry of mappingEntries(step, "env")) {
     if (
@@ -805,10 +806,14 @@ function stepWritesSecretOrTokenToGithubEnv(step) {
   );
 }
 
-function precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step) {
+function precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+  job,
+  steps,
+  step,
+) {
   return jobSteps(job, steps)
     .filter((candidate) => candidate.start < step.start)
-    .some(stepWritesSecretOrTokenToGithubEnv);
+    .some(stepWritesSecretOrTokenToGithubEnvironmentChannel);
 }
 
 function topLevelEntryValue(source, key) {
@@ -1273,11 +1278,15 @@ for (const file of workflowFiles()) {
       const job = blockContainingLine(jobs, step.start);
       if (
         job &&
-        precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)
+        precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+          job,
+          steps,
+          step,
+        )
       ) {
         fail(
           file,
-          "agent action job must not export extra secrets or tokens through GITHUB_ENV before execution",
+          "agent action job must not export extra secrets or tokens through GITHUB_ENV or GITHUB_OUTPUT before execution",
         );
       }
     }
@@ -1350,10 +1359,17 @@ for (const file of workflowFiles()) {
       );
     }
     const job = blockContainingLine(jobs, step.start);
-    if (job && precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)) {
+    if (
+      job &&
+      precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+        job,
+        steps,
+        step,
+      )
+    ) {
       fail(
         file,
-        "Droid CLI job must not export extra secrets or tokens through GITHUB_ENV before execution",
+        "Droid CLI job must not export extra secrets or tokens through GITHUB_ENV or GITHUB_OUTPUT before execution",
       );
     }
   }
