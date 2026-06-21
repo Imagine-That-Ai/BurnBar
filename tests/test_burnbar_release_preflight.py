@@ -142,6 +142,8 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert "RELEASE_SIGNING_KEY is not set. GPG checksum signing is required" not in body
     assert "if: env.RELEASE_SIGNING_KEY == ''" not in body
     assert 'tag_ref="refs/tags/${TAG_NAME}"' in body
+    assert 'Manual release dispatch for ${TAG_NAME} must run from ${tag_ref}, not ${GITHUB_REF}.' in body
+    assert "keyless provenance is tag-bound" in body
     assert 'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"' in body
     assert 'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"' in body
     assert 'git rev-list -n 1 "${tag_ref}^{commit}"' in body
@@ -159,6 +161,30 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     sbom_index = body.index("Generate SBOM")
     cosign_index = body.index("- name: Sigstore blob attestations")
     assert checksums_index < policy_index < sbom_index < cosign_index
+
+
+def test_supply_chain_provenance_uses_resolved_release_tag_commit():
+    body = (ROOT / ".github/workflows/supply-chain-provenance.yml").read_text(encoding="utf-8")
+
+    assert "fetch-depth: 0" in body
+    assert "EVENT_NAME: ${{ github.event_name }}" in body
+    assert "INPUT_TAG: ${{ github.event.inputs.tag }}" in body
+    assert "RUN_HEAD: ${{ github.event.workflow_run.head_branch }}" in body
+    assert "RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}" in body
+    assert 'tag_ref="refs/tags/${TAG}"' in body
+    assert 'Manual provenance dispatch for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}.' in body
+    assert "keyless provenance is tag-bound" in body
+    assert 'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"' in body
+    assert 'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"' in body
+    assert 'git rev-list -n 1 "${tag_ref}^{commit}"' in body
+    assert 'git merge-base --is-ancestor "$commit" origin/main' in body
+    assert 'RUN_HEAD_SHA" != "$commit"' in body
+    assert "Check out release tag" in body
+    assert 'git checkout --detach "$RELEASE_COMMIT"' in body
+    assert 'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"' in body
+    assert 'echo "commit=$commit"' in body
+    assert "Generate SBOM (PR-style fallback when artifacts missing)" not in body
+    assert "^[0-9a-zA-Z._-]+$" not in body
 
 
 def test_release_attestation_verifier_uses_sigstore_blob_bundles():
