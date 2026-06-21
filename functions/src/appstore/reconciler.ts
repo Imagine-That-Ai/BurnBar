@@ -447,19 +447,17 @@ async function claimedUidHasMatchingEntitlement(
   originalTransactionId: string,
 ): Promise<boolean> {
   const snap = await db.doc(`users/${claimedUid}/entitlements/${target.sourceEntitlementID}`).get();
-  return snap.exists && entitlementMatchesOriginalTransaction(snap.data(), originalTransactionId);
+  if (!snap.exists) return false;
+  const existingOriginalTransactionId = entitlementOriginalTransactionId(snap.data());
+  return existingOriginalTransactionId === originalTransactionId;
 }
 
-function entitlementMatchesOriginalTransaction(raw: unknown, originalTransactionId: string): boolean {
+function entitlementOriginalTransactionId(raw: unknown): string | undefined {
   const parsed = parseHostedQuotaEntitlementDoc(raw);
-  if (parsed) return parsed.originalTransactionID === originalTransactionId;
-  return (
-    typeof raw === "object" &&
-    raw !== null &&
-    !Array.isArray(raw) &&
-    "originalTransactionID" in raw &&
-    (raw as { originalTransactionID?: unknown }).originalTransactionID === originalTransactionId
-  );
+  if (parsed) return parsed.originalTransactionID;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !("originalTransactionID" in raw)) return undefined;
+  const original = (raw as { originalTransactionID?: unknown }).originalTransactionID;
+  return typeof original === "string" && original ? original : undefined;
 }
 
 async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {

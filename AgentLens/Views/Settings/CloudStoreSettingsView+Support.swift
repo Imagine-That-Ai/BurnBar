@@ -433,27 +433,22 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             }
 
             let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
-            let purchaseOptions: Set<Product.PurchaseOption>
-            if signedInUser != nil {
-                purchaseOptions = [.appAccountToken(try await mintAppAccountToken(productID: productID))]
-            } else {
-                purchaseOptions = []
+            guard signedInUser != nil else {
+                throw MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase
             }
+            let purchaseOptions: Set<Product.PurchaseOption> = [
+                .appAccountToken(try await mintAppAccountToken(productID: productID))
+            ]
 
             let result = try await purchaseTarget.purchase(options: purchaseOptions)
             switch result {
             case .success(let verification):
                 let transaction = try checked(verification)
-                if signedInUser != nil {
-                    try await verifyHostedQuotaEntitlement(
-                        signedTransactionJWS: verification.jwsRepresentation,
-                        productID: transaction.productID
-                    )
-                    await transaction.finish()
-                } else {
-                    await transaction.finish()
-                    error = "Apple purchase completed. Sign in to OpenBurnBar and tap Restore Purchases so OpenBurnBar Cloud can link this subscription to your account."
-                }
+                try await verifyHostedQuotaEntitlement(
+                    signedTransactionJWS: verification.jwsRepresentation,
+                    productID: transaction.productID
+                )
+                await transaction.finish()
             case .pending:
                 error = "Apple is still processing this purchase. OpenBurnBar will update when the transaction completes."
             case .userCancelled:
@@ -604,6 +599,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
 enum MacHostedQuotaPurchaseError: LocalizedError {
     case productUnavailable
     case invalidBindingToken
+    case signedOutSubscriptionPurchase
 
     var errorDescription: String? {
         switch self {
@@ -611,6 +607,8 @@ enum MacHostedQuotaPurchaseError: LocalizedError {
             return "OpenBurnBar Cloud is not available from the App Store yet. Try again in a moment."
         case .invalidBindingToken:
             return "OpenBurnBar could not prepare the Apple purchase token. Sign in again and retry."
+        case .signedOutSubscriptionPurchase:
+            return "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
         }
     }
 }

@@ -396,11 +396,16 @@ final class HostedQuotaSubscriptionStore {
         guard !isPurchasing else { return }
         let catalogProduct = OpenBurnBarProductCatalog.product(for: productID)
         let isTopUp = catalogProduct?.role == .topUp
-        if isTopUp, !isSignedIn() {
+        let signedIn = isSignedIn()
+        if isTopUp, !signedIn {
             error = HostedQuotaSubscriptionError.signedOutConsumablePurchase.localizedDescription
             return
         }
-        let canBindEntitlement = isSignedIn()
+        guard isTopUp || signedIn else {
+            error = HostedQuotaSubscriptionError.signedOutSubscriptionPurchase.localizedDescription
+            return
+        }
+        let canBindEntitlement = signedIn
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
@@ -422,16 +427,6 @@ final class HostedQuotaSubscriptionStore {
                 if isTopUp {
                     try await verifyTopUpOnServer(jws: signedTransactionJWS, productID: productID)
                     await finish()
-                    return
-                }
-                guard canBindEntitlement else {
-                    await finish()
-                    isActive = false
-                    activeProductID = nil
-                    expirationDate = nil
-                    purchaseDate = nil
-                    latestTransactionID = nil
-                    error = Self.signedOutPurchaseMessage
                     return
                 }
                 do {
@@ -944,9 +939,6 @@ final class HostedQuotaSubscriptionStore {
         }
     }
 
-    private static let signedOutPurchaseMessage =
-        "Apple purchase completed. Sign in to OpenBurnBar and tap Restore Purchases so OpenBurnBar Cloud can link the subscription to your account."
-
     private static let signedOutRestoreMessage =
         "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."
 
@@ -973,6 +965,7 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
     case invalidBindingToken
     case purchasePresentationUnavailable
     case signedOutConsumablePurchase
+    case signedOutSubscriptionPurchase
 
     var errorDescription: String? {
         switch self {
@@ -984,6 +977,8 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
             return "Could not open the App Store purchase sheet. Please keep OpenBurnBar in the foreground and tap Subscribe again."
         case .signedOutConsumablePurchase:
             return "Sign in to OpenBurnBar before buying Cloud Pro top-ups so the prepaid allowance can be credited to your account."
+        case .signedOutSubscriptionPurchase:
+            return "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
         }
     }
 }
