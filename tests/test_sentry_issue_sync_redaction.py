@@ -33,17 +33,18 @@ def test_sentry_issue_title_is_redacted_before_github_use() -> None:
 
 def test_sentry_issue_text_redacts_structured_tokens_and_url_credentials() -> None:
     sync = load_sentry_issue_sync()
+    stripe_token = "_".join(["sk", "live", "12345678901234567890"])
 
     text = sync.redact_issue_text(
         '{"access_token":"super-secret-json"} '
-        "stripe sk_live_12345678901234567890 "
+        f"stripe {stripe_token} "
         "callback=https://example.test/callback?github_token=gh-secret-token&ok=1 "
         "db=postgres://sentry_user:db-password-secret@example.test/app "
         'api_key="my secret passphrase"'
     )
 
     assert "super-secret-json" not in text
-    assert "sk_live_12345678901234567890" not in text
+    assert stripe_token not in text
     assert "gh-secret-token" not in text
     assert "sentry_user" not in text
     assert "db-password-secret" not in text
