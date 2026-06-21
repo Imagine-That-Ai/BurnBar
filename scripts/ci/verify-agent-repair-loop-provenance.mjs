@@ -156,7 +156,7 @@ for (const file of workflowFiles()) {
     ]);
   }
 
-  if (/api\.cursor\.com\/v1\/agents/u.test(source)) {
+  if (source.includes("api.cursor.com/v1/agents")) {
     requireAll(file, source, [
       [
         "Refusing to send prUrl without a validated Cursor repair PR",
