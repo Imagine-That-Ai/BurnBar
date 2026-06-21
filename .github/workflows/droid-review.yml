@@ -12,7 +12,7 @@ jobs:
   droid-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}
     permissions:
