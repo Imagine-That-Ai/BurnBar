@@ -55,7 +55,8 @@ openburnbar_app_test_has_terminal_concrete_xctest_failure() {
     fi
 
     if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
-        return 1
+        openburnbar_app_test_has_concrete_xctest_failure "$log_path"
+        return $?
     fi
 
     openburnbar_app_test_has_concrete_xctest_failure "$log_path"
@@ -148,6 +149,12 @@ openburnbar_app_test_has_runner_restart() {
     grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path"
 }
 
+openburnbar_app_test_has_xcode_test_failed_marker() {
+    local log_path="$1"
+
+    grep -Fq "** TEST FAILED **" "$log_path"
+}
+
 is_swiftpm_dependency_resolution_transient() {
     local log_path="$1"
 
@@ -231,6 +238,7 @@ is_xcode_false_negative_pass() {
         return 1
     fi
 
+    openburnbar_app_test_has_xcode_test_failed_marker "$log_path" || return 1
     openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
 
     if openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary "$log_path"; then
