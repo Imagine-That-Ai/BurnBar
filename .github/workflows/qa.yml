@@ -111,7 +111,7 @@ jobs:
           QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
           QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           mkdir -p qa-results
           bash tools/qa/run-functional-qa.sh 2>&1 | node scripts/ci/redact-qa-artifacts.mjs --stream | tee qa-results/qa-output.txt
           statuses=("${PIPESTATUS[@]}")
