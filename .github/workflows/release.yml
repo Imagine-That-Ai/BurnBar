@@ -69,7 +69,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     env:
-      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
       HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
 
@@ -205,7 +205,6 @@ jobs:
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: |
           missing=()
           for var in \
@@ -216,8 +215,7 @@ jobs:
             APPLE_NOTARY_KEY_ID \
             APPLE_NOTARY_API_KEY_P8 \
             OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
-            FIREBASE_PLIST_BASE64 \
-            FIREBASE_APP_CHECK_DEBUG_TOKEN; do
+            FIREBASE_PLIST_BASE64; do
             if [[ -z "${!var}" ]]; then
               missing+=("$var")
             fi
@@ -260,7 +258,6 @@ jobs:
       - name: Inject Firebase config
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Inject iOS/macOS Sentry config
@@ -516,6 +513,11 @@ jobs:
             echo "No OpenBurnBarCore.framework found at $CORE_FRAMEWORK_PATH; app is statically linked."
           fi
 
+      - name: Verify unsigned app App Check release artifact
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$APP_PATH"
+
       - name: Import Developer ID signing certificate
         env:
           CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -757,6 +759,12 @@ jobs:
 
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify packaged App Check release artifacts
+        env:
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+        run: bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH" "$ZIP_PATH"
 
       - name: Checkout pinned Hermes agent source
         id: hermes-agent-source
@@ -1267,6 +1275,7 @@ jobs:
         env:
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
         run: |
+          bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH"
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
   publish:
@@ -1332,6 +1341,7 @@ jobs:
               exit 1
             fi
           done
+          bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH" "$ZIP_PATH"
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$APPCAST_PATH" && -f "$APPCAST_PATH" ]] && ASSETS+=("$APPCAST_PATH")
           [[ -n "$LATEST_PATH" && -f "$LATEST_PATH" ]] && ASSETS+=("$LATEST_PATH")

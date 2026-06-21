@@ -291,9 +291,10 @@ the screen uses a manual `screenWidthDp >= 840` split); keep `@file:Suppress(
 
 ## Stream C — Deploy backend + Firestore + web console
 
-Use the repo-pinned CLI: `npx --prefix /Users/albertonunez/Documents/Windsurf/BurnBar/functions firebase ...`
-(firebase-tools 15.18.0). System Node v20 builds the console fine; functions
-runtime is node22 (the CLI deploys regardless).
+Use the repo-pinned CLI from `functions/package-lock.json`; production CI installs
+it before Google auth with `scripts/ci/prepare-firebase-tools.sh --ignore-scripts`.
+Production deploys never use raw `firebase.json` predeploy hooks. See
+[`docs/runbooks/production-deploy-boundaries.md`](runbooks/production-deploy-boundaries.md).
 
 ### C0. Auth + pin project
 ```bash
@@ -323,7 +324,19 @@ printf '%s' "$(openssl rand -hex 32)" | \
 
 ### C3. Deploy Cloud Functions (13 new deployables)
 ```bash
-npx --prefix functions firebase deploy --only functions --project burnbar
+npm ci --prefix functions
+npm run build --prefix functions
+node scripts/ci/write-firebase-hosting-ci-config.mjs \
+  --mode functions \
+  --output /tmp/firebase-functions.ci.json \
+  --check
+bash scripts/ci/prepare-firebase-tools.sh
+"$FIREBASE_TOOLS_BIN" deploy \
+  --only functions \
+  --project burnbar \
+  --config /tmp/firebase-functions.ci.json \
+  --non-interactive \
+  --force
 ```
 New: `exportUserData, deleteDomainData, getDataDomainUsage, searchKnowledge,
 registerBrowserEscrowDevice, revokeAllAccess, setupRecovery, confirmRecovery,
@@ -339,11 +352,23 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 
 ### C4. Deploy Firestore rules + indexes, then WAIT for the vector indexes
 ```bash
-npx --prefix functions firebase deploy --only firestore:rules,firestore:indexes --project burnbar
+npm ci --prefix functions
+npm --prefix functions run test:firestore-rules
+node scripts/ci/write-firebase-hosting-ci-config.mjs \
+  --mode firestore \
+  --output /tmp/firebase-firestore.ci.json \
+  --check
+bash scripts/ci/prepare-firebase-tools.sh
+"$FIREBASE_TOOLS_BIN" deploy \
+  --only firestore:indexes \
+  --project burnbar \
+  --config /tmp/firebase-firestore.ci.json \
+  --non-interactive
+node scripts/ci/deploy-firebase-rules-releases.mjs burnbar
 # Poll until all 4 cloud_search_knowledge vector indexes are READY (can take minutes→hours):
-until npx --prefix functions firebase firestore:indexes --project burnbar \
+until "$FIREBASE_TOOLS_BIN" firestore:indexes --project burnbar \
   | grep -i cloud_search_knowledge; do sleep 30; done
-npx --prefix functions firebase firestore:indexes --project burnbar   # confirm state=READY ×4
+"$FIREBASE_TOOLS_BIN" firestore:indexes --project burnbar   # confirm state=READY ×4
 ```
 The 4 indexes (all dim 384, COSINE/flat): `embedding`; `sourceKind+embedding`;
 `sourceSlug+embedding`; `embeddingModelVersion+embedding`. **searchKnowledge throws
@@ -375,8 +400,19 @@ NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_KEY=<reCAPTCHA Enterprise Key ID from C1>
 
 ### C7. Deploy the console
 ```bash
-npx --prefix functions firebase deploy --only hosting:console --project burnbar
-# predeploy runs: npm --prefix apps/console ci && npm --prefix apps/console run build  → apps/console/out
+npm ci --prefix apps/console
+PUBLIC_SOURCE_COMMIT="$(git rev-parse HEAD)" npm run build --prefix apps/console
+node scripts/ci/write-firebase-hosting-ci-config.mjs \
+  --mode hosting \
+  --output /tmp/firebase-hosting.ci.json \
+  --manifest /tmp/firebase-hosting-public-dirs.json \
+  --check
+bash scripts/ci/prepare-firebase-tools.sh
+"$FIREBASE_TOOLS_BIN" deploy \
+  --only hosting:console \
+  --project burnbar \
+  --config /tmp/firebase-hosting.ci.json \
+  --non-interactive
 ```
 **Verify:** deploy completes; CSP/security headers come from the `firebase.json`
 console `headers` block (static export ignores `next.config` headers):

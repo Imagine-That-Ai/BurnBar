@@ -1339,6 +1339,7 @@
 		ACC8507023D6137A73D06B70 /* ProviderDashboardStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F500275555FEB29981B408 /* ProviderDashboardStoreTests.swift */; };
 		ACCF2EFB3D04884525CF5554 /* CastActionsListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2967D10979391FB05338DA8 /* CastActionsListener.swift */; };
 		AD106EC2C2A5EAD54AD02951 /* ColorAdaptive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19DE406A3994A7D7F8E0F514 /* ColorAdaptive.swift */; };
+		AD1D2AF837F456ADE0D716DD /* OpenBurnBarAppCheckProviderFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DECF0522DC7184828E6CBFD /* OpenBurnBarAppCheckProviderFactoryTests.swift */; };
 		AD5048ED574D7508550E01F0 /* PulseLiveCostCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DAD09D1BFA355251B1F4839 /* PulseLiveCostCurve.swift */; };
 		AD58360DB26264F17EDDD5B2 /* HeroSmallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83DB8FA23F47E4E565C130CE /* HeroSmallView.swift */; };
 		AD592788106D88A61E5A5407 /* MacCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11953FF94EA72216E65F4B7 /* MacCopyTests.swift */; };
@@ -2378,6 +2379,7 @@
 		1D9E9C64C9B8F3893EB8214F /* NarrativeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarrativeCardView.swift; sourceTree = "<group>"; };
 		1DAD09D1BFA355251B1F4839 /* PulseLiveCostCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseLiveCostCurve.swift; sourceTree = "<group>"; };
 		1DD4847CE5AD33BF4B22B260 /* CodexQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexQuotaAdapter.swift; sourceTree = "<group>"; };
+		1DECF0522DC7184828E6CBFD /* OpenBurnBarAppCheckProviderFactoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAppCheckProviderFactoryTests.swift; sourceTree = "<group>"; };
 		1DFC664D6073F13A9D9C65CD /* OpenBurnBarRunServiceTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarRunServiceTypes.swift; sourceTree = "<group>"; };
 		1E3746EE597DBF5E150AE534 /* AnalyticsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsShared.swift; sourceTree = "<group>"; };
 		1E4741A4C5B4AF699471C0C0 /* CloudSyncEmulatorIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncEmulatorIntegrationTests.swift; sourceTree = "<group>"; };
@@ -6315,6 +6317,7 @@
 				00D04B9DFB295A5377F83F2A /* ModelPricingTests.swift */,
 				CCFAEFED8E58E37A02C6096E /* MultiSourceReconciliationTests.swift */,
 				A283A1479D3DFDD5535F5DBD /* OfflineOnlineMergeTests.swift */,
+				1DECF0522DC7184828E6CBFD /* OpenBurnBarAppCheckProviderFactoryTests.swift */,
 				942562FBB30BF279E4F08C8C /* OpenBurnBarAuthoringReplayGoldenTests.swift */,
 				3FDE4AC490E442BFB4B2A32E /* OpenBurnBarChatEvidenceFormattingTests.swift */,
 				3E9275F6D249249385743815 /* OpenBurnBarDaemonHeartbeatReaderTests.swift */,
@@ -7830,6 +7833,8 @@
 				BF543DDDE8456E6E5033A02D /* Resources */,
 				FAA70BABCC5CB9EA6AEC9DB9 /* Frameworks */,
 				F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
+				7B5B62DE32D4B684607C8E38 /* Inject Internal Mac App Check Debug Token */,
+				F8714EEAF9893F18F827916D /* Block Mac App Check Debug Token In Release */,
 				A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */,
 				8A38C8EE41C5257032CEB552 /* Bundle Remote Unlock Input Helpers */,
 				4D5D25B9C20B6B325DFD55C5 /* Bundle Agent Runtime Resources */,
@@ -8321,6 +8326,9 @@
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift",
 				"$(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
+				"$(PROJECT_DIR)/AgentLens/App/AgentLensApp.swift",
+				"$(PROJECT_DIR)/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift",
+				"$(PROJECT_DIR)/project.yml",
 			);
 			name = "Bundle App Store Compliance Source Fixtures";
 			outputFileListPaths = (
@@ -8333,10 +8341,13 @@
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AgentLensApp.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/OpenBurnBarAppCheckProviderFactory.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/project.yml",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift\" \"CloudStoreSettingsView+Support.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift\" \"MacCloudStoreLegalLinks.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
+			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift\" \"CloudStoreSettingsView+Support.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift\" \"MacCloudStoreLegalLinks.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/App/AgentLensApp.swift\" \"AgentLensApp.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift\" \"OpenBurnBarAppCheckProviderFactory.txt\"\ncopy_fixture \"${PROJECT_DIR}/project.yml\" \"project.yml\"\n";
 		};
 		28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -8367,6 +8378,7 @@
 			);
 			inputPaths = (
 				"$(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "Block App Check Debug Token In Release";
 			outputFileListPaths = (
@@ -8376,7 +8388,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]] || [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" == \"YES\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  exit 0\nfi\n\nfor KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do\n  if /usr/libexec/PlistBuddy -c \"Print :${KEY}\" \"${SOURCE_PLIST}\" >/dev/null 2>&1; then\n    echo \"error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds.\"\n    exit 1\n  fi\ndone\n";
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]] || [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" == \"YES\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nAPP_BUNDLE=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\nset --\nif [[ -f \"${SOURCE_PLIST}\" ]]; then\n  set -- \"$@\" \"${SOURCE_PLIST}\"\nfi\nif [[ -d \"${APP_BUNDLE}\" ]]; then\n  set -- \"$@\" \"${APP_BUNDLE}\"\nelse\n  BUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n  BUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n  [[ -f \"${BUILT_GOOGLE_PLIST}\" ]] && set -- \"$@\" \"${BUILT_GOOGLE_PLIST}\"\n  [[ -f \"${BUILT_INFO_PLIST}\" ]] && set -- \"$@\" \"${BUILT_INFO_PLIST}\"\nfi\n\nif [[ \"$#\" -gt 0 ]]; then\n  bash \"${PROJECT_DIR}/scripts/ci/verify-apple-appcheck-release-artifact.sh\" \"$@\"\nfi\n";
 		};
 		4D5D25B9C20B6B325DFD55C5 /* Bundle Agent Runtime Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -8454,6 +8466,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		7B5B62DE32D4B684607C8E38 /* Inject Internal Mac App Check Debug Token */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Inject Internal Mac App Check Debug Token";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/InjectInternalMacAppCheckDebugToken.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then\n  exit 0\nfi\n\nif [[ -z \"${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}\" ]]; then\n  echo \"error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES.\"\n  exit 1\nfi\n\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nBUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [[ ! -f \"${BUILT_GOOGLE_PLIST}\" ]]; then\n  echo \"error: Built GoogleService-Info.plist not found at ${BUILT_GOOGLE_PLIST}.\"\n  exit 1\nfi\nif [[ ! -f \"${BUILT_INFO_PLIST}\" ]]; then\n  echo \"error: Built Info.plist not found at ${BUILT_INFO_PLIST}.\"\n  exit 1\nfi\n\n/usr/libexec/PlistBuddy -c \"Delete :FirebaseAppCheckDebugToken\" \"${BUILT_GOOGLE_PLIST}\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}\" \"${BUILT_GOOGLE_PLIST}\"\n/usr/libexec/PlistBuddy -c \"Delete :FIRAAppCheckDebugToken\" \"${BUILT_GOOGLE_PLIST}\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}\" \"${BUILT_GOOGLE_PLIST}\"\n/usr/libexec/PlistBuddy -c \"Delete :OpenBurnBarUseDebugAppCheck\" \"${BUILT_INFO_PLIST}\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :OpenBurnBarUseDebugAppCheck string YES\" \"${BUILT_INFO_PLIST}\"\n";
 		};
 		8A38C8EE41C5257032CEB552 /* Bundle Remote Unlock Input Helpers */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -8533,6 +8566,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n\nREVERSED_CLIENT_ID=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :REVERSED_CLIENT_ID\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${REVERSED_CLIENT_ID}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}\" \"${INFO_PLIST}\"\nfi\n\n# F-RR09-003: land sentry.dsn (injected by inject-firebase-config.sh into\n# GoogleService-Info.plist) into the app Info.plist — the PRIMARY read\n# path resolveSentryDSN() checks first. Previously only the\n# GoogleService-Info.plist fallback carried it, so client crash\n# reporting worked only when that resource happened to be bundled.\nSENTRY_DSN=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :sentry.dsn\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${SENTRY_DSN}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Delete :sentry.dsn\" \"${INFO_PLIST}\" >/dev/null 2>&1 || true\n  /usr/libexec/PlistBuddy -c \"Add :sentry.dsn string ${SENTRY_DSN}\" \"${INFO_PLIST}\"\nfi\n";
+		};
+		F8714EEAF9893F18F827916D /* Block Mac App Check Debug Token In Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Block Mac App Check Debug Token In Release";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/BlockMacAppCheckDebugTokenInRelease.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]] || [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" == \"YES\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nAPP_BUNDLE=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\nset --\nif [[ -f \"${SOURCE_PLIST}\" ]]; then\n  set -- \"$@\" \"${SOURCE_PLIST}\"\nfi\nif [[ -d \"${APP_BUNDLE}\" ]]; then\n  set -- \"$@\" \"${APP_BUNDLE}\"\nelse\n  BUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n  BUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n  [[ -f \"${BUILT_GOOGLE_PLIST}\" ]] && set -- \"$@\" \"${BUILT_GOOGLE_PLIST}\"\n  [[ -f \"${BUILT_INFO_PLIST}\" ]] && set -- \"$@\" \"${BUILT_INFO_PLIST}\"\nfi\n\nif [[ \"$#\" -gt 0 ]]; then\n  bash \"${PROJECT_DIR}/scripts/ci/verify-apple-appcheck-release-artifact.sh\" \"$@\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -9600,6 +9654,7 @@
 				522FD1BC63249BF4B11E0C23 /* OnboardingCompleteViewTests.swift in Sources */,
 				64C1291D9ECC8B3A0C602ABE /* OnboardingProviderPillTests.swift in Sources */,
 				87BD51D376357D557EE02424 /* OnboardingVisualSnapshotTests.swift in Sources */,
+				AD1D2AF837F456ADE0D716DD /* OpenBurnBarAppCheckProviderFactoryTests.swift in Sources */,
 				722F2F40D44D3D035EDEB260 /* OpenBurnBarAppTypeAliases.swift in Sources */,
 				C61A9303227539489B3AB40D /* OpenBurnBarAuthoringReplayGoldenTests.swift in Sources */,
 				1AD646510EC311B25A0642B3 /* OpenBurnBarChatEvidenceFormattingTests.swift in Sources */,
@@ -10537,11 +10592,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_C89F4E58-CE9E-481B-AA3D-AEC1561B227B" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_DCA730E4-7AF2-4604-9639-786A5A362E9B" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_EBF122A3-8FEB-48EA-B678-6699B356803F" /* OpenBurnBarCore */;
+			productRef = "TEMP_4CA35FC4-2D1B-44DA-B8C1-2D77C597ADA4" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10594,7 +10649,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E6DB9AB3-0479-432A-90F0-5C76B6587F19" /* OpenBurnBarCore */;
+			productRef = "TEMP_F8FB5469-2FAF-4D5B-A255-D4AE8BA201AC" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10612,15 +10667,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_7A09C5F5-F92B-4CAB-B295-C2EF25D3B241" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_FABB9E67-75DE-48AC-84F3-32A0B96C0A13" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_2B7BA1B1-C497-45A9-B328-2CC31765A94F" /* OpenBurnBarMedia */;
+			productRef = "TEMP_2E6C3D47-B441-43CD-AC03-032EC5626CA5" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A4789873-EC50-4CC3-AEC2-24F86304217E" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_772E14C8-CF5D-4E1A-895D-4A0B5FD42B04" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -10976,10 +11031,12 @@
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
 				INFOPLIST_KEY_NSSupportsAutomaticTermination = NO;
 				INFOPLIST_KEY_NSSupportsSuddenTermination = NO;
+				INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck = "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
 				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBar;
@@ -11105,10 +11162,12 @@
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
 				INFOPLIST_KEY_NSSupportsAutomaticTermination = NO;
 				INFOPLIST_KEY_NSSupportsSuddenTermination = NO;
+				INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck = "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
 				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBar;
@@ -11833,29 +11892,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_2B7BA1B1-C497-45A9-B328-2CC31765A94F" /* OpenBurnBarMedia */ = {
+		"TEMP_2E6C3D47-B441-43CD-AC03-032EC5626CA5" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_7A09C5F5-F92B-4CAB-B295-C2EF25D3B241" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_A4789873-EC50-4CC3-AEC2-24F86304217E" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_C89F4E58-CE9E-481B-AA3D-AEC1561B227B" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_E6DB9AB3-0479-432A-90F0-5C76B6587F19" /* OpenBurnBarCore */ = {
+		"TEMP_4CA35FC4-2D1B-44DA-B8C1-2D77C597ADA4" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_EBF122A3-8FEB-48EA-B678-6699B356803F" /* OpenBurnBarCore */ = {
+		"TEMP_772E14C8-CF5D-4E1A-895D-4A0B5FD42B04" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_DCA730E4-7AF2-4604-9639-786A5A362E9B" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_F8FB5469-2FAF-4D5B-A255-D4AE8BA201AC" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
+		};
+		"TEMP_FABB9E67-75DE-48AC-84F3-32A0B96C0A13" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

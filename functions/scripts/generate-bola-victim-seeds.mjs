@@ -38,6 +38,7 @@ const PROBE = {
   connectionId: "bob-conn",
   eventId: "bob-event",
   code: "ABCDEFGHJKMN",
+  transferId: `ct_${"b".repeat(24)}`,
   deviceCode: "bob-device-code",
   docID: "bob-doc",
   documentID: "bob-doc",
@@ -84,11 +85,13 @@ function seedsForEndpoint(entry) {
 
   const ids = new Set(entry.objectIdsFromClient ?? []);
 
-  if (name.includes("CredentialTransfer") || ids.has("code") && name.includes("Credential")) {
-    push(globalPath(`credential_transfers/${PROBE.code}`), {
-      ownerUid: "BOB_UID",
+  if (name.includes("CredentialTransfer")) {
+    push(globalPath(`credential_transfers/${PROBE.transferId}`), {
+      ownerUid: BOB,
+      schemaVersion: 2,
+      state: "ready",
       consumed: false,
-      payload: "v1.test",
+      payload: `v2.${"s".repeat(22)}.${"i".repeat(16)}.${"c".repeat(32)}`,
     });
   }
 

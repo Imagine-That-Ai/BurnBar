@@ -36,6 +36,12 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
     /(sk-ant-|sk-proj-|sk-svcacct-|sk_live_|sk_test_|rk_live_|rk_test_|sk-|xai-|AIza|ya29\.|gh[opusr]_|github_pat_|xox[baprs]-|eyJ)[A-Za-z0-9\-_.+/]{16,}/g,
     "[REDACTED]",
   ],
+  // Android credential-transfer v2 full token. The ct_ handle is public, but
+  // the token carries the device-local secret half after the second dot.
+  [
+    /\bobbct_v2\.ct_[A-Za-z0-9_-]{22,86}\.[ABCDEFGHJKMNPQRSTUVWXYZ23456789-]{26,64}\b/g,
+    "[REDACTED]",
+  ],
   // Credit card-like numbers (16 digits, optional separators)
   [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]"],
   // NOTE: Firebase Auth UIDs (28-char alphanumeric) are handled by key-based
@@ -80,6 +86,10 @@ function isSensitiveLogKey(key: string): boolean {
     normalized.includes("apikey") ||
     normalized.includes("authorization") ||
     normalized.includes("bearer") ||
+    normalized === "code" ||
+    normalized === "transfercode" ||
+    normalized === "secretcode" ||
+    normalized.includes("credentialtransfer") ||
     normalized.includes("cookie") ||
     normalized.includes("password") ||
     normalized.includes("privatekey") ||

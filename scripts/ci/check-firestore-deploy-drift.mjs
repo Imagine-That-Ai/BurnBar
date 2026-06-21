@@ -124,12 +124,11 @@ function normalizedIndexSpec(raw) {
 }
 
 function deployedFirestoreIndexes() {
+  const firebaseBin = process.env.FIREBASE_TOOLS_BIN;
+  const command = firebaseBin && firebaseBin.trim() ? firebaseBin : "firebase";
   const output = execFileSync(
-    "npx",
+    command,
     [
-      "--prefix",
-      "functions",
-      "firebase",
       "--project",
       project,
       "--json",

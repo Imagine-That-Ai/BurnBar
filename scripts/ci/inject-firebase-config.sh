@@ -13,10 +13,15 @@ if [ -z "${FIREBASE_PLIST_BASE64:-}" ]; then
     exit 1
 fi
 
-if [ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]; then
-    echo "::error::FIREBASE_APP_CHECK_DEBUG_TOKEN is required."
-    exit 1
+use_debug_app_check="${OPENBURNBAR_USE_DEBUG_APP_CHECK:-NO}"
+if [ "$use_debug_app_check" = "YES" ]; then
+    if [ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]; then
+        echo "::error::FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES."
+        exit 1
+    fi
+    echo "::add-mask::$FIREBASE_APP_CHECK_DEBUG_TOKEN"
 fi
+export OPENBURNBAR_USE_DEBUG_APP_CHECK="$use_debug_app_check"
 
 umask 077
 
@@ -29,6 +34,11 @@ from pathlib import Path
 plist_paths = [Path(path) for path in os.environ["PLIST_PATHS"].split(":") if path]
 marker_paths = [Path(path) for path in os.environ["MARKER_PATHS"].split(":") if path]
 encoded = os.environ["FIREBASE_PLIST_BASE64"]
+debug_keys = (
+    "FirebaseAppCheckDebugToken",
+    "FIRAAppCheckDebugToken",
+    "OpenBurnBarUseDebugAppCheck",
+)
 
 try:
     decoded = base64.b64decode(encoded, validate=True)
@@ -55,9 +65,13 @@ if missing:
         + ", ".join(missing)
     )
 
+for key in debug_keys:
+    payload.pop(key, None)
+
+sanitized = plistlib.dumps(payload, sort_keys=True)
 for plist_path in plist_paths:
     plist_path.parent.mkdir(parents=True, exist_ok=True)
-    plist_path.write_bytes(decoded)
+    plist_path.write_bytes(sanitized)
 
 for marker_path in marker_paths:
     marker_path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +82,8 @@ old_ifs="$IFS"
 IFS=:
 for plist_path in $plist_paths; do
     /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
-    /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+    /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
+    /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "$plist_path" >/dev/null 2>&1 || true
     if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
         /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist_path" >/dev/null 2>&1 || true
         /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $OPENBURNBAR_SENTRY_DSN" "$plist_path"
@@ -76,10 +91,12 @@ for plist_path in $plist_paths; do
 done
 IFS="$old_ifs"
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [ "$OPENBURNBAR_USE_DEBUG_APP_CHECK" = "YES" ] && [ -n "${GITHUB_ENV:-}" ]; then
     {
+        echo "FirebaseAppCheckDebugToken=$FIREBASE_APP_CHECK_DEBUG_TOKEN"
         echo "FIRAAppCheckDebugToken=$FIREBASE_APP_CHECK_DEBUG_TOKEN"
         echo "FIREBASE_APP_CHECK_DEBUG_TOKEN=$FIREBASE_APP_CHECK_DEBUG_TOKEN"
+        echo "OPENBURNBAR_USE_DEBUG_APP_CHECK=YES"
     } >> "$GITHUB_ENV"
 fi
 
@@ -87,7 +104,11 @@ echo "Firebase config injected at:"
 echo "  AgentLens/Resources/GoogleService-Info.plist"
 echo "  OpenBurnBarMobile/Resources/GoogleService-Info.plist"
 echo "Validated keys: GOOGLE_APP_ID, PROJECT_ID, REVERSED_CLIENT_ID"
-echo "App Check debug token configured for CI runtime"
+if [ "$OPENBURNBAR_USE_DEBUG_APP_CHECK" = "YES" ]; then
+    echo "App Check debug token exported for internal build-product injection"
+else
+    echo "App Check debug token stripped from Firebase plists"
+fi
 if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
     echo "Sentry DSN configured for app runtime"
 fi

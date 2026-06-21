@@ -54,6 +54,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Run full test matrix

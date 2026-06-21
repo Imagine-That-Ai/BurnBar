@@ -130,6 +130,8 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+        INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck: "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)"
+        OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
@@ -172,6 +174,90 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+      - name: Inject Internal Mac App Check Debug Token
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          if [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" != "YES" ]]; then
+            exit 0
+          fi
+
+          if [[ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]]; then
+            echo "error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES."
+            exit 1
+          fi
+
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          if [[ ! -f "${BUILT_GOOGLE_PLIST}" ]]; then
+            echo "error: Built GoogleService-Info.plist not found at ${BUILT_GOOGLE_PLIST}."
+            exit 1
+          fi
+          if [[ ! -f "${BUILT_INFO_PLIST}" ]]; then
+            echo "error: Built Info.plist not found at ${BUILT_INFO_PLIST}."
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "${BUILT_INFO_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :OpenBurnBarUseDebugAppCheck string YES" "${BUILT_INFO_PLIST}"
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/InjectInternalMacAppCheckDebugToken.stamp
+      - name: Block Mac App Check Debug Token In Release
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          if [[ "${CONFIGURATION:-}" == "Debug" ]] || [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" == "YES" ]]; then
+            exit 0
+          fi
+
+          SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
+          APP_BUNDLE="${TARGET_BUILD_DIR}/${WRAPPER_NAME}"
+          set --
+          if [[ -f "${SOURCE_PLIST}" ]]; then
+            set -- "$@" "${SOURCE_PLIST}"
+          fi
+          if [[ -d "${APP_BUNDLE}" ]]; then
+            set -- "$@" "${APP_BUNDLE}"
+          else
+            BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+            BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+            [[ -f "${BUILT_GOOGLE_PLIST}" ]] && set -- "$@" "${BUILT_GOOGLE_PLIST}"
+            [[ -f "${BUILT_INFO_PLIST}" ]] && set -- "$@" "${BUILT_INFO_PLIST}"
+          fi
+
+          if [[ "$#" -gt 0 ]]; then
+            bash "${PROJECT_DIR}/scripts/ci/verify-apple-appcheck-release-artifact.sh" "$@"
+          fi
+        inputFiles:
+          - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/BlockMacAppCheckDebugTokenInRelease.stamp
       - name: Stamp Build Provenance
         # Stamps git commit/branch/remote + the build channel into the bundle so
         # the in-app updater (UpdateChannelResolver / SourceUpdateChannel) can
@@ -493,6 +579,9 @@ targets:
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift" "MacCloudStoreLegalLinks.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
           copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/App/AgentLensApp.swift" "AgentLensApp.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift" "OpenBurnBarAppCheckProviderFactory.txt"
+          copy_fixture "${PROJECT_DIR}/project.yml" "project.yml"
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift
@@ -501,6 +590,9 @@ targets:
           - $(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift
           - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+          - $(PROJECT_DIR)/AgentLens/App/AgentLensApp.swift
+          - $(PROJECT_DIR)/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift
+          - $(PROJECT_DIR)/project.yml
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt
@@ -509,6 +601,9 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AgentLensApp.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/OpenBurnBarAppCheckProviderFactory.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/project.yml
     settings:
       base:
         SWIFT_VERSION: "5.10"
@@ -709,18 +804,26 @@ targets:
           fi
 
           SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
-          if [[ ! -f "${SOURCE_PLIST}" ]]; then
-            exit 0
+          APP_BUNDLE="${TARGET_BUILD_DIR}/${WRAPPER_NAME}"
+          set --
+          if [[ -f "${SOURCE_PLIST}" ]]; then
+            set -- "$@" "${SOURCE_PLIST}"
+          fi
+          if [[ -d "${APP_BUNDLE}" ]]; then
+            set -- "$@" "${APP_BUNDLE}"
+          else
+            BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+            BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+            [[ -f "${BUILT_GOOGLE_PLIST}" ]] && set -- "$@" "${BUILT_GOOGLE_PLIST}"
+            [[ -f "${BUILT_INFO_PLIST}" ]] && set -- "$@" "${BUILT_INFO_PLIST}"
           fi
 
-          for KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do
-            if /usr/libexec/PlistBuddy -c "Print :${KEY}" "${SOURCE_PLIST}" >/dev/null 2>&1; then
-              echo "error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds."
-              exit 1
-            fi
-          done
+          if [[ "$#" -gt 0 ]]; then
+            bash "${PROJECT_DIR}/scripts/ci/verify-apple-appcheck-release-artifact.sh" "$@"
+          fi
         inputFiles:
           - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
         outputFiles:
           - $(DERIVED_FILE_DIR)/BlockAppCheckDebugTokenInRelease.stamp
     info:

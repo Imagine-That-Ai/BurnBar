@@ -441,6 +441,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: App Check config smoke
@@ -598,6 +599,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Skip Firebase config injection for fork PRs
@@ -662,6 +664,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Skip Firebase config injection for fork PRs
@@ -987,6 +990,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
       - name: iOS Mercury/media unit tests
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.

@@ -1,6 +1,7 @@
 import XCTest
 import FirebaseCore
 import GoogleSignIn
+import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
 final class AppStoreReviewComplianceTests: XCTestCase {
@@ -282,6 +283,52 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"))
     }
 
+    func testReleaseAppCheckIgnoresBarePlistTokenAndDebugProviderOverrideWithoutInternalFlag() throws {
+        let plistURL = try writeGooglePlist([
+            AppCheckDebugTokenEnvironment.firebaseDebugTokenKey: "plist-token"
+        ])
+        defer { try? FileManager.default.removeItem(at: plistURL) }
+
+        let strategy = AppDelegate.appCheckProviderStrategy(
+            firebasePlistPath: plistURL.path,
+            infoDictionary: [:],
+            environment: ["OPENBURNBAR_APP_CHECK_PROVIDER": "debug"],
+            isDebugBuild: false
+        )
+
+        XCTAssertEqual(strategy, .appAttest)
+    }
+
+    func testInternalReleaseAppCheckFlagPreservesDebugProviderPath() throws {
+        let plistURL = try writeGooglePlist([
+            AppCheckDebugTokenEnvironment.firaDebugTokenKey: "plist-token"
+        ])
+        defer { try? FileManager.default.removeItem(at: plistURL) }
+
+        let strategy = AppDelegate.appCheckProviderStrategy(
+            firebasePlistPath: plistURL.path,
+            infoDictionary: [AppCheckDebugTokenEnvironment.useDebugAppCheckInfoKey: "YES"],
+            environment: ["OPENBURNBAR_APP_CHECK_PROVIDER": "debug"],
+            isDebugBuild: false
+        )
+
+        XCTAssertEqual(strategy, .debug)
+    }
+
+    func testDebugBuildAppCheckPathStillUsesDebugProvider() throws {
+        let plistURL = try writeGooglePlist([:])
+        defer { try? FileManager.default.removeItem(at: plistURL) }
+
+        let strategy = AppDelegate.appCheckProviderStrategy(
+            firebasePlistPath: plistURL.path,
+            infoDictionary: [:],
+            environment: [:],
+            isDebugBuild: true
+        )
+
+        XCTAssertEqual(strategy, .debug)
+    }
+
     func testHostedQuotaStoreKeepsReviewVisibleProductsInLockstepWithAppStoreConnectCatalog() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let storeURL = repoRoot()
@@ -448,6 +495,13 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         while url.lastPathComponent != "BurnBar", url.path != "/" {
             url.deleteLastPathComponent()
         }
+        return url
+    }
+
+    private func writeGooglePlist(_ values: [String: String]) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GoogleService-Info-\(UUID().uuidString).plist")
+        XCTAssertTrue((values as NSDictionary).write(to: url, atomically: true))
         return url
     }
 }

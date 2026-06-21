@@ -214,6 +214,8 @@ if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$actua
 fi
 codesign --verify --strict --verbose=2 "$app_path"
 
+bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path"
+
 xcodebuild -exportArchive \
   -archivePath "$archive_path" \
   -exportPath "$export_path" \
@@ -228,6 +230,8 @@ if [[ -z "$export_artifact" ]]; then
   find "$export_path" -maxdepth 2 -type f -print >&2
   exit 1
 fi
+
+bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path" "$export_path" "$export_artifact"
 
 echo "MAS archive/export ready:"
 echo "  Version: $version ($build)"

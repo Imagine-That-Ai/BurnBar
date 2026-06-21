@@ -1,39 +1,350 @@
 #!/usr/bin/env bash
-# Static policy gate: production deploy workflows must NOT reference long-lived
-# service account JSON keys or FIREBASE_TOKEN fallbacks (codex-gpt-5 FINDING-007).
+# Static policy gate for production Firebase deploy boundaries.
 set -euo pipefail
-cd "$(dirname "$0")/../.."
 
-WORKFLOWS=(
-  ".github/workflows/deploy-production.yml"
-  ".github/workflows/deploy-hosting.yml"
-  ".github/workflows/deploy-firestore.yml"
+DEFAULT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="${OPENBURNBAR_DEPLOY_AUTH_REPO:-$DEFAULT_ROOT}"
+cd "$ROOT"
+
+python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path.cwd()
+ARGS = sys.argv[1:]
+WORKFLOWS = {
+    "deploy-production": Path(".github/workflows/deploy-production.yml"),
+    "deploy-hosting": Path(".github/workflows/deploy-hosting.yml"),
+    "deploy-firestore": Path(".github/workflows/deploy-firestore.yml"),
+}
+LEGACY_SECRET_RE = re.compile(
+    r"\b(?:GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json)\b"
 )
-FAIL=0
+POST_AUTH_FORBIDDEN_RE = re.compile(
+    r"(?im)(?:^|\s)(npm|npx)\s|npm\s+exec|npm\s+ci|npm\s+run|bash\s+scripts/|\./scripts/|uses:\s*\./"
+)
+DEPLOY_RE = re.compile(r"(?s)(\bfirebase\s+deploy\b|FIREBASE_TOOLS_BIN[^\n]*\bdeploy\b)")
 
-for workflow in "${WORKFLOWS[@]}"; do
-  if grep -E 'GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json' "$workflow" >/dev/null; then
-    echo "FAIL: $workflow still references legacy long-lived deploy secrets or credentials_json."
-    echo "  Remove GCP_SA_KEY, GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, FIREBASE_TOKEN,"
-    echo "  and credentials_json fallbacks; use WIF/OIDC with"
-    echo "  GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_DEPLOY_SERVICE_ACCOUNT only."
-    FAIL=1
-  else
-    echo "PASS: $workflow uses WIF/OIDC only (no legacy deploy secrets)."
-  fi
 
-  for required in \
-    "id-token: write" \
-    "workload_identity_provider" \
-    "GCP_WORKLOAD_IDENTITY_PROVIDER" \
-    "GCP_DEPLOY_SERVICE_ACCOUNT" \
-    "GOOGLE_APPLICATION_CREDENTIALS"
-  do
-    if ! grep -q "$required" "$workflow"; then
-      echo "FAIL: $workflow does not contain required WIF marker: $required"
-      FAIL=1
-    fi
-  done
-done
+def fail(message: str) -> None:
+    FAILURES.append(message)
 
-exit "$FAIL"
+
+def read(path: Path) -> str:
+    if not path.is_file():
+        fail(f"{path} is missing")
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def top_level_text(text: str) -> str:
+    marker = re.search(r"(?m)^jobs:\s*$", text)
+    return text[: marker.start()] if marker else text
+
+
+def extract_jobs(text: str) -> dict[str, str]:
+    lines = text.splitlines()
+    jobs_start = None
+    for index, line in enumerate(lines):
+        if line == "jobs:":
+            jobs_start = index + 1
+            break
+    if jobs_start is None:
+        return {}
+
+    jobs: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in lines[jobs_start:]:
+        match = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if match:
+            current = match.group(1)
+            jobs[current] = [line]
+            continue
+        if current is not None:
+            jobs[current].append(line)
+    return {name: "\n".join(job_lines) for name, job_lines in jobs.items()}
+
+
+def extract_steps(job_text: str) -> list[str]:
+    lines = job_text.splitlines()
+    steps: list[list[str]] = []
+    current: list[str] | None = None
+    for line in lines:
+        if re.match(r"^      - (?:name|uses|run):", line):
+            current = [line]
+            steps.append(current)
+        elif current is not None:
+            current.append(line)
+    return ["\n".join(step) for step in steps]
+
+
+def step_label(step: str) -> str:
+    match = re.search(r"(?m)^\s+- name:\s*(.+)$", step)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"(?m)^\s+- uses:\s*(.+)$", step)
+    if match:
+        return match.group(1).strip()
+    return step.splitlines()[0].strip() if step else "<unknown>"
+
+
+def command_text(step: str) -> str:
+    lines = []
+    for line in step.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("echo "):
+            continue
+        if re.match(r"^- name:", stripped) or re.match(r"^name:", stripped):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def contains_predeploy(value: object) -> bool:
+    if isinstance(value, dict):
+        return any(key == "predeploy" or contains_predeploy(child) for key, child in value.items())
+    if isinstance(value, list):
+        return any(contains_predeploy(child) for child in value)
+    return False
+
+
+def validate_generated_configs() -> None:
+    generator = Path("scripts/ci/write-firebase-hosting-ci-config.mjs")
+    firebase_json_path = Path("firebase.json")
+    if not generator.is_file():
+        fail("scripts/ci/write-firebase-hosting-ci-config.mjs is missing")
+        return
+    if not firebase_json_path.is_file():
+        fail("firebase.json is missing")
+        return
+
+    firebase_json = json.loads(firebase_json_path.read_text(encoding="utf-8"))
+    if not contains_predeploy(firebase_json):
+        return
+
+    with tempfile.TemporaryDirectory(prefix="obb-firebase-ci-config-") as tempdir:
+        temp = Path(tempdir)
+        for mode in ("hosting", "functions", "firestore"):
+            output = temp / f"firebase-{mode}.ci.json"
+            command = [
+                "node",
+                str(generator),
+                "--mode",
+                mode,
+                "--output",
+                str(output),
+                "--check",
+            ]
+            if mode == "hosting":
+                command.extend(["--manifest", str(temp / "firebase-hosting-public-dirs.json")])
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+            if result.returncode != 0:
+                fail(f"{generator} --mode {mode} failed:\n{result.stdout.strip()}")
+                continue
+            generated = json.loads(output.read_text(encoding="utf-8"))
+            if contains_predeploy(generated):
+                fail(f"generated {output.name} contains predeploy")
+
+
+def validate_workflow(name: str, path: Path, text: str) -> None:
+    if LEGACY_SECRET_RE.search(text):
+        fail(f"{path} references legacy long-lived deploy secrets or credentials_json")
+
+    for marker in ("id-token: write", "google-github-actions/auth", "workload_identity_provider", "GCP_WORKLOAD_IDENTITY_PROVIDER", "GOOGLE_APPLICATION_CREDENTIALS"):
+        if marker not in text:
+            fail(f"{path} does not contain required WIF marker: {marker}")
+
+    expected_service_account = (
+        "GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT" if name == "deploy-hosting" else "GCP_DEPLOY_SERVICE_ACCOUNT"
+    )
+    if expected_service_account not in text:
+        fail(f"{path} does not use expected service account secret {expected_service_account}")
+    if name == "deploy-hosting" and "GCP_DEPLOY_SERVICE_ACCOUNT" in text:
+        fail(f"{path} must not use shared GCP_DEPLOY_SERVICE_ACCOUNT for hosting")
+
+    jobs = extract_jobs(text)
+    if not jobs:
+        fail(f"{path} does not define jobs")
+        return
+
+    for job_name, job_text in jobs.items():
+        steps = extract_steps(job_text)
+        auth_indexes = [index for index, step in enumerate(steps) if "google-github-actions/auth" in step]
+        if not auth_indexes:
+            continue
+        first_auth = auth_indexes[0]
+        for step in steps[first_auth + 1 :]:
+            if POST_AUTH_FORBIDDEN_RE.search(step):
+                fail(
+                    f"{path} job {job_name} runs forbidden repo/npm command after Google auth in step {step_label(step)!r}"
+                )
+        for step in steps:
+            executable = command_text(step)
+            if DEPLOY_RE.search(executable):
+                if "--config" not in step:
+                    fail(f"{path} job {job_name} deploy step {step_label(step)!r} omits --config")
+                if re.search(r"--config\s+['\"]?firebase\.json['\"]?", step):
+                    fail(f"{path} job {job_name} deploy step {step_label(step)!r} uses raw firebase.json")
+                if "npm --prefix functions exec -- firebase deploy" in step:
+                    fail(f"{path} job {job_name} deploy step {step_label(step)!r} uses npm exec firebase deploy")
+
+    if "firebase deploy" in text and "--config firebase.json" in text:
+        fail(f"{path} contains firebase deploy against raw firebase.json")
+
+
+def validate_hosting(text: str) -> None:
+    path = WORKFLOWS["deploy-hosting"]
+    top = top_level_text(text)
+    if "id-token: write" in top:
+        fail(f"{path} grants id-token:write at top level; only deploy-hosting may grant it")
+    if "issues: write" in top:
+        fail(f"{path} grants issues:write at top level; only the smoke/result job may grant it")
+
+    jobs = extract_jobs(text)
+    build_job = jobs.get("build-hosting-artifacts")
+    deploy_job = jobs.get("deploy-hosting")
+    result_job = jobs.get("hosting-smoke-result")
+    if not build_job:
+        fail(f"{path} must define build-hosting-artifacts")
+    if not deploy_job:
+        fail(f"{path} must define deploy-hosting")
+    if not result_job:
+        fail(f"{path} must define hosting-smoke-result")
+    if not build_job or not deploy_job:
+        return
+
+    if "needs: build-hosting-artifacts" not in deploy_job:
+        fail(f"{path} deploy-hosting must need build-hosting-artifacts")
+    if "environment: production" not in deploy_job:
+        fail(f"{path} deploy-hosting must be the only production-environment hosting job")
+    if "id-token: write" not in deploy_job:
+        fail(f"{path} deploy-hosting must grant id-token:write")
+    if "service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}" not in deploy_job:
+        fail(f"{path} deploy-hosting must authenticate as GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT")
+    if "actions/checkout" in deploy_job:
+        fail(f"{path} deploy-hosting must not check out repository code")
+    if "uses: ./.github/actions" in deploy_job:
+        fail(f"{path} deploy-hosting must not use local actions")
+    if "id-token: write" in build_job:
+        fail(f"{path} build-hosting-artifacts must not grant id-token:write")
+    if "environment:" in build_job:
+        fail(f"{path} build-hosting-artifacts must not bind the production environment")
+    if "secrets." in build_job:
+        fail(f"{path} build-hosting-artifacts must not reference secrets")
+    for marker in (
+        "sha256sum -c SHA256SUMS",
+        "-type l",
+        "-links +1",
+        "node_modules",
+        "credential",
+        "firebase-hosting.ci.json",
+        "FIREBASE_TOOLS_BIN",
+    ):
+        if marker not in deploy_job:
+            fail(f"{path} deploy-hosting is missing artifact/config guard marker {marker!r}")
+    if result_job and "id-token: write" in result_job:
+        fail(f"{path} hosting-smoke-result must not grant id-token:write")
+    if result_job and "issues: write" not in result_job:
+        fail(f"{path} hosting-smoke-result must own issues:write for ops-failure issues")
+
+
+def validate_artifact_dir(path: Path) -> int:
+    failures: list[str] = []
+    if not path.is_dir():
+        print(f"FAIL: artifact dir {path} is missing", file=sys.stderr)
+        return 1
+
+    for root, dirs, files in os.walk(path, topdown=True, followlinks=False):
+        root_path = Path(root)
+        entries = dirs + files
+        for name in entries:
+            entry = root_path / name
+            rel = entry.relative_to(path).as_posix()
+            try:
+                mode = entry.lstat().st_mode
+            except OSError as error:
+                failures.append(f"{rel}: cannot lstat ({error})")
+                continue
+            if stat.S_ISLNK(mode):
+                failures.append(f"{rel}: symlink")
+            elif stat.S_ISBLK(mode) or stat.S_ISCHR(mode) or stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode):
+                failures.append(f"{rel}: special file")
+            elif stat.S_ISREG(mode) and entry.stat().st_nlink > 1:
+                failures.append(f"{rel}: hardlinked file")
+            parts = rel.split("/")
+            lower_rel = rel.lower()
+            if "node_modules" in parts or name == ".env" or name.startswith(".env.") or "credential" in lower_rel:
+                failures.append(f"{rel}: forbidden env/credential/node_modules entry")
+
+    manifest = path / "SHA256SUMS"
+    if not manifest.is_file():
+        failures.append("SHA256SUMS: missing")
+    else:
+        for line_no, line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), start=1):
+            match = re.match(r"^([a-fA-F0-9]{64})  (.+)$", line)
+            if not match:
+                failures.append(f"SHA256SUMS:{line_no}: malformed line")
+                continue
+            expected, rel = match.groups()
+            candidate = (path / rel).resolve()
+            try:
+                candidate.relative_to(path.resolve())
+            except ValueError:
+                failures.append(f"SHA256SUMS:{line_no}: path escapes artifact root")
+                continue
+            if not candidate.is_file():
+                failures.append(f"{rel}: manifest target missing")
+                continue
+            actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            if actual.lower() != expected.lower():
+                failures.append(f"{rel}: sha256 mismatch")
+
+    if failures:
+        print("FAIL: deploy artifact boundary check failed:", file=sys.stderr)
+        for item in failures:
+            print(f"  - {item}", file=sys.stderr)
+        return 1
+    print("PASS: deploy artifact contains only verified regular files.")
+    return 0
+
+
+if ARGS:
+    if len(ARGS) == 2 and ARGS[0] == "--artifact-dir":
+        sys.exit(validate_artifact_dir(Path(ARGS[1]).resolve()))
+    raise SystemExit(f"Unknown arguments: {' '.join(ARGS)}")
+
+FAILURES: list[str] = []
+texts = {name: read(path) for name, path in WORKFLOWS.items()}
+for name, text in texts.items():
+    if text:
+        validate_workflow(name, WORKFLOWS[name], text)
+if texts.get("deploy-hosting"):
+    validate_hosting(texts["deploy-hosting"])
+validate_generated_configs()
+
+if FAILURES:
+    print("FAIL: production deploy auth boundary drifted:", file=sys.stderr)
+    for failure in FAILURES:
+        print(f"  - {failure}", file=sys.stderr)
+    sys.exit(1)
+
+for path in WORKFLOWS.values():
+    print(f"PASS: {path} keeps production deploy credentials outside repo-controlled build/lifecycle/predeploy code.")
+print("PASS: generated Firebase CI configs contain no predeploy hooks.")
+PY

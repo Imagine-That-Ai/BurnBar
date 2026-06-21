@@ -197,10 +197,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ///   pre-registered token. This keeps Firestore enforcement enabled for
     ///   TestFlight/App Distribution channels while Apple/Play attestation is
     ///   not available.
-    /// - Production builds: DeviceCheck. App Attest is stronger, but it must
-    ///   also be enabled on the Apple Bundle ID/provisioning profile before the
-    ///   entitlement can be shipped. DeviceCheck keeps enforced Firestore App
-    ///   Check working for TestFlight while that Apple capability is managed.
+    /// - Production builds: App Attest on supported OS versions with DeviceCheck
+    ///   fallback. Debug provider overrides and token-bearing plists are ignored
+    ///   unless the built internal flag above is present.
     /// - Debug builds: the App Check debug provider so a registered debug
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
@@ -304,19 +303,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     static func installAppCheckProviderFactory(
         firebasePlistPath path: String,
         infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        isDebugBuild: Bool = AppCheckDebugTokenEnvironment.isDebugBuild
     ) -> String {
         let strategy = appCheckProviderStrategy(
             firebasePlistPath: path,
             infoDictionary: infoDictionary,
-            environment: environment
+            environment: environment,
+            isDebugBuild: isDebugBuild
         )
         switch strategy {
         case .debug:
             _ = AppCheckDebugTokenEnvironment.configureIfAvailable(
                 firebasePlistPath: path,
                 infoDictionary: infoDictionary,
-                environment: environment
+                environment: environment,
+                debugAppCheckAllowed: true
             )
             AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
         case .appAttest:
@@ -327,32 +329,44 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return strategy.rawValue
     }
 
-    private enum AppCheckProviderStrategy: String {
+    enum AppCheckProviderStrategy: String {
         case debug
         case appAttest = "appattest"
         case deviceCheck = "devicecheck"
     }
 
-    private static func appCheckProviderStrategy(
+    static func appCheckProviderStrategy(
         firebasePlistPath path: String,
         infoDictionary: [String: Any]?,
-        environment: [String: String]
+        environment: [String: String],
+        isDebugBuild: Bool = AppCheckDebugTokenEnvironment.isDebugBuild
     ) -> AppCheckProviderStrategy {
-        if let override = normalizedAppCheckProviderOverride(environment["OPENBURNBAR_APP_CHECK_PROVIDER"]) {
+        let debugAllowed = AppCheckDebugTokenEnvironment.debugAppCheckAllowed(
+            infoDictionary: infoDictionary,
+            isDebugBuild: isDebugBuild
+        )
+        if let override = normalizedAppCheckProviderOverride(
+            environment["OPENBURNBAR_APP_CHECK_PROVIDER"],
+            debugAppCheckAllowed: debugAllowed
+        ) {
             return override
         }
 
-        let debugRequested = useDebugAppCheckProvider(infoDictionary: infoDictionary, environment: environment)
-            || AppCheckDebugTokenEnvironment.token(inPlistAt: path) != nil
-        #if DEBUG
-        _ = debugRequested
-        return .debug
-        #else
-        return debugRequested ? .debug : .appAttest
-        #endif
+        let debugRequested = debugAllowed && AppCheckDebugTokenEnvironment.availableToken(
+            firebasePlistPath: path,
+            infoDictionary: infoDictionary,
+            environment: environment
+        ) != nil
+        if isDebugBuild {
+            return .debug
+        }
+        return debugAllowed && debugRequested ? .debug : .appAttest
     }
 
-    private static func normalizedAppCheckProviderOverride(_ raw: String?) -> AppCheckProviderStrategy? {
+    private static func normalizedAppCheckProviderOverride(
+        _ raw: String?,
+        debugAppCheckAllowed: Bool
+    ) -> AppCheckProviderStrategy? {
         guard let raw else { return nil }
         let normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -361,7 +375,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             .replacingOccurrences(of: "_", with: "")
         switch normalized {
         case "debug":
-            return .debug
+            return debugAppCheckAllowed ? .debug : nil
         case "appattest", "appattestprovider", "production", "release":
             return .appAttest
         case "devicecheck", "devicecheckprovider":
@@ -372,28 +386,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
-    private static func useDebugAppCheckProvider(
-        infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> Bool {
-        if truthy(environment["OPENBURNBAR_USE_DEBUG_APP_CHECK"]) {
-            return true
-        }
-        return truthy(infoDictionary?["OpenBurnBarUseDebugAppCheck"])
-    }
-
-    private static func truthy(_ raw: Any?) -> Bool {
-        switch raw {
-        case let value as Bool:
-            return value
-        case let value as String:
-            return ["1", "true", "yes", "y"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-        default:
-            return false
-        }
-    }
-
     #if DEBUG
+    private static func truthy(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return ["1", "true", "yes", "y"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
     private static func signInWithE2ECustomTokenIfNeeded(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {

@@ -149,17 +149,31 @@ describe("PII scrubbing in structured logging", () => {
     it("does not redact short strings that happen to start with sk-", async () => {
       // Prefix without the 20+ following chars should not match
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", code: "sk-123" }); // only 3 chars after prefix
+      logInfo({ event: "test", reference: "sk-123" }); // only 3 chars after prefix
       const payload = captureLog(logSpy);
-      expect(payload.code).toBe("sk-123");
+      expect(payload.reference).toBe("sk-123");
     });
 
     it("redacts sensitive field names even when values do not match known token patterns", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", accessToken: "short-secret", tokenPreview: "obb_...abcd" });
+      logInfo({ event: "test", accessToken: "short-secret", tokenPreview: "obb_...abcd", code: "ABCD-EFGH-JKM2" });
       const payload = captureLog(logSpy);
       expect(payload.accessToken).toBe("[REDACTED]");
       expect(payload.tokenPreview).toBe("[REDACTED]");
+      expect(payload.code).toBe("[REDACTED]");
+    });
+
+    it("redacts credential transfer keys and full v2 token values", async () => {
+      const { logInfo } = await import("../logging.js");
+      const token = "obbct_v2.ct_" + "a".repeat(24) + "." + "ABCD-".repeat(6) + "EF";
+      logInfo({
+        event: "test",
+        credentialTransferHandle: "ct_" + "b".repeat(24),
+        note: `pasted ${token}`,
+      });
+      const payload = captureLog(logSpy);
+      expect(payload.credentialTransferHandle).toBe("[REDACTED]");
+      expect(payload.note).toBe("pasted [REDACTED]");
     });
 
     // T-PRV-04: broadened provider token prefixes

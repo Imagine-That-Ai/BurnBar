@@ -19,6 +19,13 @@ Cross-agent visibility rule:
 - Include review/comment/thread ids and commit SHAs when available.
 - This is the human management surface; do not hide team handoff state only in automation logs.
 
+Privileged repair-loop authority model:
+
+- Secrets-bearing `workflow_run` repair loops must authenticate provenance before checkout, agent invocation, PR comments, pushes, or cloud-agent handoff.
+- The authority signal is the base repository's trusted repair branch, not public PR title/body text. The markers `codex-nightly-ci-repair` and `cursor-nightly-ci-repair` are display-only.
+- `workflow_run.pull_requests` is correlation-only. A continuation must also bind the GitHub-authoritative head repository, repair branch, bot author, non-fork head, base branch, and exact head SHA.
+- The provenance classifier runs read-only and emits sanitized scalar outputs. Privileged jobs run only after `safe=true`, then re-fetch the trusted base-repo repair branch and re-check the validated SHA before giving code to an agent.
+
 ## Agent Prompt
 
 Paste this into a BurnBar agent when you need it to remember the factory model permanently:

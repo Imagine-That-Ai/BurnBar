@@ -733,6 +733,9 @@ jobs:
       - name: Check privacy invariants (run-09)
         run: node scripts/ci/check-privacy-invariants.mjs
 
+      - name: Verify credential-transfer secret boundary
+        run: bash scripts/ci/verify-credential-transfer-secret-boundary.sh
+
   # ── Mac/iOS Swift twin-basename gate (stop new forked twins) ───────────────
   twin-basenames:
     name: Swift twin basenames

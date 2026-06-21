@@ -52,6 +52,11 @@ const EPHEMERAL_PII_COLLECTIONS = [
     field: "expireAt",
     finding: "F-RR09-007",
   },
+  {
+    collection: "credential_transfers",
+    field: "expiresAt",
+    finding: "credential-transfer-secret-boundary",
+  },
 ];
 
 /** Keys that must never appear in an outbound APNs/FCM push payload (F-RR09-008). */

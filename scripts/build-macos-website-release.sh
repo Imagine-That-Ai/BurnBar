@@ -191,6 +191,8 @@ if [[ "$bundle_id" != "com.openburnbar.app" || "$app_version" != "$version" || "
   exit 1
 fi
 
+bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$app_path"
+
 sign_one() {
   local path="$1"
   local options="${2:-runtime}"
@@ -429,6 +431,8 @@ fi
 cd "$(dirname "$app_path")"
 ditto -c -k --keepParent "$(basename "$app_path")" "$repo_root/$zip_path"
 cd "$repo_root"
+
+bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$dmg_path" "$zip_path"
 
 bash scripts/create-corresponding-source.sh --version "$version" --output "$source_archive_path"
 

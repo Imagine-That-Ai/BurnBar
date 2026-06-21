@@ -1586,47 +1586,10 @@ service cloud.firestore {
 
     // --- Credential transfers (cross-device encrypted payload) ---
 
-    match /credential_transfers/{code} {
-      function validCredentialTransferCode() {
-        return code.matches("^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{12}$");
-      }
-
-      function validCredentialTransferCreate() {
-        return request.auth != null
-          && validCredentialTransferCode()
-          && request.resource.data.keys().hasOnly([
-            "ownerUid",
-            "payload",
-            "createdAt",
-            "expiresAt",
-            "consumed"
-          ])
-          && request.resource.data.keys().hasAll([
-            "ownerUid",
-            "payload",
-            "createdAt",
-            "expiresAt",
-            "consumed"
-          ])
-          && request.auth.uid == request.resource.data.ownerUid
-          && request.resource.data.payload is string
-          && request.resource.data.payload.size() <= 200000
-          && request.resource.data.payload.matches("^v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
-          && request.resource.data.createdAt is timestamp
-          && request.resource.data.expiresAt is timestamp
-          && request.resource.data.createdAt <= request.time
-          && request.resource.data.createdAt > request.time - duration.value(5, "m")
-          && request.resource.data.expiresAt > request.time
-          && request.resource.data.expiresAt <= request.time + duration.value(24, "h")
-          && request.resource.data.consumed == false;
-      }
-
-      allow create: if validCredentialTransferCreate();
-      // Consumption is server-transaction-only via consumeCredentialTransfer.
-      allow get: if false;
-      allow update: if false;
-      allow delete: if false;
-      allow list: if false;
+    match /credential_transfers/{transferId} {
+      // Server-owned only. Clients must use create/consume/complete/cancel
+      // callables so no decryption secret can become a document id or field.
+      allow read, write: if false;
     }
 
     // --- Public read-only model-landscape metadata ---

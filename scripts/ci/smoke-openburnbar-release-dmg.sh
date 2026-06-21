@@ -13,6 +13,9 @@ if [[ ! -f "$dmg_path" ]]; then
   exit 66
 fi
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$script_dir/verify-apple-appcheck-release-artifact.sh" "$dmg_path"
+
 uid="$(id -u)"
 label_suffix="$(
   printf '%s-%s-%s' "${GITHUB_RUN_ID:-local}" "${GITHUB_RUN_ATTEMPT:-0}" "$$" \

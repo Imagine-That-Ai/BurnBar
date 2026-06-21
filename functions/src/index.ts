@@ -129,7 +129,12 @@ export { searchKnowledge } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";
 export { deleteDomainData } from "./callables/dataDeletion.js";
 export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recovery.js";
-export { consumeCredentialTransfer } from "./callables/credentialTransfer.js";
+export {
+  createCredentialTransfer,
+  consumeCredentialTransfer,
+  completeCredentialTransfer,
+  cancelCredentialTransfer,
+} from "./callables/credentialTransfer.js";
 export { revokeAllAccess } from "./callables/panic.js";
 export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
 export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Hardened Android credential transfer to v2 split tokens: Android now generates
+  a public `ct_...` handle plus a device-only human-safe secret, encrypts with
+  AES-GCM AAD bound to `credential_transfers:v2:<ownerUid>:<transferId>`, and
+  sends Cloud Functions only the handle and ciphertext. Firestore rules deny all
+  client access to `credential_transfers`; create/claim/complete/cancel are
+  server-owned, legacy 12-character transfers are rejected with no fallback,
+  `expiresAt` has a TTL override, logs redact old/new transfer secrets, and
+  Mac/iOS ECIES escrow remains on `escrow_grants` / `escrow_envelopes`.
+- Hardened production Firebase deploy boundaries: Hosting now builds immutable
+  artifacts in an unprivileged job, deploys with a hosting-only WIF service
+  account, verifies SHA-256 manifests and artifact file types, and uses generated
+  no-predeploy Firebase configs. Functions and Firestore deploys now prepare the
+  pinned Firebase CLI before auth, use direct binary deploys with generated
+  no-predeploy configs, and the PR security gate self-tests the fail-closed
+  boundary against raw `firebase.json`, post-auth npm/build, legacy secrets,
+  shared hosting SA, and special-file artifact regressions.
+
 ## [1.0.5] - 2026-06-19
 
 ### Release
