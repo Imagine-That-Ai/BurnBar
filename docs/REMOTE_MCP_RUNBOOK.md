@@ -21,11 +21,14 @@ smoke from the repository-root context, then stages a bounded deploy artifact
 before any production credentials are available. The credentialed deploy job
 does not check out repository code: it downloads the verified artifact,
 authenticates to Google Cloud with OIDC workload identity federation, verifies
-the deploy service account has the required Cloud Run/Cloud Build IAM and no
-broad Secret Manager admin role, captures the currently serving revision,
+the deploy service account has the required Cloud Run/Cloud Build IAM, read-only
+Secret Manager metadata/payload access, and no Secret Manager write-capable
+role, captures the currently serving revision,
 deploys `openburnbar-hosted-mcp`, reads the service back, and auto-rolls back to
 the previous ready revision if deploy or readback fails. It also preserves the
-live `OPENBURNBAR_STORAGE_BUCKET` instead of hard-coding it.
+live `OPENBURNBAR_STORAGE_BUCKET` instead of hard-coding it. CI deploys bind
+existing signer secrets only; signer rotations remain an out-of-band operator
+step.
 
 Use this local path only for operator break-glass deploys or manual rehearsal:
 

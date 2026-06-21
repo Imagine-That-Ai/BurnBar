@@ -246,8 +246,9 @@ jobs:
               "roles/secretmanager.secretVersionAdder",
               "roles/secretmanager.secretVersionManager",
           }
-          secret_metadata_roles = {
+          required_secret_roles = {
               "roles/secretmanager.viewer",
+              "roles/secretmanager.secretAccessor",
           }
           member = f"serviceAccount:{service_account}"
           with open(path, encoding="utf-8") as handle:
@@ -263,10 +264,11 @@ jobs:
               sys.exit(1)
           present_forbidden = sorted(forbidden & roles)
           if present_forbidden:
-              print(f"::error::Deploy service account {service_account} must not hold broad Secret Manager admin roles: {', '.join(present_forbidden)}")
+              print(f"::error::Deploy service account {service_account} must not hold Secret Manager write-capable roles: {', '.join(present_forbidden)}")
               sys.exit(1)
-          if not (roles & secret_metadata_roles):
-              print(f"::error::Deploy service account {service_account} must have Secret Manager metadata visibility via roles/secretmanager.viewer, not accessor-only or admin.")
+          missing_secret_roles = sorted(required_secret_roles - roles)
+          if missing_secret_roles:
+              print(f"::error::Deploy service account {service_account} must have read-only Secret Manager metadata and payload access: {', '.join(missing_secret_roles)}")
               sys.exit(1)
           print(f"deployer IAM ok: {service_account}")
           PY
@@ -348,6 +350,17 @@ jobs:
           IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:${OPENBURNBAR_SOURCE_COMMIT:0:12}"
           ENV_VARS="MCP_RESOURCE=${MCP_RESOURCE},MCP_AUTH_ISSUER=${MCP_AUTH_ISSUER},OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT},OPENBURNBAR_CORRESPONDING_SOURCE_URL=${OPENBURNBAR_CORRESPONDING_SOURCE_URL}"
           SECRET_BINDINGS=()
+
+          for forbidden_secret_env in \
+            REMOTE_MCP_TOKEN_HMAC_SECRET \
+            REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 \
+            MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64
+          do
+            if [[ -n "${!forbidden_secret_env:-}" ]]; then
+              echo "::error::Production Cloud Run deploy must not receive signer secret values. Rotate signer secrets out-of-band, then deploy with read-only Secret Manager bindings."
+              exit 1
+            fi
+          done
 
           if [[ -n "${OPENBURNBAR_STORAGE_BUCKET:-}" ]]; then
             ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"

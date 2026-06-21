@@ -181,12 +181,22 @@ expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-accessor-only"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.secretAccessor", 1)'
-expect_fail "cloud run accessor-only secret metadata fails" run_gate "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.metadataReader_removed", 1)'
+expect_fail "cloud run secret metadata role missing fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-signer-secret-env"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n", "          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n          REMOTE_MCP_TOKEN_HMAC_SECRET: ${{ secrets.REMOTE_MCP_TOKEN_HMAC_SECRET }}\n", 1)'
+expect_fail "cloud run signer secret env injection fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-secret-write-command"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          build_output=\"$(gcloud builds submit", "          gcloud secrets versions add REMOTE_MCP_TOKEN_HMAC_SECRET --data-file=- --project \"$GOOGLE_CLOUD_PROJECT\"\n          build_output=\"$(gcloud builds submit", 1)'
+expect_fail "cloud run secret write command fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-secret-write-role"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("              \"roles/secretmanager.secretVersionAdder\",\n", "", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.secretVersionAdder", "roles/secretmanager.versionWriter_removed", 1)'
 expect_fail "cloud run missing secret write-role denylist fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-unreachable-failure-issue"

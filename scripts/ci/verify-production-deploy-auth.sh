@@ -337,6 +337,15 @@ def validate_cloud_run(text: str) -> None:
         fail(f"{path} deploy-hosted-mcp must not use local actions")
     if "$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh" in deploy_job:
         fail(f"{path} deploy-hosted-mcp must not execute a deploy driver from the downloaded artifact")
+    if "gcloud secrets create" in deploy_job or "gcloud secrets versions add" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not write Secret Manager values after auth")
+    for marker in (
+        "REMOTE_MCP_TOKEN_HMAC_SECRET: ${{ secrets.",
+        "REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64: ${{ secrets.",
+        "MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: ${{ secrets.",
+    ):
+        if marker in deploy_job:
+            fail(f"{path} deploy-hosted-mcp must not inject signer secret values via {marker.split(':', 1)[0]}")
     for marker in (
         "actions/download-artifact@",
         "sha256sum -c SHA256SUMS",
@@ -351,8 +360,12 @@ def validate_cloud_run(text: str) -> None:
         "roles/secretmanager.admin",
         "roles/secretmanager.secretVersionAdder",
         "roles/secretmanager.secretVersionManager",
-        'secret_metadata_roles = {\n              "roles/secretmanager.viewer",\n          }',
-        "must have Secret Manager metadata visibility via roles/secretmanager.viewer",
+        "required_secret_roles",
+        "roles/secretmanager.viewer",
+        "roles/secretmanager.secretAccessor",
+        "for forbidden_secret_env in",
+        "Production Cloud Run deploy must not receive signer secret values",
+        "must have read-only Secret Manager metadata and payload access",
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-hosted-mcp is missing deploy boundary marker {marker!r}")
