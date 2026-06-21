@@ -996,8 +996,16 @@ function valueReferencesNeedsOutputCollection(value, jobNameValue) {
 
 function valueReferencesNeedsJobObject(value, jobNameValue) {
   const normalized = normalizeYamlScalar(value);
+  if (
+    new RegExp(
+      `\\btoJSON\\s*\\(\\s*${contextPropertyAccessPattern("needs", jobNameValue)}\\s*\\)`,
+      "iu",
+    ).test(normalized)
+  ) {
+    return true;
+  }
   return new RegExp(
-    `\\btoJSON\\s*\\(\\s*${contextPropertyAccessPattern("needs", jobNameValue)}\\s*\\)`,
+    `${contextPropertyAccessPattern("needs", jobNameValue)}\\b(?!\\s*(?:\\.|\\[))`,
     "iu",
   ).test(normalized);
 }
