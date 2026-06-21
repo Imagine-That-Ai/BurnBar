@@ -26,8 +26,7 @@ const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows");
 
 const failures = [];
 const fail = (file, message) => failures.push(`${file}: ${message}`);
-const FACTORY_KEY_ENV =
-  /^\s*FACTORY_API_KEY:\s*(['"]?)\$\{\{\s*secrets\.FACTORY_API_KEY\s*\}\}\1\s*$/mu;
+const FACTORY_KEY_VALUE = "${{ secrets.FACTORY_API_KEY }}";
 
 function workflowFiles() {
   if (!existsSync(WORKFLOW_DIR)) {
@@ -323,7 +322,8 @@ function directSectionLines(block, sectionName) {
 function sectionHasEntry(block, sectionName, key, expectedValue) {
   for (const section of directSectionLines(block, sectionName)) {
     let entryIndent = null;
-    for (const line of section.lines) {
+    for (let index = 0; index < section.lines.length; index += 1) {
+      const line = section.lines[index];
       if (isBlank(line)) continue;
       const lineIndent = indentOf(line);
       if (lineIndent <= section.indent) break;
@@ -331,7 +331,9 @@ function sectionHasEntry(block, sectionName, key, expectedValue) {
       if (lineIndent !== entryIndent) continue;
       const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
       if (entry?.[1] !== key) continue;
-      if (normalizeYamlScalar(entry[2]) === expectedValue) return true;
+      if (directEntryScalarValue(section.lines, index, lineIndent, entry[2]) === expectedValue) {
+        return true;
+      }
     }
   }
   return false;
@@ -536,7 +538,10 @@ for (const file of workflowFiles()) {
   }
 
   if (usesDroidAction) {
-    if (FACTORY_KEY_ENV.test(source)) {
+    if (
+      topLevelSectionHasEntry(source, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE) ||
+      jobs.some((job) => sectionHasEntry(job, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE))
+    ) {
       fail(file, "Factory API key must not be exposed in Droid-action workflow or job env");
     }
 
@@ -581,7 +586,11 @@ for (const file of workflowFiles()) {
 
   if (usesDroidCli) {
     if (
-      !steps.some((step) => stepRunsDroidExec(step) && FACTORY_KEY_ENV.test(step.source))
+      !steps.some(
+        (step) =>
+          stepRunsDroidExec(step) &&
+          sectionHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE),
+      )
     ) {
       fail(file, "Droid CLI workflow must pass Factory key only to the Droid execution step");
     }
@@ -590,13 +599,12 @@ for (const file of workflowFiles()) {
     }
   }
 
-  source.split("\n").forEach((line, index) => {
-    if (!FACTORY_KEY_ENV.test(line)) return;
-    const owningStep = blockContainingLine(steps, index);
-    if (!owningStep || !stepRunsDroidExec(owningStep)) {
+  for (const step of steps) {
+    if (!sectionHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE)) continue;
+    if (!stepRunsDroidExec(step)) {
       fail(file, "Factory API key secret env must appear only on Droid CLI execution steps");
     }
-  });
+  }
 
   for (const step of steps) {
     if (
