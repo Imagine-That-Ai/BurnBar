@@ -885,6 +885,47 @@ test("reconcileEntitlement rejects no-token callable restore claimed by another 
   assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
 });
 
+test("reconcileEntitlement rejects no-token callable restore for multi-owner transaction", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  db.setCollectionGroupResult("entitlements", {
+    size: 2,
+    docs: [
+      { ref: { path: "users/uid-owner-a/entitlements/hosted_quota_sync" } },
+      { ref: { path: "users/uid-owner-b/entitlements/hosted_quota_sync" } },
+    ],
+  });
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx-family-shared",
+    originalTransactionId: "otx-family-shared",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-attacker",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /binding_mismatch/,
+  );
+
+  assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
+});
+
 test("reconcileEntitlement allows legacy no-token callable restore only for an existing matching entitlement", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });

@@ -466,6 +466,12 @@ async function findUidByOriginalTransaction(db: Firestore, originalTransactionId
     .where("originalTransactionID", "==", originalTransactionId)
     .limit(2)
     .get();
+  if (cg.size > 1) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is owned by multiple users.",
+    );
+  }
   if (cg.size === 1) {
     const path = cg.docs[0].ref.path;
     const m = path.match(/^users\/([^/]+)\//);
