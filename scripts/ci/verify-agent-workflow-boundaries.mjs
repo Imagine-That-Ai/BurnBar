@@ -31,7 +31,9 @@ const FACTORY_KEY_VALUE = "${{ secrets.FACTORY_API_KEY }}";
 
 function workflowFiles() {
   if (!existsSync(WORKFLOW_DIR)) {
-    console.error(`MISCONFIGURED: workflow directory not found: ${WORKFLOW_DIR}`);
+    console.error(
+      `MISCONFIGURED: workflow directory not found: ${WORKFLOW_DIR}`,
+    );
     process.exit(2);
   }
   return readdirSync(WORKFLOW_DIR)
@@ -53,7 +55,12 @@ function stripYamlLineComment(line) {
       doubleQuoted = !doubleQuoted;
       continue;
     }
-    if (char === "#" && !singleQuoted && !doubleQuoted && (index === 0 || /\s/u.test(previous))) {
+    if (
+      char === "#" &&
+      !singleQuoted &&
+      !doubleQuoted &&
+      (index === 0 || /\s/u.test(previous))
+    ) {
       return line.slice(0, index).trimEnd();
     }
   }
@@ -110,7 +117,11 @@ function hasDroidCliSurface(source) {
 
     const runIndent = runMatch[1].length;
     const blockLines = [];
-    for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+    for (
+      let blockIndex = index + 1;
+      blockIndex < lines.length;
+      blockIndex += 1
+    ) {
       const blockLine = lines[blockIndex];
       if (!isBlank(blockLine) && indentOf(blockLine) <= runIndent) break;
       blockLines.push(blockLine.trim());
@@ -152,7 +163,10 @@ function jobBlocks(source) {
         end = cursor;
         break;
       }
-      if (cursorIndent === jobIndent && /^(\s*)[A-Za-z0-9_-]+:\s*$/u.test(cursorLine)) {
+      if (
+        cursorIndent === jobIndent &&
+        /^(\s*)[A-Za-z0-9_-]+:\s*$/u.test(cursorLine)
+      ) {
         end = cursor;
         break;
       }
@@ -186,7 +200,11 @@ function stepBlocks(source) {
       if (stepMatch[1].length !== stepIndent) continue;
 
       let end = lines.length;
-      for (let endCursor = cursor + 1; endCursor < lines.length; endCursor += 1) {
+      for (
+        let endCursor = cursor + 1;
+        endCursor < lines.length;
+        endCursor += 1
+      ) {
         const endLine = lines[endCursor];
         if (isBlank(endLine)) continue;
         const endIndent = indentOf(endLine);
@@ -200,7 +218,11 @@ function stepBlocks(source) {
           break;
         }
       }
-      blocks.push({ start: cursor, end, source: blockSource(lines, cursor, end) });
+      blocks.push({
+        start: cursor,
+        end,
+        source: blockSource(lines, cursor, end),
+      });
       cursor = end - 1;
     }
   }
@@ -208,7 +230,9 @@ function stepBlocks(source) {
 }
 
 function blockContainingLine(blocks, lineIndex) {
-  return blocks.find((block) => block.start <= lineIndex && lineIndex < block.end);
+  return blocks.find(
+    (block) => block.start <= lineIndex && lineIndex < block.end,
+  );
 }
 
 function uniqueBlocks(blocks) {
@@ -239,7 +263,8 @@ function firstChildIndent(lines, startIndex, parentIndent) {
 }
 
 function blockDirectIndent(lines, parentIndent) {
-  if (/^\s*-\s+[A-Za-z0-9_-]+:\s*/u.test(lines[0] ?? "")) return parentIndent + 2;
+  if (/^\s*-\s+[A-Za-z0-9_-]+:\s*/u.test(lines[0] ?? ""))
+    return parentIndent + 2;
   return firstChildIndent(lines, 1, parentIndent);
 }
 
@@ -260,7 +285,8 @@ function topLevelSectionHasEntry(source, sectionName, key, expectedValue) {
     if (lineIndent !== entryIndent) continue;
 
     const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-    if (entry?.[1] === key && normalizeYamlScalar(entry[2]) === expectedValue) return true;
+    if (entry?.[1] === key && normalizeYamlScalar(entry[2]) === expectedValue)
+      return true;
   }
 
   return false;
@@ -270,7 +296,8 @@ function directEntryValue(block, key) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
   const firstLine = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-  if (firstLine?.[1] === key) return directEntryScalarValue(lines, 0, blockIndent + 2, firstLine[2]);
+  if (firstLine?.[1] === key)
+    return directEntryScalarValue(lines, 0, blockIndent + 2, firstLine[2]);
 
   const directIndent = blockDirectIndent(lines, blockIndent);
   if (directIndent === null) return null;
@@ -282,7 +309,8 @@ function directEntryValue(block, key) {
     if (lineIndent !== directIndent) continue;
 
     const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-    if (entry?.[1] === key) return directEntryScalarValue(lines, index, lineIndent, entry[2]);
+    if (entry?.[1] === key)
+      return directEntryScalarValue(lines, index, lineIndent, entry[2]);
   }
   return null;
 }
@@ -308,7 +336,8 @@ function splitFlowMappingEntries(value) {
       continue;
     }
     if (char === "{" || char === "[" || char === "(") depth += 1;
-    if (char === "}" || char === "]" || char === ")") depth = Math.max(0, depth - 1);
+    if (char === "}" || char === "]" || char === ")")
+      depth = Math.max(0, depth - 1);
     if (char === "," && depth === 0) {
       entries.push(body.slice(start, index).trim());
       start = index + 1;
@@ -348,6 +377,13 @@ function directSectionLines(block, sectionName) {
   const sectionIndent = blockDirectIndent(lines, blockIndent);
   if (sectionIndent === null) return [];
   const sections = [];
+  const firstLineSection = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*$/u);
+  if (firstLineSection?.[1] === sectionName) {
+    sections.push({
+      indent: sectionIndent,
+      lines: lines.slice(1),
+    });
+  }
 
   for (let index = 1; index < lines.length; index += 1) {
     const line = lines[index];
@@ -368,7 +404,10 @@ function directSectionLines(block, sectionName) {
         break;
       }
     }
-    sections.push({ indent: sectionIndent, lines: lines.slice(index + 1, end) });
+    sections.push({
+      indent: sectionIndent,
+      lines: lines.slice(index + 1, end),
+    });
   }
   return sections;
 }
@@ -385,7 +424,10 @@ function sectionHasEntry(block, sectionName, key, expectedValue) {
       if (lineIndent !== entryIndent) continue;
       const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
       if (entry?.[1] !== key) continue;
-      if (directEntryScalarValue(section.lines, index, lineIndent, entry[2]) === expectedValue) {
+      if (
+        directEntryScalarValue(section.lines, index, lineIndent, entry[2]) ===
+        expectedValue
+      ) {
         return true;
       }
     }
@@ -396,14 +438,101 @@ function sectionHasEntry(block, sectionName, key, expectedValue) {
 function mappingHasEntry(block, sectionName, key, expectedValue) {
   return (
     sectionHasEntry(block, sectionName, key, expectedValue) ||
-    flowMappingHasEntry(directEntryValue(block, sectionName), key, expectedValue)
+    flowMappingHasEntry(
+      directEntryValue(block, sectionName),
+      key,
+      expectedValue,
+    )
   );
+}
+
+function mappingEntries(block, sectionName) {
+  const entries = [];
+  for (const section of directSectionLines(block, sectionName)) {
+    let entryIndent = null;
+    for (let index = 0; index < section.lines.length; index += 1) {
+      const line = section.lines[index];
+      if (isBlank(line)) continue;
+      const lineIndent = indentOf(line);
+      if (lineIndent <= section.indent) break;
+      if (entryIndent === null) entryIndent = lineIndent;
+      if (lineIndent !== entryIndent) continue;
+
+      const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+      if (!entry) continue;
+      entries.push({
+        key: entry[1],
+        value: directEntryScalarValue(
+          section.lines,
+          index,
+          lineIndent,
+          entry[2],
+        ),
+      });
+    }
+  }
+
+  for (const entry of splitFlowMappingEntries(
+    directEntryValue(block, sectionName) ?? "",
+  )) {
+    const match = entry.match(/^([^:]+):\s*(.*?)\s*$/u);
+    if (!match) continue;
+    entries.push({
+      key: normalizeYamlScalar(match[1]),
+      value: normalizeYamlScalar(match[2]),
+    });
+  }
+
+  return entries;
+}
+
+function topLevelMappingEntries(source, sectionName) {
+  const entries = [];
+  const lines = source.split("\n");
+  const sectionIndex = lines.findIndex((line) =>
+    line.match(new RegExp(`^${sectionName}:\\s*$`, "u")),
+  );
+  if (sectionIndex !== -1) {
+    let entryIndent = null;
+    for (let index = sectionIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (isBlank(line)) continue;
+      const lineIndent = indentOf(line);
+      if (lineIndent === 0) break;
+      if (entryIndent === null) entryIndent = lineIndent;
+      if (lineIndent !== entryIndent) continue;
+
+      const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+      if (!entry) continue;
+      entries.push({
+        key: entry[1],
+        value: directEntryScalarValue(lines, index, lineIndent, entry[2]),
+      });
+    }
+  }
+
+  for (const entry of splitFlowMappingEntries(
+    topLevelEntryValue(source, sectionName) ?? "",
+  )) {
+    const match = entry.match(/^([^:]+):\s*(.*?)\s*$/u);
+    if (!match) continue;
+    entries.push({
+      key: normalizeYamlScalar(match[1]),
+      value: normalizeYamlScalar(match[2]),
+    });
+  }
+
+  return entries;
 }
 
 function topLevelMappingHasEntry(source, sectionName, key, expectedValue) {
   return (
     topLevelSectionHasEntry(source, sectionName, key, expectedValue) ||
-    flowMappingHasEntry(topLevelEntryValue(source, sectionName), key, expectedValue)
+    flowMappingHasEntry(
+      topLevelEntryValue(source, sectionName),
+      key,
+      expectedValue,
+    )
   );
 }
 
@@ -436,7 +565,10 @@ function splitTopLevelBooleanOperator(condition, operator) {
       depth = Math.max(0, depth - 1);
       continue;
     }
-    if (depth === 0 && condition.slice(index, index + operator.length) === operator) {
+    if (
+      depth === 0 &&
+      condition.slice(index, index + operator.length) === operator
+    ) {
       parts.push(condition.slice(start, index).trim());
       start = index + operator.length;
       index += operator.length - 1;
@@ -448,12 +580,17 @@ function splitTopLevelBooleanOperator(condition, operator) {
 }
 
 function exactConditionTerms(condition, operator) {
-  return splitTopLevelBooleanOperator(stripBalancedOuterParens(condition), operator).map((part) =>
-    stripBalancedOuterParens(part).trim(),
-  );
+  return splitTopLevelBooleanOperator(
+    stripBalancedOuterParens(condition),
+    operator,
+  ).map((part) => stripBalancedOuterParens(part).trim());
 }
 
-function conditionRequiresEventConjunct(condition, eventConjunct, requiredConjunct) {
+function conditionRequiresEventConjunct(
+  condition,
+  eventConjunct,
+  requiredConjunct,
+) {
   const normalized = normalizedCondition(condition);
   let sawEventBranch = false;
   for (const branch of exactConditionTerms(normalized, "||")) {
@@ -465,18 +602,32 @@ function conditionRequiresEventConjunct(condition, eventConjunct, requiredConjun
   return sawEventBranch;
 }
 
-function conditionRequiresGlobalConjunctWithoutDisjunction(condition, requiredConjunct) {
+function conditionRequiresGlobalConjunctWithoutDisjunction(
+  condition,
+  requiredConjunct,
+) {
   const normalized = normalizedCondition(condition);
   if (splitTopLevelBooleanOperator(normalized, "||").length > 1) return false;
   return new Set(exactConditionTerms(normalized, "&&")).has(requiredConjunct);
 }
 
-function conditionRequiresTrustedTrigger(condition, check, singleEventWorkflow) {
+function conditionRequiresTrustedTrigger(
+  condition,
+  check,
+  singleEventWorkflow,
+) {
   if (condition.includes(check.eventConjunct)) {
-    return conditionRequiresEventConjunct(condition, check.eventConjunct, check.requiredConjunct);
+    return conditionRequiresEventConjunct(
+      condition,
+      check.eventConjunct,
+      check.requiredConjunct,
+    );
   }
   if (!singleEventWorkflow) return false;
-  return conditionRequiresGlobalConjunctWithoutDisjunction(condition, check.requiredConjunct);
+  return conditionRequiresGlobalConjunctWithoutDisjunction(
+    condition,
+    check.requiredConjunct,
+  );
 }
 
 function stripBalancedOuterParens(expression) {
@@ -504,15 +655,17 @@ function stripBalancedOuterParens(expression) {
 }
 
 function conditionHasDisallowedAlwaysTrue(condition) {
-  return splitTopLevelBooleanOperator(normalizedCondition(condition), "||")
-    .some((part) => {
-      const literal = stripBalancedOuterParens(part).replace(/\s+/gu, "");
-      const match = literal.match(/^(!*)(true|false)$/u);
-      if (!match) return false;
-      const value = match[2] === "true";
-      const negated = match[1].length % 2 === 1;
-      return negated ? !value : value;
-    });
+  return splitTopLevelBooleanOperator(
+    normalizedCondition(condition),
+    "||",
+  ).some((part) => {
+    const literal = stripBalancedOuterParens(part).replace(/\s+/gu, "");
+    const match = literal.match(/^(!*)(true|false)$/u);
+    if (!match) return false;
+    const value = match[2] === "true";
+    const negated = match[1].length % 2 === 1;
+    return negated ? !value : value;
+  });
 }
 
 function conditionHasRequiredConjunctsOnly(condition, requiredConjuncts) {
@@ -583,7 +736,9 @@ function scopedWorkflowEvents(source) {
     if (event) events.add(`${event}:`);
   }
 
-  return TRUSTED_AGENT_TRIGGER_CONJUNCTS.filter((check) => events.has(check.workflowEvent));
+  return TRUSTED_AGENT_TRIGGER_CONJUNCTS.filter((check) =>
+    events.has(check.workflowEvent),
+  );
 }
 
 function stepUsesAction(step, action) {
@@ -594,23 +749,91 @@ function stepUsesDroidAction(step) {
   return stepUsesAction(step, "Factory-AI/droid-action@");
 }
 
+function valueReferencesSecretOrToken(value) {
+  return /\$\{\{[\s\S]*?(?:\bsecrets\s*(?:\.|\[)|\bgithub\s*(?:\.\s*token|\[\s*['"]token['"]\s*\])|\benv\s*(?:\.|\[))[\s\S]*?\}\}/u.test(
+    normalizeYamlScalar(value),
+  );
+}
+
+function isAllowedDroidActionSecretInput(key, value) {
+  return (
+    (key === "factory_api_key" && value === "${{ secrets.FACTORY_API_KEY }}") ||
+    (key === "github_token" && value === "${{ github.token }}")
+  );
+}
+
+function isAllowedDroidCliSecretEnv(key, value) {
+  return (
+    key === "FACTORY_API_KEY" && value === "${{ secrets.FACTORY_API_KEY }}"
+  );
+}
+
+function isAllowedInheritedAgentEnv(key, value) {
+  return (
+    key === "FACTORY_API_KEY_AVAILABLE" &&
+    value === "${{ secrets.FACTORY_API_KEY != '' }}"
+  );
+}
+
+function sensitiveEnvName(name) {
+  return /(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH|SESSION|DSN)/iu.test(
+    name,
+  );
+}
+
+function shellReferencesEnvName(source, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?:\\$\\{${escaped}\\}|\\$${escaped}\\b)`, "u").test(
+    source,
+  );
+}
+
+function stepWritesSecretOrTokenToGithubEnv(step) {
+  const run = stepRunValue(step);
+  if (!/\bGITHUB_ENV\b/u.test(run)) return false;
+  if (valueReferencesSecretOrToken(run)) return true;
+  for (const entry of mappingEntries(step, "env")) {
+    if (
+      valueReferencesSecretOrToken(entry.value) &&
+      shellReferencesEnvName(run, entry.key)
+    ) {
+      return true;
+    }
+  }
+  return /(?:^|[^A-Za-z0-9_])(?:[A-Za-z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH|SESSION|DSN)[A-Za-z0-9_]*)\s*=/iu.test(
+    run,
+  );
+}
+
+function precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step) {
+  return jobSteps(job, steps)
+    .filter((candidate) => candidate.start < step.start)
+    .some(stepWritesSecretOrTokenToGithubEnv);
+}
+
 function topLevelEntryValue(source, key) {
   const lines = source.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (isBlank(line) || indentOf(line) !== 0) continue;
     const entry = line.match(/^([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-    if (entry?.[1] === key) return directEntryScalarValue(lines, index, 0, entry[2]);
+    if (entry?.[1] === key)
+      return directEntryScalarValue(lines, index, 0, entry[2]);
   }
   return null;
 }
 
 function jobSteps(job, steps) {
-  return steps.filter((step) => job.start <= step.start && step.start < job.end);
+  return steps.filter(
+    (step) => job.start <= step.start && step.start < job.end,
+  );
 }
 
 function stepWithId(job, steps, id) {
-  return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
+  return (
+    jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ??
+    null
+  );
 }
 
 function readShellHeredocDelimiter(line, start) {
@@ -664,7 +887,8 @@ function shellLineHeredocDelimiters(line) {
       continue;
     }
     if (char === "#") break;
-    if (char !== "<" || line[index + 1] !== "<" || line[index + 2] === "<") continue;
+    if (char !== "<" || line[index + 1] !== "<" || line[index + 2] === "<")
+      continue;
 
     let cursor = index + 2;
     const stripTabs = line[cursor] === "-";
@@ -781,7 +1005,8 @@ function positionIsInsideShellStringOrComment(source, position) {
 
 function shellBlockHasTopLevelNonzeroExit(body) {
   const executableBody = maskShellStringsAndComments(body);
-  const tokenPattern = /\bif\b|\belif\b|\belse\b|\bfi\b|\bexit\s+[1-9][0-9]*\b|\(|\)/gu;
+  const tokenPattern =
+    /\bif\b|\belif\b|\belse\b|\bfi\b|\bexit\s+[1-9][0-9]*\b|\(|\)/gu;
   let depth = 0;
   let parenDepth = 0;
   let match = tokenPattern.exec(executableBody);
@@ -830,7 +1055,12 @@ function hasDroidReviewOidcException(step) {
     mappingHasEntry(step, "with", "automatic_review", "true") &&
     mappingHasEntry(step, "with", "automatic_security_review", "true") &&
     mappingHasEntry(step, "with", "github_token", "${{ github.token }}") &&
-    mappingHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")
+    mappingHasEntry(
+      step,
+      "with",
+      "factory_api_key",
+      "${{ secrets.FACTORY_API_KEY }}",
+    )
   );
 }
 
@@ -843,12 +1073,18 @@ function issueCommentScopeStepVerifiesSameRepository(scopeStep) {
   const issueCommentCheckIndex = lines.indexOf(
     'if [[ "${GITHUB_EVENT_NAME}" == "issue_comment" && "${ISSUE_IS_PR}" == "true" ]]; then',
   );
-  const headRepoIndex = lines.indexOf('head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"');
-  const repositoryCheckIndex = lines.indexOf('if [[ "${head_repo}" != "${REPOSITORY}" ]]; then');
+  const headRepoIndex = lines.indexOf(
+    'head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"',
+  );
+  const repositoryCheckIndex = lines.indexOf(
+    'if [[ "${head_repo}" != "${REPOSITORY}" ]]; then',
+  );
   const rejectIndex = lines.indexOf("allowed=false");
   const rejectFiIndex = lines.indexOf("fi", rejectIndex + 1);
   const issueCommentFiIndex = lines.indexOf("fi", rejectFiIndex + 1);
-  const outputIndex = lines.indexOf('echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"');
+  const outputIndex = lines.indexOf(
+    'echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+  );
 
   if (
     allowedInitIndex === -1 ||
@@ -887,34 +1123,72 @@ for (const file of workflowFiles()) {
       .map((step) => blockContainingLine(jobs, step.start))
       .filter(Boolean),
   );
-  const agentExecutionJobs = uniqueBlocks([...droidActionJobs, ...droidCliJobs]);
+  const agentExecutionJobs = uniqueBlocks([
+    ...droidActionJobs,
+    ...droidCliJobs,
+  ]);
   const workflowEvents = scopedWorkflowEvents(source);
-  const singleScopedWorkflowEvent = workflowEvents.length === 1 ? workflowEvents[0] : null;
+  const singleScopedWorkflowEvent =
+    workflowEvents.length === 1 ? workflowEvents[0] : null;
 
   const grantsContentsWrite =
     topLevelMappingHasEntry(source, "permissions", "contents", "write") ||
-    jobs.some((job) => mappingHasEntry(job, "permissions", "contents", "write"));
-  if (grantsContentsWrite || topLevelEntryValue(source, "permissions") === "write-all" ||
+    jobs.some((job) =>
+      mappingHasEntry(job, "permissions", "contents", "write"),
+    );
+  if (
+    grantsContentsWrite ||
+    topLevelEntryValue(source, "permissions") === "write-all" ||
     jobs.some((job) => directEntryValue(job, "permissions") === "write-all")
   ) {
     fail(file, "interactive agent workflow must not request contents:write");
   }
   if (topLevelMappingHasEntry(source, "permissions", "id-token", "write")) {
-    fail(file, "interactive agent workflow must not grant id-token:write at workflow scope");
+    fail(
+      file,
+      "interactive agent workflow must not grant id-token:write at workflow scope",
+    );
   }
   for (const job of jobs) {
     if (!mappingHasEntry(job, "permissions", "id-token", "write")) continue;
     if (!jobSteps(job, droidActionSteps).some(hasDroidReviewOidcException)) {
-      fail(file, "interactive agent workflow must not request id-token:write outside automatic Droid review validation");
+      fail(
+        file,
+        "interactive agent workflow must not request id-token:write outside automatic Droid review validation",
+      );
+    }
+  }
+
+  for (const job of agentExecutionJobs) {
+    for (const entry of [
+      ...topLevelMappingEntries(source, "env"),
+      ...mappingEntries(job, "env"),
+    ]) {
+      if (!valueReferencesSecretOrToken(entry.value)) continue;
+      if (isAllowedInheritedAgentEnv(entry.key, entry.value)) continue;
+      fail(
+        file,
+        "agent execution job must not inherit extra secrets or tokens",
+      );
     }
   }
 
   if (usesDroidAction) {
     if (
-      topLevelMappingHasEntry(source, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE) ||
-      jobs.some((job) => mappingHasEntry(job, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE))
+      topLevelMappingHasEntry(
+        source,
+        "env",
+        "FACTORY_API_KEY",
+        FACTORY_KEY_VALUE,
+      ) ||
+      jobs.some((job) =>
+        mappingHasEntry(job, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE),
+      )
     ) {
-      fail(file, "Factory API key must not be exposed in Droid-action workflow or job env");
+      fail(
+        file,
+        "Factory API key must not be exposed in Droid-action workflow or job env",
+      );
     }
 
     for (const job of droidActionJobs) {
@@ -932,7 +1206,8 @@ for (const file of workflowFiles()) {
         !steps.some(
           (step) =>
             blockContainingLine(jobs, step.start) === job &&
-            directEntryValue(step, "if") === "env.FACTORY_API_KEY_AVAILABLE == 'false'",
+            directEntryValue(step, "if") ===
+              "env.FACTORY_API_KEY_AVAILABLE == 'false'",
         )
       ) {
         fail(file, "missing fail-closed no-key skip step");
@@ -940,18 +1215,70 @@ for (const file of workflowFiles()) {
     }
 
     for (const step of droidActionSteps) {
-      const requiredActionConjuncts = ["env.FACTORY_API_KEY_AVAILABLE == 'true'"];
+      const requiredActionConjuncts = [
+        "env.FACTORY_API_KEY_AVAILABLE == 'true'",
+      ];
       if (/issue_comment:/u.test(source)) {
-        requiredActionConjuncts.push("steps.pr-comment-scope.outputs.allowed == 'true'");
+        requiredActionConjuncts.push(
+          "steps.pr-comment-scope.outputs.allowed == 'true'",
+        );
       }
-      if (!conditionHasRequiredConjunctsOnly(directEntryValue(step, "if") ?? "", requiredActionConjuncts)) {
-        fail(file, "agent action must be gated by boolean Factory key availability");
+      if (
+        !conditionHasRequiredConjunctsOnly(
+          directEntryValue(step, "if") ?? "",
+          requiredActionConjuncts,
+        )
+      ) {
+        fail(
+          file,
+          "agent action must be gated by boolean Factory key availability",
+        );
       }
-      if (!mappingHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")) {
-        fail(file, "Factory API key must be passed only as the Droid action input");
+      if (
+        !mappingHasEntry(
+          step,
+          "with",
+          "factory_api_key",
+          "${{ secrets.FACTORY_API_KEY }}",
+        )
+      ) {
+        fail(
+          file,
+          "Factory API key must be passed only as the Droid action input",
+        );
       }
-      if (!mappingHasEntry(step, "with", "github_token", "${{ github.token }}")) {
-        fail(file, "Droid action must use the bounded workflow token instead of OIDC token minting");
+      if (
+        !mappingHasEntry(step, "with", "github_token", "${{ github.token }}")
+      ) {
+        fail(
+          file,
+          "Droid action must use the bounded workflow token instead of OIDC token minting",
+        );
+      }
+      for (const entry of mappingEntries(step, "with")) {
+        if (!valueReferencesSecretOrToken(entry.value)) continue;
+        if (isAllowedDroidActionSecretInput(entry.key, entry.value)) continue;
+        fail(
+          file,
+          "agent action step must not receive extra secrets or tokens",
+        );
+      }
+      for (const entry of mappingEntries(step, "env")) {
+        if (!valueReferencesSecretOrToken(entry.value)) continue;
+        fail(
+          file,
+          "agent action step must not expose secrets or tokens through env",
+        );
+      }
+      const job = blockContainingLine(jobs, step.start);
+      if (
+        job &&
+        precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)
+      ) {
+        fail(
+          file,
+          "agent action job must not export extra secrets or tokens through GITHUB_ENV before execution",
+        );
       }
     }
   }
@@ -964,17 +1291,70 @@ for (const file of workflowFiles()) {
           mappingHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE),
       )
     ) {
-      fail(file, "Droid CLI workflow must pass Factory key only to the Droid execution step");
+      fail(
+        file,
+        "Droid CLI workflow must pass Factory key only to the Droid execution step",
+      );
     }
-    if (!steps.some((step) => stepRunsDroidExec(step) && droidCliStepFailsClosed(step))) {
-      fail(file, "Droid CLI workflow must fail closed when FACTORY_API_KEY is unavailable");
+    if (
+      !steps.some(
+        (step) => stepRunsDroidExec(step) && droidCliStepFailsClosed(step),
+      )
+    ) {
+      fail(
+        file,
+        "Droid CLI workflow must fail closed when FACTORY_API_KEY is unavailable",
+      );
     }
   }
 
   for (const step of steps) {
-    if (!mappingHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE)) continue;
+    if (!mappingHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE))
+      continue;
     if (!stepRunsDroidExec(step)) {
-      fail(file, "Factory API key secret env must appear only on Droid CLI execution steps");
+      fail(
+        file,
+        "Factory API key secret env must appear only on Droid CLI execution steps",
+      );
+    }
+  }
+
+  for (const step of droidCliSteps) {
+    if (valueReferencesSecretOrToken(stepRunValue(step))) {
+      fail(
+        file,
+        "Droid CLI execution body must not reference extra secrets or tokens",
+      );
+    }
+    for (const entry of mappingEntries(step, "env")) {
+      if (!valueReferencesSecretOrToken(entry.value)) continue;
+      if (isAllowedDroidCliSecretEnv(entry.key, entry.value)) continue;
+      fail(
+        file,
+        "Droid CLI execution step must not receive extra secrets or tokens",
+      );
+    }
+    for (const entry of [
+      ...topLevelMappingEntries(source, "env"),
+      ...mappingEntries(
+        blockContainingLine(jobs, step.start) ?? { source: "" },
+        "env",
+      ),
+    ]) {
+      if (!valueReferencesSecretOrToken(entry.value)) continue;
+      if (!sensitiveEnvName(entry.key)) continue;
+      if (!shellReferencesEnvName(stepRunValue(step), entry.key)) continue;
+      fail(
+        file,
+        "Droid CLI execution body must not pass inherited extra secrets to droid",
+      );
+    }
+    const job = blockContainingLine(jobs, step.start);
+    if (job && precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)) {
+      fail(
+        file,
+        "Droid CLI job must not export extra secrets or tokens through GITHUB_ENV before execution",
+      );
     }
   }
 
@@ -983,7 +1363,10 @@ for (const file of workflowFiles()) {
       stepUsesAction(step, "actions/checkout@") &&
       !mappingHasEntry(step, "with", "persist-credentials", "false")
     ) {
-      fail(file, "each agent workflow checkout must set persist-credentials:false");
+      fail(
+        file,
+        "each agent workflow checkout must set persist-credentials:false",
+      );
     }
   }
 
@@ -995,7 +1378,10 @@ for (const file of workflowFiles()) {
     for (const job of droidActionJobs) {
       const jobIf = directEntryValue(job, "if") ?? "";
       if (conditionHasDisallowedAlwaysTrue(jobIf)) {
-        fail(file, "PR-triggered agent workflow must not include always-true bypasses");
+        fail(
+          file,
+          "PR-triggered agent workflow must not include always-true bypasses",
+        );
       }
       const sameRepositoryConjunct =
         "github.event.pull_request.head.repo.full_name == github.repository";
@@ -1021,10 +1407,20 @@ for (const file of workflowFiles()) {
           "github.event_name == 'pull_request'",
           sameRepositoryConjunct,
         ) ||
-        conditionRequiresGlobalConjunctWithoutDisjunction(jobIf, sameRepositoryConjunct);
+        conditionRequiresGlobalConjunctWithoutDisjunction(
+          jobIf,
+          sameRepositoryConjunct,
+        );
 
-      if (!hasPullRequestReviewCommentGuard || !hasPullRequestReviewGuard || !hasPullRequestGuard) {
-        fail(file, "PR-triggered agent workflow must require same-repository pull requests");
+      if (
+        !hasPullRequestReviewCommentGuard ||
+        !hasPullRequestReviewGuard ||
+        !hasPullRequestGuard
+      ) {
+        fail(
+          file,
+          "PR-triggered agent workflow must require same-repository pull requests",
+        );
       }
     }
   }
@@ -1052,18 +1448,27 @@ for (const file of workflowFiles()) {
         !droidActionSteps.some(
           (step) =>
             blockContainingLine(jobs, step.start) === job &&
-            conditionHasRequiredConjunctsOnly(directEntryValue(step, "if") ?? "", [
-              "env.FACTORY_API_KEY_AVAILABLE == 'true'",
-              "steps.pr-comment-scope.outputs.allowed == 'true'",
-            ]),
+            conditionHasRequiredConjunctsOnly(
+              directEntryValue(step, "if") ?? "",
+              [
+                "env.FACTORY_API_KEY_AVAILABLE == 'true'",
+                "steps.pr-comment-scope.outputs.allowed == 'true'",
+              ],
+            ),
         )
       ) {
-        fail(file, "issue-comment agent workflow must gate Droid execution on resolved PR comment scope");
+        fail(
+          file,
+          "issue-comment agent workflow must gate Droid execution on resolved PR comment scope",
+        );
       }
 
       const scopeStep = stepWithId(job, steps, "pr-comment-scope");
       if (!scopeStep) {
-        fail(file, "issue-comment agent workflow must resolve PR comment scope before Droid execution");
+        fail(
+          file,
+          "issue-comment agent workflow must resolve PR comment scope before Droid execution",
+        );
         continue;
       }
       if (
@@ -1080,10 +1485,16 @@ for (const file of workflowFiles()) {
           "${{ github.event.issue.pull_request.url || '' }}",
         )
       ) {
-        fail(file, "issue-comment agent workflow must look up PR metadata before running on PR comments");
+        fail(
+          file,
+          "issue-comment agent workflow must look up PR metadata before running on PR comments",
+        );
       }
       if (!issueCommentScopeStepVerifiesSameRepository(scopeStep)) {
-        fail(file, "issue-comment agent workflow must verify PR comments come from same-repository pull requests");
+        fail(
+          file,
+          "issue-comment agent workflow must verify PR comments come from same-repository pull requests",
+        );
       }
     }
   }
@@ -1095,4 +1506,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: interactive agent workflows keep secrets and write privileges bounded.");
+console.log(
+  "PASS: interactive agent workflows keep secrets and write privileges bounded.",
+);
