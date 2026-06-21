@@ -1,0 +1,24 @@
+{
+  "schema": "petdef/1",
+  "id": "go-gopher",
+  "name": "go-gopher",
+  "kind": "mascot",
+  "displayName": "Gopher",
+  "description": "A static 3D mascot. Demonstrates the SceneKit backend loading a single-mesh GLB with no animation clips (idle = gentle host-driven bob).",
+  "model3d": {
+    "kind": "static",
+    "glb": "go-gopher",
+    "clips": {}
+  },
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      { "from": "idle", "to": "react", "when": "cursorNear", "weight": 1 },
+      { "from": "react", "to": "idle", "when": "idleElapsed", "weight": 1 }
+    ]
+  },
+  "license": {
+    "ipStatus": "demo",
+    "licenseNote": "Bundled demo asset (Go gopher by Renee French, CC-BY-3.0) for the PetCompanion SceneKit backend."
+  }
+}

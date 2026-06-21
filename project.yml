@@ -65,6 +65,22 @@ targets:
       - path: AgentLens
         excludes:
           - "**/.DS_Store"
+          # Pet asset trees are loaded by directory at runtime
+          # (PetDefinition.loadBundled uses subdirectory: "Pets/<id>";
+          # SceneKitPetRenderer loads subdirectory: "Models"). They must ship as
+          # folder references so the per-pet structure and duplicate filenames
+          # (petdef.json / spritesheet.webp) survive into the bundle instead of
+          # being flattened into Resources/ (which collides). Added explicitly below.
+          - "PetCompanion/Resources/Pets"
+          - "PetCompanion/Resources/Pets/**"
+          - "PetCompanion/Resources/Models"
+          - "PetCompanion/Resources/Models/**"
+      - path: AgentLens/PetCompanion/Resources/Pets
+        type: folder
+        buildPhase: resources
+      - path: AgentLens/PetCompanion/Resources/Models
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar

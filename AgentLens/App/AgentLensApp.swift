@@ -437,6 +437,13 @@ struct OpenBurnBarApp: App {
                         await OpenBurnBarDaemonManager.shared.refreshHealth()
                         await operatingLayer.refreshControllerRuntime()
                     }
+                    // PET COMPANION (PLAN Phase C): additive launch hook. Registers the
+                    // SpriteKit (2D) + SceneKit (3D) backends, hands the bubble the
+                    // SHARED `chatController` as its answering brain (Ground Truth #2 —
+                    // the agent layer is reused, never duplicated), and, if the user left
+                    // the floating pet enabled, brings it up. No existing window/agent
+                    // flow is touched.
+                    PetCompanionFeature.activateIfEnabled(chat: chatController)
                     // Don't block the first frame on a long disk scan; the menu bar can appear while refresh runs.
                     Task(priority: .userInitiated) {
                         await newAggregator.refreshAll()

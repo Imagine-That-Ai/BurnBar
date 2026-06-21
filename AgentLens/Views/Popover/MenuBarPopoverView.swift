@@ -417,6 +417,13 @@ struct MenuBarPopoverView: View {
             }
             .popoverTooltip("Open settings")
 
+            // PET COMPANION (PLAN Phase C): additive menu-bar toggle. Shows/hides
+            // the floating desktop pet; persists `pet.companionEnabled`. Wired like
+            // the existing Dashboard/Settings controls — no other popover state
+            // changes. Defined in `PetCompanion/Shell/PetCompanionFeature.swift`.
+            PetCompanionToggleButton()
+                .popoverTooltip("Show or hide the desktop pet companion")
+
             GlassIconButton(action: {
                 NSApplication.shared.terminate(nil)
             }) {

@@ -1,0 +1,195 @@
+import Foundation
+
+// MARK: - PetAuthStatus
+
+/// Live auth state for a provider, shown in the onboarding chip and used to gate
+/// sends (PLAN §6 "`checkAuth()` returns `needs-login`/`error`"). Mirrors the web
+/// `AuthStatus`.
+enum PetAuthStatus: String, Sendable, Equatable {
+    /// The provider's CLI / gateway is present and believed usable.
+    case ready
+    /// The provider exists but the user must authenticate (no token / not logged in).
+    case needsLogin = "needs-login"
+    /// The provider is unreachable or errored while probing.
+    case error
+    /// Not yet probed.
+    case unknown
+
+    /// Human-facing label for the onboarding row.
+    var label: String {
+        switch self {
+        case .ready: return "Ready"
+        case .needsLogin: return "Needs login"
+        case .error: return "Error"
+        case .unknown: return "Checking…"
+        }
+    }
+}
+
+// MARK: - AgentChatProvider
+
+/// The pet's answering-agent contract (PLAN C6): identity, a live ``checkAuth()``
+/// for onboarding, and a token ``send(history:)`` stream.
+///
+/// **Reuse, not reinvention (Ground Truth #2).** The app already spawns the agent
+/// child processes and parses their tokens in ``CLIBridge`` and orchestrates a
+/// full send in ``ChatSessionController``. So the *primary* chat path the bubble
+/// uses is ``PetChatController`` driving the shared ``ChatSessionController``
+/// directly — these providers do **not** replace that transport. They are the
+/// thin, uniform façade onboarding needs to (a) show a live auth state per
+/// provider and (b) offer a provider-agnostic `send(history:) -> AsyncStream`
+/// for any surface that wants tokens without the heavyweight controller. Each
+/// concrete provider *wraps* the matching ``CLIBridge`` stream method and maps
+/// its `CLIChatStreamEvent.text` into bare token strings; any throw is mapped to
+/// stream termination so the caller can fall through to ``PetChatFallback``.
+@MainActor
+protocol AgentChatProvider: AnyObject {
+    /// The backend this provider answers as.
+    var id: ChatBackendID { get }
+    /// Display name (reuses ``ChatBackendID.displayName``).
+    var displayName: String { get }
+    /// Probe whether the provider is usable *right now* (CLI present / gateway up).
+    func checkAuth() async -> PetAuthStatus
+    /// Stream a reply token-by-token for `history`. Implementations translate the
+    /// underlying `CLIChatStreamEvent.text` to bare strings and finish (rather
+    /// than throw) on error, so the bubble can route to the local floor.
+    func send(history: [ChatMessageRecord]) -> AsyncStream<String>
+}
+
+extension AgentChatProvider {
+    var displayName: String { id.displayName }
+}
+
+// MARK: - PetChatProviders factory
+
+/// Builds the concrete providers over the shared ``CLIBridge`` and a persona
+/// system prompt. One factory so onboarding and any token-only surface resolve
+/// providers the same way.
+@MainActor
+enum PetChatProviders {
+    /// The short persona prompt the pet answers with — deliberately lighter than
+    /// the app's "database analyst" prompt (Ground Truth #2 gap): casual front-desk
+    /// guide, no retrieval pass.
+    static let personaPrompt =
+        "You are the BurnBar desktop companion: a concise, warm studio guide. " +
+        "Answer in one or two short sentences. If you don't know, say so plainly."
+
+    /// All providers in ``ChatBackendID`` order, sharing one bridge + keychain.
+    static func all(
+        bridge: CLIBridge,
+        keychain: PetKeychainStore = .shared,
+        workspace: URL? = nil
+    ) -> [AgentChatProvider] {
+        ChatBackendID.allCases.map { provider(for: $0, bridge: bridge, keychain: keychain, workspace: workspace) }
+    }
+
+    static func provider(
+        for backend: ChatBackendID,
+        bridge: CLIBridge,
+        keychain: PetKeychainStore = .shared,
+        workspace: URL? = nil
+    ) -> AgentChatProvider {
+        CLIBridgeChatProvider(
+            id: backend,
+            bridge: bridge,
+            keychain: keychain,
+            workspace: workspace
+        )
+    }
+}
+
+// MARK: - CLIBridgeChatProvider
+
+/// A provider that wraps the existing ``CLIBridge`` stream methods for one
+/// ``ChatBackendID``. It owns no transport of its own — it forwards to the app's
+/// already-shipping send+stream engine and only re-shapes the event stream into
+/// bare tokens and the availability probe into a ``PetAuthStatus``.
+@MainActor
+final class CLIBridgeChatProvider: AgentChatProvider {
+    let id: ChatBackendID
+    private let bridge: CLIBridge
+    private let keychain: PetKeychainStore
+    private let workspace: URL?
+
+    init(id: ChatBackendID, bridge: CLIBridge, keychain: PetKeychainStore, workspace: URL?) {
+        self.id = id
+        self.bridge = bridge
+        self.keychain = keychain
+        self.workspace = workspace
+    }
+
+    // MARK: checkAuth
+
+    func checkAuth() async -> PetAuthStatus {
+        switch id {
+        case .codex:
+            return await bridge.isExecutableAvailable(named: "codex") ? .ready : .needsLogin
+        case .claude:
+            // The Claude CLI or a stored Anthropic API key both count as usable.
+            if await bridge.isExecutableAvailable(named: "claude") { return .ready }
+            return keychain.has(.claude) ? .ready : .needsLogin
+        case .hermes:
+            await bridge.probeHermesAvailability(bearerToken: try? keychain.get(.hermes))
+            return bridge.hermesAvailable ? .ready : .error
+        case .openclaw:
+            guard let base = openClawBaseURL() else { return .needsLogin }
+            await bridge.probeOpenClawAvailability(baseURL: base, bearerToken: try? keychain.get(.openclaw))
+            return bridge.openClawAvailable ? .ready : .error
+        }
+    }
+
+    // MARK: send
+
+    func send(history: [ChatMessageRecord]) -> AsyncStream<String> {
+        let user = history.last { $0.role == .user }?.content ?? ""
+        let upstream = upstreamStream(userMessage: user, history: history)
+        return AsyncStream { continuation in
+            let task = Task {
+                do {
+                    for try await event in upstream {
+                        if case let .text(chunk) = event, !chunk.isEmpty {
+                            continuation.yield(chunk)
+                        }
+                    }
+                } catch {
+                    // Surface nothing further; the caller treats an empty/finished
+                    // stream as "route to the local floor" (PLAN C6).
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func upstreamStream(
+        userMessage: String,
+        history: [ChatMessageRecord]
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        let persona = PetChatProviders.personaPrompt
+        switch id {
+        case .codex:
+            return bridge.chatCodexStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .claude:
+            return bridge.chatClaudeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .hermes:
+            return bridge.chatHermes(systemPrompt: persona, history: history, bearerToken: try? keychain.get(.hermes))
+        case .openclaw:
+            let base = openClawBaseURL() ?? URL(string: "http://localhost:8642")!
+            return bridge.chatOpenClaw(
+                baseURL: base,
+                systemPrompt: persona,
+                history: history,
+                bearerToken: try? keychain.get(.openclaw)
+            )
+        }
+    }
+
+    /// The configured OpenClaw base URL (stored alongside the token under a
+    /// distinct Keychain account), if any.
+    private func openClawBaseURL() -> URL? {
+        guard let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) else {
+            return nil
+        }
+        return url
+    }
+}
