@@ -131,6 +131,9 @@ function redactRequestFields(event: JsonObject): void {
   if (request.cookies !== undefined) {
     request.cookies = '[REDACTED]';
   }
+  if (request.headers !== undefined) {
+    request.headers = '[REDACTED]';
+  }
   if (request.query_string !== undefined) {
     request.query_string =
       typeof request.query_string === 'string' ? redactSensitiveText(request.query_string) : '[REDACTED]';

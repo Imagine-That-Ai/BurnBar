@@ -9,7 +9,7 @@
 const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => string)]> = [
   // Sensitive URL query parameters, including callback URLs copied into errors.
   [
-    /(^|[?&])((?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|token|key|secret|password|passwd|pwd|auth|authorization|credential|code|session|jwt|dsn)=)[^&#\s]+/gi,
+    /(^|[?&#])((?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|client[_-]?secret|secret[_-]?key|access[_-]?key|private[_-]?key|session[_-]?token|token|key|secret|password|passwd|pwd|auth|authorization|credential|code|session|jwt|dsn)=)[^&#\s]+/gi,
     '$1$2[REDACTED]'
   ],
   // Authorization-like header values copied into text blobs.
@@ -18,11 +18,14 @@ const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => strin
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [REDACTED]'],
   // API keys and tokens
   [
-    /\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|auth|authorization|credential|client[_-]?secret|private[_-]?key|session[_-]?token|dsn)\b(\s*[:=]\s*["']?)[^"'\s,;{}&#]+/gi,
-    '$1$2[REDACTED]'
+    /(["']?(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|secret[_-]?key|access[_-]?key|password|passwd|pwd|auth|authorization|credential|client[_-]?secret|private[_-]?key|session[_-]?token|dsn)["']?\s*[:=]\s*["']?)[^"'\s,;{}&#]+/gi,
+    '$1[REDACTED]'
   ],
   // Common provider token prefixes. Keep this as shape-based redaction; tests use low-risk fixtures.
-  [/\b(?:gh[pousr]_|github_pat_|xox[baprs]-|sk-[A-Za-z0-9]|AIza)[A-Za-z0-9_=-]{8,}/g, '[TOKEN_REDACTED]'],
+  [
+    /\b(?:gh[pousr]_|github_pat_|xox[baprs]-|sk-[A-Za-z0-9]|sk_(?:live|test)_|rk_(?:live|test)_|glpat-|AIza|AKIA[0-9A-Z]|ASIA[0-9A-Z])[A-Za-z0-9_=-]{8,}/g,
+    '[TOKEN_REDACTED]'
+  ],
   // Firebase tokens (long base64-like strings > 30 chars)
   [/eyJ[\w.-]{28,}/g, '[JWT_REDACTED]'],
   // Email addresses

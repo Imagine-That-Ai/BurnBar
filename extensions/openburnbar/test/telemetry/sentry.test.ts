@@ -30,6 +30,31 @@ describe('extension telemetry redaction', () => {
     expect(redacted).not.toContain('/Users/alberto');
   });
 
+  it('redacts sensitive quoted keys from serialized objects and fragments', () => {
+    const text = [
+      JSON.stringify({
+        apiKey: 'sample-api-key',
+        password: 'sample-password',
+        client_secret: 'sample-client-secret',
+        safe: 'kept'
+      }),
+      'token_url=https://example.test/callback#private_key=sample-fragment-key&ok=1'
+    ].join(' ');
+
+    const redacted = redactSensitiveText(text);
+
+    expect(redacted).toContain('"safe":"kept"');
+    expect(redacted).toContain('"apiKey":"[REDACTED]"');
+    expect(redacted).toContain('"password":"[REDACTED]"');
+    expect(redacted).toContain('"client_secret":"[REDACTED]"');
+    expect(redacted).toContain('#private_key=[REDACTED]');
+    expect(redacted).toContain('ok=1');
+    expect(redacted).not.toContain('sample-api-key');
+    expect(redacted).not.toContain('sample-password');
+    expect(redacted).not.toContain('sample-client-secret');
+    expect(redacted).not.toContain('sample-fragment-key');
+  });
+
   it('redacts sensitive keys even when the value is short or nested', () => {
     const sanitized = sanitizeTelemetryValue({
       safe: 'kept',
@@ -92,8 +117,8 @@ describe('extension telemetry redaction', () => {
     const serialized = JSON.stringify(sanitized);
 
     expect(serialized).toContain('ok=1');
-    expect(serialized).toContain('"x-trace":"keep"');
     expect(serialized).toContain('"name":"node"');
+    expect(serialized).not.toContain('x-trace');
     expect(serialized).not.toContain('sample-token');
     expect(serialized).not.toContain('sample-key');
     expect(serialized).not.toContain('sample-session');
@@ -103,7 +128,7 @@ describe('extension telemetry redaction', () => {
     expect(serialized).not.toContain('/Users/alberto');
     expect(serialized).not.toContain('/private/tmp');
 
-    expect(sanitized.request.headers.authorization).toBe('[REDACTED]');
+    expect(sanitized.request.headers).toBe('[REDACTED]');
     expect(sanitized.request.cookies).toBe('[REDACTED]');
     expect(sanitized.request.data).toBe('[REDACTED]');
     expect(sanitized.extra.nested.refreshToken).toBe('[REDACTED]');
