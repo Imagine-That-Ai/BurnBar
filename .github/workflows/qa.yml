@@ -111,9 +111,22 @@ jobs:
           QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
           QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p qa-results
-          bash tools/qa/run-functional-qa.sh 2>&1 | tee qa-results/qa-output.txt
+          bash tools/qa/run-functional-qa.sh 2>&1 | node scripts/ci/redact-qa-artifacts.mjs --stream | tee qa-results/qa-output.txt
+          statuses=("${PIPESTATUS[@]}")
+          qa_status="${statuses[0]}"
+          stream_redactor_status="${statuses[1]}"
+          tee_status="${statuses[2]}"
+          artifact_redactor_status=0
+          node scripts/ci/redact-qa-artifacts.mjs qa-results || artifact_redactor_status="$?"
+
+          if [[ "$stream_redactor_status" -ne 0 || "$tee_status" -ne 0 || "$artifact_redactor_status" -ne 0 ]]; then
+            echo "::error::Functional QA artifact redaction failed."
+            exit 1
+          fi
+
+          exit "$qa_status"
 
       - name: Ensure report exists
         if: always()
@@ -131,7 +144,7 @@ jobs:
               echo "<summary>Screenshots & Evidence</summary>"
               echo ""
               echo '```text'
-              tail -200 qa-results/qa-output.txt 2>/dev/null || true
+              node scripts/ci/redact-qa-artifacts.mjs --stream < qa-results/qa-output.txt 2>/dev/null | tail -200 || true
               echo '```'
               echo ""
               echo "</details>"
@@ -142,6 +155,7 @@ jobs:
             { echo "## QA Report"; echo; cat qa-results/report.md; } > "$tmp"
             mv "$tmp" qa-results/report.md
           fi
+          node scripts/ci/redact-qa-artifacts.mjs qa-results
 
       - name: Upload QA artifacts
         if: always()
