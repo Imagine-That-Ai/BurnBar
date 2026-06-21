@@ -111,6 +111,38 @@ jobs:
           factory_api_key: \${{ env.FACTORY_API_KEY }}
 `;
 
+const REMEDIATED_DROID_REVIEW = fixture`
+name: Droid Auto Review
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened, synchronize]
+jobs:
+  droid-review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      FACTORY_API_KEY_AVAILABLE: \${{ secrets.FACTORY_API_KEY != '' }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Skip
+        if: env.FACTORY_API_KEY_AVAILABLE == 'false'
+        run: echo skip
+      - name: Run Droid Auto Review
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true'
+        uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
+        with:
+          github_token: \${{ github.token }}
+          factory_api_key: \${{ secrets.FACTORY_API_KEY }}
+          automatic_review: true
+          automatic_security_review: true
+`;
+
 const REMEDIATED_DROID_CLI = fixture`
 name: Droid Wiki Refresh
 permissions:
@@ -218,6 +250,8 @@ console.log("Self-test: verify-agent-workflow-boundaries.mjs\n");
 
 expect("remediated Droid workflow passes", { "droid.yml": REMEDIATED_DROID }, 0);
 
+expect("remediated Droid auto-review OIDC exception passes", { "droid-review.yml": REMEDIATED_DROID_REVIEW }, 0);
+
 expect("remediated Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI }, 0);
 
 expect("remediated folded Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI_FOLDED }, 0);
@@ -290,6 +324,17 @@ expect(
   "write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: write"),
+  },
+  1,
+);
+
+expect(
+  "interactive Droid OIDC regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      contents: read",
+      "      contents: read\n      id-token: write",
+    ),
   },
   1,
 );

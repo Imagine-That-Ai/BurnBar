@@ -17,6 +17,7 @@ jobs:
       FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}
     permissions:
       contents: read
+      id-token: write
       pull-requests: write
       issues: write
     steps:

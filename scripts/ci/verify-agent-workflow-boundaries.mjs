@@ -4,10 +4,11 @@
  *
  * Secrets-bearing agent workflows may post PR/issue feedback, but they must not
  * receive repository write checkout credentials or OIDC tokens by default. The
- * Factory API key must be passed only to the action invocation, the action must
- * receive the bounded workflow token explicitly instead of minting one through
- * OIDC, and PR-triggered agent runs must remain scoped to same-repository pull
- * requests.
+ * Factory API key must be passed only to the action invocation, interactive
+ * executions must receive the bounded workflow token explicitly, and
+ * PR-triggered agent runs must remain scoped to same-repository pull requests.
+ * The only OIDC exception is the pinned automatic Droid review validator, which
+ * requires id-token:write after the main review run.
  *
  * Usage:  node scripts/ci/verify-agent-workflow-boundaries.mjs
  * Exit:   0 = all scoped workflows are structurally gated; 1 = violation;
@@ -98,6 +99,16 @@ function stepContainingLine(blocks, lineIndex) {
   return blocks.find((block) => block.start <= lineIndex && lineIndex < block.end);
 }
 
+function hasDroidReviewOidcException(source) {
+  return (
+    hasDroidActionSurface(source) &&
+    /automatic_review:\s*true/u.test(source) &&
+    /automatic_security_review:\s*true/u.test(source) &&
+    source.includes("github_token: ${{ github.token }}") &&
+    source.includes("factory_api_key: ${{ secrets.FACTORY_API_KEY }}")
+  );
+}
+
 for (const file of workflowFiles()) {
   const source = readFileSync(join(WORKFLOW_DIR, file), "utf8");
   if (!hasInteractiveAgentSurface(source)) continue;
@@ -108,8 +119,8 @@ for (const file of workflowFiles()) {
   if (/contents:\s*write/u.test(source)) {
     fail(file, "interactive agent workflow must not request contents:write");
   }
-  if (/id-token:\s*write/u.test(source)) {
-    fail(file, "interactive agent workflow must not request id-token:write");
+  if (/id-token:\s*write/u.test(source) && !hasDroidReviewOidcException(source)) {
+    fail(file, "interactive agent workflow must not request id-token:write outside automatic Droid review validation");
   }
   if (usesDroidAction) {
     if (/^\s*FACTORY_API_KEY:\s*\$\{\{\s*secrets\.FACTORY_API_KEY\s*\}\}/mu.test(source)) {
