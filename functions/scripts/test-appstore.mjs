@@ -813,7 +813,7 @@ test("reconcileEntitlement rejects when claimedUid disagrees with binding", asyn
   );
 });
 
-test("reconcileEntitlement rejects client callable JWS without binding or existing entitlement", async () => {
+test("reconcileEntitlement allows first-time signed-out purchase restore when unclaimed", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
@@ -821,8 +821,46 @@ test("reconcileEntitlement rejects client callable JWS without binding or existi
   const seed = fakeTx({
     productId: productID,
     signedDate: 1,
-    transactionId: "tx-unbound",
-    originalTransactionId: "otx-unbound",
+    transactionId: "tx-signed-out",
+    originalTransactionId: "otx-signed-out",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-signed-out",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.uid, "uid-signed-out");
+  assert.equal(result.changed, true);
+  assert.equal(result.entitlement.originalTransactionID, "otx-signed-out");
+  assert.ok(writes.some((w) => w.path === "users/uid-signed-out/entitlements/hosted_quota_sync"));
+});
+
+test("reconcileEntitlement rejects no-token callable restore claimed by another user", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  db.setCollectionGroupResult("entitlements", {
+    size: 1,
+    docs: [{ ref: { path: "users/uid-owner/entitlements/hosted_quota_sync" } }],
+  });
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx-owned",
+    originalTransactionId: "otx-owned",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 86_400_000,
   });
@@ -835,13 +873,13 @@ test("reconcileEntitlement rejects client callable JWS without binding or existi
       cfg,
       {
         signedTransactionJWS: seed.raw,
-        claimedUid: "uid-unbound",
+        claimedUid: "uid-attacker",
         source: "client_callable",
         productID,
       },
       { verifier, fetchLive },
     ),
-    /binding_unknown/,
+    /binding_mismatch/,
   );
 
   assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
@@ -889,6 +927,53 @@ test("reconcileEntitlement allows legacy no-token callable restore only for an e
   assert.equal(result.uid, "uid-legacy");
   assert.equal(result.changed, true);
   assert.equal(result.entitlement.transactionID, "tx-legacy-new");
+});
+
+test("reconcileEntitlement accepts pre-v2 entitlement docs as no-token restore proof", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  reads.set("users/uid-legacy-v1/entitlements/hosted_quota_sync", {
+    exists: true,
+    data: () => ({
+      id: "hosted_quota_sync",
+      active: true,
+      productID,
+      transactionID: "tx-legacy-v1-old",
+      originalTransactionID: "otx-legacy-v1",
+      source: "app_store",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 2,
+    transactionId: "tx-legacy-v1-new",
+    originalTransactionId: "otx-legacy-v1",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-legacy-v1",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.uid, "uid-legacy-v1");
+  assert.equal(result.changed, true);
+  assert.equal(result.entitlement.transactionID, "tx-legacy-v1-new");
+  assert.equal(result.entitlement.schemaVersion, reconcilerTesting.ENTITLEMENT_SCHEMA_VERSION);
 });
 
 test("reconcileEntitlement is idempotent on replay (no extra writes)", async () => {

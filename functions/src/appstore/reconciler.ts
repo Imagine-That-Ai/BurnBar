@@ -369,11 +369,15 @@ async function resolveUid(
   //   - S2S notification for a legacy purchase pre-migration.
   const originalTransactionId = requireString(tx.payload.originalTransactionId, "originalTransactionId");
   if (input.claimedUid) {
-    const legacyUid = await findClaimedUidByExistingEntitlement(db, input.claimedUid, target, originalTransactionId);
-    if (legacyUid) return legacyUid;
+    if (await claimedUidHasMatchingEntitlement(db, input.claimedUid, target, originalTransactionId)) {
+      return input.claimedUid;
+    }
+    const existingUid = await findUidByOriginalTransaction(db, originalTransactionId);
+    if (!existingUid) return input.claimedUid;
+    if (existingUid === input.claimedUid) return input.claimedUid;
     throw new EntitlementReconcileError(
-      "binding_unknown",
-      "JWS has no appAccountToken and no matching entitlement is on file for the caller.",
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is already owned by a different user.",
     );
   }
 
@@ -436,17 +440,26 @@ export async function consumeBindingByToken(db: Firestore, token: string, claime
   return d.uid;
 }
 
-async function findClaimedUidByExistingEntitlement(
+async function claimedUidHasMatchingEntitlement(
   db: Firestore,
   claimedUid: string,
   target: AppStoreEntitlementTarget,
   originalTransactionId: string,
-): Promise<string | undefined> {
+): Promise<boolean> {
   const snap = await db.doc(`users/${claimedUid}/entitlements/${target.sourceEntitlementID}`).get();
-  if (!snap.exists) return undefined;
-  const existing = parseHostedQuotaEntitlementDoc(snap.data());
-  if (existing?.originalTransactionID !== originalTransactionId) return undefined;
-  return claimedUid;
+  return snap.exists && entitlementMatchesOriginalTransaction(snap.data(), originalTransactionId);
+}
+
+function entitlementMatchesOriginalTransaction(raw: unknown, originalTransactionId: string): boolean {
+  const parsed = parseHostedQuotaEntitlementDoc(raw);
+  if (parsed) return parsed.originalTransactionID === originalTransactionId;
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    !Array.isArray(raw) &&
+    "originalTransactionID" in raw &&
+    (raw as { originalTransactionID?: unknown }).originalTransactionID === originalTransactionId
+  );
 }
 
 async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
