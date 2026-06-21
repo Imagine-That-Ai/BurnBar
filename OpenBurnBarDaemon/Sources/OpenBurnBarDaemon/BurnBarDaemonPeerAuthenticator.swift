@@ -136,7 +136,10 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     public static func defaultCodeSignatureValidation(auditToken: audit_token_t) throws {
         #if os(macOS)
         do {
-            try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: auditToken)
+            try OpenBurnBarPrivilegedTrust.validateCodeSignature(
+                ofAuditToken: auditToken,
+                requirementString: OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement
+            )
         } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
         }
