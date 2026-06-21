@@ -208,6 +208,26 @@ unknown_failure_log="$(write_fixture unknown-failure <<'LOG'
 LOG
 )"
 
+green_summary_then_build_error_log="$(write_fixture green-summary-then-build-error <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-21 21:30:00.000.
+Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-21 21:31:00.000.
+     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
+Test Suite 'Selected tests' passed at 2026-06-21 21:31:00.000.
+     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
+xcodebuild: error: The workspace named "OpenBurnBar" does not contain a scheme named "OpenBurnBar".
+LOG
+)"
+
+green_summary_then_codesign_error_log="$(write_fixture green-summary-then-codesign-error <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-21 21:30:00.000.
+Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-21 21:31:00.000.
+     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
+Test Suite 'Selected tests' passed at 2026-06-21 21:31:00.000.
+     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
+Command CodeSign failed with a nonzero exit code
+LOG
+)"
+
 swiftpm_dependency_timeout_log="$(write_fixture swiftpm-dependency-timeout <<'LOG'
 failed downloading https://github.com/sqlcipher/SQLCipher.swift/releases/download/4.16.0/SQLCipher.xcframework.zip which is required by binary target SQLCipher: downloadError("The request timed out.")
 failed downloading https://dl.google.com/firebase/ios/swiftpm/11.15.0/FirebaseAnalytics.zip which is required by binary target FirebaseAnalytics: downloadError("The request timed out.")
@@ -273,6 +293,8 @@ assert_false "later failed Selected tests summary resets stale green state" open
 assert_true "later failed Selected tests summary remains terminal after stale green summary" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_stale_green_then_failed_log"
 assert_false "later failed Selected tests summary is not retryable after stale green summary" is_known_hang "$timeout_restart_stale_green_then_failed_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
+assert_false "green XCTest summary plus later xcodebuild error is not accepted without test-failed marker" is_xcode_false_negative_pass "$green_summary_then_build_error_log"
+assert_false "green XCTest summary plus codesign error is not accepted without test-failed marker" is_xcode_false_negative_pass "$green_summary_then_codesign_error_log"
 assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
 assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
 assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
