@@ -20,18 +20,19 @@
  * check (`isBlockedBrowserURL`) rejects literal loopback/link-local/private/
  * metadata IPs and non-http(s) schemes. The async check
  * (`resolvesToBlockedAddress`) defeats DNS-rebinding and named-internal-host
- * redirects by RESOLVING the hostname and blocking if any resolved address is
- * internal — closing the gap where `attacker.test` → 127.0.0.1 bypassed the
- * string-only guard. Both run at the context-wide route chokepoint, so every
- * request (incl. redirects and subresources) is re-checked. The pure policy
+ * redirects by RESOLVING the hostname on every request and blocking if any
+ * resolved address is internal — closing the gap where `attacker.test` →
+ * 127.0.0.1 bypassed the string-only guard. Both run at the context-wide route
+ * chokepoint, so every request (incl. redirects and subresources) is re-checked
+ * against the live DNS answer instead of a stale session cache. The pure policy
  * functions are exported for deterministic unit tests
  * (`scripts/test-playwright-bridge-guard.mjs`); the live bridge only runs when
  * this file is executed directly.
  */
-'use strict';
+"use strict";
 
-const net = require('net');
-const dnsPromises = require('dns').promises;
+const net = require("net");
+const dnsPromises = require("dns").promises;
 
 // ---------------------------------------------------------------------------
 // Pure target-policy helpers (no side effects; exported for unit tests).
@@ -42,33 +43,44 @@ function parseIPv4Part(raw) {
   const lower = String(raw).toLowerCase();
   let radix = 10;
   let digits = lower;
-  if (lower.startsWith('0x')) {
+  if (lower.startsWith("0x")) {
     radix = 16;
     digits = lower.slice(2);
-  } else if (lower.length > 1 && lower.startsWith('0')) {
+  } else if (lower.length > 1 && lower.startsWith("0")) {
     radix = 8;
     digits = lower.slice(1);
   }
   if (!digits) return 0;
-  const pattern = radix === 16 ? /^[0-9a-f]+$/ : (radix === 8 ? /^[0-7]+$/ : /^[0-9]+$/);
+  const pattern =
+    radix === 16 ? /^[0-9a-f]+$/ : radix === 8 ? /^[0-7]+$/ : /^[0-9]+$/;
   if (!pattern.test(digits)) return null;
   const value = Number.parseInt(digits, radix);
   return Number.isSafeInteger(value) ? value : null;
 }
 
 function ipv4Bytes(host) {
-  const parts = String(host).split('.');
+  const parts = String(host).split(".");
   if (parts.length < 1 || parts.length > 4) return null;
   const values = parts.map(parseIPv4Part);
   if (values.some((value) => value === null)) return null;
   if (values.length === 1) {
     const value = values[0];
     if (value > 0xffffffff) return null;
-    return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    return [
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ];
   }
   if (values.length === 2) {
     if (values[0] > 0xff || values[1] > 0x00ffffff) return null;
-    return [values[0], (values[1] >>> 16) & 0xff, (values[1] >>> 8) & 0xff, values[1] & 0xff];
+    return [
+      values[0],
+      (values[1] >>> 16) & 0xff,
+      (values[1] >>> 8) & 0xff,
+      values[1] & 0xff,
+    ];
   }
   if (values.length === 3) {
     if (values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff) return null;
@@ -101,8 +113,8 @@ function firstIPv6Hextet(host) {
 // (`::ffff:7f00:1`, which `new URL()` produces). Returns null for ordinary
 // IPv6 so a bare trailing hextet is NOT misread as a decimal IPv4.
 function mappedIPv4FromIPv6(normalized) {
-  const tail = normalized.slice(normalized.lastIndexOf(':') + 1);
-  if (tail.includes('.')) {
+  const tail = normalized.slice(normalized.lastIndexOf(":") + 1);
+  if (tail.includes(".")) {
     const bytes = ipv4Bytes(tail);
     if (bytes) return bytes;
   }
@@ -117,21 +129,21 @@ function mappedIPv4FromIPv6(normalized) {
 
 function isBlockedIPv6(host) {
   const normalized = host.toLowerCase();
-  if (normalized === '::' || normalized === '::1') return true;
+  if (normalized === "::" || normalized === "::1") return true;
   const mapped = mappedIPv4FromIPv6(normalized);
   if (mapped && isBlockedIPv4(mapped)) return true;
   const first = firstIPv6Hextet(normalized);
   if (first === null) return false;
   if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
-  return (first & 0xff00) === 0xff00;           // ff00::/8 multicast
+  return (first & 0xff00) === 0xff00; // ff00::/8 multicast
 }
 
 function normalizeHost(rawHost) {
-  return String(rawHost || '')
-    .replace(/^\[/, '')
-    .replace(/\]$/, '')
-    .replace(/\.$/, '')
+  return String(rawHost || "")
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/\.$/, "")
     .toLowerCase();
 }
 
@@ -141,8 +153,13 @@ function isLiteralIP(host) {
 
 function isBlockedLiteralHost(host) {
   if (!host) return true;
-  if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  if (host === 'metadata' || host === 'metadata.google.internal' || host.endsWith('.metadata.google.internal')) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (
+    host === "metadata" ||
+    host === "metadata.google.internal" ||
+    host.endsWith(".metadata.google.internal")
+  )
+    return true;
   const ipv4 = ipv4Bytes(host);
   if (ipv4) return isBlockedIPv4(ipv4);
   if (net.isIP(host) === 6) return isBlockedIPv6(host);
@@ -152,14 +169,14 @@ function isBlockedLiteralHost(host) {
 function isBlockedBrowserURL(rawValue, { allowData = false } = {}) {
   let parsed;
   try {
-    parsed = new URL(String(rawValue || '').trim());
+    parsed = new URL(String(rawValue || "").trim());
   } catch {
     return true;
   }
   const protocol = parsed.protocol.toLowerCase();
-  if (allowData && protocol === 'data:') return false;
-  if (protocol === 'about:' || protocol === 'blob:') return false;
-  if (protocol !== 'http:' && protocol !== 'https:') return true;
+  if (allowData && protocol === "data:") return false;
+  if (protocol === "about:" || protocol === "blob:") return false;
+  if (protocol !== "http:" && protocol !== "https:") return true;
   return isBlockedLiteralHost(normalizeHost(parsed.hostname));
 }
 
@@ -190,7 +207,8 @@ async function resolvesToBlockedAddress(host, resolver = defaultResolver) {
   }
   if (!Array.isArray(records) || records.length === 0) return true;
   for (const record of records) {
-    const address = typeof record === 'string' ? record : (record && record.address);
+    const address =
+      typeof record === "string" ? record : record && record.address;
     if (!address) return true;
     if (net.isIP(address) === 6) {
       if (isBlockedIPv6(String(address).toLowerCase())) return true;
@@ -206,17 +224,20 @@ async function resolvesToBlockedAddress(host, resolver = defaultResolver) {
  * Combined chokepoint gate: synchronous literal check, then resolve-and-block
  * for named http(s) hosts. Returns true when the target must be blocked.
  */
-async function isBlockedBrowserTarget(rawValue, { allowData = false, resolver = defaultResolver } = {}) {
+async function isBlockedBrowserTarget(
+  rawValue,
+  { allowData = false, resolver = defaultResolver } = {},
+) {
   if (isBlockedBrowserURL(rawValue, { allowData })) return true;
   let parsed;
   try {
-    parsed = new URL(String(rawValue || '').trim());
+    parsed = new URL(String(rawValue || "").trim());
   } catch {
     return true;
   }
   const protocol = parsed.protocol.toLowerCase();
   // data:/about:/blob: passed the string check and have no resolvable host.
-  if (protocol !== 'http:' && protocol !== 'https:') return false;
+  if (protocol !== "http:" && protocol !== "https:") return false;
   const host = normalizeHost(parsed.hostname);
   if (!host || isLiteralIP(host)) return false;
   return resolvesToBlockedAddress(host, resolver);
@@ -241,13 +262,16 @@ module.exports = {
 // ---------------------------------------------------------------------------
 
 function runBridge() {
-  const readline = require('readline');
+  const readline = require("readline");
 
   let chromium;
   try {
-    ({ chromium } = require('playwright'));
+    ({ chromium } = require("playwright"));
   } catch (e) {
-    console.error('[playwright-bridge] failed to require playwright:', e.message);
+    console.error(
+      "[playwright-bridge] failed to require playwright:",
+      e.message,
+    );
     process.exit(2);
   }
 
@@ -256,43 +280,41 @@ function runBridge() {
     const i = argv.indexOf(name);
     return i >= 0 ? argv[i + 1] : null;
   }
-  function hasFlag(name) { return argv.indexOf(name) >= 0; }
+  function hasFlag(name) {
+    return argv.indexOf(name) >= 0;
+  }
 
-  const sessionId = flag('--session-id') || 'unknown';
-  const perActionTimeoutMs = parseInt(flag('--per-action-timeout-ms') || '10000', 10);
-  const headless = hasFlag('--headless');
-  const channel = flag('--channel');
-  const userDataDir = flag('--user-data-dir');
+  const sessionId = flag("--session-id") || "unknown";
+  const perActionTimeoutMs = parseInt(
+    flag("--per-action-timeout-ms") || "10000",
+    10,
+  );
+  const headless = hasFlag("--headless");
+  const channel = flag("--channel");
+  const userDataDir = flag("--user-data-dir");
 
   let browser = null;
   let context = null;
   let page = null;
 
-  // Per-session host→blocked cache bounds the per-request DNS latency the async
-  // guard adds; a host is resolved at most once per bridge process.
-  const resolvedHostBlockCache = new Map();
-
   async function targetBlocked(rawValue, opts = {}) {
     if (isBlockedBrowserURL(rawValue, opts)) return true;
     let host;
     try {
-      host = normalizeHost(new URL(String(rawValue || '').trim()).hostname);
+      host = normalizeHost(new URL(String(rawValue || "").trim()).hostname);
     } catch {
       return true;
     }
     if (!host || isLiteralIP(host)) return false;
-    if (resolvedHostBlockCache.has(host)) return resolvedHostBlockCache.get(host);
-    const blocked = await resolvesToBlockedAddress(host);
-    resolvedHostBlockCache.set(host, blocked);
-    return blocked;
+    return resolvesToBlockedAddress(host);
   }
 
   async function installNetworkGuard(ctx) {
-    await ctx.route('**/*', async (route) => {
+    await ctx.route("**/*", async (route) => {
       const url = route.request().url();
       if (await targetBlocked(url, { allowData: true })) {
         console.error(`[playwright-bridge] blocked browser target: ${url}`);
-        await route.abort('blockedbyclient');
+        await route.abort("blockedbyclient");
         return;
       }
       await route.continue();
@@ -316,75 +338,111 @@ function runBridge() {
   }
 
   async function dispatch(method, params) {
-    const timeout = (params && typeof params.timeoutMs === 'number') ? params.timeoutMs : perActionTimeoutMs;
+    const timeout =
+      params && typeof params.timeoutMs === "number"
+        ? params.timeoutMs
+        : perActionTimeoutMs;
     const p = await ensurePage();
     switch (method) {
-      case 'click': {
+      case "click": {
         if (params.selector) {
           await p.click(params.selector, { timeout, force: false });
-          return { kind: 'click', selector: params.selector };
-        } else if (typeof params.positionX === 'number' && typeof params.positionY === 'number') {
+          return { kind: "click", selector: params.selector };
+        } else if (
+          typeof params.positionX === "number" &&
+          typeof params.positionY === "number"
+        ) {
           await p.mouse.click(params.positionX, params.positionY);
-          return { kind: 'click', position: [params.positionX, params.positionY] };
+          return {
+            kind: "click",
+            position: [params.positionX, params.positionY],
+          };
         } else {
-          throw new Error('click requires selector or position');
+          throw new Error("click requires selector or position");
         }
       }
-      case 'fill': {
+      case "fill": {
         await p.fill(params.selector, params.text, { timeout });
-        return { kind: 'fill', selector: params.selector, charCount: (params.text || '').length };
+        return {
+          kind: "fill",
+          selector: params.selector,
+          charCount: (params.text || "").length,
+        };
       }
-      case 'goto': {
+      case "goto": {
         if (await targetBlocked(params.url, { allowData: true })) {
           throw new Error(`blocked browser target: ${params.url}`);
         }
-        const resp = await p.goto(params.url, { timeout, waitUntil: 'domcontentloaded' });
+        const resp = await p.goto(params.url, {
+          timeout,
+          waitUntil: "domcontentloaded",
+        });
         return {
-          kind: 'goto',
+          kind: "goto",
           url: params.url,
           status: resp ? resp.status() : null,
-          finalURL: p.url()
+          finalURL: p.url(),
         };
       }
-      case 'key': {
-        const combo = (params.modifiers && params.modifiers.length)
-          ? `${params.modifiers.join('+')}+${params.key}`
-          : params.key;
+      case "key": {
+        const combo =
+          params.modifiers && params.modifiers.length
+            ? `${params.modifiers.join("+")}+${params.key}`
+            : params.key;
         await p.keyboard.press(combo);
-        return { kind: 'key', combo };
+        return { kind: "key", combo };
       }
-      case 'select': {
+      case "select": {
         await p.selectOption(params.selector, params.value);
-        return { kind: 'select', selector: params.selector, value: params.value };
+        return {
+          kind: "select",
+          selector: params.selector,
+          value: params.value,
+        };
       }
-      case 'screenshot': {
+      case "screenshot": {
         const buf = await p.screenshot({ fullPage: !!params.fullPage });
-        return { kind: 'screenshot', sizeBytes: buf.length, base64: buf.toString('base64') };
+        return {
+          kind: "screenshot",
+          sizeBytes: buf.length,
+          base64: buf.toString("base64"),
+        };
       }
-      case 'extract': {
+      case "extract": {
         const text = params.selector
           ? await p.textContent(params.selector)
           : await p.content();
-        return { kind: 'extract', selector: params.selector, text };
+        return { kind: "extract", selector: params.selector, text };
       }
-      case 'current_url': return { kind: 'current_url', url: p.url() };
-      case 'current_title': return { kind: 'current_title', title: await p.title() };
-      case 'shutdown': {
-        try { if (browser) await browser.close(); } catch (_) {}
-        try { if (context) await context.close(); } catch (_) {}
-        return { kind: 'shutdown' };
+      case "current_url":
+        return { kind: "current_url", url: p.url() };
+      case "current_title":
+        return { kind: "current_title", title: await p.title() };
+      case "shutdown": {
+        try {
+          if (browser) await browser.close();
+        } catch (_) {}
+        try {
+          if (context) await context.close();
+        } catch (_) {}
+        return { kind: "shutdown" };
       }
       default:
         throw new Error(`unknown method ${method}`);
     }
   }
 
-  const rl = readline.createInterface({ input: process.stdin, terminal: false });
-  rl.on('line', async (line) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    terminal: false,
+  });
+  rl.on("line", async (line) => {
     if (!line) return;
     let req;
-    try { req = JSON.parse(line); } catch (e) {
-      console.error('[playwright-bridge] malformed request:', e.message);
+    try {
+      req = JSON.parse(line);
+    } catch (e) {
+      console.error("[playwright-bridge] malformed request:", e.message);
       return;
     }
     const started = Date.now();
@@ -395,26 +453,28 @@ function runBridge() {
         id: req.id,
         ok: true,
         result,
-        elapsedMillis: Date.now() - started
+        elapsedMillis: Date.now() - started,
       };
     } catch (e) {
       response = {
         id: req.id,
         ok: false,
         error: String(e && e.message ? e.message : e),
-        elapsedMillis: Date.now() - started
+        elapsedMillis: Date.now() - started,
       };
     }
-    const shouldExit = req.method === 'shutdown' && response.ok;
-    process.stdout.write(JSON.stringify(response) + '\n', () => {
+    const shouldExit = req.method === "shutdown" && response.ok;
+    process.stdout.write(JSON.stringify(response) + "\n", () => {
       if (shouldExit) process.exit(0);
     });
   });
 
-  process.on('SIGTERM', () => process.exit(0));
-  process.on('SIGINT', () => process.exit(0));
+  process.on("SIGTERM", () => process.exit(0));
+  process.on("SIGINT", () => process.exit(0));
 
-  console.error(`[playwright-bridge] session=${sessionId} headless=${headless} channel=${channel || 'default'} ready`);
+  console.error(
+    `[playwright-bridge] session=${sessionId} headless=${headless} channel=${channel || "default"} ready`,
+  );
 }
 
 if (require.main === module) {

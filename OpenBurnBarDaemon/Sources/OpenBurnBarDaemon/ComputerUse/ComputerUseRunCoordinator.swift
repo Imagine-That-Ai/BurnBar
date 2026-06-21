@@ -819,7 +819,7 @@ public actor ComputerUseRunCoordinator {
         // refused WITHOUT an extra driver round trip. Re-checking from the
         // response (not a fresh `currentURL()` call) preserves the driver's
         // request accounting and adds no latency.
-        try Self.enforceLandedURL(from: response)
+        try Self.enforceLandedURL(from: response, resolver: browserHostResolver)
         return response
     }
 
@@ -827,16 +827,22 @@ public actor ComputerUseRunCoordinator {
     /// own response (`finalURL` for navigation, `url` for interactive actions). A
     /// blocked landed host is refused so a redirect / JS-nav cannot steer the
     /// agent's browser onto the loopback/metadata plane. Absent fields are a
-    /// no-op (the action did not navigate); only http/https with a host is
-    /// range-checked, consistent with `validatedURL`.
-    static func enforceLandedURL(from response: OpenBurnBarPlaywrightDriver.Response) throws {
+    /// no-op (the action did not navigate); http/https hosts are checked through
+    /// the same literal + live DNS policy as initial navigation.
+    static func enforceLandedURL(
+        from response: OpenBurnBarPlaywrightDriver.Response,
+        resolver: BurnBarBrowserHostResolver = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
+    ) throws {
         let landed = urlString(from: response.result, key: "finalURL")
             ?? urlString(from: response.result, key: "url")
         guard let landed else { return }
-        try enforceLandedURLString(landed)
+        try enforceLandedURLString(landed, resolver: resolver)
     }
 
-    static func enforceLandedURLString(_ landed: String) throws {
+    static func enforceLandedURLString(
+        _ landed: String,
+        resolver: BurnBarBrowserHostResolver = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
+    ) throws {
         let trimmed = landed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return }
         // Pages legitimately sit on about:blank / data: between navigations;
@@ -848,9 +854,15 @@ public actor ComputerUseRunCoordinator {
         guard let url = URL(string: trimmed), let host = url.host, host.isEmpty == false else {
             return
         }
-        if OpenBurnBarBrowserTargetPolicy.isBlockedHost(host) {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return
+        }
+        do {
+            _ = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(trimmed, resolver: resolver)
+        } catch {
             throw DispatchError.invalidArguments(
-                "browser navigated to a blocked local, private, or metadata host: \(host)"
+                "browser navigated to a blocked local, private, or metadata host: \(host) (\(error.localizedDescription))"
             )
         }
     }
