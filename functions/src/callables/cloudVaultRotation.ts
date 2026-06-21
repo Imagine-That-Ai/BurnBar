@@ -148,6 +148,14 @@ export const rotateCloudVaultKey = onCallProduction(
       newVaultKeyID,
       expectedVaultGeneration,
     );
+    for (const wrapper of survivorWrappers) {
+      if (wrapper.sourceDeviceId !== callerDeviceId) {
+        throw new HttpsError(
+          "permission-denied",
+          "CloudVault survivor wrapper sourceDeviceId must match the rotating trusted device.",
+        );
+      }
+    }
     if (!survivorWrappers.some((wrapper) => wrapper.targetDeviceId === callerDeviceId)) {
       throw new HttpsError("failed-precondition", "The rotating device must include its own survivor wrapper.");
     }

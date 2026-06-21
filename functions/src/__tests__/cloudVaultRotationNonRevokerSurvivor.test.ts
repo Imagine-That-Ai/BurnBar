@@ -220,4 +220,50 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
     // The revocation requirement is no longer pending.
     expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("queued");
   });
+
+  it("rejects survivor wrappers stamped with a different source device", async () => {
+    seedTrusted(SURVIVOR_A);
+    seedTrusted(SURVIVOR_B);
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 1,
+      status: "active",
+    });
+    const requirementId = "revoke_req_source_mismatch";
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`, {
+      requirementId,
+      uid: UID,
+      status: "pending",
+      reason: "device_revoked",
+      revokedDeviceId: REVOKER,
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 1,
+      survivorDeviceIds: [SURVIVOR_A, SURVIVOR_B].sort(),
+      rotateCallable: "rotateCloudVaultKey",
+      nextRotationReason: "revocation_rewrap",
+      schemaVersion: 1,
+    });
+
+    await expect(
+      rotateCloudVaultKey.run(
+        callRequest(UID, {
+          callerDeviceId: SURVIVOR_B,
+          currentVaultKeyID: CURRENT_KEY,
+          newVaultKeyID: NEW_KEY,
+          expectedVaultGeneration: 2,
+          reason: "revocation_rewrap",
+          rotationRequirementId: requirementId,
+          survivorWrappers: [
+            survivorWrapper(SURVIVOR_A, REVOKER),
+            survivorWrapper(SURVIVOR_B, SURVIVOR_B),
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/sourceDeviceId must match/);
+
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
+    expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("pending");
+    expect([...store.keys()].filter((key) => key.includes("/cloud_vault_rotation_jobs/"))).toHaveLength(0);
+  });
 });
