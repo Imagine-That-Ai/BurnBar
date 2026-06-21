@@ -17,13 +17,15 @@ Normal production deploys run through GitHub Actions:
    from that tag, or let the tag push trigger it.
 
 The workflow builds and tests `services/hosted-mcp`, performs a Docker build
-smoke from the repository-root context, authenticates to Google Cloud with
-OIDC workload identity federation, verifies the deploy service account has the
-required Cloud Run/Cloud Build/Secret Manager IAM, captures the currently
-serving revision, deploys `openburnbar-hosted-mcp`, reads the service back, and
-auto-rolls back with `scripts/ops/rollback-revision.sh` if deploy or readback
-fails. It also preserves the live `OPENBURNBAR_STORAGE_BUCKET` instead of
-hard-coding it.
+smoke from the repository-root context, then stages a bounded deploy artifact
+before any production credentials are available. The credentialed deploy job
+does not check out repository code: it downloads the verified artifact,
+authenticates to Google Cloud with OIDC workload identity federation, verifies
+the deploy service account has the required Cloud Run/Cloud Build IAM and no
+broad Secret Manager admin role, captures the currently serving revision,
+deploys `openburnbar-hosted-mcp`, reads the service back, and auto-rolls back to
+the previous ready revision if deploy or readback fails. It also preserves the
+live `OPENBURNBAR_STORAGE_BUCKET` instead of hard-coding it.
 
 Use this local path only for operator break-glass deploys or manual rehearsal:
 
@@ -39,6 +41,7 @@ firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition 
 export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 export REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=...
 export MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=...
+export OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true # only for intentional key rotation
 ./scripts/deploy-hosted-mcp.sh
 ```
 
@@ -49,7 +52,10 @@ The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates 
 sets the resource audience to `https://mcp.burnbar.ai/mcp` and issuer to
 `https://mcp.burnbar.ai`. HMAC signing is a legacy transition path; Ed25519
 signing is the production target so the resource server can verify with a
-public key and refuse shared-secret tokens by default.
+public key and refuse shared-secret tokens by default. The script refuses to
+upsert signer secrets unless `OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true`
+is set, so normal production deploys cannot rotate token-signing material as an
+accidental side effect.
 
 ## Domain Mapping
 

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "${GITHUB_WORKSPACE:-$(dirname "$0")/..}"
+if [[ -n "${DEPLOY_SOURCE_DIR:-}" ]]; then
+  cd "$DEPLOY_SOURCE_DIR"
+elif [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+  cd "$GITHUB_WORKSPACE"
+else
+  cd "$(dirname "$0")/.."
+fi
 
 : "${GOOGLE_CLOUD_PROJECT:?GOOGLE_CLOUD_PROJECT is required}"
 
@@ -9,11 +15,19 @@ SERVICE="${SERVICE:-openburnbar-hosted-mcp}"
 SECRET_NAME="${REMOTE_MCP_TOKEN_HMAC_SECRET_NAME:-REMOTE_MCP_TOKEN_HMAC_SECRET}"
 ED25519_PRIVATE_SECRET_NAME="${REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_SECRET_NAME:-REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64}"
 ED25519_PUBLIC_SECRET_NAME="${MCP_TOKEN_ED25519_PUBLIC_KEY_SECRET_NAME:-MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64}"
-IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:$(git rev-parse --short HEAD)"
-OPENBURNBAR_SOURCE_COMMIT="${OPENBURNBAR_SOURCE_COMMIT:-$(git rev-parse HEAD)}"
+if [[ -z "${OPENBURNBAR_SOURCE_COMMIT:-}" ]]; then
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    OPENBURNBAR_SOURCE_COMMIT="$(git rev-parse HEAD)"
+  else
+    echo "OPENBURNBAR_SOURCE_COMMIT is required when deploying from an artifact without a git checkout." >&2
+    exit 1
+  fi
+fi
+IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:${OPENBURNBAR_SOURCE_COMMIT:0:12}"
 OPENBURNBAR_CORRESPONDING_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
 ENV_VARS="MCP_RESOURCE=https://mcp.burnbar.ai/mcp,MCP_AUTH_ISSUER=https://mcp.burnbar.ai,OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT},OPENBURNBAR_CORRESPONDING_SOURCE_URL=${OPENBURNBAR_CORRESPONDING_SOURCE_URL}"
 SECRET_BINDINGS=()
+ALLOW_SECRET_UPSERT="${OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT:-false}"
 
 upsert_secret() {
   local secret_name="$1"
@@ -28,25 +42,34 @@ upsert_secret() {
     --project "$GOOGLE_CLOUD_PROJECT" >/dev/null
 }
 
+maybe_upsert_secret() {
+  local secret_name="$1"
+  local secret_value="$2"
+  local env_name="$3"
+  if [[ -z "$secret_value" ]]; then
+    return
+  fi
+  if [[ "$ALLOW_SECRET_UPSERT" != "true" ]]; then
+    echo "${env_name} is set, but hosted MCP deploy secret upsert is disabled." >&2
+    echo "Rotate signer secrets out-of-band, or set OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true for an intentional operator rotation." >&2
+    exit 1
+  fi
+  upsert_secret "$secret_name" "$secret_value"
+}
+
 if [[ -n "${OPENBURNBAR_STORAGE_BUCKET:-}" ]]; then
   ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"
 fi
 
-if [[ -n "${REMOTE_MCP_TOKEN_HMAC_SECRET:-}" ]]; then
-  upsert_secret "$SECRET_NAME" "$REMOTE_MCP_TOKEN_HMAC_SECRET"
-fi
+maybe_upsert_secret "$SECRET_NAME" "${REMOTE_MCP_TOKEN_HMAC_SECRET:-}" "REMOTE_MCP_TOKEN_HMAC_SECRET"
 
 if gcloud secrets describe "$SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
   SECRET_BINDINGS+=("MCP_TOKEN_HMAC_SECRET=${SECRET_NAME}:latest")
 fi
 
-if [[ -n "${REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64:-}" ]]; then
-  upsert_secret "$ED25519_PRIVATE_SECRET_NAME" "$REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64"
-fi
+maybe_upsert_secret "$ED25519_PRIVATE_SECRET_NAME" "${REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64:-}" "REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64"
 
-if [[ -n "${MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64:-}" ]]; then
-  upsert_secret "$ED25519_PUBLIC_SECRET_NAME" "$MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64"
-fi
+maybe_upsert_secret "$ED25519_PUBLIC_SECRET_NAME" "${MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64:-}" "MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64"
 
 if gcloud secrets describe "$ED25519_PRIVATE_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
   SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=${ED25519_PRIVATE_SECRET_NAME}:latest")
@@ -156,9 +179,11 @@ if match:
   done
 }
 
-npm ci --prefix services/hosted-mcp
-npm --prefix services/hosted-mcp run build
-npm --prefix services/hosted-mcp test
+if [[ "${OPENBURNBAR_HOSTED_MCP_SKIP_LOCAL_BUILD:-false}" != "true" ]]; then
+  npm ci --prefix services/hosted-mcp
+  npm --prefix services/hosted-mcp run build
+  npm --prefix services/hosted-mcp test
+fi
 
 submit_cloud_build
 

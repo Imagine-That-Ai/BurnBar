@@ -25,6 +25,7 @@ WORKFLOWS = {
     "deploy-production": Path(".github/workflows/deploy-production.yml"),
     "deploy-hosting": Path(".github/workflows/deploy-hosting.yml"),
     "deploy-firestore": Path(".github/workflows/deploy-firestore.yml"),
+    "deploy-cloud-run": Path(".github/workflows/deploy-cloud-run.yml"),
 }
 LEGACY_SECRET_RE = re.compile(
     r"\b(?:GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json)\b"
@@ -264,6 +265,95 @@ def validate_hosting(text: str) -> None:
         fail(f"{path} hosting-smoke-result must own issues:write for ops-failure issues")
 
 
+def validate_cloud_run(text: str) -> None:
+    path = WORKFLOWS["deploy-cloud-run"]
+    top = top_level_text(text)
+    if "id-token: write" in top:
+        fail(f"{path} grants id-token:write at top level; only deploy-hosted-mcp may grant it")
+    if "issues: write" in top:
+        fail(f"{path} grants issues:write at top level; only cloud-run-deploy-result may grant it")
+
+    jobs = extract_jobs(text)
+    resolve_job = jobs.get("resolve-release")
+    build_job = jobs.get("build-hosted-mcp-artifact")
+    deploy_job = jobs.get("deploy-hosted-mcp")
+    result_job = jobs.get("cloud-run-deploy-result")
+    dry_run_job = jobs.get("cloud-run-dry-run-summary")
+
+    for required_job, job_text in (
+        ("resolve-release", resolve_job),
+        ("build-hosted-mcp-artifact", build_job),
+        ("deploy-hosted-mcp", deploy_job),
+        ("cloud-run-deploy-result", result_job),
+        ("cloud-run-dry-run-summary", dry_run_job),
+    ):
+        if not job_text:
+            fail(f"{path} must define {required_job}")
+
+    if not resolve_job or not build_job or not deploy_job or not result_job:
+        return
+
+    for marker in (
+        "tag_ref=\"refs/tags/${TAG}\"",
+        "git fetch --force --tags origin \"+${tag_ref}:${tag_ref}\"",
+        "git merge-base --is-ancestor \"$commit\" origin/main",
+        "[[ ! \"$TAG\" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]",
+    ):
+        if marker not in resolve_job:
+            fail(f"{path} resolve-release is missing release tag provenance guard marker {marker!r}")
+    if '"${{ inputs.tag }}"' in resolve_job or "'${{ inputs.tag }}'" in resolve_job:
+        fail(f"{path} resolve-release must pass workflow_dispatch tag input through env, not interpolate it into shell")
+
+    if "id-token: write" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not grant id-token:write")
+    if "environment:" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not bind the production environment")
+    if "secrets." in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not reference secrets")
+    for marker in (
+        "npm ci --prefix services/hosted-mcp",
+        "npm --prefix services/hosted-mcp test",
+        "docker build -f services/hosted-mcp/Dockerfile",
+        "scripts/deploy-hosted-mcp.sh",
+        "sha256sum > \"$manifest\"",
+        "mv \"$manifest\" SHA256SUMS",
+        "actions/upload-artifact@",
+    ):
+        if marker not in build_job:
+            fail(f"{path} build-hosted-mcp-artifact is missing artifact guard marker {marker!r}")
+
+    if "needs:" not in deploy_job or "build-hosted-mcp-artifact" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must need build-hosted-mcp-artifact")
+    if "environment: production" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must bind the production environment")
+    if "id-token: write" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must grant id-token:write")
+    if "issues: write" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not grant issues:write")
+    if "actions/checkout" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not check out repository code")
+    if "uses: ./.github/actions" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not use local actions")
+    for marker in (
+        "actions/download-artifact@",
+        "sha256sum -c SHA256SUMS",
+        "-type l",
+        "-links +1",
+        "DEPLOY_SOURCE_DIR",
+        "OPENBURNBAR_HOSTED_MCP_SKIP_LOCAL_BUILD: \"true\"",
+        "OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"false\"",
+        "roles/secretmanager.admin",
+        "bash \"$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh\"",
+    ):
+        if marker not in deploy_job:
+            fail(f"{path} deploy-hosted-mcp is missing deploy boundary marker {marker!r}")
+
+    if "id-token: write" in result_job:
+        fail(f"{path} cloud-run-deploy-result must not grant id-token:write")
+    if "issues: write" not in result_job:
+        fail(f"{path} cloud-run-deploy-result must own issues:write for ops-failure issues")
+
+
 def validate_artifact_dir(path: Path) -> int:
     failures: list[str] = []
     if not path.is_dir():
@@ -336,6 +426,8 @@ for name, text in texts.items():
         validate_workflow(name, WORKFLOWS[name], text)
 if texts.get("deploy-hosting"):
     validate_hosting(texts["deploy-hosting"])
+if texts.get("deploy-cloud-run"):
+    validate_cloud_run(texts["deploy-cloud-run"])
 validate_generated_configs()
 
 if FAILURES:

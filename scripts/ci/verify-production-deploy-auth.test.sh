@@ -12,6 +12,7 @@ copy_base_fixture() {
   cp "$SOURCE_ROOT/.github/workflows/deploy-hosting.yml" "$dst/.github/workflows/deploy-hosting.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-production.yml" "$dst/.github/workflows/deploy-production.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-firestore.yml" "$dst/.github/workflows/deploy-firestore.yml"
+  cp "$SOURCE_ROOT/.github/workflows/deploy-cloud-run.yml" "$dst/.github/workflows/deploy-cloud-run.yml"
   cp "$SOURCE_ROOT/firebase.json" "$dst/firebase.json"
   cp "$SOURCE_ROOT/scripts/ci/write-firebase-hosting-ci-config.mjs" "$dst/scripts/ci/write-firebase-hosting-ci-config.mjs"
 }
@@ -147,6 +148,31 @@ fixture="$TMP_ROOT/shared-sa-hosting"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT", "GCP_DEPLOY_SERVICE_ACCOUNT")'
 expect_fail "shared deploy service account in hosting fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-top-level-oidc"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("permissions:\n  contents: read\n", "permissions:\n  contents: read\n  id-token: write\n", 1)'
+expect_fail "cloud run top-level oidc fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-build-secret"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'needle = "  build-hosted-mcp-artifact:\n    name: Build hosted MCP deploy artifact\n"; text = text.replace(needle, needle + "    env:\n      BAD_SECRET: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n", 1)'
+expect_fail "cloud run build job secret fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-deploy-checkout"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("      - name: Download deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download deploy artifact", 1)'
+expect_fail "cloud run deploy checkout fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-missing-ancestor"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
+expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-secret-upsert"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"false\"", "OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"true\"", 1)'
+expect_fail "cloud run secret upsert toggle fails" run_gate "$fixture"
 
 artifact="$TMP_ROOT/special-artifact"
 mkdir -p "$artifact"
