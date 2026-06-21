@@ -25,6 +25,14 @@ const REDACTED = "[REDACTED]";
 const SENSITIVE_KEY_PATTERN =
   /(?:authorization|cookie|set-cookie|token|secret|password|passphrase|api[-_]?key|credential|private[-_]?key|session|dsn)/i;
 const REQUEST_BODY_KEY_PATTERN = /^(?:body|rawBody|requestBody|requestData|data|payload)$/i;
+const AUTH_HEADER_VALUE_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+const SECRET_TOKEN_VALUE_PATTERN =
+  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b/g;
+const SECRET_ASSIGNMENT_PATTERN =
+  /(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\s*[:=]\s*)([^\s"'`,;|)]+)/gi;
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const LOCAL_PATH_PATTERN =
+  /(?<![\w.-])(?:\/Users|\/home|\/private\/var|\/var\/folders|\/tmp|\/private\/tmp)\/[^\s"'`<>|)]{2,}/g;
 
 if (dsn) {
   Sentry.init({
@@ -124,6 +132,13 @@ function sanitizeSentryContexts(contexts: NonNullable<ErrorEvent["contexts"]>): 
   for (const key of Object.keys(contexts)) {
     if (SENSITIVE_KEY_PATTERN.test(key) || REQUEST_BODY_KEY_PATTERN.test(key)) {
       delete contexts[key];
+      continue;
+    }
+    const sanitized = sanitizeSentryValue(contexts[key]);
+    if (isRecord(sanitized)) {
+      contexts[key] = sanitized;
+    } else {
+      delete contexts[key];
     }
   }
   return contexts;
@@ -137,7 +152,7 @@ function sanitizeBreadcrumbData(data: NonNullable<Breadcrumb["data"]>): Breadcru
 function sanitizeHeaders(headers: Record<string, unknown>) {
   const sanitized: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers ?? {})) {
-    sanitized[key] = SENSITIVE_KEY_PATTERN.test(key) ? REDACTED : String(value);
+    sanitized[key] = SENSITIVE_KEY_PATTERN.test(key) ? REDACTED : redactSensitiveText(String(value));
   }
   return sanitized;
 }
@@ -150,7 +165,7 @@ function sanitizeSentryValue(value: unknown, depth = 0): unknown {
     return value.map((entry) => sanitizeSentryValue(entry, depth + 1));
   }
   if (!isRecord(value)) {
-    return typeof value === "string" ? redactURLSecrets(value) : value;
+    return typeof value === "string" ? redactSensitiveText(value) : value;
   }
 
   const sanitized: Record<string, unknown> = {};
@@ -173,6 +188,15 @@ function redactURLSecrets(value: string): string {
     /([?&](?:token|key|secret|password|code|credential|access_token|refresh_token|id_token|api_key))=[^&#]+/gi,
     `$1=${REDACTED}`,
   );
+}
+
+function redactSensitiveText(value: string): string {
+  return redactURLSecrets(value)
+    .replace(AUTH_HEADER_VALUE_PATTERN, `$1 ${REDACTED}`)
+    .replace(SECRET_TOKEN_VALUE_PATTERN, REDACTED)
+    .replace(SECRET_ASSIGNMENT_PATTERN, `$1${REDACTED}`)
+    .replace(EMAIL_PATTERN, "[REDACTED-EMAIL]")
+    .replace(LOCAL_PATH_PATTERN, "[REDACTED-PATH]");
 }
 
 /**

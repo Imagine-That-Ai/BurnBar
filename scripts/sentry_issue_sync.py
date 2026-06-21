@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from hashlib import sha256
 from datetime import datetime, timedelta, UTC
 
 SENTRY_AUTH_TOKEN = os.environ.get("SENTRY_AUTH_TOKEN", "")
@@ -36,10 +38,6 @@ GH_TOKEN = os.environ.get("GH_TOKEN", "")
 GH_REPO = os.environ.get("GH_REPO", "")
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "4"))
 MIN_OCCURRENCES = int(os.environ.get("MIN_OCCURRENCES", "1"))
-
-if not SENTRY_AUTH_TOKEN or not SENTRY_ORG:
-    print("::notice::SENTRY_AUTH_TOKEN or SENTRY_ORG not set — skipping Sentry sync.")
-    sys.exit(0)
 
 # Maps Sentry project slug → GitHub area label.
 PROJECTS = {
@@ -56,6 +54,36 @@ LEVEL_TO_PRIORITY = {
     "error": "P1",
     "warning": "P2",
 }
+
+REDACTED = "[REDACTED]"
+MAX_GH_TITLE_CHARS = 100
+SENSITIVE_QUERY_KEYS = {
+    "token",
+    "key",
+    "secret",
+    "password",
+    "code",
+    "credential",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "api_key",
+    "apikey",
+    "dsn",
+}
+AUTH_HEADER_RE = re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE)
+TOKEN_RE = re.compile(
+    r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b"
+)
+ASSIGNMENT_RE = re.compile(
+    r"(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\s*[:=]\s*)([^\s\"'`,;|)]+)",
+    re.IGNORECASE,
+)
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+LOCAL_PATH_RE = re.compile(r"(?<![\w.-])(?:/Users|/home|/private/var|/var/folders|/tmp|/private/tmp)/[^\s\"'`<>|)]{2,}")
+WINDOWS_PATH_RE = re.compile(r"\b[A-Za-z]:\\[^\s\"'`<>|)]{2,}")
+FIREBASE_UID_RE = re.compile(r"\b(uid|user[_-]?id|firebase[_-]?uid)\s*[:=]\s*[A-Za-z0-9_-]{16,}", re.IGNORECASE)
+SAFE_IDENTIFIER_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
 
 
 def sentry_get(path: str) -> list:
@@ -76,9 +104,62 @@ def sentry_get(path: str) -> list:
         raise
 
 
+def normalize_identifier(value: object, fallback_prefix: str = "id") -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return f"{fallback_prefix}:unknown"
+    normalized = re.sub(r"-{2,}", "-", SAFE_IDENTIFIER_RE.sub("-", raw)).strip("-")[:80]
+    if normalized:
+        return normalized
+    digest = sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{fallback_prefix}:{digest}"
+
+
+def redact_url_secrets(value: str) -> str:
+    def redact_query(match: re.Match[str]) -> str:
+        separator, key, _old_value = match.groups()
+        return f"{separator}{key}={REDACTED}"
+
+    return re.sub(
+        r"([?&])([^=&#\s]+)=([^&#\s]+)",
+        lambda match: (
+            redact_query(match)
+            if urllib.parse.unquote_plus(match.group(2)).lower() in SENSITIVE_QUERY_KEYS
+            else match.group(0)
+        ),
+        value,
+    )
+
+
+def redact_issue_text(value: object, *, fallback: str = "redacted") -> str:
+    text = str(value or "")
+    text = redact_url_secrets(text)
+    text = AUTH_HEADER_RE.sub(lambda match: f"{match.group(1)} {REDACTED}", text)
+    text = TOKEN_RE.sub(REDACTED, text)
+    text = ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
+    text = EMAIL_RE.sub("[REDACTED-EMAIL]", text)
+    text = FIREBASE_UID_RE.sub(lambda match: f"{match.group(1)}={REDACTED}", text)
+    text = LOCAL_PATH_RE.sub("[REDACTED-PATH]", text)
+    text = WINDOWS_PATH_RE.sub("[REDACTED-PATH]", text)
+    text = " ".join(text.replace("\r", " ").replace("\n", " ").split())
+    return text or fallback
+
+
+def markdown_inline(value: object, *, fallback: str = "redacted") -> str:
+    text = redact_issue_text(value, fallback=fallback)
+    return text.replace("|", r"\|").replace("`", "'")
+
+
+def truncate_for_title(value: object, max_chars: int = MAX_GH_TITLE_CHARS) -> str:
+    text = markdown_inline(value, fallback="Sentry event redacted")
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
 def find_existing_issue(sentry_id: str) -> int | None:
     """Return the GitHub issue number if a matching issue already exists."""
-    marker = f"sentry-id: {sentry_id}"
+    marker = f"sentry-id: {normalize_identifier(sentry_id, 'sentry')}"
     result = subprocess.run(
         [
             "gh",
@@ -117,14 +198,16 @@ def fmt_ts(ts: str) -> str:
 
 
 def build_issue_body(project_slug: str, issue: dict) -> str:
-    sentry_id = issue.get("id", "")
-    sentry_url = f"https://sentry.io/organizations/{SENTRY_ORG}/issues/{sentry_id}/"
-    level = issue.get("level", "error")
-    culprit = issue.get("culprit", "")
+    sentry_id = normalize_identifier(issue.get("id", ""), "sentry")
+    sentry_url = (
+        f"https://sentry.io/organizations/{urllib.parse.quote(SENTRY_ORG)}/issues/{urllib.parse.quote(sentry_id)}/"
+    )
+    level = markdown_inline(issue.get("level", "error"), fallback="error")
+    culprit = markdown_inline(issue.get("culprit", ""), fallback="redacted")
     first_seen = issue.get("firstSeen", "")
     last_seen = issue.get("lastSeen", "")
-    count = issue.get("count", "0")
-    user_count = issue.get("userCount", 0)
+    count = markdown_inline(issue.get("count", "0"), fallback="0")
+    user_count = markdown_inline(issue.get("userCount", 0), fallback="0")
 
     lines = [
         f"<!-- sentry-id: {sentry_id} -->",
@@ -161,6 +244,10 @@ def build_issue_body(project_slug: str, issue: dict) -> str:
 
 
 def main() -> None:
+    if not SENTRY_AUTH_TOKEN or not SENTRY_ORG:
+        print("::notice::SENTRY_AUTH_TOKEN or SENTRY_ORG not set - skipping Sentry sync.")
+        sys.exit(0)
+
     now = datetime.now(tz=UTC)
     cutoff = now - timedelta(hours=LOOKBACK_HOURS)
     cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -190,10 +277,10 @@ def main() -> None:
         print(f"  Found {len(issues)} new issue(s) since {LOOKBACK_HOURS}h ago.")
 
         for issue in issues:
-            sentry_id = issue.get("id", "")
-            level = issue.get("level", "error")
+            sentry_id = normalize_identifier(issue.get("id", ""), "sentry")
+            level = str(issue.get("level", "error"))
             count = int(issue.get("count", 0))
-            title = issue.get("title", "Unknown error")
+            title = truncate_for_title(issue.get("title", "Unknown error"))
 
             if level == "warning" and MIN_OCCURRENCES > 1:
                 total_skipped += 1
@@ -205,12 +292,12 @@ def main() -> None:
 
             existing = find_existing_issue(sentry_id)
             if existing:
-                print(f"  Skipping Sentry #{sentry_id} '{title[:60]}' — already tracked as GH #{existing}")
+                print(f"  Skipping Sentry #{sentry_id} '{title[:60]}' - already tracked as GH #{existing}")
                 total_skipped += 1
                 continue
 
             priority = LEVEL_TO_PRIORITY.get(level, "P2")
-            gh_title = f"[Sentry/{project_slug}] {title[:100]}"
+            gh_title = f"[Sentry/{project_slug}] {title}"
             gh_body = build_issue_body(project_slug, issue)
             labels = ["type:bug", area_label, priority]
 
