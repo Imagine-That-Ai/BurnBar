@@ -11,6 +11,16 @@ env_probe_path="$results_dir/environment-probe.txt"
 
 mkdir -p "$logs_dir"
 
+redact_artifacts_on_exit() {
+  local status=$?
+  if command -v node >/dev/null 2>&1 && [[ -f "$repo_root/scripts/ci/redact-qa-artifacts.mjs" ]]; then
+    node "$repo_root/scripts/ci/redact-qa-artifacts.mjs" "$results_dir" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+
+trap redact_artifacts_on_exit EXIT
+
 rows=()
 json_entries=()
 failures=0

@@ -15,6 +15,9 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/redact-qa-artifacts.mjs"
+      - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "tools/qa/run-functional-qa.sh"
   push:
     branches:
       - main
@@ -27,6 +30,9 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/redact-qa-artifacts.mjs"
+      - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "tools/qa/run-functional-qa.sh"
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -54,6 +60,12 @@ jobs:
 
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
+
+      - name: Self-test QA artifact redaction
+        run: node scripts/ci/redact-qa-artifacts.test.mjs
+
+      - name: Check functional QA runner syntax
+        run: bash -n tools/qa/run-functional-qa.sh
 
       - name: Verify agent repair loop prompts
         run: node scripts/ci/verify-agent-repair-loop-prompts.mjs
