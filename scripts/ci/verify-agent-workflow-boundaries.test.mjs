@@ -315,6 +315,17 @@ expect(
 );
 
 expect(
+  "same-repository PR guard substring match fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "        github.event_name == 'pull_request_review_comment' &&\n        github.event.pull_request.head.repo.full_name == github.repository",
+      "        github.event_name == 'pull_request_review_comment' &&\n        github.event.pull_request.head.repo.full_name == github.repository_owner",
+    ),
+  },
+  1,
+);
+
+expect(
   "same-repository PR guard with disjunctive operator fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(

@@ -326,12 +326,54 @@ function normalizedCondition(condition) {
   return condition.replace(/\s+/gu, " ").trim();
 }
 
+function splitTopLevelBooleanOperator(condition, operator) {
+  const parts = [];
+  let quote = null;
+  let depth = 0;
+  let start = 0;
+
+  for (let index = 0; index < condition.length; index += 1) {
+    const char = condition[index];
+    const previous = index > 0 ? condition[index - 1] : "";
+    if (quote) {
+      if (char === quote && (quote === "'" || previous !== "\\")) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && condition.slice(index, index + operator.length) === operator) {
+      parts.push(condition.slice(start, index).trim());
+      start = index + operator.length;
+      index += operator.length - 1;
+    }
+  }
+
+  parts.push(condition.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+function exactConditionTerms(condition, operator) {
+  return splitTopLevelBooleanOperator(stripBalancedOuterParens(condition), operator).map((part) =>
+    stripBalancedOuterParens(part).trim(),
+  );
+}
+
 function conditionHasConjunct(condition, left, right) {
   const normalized = normalizedCondition(condition);
-  return (
-    normalized.includes(`${left} && ${right}`) ||
-    normalized.includes(`${right} && ${left}`)
-  );
+  return exactConditionTerms(normalized, "||").some((branch) => {
+    const conjuncts = new Set(exactConditionTerms(branch, "&&"));
+    return conjuncts.has(left) && conjuncts.has(right);
+  });
 }
 
 function stripBalancedOuterParens(expression) {
@@ -359,8 +401,7 @@ function stripBalancedOuterParens(expression) {
 }
 
 function conditionHasDisallowedAlwaysTrue(condition) {
-  return normalizedCondition(condition)
-    .split(/\s*\|\|\s*/u)
+  return splitTopLevelBooleanOperator(normalizedCondition(condition), "||")
     .some((part) => {
       const literal = stripBalancedOuterParens(part).replace(/\s+/gu, "");
       const match = literal.match(/^(!*)(true|false)$/u);
@@ -373,8 +414,13 @@ function conditionHasDisallowedAlwaysTrue(condition) {
 
 function conditionHasRequiredConjunctsOnly(condition, requiredConjuncts) {
   const normalized = normalizedCondition(condition);
-  if (normalized.includes("||") || conditionHasDisallowedAlwaysTrue(normalized)) return false;
-  const conjuncts = new Set(normalized.split(/\s*&&\s*/u).map((part) => part.trim()));
+  if (
+    splitTopLevelBooleanOperator(normalized, "||").length > 1 ||
+    conditionHasDisallowedAlwaysTrue(normalized)
+  ) {
+    return false;
+  }
+  const conjuncts = new Set(exactConditionTerms(normalized, "&&"));
   return requiredConjuncts.every((required) => conjuncts.has(required));
 }
 
