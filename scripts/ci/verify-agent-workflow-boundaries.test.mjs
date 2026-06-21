@@ -210,6 +210,35 @@ jobs:
         run: droid exec --auto medium "/wiki"
 `;
 
+const CROSS_JOB_DROID_CLI_SECRET = fixture`
+name: Droid Wiki Refresh
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+jobs:
+  wiki-refresh:
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Generate Wiki
+        run: |
+          set -euo pipefail
+          if [[ -z "\${FACTORY_API_KEY}" ]]; then
+            echo "::error::FACTORY_API_KEY is unavailable"
+            exit 1
+          fi
+          droid exec --auto medium "/wiki"
+  unrelated:
+    steps:
+      - name: Secret in another job must not satisfy the Droid exec step
+        env:
+          FACTORY_API_KEY: \${{ secrets.FACTORY_API_KEY }}
+        run: echo "not droid"
+`;
+
 function buildTree(files) {
   const root = mkdtempSync(join(tmpdir(), "agent-workflow-boundary-"));
   roots.push(root);
@@ -280,9 +309,31 @@ expect(
 );
 
 expect(
+  "comment-only PR comment scope gate fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " && steps.pr-comment-scope.outputs.allowed == 'true'",
+      " # steps.pr-comment-scope.outputs.allowed == 'true'",
+    ),
+  },
+  1,
+);
+
+expect(
   "missing checkout credential isolation fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("          persist-credentials: false\n", ""),
+  },
+  1,
+);
+
+expect(
+  "checkout comment credential isolation fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          persist-credentials: false",
+      "          # persist-credentials: false",
+    ),
   },
   1,
 );
@@ -321,9 +372,31 @@ expect(
 );
 
 expect(
+  "cross-job Droid CLI secret attribution fails",
+  { "droid-wiki-refresh.yml": CROSS_JOB_DROID_CLI_SECRET },
+  1,
+);
+
+expect(
   "write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: write"),
+  },
+  1,
+);
+
+expect(
+  "comment-only Droid review OIDC exception fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      contents: read",
+      [
+        "      contents: read",
+        "      id-token: write",
+        "      # automatic_review: true",
+        "      # automatic_security_review: true",
+      ].join("\n"),
+    ),
   },
   1,
 );
