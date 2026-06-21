@@ -62,8 +62,8 @@ runs:
         github-token: ${{ inputs.github-token }}
         script: |
           const mode = process.env.OPS_MODE;
-          const lane = process.env.OPS_LANE;
-          if (!lane) {
+          const rawLane = process.env.OPS_LANE;
+          if (!rawLane) {
             core.setFailed('ops-failure-issue: `lane` input is required.');
             return;
           }
@@ -72,10 +72,63 @@ runs:
             return;
           }
 
+          const REDACTED = '[REDACTED]';
+          const SECRET_QUERY_KEYS = new Set([
+            'token',
+            'key',
+            'secret',
+            'password',
+            'code',
+            'credential',
+            'access_token',
+            'refresh_token',
+            'id_token',
+            'api_key',
+            'apikey',
+            'dsn',
+          ]);
+          const decodeKey = (key) => {
+            try {
+              return decodeURIComponent(key).toLowerCase();
+            } catch {
+              return String(key || '').toLowerCase();
+            }
+          };
+          const redactUrlSecrets = (value) => String(value || '').replace(
+            /([?&])([^=&#\s]+)=([^&#\s]+)/gi,
+            (match, prefix, key) => SECRET_QUERY_KEYS.has(decodeKey(key))
+              ? `${prefix}${key}=${REDACTED}`
+              : match
+          );
+          const redactText = (value) => redactUrlSecrets(value)
+            .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`)
+            .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b/g, REDACTED)
+            .replace(/(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\s*[:=]\s*)([^\s"'`,;|)]+)/gi, `$1${REDACTED}`)
+            .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED-EMAIL]')
+            .replace(/(?<![\w.-])(?:\/Users|\/home|\/private\/var|\/var\/folders|\/tmp|\/private\/tmp)\/[^\s"'`<>|)]{2,}/g, '[REDACTED-PATH]')
+            .replace(/\B@(?=[A-Za-z0-9_-]{1,39}\b)/g, '@\u200b');
+          const oneLine = (value, fallback = 'redacted') => {
+            const text = redactText(value).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+            return text || fallback;
+          };
+          const block = (value, maxChars = 6000) => {
+            const text = redactText(value).replace(/\r\n/g, '\n').trim();
+            if (text.length <= maxChars) return text;
+            return `${text.slice(0, maxChars).trimEnd()}\n\n[truncated]`;
+          };
+          const labelText = (value) => oneLine(value, '').slice(0, 50);
+          const lane = oneLine(rawLane, 'unknown')
+            .replace(/[^A-Za-z0-9_.:-]+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 45) || 'unknown';
+          const summary = oneLine(process.env.OPS_SUMMARY, 'A scheduled launch/ops gate failed.');
+          const details = block(process.env.OPS_DETAILS || '');
+          const titlePrefix = oneLine(process.env.OPS_TITLE_PREFIX, 'Ops failure');
           const laneLabel = `lane:${lane}`;
           const extraLabels = (process.env.OPS_LABELS || '')
             .split(',')
-            .map((s) => s.trim())
+            .map((s) => labelText(s))
             .filter(Boolean);
           // The lane label is the dedupe key — always present. Severity/area
           // labels are additive context, never the matcher.
@@ -115,12 +168,12 @@ runs:
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 body: [
-                  `Recurred — ${process.env.OPS_SUMMARY}`,
+                  `Recurred - ${summary}`,
                   '',
                   `Run: ${runUrl}`,
-                  `Ref: ${context.ref}`,
-                  process.env.OPS_DETAILS ? '' : null,
-                  process.env.OPS_DETAILS || null,
+                  `Ref: ${oneLine(context.ref, 'unknown')}`,
+                  details ? '' : null,
+                  details || null,
                 ].filter((l) => l !== null).join('\n'),
               });
               if (previous) {
@@ -140,16 +193,16 @@ runs:
               core.notice(`Lane '${lane}': commented on standing issue #${issue.number} (${next}).`);
               return;
             }
-            const title = `${process.env.OPS_TITLE_PREFIX} (${context.runId})`;
+            const title = `${titlePrefix} (${context.runId})`;
             const body = [
-              process.env.OPS_SUMMARY,
+              summary,
               '',
               `Lane: \`${lane}\``,
-              `Workflow: ${context.workflow}`,
+              `Workflow: ${oneLine(context.workflow, 'unknown')}`,
               `Run: ${runUrl}`,
-              `Ref: ${context.ref}`,
-              process.env.OPS_DETAILS ? '' : null,
-              process.env.OPS_DETAILS || null,
+              `Ref: ${oneLine(context.ref, 'unknown')}`,
+              details ? '' : null,
+              details || null,
             ].filter((l) => l !== null).join('\n');
             const created = await github.rest.issues.create({
               owner: context.repo.owner,
