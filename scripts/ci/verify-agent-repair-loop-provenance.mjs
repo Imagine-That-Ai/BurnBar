@@ -5,8 +5,10 @@
  * The invariant: a secrets-bearing/write-token repair job may only checkout or
  * hand off a PR after a no-secret read-only classifier proves that the PR is the
  * base repo's trusted repair branch, authored by the expected bot, and bound to
- * the triggering workflow_run head SHA. Public PR title/body marker text and
- * workflow_run.pull_requests membership are correlation only.
+ * the triggering workflow_run head SHA. Manual dispatches must independently
+ * prove the dispatcher still has write-level repository permission. Public PR
+ * title/body marker text and workflow_run.pull_requests membership are
+ * correlation only.
  *
  * Usage:  node scripts/ci/verify-agent-repair-loop-provenance.mjs
  * Exit:   0 = all scoped workflows are structurally gated; 1 = violation;
@@ -58,32 +60,61 @@ function extractStep(source, name) {
   return source.slice(start, next === -1 ? source.length : next);
 }
 
+function stripYamlLineComment(line) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const previous = index > 0 ? line[index - 1] : "";
+    if (char === "'" && !doubleQuoted) {
+      singleQuoted = !singleQuoted;
+      continue;
+    }
+    if (char === '"' && !singleQuoted && previous !== "\\") {
+      doubleQuoted = !doubleQuoted;
+      continue;
+    }
+    if (char === "#" && !singleQuoted && !doubleQuoted && (index === 0 || /\s/u.test(previous))) {
+      return line.slice(0, index).trimEnd();
+    }
+  }
+  return line;
+}
+
+function stripYamlComments(source) {
+  return source
+    .split("\n")
+    .map((line) => stripYamlLineComment(line))
+    .join("\n");
+}
+
 for (const file of workflowFiles()) {
   const source = readFileSync(join(WORKFLOW_DIR, file), "utf8");
-  if (!hasPrivilegedRepairSurface(source)) continue;
+  const executableSource = stripYamlComments(source);
+  if (!hasPrivilegedRepairSurface(executableSource)) continue;
   if (ALLOWLIST.has(file)) {
     console.log(`ALLOW: ${file} is explicitly out of repair-loop scope.`);
     continue;
   }
 
-  if (/in:title,body/u.test(source)) {
+  if (/in:title,body/u.test(executableSource)) {
     fail(file, "must not use public PR title/body marker search as identity");
   }
-  if (/\bgh\s+pr\s+checkout\b/u.test(source)) {
+  if (/\bgh\s+pr\s+checkout\b/u.test(executableSource)) {
     fail(file, "must not checkout a PR number with gh pr checkout");
   }
-  if (/group:\s*.*github\.event\.workflow_run\.head_branch/u.test(source)) {
+  if (/group:\s*.*github\.event\.workflow_run\.head_branch/u.test(executableSource)) {
     fail(file, "concurrency group must not include workflow_run.head_branch");
   }
   if (
     /^ {2,6}(?:GH_TOKEN|OPENAI_API_KEY|CURSOR_API_KEY|GIT_AUTH_TOKEN):\s*\$\{\{\s*(?:secrets|github\.token)/mu.test(
-      source,
+      executableSource,
     )
   ) {
     fail(file, "secret or write-capable token is present in top-level/job env");
   }
 
-  requireAll(file, source, [
+  requireAll(file, executableSource, [
     ["validate-provenance:", "missing read-only validate-provenance job"],
     ["needs: validate-provenance", "privileged job must depend on validate-provenance"],
     [
@@ -119,13 +150,22 @@ for (const file of workflowFiles()) {
       ".workflow_run.pull_requests",
       "workflow_run pull_requests may only be correlation after provenance",
     ],
+    [".sender.login", "workflow_dispatch classifier must bind sender.login"],
+    [
+      'collaborators/${dispatch_actor}/permission',
+      "workflow_dispatch classifier must verify actor repository permission",
+    ],
+    [
+      "admin|maintain|write)",
+      "workflow_dispatch classifier must require write-level actor permission",
+    ],
   ]);
 
-  if (/uses:\s*actions\/checkout@/u.test(source)) {
-    if (!/persist-credentials:\s*false/u.test(source)) {
+  if (/uses:\s*actions\/checkout@/u.test(executableSource)) {
+    if (!/persist-credentials:\s*false/u.test(executableSource)) {
       fail(file, "actions/checkout must set persist-credentials:false");
     }
-    requireAll(file, source, [
+    requireAll(file, executableSource, [
       [
         'fetch origin "+refs/heads/${ref}:refs/remotes/origin/${ref}"',
         "trusted branch continuation must fetch refs/heads from origin",
@@ -141,12 +181,12 @@ for (const file of workflowFiles()) {
     ]);
   }
 
-  if (/openai\/codex-action@/u.test(source)) {
-    const codexStep = extractStep(source, "Run Codex");
+  if (/openai\/codex-action@/u.test(executableSource)) {
+    const codexStep = extractStep(executableSource, "Run Codex");
     if (/\bGH_TOKEN\b|github-token/u.test(codexStep)) {
       fail(file, "Codex action step must not receive GH_TOKEN");
     }
-    requireAll(file, source, [
+    requireAll(file, executableSource, [
       ["REDACTED_TOKEN", "published Codex output must redact token patterns"],
       ["REDACTED_SECRET", "published Codex output must redact exact secret values"],
       [
@@ -156,8 +196,8 @@ for (const file of workflowFiles()) {
     ]);
   }
 
-  if (source.includes("api.cursor.com/v1/agents")) {
-    requireAll(file, source, [
+  if (executableSource.includes("api.cursor.com/v1/agents")) {
+    requireAll(file, executableSource, [
       [
         "Refusing to send prUrl without a validated Cursor repair PR",
         "Cursor workflow must fail closed before sending unvalidated prUrl",

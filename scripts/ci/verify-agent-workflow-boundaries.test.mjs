@@ -38,20 +38,75 @@ jobs:
     if: |
       (
         github.event_name == 'issue_comment' &&
-        contains(github.event.comment.body, '@droid')
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
       (
         github.event_name == 'pull_request_review_comment' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
       (
         github.event_name == 'pull_request_review' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.review.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
       ) ||
       (
         github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
+    env:
+      FACTORY_API_KEY_AVAILABLE: \${{ secrets.FACTORY_API_KEY != '' }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Skip
+        if: env.FACTORY_API_KEY_AVAILABLE == 'false'
+        run: echo skip
+      - name: Resolve PR comment scope
+        id: pr-comment-scope
+        env:
+          GH_TOKEN: \${{ github.token }}
+          ISSUE_IS_PR: \${{ github.event.issue.pull_request != null }}
+          PR_URL: \${{ github.event.issue.pull_request.url || '' }}
+          REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          allowed=true
+          if [[ "\${GITHUB_EVENT_NAME}" == "issue_comment" && "\${ISSUE_IS_PR}" == "true" ]]; then
+            head_repo="$(gh api "\${PR_URL}" --jq '.head.repo.full_name')"
+            if [[ "\${head_repo}" != "\${REPOSITORY}" ]]; then
+              allowed=false
+            fi
+          fi
+          echo "allowed=\${allowed}" >> "\${GITHUB_OUTPUT}"
+      - name: Run Droid Exec
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'
+        uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
+        with:
+          github_token: \${{ github.token }}
+          factory_api_key: \${{ secrets.FACTORY_API_KEY }}
+`;
+
+const REMEDIATED_DROID_SINGLE_EVENT = fixture`
+name: Droid Tag
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  droid:
+    if: |
+      contains(github.event.comment.body, '@droid') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     env:
       FACTORY_API_KEY_AVAILABLE: \${{ secrets.FACTORY_API_KEY != '' }}
     permissions:
@@ -152,6 +207,35 @@ on:
     branches: [main]
 jobs:
   wiki-refresh:
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Generate Wiki
+        env:
+          FACTORY_API_KEY: \${{ secrets.FACTORY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "\${FACTORY_API_KEY}" ]]; then
+            echo "::error::FACTORY_API_KEY is unavailable"
+            exit 1
+          fi
+          droid exec --auto medium "/wiki"
+`;
+
+const REMEDIATED_DROID_CLI_ISSUE_COMMENT = fixture`
+name: Droid Issue Comment
+permissions:
+  contents: read
+  issues: write
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  wiki-refresh:
+    if: |
+      contains(github.event.comment.body, '@droid') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -279,9 +363,17 @@ console.log("Self-test: verify-agent-workflow-boundaries.mjs\n");
 
 expect("remediated Droid workflow passes", { "droid.yml": REMEDIATED_DROID }, 0);
 
+expect("remediated single-event Droid workflow passes", { "droid.yml": REMEDIATED_DROID_SINGLE_EVENT }, 0);
+
 expect("remediated Droid auto-review OIDC exception passes", { "droid-review.yml": REMEDIATED_DROID_REVIEW }, 0);
 
 expect("remediated Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI }, 0);
+
+expect(
+  "remediated text-triggered Droid CLI workflow passes",
+  { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI_ISSUE_COMMENT },
+  0,
+);
 
 expect("remediated folded Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI_FOLDED }, 0);
 
@@ -306,6 +398,61 @@ expect(
     "droid.yml": REMEDIATED_DROID.replaceAll(
       "github.event.pull_request.head.repo.full_name == github.repository",
       "contains(github.event.comment.body, '@droid')",
+    ),
+  },
+  1,
+);
+
+expect(
+  "issue-comment trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "single-event issue-comment trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID_SINGLE_EVENT.replace(
+      " &&\n      contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "text-triggered Droid CLI job without trusted author association fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI_ISSUE_COMMENT.replace(
+      " &&\n      contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "review trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.review.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "pull-request trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)",
+      "",
     ),
   },
   1,

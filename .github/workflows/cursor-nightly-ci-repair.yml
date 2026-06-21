@@ -147,6 +147,7 @@ jobs:
       - name: Classify repair trigger
         id: trigger
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_EXISTS: ${{ steps.repair_pr.outputs.exists }}
           PR_NUMBER: ${{ steps.repair_pr.outputs.number }}
           PR_TRUSTED: ${{ steps.repair_pr.outputs.trusted }}
@@ -159,11 +160,29 @@ jobs:
           can_continue_existing=false
           reason="${GITHUB_EVENT_NAME}"
 
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
             safe=true
             can_start_new=true
             can_continue_existing=true
             reason="${GITHUB_EVENT_NAME} trusted scheduler trigger"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            dispatch_actor="$(jq -r '.sender.login // ""' "$GITHUB_EVENT_PATH")"
+            dispatch_permission=""
+            if [[ -n "$dispatch_actor" ]]; then
+              dispatch_permission="$(gh api "repos/${GH_REPO}/collaborators/${dispatch_actor}/permission" --jq '.permission // ""' 2>/dev/null || true)"
+            fi
+
+            case "$dispatch_permission" in
+              admin|maintain|write)
+                safe=true
+                can_start_new=true
+                can_continue_existing=true
+                reason="workflow_dispatch trusted actor trigger"
+                ;;
+              *)
+                reason="workflow_dispatch actor is not a trusted repository collaborator"
+                ;;
+            esac
           elif [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
             run_repo="$(jq -r '.workflow_run.head_repository.full_name // ""' "$GITHUB_EVENT_PATH")"
             run_branch="$(jq -r '.workflow_run.head_branch // ""' "$GITHUB_EVENT_PATH")"
