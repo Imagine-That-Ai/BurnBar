@@ -200,17 +200,104 @@ function uniqueBlocks(blocks) {
   return [...new Map(blocks.map((block) => [block.start, block])).values()];
 }
 
+function normalizeYamlScalar(value) {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function directEntryValue(block, key) {
+  const lines = block.source.split("\n");
+  const blockIndent = indentOf(lines[0] ?? "");
+  const firstLine = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+  if (firstLine?.[1] === key) return normalizeYamlScalar(firstLine[2]);
+
+  const directIndent = blockIndent + 2;
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    const lineIndent = indentOf(line);
+    if (lineIndent <= blockIndent) break;
+    if (lineIndent !== directIndent) continue;
+
+    const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+    if (entry?.[1] === key) return normalizeYamlScalar(entry[2]);
+  }
+  return null;
+}
+
+function directSectionLines(block, sectionName) {
+  const lines = block.source.split("\n");
+  const blockIndent = indentOf(lines[0] ?? "");
+  const sectionIndent = blockIndent + 2;
+  const sections = [];
+
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    const lineIndent = indentOf(line);
+    if (lineIndent <= blockIndent) break;
+    if (lineIndent !== sectionIndent) continue;
+
+    const section = line.match(/^\s*([A-Za-z0-9_-]+):\s*$/u);
+    if (section?.[1] !== sectionName) continue;
+
+    let end = lines.length;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const cursorLine = lines[cursor];
+      if (isBlank(cursorLine)) continue;
+      if (indentOf(cursorLine) <= sectionIndent) {
+        end = cursor;
+        break;
+      }
+    }
+    sections.push({ indent: sectionIndent, lines: lines.slice(index + 1, end) });
+  }
+  return sections;
+}
+
+function sectionHasEntry(block, sectionName, key, expectedValue) {
+  for (const section of directSectionLines(block, sectionName)) {
+    const entryIndent = section.indent + 2;
+    for (const line of section.lines) {
+      if (isBlank(line) || indentOf(line) !== entryIndent) continue;
+      const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+      if (entry?.[1] !== key) continue;
+      if (normalizeYamlScalar(entry[2]) === expectedValue) return true;
+    }
+  }
+  return false;
+}
+
+function directEntryIncludes(block, key, needle) {
+  return directEntryValue(block, key)?.includes(needle) ?? false;
+}
+
+function stepUsesAction(step, action) {
+  return directEntryValue(step, "uses")?.startsWith(action) ?? false;
+}
+
+function stepUsesDroidAction(step) {
+  return stepUsesAction(step, "Factory-AI/droid-action@");
+}
+
 function requireInBlock(file, block, needle, message) {
   if (!block.source.includes(needle)) fail(file, message);
 }
 
 function hasDroidReviewOidcException(step) {
   return (
-    hasDroidActionSurface(step.source) &&
-    /automatic_review:\s*true/u.test(step.source) &&
-    /automatic_security_review:\s*true/u.test(step.source) &&
-    step.source.includes("github_token: ${{ github.token }}") &&
-    step.source.includes("factory_api_key: ${{ secrets.FACTORY_API_KEY }}")
+    stepUsesDroidAction(step) &&
+    sectionHasEntry(step, "with", "automatic_review", "true") &&
+    sectionHasEntry(step, "with", "automatic_security_review", "true") &&
+    sectionHasEntry(step, "with", "github_token", "${{ github.token }}") &&
+    sectionHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")
   );
 }
 
@@ -223,7 +310,7 @@ for (const file of workflowFiles()) {
   const usesDroidCli = hasDroidCliSurface(source);
   const jobs = jobBlocks(source);
   const steps = stepBlocks(source);
-  const droidActionSteps = steps.filter((step) => hasDroidActionSurface(step.source));
+  const droidActionSteps = steps.filter(stepUsesDroidAction);
   const droidActionJobs = uniqueBlocks(
     droidActionSteps
       .map((step) => blockContainingLine(jobs, step.start))
@@ -243,39 +330,37 @@ for (const file of workflowFiles()) {
     }
 
     for (const job of droidActionJobs) {
-      requireInBlock(
-        file,
-        job,
-        "FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}",
-        "missing boolean Factory API key availability env",
-      );
-      requireInBlock(
-        file,
-        job,
-        "if: env.FACTORY_API_KEY_AVAILABLE == 'false'",
-        "missing fail-closed no-key skip step",
-      );
+      if (
+        !sectionHasEntry(
+          job,
+          "env",
+          "FACTORY_API_KEY_AVAILABLE",
+          "${{ secrets.FACTORY_API_KEY != '' }}",
+        )
+      ) {
+        fail(file, "missing boolean Factory API key availability env");
+      }
+      if (
+        !steps.some(
+          (step) =>
+            blockContainingLine(jobs, step.start) === job &&
+            directEntryValue(step, "if") === "env.FACTORY_API_KEY_AVAILABLE == 'false'",
+        )
+      ) {
+        fail(file, "missing fail-closed no-key skip step");
+      }
     }
 
     for (const step of droidActionSteps) {
-      requireInBlock(
-        file,
-        step,
-        "if: env.FACTORY_API_KEY_AVAILABLE == 'true'",
-        "agent action must be gated by boolean Factory key availability",
-      );
-      requireInBlock(
-        file,
-        step,
-        "factory_api_key: ${{ secrets.FACTORY_API_KEY }}",
-        "Factory API key must be passed only as the Droid action input",
-      );
-      requireInBlock(
-        file,
-        step,
-        "github_token: ${{ github.token }}",
-        "Droid action must use the bounded workflow token instead of OIDC token minting",
-      );
+      if (!directEntryIncludes(step, "if", "env.FACTORY_API_KEY_AVAILABLE == 'true'")) {
+        fail(file, "agent action must be gated by boolean Factory key availability");
+      }
+      if (!sectionHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")) {
+        fail(file, "Factory API key must be passed only as the Droid action input");
+      }
+      if (!sectionHasEntry(step, "with", "github_token", "${{ github.token }}")) {
+        fail(file, "Droid action must use the bounded workflow token instead of OIDC token minting");
+      }
     }
   }
 
@@ -299,7 +384,10 @@ for (const file of workflowFiles()) {
   });
 
   for (const step of steps) {
-    if (/uses:\s*actions\/checkout@/u.test(step.source) && !/persist-credentials:\s*false/u.test(step.source)) {
+    if (
+      stepUsesAction(step, "actions/checkout@") &&
+      !sectionHasEntry(step, "with", "persist-credentials", "false")
+    ) {
       fail(file, "each agent workflow checkout must set persist-credentials:false");
     }
   }

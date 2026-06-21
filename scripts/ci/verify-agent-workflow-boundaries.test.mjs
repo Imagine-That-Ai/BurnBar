@@ -339,6 +339,17 @@ expect(
 );
 
 expect(
+  "checkout name text credential isolation fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n        with:\n          persist-credentials: false\n",
+      "      - name: checkout persist-credentials: false\n        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n",
+    ),
+  },
+  1,
+);
+
+expect(
   "second checkout without credential isolation fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -396,6 +407,17 @@ expect(
         "      # automatic_review: true",
         "      # automatic_security_review: true",
       ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid review OIDC comments in action inputs fail",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "          automatic_review: true\n          automatic_security_review: true\n",
+      "          # automatic_review: true\n          # automatic_security_review: true\n",
     ),
   },
   1,
