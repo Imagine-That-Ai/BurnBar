@@ -471,6 +471,14 @@ function conditionRequiresGlobalConjunctWithoutDisjunction(condition, requiredCo
   return new Set(exactConditionTerms(normalized, "&&")).has(requiredConjunct);
 }
 
+function conditionRequiresTrustedTrigger(condition, check, singleEventWorkflow) {
+  if (condition.includes(check.eventConjunct)) {
+    return conditionRequiresEventConjunct(condition, check.eventConjunct, check.requiredConjunct);
+  }
+  if (!singleEventWorkflow) return false;
+  return conditionRequiresGlobalConjunctWithoutDisjunction(condition, check.requiredConjunct);
+}
+
 function stripBalancedOuterParens(expression) {
   let normalized = expression.trim();
   while (normalized.startsWith("(") && normalized.endsWith(")")) {
@@ -556,6 +564,27 @@ const TRUSTED_AGENT_TRIGGER_CONJUNCTS = [
     label: "pull-request agent trigger",
   },
 ];
+
+function scopedWorkflowEvents(source) {
+  const lines = source.split("\n");
+  const onIndex = lines.findIndex((line) => /^on:\s*$/u.test(line));
+  if (onIndex === -1) return [];
+
+  let eventIndent = null;
+  const events = new Set();
+  for (let index = onIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    const lineIndent = indentOf(line);
+    if (lineIndent === 0) break;
+    if (eventIndent === null) eventIndent = lineIndent;
+    if (lineIndent !== eventIndent) continue;
+    const event = line.match(/^\s*([A-Za-z0-9_-]+):/u)?.[1];
+    if (event) events.add(`${event}:`);
+  }
+
+  return TRUSTED_AGENT_TRIGGER_CONJUNCTS.filter((check) => events.has(check.workflowEvent));
+}
 
 function stepUsesAction(step, action) {
   return directEntryValue(step, "uses")?.startsWith(action) ?? false;
@@ -847,11 +876,20 @@ for (const file of workflowFiles()) {
   const jobs = jobBlocks(source);
   const steps = stepBlocks(source);
   const droidActionSteps = steps.filter(stepUsesDroidAction);
+  const droidCliSteps = steps.filter(stepRunsDroidExec);
   const droidActionJobs = uniqueBlocks(
     droidActionSteps
       .map((step) => blockContainingLine(jobs, step.start))
       .filter(Boolean),
   );
+  const droidCliJobs = uniqueBlocks(
+    droidCliSteps
+      .map((step) => blockContainingLine(jobs, step.start))
+      .filter(Boolean),
+  );
+  const agentExecutionJobs = uniqueBlocks([...droidActionJobs, ...droidCliJobs]);
+  const workflowEvents = scopedWorkflowEvents(source);
+  const singleScopedWorkflowEvent = workflowEvents.length === 1 ? workflowEvents[0] : null;
 
   const grantsContentsWrite =
     topLevelMappingHasEntry(source, "permissions", "contents", "write") ||
@@ -991,12 +1029,18 @@ for (const file of workflowFiles()) {
     }
   }
 
-  for (const job of droidActionJobs) {
+  for (const job of agentExecutionJobs) {
     const jobIf = directEntryValue(job, "if") ?? "";
     if (!conditionHasTextAgentTrigger(jobIf)) continue;
     for (const check of TRUSTED_AGENT_TRIGGER_CONJUNCTS) {
-      if (!jobIf.includes(check.eventConjunct)) continue;
-      if (!conditionRequiresEventConjunct(jobIf, check.eventConjunct, check.requiredConjunct)) {
+      if (!workflowEvents.includes(check)) continue;
+      if (
+        !conditionRequiresTrustedTrigger(
+          jobIf,
+          check,
+          singleScopedWorkflowEvent === check,
+        )
+      ) {
         fail(file, `${check.label} must require trusted author association`);
       }
     }

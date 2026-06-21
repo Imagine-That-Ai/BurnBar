@@ -267,6 +267,26 @@ expect(
 );
 
 expect(
+  "workflow_dispatch actor permission in comments only fails",
+  {
+    "codex-nightly-ci-repair.yml": REMEDIATED_CODEX.replace(
+      [
+        '          dispatch_permission="$(gh api "repos/${GH_REPO}/collaborators/${dispatch_actor}/permission" --jq \'.permission // ""\')"',
+        '          case "$dispatch_permission" in',
+        "            admin|maintain|write) echo trusted ;;",
+        "          esac",
+      ].join("\n"),
+      [
+        "          # gh api repos/${GH_REPO}/collaborators/${dispatch_actor}/permission",
+        "          # admin|maintain|write)",
+        '          dispatch_permission="write"',
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "gh pr checkout regression fails",
   {
     "codex-nightly-ci-repair.yml":
