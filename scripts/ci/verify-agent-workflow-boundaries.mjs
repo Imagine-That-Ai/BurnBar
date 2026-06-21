@@ -377,6 +377,15 @@ function directSectionLines(block, sectionName) {
   const sectionIndent = blockDirectIndent(lines, blockIndent);
   if (sectionIndent === null) return [];
   const sections = [];
+  const firstLineSection = lines[0]?.match(
+    /^\s*-\s+([A-Za-z0-9_-]+):\s*$/u,
+  );
+  if (firstLineSection?.[1] === sectionName) {
+    sections.push({
+      indent: sectionIndent,
+      lines: lines.slice(1),
+    });
+  }
 
   for (let index = 1; index < lines.length; index += 1) {
     const line = lines[index];
@@ -467,6 +476,45 @@ function mappingEntries(block, sectionName) {
 
   for (const entry of splitFlowMappingEntries(
     directEntryValue(block, sectionName) ?? "",
+  )) {
+    const match = entry.match(/^([^:]+):\s*(.*?)\s*$/u);
+    if (!match) continue;
+    entries.push({
+      key: normalizeYamlScalar(match[1]),
+      value: normalizeYamlScalar(match[2]),
+    });
+  }
+
+  return entries;
+}
+
+function topLevelMappingEntries(source, sectionName) {
+  const entries = [];
+  const lines = source.split("\n");
+  const sectionIndex = lines.findIndex((line) =>
+    line.match(new RegExp(`^${sectionName}:\\s*$`, "u")),
+  );
+  if (sectionIndex !== -1) {
+    let entryIndent = null;
+    for (let index = sectionIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (isBlank(line)) continue;
+      const lineIndent = indentOf(line);
+      if (lineIndent === 0) break;
+      if (entryIndent === null) entryIndent = lineIndent;
+      if (lineIndent !== entryIndent) continue;
+
+      const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+      if (!entry) continue;
+      entries.push({
+        key: entry[1],
+        value: directEntryScalarValue(lines, index, lineIndent, entry[2]),
+      });
+    }
+  }
+
+  for (const entry of splitFlowMappingEntries(
+    topLevelEntryValue(source, sectionName) ?? "",
   )) {
     const match = entry.match(/^([^:]+):\s*(.*?)\s*$/u);
     if (!match) continue;
@@ -704,8 +752,8 @@ function stepUsesDroidAction(step) {
 }
 
 function valueReferencesSecretOrToken(value) {
-  return /\$\{\{\s*(?:secrets\.[A-Za-z0-9_]+|github\.token)\s*\}\}/u.test(
-    value,
+  return /\$\{\{[\s\S]*?(?:\bsecrets\s*(?:\.|\[)|\bgithub\s*(?:\.\s*token|\[\s*['"]token['"]\s*\])|\benv\s*(?:\.|\[))[\s\S]*?\}\}/u.test(
+    normalizeYamlScalar(value),
   );
 }
 
@@ -720,6 +768,49 @@ function isAllowedDroidCliSecretEnv(key, value) {
   return (
     key === "FACTORY_API_KEY" && value === "${{ secrets.FACTORY_API_KEY }}"
   );
+}
+
+function isAllowedInheritedAgentEnv(key, value) {
+  return (
+    key === "FACTORY_API_KEY_AVAILABLE" &&
+    value === "${{ secrets.FACTORY_API_KEY != '' }}"
+  );
+}
+
+function sensitiveEnvName(name) {
+  return /(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH|SESSION|DSN)/iu.test(
+    name,
+  );
+}
+
+function shellReferencesEnvName(source, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?:\\$\\{${escaped}\\}|\\$${escaped}\\b)`, "u").test(
+    source,
+  );
+}
+
+function stepWritesSecretOrTokenToGithubEnv(step) {
+  const run = stepRunValue(step);
+  if (!/\bGITHUB_ENV\b/u.test(run)) return false;
+  if (valueReferencesSecretOrToken(run)) return true;
+  for (const entry of mappingEntries(step, "env")) {
+    if (
+      valueReferencesSecretOrToken(entry.value) &&
+      shellReferencesEnvName(run, entry.key)
+    ) {
+      return true;
+    }
+  }
+  return /(?:^|[^A-Za-z0-9_])(?:[A-Za-z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH|SESSION|DSN)[A-Za-z0-9_]*)\s*=/iu.test(
+    run,
+  );
+}
+
+function precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step) {
+  return jobSteps(job, steps)
+    .filter((candidate) => candidate.start < step.start)
+    .some(stepWritesSecretOrTokenToGithubEnv);
 }
 
 function topLevelEntryValue(source, key) {
@@ -1070,6 +1161,20 @@ for (const file of workflowFiles()) {
     }
   }
 
+  for (const job of agentExecutionJobs) {
+    for (const entry of [
+      ...topLevelMappingEntries(source, "env"),
+      ...mappingEntries(job, "env"),
+    ]) {
+      if (!valueReferencesSecretOrToken(entry.value)) continue;
+      if (isAllowedInheritedAgentEnv(entry.key, entry.value)) continue;
+      fail(
+        file,
+        "agent execution job must not inherit extra secrets or tokens",
+      );
+    }
+  }
+
   if (usesDroidAction) {
     if (
       topLevelMappingHasEntry(
@@ -1167,6 +1272,13 @@ for (const file of workflowFiles()) {
           "agent action step must not expose secrets or tokens through env",
         );
       }
+      const job = blockContainingLine(jobs, step.start);
+      if (job && precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)) {
+        fail(
+          file,
+          "agent action job must not export extra secrets or tokens through GITHUB_ENV before execution",
+        );
+      }
     }
   }
 
@@ -1207,12 +1319,37 @@ for (const file of workflowFiles()) {
   }
 
   for (const step of droidCliSteps) {
+    if (valueReferencesSecretOrToken(stepRunValue(step))) {
+      fail(
+        file,
+        "Droid CLI execution body must not reference extra secrets or tokens",
+      );
+    }
     for (const entry of mappingEntries(step, "env")) {
       if (!valueReferencesSecretOrToken(entry.value)) continue;
       if (isAllowedDroidCliSecretEnv(entry.key, entry.value)) continue;
       fail(
         file,
         "Droid CLI execution step must not receive extra secrets or tokens",
+      );
+    }
+    for (const entry of [
+      ...topLevelMappingEntries(source, "env"),
+      ...mappingEntries(blockContainingLine(jobs, step.start) ?? { source: "" }, "env"),
+    ]) {
+      if (!valueReferencesSecretOrToken(entry.value)) continue;
+      if (!sensitiveEnvName(entry.key)) continue;
+      if (!shellReferencesEnvName(stepRunValue(step), entry.key)) continue;
+      fail(
+        file,
+        "Droid CLI execution body must not pass inherited extra secrets to droid",
+      );
+    }
+    const job = blockContainingLine(jobs, step.start);
+    if (job && precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)) {
+      fail(
+        file,
+        "Droid CLI job must not export extra secrets or tokens through GITHUB_ENV before execution",
       );
     }
   }

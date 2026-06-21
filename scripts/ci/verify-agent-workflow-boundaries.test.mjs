@@ -1205,6 +1205,90 @@ expect(
 );
 
 expect(
+  "Droid action composed secret input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_api_key: ${{ secrets.OPENAI_API_KEY || '' }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action bracket secret input fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_api_key: ${{ secrets['OPENAI_API_KEY'] }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action first-line env mapping token fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - name: Run Droid Exec\n",
+      "      - env:\n          GH_TOKEN: ${{ github.token }}\n        name: Run Droid Exec\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action first-line with mapping secret fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      [
+        "      - name: Run Droid Exec",
+        "        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'",
+        "        uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3",
+        "        with:",
+        "          github_token: ${{ github.token }}",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}",
+      ].join("\n"),
+      [
+        "      - with:",
+        "          github_token: ${{ github.token }}",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}",
+        "          extra_api_key: ${{ secrets.OPENAI_API_KEY }}",
+        "        name: Run Droid Exec",
+        "        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'",
+        "        uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action inherited workflow secret env fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      "env:\n  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}\njobs:\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid action env-context secret indirection fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      "env:\n  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}\njobs:\n",
+    ).replace(
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+      "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_api_key: ${{ env.OPENAI_API_KEY }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
   "Droid CLI extra token env fails",
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
@@ -1221,6 +1305,39 @@ expect(
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
       "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
       "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI run-body secret expression fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      'droid exec --auto medium "/wiki"',
+      'droid exec --auto medium "/wiki" "${{ secrets.OPENAI_API_KEY }}"',
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI prior GITHUB_ENV secret export fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      "      - name: Export helper secret\n        run: echo \"OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}\" >> \"$GITHUB_ENV\"\n      - name: Generate Wiki\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI inherited job secret env fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "  wiki-refresh:\n",
+      "  wiki-refresh:\n    env:\n      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}\n",
     ),
   },
   1,
