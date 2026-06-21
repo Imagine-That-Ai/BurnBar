@@ -73,14 +73,35 @@ interface CloudProAllowanceReservationResult {
   usedAfter: number;
 }
 
+interface CloudProAllowanceReservationIdentity {
+  uid: string;
+  monthKey: string;
+  meter: CloudProAllowanceMeter;
+  sessionId: string;
+  reservationId: string;
+  requestedUnits: number;
+}
+
 export function allowanceDocPath(uid: string, monthKey: string): string {
   return `users/${uid}/billing/allowances/months/${monthKey}`;
+}
+
+export function cloudProTopUpReceiptDocPath(uid: string, receiptId: string): string {
+  return `users/${uid}/billing/cloud_pro_topups/receipts/${receiptId}`;
 }
 
 export function monthKeyForDate(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+}
+
+export function isMatchingCloudProAllowanceReservation(
+  raw: unknown,
+  expected: CloudProAllowanceReservationIdentity,
+): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  return Object.entries(expected).every(([key, value]) => Reflect.get(raw, key) === value);
 }
 
 function positiveInteger(raw: unknown, fallback: number): number {
