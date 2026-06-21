@@ -525,7 +525,7 @@ jobs:
           exit 1
 
       - name: Record Cloud Run deploy failure
-        if: ${{ needs.deploy-hosted-mcp.result != 'success' }}
+        if: ${{ always() && needs.deploy-hosted-mcp.result != 'success' }}
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: open

@@ -340,8 +340,8 @@ scripts/ops/rollback-revision.sh openburnbar-hosted-mcp REVISION \
 ```
 
 The deploy workflow captures the previous ready revision before shifting
-traffic and runs the explicit-revision command automatically if the deploy or
-post-deploy readback fails.
+traffic and runs the equivalent explicit Cloud Run `update-traffic` rollback
+automatically if the deploy or post-deploy readback fails.
 
 If auth or privacy behavior is suspect, revoke the Cloud Run service account's
 Firestore/Storage permissions before debugging.

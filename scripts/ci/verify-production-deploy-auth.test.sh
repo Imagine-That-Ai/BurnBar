@@ -174,6 +174,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"false\"", "OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"true\"", 1)'
 expect_fail "cloud run secret upsert toggle fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/cloud-run-failure-recorder-missing-always"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("always() && needs.deploy-hosted-mcp.result != '\''success'\''", "needs.deploy-hosted-mcp.result != '\''success'\''", 1)'
+expect_fail "cloud run failure recorder without always fails" run_gate "$fixture"
+
 artifact="$TMP_ROOT/special-artifact"
 mkdir -p "$artifact"
 printf 'ok\n' > "$artifact/index.html"
