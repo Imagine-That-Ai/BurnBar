@@ -1413,7 +1413,61 @@ expect(
       .replace("  droid:\n", "  droid:\n    needs: prepare\n")
       .replace(
         "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
-        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs[\"prepare\"] }}\n",
+        '          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs["prepare"] }}\n',
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action bracket needs output collection tainted export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        '          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs["prepare"]["outputs"] }}\n',
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action bracket needs output tainted export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare['outputs']['payload'] }}\n",
       ),
   },
   1,

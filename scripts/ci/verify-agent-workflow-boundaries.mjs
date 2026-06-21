@@ -875,8 +875,12 @@ function normalizedContextName(name) {
 }
 
 function contextPropertyAccessPattern(contextName, propertyName) {
+  return `${contextName}\\s*${propertyAccessPattern(propertyName)}`;
+}
+
+function propertyAccessPattern(propertyName) {
   const escaped = escapedRegexLiteral(propertyName);
-  return `${contextName}\\s*(?:\\.\\s*${escaped}\\b|\\[\\s*['"]${escaped}['"]\\s*\\])`;
+  return `(?:\\.\\s*${escaped}\\b|\\[\\s*['"]${escaped}['"]\\s*\\])`;
 }
 
 function valueReferencesStepOutput(value, stepId) {
@@ -981,7 +985,7 @@ function valueReferencesNeedsJob(value, jobNameValue) {
 function valueReferencesNeedsOutput(value, jobNameValue, outputName) {
   const normalized = normalizeYamlScalar(value);
   return new RegExp(
-    `${contextPropertyAccessPattern("needs", jobNameValue)}\\s*\\.\\s*${contextPropertyAccessPattern("outputs", outputName)}`,
+    `${contextPropertyAccessPattern("needs", jobNameValue)}\\s*${propertyAccessPattern("outputs")}\\s*${propertyAccessPattern(outputName)}`,
     "iu",
   ).test(normalized);
 }
@@ -989,7 +993,7 @@ function valueReferencesNeedsOutput(value, jobNameValue, outputName) {
 function valueReferencesNeedsOutputCollection(value, jobNameValue) {
   const normalized = normalizeYamlScalar(value);
   return new RegExp(
-    `${contextPropertyAccessPattern("needs", jobNameValue)}\\s*\\.\\s*outputs\\b(?!\\s*(?:\\.|\\[))`,
+    `${contextPropertyAccessPattern("needs", jobNameValue)}\\s*${propertyAccessPattern("outputs")}(?!\\s*(?:\\.|\\[))`,
     "iu",
   ).test(normalized);
 }
