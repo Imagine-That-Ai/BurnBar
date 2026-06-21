@@ -21,7 +21,7 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import { db } from "../adminRuntime.js";
 import { recordOrUndefined } from "../guards.js";
 import { logInfo, logWarn, onCallProduction, wrapCallableHandler } from "../logging.js";
-import { boundedTrimmedString } from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   AGENT_GRANT_AUTHORITY_FRESHNESS_SECONDS,
@@ -443,6 +443,7 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before queuing an agent grant request.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     // Original validation/read order is load-bearing: a malformed field must
     // surface the SAME HttpsError it did pre-split, and an untrusted device must
@@ -569,6 +570,7 @@ export const respondMissionApproval = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to a mission approval.");
       const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
       await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+      await assertActiveBurnBarCloudProEntitlement(uid);
 
       const requestId = boundedFirestoreDocumentId(request.data.requestId, "requestId", 160);
       const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
