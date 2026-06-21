@@ -16,6 +16,10 @@ const secretEnv = {
 };
 const fakeGitHubToken = ["ghp", "123456789012345678901234567890123456"].join("_");
 const fakeSlackToken = ["xoxb", "123456789012", "abcdefghijklmnopqrstuvwxyz"].join("-");
+const opaqueBearerToken = "abcdefghijklmnopqrstuvwxyz123456789";
+const structuredPassword = "json-password-abcdef123456";
+const structuredToken = "json-token-abcdef123456789";
+const plistPassword = "plist-password-abcdef123456";
 
 function run(args, options = {}) {
   return execFileSync("node", [SCRIPT, ...args], {
@@ -34,6 +38,10 @@ function assertRedacted(text) {
     secretEnv.QA_FIREBASE_PASSWORD,
     fakeGitHubToken,
     fakeSlackToken,
+    opaqueBearerToken,
+    structuredPassword,
+    structuredToken,
+    plistPassword,
   ]) {
     assert.equal(text.includes(value), false, `raw sensitive value survived: ${value}`);
   }
@@ -52,7 +60,8 @@ process.on("exit", () => {
       `FACTORY_API_KEY=${secretEnv.FACTORY_API_KEY}`,
       `FIRAAppCheckDebugToken=${secretEnv.FIREBASE_APP_CHECK_DEBUG_TOKEN}`,
       `signed in as ${secretEnv.QA_FIREBASE_EMAIL}`,
-      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456789",
+      `Authorization: Bearer ${opaqueBearerToken}`,
+      `{"password":"${structuredPassword}","token":"${structuredToken}"}`,
       `github token ${fakeGitHubToken}`,
       `slack token ${fakeSlackToken}`,
     ].join("\n"),
@@ -78,12 +87,25 @@ process.on("exit", () => {
     join(root, "summary.json"),
     JSON.stringify({ note: `Factory key ${secretEnv.FACTORY_API_KEY}` }),
   );
+  writeFileSync(
+    join(root, "config.plist"),
+    [
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+      "<plist>",
+      "<dict>",
+      "<key>password</key>",
+      `<string>${plistPassword}</string>`,
+      "</dict>",
+      "</plist>",
+    ].join("\n"),
+  );
 
   run([root]);
 
   const log = readFileSync(join(root, "logs", "firebase-config.log"), "utf8");
   const summary = readFileSync(join(root, "summary.json"), "utf8");
-  assertRedacted(`${log}\n${summary}`);
+  const plist = readFileSync(join(root, "config.plist"), "utf8");
+  assertRedacted(`${log}\n${summary}\n${plist}`);
   assert.match(log, /safe line stays useful/u);
 }
 

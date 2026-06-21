@@ -79,19 +79,17 @@ function exactSecretValues() {
 function redactKnownAssignments(text) {
   const keyPattern = ASSIGNMENT_KEYS.map(escapeRegExp).join("|");
   return text.replace(
-    new RegExp(`\\b(${keyPattern})\\b\\s*[:=]\\s*(['"]?)[^\\s'"<>|&]{3,}`, "giu"),
-    "$1=$2[REDACTED]",
+    new RegExp(
+      `(["']?)\\b(${keyPattern})\\b\\1\\s*[:=]\\s*(['"]?)[^\\s'"<>|&{},\\[\\]]{3,}\\3`,
+      "giu",
+    ),
+    (_match, keyQuote, key, valueQuote) =>
+      `${keyQuote}${key}${keyQuote}=${valueQuote}[REDACTED]${valueQuote}`,
   );
 }
 
-export function redactText(input, exactValues = exactSecretValues()) {
-  let output = input;
-  for (const value of exactValues) {
-    output = output.split(value).join("[REDACTED]");
-  }
-
-  output = redactKnownAssignments(output);
-  output = output
+function redactTokenShapes(text) {
+  return text
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gu, "Bearer [REDACTED]")
     .replace(
       /\b(?:sk-ant|sk-proj|sk-|sk_live_|sk_test_|rk_live_|rk_test_)[A-Za-z0-9._-]{12,}\b/giu,
@@ -107,6 +105,37 @@ export function redactText(input, exactValues = exactSecretValues()) {
       /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gu,
       "[REDACTED_EMAIL]",
     );
+}
+
+function redactStructuredSecretFields(text) {
+  const keyPattern = ASSIGNMENT_KEYS.map(escapeRegExp).join("|");
+  return text
+    .replace(
+      new RegExp(`(["'])(${keyPattern})\\1(\\s*[:=]\\s*)(["'])(?:\\\\.|[^\\\\])*?\\4`, "giu"),
+      "$1$2$1$3$4[REDACTED]$4",
+    )
+    .replace(
+      new RegExp(
+        `(<key>\\s*(?:${keyPattern})\\s*</key>\\s*<(?:string|data)>)[\\s\\S]*?(</(?:string|data)>)`,
+        "giu",
+      ),
+      "$1[REDACTED]$2",
+    )
+    .replace(
+      new RegExp(`(<(${keyPattern})\\b[^>]*>)[\\s\\S]*?(</\\2>)`, "giu"),
+      "$1[REDACTED]$3",
+    );
+}
+
+export function redactText(input, exactValues = exactSecretValues()) {
+  let output = input;
+  for (const value of exactValues) {
+    output = output.split(value).join("[REDACTED]");
+  }
+
+  output = redactTokenShapes(output);
+  output = redactStructuredSecretFields(output);
+  output = redactKnownAssignments(output);
   return output;
 }
 

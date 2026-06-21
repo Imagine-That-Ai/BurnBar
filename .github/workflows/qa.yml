@@ -85,8 +85,8 @@ jobs:
       - name: Run QA
         if: env.INTERNAL_RUN == 'true'
         id: qa
-        # continue-on-error keeps later steps (artifacts, PR comment) running;
-        # the "Honest conclusion" step below re-asserts the real outcome.
+        # continue-on-error keeps later steps running; artifact upload and PR
+        # comments are still gated on a final successful redaction pass below.
         continue-on-error: true
         timeout-minutes: 20
         # Minimum-scoped secret set (diligence H26): this step receives ONLY
@@ -131,6 +131,7 @@ jobs:
       - name: Ensure report exists
         if: always()
         run: |
+          set -euo pipefail
           mkdir -p qa-results
           if [[ ! -f qa-results/report.md ]]; then
             {
@@ -144,7 +145,15 @@ jobs:
               echo "<summary>Screenshots & Evidence</summary>"
               echo ""
               echo '```text'
-              node scripts/ci/redact-qa-artifacts.mjs --stream < qa-results/qa-output.txt 2>/dev/null | tail -200 || true
+              if [[ -f qa-results/qa-output.txt ]]; then
+                if redacted_tail="$(node scripts/ci/redact-qa-artifacts.mjs --stream < qa-results/qa-output.txt 2>/dev/null | tail -200)"; then
+                  printf '%s\n' "$redacted_tail"
+                else
+                  echo "QA output omitted because redaction failed."
+                fi
+              else
+                echo "QA output file missing."
+              fi
               echo '```'
               echo ""
               echo "</details>"
@@ -157,8 +166,28 @@ jobs:
           fi
           node scripts/ci/redact-qa-artifacts.mjs qa-results
 
-      - name: Upload QA artifacts
+      - name: Finalize sanitized QA artifacts
         if: always()
+        id: qa_artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p qa-results
+          if [[ ! -f qa-results/report.md ]]; then
+            {
+              echo "## QA Report"
+              echo ""
+              echo ":no_entry: BLOCKED -- QA report missing before artifact finalization."
+            } > qa-results/report.md
+          fi
+          if ! node scripts/ci/redact-qa-artifacts.mjs qa-results; then
+            rm -rf qa-results
+            echo "::error::QA artifact redaction failed; qa-results removed before upload/comment publication."
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload QA artifacts
+        if: always() && steps.qa_artifacts.outputs.ready == 'true'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: qa-results-${{ github.run_number }}
@@ -166,7 +195,7 @@ jobs:
           retention-days: 14
 
       - name: Post QA report as PR comment
-        if: always() && steps.pr.outputs.number != ''
+        if: always() && steps.qa_artifacts.outputs.ready == 'true' && steps.pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -198,8 +227,13 @@ jobs:
         if: always() && env.INTERNAL_RUN == 'true'
         env:
           QA_STEP_OUTCOME: ${{ steps.qa.outcome }}
+          QA_ARTIFACTS_READY: ${{ steps.qa_artifacts.outputs.ready }}
         run: |
           set -euo pipefail
+          if [[ "${QA_ARTIFACTS_READY}" != "true" ]]; then
+            echo "::error::Functional QA artifacts were not published because redaction did not complete successfully."
+            exit 1
+          fi
           if [[ "${QA_STEP_OUTCOME}" != "success" ]]; then
             echo "::error::Functional QA did not complete (step outcome: ${QA_STEP_OUTCOME}). The PR comment/artifacts have details."
             exit 1
