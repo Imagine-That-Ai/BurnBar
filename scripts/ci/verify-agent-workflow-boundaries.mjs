@@ -307,9 +307,13 @@ function directSectionLines(block, sectionName) {
 
 function sectionHasEntry(block, sectionName, key, expectedValue) {
   for (const section of directSectionLines(block, sectionName)) {
-    const entryIndent = section.indent + 2;
+    let entryIndent = null;
     for (const line of section.lines) {
-      if (isBlank(line) || indentOf(line) !== entryIndent) continue;
+      if (isBlank(line)) continue;
+      const lineIndent = indentOf(line);
+      if (lineIndent <= section.indent) break;
+      if (entryIndent === null) entryIndent = lineIndent;
+      if (lineIndent !== entryIndent) continue;
       const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
       if (entry?.[1] !== key) continue;
       if (normalizeYamlScalar(entry[2]) === expectedValue) return true;
@@ -368,12 +372,22 @@ function exactConditionTerms(condition, operator) {
   );
 }
 
-function conditionHasConjunct(condition, left, right) {
+function conditionRequiresEventConjunct(condition, eventConjunct, requiredConjunct) {
   const normalized = normalizedCondition(condition);
-  return exactConditionTerms(normalized, "||").some((branch) => {
+  let sawEventBranch = false;
+  for (const branch of exactConditionTerms(normalized, "||")) {
     const conjuncts = new Set(exactConditionTerms(branch, "&&"));
-    return conjuncts.has(left) && conjuncts.has(right);
-  });
+    if (!conjuncts.has(eventConjunct)) continue;
+    sawEventBranch = true;
+    if (!conjuncts.has(requiredConjunct)) return false;
+  }
+  return sawEventBranch;
+}
+
+function conditionRequiresGlobalConjunctWithoutDisjunction(condition, requiredConjunct) {
+  const normalized = normalizedCondition(condition);
+  if (splitTopLevelBooleanOperator(normalized, "||").length > 1) return false;
+  return new Set(exactConditionTerms(normalized, "&&")).has(requiredConjunct);
 }
 
 function stripBalancedOuterParens(expression) {
@@ -580,34 +594,34 @@ for (const file of workflowFiles()) {
   ) {
     for (const job of droidActionJobs) {
       const jobIf = directEntryValue(job, "if") ?? "";
-      const normalizedJobIf = normalizedCondition(jobIf);
       if (conditionHasDisallowedAlwaysTrue(jobIf)) {
         fail(file, "PR-triggered agent workflow must not include always-true bypasses");
       }
+      const sameRepositoryConjunct =
+        "github.event.pull_request.head.repo.full_name == github.repository";
 
       const hasPullRequestReviewCommentGuard =
         !/pull_request_review_comment:/u.test(source) ||
-        conditionHasConjunct(
+        conditionRequiresEventConjunct(
           jobIf,
           "github.event_name == 'pull_request_review_comment'",
-          "github.event.pull_request.head.repo.full_name == github.repository",
+          sameRepositoryConjunct,
         );
       const hasPullRequestReviewGuard =
         !/pull_request_review:/u.test(source) ||
-        conditionHasConjunct(
+        conditionRequiresEventConjunct(
           jobIf,
           "github.event_name == 'pull_request_review'",
-          "github.event.pull_request.head.repo.full_name == github.repository",
+          sameRepositoryConjunct,
         );
       const hasPullRequestGuard =
         !/pull_request:/u.test(source) ||
-        conditionHasConjunct(
+        conditionRequiresEventConjunct(
           jobIf,
           "github.event_name == 'pull_request'",
-          "github.event.pull_request.head.repo.full_name == github.repository",
+          sameRepositoryConjunct,
         ) ||
-        (!normalizedJobIf.includes("||") &&
-          normalizedJobIf.includes("github.event.pull_request.head.repo.full_name == github.repository"));
+        conditionRequiresGlobalConjunctWithoutDisjunction(jobIf, sameRepositoryConjunct);
 
       if (!hasPullRequestReviewCommentGuard || !hasPullRequestReviewGuard || !hasPullRequestGuard) {
         fail(file, "PR-triggered agent workflow must require same-repository pull requests");

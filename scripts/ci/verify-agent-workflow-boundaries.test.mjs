@@ -337,6 +337,17 @@ expect(
 );
 
 expect(
+  "same-repository PR guard with extra unguarded PR branch fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      )\n    env:",
+      "      ) ||\n      github.event_name == 'pull_request'\n    env:",
+    ),
+  },
+  1,
+);
+
+expect(
   "same-repository PR guard with always-true negated false disjunct fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -578,6 +589,17 @@ expect(
     "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
       "jobs:\n  droid-review:",
       "jobs:\n  unrelated:\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo unrelated\n  droid-review:",
+    ),
+  },
+  1,
+);
+
+expect(
+  "wide-indented cross-job Droid review OIDC regression fails",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "jobs:\n  droid-review:",
+      "jobs:\n  unrelated:\n    permissions:\n        contents: read\n        id-token: write\n    steps:\n      - run: echo unrelated\n  droid-review:",
     ),
   },
   1,
