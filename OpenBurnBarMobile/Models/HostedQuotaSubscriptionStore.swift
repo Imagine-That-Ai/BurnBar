@@ -405,7 +405,6 @@ final class HostedQuotaSubscriptionStore {
             error = HostedQuotaSubscriptionError.signedOutSubscriptionPurchase.localizedDescription
             return
         }
-        let canBindEntitlement = signedIn
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
@@ -414,13 +413,8 @@ final class HostedQuotaSubscriptionStore {
             if productID == Self.productID {
                 self.product = product
             }
-            let purchaseOptions: Set<Product.PurchaseOption>
-            if canBindEntitlement {
-                let token = try await mintAppAccountToken(productID: productID)
-                purchaseOptions = [.appAccountToken(token)]
-            } else {
-                purchaseOptions = []
-            }
+            let token = try await mintAppAccountToken(productID: productID)
+            let purchaseOptions: Set<Product.PurchaseOption> = [.appAccountToken(token)]
             let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
