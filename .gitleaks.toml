@@ -217,17 +217,6 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Sentry redaction regression tests use a synthetic Stripe-like token fixture only"
-regexTarget = "match"
-regexes = [
-  '''sk_live_12345678901234567890''',
-]
-paths = [
-  '''functions/src/__tests__/sentry\.test\.ts''',
-  '''tests/test_sentry_issue_sync_redaction\.py''',
-]
-
-[[allowlists]]
 description = "Launch evidence stores SHA-256 purchase token hashes, not raw purchase tokens"
 regexTarget = "match"
 regexes = [
