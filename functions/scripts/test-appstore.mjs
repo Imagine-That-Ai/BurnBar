@@ -28,6 +28,8 @@
  *    10. `beginBinding` writes a binding doc keyed by a fresh UUID.
  *    11. `JWSVerificationFailure` and `EntitlementReconcileError`
  *        carry stable error codes for the iOS surface.
+ *    12. Legacy no-token callable restores require an existing server
+ *        entitlement for that signed-in user.
  *
  * Run with `npm run test:appstore` (chained from `npm test`).
  */
@@ -811,6 +813,84 @@ test("reconcileEntitlement rejects when claimedUid disagrees with binding", asyn
   );
 });
 
+test("reconcileEntitlement rejects client callable JWS without binding or existing entitlement", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx-unbound",
+    originalTransactionId: "otx-unbound",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-unbound",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /binding_unknown/,
+  );
+
+  assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
+});
+
+test("reconcileEntitlement allows legacy no-token callable restore only for an existing matching entitlement", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  reads.set("users/uid-legacy/entitlements/hosted_quota_sync", {
+    exists: true,
+    data: () =>
+      stubDoc({
+        productID,
+        transactionID: "tx-legacy-old",
+        originalTransactionID: "otx-legacy",
+        signedDateMs: 1,
+      }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 2,
+    transactionId: "tx-legacy-new",
+    originalTransactionId: "otx-legacy",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-legacy",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.uid, "uid-legacy");
+  assert.equal(result.changed, true);
+  assert.equal(result.entitlement.transactionID, "tx-legacy-new");
+});
+
 test("reconcileEntitlement is idempotent on replay (no extra writes)", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
@@ -926,7 +1006,10 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
-  const db = makeReconcilerDb(writes, new Map());
+  const reads = new Map();
+  const token = "44444444-4444-4444-4444-444444444444";
+  addBinding(reads, "uid-7", token, productID);
+  const db = makeReconcilerDb(writes, reads);
 
   const oldTx = fakeTx({
     productId: productID,
@@ -935,6 +1018,7 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
   });
   const newerTx = fakeTx({
     productId: productID,
@@ -943,6 +1027,7 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 60 * 86_400_000,
+    appAccountToken: token,
   });
   // Seed sees old; ASC returns the newer one. Reconciler must pick newer.
   const verifier = fakeVerifier({
@@ -973,7 +1058,10 @@ test("reconcileEntitlement honours ASC transactionId tie-break over inbound JWS"
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
-  const db = makeReconcilerDb(writes, new Map());
+  const reads = new Map();
+  const token = "55555555-5555-5555-5555-555555555555";
+  addBinding(reads, "uid-7", token, productID);
+  const db = makeReconcilerDb(writes, reads);
   const signedDate = 1800000000_000;
 
   const oldTx = fakeTx({
@@ -983,6 +1071,7 @@ test("reconcileEntitlement honours ASC transactionId tie-break over inbound JWS"
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
   });
   const newerTx = fakeTx({
     productId: productID,
@@ -991,6 +1080,7 @@ test("reconcileEntitlement honours ASC transactionId tie-break over inbound JWS"
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 60 * 86_400_000,
+    appAccountToken: token,
   });
   const verifier = fakeVerifier({
     seed: oldTx,
@@ -1187,6 +1277,19 @@ function stubDoc(overrides = {}) {
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function addBinding(reads, uid, token, productID) {
+  reads.set(`users/${uid}/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid,
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
 }
 
 function makeFakeFirestore(writes, opts = {}) {
