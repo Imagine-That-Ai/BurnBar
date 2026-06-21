@@ -880,13 +880,13 @@ function contextPropertyAccessPattern(contextName, propertyName) {
 
 function propertyAccessPattern(propertyName) {
   const escaped = escapedRegexLiteral(propertyName);
-  return `(?:\\.\\s*${escaped}\\b|\\[\\s*['"]${escaped}['"]\\s*\\])`;
+  return `(?:\\.\\s*${escaped}(?![A-Za-z0-9_-])|\\[\\s*['"]${escaped}['"]\\s*\\])`;
 }
 
 function valueReferencesStepOutput(value, stepId) {
   const normalized = normalizeYamlScalar(value);
   return new RegExp(
-    `${contextPropertyAccessPattern("steps", stepId)}\\s*\\.\\s*outputs\\b`,
+    `${contextPropertyAccessPattern("steps", stepId)}\\s*${propertyAccessPattern("outputs")}`,
     "iu",
   ).test(normalized);
 }

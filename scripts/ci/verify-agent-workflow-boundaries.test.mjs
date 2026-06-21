@@ -1503,6 +1503,68 @@ expect(
 );
 
 expect(
+  "Droid action bracket step output taint export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.relay.outputs.derived }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "      - id: relay",
+        "        run: echo \"derived=${{ steps.helper['outputs']['payload'] }}\" >> \"$GITHUB_OUTPUT\"",
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare.outputs.payload }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action hyphenated needs job prefix remains clean",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "  prepare-data:",
+        "    outputs:",
+        "      result: ${{ steps.cache.outputs.result }}",
+        "    steps:",
+        "      - id: cache",
+        '        run: echo "result=cache-hit" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: [prepare, prepare-data]\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare-data.outputs.result }}\n",
+      ),
+  },
+  0,
+);
+
+expect(
   "Droid action relay job GITHUB_OUTPUT taint export fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
