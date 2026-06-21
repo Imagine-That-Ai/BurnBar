@@ -543,10 +543,59 @@ function stepWithId(job, steps, id) {
   return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
 }
 
+function maskShellStringsAndComments(body) {
+  let masked = "";
+  let quote = null;
+  let escaped = false;
+  let inComment = false;
+  for (const char of body) {
+    if (inComment) {
+      if (char === "\n") {
+        inComment = false;
+        masked += char;
+      } else {
+        masked += " ";
+      }
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (quote === '"' && !escaped && char === "\\") {
+        escaped = true;
+      } else {
+        if (!escaped && char === quote) quote = null;
+        escaped = false;
+      }
+      masked += char === "\n" ? char : " ";
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      masked += " ";
+      escaped = false;
+      continue;
+    }
+
+    if (char === "#") {
+      inComment = true;
+      masked += " ";
+      escaped = false;
+      continue;
+    }
+
+    masked += char;
+    escaped = false;
+  }
+  return masked;
+}
+
 function shellBlockHasTopLevelNonzeroExit(body) {
+  const executableBody = maskShellStringsAndComments(body);
   const tokenPattern = /\bif\b|\bfi\b|\bexit\s+[1-9][0-9]*\b/gu;
   let depth = 0;
-  let match = tokenPattern.exec(body);
+  let match = tokenPattern.exec(executableBody);
   while (match) {
     const token = match[0];
     if (token === "if") {
@@ -557,7 +606,7 @@ function shellBlockHasTopLevelNonzeroExit(body) {
     } else if (depth === 0) {
       return true;
     }
-    match = tokenPattern.exec(body);
+    match = tokenPattern.exec(executableBody);
   }
   return false;
 }
