@@ -608,6 +608,50 @@ expect(
 );
 
 expect(
+  "Droid CLI empty-key preflight with exit in else branch fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "          else",
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI empty-key preflight with exit in elif branch fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        '          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "cross-job Droid CLI secret attribution fails",
   { "droid-wiki-refresh.yml": CROSS_JOB_DROID_CLI_SECRET },
   1,
