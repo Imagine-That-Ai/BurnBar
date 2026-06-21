@@ -63,8 +63,8 @@ jobs:
             TAG="$REF_NAME"
           fi
 
-          if [[ ! "$TAG" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]; then
-            echo "::error::Cloud Run production deploys must resolve to a simple refs/tags/v* release tag."
+          if [[ ! "$TAG" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Cloud Run production deploys must resolve to a SemVer v* release tag."
             exit 1
           fi
 
