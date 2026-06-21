@@ -51,7 +51,7 @@ export OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true # only for intentional ke
 Hermes realtime relay (separate sidecar): [`scripts/deploy-hermes-relay.sh`](../scripts/deploy-hermes-relay.sh) — set `HERMES_RELAY_URL` and it gates on `/healthz` after your Cloud Run deploy.
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates on
-`/healthz` (override with `MCP_HEALTH_PATH=/readyz` when checking branded DNS), and
+`/readyz` (override with `MCP_HEALTH_PATH` only for a custom health path), and
 sets the resource audience to `https://mcp.burnbar.ai/mcp` and issuer to
 `https://mcp.burnbar.ai`. HMAC signing is a legacy transition path; Ed25519
 signing is the production target so the resource server can verify with a
