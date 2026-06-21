@@ -491,16 +491,42 @@ function pickWinning(candidates: DecodedTransaction[], productID: string): Decod
       best = c;
       continue;
     }
-    if (rank(c) > rank(best)) {
+    if (compareTransactions(c, best) > 0) {
       best = c;
     }
   }
   return best;
 }
 
-/** Order: most recent signedDate wins. Tie-break on transactionId. */
-function rank(c: DecodedTransaction): number {
+/** Order: most recent signedDate wins, then Apple's monotonic transactionId. */
+function compareTransactions(a: DecodedTransaction, b: DecodedTransaction): number {
+  const signedDateDelta = signedDateMs(a) - signedDateMs(b);
+  if (signedDateDelta !== 0) return signedDateDelta;
+  return compareTransactionIDs(payloadTransactionId(a), payloadTransactionId(b));
+}
+
+function signedDateMs(c: DecodedTransaction): number {
   return c.payload.signedDate ?? 0;
+}
+
+function payloadTransactionId(c: DecodedTransaction): string {
+  return typeof c.payload.transactionId === "string" ? c.payload.transactionId : "";
+}
+
+function compareTransactionIDs(a: string | undefined, b: string | undefined): number {
+  const left = a ?? "";
+  const right = b ?? "";
+  if (left === right) return 0;
+
+  if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
+    const numericLeft = BigInt(left);
+    const numericRight = BigInt(right);
+    if (numericLeft !== numericRight) {
+      return numericLeft > numericRight ? 1 : -1;
+    }
+  }
+
+  return left.localeCompare(right);
 }
 
 // ---------------------------------------------------------------------------
@@ -565,14 +591,17 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
   return doc;
 }
 
-/** Reject stale events: never let an older signedDate revive a newer doc. */
+/** Reject stale events: never let an older Apple transaction watermark revive a newer doc. */
 function shouldOverwrite(existing: HostedQuotaEntitlementDoc, next: HostedQuotaEntitlementDoc): boolean {
   // Prefer Apple's transaction watermark over local wall-clock time.
   // `lastVerifiedAt` is still useful for operator observability, but
-  // replay protection must key off the signed payload date so a stale
-  // event processed later cannot revive an expired or revoked state.
+  // replay protection must key off the signed payload date plus transactionId
+  // so a stale event processed later cannot revive an expired or revoked state.
   if (typeof existing.signedDateMs === "number" && typeof next.signedDateMs === "number") {
-    return next.signedDateMs >= existing.signedDateMs;
+    if (next.signedDateMs !== existing.signedDateMs) {
+      return next.signedDateMs > existing.signedDateMs;
+    }
+    return compareTransactionIDs(next.transactionID, existing.transactionID) >= 0;
   }
   if (!existing.lastVerifiedAt) return true;
   return next.lastVerifiedAt >= existing.lastVerifiedAt;
