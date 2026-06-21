@@ -89,11 +89,95 @@ export async function run(request) {
     );
   });
 
+  it("rejects object handlers that alias callable payload UIDs before building users/{uid}", () => {
+    const repoRoot = writeSyntheticRepo(`
+export async function run(request) {
+  const { uid, documentId } = request.data;
+  return db.doc(\`users/\${uid}/documents/\${documentId}\`).get();
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining("handler constructs a user namespace from callable payload data"),
+    );
+  });
+
+  it("rejects object handlers when the ownership guard binds a different payload UID", () => {
+    const repoRoot = writeSyntheticRepo(`
+import { enforceAuthAndAppCheck } from "../auth.js";
+
+export async function run(request) {
+  const { uid, otherUid, documentId } = request.data;
+  enforceAuthAndAppCheck(request, otherUid);
+  return db.doc(\`users/\${uid}/documents/\${documentId}\`).get();
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining("handler constructs a user namespace from callable payload data"),
+    );
+  });
+
+  it("rejects object handlers when the matching guard is in another exported handler", () => {
+    const repoRoot = writeSyntheticRepo(`
+import { enforceAuthAndAppCheck } from "../auth.js";
+
+export async function other(request) {
+  enforceAuthAndAppCheck(request, request.data.uid);
+  return undefined;
+}
+
+export async function run(request) {
+  return db.doc(\`users/\${request.data.uid}/documents/\${request.data.documentId}\`).get();
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining("handler constructs a user namespace from callable payload data"),
+    );
+  });
+
+  it("rejects object handlers when the matching ownership guard runs after Admin SDK access", () => {
+    const repoRoot = writeSyntheticRepo(`
+import { enforceAuthAndAppCheck } from "../auth.js";
+
+export async function run(request) {
+  const uid = request.data.uid;
+  const snapshot = await db.doc(\`users/\${uid}/documents/\${request.data.documentId}\`).get();
+  enforceAuthAndAppCheck(request, uid);
+  return snapshot;
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining("handler constructs a user namespace from callable payload data"),
+    );
+  });
+
   it("allows object handlers that derive the user namespace from request.auth.uid", () => {
     const repoRoot = writeSyntheticRepo(`
 export async function run(request) {
   const uid = request.auth.uid;
   return db.doc(\`users/\${uid}/documents/\${request.data.documentId}\`).get();
+}
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toEqual([]);
+  });
+
+  it("allows aliased client-supplied user namespaces when the matching ownership guard runs first", () => {
+    const repoRoot = writeSyntheticRepo(`
+import { enforceAuthAndAppCheck } from "../auth.js";
+
+export async function run(request) {
+  const { uid, documentId } = request.data;
+  enforceAuthAndAppCheck(request, uid);
+  return db.collection("users").doc(uid).collection("documents").doc(documentId).get();
 }
 `);
     tempRoots.push(repoRoot);
