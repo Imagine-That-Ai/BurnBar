@@ -27,12 +27,30 @@ const SENSITIVE_KEY_PATTERN =
 const REQUEST_BODY_KEY_PATTERN = /^(?:body|rawBody|requestBody|requestData|data|payload)$/i;
 const AUTH_HEADER_VALUE_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const SECRET_TOKEN_VALUE_PATTERN =
-  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b/g;
+  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b/g;
+const STRUCTURED_SECRET_ASSIGNMENT_PATTERN =
+  /(["']?)\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\1(\s*[:=]\s*)(["'])(?:\\.|[^\\])*?\4/gi;
 const SECRET_ASSIGNMENT_PATTERN =
   /(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\s*[:=]\s*)([^\s"'`,;|)]+)/gi;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const LOCAL_PATH_PATTERN =
   /(?<![\w.-])(?:\/Users|\/home|\/private\/var|\/var\/folders|\/tmp|\/private\/tmp)\/[^\s"'`<>|)]{2,}/g;
+const URL_USERINFO_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+(?::[^@\s/]+)?@)/gi;
+const SENSITIVE_QUERY_KEYS = new Set([
+  "token",
+  "key",
+  "secret",
+  "password",
+  "code",
+  "credential",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "api_key",
+  "apikey",
+  "dsn",
+]);
+const SENSITIVE_QUERY_KEY_PATTERN = /(^|[_-])(token|key|secret|password|code|credential|dsn)($|[_-])|api[_-]?key/i;
 
 if (dsn) {
   Sentry.init({
@@ -184,16 +202,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function redactURLSecrets(value: string): string {
-  return value.replace(
-    /([?&](?:token|key|secret|password|code|credential|access_token|refresh_token|id_token|api_key))=[^&#]+/gi,
-    `$1=${REDACTED}`,
+  return value.replace(/([?&])([^=&#\s]+)=([^&#\s]+)/g, (match, separator: string, key: string) =>
+    isSensitiveQueryKey(key) ? `${separator}${key}=${REDACTED}` : match,
   );
 }
 
+function isSensitiveQueryKey(key: string): boolean {
+  let normalized = key.toLowerCase();
+  try {
+    normalized = decodeURIComponent(key.replace(/\+/g, " ")).toLowerCase();
+  } catch {
+    // Fall back to the raw key when percent-decoding is malformed.
+  }
+  return SENSITIVE_QUERY_KEYS.has(normalized) || SENSITIVE_QUERY_KEY_PATTERN.test(normalized);
+}
+
 function redactSensitiveText(value: string): string {
-  return redactURLSecrets(value)
+  return redactURLSecrets(value.replace(URL_USERINFO_PATTERN, `$1${REDACTED}@`))
     .replace(AUTH_HEADER_VALUE_PATTERN, `$1 ${REDACTED}`)
     .replace(SECRET_TOKEN_VALUE_PATTERN, REDACTED)
+    .replace(
+      STRUCTURED_SECRET_ASSIGNMENT_PATTERN,
+      (_match, keyQuote: string, key: string, separator: string, valueQuote: string) =>
+        `${keyQuote}${key}${keyQuote}${separator}${valueQuote}${REDACTED}${valueQuote}`,
+    )
     .replace(SECRET_ASSIGNMENT_PATTERN, `$1${REDACTED}`)
     .replace(EMAIL_PATTERN, "[REDACTED-EMAIL]")
     .replace(LOCAL_PATH_PATTERN, "[REDACTED-PATH]");

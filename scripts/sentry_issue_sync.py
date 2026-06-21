@@ -71,14 +71,23 @@ SENSITIVE_QUERY_KEYS = {
     "apikey",
     "dsn",
 }
+SENSITIVE_QUERY_KEY_RE = re.compile(
+    r"(^|[_-])(token|key|secret|password|code|credential|dsn)($|[_-])|api[_-]?key",
+    re.IGNORECASE,
+)
 AUTH_HEADER_RE = re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE)
 TOKEN_RE = re.compile(
-    r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b"
+    r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,})\b"
+)
+STRUCTURED_ASSIGNMENT_RE = re.compile(
+    r"([\"']?)\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\1(\s*[:=]\s*)([\"'])(?:\\.|[^\\])*?\4",
+    re.IGNORECASE,
 )
 ASSIGNMENT_RE = re.compile(
     r"(\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|apikey|secret|password|credential|dsn)\b\s*[:=]\s*)([^\s\"'`,;|)]+)",
     re.IGNORECASE,
 )
+URL_USERINFO_RE = re.compile(r"\b([a-z][a-z0-9+.-]*://)([^/\s:@]+(?::[^@\s/]+)?@)", re.IGNORECASE)
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 LOCAL_PATH_RE = re.compile(r"(?<![\w.-])(?:/Users|/home|/private/var|/var/folders|/tmp|/private/tmp)/[^\s\"'`<>|)]{2,}")
 WINDOWS_PATH_RE = re.compile(r"\b[A-Za-z]:\\[^\s\"'`<>|)]{2,}")
@@ -124,18 +133,28 @@ def redact_url_secrets(value: str) -> str:
         r"([?&])([^=&#\s]+)=([^&#\s]+)",
         lambda match: (
             redact_query(match)
-            if urllib.parse.unquote_plus(match.group(2)).lower() in SENSITIVE_QUERY_KEYS
+            if is_sensitive_query_key(match.group(2))
             else match.group(0)
         ),
         value,
     )
 
 
+def is_sensitive_query_key(key: str) -> bool:
+    normalized = urllib.parse.unquote_plus(key).lower()
+    return normalized in SENSITIVE_QUERY_KEYS or bool(SENSITIVE_QUERY_KEY_RE.search(normalized))
+
+
 def redact_issue_text(value: object, *, fallback: str = "redacted") -> str:
     text = str(value or "")
+    text = URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}{REDACTED}@", text)
     text = redact_url_secrets(text)
     text = AUTH_HEADER_RE.sub(lambda match: f"{match.group(1)} {REDACTED}", text)
     text = TOKEN_RE.sub(REDACTED, text)
+    text = STRUCTURED_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}{match.group(4)}{REDACTED}{match.group(4)}",
+        text,
+    )
     text = ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
     text = EMAIL_RE.sub("[REDACTED-EMAIL]", text)
     text = FIREBASE_UID_RE.sub(lambda match: f"{match.group(1)}={REDACTED}", text)

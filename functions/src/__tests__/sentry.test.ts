@@ -44,9 +44,11 @@ describe("sentry sanitization", () => {
             "failed for alberto@example.test with Bearer nested-context-token-1234567890 at /Users/alberto/private/app.log",
           nested: {
             apiKey: "context-api-key",
-            url: "https://example.test/context?access_token=context-query-secret",
+              url: "https://example.test/context?access_token=context-query-secret",
+              stripe: "Stripe token sk_live_12345678901234567890",
+              json: '{"access_token":"context-json-secret"}',
+            },
           },
-        },
         payload: {
           token: "context-payload-token",
         },
@@ -57,6 +59,7 @@ describe("sentry sanitization", () => {
           data: {
             url: "https://example.test/path?refresh_token=breadcrumb-secret",
             authorization: "Bearer breadcrumb-secret",
+            db: "postgres://sentry_user:db-password-secret@example.test/app",
           },
         },
       ],
@@ -83,7 +86,10 @@ describe("sentry sanitization", () => {
     expect(runtimeContext.message).toBe("failed for [REDACTED-EMAIL] with Bearer [REDACTED] at [REDACTED-PATH]");
     expect(nestedRuntimeContext.apiKey).toBe("[REDACTED]");
     expect(nestedRuntimeContext.url).toBe("https://example.test/context?access_token=[REDACTED]");
+    expect(nestedRuntimeContext.stripe).toBe("Stripe token [REDACTED]");
+    expect(nestedRuntimeContext.json).toBe('{"access_token":"[REDACTED]"}');
     expect(event.contexts?.payload).toBeUndefined();
+    expect(event.breadcrumbs?.[0]?.data?.db).toBe("postgres://[REDACTED]@example.test/app");
 
     const serialized = JSON.stringify(event);
     expect(serialized).not.toContain("secret-token");
@@ -100,6 +106,10 @@ describe("sentry sanitization", () => {
     expect(serialized).not.toContain("context-api-key");
     expect(serialized).not.toContain("context-query-secret");
     expect(serialized).not.toContain("context-payload-token");
+    expect(serialized).not.toContain("sk_live_12345678901234567890");
+    expect(serialized).not.toContain("context-json-secret");
+    expect(serialized).not.toContain("sentry_user");
+    expect(serialized).not.toContain("db-password-secret");
   });
 
   it("hashes Sentry user IDs instead of truncating Firebase UIDs", async () => {

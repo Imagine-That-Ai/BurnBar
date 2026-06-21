@@ -31,6 +31,27 @@ def test_sentry_issue_title_is_redacted_before_github_use() -> None:
     assert "[REDACTED" in title
 
 
+def test_sentry_issue_text_redacts_structured_tokens_and_url_credentials() -> None:
+    sync = load_sentry_issue_sync()
+
+    text = sync.redact_issue_text(
+        '{"access_token":"super-secret-json"} '
+        "stripe sk_live_12345678901234567890 "
+        "callback=https://example.test/callback?github_token=gh-secret-token&ok=1 "
+        "db=postgres://sentry_user:db-password-secret@example.test/app "
+        "api_key=\"my secret passphrase\""
+    )
+
+    assert "super-secret-json" not in text
+    assert "sk_live_12345678901234567890" not in text
+    assert "gh-secret-token" not in text
+    assert "sentry_user" not in text
+    assert "db-password-secret" not in text
+    assert "my secret passphrase" not in text
+    assert "ok=1" in text
+    assert "[REDACTED]" in text
+
+
 def test_sentry_issue_body_redacts_culprit_and_normalizes_marker() -> None:
     sync = load_sentry_issue_sync()
     sync.SENTRY_ORG = "openburnbar"
