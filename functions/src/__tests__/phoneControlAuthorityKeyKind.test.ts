@@ -221,6 +221,7 @@ vi.mock("../callables/computerUseSecurity.js", async () => {
 import {
   __testing__,
   publishPhoneControlAuthority,
+  publishRelaySenderKey,
   publishAgentGrantAuthority,
   queueAgentCapabilityGrantRequest,
   revokeEscrowDeviceTrust,
@@ -326,6 +327,27 @@ function seP256Key(): { base64: string; peerNodeId: string } {
   return { base64: x963.toString("base64"), peerNodeId: `ios-se-${digest}` };
 }
 
+function relaySenderKey(): { base64: string; keyId: string; peerNodeId: string } {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  const x963 = ecdh.getPublicKey();
+  const digest = createHash("sha256").update(x963).digest("hex");
+  return {
+    base64: x963.toString("base64"),
+    keyId: `relay-v3-${digest.slice(0, 24)}`,
+    peerNodeId: `ios-se-${digest.slice(0, 24)}`,
+  };
+}
+
+function seedSignalIdentity(deviceId = DEVICE, version = 1, fingerprint = "sha256:signal-identity") {
+  store.set(`users/${UID}/signal_identity_public_keys/${deviceId}_${version}`, {
+    deviceId,
+    identityKeyId: `${deviceId}_${version}`,
+    publicKeyFingerprint: fingerprint,
+    keyVersion: version,
+  });
+}
+
 describe("F2 publishPhoneControlAuthority keyKind", () => {
   beforeEach(seedTrustedDeviceAndPairing);
 
@@ -387,6 +409,108 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
         publishedAtMillis: Date.now(),
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("publishRelaySenderKey trust binding", () => {
+  beforeEach(seedTrustedDeviceAndPairing);
+
+  it("publishes only when the relay sender key is bound to the trusted device's Signal identity", async () => {
+    const key = relaySenderKey();
+    const fingerprint = "sha256:phone-identity";
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, {
+      platform: "iOS",
+      trustState: "trusted",
+      keyVersion: 1,
+      peerNodeId: key.peerNodeId,
+    });
+    seedSignalIdentity(DEVICE, 1, fingerprint);
+
+    const res = await invokeCallable<{ ok: boolean; deviceId: string; keyId: string }>(publishRelaySenderKey, {
+      deviceId: DEVICE,
+      peerNodeId: key.peerNodeId,
+      keyId: key.keyId,
+      publicKeyBase64: key.base64,
+      relayKeyVersion: 3,
+      publishedAtMillis: Date.now(),
+      signalIdentityKeyId: `${DEVICE}_1`,
+      signalIdentityKeyVersion: 1,
+      signalIdentityPublicKeyFingerprint: fingerprint,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.deviceId).toBe(DEVICE);
+    expect(res.keyId).toBe(key.keyId);
+    const stored = store.get(`users/${UID}/relay_sender_keys/${DEVICE}`);
+    expect(stored?.publicKeyBase64).toBe(key.base64);
+    expect(stored?.signalIdentityKeyId).toBe(`${DEVICE}_1`);
+    expect(stored?.signalIdentityVerification).toBe("verified");
+  });
+
+  it("rejects relay sender keys bound to another device identity", async () => {
+    const key = relaySenderKey();
+    seedSignalIdentity("other-phone", 1, "sha256:other");
+
+    await expect(
+      invokeCallable(publishRelaySenderKey, {
+        deviceId: DEVICE,
+        peerNodeId: key.peerNodeId,
+        keyId: key.keyId,
+        publicKeyBase64: key.base64,
+        relayKeyVersion: 3,
+        publishedAtMillis: Date.now(),
+        signalIdentityKeyId: "other-phone_1",
+        signalIdentityKeyVersion: 1,
+        signalIdentityPublicKeyFingerprint: "sha256:other",
+      }),
+    ).rejects.toThrow(/bind to this device/);
+    expect(store.has(`users/${UID}/relay_sender_keys/${DEVICE}`)).toBe(false);
+  });
+
+  it("rejects relay sender keys whose identity fingerprint does not match the server record", async () => {
+    const key = relaySenderKey();
+    seedSignalIdentity(DEVICE, 1, "sha256:server");
+
+    await expect(
+      invokeCallable(publishRelaySenderKey, {
+        deviceId: DEVICE,
+        peerNodeId: key.peerNodeId,
+        keyId: key.keyId,
+        publicKeyBase64: key.base64,
+        relayKeyVersion: 3,
+        publishedAtMillis: Date.now(),
+        signalIdentityKeyId: `${DEVICE}_1`,
+        signalIdentityKeyVersion: 1,
+        signalIdentityPublicKeyFingerprint: "sha256:client-forged",
+      }),
+    ).rejects.toThrow(/published Signal identity/);
+    expect(store.has(`users/${UID}/relay_sender_keys/${DEVICE}`)).toBe(false);
+  });
+
+  it("rejects relay sender keys that do not match the trusted device peer binding", async () => {
+    const key = relaySenderKey();
+    seedSignalIdentity(DEVICE, 1, "sha256:phone-identity");
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, {
+      platform: "iOS",
+      trustState: "trusted",
+      keyVersion: 1,
+      peerNodeId: "ios-se-differentpeerbinding",
+    });
+
+    await expect(
+      invokeCallable(publishRelaySenderKey, {
+        deviceId: DEVICE,
+        peerNodeId: key.peerNodeId,
+        keyId: key.keyId,
+        publicKeyBase64: key.base64,
+        relayKeyVersion: 3,
+        publishedAtMillis: Date.now(),
+        signalIdentityKeyId: `${DEVICE}_1`,
+        signalIdentityKeyVersion: 1,
+        signalIdentityPublicKeyFingerprint: "sha256:phone-identity",
+      }),
+    ).rejects.toThrow(/peer node/);
+    expect(store.has(`users/${UID}/relay_sender_keys/${DEVICE}`)).toBe(false);
   });
 });
 

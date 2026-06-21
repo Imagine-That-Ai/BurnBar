@@ -69,6 +69,9 @@ jobs:
           fi
           protoc --version
 
+      - name: Validate app test classifier
+        run: bash scripts/test-openburnbar-app-classifier.sh
+
       - name: Build + test the AgentLens app target
         # Builds the OpenBurnBar app scheme (xcodebuild) and runs OpenBurnBarTests.
         # This is the build that was missing as a PR gate: it compiles every
