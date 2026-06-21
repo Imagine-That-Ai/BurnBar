@@ -17,6 +17,8 @@ public enum BurnBarConnectorURLValidationError: Error, Sendable, Equatable, Cust
     case missingHost
     case privateOrReservedIP(String)
     case cloudMetadataEndpoint
+    case unresolvableHost(String)
+    case resolvedToPrivateOrReservedIP(host: String, address: String)
 
     public var description: String {
         switch self {
@@ -32,6 +34,10 @@ public enum BurnBarConnectorURLValidationError: Error, Sendable, Equatable, Cust
             return "Connector base URL must not point to a private or reserved IP address (\(host)). This blocks SSRF attacks that could exfiltrate credentials."
         case .cloudMetadataEndpoint:
             return "Connector base URL must not point to a cloud metadata endpoint (169.254.169.254)."
+        case .unresolvableHost(let host):
+            return "Connector base URL host could not be resolved; refusing to send credentials to \(host)."
+        case .resolvedToPrivateOrReservedIP(let host, let address):
+            return "Connector base URL host \(host) resolves to a private or reserved address (\(address)). This blocks DNS-rebinding credential exfiltration."
         }
     }
 }
@@ -60,6 +66,7 @@ public actor BurnBarConnectorPlaneService {
     private let fileURL: URL
     private let secretStore: any BurnBarConnectorSecretStoring
     private let transport: BurnBarConnectorTransport
+    private let hostResolver: BurnBarBrowserHostResolver
     private let logger: BurnBarDaemonLogger
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -70,6 +77,7 @@ public actor BurnBarConnectorPlaneService {
         fileURL: URL = BurnBarDaemonPaths.defaultConnectorPlaneURL,
         secretStore: any BurnBarConnectorSecretStoring = BurnBarConnectorKeychainSecretStore(),
         transport: BurnBarConnectorTransport? = nil,
+        hostResolver: BurnBarBrowserHostResolver? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "connector-plane")
     ) {
         self.fileURL = fileURL
@@ -81,6 +89,7 @@ public actor BurnBarConnectorPlaneService {
             }
             return (data, httpResponse)
         }
+        self.hostResolver = hostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
         self.logger = logger
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -98,6 +107,13 @@ public actor BurnBarConnectorPlaneService {
     /// - Returns: A validated `URL`.
     /// - Throws: `BurnBarConnectorURLValidationError` if validation fails.
     static func validatedConnectorBaseURL(_ rawValue: String) throws -> URL {
+        try validatedConnectorBaseURL(rawValue, resolver: nil)
+    }
+
+    static func validatedConnectorBaseURL(
+        _ rawValue: String,
+        resolver: BurnBarBrowserHostResolver?
+    ) throws -> URL {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {
             throw BurnBarConnectorURLValidationError.emptyURL
@@ -111,43 +127,38 @@ public actor BurnBarConnectorPlaneService {
         guard let host = url.host, host.isEmpty == false else {
             throw BurnBarConnectorURLValidationError.missingHost
         }
-        let lowerHost = host.lowercased()
+        let lowerHost = host
+            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .lowercased()
         // Block cloud metadata endpoints
         if lowerHost == "169.254.169.254" || lowerHost == "metadata.google.internal" {
             throw BurnBarConnectorURLValidationError.cloudMetadataEndpoint
         }
         // Block private/reserved IPs
-        if isPrivateOrReservedIP(host: lowerHost) {
+        if OpenBurnBarBrowserTargetPolicy.isBlockedHost(host) {
             throw BurnBarConnectorURLValidationError.privateOrReservedIP(host)
         }
-        return url
-    }
-
-    /// Returns `true` if the hostname is a private, reserved, or loopback IP.
-    ///
-    /// Covers: loopback (127.x, ::1), RFC 1918 (10.x, 172.16-31.x, 192.168.x),
-    /// link-local (169.254.x except the metadata endpoint handled above),
-    /// and zero address (0.0.0.0).
-    private static func isPrivateOrReservedIP(host: String) -> Bool {
-        // IPv4 check
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
-        if parts.count == 4, let a = Int(parts[0]), let b = Int(parts[1]) {
-            // 127.x.x.x — loopback
-            if a == 127 { return true }
-            // 10.x.x.x — RFC 1918 Class A
-            if a == 10 { return true }
-            // 172.16.x.x – 172.31.x.x — RFC 1918 Class B
-            if a == 172, (16...31).contains(b) { return true }
-            // 192.168.x.x — RFC 1918 Class C
-            if a == 192, b == 168 { return true }
-            // 169.254.x.x — link-local (metadata endpoint caught above)
-            if a == 169, b == 254 { return true }
-            // 0.0.0.0 — unspecified
-            if a == 0, b == 0 { return true }
+        if let resolver {
+            let resolved = resolver(host)
+            guard resolved.isEmpty == false else {
+                throw BurnBarConnectorURLValidationError.unresolvableHost(host)
+            }
+            for address in resolved where OpenBurnBarBrowserTargetPolicy.isBlockedHost(address) {
+                let normalizedAddress = address
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                    .lowercased()
+                if normalizedAddress == "169.254.169.254" {
+                    throw BurnBarConnectorURLValidationError.cloudMetadataEndpoint
+                }
+                throw BurnBarConnectorURLValidationError.resolvedToPrivateOrReservedIP(
+                    host: host,
+                    address: address
+                )
+            }
         }
-        // IPv6 loopback
-        if host == "::1" || host == "[::1]" || host == "0:0:0:0:0:0:0:1" { return true }
-        return false
+        return url
     }
 
     // MARK: - Internal
@@ -180,7 +191,7 @@ public actor BurnBarConnectorPlaneService {
         var state = try loadStateIfNeeded()
         let trimmedBaseURL = request.config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         // SSRF gate: validate before persisting
-        let validatedURL = try Self.validatedConnectorBaseURL(trimmedBaseURL)
+        let validatedURL = try Self.validatedConnectorBaseURL(trimmedBaseURL, resolver: hostResolver)
         state.configs[request.config.kind.rawValue] = BurnBarStoredConnectorConfig(
             kind: request.config.kind,
             isEnabled: request.config.isEnabled,
@@ -311,7 +322,7 @@ public actor BurnBarConnectorPlaneService {
         secret: String
     ) throws -> URLRequest {
         // Runtime SSRF defense-in-depth: re-validate on every outbound request
-        let validatedBaseURL = try Self.validatedConnectorBaseURL(config.baseURL)
+        let validatedBaseURL = try Self.validatedConnectorBaseURL(config.baseURL, resolver: hostResolver)
 
         switch kind {
         case .github:

@@ -477,6 +477,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
                 let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
                 return (data, response)
             },
+            hostResolver: { _ in ["140.82.113.6"] },
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let browserService = BurnBarBrowserToolService(
@@ -490,6 +491,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             locateExecutable: { executable in
                 executable == "playwright" ? "/opt/homebrew/bin/playwright" : nil
             },
+            hostResolver: { _ in ["93.184.216.34"] },
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let configStore = BurnBarConfigStore(
@@ -639,6 +641,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             transport: { request in
                 try await fixture.respond(request)
             },
+            hostResolver: { _ in ["140.82.113.6"] },
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let configStore = BurnBarConfigStore(

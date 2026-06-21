@@ -23,6 +23,7 @@ public actor BurnBarBrowserToolService {
     private let opener: BurnBarBrowserOpener
     private let locateExecutable: BurnBarExecutableLocator
     private let playwrightExecutor: BurnBarPlaywrightBrowserActionExecutor?
+    private let hostResolver: BurnBarBrowserHostResolver
     private let logger: BurnBarDaemonLogger
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -36,11 +37,13 @@ public actor BurnBarBrowserToolService {
         opener: BurnBarBrowserOpener? = nil,
         locateExecutable: BurnBarExecutableLocator? = nil,
         playwrightExecutor: BurnBarPlaywrightBrowserActionExecutor? = nil,
+        hostResolver: BurnBarBrowserHostResolver? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "browser-tooling")
     ) {
+        let resolvedHostResolver = hostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
         self.fileURL = fileURL
         self.fetcher = fetcher ?? { url in
-            let delegate = BurnBarBrowserRedirectGuard()
+            let delegate = BurnBarBrowserRedirectGuard(resolver: resolvedHostResolver)
             let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
             defer {
                 session.invalidateAndCancel()
@@ -94,6 +97,7 @@ public actor BurnBarBrowserToolService {
             }
         }
         self.playwrightExecutor = playwrightExecutor
+        self.hostResolver = resolvedHostResolver
         self.logger = logger
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -257,9 +261,10 @@ public actor BurnBarBrowserToolService {
                 )
             }
             let arguments = request.arguments ?? BurnBarBrowserActionArguments(url: request.url)
-            _ = try OpenBurnBarBrowserTargetPolicy.validatedURL(
+            _ = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(
                 arguments.url ?? request.url,
-                allowDataURL: request.action == .goto
+                allowDataURL: request.action == .goto,
+                resolver: hostResolver
             )
             let response = try await executePlaywrightAction(request.action, arguments: arguments)
             return browserResponse(
@@ -575,7 +580,7 @@ public actor BurnBarBrowserToolService {
     }
 
     private func validatedURL(_ rawValue: String) throws -> URL {
-        try OpenBurnBarBrowserTargetPolicy.validatedURL(rawValue)
+        try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(rawValue, resolver: hostResolver)
     }
 
     private static func defaultState() -> BurnBarStoredBrowserToolingFile {
@@ -651,6 +656,12 @@ public actor BurnBarBrowserToolService {
 }
 
 final class BurnBarBrowserRedirectGuard: NSObject, URLSessionTaskDelegate {
+    private let resolver: BurnBarBrowserHostResolver
+
+    init(resolver: @escaping BurnBarBrowserHostResolver = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses) {
+        self.resolver = resolver
+    }
+
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -659,7 +670,10 @@ final class BurnBarBrowserRedirectGuard: NSObject, URLSessionTaskDelegate {
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
         guard let url = request.url,
-              (try? OpenBurnBarBrowserTargetPolicy.validatedURL(url.absoluteString)) != nil else {
+              (try? OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(
+                url.absoluteString,
+                resolver: resolver
+              )) != nil else {
             completionHandler(nil)
             return
         }

@@ -168,6 +168,44 @@ final class BurnBarConnectorPlaneURLValidationTests: XCTestCase {
         }
     }
 
+    func testValidatedConnectorBaseURL_resolvedHostRejectsPrivateAddress() {
+        XCTAssertThrowsError(
+            try BurnBarConnectorPlaneService.validatedConnectorBaseURL(
+                "https://public-looking.example/api",
+                resolver: { _ in ["10.0.0.5"] }
+            )
+        ) { error in
+            guard case BurnBarConnectorURLValidationError.resolvedToPrivateOrReservedIP(
+                host: "public-looking.example",
+                address: "10.0.0.5"
+            ) = error else {
+                return XCTFail("Expected resolvedToPrivateOrReservedIP, got \(error)")
+            }
+        }
+    }
+
+    func testValidatedConnectorBaseURL_resolvedHostRejectsUnresolvableHost() {
+        XCTAssertThrowsError(
+            try BurnBarConnectorPlaneService.validatedConnectorBaseURL(
+                "https://api.example.invalid",
+                resolver: { _ in [] }
+            )
+        ) { error in
+            guard case BurnBarConnectorURLValidationError.unresolvableHost("api.example.invalid") = error else {
+                return XCTFail("Expected unresolvableHost, got \(error)")
+            }
+        }
+    }
+
+    func testValidatedConnectorBaseURL_resolvedHostAllowsPublicAddress() {
+        XCTAssertNoThrow(
+            try BurnBarConnectorPlaneService.validatedConnectorBaseURL(
+                "https://api.github.com",
+                resolver: { _ in ["140.82.113.6"] }
+            )
+        )
+    }
+
     // MARK: - Error descriptions are human-readable
 
     func testErrorDescriptions() {
@@ -177,7 +215,9 @@ final class BurnBarConnectorPlaneURLValidationTests: XCTestCase {
             .schemeNotHTTPS("ftp"),
             .missingHost,
             .privateOrReservedIP("10.0.0.1"),
-            .cloudMetadataEndpoint
+            .cloudMetadataEndpoint,
+            .unresolvableHost("api.example.invalid"),
+            .resolvedToPrivateOrReservedIP(host: "public-looking.example", address: "192.168.1.10")
         ]
         for error in cases {
             XCTAssertFalse(error.description.isEmpty, "Error description should not be empty: \(error)")
