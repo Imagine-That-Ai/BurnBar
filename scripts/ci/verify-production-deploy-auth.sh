@@ -352,6 +352,8 @@ def validate_cloud_run(text: str) -> None:
         fail(f"{path} cloud-run-deploy-result must not grant id-token:write")
     if "issues: write" not in result_job:
         fail(f"{path} cloud-run-deploy-result must own issues:write for ops-failure issues")
+    if "if: ${{ always() && needs.deploy-hosted-mcp.result != 'success' }}" not in result_job:
+        fail(f"{path} cloud-run-deploy-result must record deploy failures with always() so the issue step still runs after the fail-fast step")
 
 
 def validate_artifact_dir(path: Path) -> int:
