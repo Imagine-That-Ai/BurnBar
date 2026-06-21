@@ -169,6 +169,7 @@ function setBeforeTransactionHook(fn: (() => void) | null) {
 }
 beforeEach(() => {
   store.__hook = null;
+  requireTrustedDeviceActionProofMock.mockClear();
 });
 
 vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
@@ -179,8 +180,28 @@ vi.mock("../auth.js", () => ({
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
+const { requireTrustedDeviceActionProofMock } = vi.hoisted(() => ({
+  requireTrustedDeviceActionProofMock: vi.fn(async () => ({
+    deviceId: "mac-1",
+    platform: "macOS",
+    signalIdentityKeyId: "mac-1_1",
+  })),
+}));
+vi.mock("../callables/computerUseSecurity.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/computerUseSecurity.js")>(
+    "../callables/computerUseSecurity.js",
+  );
+  return {
+    ...actual,
+    requireTrustedDeviceActionProof: requireTrustedDeviceActionProofMock,
+  };
+});
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));
+beforeEach(() => {
+  configMock.enforceAppCheck = true;
+  configMock.requireHighRiskNonce = false;
+});
 vi.mock("../logging.js", async () => {
   const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
@@ -457,6 +478,8 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
   const REQUIREMENT_ID = "revoke_receipt_1";
 
   beforeEach(() => {
+    configMock.enforceAppCheck = false;
+    requireTrustedDeviceActionProofMock.mockClear();
     store.clear();
     store.set(`users/${UID}/escrow_devices/${MAC}`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
     store.set(`users/${UID}/escrow_devices/${DEVICE}`, { platform: "iOS", trustState: "revoked", keyVersion: 1 });
@@ -509,6 +532,8 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
       expectedVaultGeneration: 8,
       reason: "revocation_rewrap",
       rotationRequirementId: REQUIREMENT_ID,
+      nonce: "rotate-cloudvault-key-test-nonce",
+      actionProof: { signature: "rotate-cloudvault-key-test-proof" },
       survivorWrappers: [survivorWrapper()],
       ...overrides,
     };
