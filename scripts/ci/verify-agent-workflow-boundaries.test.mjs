@@ -1326,7 +1326,7 @@ expect(
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
       "      - name: Generate Wiki\n",
-      "      - name: Export helper secret\n        run: echo \"OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}\" >> \"$GITHUB_ENV\"\n      - name: Generate Wiki\n",
+      '      - name: Export helper secret\n        run: echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> "$GITHUB_ENV"\n      - name: Generate Wiki\n',
     ),
   },
   1,

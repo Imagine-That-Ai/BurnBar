@@ -377,9 +377,7 @@ function directSectionLines(block, sectionName) {
   const sectionIndent = blockDirectIndent(lines, blockIndent);
   if (sectionIndent === null) return [];
   const sections = [];
-  const firstLineSection = lines[0]?.match(
-    /^\s*-\s+([A-Za-z0-9_-]+):\s*$/u,
-  );
+  const firstLineSection = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*$/u);
   if (firstLineSection?.[1] === sectionName) {
     sections.push({
       indent: sectionIndent,
@@ -1273,7 +1271,10 @@ for (const file of workflowFiles()) {
         );
       }
       const job = blockContainingLine(jobs, step.start);
-      if (job && precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)) {
+      if (
+        job &&
+        precedingStepsWriteSecretOrTokenToGithubEnv(job, steps, step)
+      ) {
         fail(
           file,
           "agent action job must not export extra secrets or tokens through GITHUB_ENV before execution",
@@ -1335,7 +1336,10 @@ for (const file of workflowFiles()) {
     }
     for (const entry of [
       ...topLevelMappingEntries(source, "env"),
-      ...mappingEntries(blockContainingLine(jobs, step.start) ?? { source: "" }, "env"),
+      ...mappingEntries(
+        blockContainingLine(jobs, step.start) ?? { source: "" },
+        "env",
+      ),
     ]) {
       if (!valueReferencesSecretOrToken(entry.value)) continue;
       if (!sensitiveEnvName(entry.key)) continue;
