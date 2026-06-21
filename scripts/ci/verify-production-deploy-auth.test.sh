@@ -12,6 +12,7 @@ copy_base_fixture() {
   cp "$SOURCE_ROOT/.github/workflows/deploy-hosting.yml" "$dst/.github/workflows/deploy-hosting.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-production.yml" "$dst/.github/workflows/deploy-production.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-firestore.yml" "$dst/.github/workflows/deploy-firestore.yml"
+  cp "$SOURCE_ROOT/.github/workflows/deploy-cloud-run.yml" "$dst/.github/workflows/deploy-cloud-run.yml"
   cp "$SOURCE_ROOT/firebase.json" "$dst/firebase.json"
   cp "$SOURCE_ROOT/scripts/ci/write-firebase-hosting-ci-config.mjs" "$dst/scripts/ci/write-firebase-hosting-ci-config.mjs"
 }
@@ -147,6 +148,61 @@ fixture="$TMP_ROOT/shared-sa-hosting"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT", "GCP_DEPLOY_SERVICE_ACCOUNT")'
 expect_fail "shared deploy service account in hosting fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-top-level-oidc"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("permissions:\n  contents: read\n", "permissions:\n  contents: read\n  id-token: write\n", 1)'
+expect_fail "cloud run top-level oidc fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-build-secret"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'needle = "  build-hosted-mcp-artifact:\n    name: Build hosted MCP deploy artifact\n"; text = text.replace(needle, needle + "    env:\n      BAD_SECRET: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n", 1)'
+expect_fail "cloud run build job secret fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-deploy-checkout"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("      - name: Download deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download deploy artifact", 1)'
+expect_fail "cloud run deploy checkout fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-artifact-deploy-driver"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("            scripts/build-signal-envelope-contracts.sh \\\n", "            scripts/build-signal-envelope-contracts.sh \\\n            scripts/deploy-hosted-mcp.sh \\\n", 1)'
+expect_fail "cloud run artifact deploy driver fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-post-auth-artifact-driver"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("gcloud builds submit \"$DEPLOY_SOURCE_DIR\"", "bash \"$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh\"", 1)'
+expect_fail "cloud run post-auth artifact driver fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-missing-ancestor"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
+expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-accessor-only"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.metadataReader_removed", 1)'
+expect_fail "cloud run secret metadata role missing fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-signer-secret-env"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n", "          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n          REMOTE_MCP_TOKEN_HMAC_SECRET: ${{ secrets.REMOTE_MCP_TOKEN_HMAC_SECRET }}\n", 1)'
+expect_fail "cloud run signer secret env injection fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-secret-write-command"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          build_output=\"$(gcloud builds submit", "          gcloud secrets versions add REMOTE_MCP_TOKEN_HMAC_SECRET --data-file=- --project \"$GOOGLE_CLOUD_PROJECT\"\n          build_output=\"$(gcloud builds submit", 1)'
+expect_fail "cloud run secret write command fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-secret-write-role"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.secretVersionAdder", "roles/secretmanager.versionWriter_removed", 1)'
+expect_fail "cloud run missing secret write-role denylist fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-unreachable-failure-issue"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("if: ${{ always() && needs.deploy-hosted-mcp.result != '"'"'success'"'"' }}", "if: ${{ needs.deploy-hosted-mcp.result != '"'"'success'"'"' }}", 1)'
+expect_fail "cloud run unreachable failure issue fails" run_gate "$fixture"
 
 artifact="$TMP_ROOT/special-artifact"
 mkdir -p "$artifact"

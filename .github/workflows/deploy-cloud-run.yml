@@ -2,8 +2,6 @@ name: Deploy Cloud Run Services
 
 permissions:
   contents: read
-  id-token: write
-  issues: write
 
 on:
   push:
@@ -25,47 +23,84 @@ concurrency:
   group: deploy-cloud-run
   cancel-in-progress: false
 
+env:
+  PROJECT_ID: burnbar
+  REGION: us-central1
+  SERVICE: openburnbar-hosted-mcp
+  MCP_RESOURCE: https://mcp.burnbar.ai/mcp
+  MCP_AUTH_ISSUER: https://mcp.burnbar.ai
+
 jobs:
-  deploy-hosted-mcp:
+  resolve-release:
+    name: Resolve release tag
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    env:
-      PROJECT_ID: burnbar
-      REGION: us-central1
-      SERVICE: openburnbar-hosted-mcp
-      MCP_RESOURCE: https://mcp.burnbar.ai/mcp
-      MCP_AUTH_ISSUER: https://mcp.burnbar.ai
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      commit: ${{ steps.tag.outputs.commit }}
+      dry_run: ${{ steps.tag.outputs.dry_run }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
 
-      - name: Resolve release tag
+      - name: Resolve and verify deploy tag
         id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          DEPLOY_TOOLING_SCRIPT="$RUNNER_TEMP/deploy-hosted-mcp.sh"
-          cp scripts/deploy-hosted-mcp.sh "$DEPLOY_TOOLING_SCRIPT"
-          chmod +x "$DEPLOY_TOOLING_SCRIPT"
+          set -euo pipefail
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
-            TAG="${{ inputs.tag }}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
           else
-            TAG="${GITHUB_REF_NAME}"
+            TAG="$REF_NAME"
           fi
-          if [[ ! "$TAG" =~ ^v ]]; then
-            echo "::error::Cloud Run production deploys must resolve to a v* tag."
+
+          if [[ ! "$TAG" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]; then
+            echo "::error::Cloud Run production deploys must resolve to a simple refs/tags/v* release tag."
             exit 1
           fi
-          git checkout "$TAG"
-          git submodule update --init --recursive
+
+          tag_ref="refs/tags/${TAG}"
+          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+
+          commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"
+          if [[ -z "$commit" ]]; then
+            echo "::error::Unable to resolve ${tag_ref} to a commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::Release tag ${TAG} points at ${commit}, which is not reachable from origin/main."
+            exit 1
+          fi
+
           {
             echo "tag=$TAG"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}"
-            echo "deploy_tooling_script=$DEPLOY_TOOLING_SCRIPT"
+            echo "commit=$commit"
+            echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
+
+  build-hosted-mcp-artifact:
+    name: Build hosted MCP deploy artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: resolve-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.commit }}
+          fetch-depth: 1
+          submodules: recursive
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -75,18 +110,101 @@ jobs:
 
       - name: Build and test hosted MCP
         run: |
+          set -euo pipefail
           npm ci --prefix services/hosted-mcp
           npm --prefix services/hosted-mcp test
 
       - name: Docker build smoke
         run: docker build -f services/hosted-mcp/Dockerfile -t openburnbar-hosted-mcp:deploy-smoke .
 
-      - name: Dry-run skip deploy
-        if: steps.tag.outputs.dry_run == 'true'
-        run: echo "dry_run=true - built and tested hosted MCP, skipped Cloud Run deploy"
+      - name: Stage deploy artifact
+        id: artifact
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hosted-mcp-deploy-artifact"
+          archive="$RUNNER_TEMP/hosted-mcp-deploy-artifact.tgz"
+          rm -rf "$artifact_dir" "$archive"
+          mkdir -p "$artifact_dir"
+
+          tar \
+            --exclude='*/node_modules' \
+            --exclude='.git' \
+            -cf - \
+            services/hosted-mcp \
+            packages/entitlements \
+            packages/signal-envelope-contracts \
+            scripts/build-entitlements.sh \
+            scripts/build-signal-envelope-contracts.sh \
+            | tar -xf - -C "$artifact_dir"
+
+          (
+            cd "$artifact_dir"
+            manifest="$RUNNER_TEMP/hosted-mcp-deploy-SHA256SUMS"
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$manifest"
+            mv "$manifest" SHA256SUMS
+          )
+          tar -C "$artifact_dir" -czf "$archive" .
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deploy artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: hosted-mcp-deploy-artifact-${{ needs.resolve-release.outputs.tag }}
+          path: ${{ steps.artifact.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy-hosted-mcp:
+    name: Deploy hosted MCP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - resolve-release
+      - build-hosted-mcp-artifact
+    if: needs.resolve-release.outputs.dry_run != 'true'
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      previous_revision: ${{ steps.current.outputs.previous_revision }}
+      latest_revision: ${{ steps.readback.outputs.latest_revision }}
+      service_url: ${{ steps.readback.outputs.service_url }}
+      storage_bucket: ${{ steps.current.outputs.storage_bucket }}
+    steps:
+      - name: Download deploy artifact
+        uses: actions/download-artifact@abefc31eafcfbdf6c5336127a9045ea00bc7c9e4 # v6.0.0 (node24-native)
+        with:
+          name: hosted-mcp-deploy-artifact-${{ needs.resolve-release.outputs.tag }}
+          path: ${{ runner.temp }}/hosted-mcp-artifact-download
+
+      - name: Verify deploy artifact
+        env:
+          DEPLOY_ARTIFACT_DIR: ${{ runner.temp }}/hosted-mcp-deploy-artifact
+        run: |
+          set -euo pipefail
+          mkdir -p "$DEPLOY_ARTIFACT_DIR"
+          tar -xzf "$RUNNER_TEMP/hosted-mcp-artifact-download/hosted-mcp-deploy-artifact.tgz" -C "$DEPLOY_ARTIFACT_DIR"
+          (
+            cd "$DEPLOY_ARTIFACT_DIR"
+            if find . \( -type l -o -type b -o -type c -o -type p -o -type s \) -print -quit | grep -q .; then
+              echo "::error::Deploy artifact contains a symlink or special file."
+              exit 1
+            fi
+            if find . -type f -links +1 -print -quit | grep -q .; then
+              echo "::error::Deploy artifact contains a hard-linked file."
+              exit 1
+            fi
+            sha256sum -c SHA256SUMS
+            if test -e scripts/deploy-hosted-mcp.sh; then
+              echo "::error::Deploy artifact must not carry the post-auth deploy driver."
+              exit 1
+            fi
+            test -f services/hosted-mcp/cloudbuild.yaml
+            test -f services/hosted-mcp/Dockerfile
+          )
 
       - name: Authenticate to Google Cloud (WIF/OIDC only)
-        if: steps.tag.outputs.dry_run != 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -95,11 +213,9 @@ jobs:
           access_token_lifetime: 900s
 
       - name: Set up gcloud
-        if: steps.tag.outputs.dry_run != 'true'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
 
       - name: Verify deployer IAM
-        if: steps.tag.outputs.dry_run != 'true'
         env:
           GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
         run: |
@@ -124,7 +240,15 @@ jobs:
               "roles/cloudbuild.builds.editor",
               "roles/iam.serviceAccountUser",
               "roles/artifactregistry.admin",
+          }
+          forbidden = {
               "roles/secretmanager.admin",
+              "roles/secretmanager.secretVersionAdder",
+              "roles/secretmanager.secretVersionManager",
+          }
+          required_secret_roles = {
+              "roles/secretmanager.viewer",
+              "roles/secretmanager.secretAccessor",
           }
           member = f"serviceAccount:{service_account}"
           with open(path, encoding="utf-8") as handle:
@@ -138,12 +262,19 @@ jobs:
           if missing:
               print(f"::error::Deploy service account {service_account} is missing required project IAM roles: {', '.join(missing)}")
               sys.exit(1)
+          present_forbidden = sorted(forbidden & roles)
+          if present_forbidden:
+              print(f"::error::Deploy service account {service_account} must not hold Secret Manager write-capable roles: {', '.join(present_forbidden)}")
+              sys.exit(1)
+          missing_secret_roles = sorted(required_secret_roles - roles)
+          if missing_secret_roles:
+              print(f"::error::Deploy service account {service_account} must have read-only Secret Manager metadata and payload access: {', '.join(missing_secret_roles)}")
+              sys.exit(1)
           print(f"deployer IAM ok: {service_account}")
           PY
 
       - name: Capture current Cloud Run state
         id: current
-        if: steps.tag.outputs.dry_run != 'true'
         run: |
           set -euo pipefail
           gcloud run services describe "$SERVICE" \
@@ -199,10 +330,10 @@ jobs:
 
       - name: Deploy hosted MCP
         id: deploy
-        if: steps.tag.outputs.dry_run != 'true'
         env:
+          DEPLOY_SOURCE_DIR: ${{ runner.temp }}/hosted-mcp-deploy-artifact
           GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
-          OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
+          OPENBURNBAR_SOURCE_COMMIT: ${{ needs.resolve-release.outputs.commit }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
         run: |
           set -euo pipefail
@@ -210,11 +341,171 @@ jobs:
             echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
             exit 1
           fi
-          "${{ steps.tag.outputs.deploy_tooling_script }}"
+
+          cd "$DEPLOY_SOURCE_DIR"
+
+          SECRET_NAME="${REMOTE_MCP_TOKEN_HMAC_SECRET_NAME:-REMOTE_MCP_TOKEN_HMAC_SECRET}"
+          ED25519_PRIVATE_SECRET_NAME="${REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_SECRET_NAME:-REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64}"
+          ED25519_PUBLIC_SECRET_NAME="${MCP_TOKEN_ED25519_PUBLIC_KEY_SECRET_NAME:-MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64}"
+          IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:${OPENBURNBAR_SOURCE_COMMIT:0:12}"
+          ENV_VARS="MCP_RESOURCE=${MCP_RESOURCE},MCP_AUTH_ISSUER=${MCP_AUTH_ISSUER},OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT},OPENBURNBAR_CORRESPONDING_SOURCE_URL=${OPENBURNBAR_CORRESPONDING_SOURCE_URL}"
+          SECRET_BINDINGS=()
+
+          for forbidden_secret_env in \
+            REMOTE_MCP_TOKEN_HMAC_SECRET \
+            REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 \
+            MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64
+          do
+            if [[ -n "${!forbidden_secret_env:-}" ]]; then
+              echo "::error::Production Cloud Run deploy must not receive signer secret values. Rotate signer secrets out-of-band, then deploy with read-only Secret Manager bindings."
+              exit 1
+            fi
+          done
+
+          if [[ -n "${OPENBURNBAR_STORAGE_BUCKET:-}" ]]; then
+            ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"
+          fi
+
+          if gcloud secrets describe "$SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_HMAC_SECRET=${SECRET_NAME}:latest")
+          fi
+          if gcloud secrets describe "$ED25519_PRIVATE_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=${ED25519_PRIVATE_SECRET_NAME}:latest")
+          fi
+          if gcloud secrets describe "$ED25519_PUBLIC_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=${ED25519_PUBLIC_SECRET_NAME}:latest")
+            ENV_VARS="${ENV_VARS},MCP_ALLOW_LEGACY_HMAC_TOKENS=${MCP_ALLOW_LEGACY_HMAC_TOKENS:-false}"
+          fi
+
+          if [[ "${#SECRET_BINDINGS[@]}" -eq 0 ]]; then
+            echo "::error::At least one hosted MCP token signer must be configured: Ed25519 private/public secrets or legacy HMAC."
+            exit 1
+          fi
+          if [[ "${SECRET_BINDINGS[*]}" == *"MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64="* && "${SECRET_BINDINGS[*]}" != *"MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64="* ]]; then
+            echo "::error::Ed25519 private key is configured but MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 is missing."
+            exit 1
+          fi
+          SET_SECRETS="$(IFS=,; echo "${SECRET_BINDINGS[*]}")"
+
+          build_output="$(gcloud builds submit "$DEPLOY_SOURCE_DIR" \
+            --config "$DEPLOY_SOURCE_DIR/services/hosted-mcp/cloudbuild.yaml" \
+            --substitutions "_IMAGE=${IMAGE}" \
+            --suppress-logs \
+            --async \
+            --format=json \
+            --project "$GOOGLE_CLOUD_PROJECT")"
+
+          build_id="$(python3 -c '
+          import json
+          import re
+          import sys
+
+          raw = sys.stdin.read()
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError:
+              data = {}
+
+          paths = (
+              ("metadata", "build", "id"),
+              ("metadata", "build", "name"),
+              ("response", "id"),
+              ("response", "name"),
+              ("id",),
+              ("name",),
+          )
+          for path in paths:
+              node = data
+              for key in path:
+                  if not isinstance(node, dict):
+                      node = None
+                      break
+                  node = node.get(key)
+              if isinstance(node, str) and node:
+                  print(node.rsplit("/", 1)[-1])
+                  raise SystemExit(0)
+
+          match = re.search(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", raw)
+          if match:
+              print(match.group(0))
+          ' <<<"$build_output")"
+
+          if [[ -z "$build_id" ]]; then
+            echo "::error::Unable to determine Cloud Build ID from gcloud output."
+            echo "$build_output" >&2
+            exit 1
+          fi
+
+          echo "Cloud Build submitted: ${build_id}"
+          echo "Cloud Build logs: https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${GOOGLE_CLOUD_PROJECT}"
+
+          poll_interval="${CLOUD_BUILD_POLL_INTERVAL_SECONDS:-10}"
+          deadline=$((SECONDS + ${CLOUD_BUILD_TIMEOUT_SECONDS:-1800}))
+          while true; do
+            status="$(gcloud builds describe "$build_id" \
+              --project "$GOOGLE_CLOUD_PROJECT" \
+              --format='value(status)')"
+
+            case "$status" in
+              SUCCESS)
+                echo "Cloud Build succeeded: ${build_id}"
+                break
+                ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "::error::Cloud Build failed with status ${status}: ${build_id}"
+                exit 1
+                ;;
+              QUEUED|WORKING|PENDING|"")
+                if [[ "$SECONDS" -ge "$deadline" ]]; then
+                  echo "::error::Cloud Build timed out waiting for ${build_id}; last status: ${status:-unknown}"
+                  exit 1
+                fi
+                echo "Cloud Build ${build_id} status: ${status:-unknown}; waiting ${poll_interval}s..."
+                sleep "$poll_interval"
+                ;;
+              *)
+                echo "Cloud Build ${build_id} status: ${status}; waiting ${poll_interval}s..."
+                sleep "$poll_interval"
+                ;;
+            esac
+          done
+
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances "${MIN_INSTANCES:-0}" \
+            --max-instances "${MAX_INSTANCES:-20}" \
+            --set-env-vars "$ENV_VARS" \
+            --set-secrets "$SET_SECRETS"
+
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --to-latest
+
+          SERVICE_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$GOOGLE_CLOUD_PROJECT" --format='value(status.url)')"
+          HEALTH_PATH="${MCP_HEALTH_PATH:-/readyz}"
+          HEALTH_URL="${SERVICE_URL%/}${HEALTH_PATH}"
+          RETRIES="${DEPLOY_HEALTH_RETRIES:-12}"
+          SLEEP_SEC="${DEPLOY_HEALTH_SLEEP_SEC:-10}"
+          attempt=1
+          while [[ "$attempt" -le "$RETRIES" ]]; do
+            if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+              echo "OK: ${HEALTH_URL}"
+              exit 0
+            fi
+            echo "waiting for ${HEALTH_URL} (${attempt}/${RETRIES})..."
+            sleep "$SLEEP_SEC"
+            attempt=$((attempt + 1))
+          done
+          echo "::error::${HEALTH_URL} did not become healthy"
+          exit 1
 
       - name: Read back hosted MCP deployment
         id: readback
-        if: steps.tag.outputs.dry_run != 'true'
         run: |
           set -euo pipefail
           gcloud run services describe "$SERVICE" \
@@ -302,12 +593,12 @@ jobs:
           print(f"service url: {service_url}")
           PY
         env:
-          DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
-          DEPLOY_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
+          DEPLOY_TAG: ${{ needs.resolve-release.outputs.tag }}
+          DEPLOY_SOURCE_COMMIT: ${{ needs.resolve-release.outputs.commit }}
           PREVIOUS_REVISION: ${{ steps.current.outputs.previous_revision }}
 
       - name: Auto-rollback hosted MCP on failed deploy
-        if: ${{ always() && steps.tag.outputs.dry_run != 'true' && (steps.deploy.outcome == 'failure' || steps.readback.outcome == 'failure') }}
+        if: ${{ always() && (steps.deploy.outcome == 'failure' || steps.readback.outcome == 'failure') }}
         run: |
           set -euo pipefail
           PREVIOUS_REVISION="${{ steps.current.outputs.previous_revision }}"
@@ -316,16 +607,16 @@ jobs:
             exit 1
           fi
           echo "::warning::Hosted MCP deploy unhealthy (deploy=${{ steps.deploy.outcome }}, readback=${{ steps.readback.outcome }}) - rolling back to ${PREVIOUS_REVISION}."
-          ./scripts/ops/rollback-revision.sh "$SERVICE" "$PREVIOUS_REVISION" \
+          gcloud run services update-traffic "$SERVICE" \
             --region "$REGION" \
             --project "$PROJECT_ID" \
-            --yes
+            --to-revisions "${PREVIOUS_REVISION}=100"
 
       - name: Upload Cloud Run deploy artifact
         if: always() && hashFiles('cloud-run-hosted-mcp-deploy.json') != ''
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: cloud-run-hosted-mcp-${{ steps.tag.outputs.tag }}
+          name: cloud-run-hosted-mcp-${{ needs.resolve-release.outputs.tag }}
           path: cloud-run-hosted-mcp-deploy.json
           if-no-files-found: ignore
 
@@ -334,9 +625,9 @@ jobs:
         run: |
           {
             echo "## Cloud Run hosted-MCP deploy"
-            echo "- Tag: ${{ steps.tag.outputs.tag }}"
-            echo "- Commit: ${{ steps.tag.outputs.commit }}"
-            echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
+            echo "- Tag: ${{ needs.resolve-release.outputs.tag }}"
+            echo "- Commit: ${{ needs.resolve-release.outputs.commit }}"
+            echo "- Dry run: ${{ needs.resolve-release.outputs.dry_run }}"
             echo "- Project: ${PROJECT_ID}"
             echo "- Region: ${REGION}"
             echo "- Service: ${SERVICE}"
@@ -347,14 +638,58 @@ jobs:
             echo "- MCP auth issuer: ${MCP_AUTH_ISSUER}"
             echo ""
             echo "### Rollback"
-            echo "- AUTOMATED: a failed deploy or readback auto-runs:"
-            echo "  \`./scripts/ops/rollback-revision.sh ${SERVICE} ${{ steps.current.outputs.previous_revision }} --region ${REGION} --project ${PROJECT_ID} --yes\`"
+            echo "- AUTOMATED: a failed deploy or readback pins traffic back to:"
+            echo "  \`gcloud run services update-traffic ${SERVICE} --region ${REGION} --project ${PROJECT_ID} --to-revisions ${{ steps.current.outputs.previous_revision }}=100\`"
             echo "- MANUAL: choose any previous-good revision from:"
             echo "  \`gcloud run revisions list --service ${SERVICE} --region ${REGION} --project ${PROJECT_ID}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  cloud-run-dry-run-summary:
+    name: Cloud Run dry-run summary
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-release
+      - build-hosted-mcp-artifact
+    if: needs.resolve-release.outputs.dry_run == 'true'
+    permissions:
+      contents: read
+    steps:
+      - name: Dry-run skip deploy
+        run: |
+          {
+            echo "## Cloud Run hosted-MCP deploy"
+            echo "- Tag: ${{ needs.resolve-release.outputs.tag }}"
+            echo "- Commit: ${{ needs.resolve-release.outputs.commit }}"
+            echo "- Dry run: true"
+            echo "- Result: built, tested, Docker-smoked, and staged a deploy artifact; skipped production deploy."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  cloud-run-deploy-result:
+    name: Cloud Run deploy result
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-release
+      - build-hosted-mcp-artifact
+      - deploy-hosted-mcp
+    if: always() && needs.resolve-release.outputs.dry_run != 'true'
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.commit }}
+          fetch-depth: 1
+          submodules: false
+
+      - name: Fail when deploy job did not succeed
+        if: ${{ needs.deploy-hosted-mcp.result != 'success' }}
+        run: |
+          echo "::error::deploy-hosted-mcp result was ${{ needs.deploy-hosted-mcp.result }}"
+          exit 1
+
       - name: Record Cloud Run deploy failure
-        if: failure() && startsWith(github.ref, 'refs/tags/v')
+        if: ${{ always() && needs.deploy-hosted-mcp.result != 'success' }}
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: open
@@ -366,7 +701,7 @@ jobs:
             rollback revision before release continues.
 
       - name: Close resolved Cloud Run deploy failure issue
-        if: success() && startsWith(github.ref, 'refs/tags/v')
+        if: ${{ needs.deploy-hosted-mcp.result == 'success' }}
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: close

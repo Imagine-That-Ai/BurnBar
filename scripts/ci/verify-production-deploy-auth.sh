@@ -25,6 +25,7 @@ WORKFLOWS = {
     "deploy-production": Path(".github/workflows/deploy-production.yml"),
     "deploy-hosting": Path(".github/workflows/deploy-hosting.yml"),
     "deploy-firestore": Path(".github/workflows/deploy-firestore.yml"),
+    "deploy-cloud-run": Path(".github/workflows/deploy-cloud-run.yml"),
 }
 LEGACY_SECRET_RE = re.compile(
     r"\b(?:GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json)\b"
@@ -264,6 +265,119 @@ def validate_hosting(text: str) -> None:
         fail(f"{path} hosting-smoke-result must own issues:write for ops-failure issues")
 
 
+def validate_cloud_run(text: str) -> None:
+    path = WORKFLOWS["deploy-cloud-run"]
+    top = top_level_text(text)
+    if "id-token: write" in top:
+        fail(f"{path} grants id-token:write at top level; only deploy-hosted-mcp may grant it")
+    if "issues: write" in top:
+        fail(f"{path} grants issues:write at top level; only cloud-run-deploy-result may grant it")
+
+    jobs = extract_jobs(text)
+    resolve_job = jobs.get("resolve-release")
+    build_job = jobs.get("build-hosted-mcp-artifact")
+    deploy_job = jobs.get("deploy-hosted-mcp")
+    result_job = jobs.get("cloud-run-deploy-result")
+    dry_run_job = jobs.get("cloud-run-dry-run-summary")
+
+    for required_job, job_text in (
+        ("resolve-release", resolve_job),
+        ("build-hosted-mcp-artifact", build_job),
+        ("deploy-hosted-mcp", deploy_job),
+        ("cloud-run-deploy-result", result_job),
+        ("cloud-run-dry-run-summary", dry_run_job),
+    ):
+        if not job_text:
+            fail(f"{path} must define {required_job}")
+
+    if not resolve_job or not build_job or not deploy_job or not result_job:
+        return
+
+    for marker in (
+        "tag_ref=\"refs/tags/${TAG}\"",
+        "git fetch --force --tags origin \"+${tag_ref}:${tag_ref}\"",
+        "git merge-base --is-ancestor \"$commit\" origin/main",
+        "[[ ! \"$TAG\" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]",
+    ):
+        if marker not in resolve_job:
+            fail(f"{path} resolve-release is missing release tag provenance guard marker {marker!r}")
+    if '"${{ inputs.tag }}"' in resolve_job or "'${{ inputs.tag }}'" in resolve_job:
+        fail(f"{path} resolve-release must pass workflow_dispatch tag input through env, not interpolate it into shell")
+
+    if "id-token: write" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not grant id-token:write")
+    if "environment:" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not bind the production environment")
+    if "secrets." in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not reference secrets")
+    if "scripts/deploy-hosted-mcp.sh" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not package the post-auth deploy driver")
+    for marker in (
+        "npm ci --prefix services/hosted-mcp",
+        "npm --prefix services/hosted-mcp test",
+        "docker build -f services/hosted-mcp/Dockerfile",
+        "sha256sum > \"$manifest\"",
+        "mv \"$manifest\" SHA256SUMS",
+        "actions/upload-artifact@",
+    ):
+        if marker not in build_job:
+            fail(f"{path} build-hosted-mcp-artifact is missing artifact guard marker {marker!r}")
+
+    if "needs:" not in deploy_job or "build-hosted-mcp-artifact" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must need build-hosted-mcp-artifact")
+    if "environment: production" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must bind the production environment")
+    if "id-token: write" not in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must grant id-token:write")
+    if "issues: write" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not grant issues:write")
+    if "actions/checkout" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not check out repository code")
+    if "uses: ./.github/actions" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not use local actions")
+    if "$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not execute a deploy driver from the downloaded artifact")
+    if "gcloud secrets create" in deploy_job or "gcloud secrets versions add" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not write Secret Manager values after auth")
+    for marker in (
+        "REMOTE_MCP_TOKEN_HMAC_SECRET: ${{ secrets.",
+        "REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64: ${{ secrets.",
+        "MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: ${{ secrets.",
+    ):
+        if marker in deploy_job:
+            fail(f"{path} deploy-hosted-mcp must not inject signer secret values via {marker.split(':', 1)[0]}")
+    for marker in (
+        "actions/download-artifact@",
+        "sha256sum -c SHA256SUMS",
+        "Deploy artifact must not carry the post-auth deploy driver.",
+        "-type l",
+        "-links +1",
+        "DEPLOY_SOURCE_DIR",
+        "gcloud builds submit \"$DEPLOY_SOURCE_DIR\"",
+        "--config \"$DEPLOY_SOURCE_DIR/services/hosted-mcp/cloudbuild.yaml\"",
+        "gcloud run deploy \"$SERVICE\"",
+        "gcloud run services update-traffic \"$SERVICE\"",
+        "roles/secretmanager.admin",
+        "roles/secretmanager.secretVersionAdder",
+        "roles/secretmanager.secretVersionManager",
+        "required_secret_roles",
+        "roles/secretmanager.viewer",
+        "roles/secretmanager.secretAccessor",
+        "for forbidden_secret_env in",
+        "Production Cloud Run deploy must not receive signer secret values",
+        "must have read-only Secret Manager metadata and payload access",
+    ):
+        if marker not in deploy_job:
+            fail(f"{path} deploy-hosted-mcp is missing deploy boundary marker {marker!r}")
+
+    if "id-token: write" in result_job:
+        fail(f"{path} cloud-run-deploy-result must not grant id-token:write")
+    if "issues: write" not in result_job:
+        fail(f"{path} cloud-run-deploy-result must own issues:write for ops-failure issues")
+    if "if: ${{ always() && needs.deploy-hosted-mcp.result != 'success' }}" not in result_job:
+        fail(f"{path} cloud-run-deploy-result must record deploy failures with always() so the issue step still runs after the fail-fast step")
+
+
 def validate_artifact_dir(path: Path) -> int:
     failures: list[str] = []
     if not path.is_dir():
@@ -336,6 +450,8 @@ for name, text in texts.items():
         validate_workflow(name, WORKFLOWS[name], text)
 if texts.get("deploy-hosting"):
     validate_hosting(texts["deploy-hosting"])
+if texts.get("deploy-cloud-run"):
+    validate_cloud_run(texts["deploy-cloud-run"])
 validate_generated_configs()
 
 if FAILURES:

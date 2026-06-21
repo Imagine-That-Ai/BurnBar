@@ -17,13 +17,18 @@ Normal production deploys run through GitHub Actions:
    from that tag, or let the tag push trigger it.
 
 The workflow builds and tests `services/hosted-mcp`, performs a Docker build
-smoke from the repository-root context, authenticates to Google Cloud with
-OIDC workload identity federation, verifies the deploy service account has the
-required Cloud Run/Cloud Build/Secret Manager IAM, captures the currently
-serving revision, deploys `openburnbar-hosted-mcp`, reads the service back, and
-auto-rolls back with `scripts/ops/rollback-revision.sh` if deploy or readback
-fails. It also preserves the live `OPENBURNBAR_STORAGE_BUCKET` instead of
-hard-coding it.
+smoke from the repository-root context, then stages a bounded deploy artifact
+before any production credentials are available. The credentialed deploy job
+does not check out repository code: it downloads the verified artifact,
+authenticates to Google Cloud with OIDC workload identity federation, verifies
+the deploy service account has the required Cloud Run/Cloud Build IAM, read-only
+Secret Manager metadata/payload access, and no Secret Manager write-capable
+role, captures the currently serving revision,
+deploys `openburnbar-hosted-mcp`, reads the service back, and auto-rolls back to
+the previous ready revision if deploy or readback fails. It also preserves the
+live `OPENBURNBAR_STORAGE_BUCKET` instead of hard-coding it. CI deploys bind
+existing signer secrets only; signer rotations remain an out-of-band operator
+step.
 
 Use this local path only for operator break-glass deploys or manual rehearsal:
 
@@ -39,17 +44,21 @@ firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition 
 export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 export REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=...
 export MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=...
+export OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true # only for intentional key rotation
 ./scripts/deploy-hosted-mcp.sh
 ```
 
 Hermes realtime relay (separate sidecar): [`scripts/deploy-hermes-relay.sh`](../scripts/deploy-hermes-relay.sh) — set `HERMES_RELAY_URL` and it gates on `/healthz` after your Cloud Run deploy.
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates on
-`/healthz` (override with `MCP_HEALTH_PATH=/readyz` when checking branded DNS), and
+`/readyz` (override with `MCP_HEALTH_PATH` only for a custom health path), and
 sets the resource audience to `https://mcp.burnbar.ai/mcp` and issuer to
 `https://mcp.burnbar.ai`. HMAC signing is a legacy transition path; Ed25519
 signing is the production target so the resource server can verify with a
-public key and refuse shared-secret tokens by default.
+public key and refuse shared-secret tokens by default. The script refuses to
+upsert signer secrets unless `OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true`
+is set, so normal production deploys cannot rotate token-signing material as an
+accidental side effect.
 
 ## Domain Mapping
 
@@ -334,8 +343,8 @@ scripts/ops/rollback-revision.sh openburnbar-hosted-mcp REVISION \
 ```
 
 The deploy workflow captures the previous ready revision before shifting
-traffic and runs the explicit-revision command automatically if the deploy or
-post-deploy readback fails.
+traffic and runs the equivalent explicit Cloud Run `update-traffic` rollback
+automatically if the deploy or post-deploy readback fails.
 
 If auth or privacy behavior is suspect, revoke the Cloud Run service account's
 Firestore/Storage permissions before debugging.
