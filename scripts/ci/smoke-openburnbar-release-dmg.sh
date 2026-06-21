@@ -14,6 +14,7 @@ if [[ ! -f "$dmg_path" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$script_dir/verify-apple-appcheck-release-env.sh"
 bash "$script_dir/verify-apple-appcheck-release-artifact.sh" "$dmg_path"
 
 uid="$(id -u)"
