@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
 
       - name: Install Factory Droid from pinned npm release
         run: |
@@ -44,6 +46,12 @@ jobs:
         # 0.150.x requires an explicit autonomy level; medium is the least-power
         # mode that allows the wiki skill to update generated docs without the
         # destructive-command bypass.
-        run: droid exec --auto medium --model minimax-m3 "/wiki"
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${FACTORY_API_KEY}" ]]; then
+            echo "::error::FACTORY_API_KEY is not configured for this repository"
+            exit 1
+          fi
+          droid exec --auto medium --model minimax-m3 "/wiki"

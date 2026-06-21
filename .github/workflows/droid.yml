@@ -51,22 +51,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+      FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Skip Droid when Factory API key is unavailable
-        if: env.FACTORY_API_KEY == ''
+        if: env.FACTORY_API_KEY_AVAILABLE == 'false'
         run: echo "::notice::FACTORY_API_KEY is unavailable; skipping Droid run."
       - name: Run Droid Exec
-        if: env.FACTORY_API_KEY != ''
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true'
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
-          factory_api_key: ${{ env.FACTORY_API_KEY }}
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
