@@ -290,6 +290,17 @@ expect("legacy job-wide secret, write token, OIDC, and checkout credential patte
 expect("legacy Droid CLI workflow without key preflight or checkout isolation fails", { "droid-wiki-refresh.yml": LEGACY_DROID_CLI }, 1);
 
 expect(
+  "line-continued Droid CLI workflow is still detected and fails",
+  {
+    "droid-wiki-refresh.yml": LEGACY_DROID_CLI.replace(
+      '        run: droid exec --auto medium "/wiki"',
+      ["        run: |", "          droid " + "\\", '          exec --auto medium "/wiki"'].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "missing same-repository PR guard fails",
   {
     "droid.yml": REMEDIATED_DROID.replaceAll(
@@ -441,6 +452,17 @@ expect(
     "droid.yml": REMEDIATED_DROID.replace(
       '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
       '          echo "allowed=${allowed}"',
+    ),
+  },
+  1,
+);
+
+expect(
+  "PR comment same-repo scope reset after repository check fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+      ['          allowed=true', '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"'].join("\n"),
     ),
   },
   1,
@@ -683,6 +705,27 @@ expect(
         "            exit 1",
         "            EOF",
         "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI empty-key preflight in string after heredoc quote fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        "          cat <<MSG",
+        "          won't",
+        "          MSG",
+        '          echo \'if [[ -z "${FACTORY_API_KEY}" ]]; then exit 1; fi\'',
       ].join("\n"),
     ),
   },

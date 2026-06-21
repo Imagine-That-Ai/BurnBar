@@ -82,8 +82,12 @@ function hasDroidActionSurface(source) {
   return /Factory-AI\/droid-action@/u.test(source);
 }
 
+function normalizeShellLineContinuations(source) {
+  return source.replace(/\\[ \t]*\n[ \t]*/gu, " ");
+}
+
 function blockHasDroidExec(source) {
-  return /\bdroid\s+exec\b/u.test(source);
+  return /\bdroid\s+exec\b/u.test(normalizeShellLineContinuations(source));
 }
 
 function stepRunValue(step) {
@@ -104,11 +108,13 @@ function hasDroidCliSurface(source) {
     if (!/^[>|]/u.test(runMatch[2].trim())) continue;
 
     const runIndent = runMatch[1].length;
+    const blockLines = [];
     for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
       const blockLine = lines[blockIndex];
       if (!isBlank(blockLine) && indentOf(blockLine) <= runIndent) break;
-      if (blockHasDroidExec(blockLine)) return true;
+      blockLines.push(blockLine.trim());
     }
+    if (blockHasDroidExec(blockLines.join("\n"))) return true;
   }
   return false;
 }
@@ -740,7 +746,7 @@ function droidCliStepFailsClosed(step) {
   let match = preflightPattern.exec(searchableRun);
   while (match) {
     if (
-      !positionIsInsideShellStringOrComment(run, match.index) &&
+      !positionIsInsideShellStringOrComment(searchableRun, match.index) &&
       shellBlockHasTopLevelNonzeroExit(run.slice(match.index + match[0].length))
     ) {
       return true;
@@ -761,15 +767,29 @@ function hasDroidReviewOidcException(step) {
 }
 
 function issueCommentScopeStepVerifiesSameRepository(scopeStep) {
-  const run = stepRunValue(scopeStep);
-  const assignsHeadRepoFromGhApi = /^ *head_repo="\$\(gh api "\$\{PR_URL\}" --jq '\.head\.repo\.full_name'\)" *$/mu.test(
-    run,
-  );
-  const rejectsDifferentRepository =
-    /^ *if \[\[ "\$\{head_repo\}" != "\$\{REPOSITORY\}" \]\]; then *$/mu.test(run) &&
-    /^ *allowed=false *$/mu.test(run);
-  const writesAllowedOutput = /^ *echo "allowed=\$\{allowed\}" >> "\$\{GITHUB_OUTPUT\}" *$/mu.test(run);
-  return assignsHeadRepoFromGhApi && rejectsDifferentRepository && writesAllowedOutput;
+  const lines = stepRunValue(scopeStep)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const headRepoIndex = lines.indexOf('head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"');
+  const repositoryCheckIndex = lines.indexOf('if [[ "${head_repo}" != "${REPOSITORY}" ]]; then');
+  const rejectIndex = lines.indexOf("allowed=false");
+  const rejectFiIndex = lines.indexOf("fi", rejectIndex + 1);
+  const outputIndex = lines.indexOf('echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"');
+
+  if (
+    headRepoIndex === -1 ||
+    repositoryCheckIndex !== headRepoIndex + 1 ||
+    rejectIndex !== repositoryCheckIndex + 1 ||
+    rejectFiIndex !== rejectIndex + 1 ||
+    outputIndex <= rejectFiIndex
+  ) {
+    return false;
+  }
+
+  return !lines
+    .slice(rejectFiIndex + 1, outputIndex)
+    .some((line) => /^(allowed|head_repo)=/u.test(line));
 }
 
 for (const file of workflowFiles()) {
