@@ -10,16 +10,16 @@
  *     1. Apple root certificates round-trip with their pinned SHA-256
  *        fingerprints; tampering fails the cold-start check.
  *     2. Environment enum ↔ AppStoreEnvironment string round-trip.
- *     3. Reconciler `pickWinning` picks the most recent signedDate
- *        and ignores wrong productId payloads.
+ *     3. Reconciler `pickWinning` picks the newest Apple transaction
+ *        watermark and ignores wrong productId payloads.
  *     4. Reconciler `buildEntitlementDoc` produces the documented
  *        v2 shape (active flag, hash, source, schema/verification
  *        versions, lowercased appAccountToken).
  *     5. Reconciler `mergeWithExisting` preserves stable fields
  *        (appAccountToken, ownershipType, environment) when the
  *        new payload omits them.
- *     6. Monotonicity: `shouldOverwrite` rejects an older verified
- *        timestamp.
+ *     6. Monotonicity: `shouldOverwrite` rejects an older Apple
+ *        transaction watermark.
  *     7. Audit `redact` drops nested signed JWS strings and replaces
  *        them with their SHA-256.
  *     8. Audit `sanitizeDocId` strips path separators and exotic
@@ -203,6 +203,25 @@ test("pickWinning selects the most recent signedDate", () => {
   assert.equal(winner.payload.transactionId, "new");
 });
 
+test("pickWinning breaks signedDate ties with numeric transactionId", () => {
+  const productID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+  const signedDate = 200;
+  const candidates = [
+    fakeTx({
+      productId: productID,
+      signedDate,
+      transactionId: "999999999999999999999999999999",
+    }),
+    fakeTx({
+      productId: productID,
+      signedDate,
+      transactionId: "1000000000000000000000000000000",
+    }),
+  ];
+  const winner = reconcilerTesting.pickWinning(candidates, productID);
+  assert.equal(winner.payload.transactionId, "1000000000000000000000000000000");
+});
+
 test("pickWinning returns undefined when no candidate matches productId", () => {
   const winner = reconcilerTesting.pickWinning([fakeTx({ productId: "x", signedDate: 1 })], "y");
   assert.equal(winner, undefined);
@@ -345,6 +364,23 @@ test("shouldOverwrite accepts newer or equal Apple signedDate", () => {
   const b = stubDoc({ signedDateMs: 1800000000_000 });
   assert.equal(reconcilerTesting.shouldOverwrite(a, b), true);
   assert.equal(reconcilerTesting.shouldOverwrite(b, b), true); // idempotent retry
+});
+
+test("shouldOverwrite compares transactionId when Apple signedDate ties", () => {
+  const existing = stubDoc({
+    signedDateMs: 1800000000_000,
+    transactionID: "999999999999999999999999999999",
+  });
+  const newerTie = stubDoc({
+    signedDateMs: 1800000000_000,
+    transactionID: "1000000000000000000000000000000",
+  });
+  const olderTie = stubDoc({
+    signedDateMs: 1800000000_000,
+    transactionID: "999999999999999999999999999998",
+  });
+  assert.equal(reconcilerTesting.shouldOverwrite(existing, newerTie), true);
+  assert.equal(reconcilerTesting.shouldOverwrite(existing, olderTie), false);
 });
 
 test("shouldOverwrite rejects older Apple signedDate (replay protection)", () => {
@@ -831,6 +867,61 @@ test("reconcileEntitlement is idempotent on replay (no extra writes)", async () 
   assert.equal(entitlementWrites.length, 0);
 });
 
+test("reconcileEntitlement rejects same-signedDate lower transactionId replay", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  const signedDate = 1800000000_000;
+
+  reads.set("users/uid-7/entitlements/hosted_quota_sync", {
+    exists: true,
+    data: () => ({
+      id: "hosted_quota_sync",
+      signedDateMs: signedDate,
+      lastVerifiedAt: "2099-01-01T00:00:00.000Z",
+      active: true,
+      productID,
+      transactionID: "1000000000000000000000000000000",
+      originalTransactionID: "otx-A",
+      environment: "Sandbox",
+      signedTransactionHash: "0".repeat(64),
+      source: "apple_jws_verified",
+      verificationVersion: 2,
+      schemaVersion: 2,
+      updatedAt: "2099-01-01T00:00:00.000Z",
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+
+  const seed = fakeTx({
+    productId: productID,
+    signedDate,
+    transactionId: "999999999999999999999999999999",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-7",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.changed, false, "lower same-date transactionId must not overwrite newer doc");
+  const entitlementWrites = writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync"));
+  assert.equal(entitlementWrites.length, 0);
+});
+
 test("reconcileEntitlement honours ASC live state over inbound JWS", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
@@ -876,6 +967,53 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
   );
 
   assert.equal(result.entitlement.transactionID, "tx-new");
+});
+
+test("reconcileEntitlement honours ASC transactionId tie-break over inbound JWS", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  const signedDate = 1800000000_000;
+
+  const oldTx = fakeTx({
+    productId: productID,
+    signedDate,
+    transactionId: "999999999999999999999999999999",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const newerTx = fakeTx({
+    productId: productID,
+    signedDate,
+    transactionId: "1000000000000000000000000000000",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 60 * 86_400_000,
+  });
+  const verifier = fakeVerifier({
+    seed: oldTx,
+    extraVerifyTransaction: { [newerTx.raw]: newerTx },
+  });
+  const fetchLive = async () => ({
+    status: { data: [] },
+    pairs: [{ signedTransactionInfo: newerTx.raw }],
+  });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: oldTx.raw,
+      claimedUid: "uid-7",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.entitlement.transactionID, "1000000000000000000000000000000");
 });
 
 test("reconcileEntitlement fails closed when ASC live status is unavailable", async () => {
