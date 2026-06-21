@@ -7,10 +7,13 @@
  * or grant state without Cloud Pro/Ultra entitlement.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dbAccesses = vi.hoisted(() => new Array<string>());
-const entitlementAllowedUids = vi.hoisted(() => new Set<string>());
+const { dbAccesses, entitlementAllowedUids, firestoreDocs } = vi.hoisted(() => ({
+  dbAccesses: new Array<string>(),
+  entitlementAllowedUids: new Set<string>(),
+  firestoreDocs: new Map<string, Record<string, unknown>>(),
+}));
 
 vi.mock("../adminRuntime.js", () => ({
   db: {
@@ -18,21 +21,36 @@ vi.mock("../adminRuntime.js", () => ({
       dbAccesses.push(path);
       return {
         path,
-        get: async () => ({ exists: false, get: () => undefined, data: () => undefined }),
-        set: async () => undefined,
-        delete: async () => undefined,
+        get: async () => {
+          const data = firestoreDocs.get(path);
+          return { exists: data !== undefined, get: (field: string) => data?.[field], data: () => data };
+        },
+        set: async (data: Record<string, unknown>) => {
+          firestoreDocs.set(path, { ...data });
+        },
+        delete: async () => {
+          firestoreDocs.delete(path);
+        },
       };
     },
     runTransaction: async (fn: (transaction: unknown) => Promise<unknown>) =>
       fn({
         get: async (ref: { path?: string }) => {
-          dbAccesses.push(ref.path ?? "<unknown>");
-          return { exists: false, get: () => undefined, data: () => undefined };
+          const path = ref.path ?? "<unknown>";
+          dbAccesses.push(path);
+          const data = firestoreDocs.get(path);
+          return { exists: data !== undefined, get: (field: string) => data?.[field], data: () => data };
         },
-        set: () => undefined,
+        set: (ref: { path?: string }, data: Record<string, unknown>) => {
+          if (ref.path) firestoreDocs.set(ref.path, { ...data });
+        },
         create: () => undefined,
-        update: () => undefined,
-        delete: () => undefined,
+        update: (ref: { path?: string }, data: Record<string, unknown>) => {
+          if (ref.path) firestoreDocs.set(ref.path, { ...(firestoreDocs.get(ref.path) ?? {}), ...data });
+        },
+        delete: (ref: { path?: string }) => {
+          if (ref.path) firestoreDocs.delete(ref.path);
+        },
       }),
   },
   auth: {},
@@ -89,6 +107,8 @@ vi.mock("../logging.js", async () => {
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
 const UID = "uid-no-agent-control";
+const MAC_DEVICE_ID = "mac-cleanup";
+const CONNECTION_ID = "conn-cleanup";
 
 function request(data: Record<string, unknown> = {}) {
   return {
@@ -104,18 +124,21 @@ function run(callable: unknown, data?: Record<string, unknown>): Promise<unknown
 }
 
 describe("Computer Use callables require hosted Agent Control entitlement", () => {
+  beforeEach(() => {
+    entitlementAllowedUids.clear();
+    dbAccesses.length = 0;
+    firestoreDocs.clear();
+  });
+
   it.each([
     "publishIrohPairingPublicKey",
     "publishIrohPairingRecord",
-    "revokeIrohPairingRecord",
     "publishPhoneControlAuthority",
     "publishRelaySenderKey",
     "publishAgentGrantAuthority",
     "queueAgentCapabilityGrantRequest",
     "respondMissionApproval",
   ] as const)("%s fails closed before Firestore state access for non-entitled callers", async (exportedName) => {
-    entitlementAllowedUids.clear();
-    dbAccesses.length = 0;
     const mod = await import("../callables/computerUseSecurity.js");
     const callable = mod[exportedName];
 
@@ -123,5 +146,28 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
       code: "permission-denied",
     });
     expect(dbAccesses).toEqual([]);
+  });
+
+  it("revokeIrohPairingRecord remains available for cleanup after entitlement expiry", async () => {
+    firestoreDocs.set(`users/${UID}/escrow_devices/${MAC_DEVICE_ID}`, {
+      platform: "macOS",
+      trustState: "trusted",
+      keyVersion: 1,
+    });
+    firestoreDocs.set(`users/${UID}/iroh_pairing/${CONNECTION_ID}`, {
+      id: CONNECTION_ID,
+      publishedByDeviceId: MAC_DEVICE_ID,
+    });
+    const { revokeIrohPairingRecord } = await import("../callables/computerUseSecurity.js");
+
+    await expect(
+      run(revokeIrohPairingRecord, {
+        deviceId: MAC_DEVICE_ID,
+        connectionId: CONNECTION_ID,
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
+
+    expect(firestoreDocs.has(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)).toBe(false);
+    expect(dbAccesses).toContain(`users/${UID}/escrow_devices/${MAC_DEVICE_ID}`);
   });
 });

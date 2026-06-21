@@ -173,7 +173,6 @@ export const revokeIrohPairingRecord = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking an iroh pairing record.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
-    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
