@@ -4,8 +4,10 @@
  *
  * Secrets-bearing agent workflows may post PR/issue feedback, but they must not
  * receive repository write checkout credentials or OIDC tokens by default. The
- * Factory API key must be passed only to the action invocation, and PR-triggered
- * agent runs must remain scoped to same-repository pull requests.
+ * Factory API key must be passed only to the action invocation, the action must
+ * receive the bounded workflow token explicitly instead of minting one through
+ * OIDC, and PR-triggered agent runs must remain scoped to same-repository pull
+ * requests.
  *
  * Usage:  node scripts/ci/verify-agent-workflow-boundaries.mjs
  * Exit:   0 = all scoped workflows are structurally gated; 1 = violation;
@@ -105,6 +107,12 @@ for (const file of workflowFiles()) {
       source,
       "factory_api_key: ${{ secrets.FACTORY_API_KEY }}",
       "Factory API key must be passed only as the Droid action input",
+    );
+    requireIncludes(
+      file,
+      source,
+      "github_token: ${{ github.token }}",
+      "Droid action must use the bounded workflow token instead of OIDC token minting",
     );
   }
 

@@ -69,6 +69,7 @@ jobs:
         if: env.FACTORY_API_KEY_AVAILABLE == 'true'
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
+          github_token: \${{ github.token }}
           factory_api_key: \${{ secrets.FACTORY_API_KEY }}
 `;
 
@@ -223,6 +224,14 @@ expect(
   "write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: write"),
+  },
+  1,
+);
+
+expect(
+  "OIDC fallback regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace("          github_token: ${{ github.token }}\n", ""),
   },
   1,
 );
