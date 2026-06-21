@@ -21,7 +21,7 @@
 
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { join, relative, basename } from "node:path";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 
 // -- Chunking thresholds (tuned to the observed wiki: consistent H2 schema, no front-matter) --
 export const WHOLE_FILE_MAX_LINES = 70; // pages below this stay a single chunk
@@ -46,12 +46,22 @@ export const sha256 = (s) => createHash("sha256").update(s, "utf8").digest("hex"
 
 // -- Discovery + chunking -----------------------------------------------------
 
+export function isContainedPath(rootReal, candidateReal, pathApi = { isAbsolute, relative, sep }) {
+  const candidateRelative = pathApi.relative(rootReal, candidateReal);
+  return (
+    candidateRelative === "" ||
+    (candidateRelative !== ".." &&
+      !candidateRelative.startsWith(`..${pathApi.sep}`) &&
+      !pathApi.isAbsolute(candidateRelative))
+  );
+}
+
 export function listMarkdown(rootAbs) {
   const out = [];
   const rootReal = realpathSync(rootAbs);
   const isContained = (abs) => {
     const real = realpathSync(abs);
-    return real === rootReal || real.startsWith(`${rootReal}/`);
+    return isContainedPath(rootReal, real);
   };
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {

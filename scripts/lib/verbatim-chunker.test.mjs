@@ -15,7 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, dirname } from "node:path";
+import { basename, dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -24,6 +24,7 @@ import {
   planActions,
   chunkMarkdown,
   firstH1,
+  isContainedPath,
   deriveCategory,
   sha256,
   WHOLE_FILE_MAX_LINES,
@@ -54,6 +55,15 @@ test("listMarkdown does not follow symlinked files or directories", () => {
     rmSync(root, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
   }
+});
+
+test("path containment accepts Windows children without prefix confusion", () => {
+  const root = String.raw`C:\repo\droid-wiki`;
+
+  assert.equal(isContainedPath(root, root, win32), true);
+  assert.equal(isContainedPath(root, String.raw`C:\repo\droid-wiki\apps\index.md`, win32), true);
+  assert.equal(isContainedPath(root, String.raw`C:\repo\droid-wiki-evader\secret.md`, win32), false);
+  assert.equal(isContainedPath(root, String.raw`D:\repo\droid-wiki\apps\index.md`, win32), false);
 });
 
 test("buildDesired reproduces every committed droid-wiki chunk byte-identically", () => {
