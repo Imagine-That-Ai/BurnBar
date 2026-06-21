@@ -231,6 +231,11 @@ function firstChildIndent(lines, startIndex, parentIndent) {
   return null;
 }
 
+function blockDirectIndent(lines, parentIndent) {
+  if (/^\s*-\s+[A-Za-z0-9_-]+:\s*/u.test(lines[0] ?? "")) return parentIndent + 2;
+  return firstChildIndent(lines, 1, parentIndent);
+}
+
 function topLevelSectionHasEntry(source, sectionName, key, expectedValue) {
   const lines = source.split("\n");
   const sectionIndex = lines.findIndex((line) =>
@@ -258,9 +263,9 @@ function directEntryValue(block, key) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
   const firstLine = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-  if (firstLine?.[1] === key) return directEntryScalarValue(lines, 0, blockIndent, firstLine[2]);
+  if (firstLine?.[1] === key) return directEntryScalarValue(lines, 0, blockIndent + 2, firstLine[2]);
 
-  const directIndent = firstChildIndent(lines, 1, blockIndent);
+  const directIndent = blockDirectIndent(lines, blockIndent);
   if (directIndent === null) return null;
   for (let index = 1; index < lines.length; index += 1) {
     const line = lines[index];
@@ -273,6 +278,48 @@ function directEntryValue(block, key) {
     if (entry?.[1] === key) return directEntryScalarValue(lines, index, lineIndent, entry[2]);
   }
   return null;
+}
+
+function splitFlowMappingEntries(value) {
+  const trimmed = normalizeYamlScalar(value);
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return [];
+  const body = trimmed.slice(1, -1);
+  const entries = [];
+  let quote = null;
+  let depth = 0;
+  let start = 0;
+
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    const previous = index > 0 ? body[index - 1] : "";
+    if (quote) {
+      if (char === quote && (quote === "'" || previous !== "\\")) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "{" || char === "[" || char === "(") depth += 1;
+    if (char === "}" || char === "]" || char === ")") depth = Math.max(0, depth - 1);
+    if (char === "," && depth === 0) {
+      entries.push(body.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+
+  entries.push(body.slice(start).trim());
+  return entries.filter(Boolean);
+}
+
+function flowMappingHasEntry(value, key, expectedValue) {
+  for (const entry of splitFlowMappingEntries(value ?? "")) {
+    const match = entry.match(/^([^:]+):\s*(.*?)\s*$/u);
+    if (!match) continue;
+    if (normalizeYamlScalar(match[1]) !== key) continue;
+    if (normalizeYamlScalar(match[2]) === expectedValue) return true;
+  }
+  return false;
 }
 
 function directEntryScalarValue(lines, entryIndex, entryIndent, rawValue) {
@@ -291,7 +338,7 @@ function directEntryScalarValue(lines, entryIndex, entryIndent, rawValue) {
 function directSectionLines(block, sectionName) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
-  const sectionIndent = firstChildIndent(lines, 1, blockIndent);
+  const sectionIndent = blockDirectIndent(lines, blockIndent);
   if (sectionIndent === null) return [];
   const sections = [];
 
@@ -337,6 +384,20 @@ function sectionHasEntry(block, sectionName, key, expectedValue) {
     }
   }
   return false;
+}
+
+function mappingHasEntry(block, sectionName, key, expectedValue) {
+  return (
+    sectionHasEntry(block, sectionName, key, expectedValue) ||
+    flowMappingHasEntry(directEntryValue(block, sectionName), key, expectedValue)
+  );
+}
+
+function topLevelMappingHasEntry(source, sectionName, key, expectedValue) {
+  return (
+    topLevelSectionHasEntry(source, sectionName, key, expectedValue) ||
+    flowMappingHasEntry(topLevelEntryValue(source, sectionName), key, expectedValue)
+  );
 }
 
 function directEntryIncludes(block, key, needle) {
@@ -518,10 +579,10 @@ function droidCliStepFailsClosed(step) {
 function hasDroidReviewOidcException(step) {
   return (
     stepUsesDroidAction(step) &&
-    sectionHasEntry(step, "with", "automatic_review", "true") &&
-    sectionHasEntry(step, "with", "automatic_security_review", "true") &&
-    sectionHasEntry(step, "with", "github_token", "${{ github.token }}") &&
-    sectionHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")
+    mappingHasEntry(step, "with", "automatic_review", "true") &&
+    mappingHasEntry(step, "with", "automatic_security_review", "true") &&
+    mappingHasEntry(step, "with", "github_token", "${{ github.token }}") &&
+    mappingHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")
   );
 }
 
@@ -542,18 +603,18 @@ for (const file of workflowFiles()) {
   );
 
   const grantsContentsWrite =
-    topLevelSectionHasEntry(source, "permissions", "contents", "write") ||
-    jobs.some((job) => sectionHasEntry(job, "permissions", "contents", "write"));
+    topLevelMappingHasEntry(source, "permissions", "contents", "write") ||
+    jobs.some((job) => mappingHasEntry(job, "permissions", "contents", "write"));
   if (grantsContentsWrite || topLevelEntryValue(source, "permissions") === "write-all" ||
     jobs.some((job) => directEntryValue(job, "permissions") === "write-all")
   ) {
     fail(file, "interactive agent workflow must not request contents:write");
   }
-  if (topLevelSectionHasEntry(source, "permissions", "id-token", "write")) {
+  if (topLevelMappingHasEntry(source, "permissions", "id-token", "write")) {
     fail(file, "interactive agent workflow must not grant id-token:write at workflow scope");
   }
   for (const job of jobs) {
-    if (!sectionHasEntry(job, "permissions", "id-token", "write")) continue;
+    if (!mappingHasEntry(job, "permissions", "id-token", "write")) continue;
     if (!jobSteps(job, droidActionSteps).some(hasDroidReviewOidcException)) {
       fail(file, "interactive agent workflow must not request id-token:write outside automatic Droid review validation");
     }
@@ -561,15 +622,15 @@ for (const file of workflowFiles()) {
 
   if (usesDroidAction) {
     if (
-      topLevelSectionHasEntry(source, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE) ||
-      jobs.some((job) => sectionHasEntry(job, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE))
+      topLevelMappingHasEntry(source, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE) ||
+      jobs.some((job) => mappingHasEntry(job, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE))
     ) {
       fail(file, "Factory API key must not be exposed in Droid-action workflow or job env");
     }
 
     for (const job of droidActionJobs) {
       if (
-        !sectionHasEntry(
+        !mappingHasEntry(
           job,
           "env",
           "FACTORY_API_KEY_AVAILABLE",
@@ -597,10 +658,10 @@ for (const file of workflowFiles()) {
       if (!conditionHasRequiredConjunctsOnly(directEntryValue(step, "if") ?? "", requiredActionConjuncts)) {
         fail(file, "agent action must be gated by boolean Factory key availability");
       }
-      if (!sectionHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")) {
+      if (!mappingHasEntry(step, "with", "factory_api_key", "${{ secrets.FACTORY_API_KEY }}")) {
         fail(file, "Factory API key must be passed only as the Droid action input");
       }
-      if (!sectionHasEntry(step, "with", "github_token", "${{ github.token }}")) {
+      if (!mappingHasEntry(step, "with", "github_token", "${{ github.token }}")) {
         fail(file, "Droid action must use the bounded workflow token instead of OIDC token minting");
       }
     }
@@ -611,7 +672,7 @@ for (const file of workflowFiles()) {
       !steps.some(
         (step) =>
           stepRunsDroidExec(step) &&
-          sectionHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE),
+          mappingHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE),
       )
     ) {
       fail(file, "Droid CLI workflow must pass Factory key only to the Droid execution step");
@@ -622,7 +683,7 @@ for (const file of workflowFiles()) {
   }
 
   for (const step of steps) {
-    if (!sectionHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE)) continue;
+    if (!mappingHasEntry(step, "env", "FACTORY_API_KEY", FACTORY_KEY_VALUE)) continue;
     if (!stepRunsDroidExec(step)) {
       fail(file, "Factory API key secret env must appear only on Droid CLI execution steps");
     }
@@ -631,7 +692,7 @@ for (const file of workflowFiles()) {
   for (const step of steps) {
     if (
       stepUsesAction(step, "actions/checkout@") &&
-      !sectionHasEntry(step, "with", "persist-credentials", "false")
+      !mappingHasEntry(step, "with", "persist-credentials", "false")
     ) {
       fail(file, "each agent workflow checkout must set persist-credentials:false");
     }
@@ -700,13 +761,13 @@ for (const file of workflowFiles()) {
         continue;
       }
       if (
-        !sectionHasEntry(
+        !mappingHasEntry(
           scopeStep,
           "env",
           "ISSUE_IS_PR",
           "${{ github.event.issue.pull_request != null }}",
         ) ||
-        !sectionHasEntry(
+        !mappingHasEntry(
           scopeStep,
           "env",
           "PR_URL",

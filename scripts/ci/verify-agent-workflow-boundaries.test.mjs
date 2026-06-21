@@ -521,6 +521,17 @@ expect(
 );
 
 expect(
+  "Factory secret after non-Droid block-scalar first step key fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      "      - run: |\n          echo helper\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n      - name: Generate Wiki\n",
+    ),
+  },
+  1,
+);
+
+expect(
   "Droid CLI empty-key preflight without exit fails",
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
@@ -594,6 +605,17 @@ expect(
   "quoted write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: 'write'"),
+  },
+  1,
+);
+
+expect(
+  "flow-style write-token regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "    permissions:\n      contents: read\n      pull-requests: write\n      issues: write",
+      "    permissions: { contents: 'write', pull-requests: write, issues: write }",
+    ),
   },
   1,
 );
