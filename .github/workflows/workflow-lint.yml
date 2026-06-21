@@ -15,6 +15,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/check-npm-audit-fail-closed.mjs"
+      - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "tools/qa/run-functional-qa.sh"
@@ -30,6 +32,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/check-npm-audit-fail-closed.mjs"
+      - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "tools/qa/run-functional-qa.sh"
@@ -81,3 +85,6 @@ jobs:
 
       - name: Verify agent workflow boundaries
         run: node scripts/ci/verify-agent-workflow-boundaries.mjs
+
+      - name: Self-test npm audit fail-closed gate
+        run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
