@@ -148,6 +148,46 @@ final class BurnBarBrowserAntiRebindTests: XCTestCase {
         XCTAssertThrowsError(try ComputerUseRunCoordinator.enforceLandedURL(from: response))
     }
 
+    func test_enforceLandedURL_refusesRedirectToHostResolvingPrivate() {
+        let response = driverResponse(result: .object([
+            "kind": .string("goto"),
+            "url": .string("https://example.com/"),
+            "finalURL": .string("https://public-looking.example/admin")
+        ]))
+        XCTAssertThrowsError(
+            try ComputerUseRunCoordinator.enforceLandedURL(
+                from: response,
+                resolver: { _ in ["10.0.0.8"] }
+            )
+        )
+    }
+
+    func test_enforceLandedURL_usesFreshResolverForRepeatedHostnames() {
+        let publicResponse = driverResponse(result: .object([
+            "kind": .string("goto"),
+            "finalURL": .string("https://rebinding.example/page")
+        ]))
+        let blockedResponse = driverResponse(result: .object([
+            "kind": .string("click"),
+            "finalURL": .string("https://rebinding.example/admin")
+        ]))
+        let resolver = ShiftingResolver(first: ["93.184.216.34"], next: ["127.0.0.1"])
+
+        XCTAssertNoThrow(
+            try ComputerUseRunCoordinator.enforceLandedURL(
+                from: publicResponse,
+                resolver: { host in resolver.resolve(host) }
+            )
+        )
+        XCTAssertThrowsError(
+            try ComputerUseRunCoordinator.enforceLandedURL(
+                from: blockedResponse,
+                resolver: { host in resolver.resolve(host) }
+            )
+        )
+        XCTAssertEqual(resolver.calls, 2)
+    }
+
     func test_enforceLandedURL_allowsPublicLandedURL() {
         let response = driverResponse(result: .object([
             "kind": .string("goto"),
@@ -183,6 +223,29 @@ private final class ResolverCallRecorder: @unchecked Sendable {
     func record() {
         lock.withLock {
             wasCalled = true
+        }
+    }
+}
+
+private final class ShiftingResolver: @unchecked Sendable {
+    private let lock = NSLock()
+    private let first: [String]
+    private let next: [String]
+    private var callCount = 0
+
+    init(first: [String], next: [String]) {
+        self.first = first
+        self.next = next
+    }
+
+    var calls: Int {
+        lock.withLock { callCount }
+    }
+
+    func resolve(_: String) -> [String] {
+        lock.withLock {
+            callCount += 1
+            return callCount == 1 ? first : next
         }
     }
 }
