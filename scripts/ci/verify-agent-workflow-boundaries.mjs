@@ -221,6 +221,17 @@ function normalizeYamlScalar(value) {
   return trimmed;
 }
 
+function firstChildIndent(lines, startIndex, parentIndent) {
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    const lineIndent = indentOf(line);
+    if (lineIndent <= parentIndent) return null;
+    return lineIndent;
+  }
+  return null;
+}
+
 function topLevelSectionHasEntry(source, sectionName, key, expectedValue) {
   const lines = source.split("\n");
   const sectionIndex = lines.findIndex((line) =>
@@ -250,7 +261,8 @@ function directEntryValue(block, key) {
   const firstLine = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
   if (firstLine?.[1] === key) return directEntryScalarValue(lines, 0, blockIndent, firstLine[2]);
 
-  const directIndent = blockIndent + 2;
+  const directIndent = firstChildIndent(lines, 1, blockIndent);
+  if (directIndent === null) return null;
   for (let index = 1; index < lines.length; index += 1) {
     const line = lines[index];
     if (isBlank(line)) continue;
@@ -280,7 +292,8 @@ function directEntryScalarValue(lines, entryIndex, entryIndent, rawValue) {
 function directSectionLines(block, sectionName) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
-  const sectionIndent = blockIndent + 2;
+  const sectionIndent = firstChildIndent(lines, 1, blockIndent);
+  if (sectionIndent === null) return [];
   const sections = [];
 
   for (let index = 1; index < lines.length; index += 1) {

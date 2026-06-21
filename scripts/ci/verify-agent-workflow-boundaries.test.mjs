@@ -606,6 +606,17 @@ expect(
 );
 
 expect(
+  "wide-indented job permissions section Droid review OIDC regression fails",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "jobs:\n  droid-review:",
+      "jobs:\n  unrelated:\n      permissions:\n        contents: read\n        id-token: write\n      steps:\n        - run: echo unrelated\n  droid-review:",
+    ),
+  },
+  1,
+);
+
+expect(
   "workflow-scope Droid review OIDC regression fails",
   {
     "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
