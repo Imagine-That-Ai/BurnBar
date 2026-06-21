@@ -422,6 +422,31 @@ expect(
 );
 
 expect(
+  "PR comment scope head repo token in echo only fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      'head_repo="$(gh api "${PR_URL}" --jq \'.head.repo.full_name\')"',
+      [
+        'echo "checking .head.repo.full_name"',
+        'head_repo="$(gh api "${PR_URL}" --jq \'.base.repo.full_name\')"',
+      ].join("\n            "),
+    ),
+  },
+  1,
+);
+
+expect(
+  "PR comment same-repo scope without output write fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      '          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"',
+      '          echo "allowed=${allowed}"',
+    ),
+  },
+  1,
+);
+
+expect(
   "Factory key availability always-true action gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(

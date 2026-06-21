@@ -646,7 +646,8 @@ function issueCommentScopeStepVerifiesSameRepository(scopeStep) {
   const rejectsDifferentRepository =
     /^ *if \[\[ "\$\{head_repo\}" != "\$\{REPOSITORY\}" \]\]; then *$/mu.test(run) &&
     /^ *allowed=false *$/mu.test(run);
-  return assignsHeadRepoFromGhApi && rejectsDifferentRepository;
+  const writesAllowedOutput = /^ *echo "allowed=\$\{allowed\}" >> "\$\{GITHUB_OUTPUT\}" *$/mu.test(run);
+  return assignsHeadRepoFromGhApi && rejectsDifferentRepository && writesAllowedOutput;
 }
 
 for (const file of workflowFiles()) {
