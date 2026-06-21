@@ -652,6 +652,44 @@ expect(
 );
 
 expect(
+  "Droid CLI empty-key preflight inside single-quoted string fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      '          banner=\'if [[ -z "${FACTORY_API_KEY}" ]]; then exit 1; fi\'',
+    ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI empty-key preflight with heredoc exit text fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        "            cat <<EOF",
+        "            exit 1",
+        "            EOF",
+        "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "Droid CLI empty-key preflight with subshell exit fails",
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(

@@ -539,12 +539,97 @@ function stepWithId(job, steps, id) {
   return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
 }
 
+function readShellHeredocDelimiter(line, start) {
+  if (start >= line.length) return null;
+  const first = line[start];
+  if (first === "'" || first === '"') {
+    let escaped = false;
+    let delimiter = "";
+    for (let index = start + 1; index < line.length; index += 1) {
+      const char = line[index];
+      if (first === '"' && !escaped && char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (!escaped && char === first) return { delimiter, end: index + 1 };
+      delimiter += char;
+      escaped = false;
+    }
+    return null;
+  }
+
+  let delimiter = "";
+  let index = start;
+  while (index < line.length && !/[\s;&|()<>]/u.test(line[index])) {
+    delimiter += line[index];
+    index += 1;
+  }
+  delimiter = delimiter.replace(/\\/gu, "");
+  return delimiter.length > 0 ? { delimiter, end: index } : null;
+}
+
+function shellLineHeredocDelimiters(line) {
+  const delimiters = [];
+  let quote = null;
+  let escaped = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (quote) {
+      if (quote === '"' && !escaped && char === "\\") {
+        escaped = true;
+      } else {
+        if (!escaped && char === quote) quote = null;
+        escaped = false;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      escaped = false;
+      continue;
+    }
+    if (char === "#") break;
+    if (char !== "<" || line[index + 1] !== "<" || line[index + 2] === "<") continue;
+
+    let cursor = index + 2;
+    const stripTabs = line[cursor] === "-";
+    if (stripTabs) cursor += 1;
+    while (cursor < line.length && /\s/u.test(line[cursor])) cursor += 1;
+    const parsed = readShellHeredocDelimiter(line, cursor);
+    if (parsed) {
+      delimiters.push({ delimiter: parsed.delimiter, stripTabs });
+      index = parsed.end - 1;
+    }
+  }
+  return delimiters;
+}
+
+function maskShellHeredocBodies(body) {
+  const pending = [];
+  return body
+    .split("\n")
+    .map((line) => {
+      if (pending.length > 0) {
+        const current = pending[0];
+        const comparable = current.stripTabs ? line.replace(/^\t+/u, "") : line;
+        if (comparable === current.delimiter) pending.shift();
+        return " ".repeat(line.length);
+      }
+
+      pending.push(...shellLineHeredocDelimiters(line));
+      return line;
+    })
+    .join("\n");
+}
+
 function maskShellStringsAndComments(body) {
+  const bodyWithoutHeredocs = maskShellHeredocBodies(body);
   let masked = "";
   let quote = null;
   let escaped = false;
   let inComment = false;
-  for (const char of body) {
+  for (const char of bodyWithoutHeredocs) {
     if (inComment) {
       if (char === "\n") {
         inComment = false;
@@ -587,6 +672,39 @@ function maskShellStringsAndComments(body) {
   return masked;
 }
 
+function positionIsInsideShellStringOrComment(source, position) {
+  let quote = null;
+  let escaped = false;
+  let inComment = false;
+  for (let index = 0; index < position; index += 1) {
+    const char = source[index];
+    if (inComment) {
+      if (char === "\n") inComment = false;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (quote === '"' && !escaped && char === "\\") {
+        escaped = true;
+      } else {
+        if (!escaped && char === quote) quote = null;
+        escaped = false;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      escaped = false;
+      continue;
+    }
+    if (char === "#") {
+      inComment = true;
+      escaped = false;
+    }
+  }
+  return quote !== null || inComment;
+}
+
 function shellBlockHasTopLevelNonzeroExit(body) {
   const executableBody = maskShellStringsAndComments(body);
   const tokenPattern = /\bif\b|\belif\b|\belse\b|\bfi\b|\bexit\s+[1-9][0-9]*\b|\(|\)/gu;
@@ -616,14 +734,18 @@ function shellBlockHasTopLevelNonzeroExit(body) {
 
 function droidCliStepFailsClosed(step) {
   const run = stepRunValue(step);
+  const searchableRun = maskShellHeredocBodies(run);
   const preflightPattern =
     /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then/gu;
-  let match = preflightPattern.exec(run);
+  let match = preflightPattern.exec(searchableRun);
   while (match) {
-    if (shellBlockHasTopLevelNonzeroExit(run.slice(match.index + match[0].length))) {
+    if (
+      !positionIsInsideShellStringOrComment(run, match.index) &&
+      shellBlockHasTopLevelNonzeroExit(run.slice(match.index + match[0].length))
+    ) {
       return true;
     }
-    match = preflightPattern.exec(run);
+    match = preflightPattern.exec(searchableRun);
   }
   return false;
 }
