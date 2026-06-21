@@ -15,6 +15,23 @@ const RUNTIME_BODY_MARKERS = [
   /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial|tier2CallableProof)\b/u,
 ] as const;
 
+const CLIENT_CONTROLLED_USER_NAMESPACE_PATTERNS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
+  {
+    name: "template users/${request.data...}",
+    pattern: /users\/\$\{[^}]*request\.data[^}]*\}/u,
+  },
+  {
+    name: 'collection("users").doc(request.data...)',
+    pattern: /\.collection\(\s*["']users["']\s*\)\s*\.doc\(\s*[^)]*request\.data/u,
+  },
+] as const;
+
+const EXPLICIT_OWNERSHIP_GUARDS = [
+  /\bassertOwnership\s*\(/u,
+  /\benforceAuthAndAppCheck\s*\(/u,
+  /\benforceHighRiskComputerUseCallable(?:WithNonce)?\s*\(/u,
+] as const;
+
 function matchesStaticHighRiskCoverage(
   source: string,
   titles: Set<string>,
@@ -135,6 +152,28 @@ function validateRuntimeCovers(entry: EndpointAuthorizationEntry, ref: BolaCover
   return [];
 }
 
+function validateHandlerUserNamespaceBinding(entry: EndpointAuthorizationEntry, handlerSource: string): string[] {
+  const errors: string[] = [];
+  if (entry.objectIdsFromClient.length === 0) return errors;
+
+  const matchedPatterns = CLIENT_CONTROLLED_USER_NAMESPACE_PATTERNS.filter(({ pattern }) =>
+    pattern.test(handlerSource),
+  );
+  if (matchedPatterns.length === 0) return errors;
+
+  const hasExplicitOwnershipGuard = EXPLICIT_OWNERSHIP_GUARDS.some((pattern) => pattern.test(handlerSource));
+  if (!hasExplicitOwnershipGuard) {
+    errors.push(
+      `${entry.exportedName}: handler constructs a user namespace from callable payload data (${matchedPatterns
+        .map(({ name }) => name)
+        .join(
+          ", ",
+        )}); derive users/{uid} from request.auth.uid or add an explicit ownership guard before Admin SDK access`,
+    );
+  }
+  return errors;
+}
+
 function validateBolaCoverageRef(
   entry: EndpointAuthorizationEntry,
   ref: BolaCoverageRef,
@@ -238,13 +277,7 @@ export function validateEndpointBolaCoverage(
     const handlerPath = resolve(repoRoot, "functions/src", entry.handlerModule);
     if (existsSync(handlerPath)) {
       const handlerSource = readFileSync(handlerPath, "utf8");
-      if (
-        /users\/\$\{[^}]*request\.data/u.test(handlerSource) &&
-        !/assertOwnership\s*\(/u.test(handlerSource) &&
-        entry.exportedName === "validateOpenTimestampsProof"
-      ) {
-        // validateOpenTimestampsProof binds via enforceHighRiskComputerUseCallable — allowed.
-      }
+      errors.push(...validateHandlerUserNamespaceBinding(entry, handlerSource));
     }
   }
 
