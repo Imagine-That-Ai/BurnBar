@@ -555,6 +555,28 @@ expect(
 );
 
 expect(
+  "Droid CLI empty-key preflight with nested exit fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            echo "::error::FACTORY_API_KEY is unavailable"',
+        "            exit 1",
+        "          fi",
+      ].join("\n"),
+      [
+        '          if [[ -z "${FACTORY_API_KEY}" ]]; then',
+        '            if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then',
+        "              exit 1",
+        "            fi",
+        "          fi",
+      ].join("\n"),
+    ),
+  },
+  1,
+);
+
+expect(
   "cross-job Droid CLI secret attribution fails",
   { "droid-wiki-refresh.yml": CROSS_JOB_DROID_CLI_SECRET },
   1,
@@ -564,6 +586,14 @@ expect(
   "write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: write"),
+  },
+  1,
+);
+
+expect(
+  "quoted write-token regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: 'write'"),
   },
   1,
 );

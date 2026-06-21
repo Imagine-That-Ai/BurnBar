@@ -482,13 +482,34 @@ function stepWithId(job, steps, id) {
   return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
 }
 
+function shellBlockHasTopLevelNonzeroExit(body) {
+  const tokenPattern = /\bif\b|\bfi\b|\bexit\s+[1-9][0-9]*\b/gu;
+  let depth = 0;
+  let match = tokenPattern.exec(body);
+  while (match) {
+    const token = match[0];
+    if (token === "if") {
+      depth += 1;
+    } else if (token === "fi") {
+      if (depth === 0) return false;
+      depth -= 1;
+    } else if (depth === 0) {
+      return true;
+    }
+    match = tokenPattern.exec(body);
+  }
+  return false;
+}
+
 function droidCliStepFailsClosed(step) {
   const run = stepRunValue(step);
   const preflightPattern =
-    /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then([\s\S]*?)\bfi\b/gu;
+    /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then/gu;
   let match = preflightPattern.exec(run);
   while (match) {
-    if (/\bexit\s+[1-9][0-9]*\b/u.test(match[1])) return true;
+    if (shellBlockHasTopLevelNonzeroExit(run.slice(match.index + match[0].length))) {
+      return true;
+    }
     match = preflightPattern.exec(run);
   }
   return false;
@@ -520,9 +541,10 @@ for (const file of workflowFiles()) {
       .filter(Boolean),
   );
 
-  if (
-    /contents:\s*write/u.test(source) ||
-    topLevelEntryValue(source, "permissions") === "write-all" ||
+  const grantsContentsWrite =
+    topLevelSectionHasEntry(source, "permissions", "contents", "write") ||
+    jobs.some((job) => sectionHasEntry(job, "permissions", "contents", "write"));
+  if (grantsContentsWrite || topLevelEntryValue(source, "permissions") === "write-all" ||
     jobs.some((job) => directEntryValue(job, "permissions") === "write-all")
   ) {
     fail(file, "interactive agent workflow must not request contents:write");
