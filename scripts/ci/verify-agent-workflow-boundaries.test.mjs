@@ -38,19 +38,26 @@ jobs:
     if: |
       (
         github.event_name == 'issue_comment' &&
-        contains(github.event.comment.body, '@droid')
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
       (
         github.event_name == 'pull_request_review_comment' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
       (
         github.event_name == 'pull_request_review' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.review.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
       ) ||
       (
         github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
     env:
       FACTORY_API_KEY_AVAILABLE: \${{ secrets.FACTORY_API_KEY != '' }}
@@ -306,6 +313,39 @@ expect(
     "droid.yml": REMEDIATED_DROID.replaceAll(
       "github.event.pull_request.head.repo.full_name == github.repository",
       "contains(github.event.comment.body, '@droid')",
+    ),
+  },
+  1,
+);
+
+expect(
+  "issue-comment trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "review trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.review.author_association)",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "pull-request trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " &&\n        contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)",
+      "",
     ),
   },
   1,

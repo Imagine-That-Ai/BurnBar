@@ -5,8 +5,10 @@
  * The invariant: a secrets-bearing/write-token repair job may only checkout or
  * hand off a PR after a no-secret read-only classifier proves that the PR is the
  * base repo's trusted repair branch, authored by the expected bot, and bound to
- * the triggering workflow_run head SHA. Public PR title/body marker text and
- * workflow_run.pull_requests membership are correlation only.
+ * the triggering workflow_run head SHA. Manual dispatches must independently
+ * prove the dispatcher still has write-level repository permission. Public PR
+ * title/body marker text and workflow_run.pull_requests membership are
+ * correlation only.
  *
  * Usage:  node scripts/ci/verify-agent-repair-loop-provenance.mjs
  * Exit:   0 = all scoped workflows are structurally gated; 1 = violation;
@@ -118,6 +120,15 @@ for (const file of workflowFiles()) {
     [
       ".workflow_run.pull_requests",
       "workflow_run pull_requests may only be correlation after provenance",
+    ],
+    [".sender.login", "workflow_dispatch classifier must bind sender.login"],
+    [
+      'collaborators/${dispatch_actor}/permission',
+      "workflow_dispatch classifier must verify actor repository permission",
+    ],
+    [
+      "admin|maintain|write)",
+      "workflow_dispatch classifier must require write-level actor permission",
     ],
   ]);
 

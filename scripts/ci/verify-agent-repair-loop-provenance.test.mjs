@@ -60,7 +60,14 @@ jobs:
           jq '.headRepositoryOwner.login and .headRepository.name and .author.login == env.TRUSTED_AUTHOR' file
       - name: Classify repair trigger
         id: trigger
+        env:
+          GH_TOKEN: \${{ github.token }}
         run: |
+          dispatch_actor="$(jq -r '.sender.login // ""' "$GITHUB_EVENT_PATH")"
+          dispatch_permission="$(gh api "repos/\${GH_REPO}/collaborators/\${dispatch_actor}/permission" --jq '.permission // ""')"
+          case "$dispatch_permission" in
+            admin|maintain|write) echo trusted ;;
+          esac
           jq '.workflow_run.head_repository.full_name and .workflow_run.head_branch and .workflow_run.head_sha and .workflow_run.pull_requests' "$GITHUB_EVENT_PATH"
   repair-nightly-ci:
     needs: validate-provenance
@@ -120,7 +127,14 @@ jobs:
           jq '.headRepositoryOwner.login and .headRepository.name and .author.login == env.TRUSTED_AUTHOR' file
       - name: Classify repair trigger
         id: trigger
+        env:
+          GH_TOKEN: \${{ github.token }}
         run: |
+          dispatch_actor="$(jq -r '.sender.login // ""' "$GITHUB_EVENT_PATH")"
+          dispatch_permission="$(gh api "repos/\${GH_REPO}/collaborators/\${dispatch_actor}/permission" --jq '.permission // ""')"
+          case "$dispatch_permission" in
+            admin|maintain|write) echo trusted ;;
+          esac
           jq '.workflow_run.head_repository.full_name and .workflow_run.head_branch and .workflow_run.head_sha and .workflow_run.pull_requests' "$GITHUB_EVENT_PATH"
   repair-nightly-ci:
     needs: validate-provenance
@@ -236,6 +250,17 @@ expect(
     "codex-nightly-ci-repair.yml": REMEDIATED_CODEX.replaceAll(
       ".workflow_run.head_sha",
       ".workflow_run.id",
+    ),
+  },
+  1,
+);
+
+expect(
+  "workflow_dispatch actor permission omission fails",
+  {
+    "codex-nightly-ci-repair.yml": REMEDIATED_CODEX.replace(
+      'dispatch_permission="$(gh api "repos/${GH_REPO}/collaborators/${dispatch_actor}/permission" --jq \'.permission // ""\')"',
+      'dispatch_permission="write"',
     ),
   },
   1,

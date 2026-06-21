@@ -6,8 +6,9 @@
  * receive repository write checkout credentials by default. The Factory API key
  * must be passed only to the action invocation or the Droid CLI execution step,
  * interactive executions must receive the bounded workflow token explicitly,
- * and PR-triggered agent runs must remain scoped to same-repository pull
- * requests. The only OIDC exception is the pinned automatic Droid review
+ * PR-triggered agent runs must remain scoped to same-repository pull requests,
+ * and text-triggered agent runs must be invoked by trusted repository actors.
+ * The only OIDC exception is the pinned automatic Droid review
  * validator, which requires id-token:write after the main review run.
  *
  * Usage:  node scripts/ci/verify-agent-workflow-boundaries.mjs
@@ -518,6 +519,44 @@ function conditionHasRequiredConjunctsOnly(condition, requiredConjuncts) {
   return requiredConjuncts.every((required) => conjuncts.has(required));
 }
 
+function conditionHasTextAgentTrigger(condition) {
+  return /['"]@droid['"]/u.test(condition);
+}
+
+const TRUSTED_AUTHOR_ASSOCIATIONS = '["OWNER","MEMBER","COLLABORATOR"]';
+const TRUSTED_AGENT_TRIGGER_CONJUNCTS = [
+  {
+    workflowEvent: "issue_comment:",
+    eventConjunct: "github.event_name == 'issue_comment'",
+    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.comment.author_association)`,
+    label: "issue-comment agent trigger",
+  },
+  {
+    workflowEvent: "pull_request_review_comment:",
+    eventConjunct: "github.event_name == 'pull_request_review_comment'",
+    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.comment.author_association)`,
+    label: "PR review-comment agent trigger",
+  },
+  {
+    workflowEvent: "pull_request_review:",
+    eventConjunct: "github.event_name == 'pull_request_review'",
+    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.review.author_association)`,
+    label: "PR review agent trigger",
+  },
+  {
+    workflowEvent: "issues:",
+    eventConjunct: "github.event_name == 'issues'",
+    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.issue.author_association)`,
+    label: "issue agent trigger",
+  },
+  {
+    workflowEvent: "pull_request:",
+    eventConjunct: "github.event_name == 'pull_request'",
+    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.pull_request.author_association)`,
+    label: "pull-request agent trigger",
+  },
+];
+
 function stepUsesAction(step, action) {
   return directEntryValue(step, "uses")?.startsWith(action) ?? false;
 }
@@ -948,6 +987,17 @@ for (const file of workflowFiles()) {
 
       if (!hasPullRequestReviewCommentGuard || !hasPullRequestReviewGuard || !hasPullRequestGuard) {
         fail(file, "PR-triggered agent workflow must require same-repository pull requests");
+      }
+    }
+  }
+
+  for (const job of droidActionJobs) {
+    const jobIf = directEntryValue(job, "if") ?? "";
+    if (!conditionHasTextAgentTrigger(jobIf)) continue;
+    for (const check of TRUSTED_AGENT_TRIGGER_CONJUNCTS) {
+      if (!jobIf.includes(check.eventConjunct)) continue;
+      if (!conditionRequiresEventConjunct(jobIf, check.eventConjunct, check.requiredConjunct)) {
+        fail(file, `${check.label} must require trusted author association`);
       }
     }
   }
