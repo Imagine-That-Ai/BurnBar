@@ -141,6 +141,18 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
 
     assert "RELEASE_SIGNING_KEY is not set. GPG checksum signing is required" not in body
     assert "if: env.RELEASE_SIGNING_KEY == ''" not in body
+    assert 'tag_ref="refs/tags/${TAG_NAME}"' in body
+    assert 'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"' in body
+    assert 'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"' in body
+    assert 'git rev-list -n 1 "${tag_ref}^{commit}"' in body
+    assert 'git merge-base --is-ancestor "$release_commit" origin/main' in body
+    assert 'git checkout --detach "$RELEASE_COMMIT"' in body
+    assert 'echo "release_commit=$release_commit"' in body
+    assert "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}" in body
+    assert '"tag": os.environ["RELEASE_TAG"]' in body
+    assert '"commit": release_commit' in body
+    assert '"ref": os.environ["RELEASE_REF"]' in body
+    assert '"ref": os.environ.get("GITHUB_REF", "")' not in body
 
     checksums_index = body.index("Compute artifact checksums")
     policy_index = body.index("Resolve release provenance policy")
@@ -162,6 +174,7 @@ def test_release_attestation_verifier_uses_sigstore_blob_bundles():
     assert "download_pattern \"*.sigstore.json\"" in body
     assert "download_pattern \"*.predicate.json\"" in body
     assert "artifact.sha256" in body
+    assert "release.tag" in body
     assert "release.ref" in body
 
 

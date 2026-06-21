@@ -378,6 +378,35 @@ def validate_cloud_run(text: str) -> None:
         fail(f"{path} cloud-run-deploy-result must record deploy failures with always() so the issue step still runs after the fail-fast step")
 
 
+def validate_production_functions(text: str) -> None:
+    path = WORKFLOWS["deploy-production"]
+    jobs = extract_jobs(text)
+    deploy_job = jobs.get("deploy-functions")
+    if not deploy_job:
+        fail(f"{path} must define deploy-functions")
+        return
+
+    for marker in (
+        "EVENT_NAME: ${{ github.event_name }}",
+        "INPUT_TAG: ${{ inputs.tag }}",
+        "INPUT_DRY_RUN: ${{ inputs.dry_run }}",
+        'tag_ref="refs/tags/${TAG}"',
+        'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
+        'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
+        'git rev-list -n 1 "${tag_ref}^{commit}"',
+        'git merge-base --is-ancestor "$commit" origin/main',
+        'git checkout --detach "$commit"',
+        "OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}",
+    ):
+        if marker not in deploy_job:
+            fail(f"{path} deploy-functions is missing release tag provenance guard marker {marker!r}")
+
+    if '"${{ inputs.tag }}"' in deploy_job or "'${{ inputs.tag }}'" in deploy_job:
+        fail(f"{path} deploy-functions must pass workflow_dispatch tag input through env, not interpolate it into shell")
+    if "OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}" in deploy_job:
+        fail(f"{path} deploy-functions must publish the resolved release tag commit, not the workflow dispatch ref sha")
+
+
 def validate_artifact_dir(path: Path) -> int:
     failures: list[str] = []
     if not path.is_dir():
@@ -450,6 +479,8 @@ for name, text in texts.items():
         validate_workflow(name, WORKFLOWS[name], text)
 if texts.get("deploy-hosting"):
     validate_hosting(texts["deploy-hosting"])
+if texts.get("deploy-production"):
+    validate_production_functions(texts["deploy-production"])
 if texts.get("deploy-cloud-run"):
     validate_cloud_run(texts["deploy-cloud-run"])
 validate_generated_configs()

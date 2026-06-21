@@ -139,6 +139,21 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("--config \"$FIREBASE_FUNCTIONS_CI_CONFIG\"", "--config firebase.json", 1)'
 expect_fail "functions predeploy after auth via raw config fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/functions-raw-dispatch-tag"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("TAG=\"$INPUT_TAG\"", "TAG=\"${{ inputs.tag }}\"", 1)'
+expect_fail "functions raw dispatch tag interpolation fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-missing-ancestor"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
+expect_fail "functions missing tag ancestry guard fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-dispatch-ref-source-commit"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}", "OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}", 1)'
+expect_fail "functions source commit from dispatch ref fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/legacy-secrets"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}", "credentials_json: ${{ secrets.GCP_SA_KEY }}\n          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}", 1)'

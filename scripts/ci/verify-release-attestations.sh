@@ -143,6 +143,7 @@ expected = {
     "artifact.sha256": actual_sha256,
     "artifact.sizeBytes": asset.stat().st_size,
     "release.version": version,
+    "release.tag": tag,
     "release.repository": repo,
     "release.ref": f"refs/tags/{tag}",
 }
@@ -153,6 +154,7 @@ checks = {
     "artifact.sha256": predicate.get("artifact", {}).get("sha256"),
     "artifact.sizeBytes": predicate.get("artifact", {}).get("sizeBytes"),
     "release.version": predicate.get("release", {}).get("version"),
+    "release.tag": predicate.get("release", {}).get("tag"),
     "release.repository": predicate.get("release", {}).get("repository"),
     "release.ref": predicate.get("release", {}).get("ref"),
 }

@@ -66,6 +66,9 @@ jobs:
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      tag_ref: ${{ steps.version.outputs.tag_ref }}
+      release_commit: ${{ steps.version.outputs.release_commit }}
       version: ${{ steps.version.outputs.version }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     env:
@@ -77,13 +80,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Resolve release tag and version
         id: version
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
+          set -euo pipefail
+
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG_NAME="${INPUT_TAG}"
           else
@@ -101,10 +106,20 @@ jobs:
             exit 1
           fi
 
-          git fetch --force --no-tags --depth=2 origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
+          tag_ref="refs/tags/${TAG_NAME}"
+          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
 
-          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+          if ! release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then
             echo "::error::Tag does not exist in repository: $TAG_NAME"
+            exit 1
+          fi
+          if [[ -z "$release_commit" ]]; then
+            echo "::error::Unable to resolve ${tag_ref} to a commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::Release tag ${TAG_NAME} points at ${release_commit}, which is not reachable from origin/main."
             exit 1
           fi
 
@@ -119,6 +134,8 @@ jobs:
 
           {
             echo "tag_name=$TAG_NAME"
+            echo "tag_ref=$tag_ref"
+            echo "release_commit=$release_commit"
             echo "version=${TAG_NAME#v}"
             echo "is_prerelease=$IS_PRERELEASE"
           } >> "$GITHUB_OUTPUT"
@@ -126,11 +143,14 @@ jobs:
       - name: Check out release tag
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
         run: |
-          git checkout --detach "$TAG_NAME"
+          set -euo pipefail
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
           git rev-parse --verify HEAD~1 >/dev/null
           git submodule update --init --recursive Vendor/libsignal
-          echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
+          echo "Building release tag $TAG_NAME at $RELEASE_COMMIT"
 
       - name: Install release security scanners
         run: brew install gitleaks trufflehog
@@ -980,6 +1000,9 @@ jobs:
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
           VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag_name }}
+          RELEASE_REF: ${{ steps.version.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
         run: |
           set -euo pipefail
 
@@ -1013,6 +1036,9 @@ jobs:
           predicate_path = Path(sys.argv[3])
           sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
           commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          release_commit = os.environ["RELEASE_COMMIT"]
+          if commit != release_commit:
+              raise SystemExit(f"release checkout drifted: HEAD={commit}, expected={release_commit}")
 
           predicate = {
               "schemaVersion": 1,
@@ -1025,9 +1051,10 @@ jobs:
               },
               "release": {
                   "version": os.environ["VERSION"],
-                  "commit": commit,
+                  "tag": os.environ["RELEASE_TAG"],
+                  "commit": release_commit,
                   "repository": os.environ.get("GITHUB_REPOSITORY", ""),
-                  "ref": os.environ.get("GITHUB_REF", ""),
+                  "ref": os.environ["RELEASE_REF"],
                   "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
                   "runID": os.environ.get("GITHUB_RUN_ID", ""),
                   "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
