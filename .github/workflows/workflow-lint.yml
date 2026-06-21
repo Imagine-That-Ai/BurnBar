@@ -13,6 +13,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
+      - "scripts/ci/verify-agent-workflow-boundaries.mjs"
+      - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
   push:
     branches:
       - main
@@ -23,6 +25,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
+      - "scripts/ci/verify-agent-workflow-boundaries.mjs"
+      - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -59,3 +63,9 @@ jobs:
 
       - name: Verify agent repair loop provenance
         run: node scripts/ci/verify-agent-repair-loop-provenance.mjs
+
+      - name: Self-test agent workflow boundary verifier
+        run: node scripts/ci/verify-agent-workflow-boundaries.test.mjs
+
+      - name: Verify agent workflow boundaries
+        run: node scripts/ci/verify-agent-workflow-boundaries.mjs
