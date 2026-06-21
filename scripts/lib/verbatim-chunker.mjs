@@ -20,7 +20,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative, basename } from "node:path";
 
 // -- Chunking thresholds (tuned to the observed wiki: consistent H2 schema, no front-matter) --
@@ -48,12 +48,27 @@ export const sha256 = (s) => createHash("sha256").update(s, "utf8").digest("hex"
 
 export function listMarkdown(rootAbs) {
   const out = [];
+  const rootReal = realpathSync(rootAbs);
+  const isContained = (abs) => {
+    const real = realpathSync(abs);
+    return real === rootReal || real.startsWith(`${rootReal}/`);
+  };
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       const abs = join(dir, name);
-      if (statSync(abs).isDirectory()) {
+      const stats = lstatSync(abs);
+      if (stats.isSymbolicLink()) {
+        continue;
+      }
+      if (stats.isDirectory()) {
+        if (!isContained(abs)) {
+          continue;
+        }
         walk(abs);
-      } else if (name.endsWith(".md")) {
+      } else if (stats.isFile() && name.endsWith(".md")) {
+        if (!isContained(abs)) {
+          continue;
+        }
         out.push(abs);
       }
     }
