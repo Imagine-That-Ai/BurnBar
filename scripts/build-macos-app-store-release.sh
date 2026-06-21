@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
+bash scripts/ci/verify-apple-appcheck-release-env.sh
+
 team_id="${OPENBURNBAR_APPLE_TEAM_ID:-4Y367DF25B}"
 entitlements="AgentLens/Resources/OpenBurnBarMAS.entitlements"
 configuration="${OPENBURNBAR_CONFIGURATION:-Release}"
