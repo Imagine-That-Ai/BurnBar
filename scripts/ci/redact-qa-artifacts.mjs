@@ -111,6 +111,10 @@ function redactStructuredSecretFields(text) {
   const keyPattern = ASSIGNMENT_KEYS.map(escapeRegExp).join("|");
   return text
     .replace(
+      new RegExp(`\\b(${keyPattern})\\b(\\s*[:=]\\s*)(["'])(?:\\\\.|[^\\\\])*?\\3`, "giu"),
+      "$1$2$3[REDACTED]$3",
+    )
+    .replace(
       new RegExp(`(["'])(${keyPattern})\\1(\\s*[:=]\\s*)(["'])(?:\\\\.|[^\\\\])*?\\4`, "giu"),
       "$1$2$1$3$4[REDACTED]$4",
     )

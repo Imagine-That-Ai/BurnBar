@@ -19,6 +19,7 @@ const fakeSlackToken = ["xoxb", "123456789012", "abcdefghijklmnopqrstuvwxyz"].jo
 const opaqueBearerToken = "abcdefghijklmnopqrstuvwxyz123456789";
 const structuredPassword = "json-password-abcdef123456";
 const structuredToken = "json-token-abcdef123456789";
+const yamlQuotedPassword = "yaml password with spaces abcdef123456";
 const plistPassword = "plist-password-abcdef123456";
 
 function run(args, options = {}) {
@@ -41,6 +42,7 @@ function assertRedacted(text) {
     opaqueBearerToken,
     structuredPassword,
     structuredToken,
+    yamlQuotedPassword,
     plistPassword,
   ]) {
     assert.equal(text.includes(value), false, `raw sensitive value survived: ${value}`);
@@ -62,6 +64,7 @@ process.on("exit", () => {
       `signed in as ${secretEnv.QA_FIREBASE_EMAIL}`,
       `Authorization: Bearer ${opaqueBearerToken}`,
       `{"password":"${structuredPassword}","token":"${structuredToken}"}`,
+      `password: "${yamlQuotedPassword}"`,
       `github token ${fakeGitHubToken}`,
       `slack token ${fakeSlackToken}`,
     ].join("\n"),
