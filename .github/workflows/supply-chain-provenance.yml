@@ -26,24 +26,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
 
       - name: Resolve release tag
         id: tag
         env:
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
           RUN_HEAD: ${{ github.event.workflow_run.head_branch }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             TAG="${INPUT_TAG}"
           else
             TAG="${RUN_HEAD}"
           fi
-          if [[ ! "$TAG" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
-            echo "::error::Invalid tag: $TAG"
+
+          if [[ ! "$TAG" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid tag: $TAG (expected vMAJOR.MINOR.PATCH[-prerelease][+build], MAJOR 0-999)"
             exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+          tag_ref="refs/tags/${TAG}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
+            echo "::error::Manual provenance dispatch for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."
+            echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."
+            exit 1
+          fi
+
+          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+
+          if ! commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then
+            echo "::error::Tag does not exist in repository: $TAG"
+            exit 1
+          fi
+          if [[ -z "$commit" ]]; then
+            echo "::error::Unable to resolve ${tag_ref} to a commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::Release tag ${TAG} points at ${commit}, which is not reachable from origin/main."
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then
+            echo "::error::Release workflow_run head ${RUN_HEAD_SHA} does not match ${tag_ref} commit ${commit}."
+            exit 1
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "tag_ref=$tag_ref"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out release tag
+        env:
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          echo "Generating provenance inputs for $RELEASE_TAG at $RELEASE_COMMIT"
 
       - name: Download release artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
@@ -56,7 +106,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
 
-      - name: Generate SBOM (PR-style fallback when artifacts missing)
+      - name: Generate SBOM
         id: sbom
         env:
           VERSION: ${{ steps.tag.outputs.version }}
