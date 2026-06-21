@@ -29,8 +29,21 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// Bundle identifier prefix for first-party OpenBurnBar binaries (`com.openburnbar.*`).
     public static let bundleIdentifierPrefix = "com.openburnbar"
 
-    /// Exact bundle identifiers of the first-party binaries permitted on either
-    /// end of a privileged socket.
+    /// Exact bundle identifiers of first-party binaries permitted to call the
+    /// main daemon JSON-RPC socket. This is intentionally wider than
+    /// ``privilegedInputPeerBundleIdentifiers`` because the signed CLI is a
+    /// supported health/support client for daemon RPCs, but it must not be a
+    /// peer on credential-bearing input sockets.
+    public static let daemonRPCPeerBundleIdentifiers: [String] = [
+        "com.openburnbar.app",
+        "com.openburnbar.daemon",
+        "com.openburnbar.cli"
+    ]
+
+    /// Exact bundle identifiers of first-party binaries permitted on privileged
+    /// input/control sockets. These sockets can carry local-auth credentials or
+    /// synthesize user input, so helper trust is narrower than daemon RPC trust
+    /// and excludes the general-purpose CLI.
     ///
     /// Security remediation M-9: the Code Signing Requirement Language `identifier`
     /// operator is **exact-match only** — `identifier "com.openburnbar.*"` matches a
@@ -41,35 +54,65 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// no identifier-prefix operator in the language, so we enumerate the exact
     /// privileged peers and OR them together. The Team-ID + hardened-runtime +
     /// library-validation clauses remain the primary first-party gate.
-    public static let privilegedPeerBundleIdentifiers: [String] = [
+    public static let privilegedInputPeerBundleIdentifiers: [String] = [
         "com.openburnbar.app",
         "com.openburnbar.daemon",
-        "com.openburnbar.cli",
         "com.openburnbar.privileged-input-execution",
         "com.openburnbar.virtual-hid-bridge"
     ]
 
+    /// Backwards-compatible name for the strict privileged-input profile.
+    public static let privilegedPeerBundleIdentifiers = privilegedInputPeerBundleIdentifiers
+
+    /// Build an `(identifier "a" or identifier "b" ...)` sub-clause from an
+    /// exact identifier allowlist.
+    public static func identifierClause(for bundleIdentifiers: [String]) -> String {
+        let terms = bundleIdentifiers.map { "identifier \"\($0)\"" }
+        return "(\(terms.joined(separator: " or ")))"
+    }
+
     /// The `(identifier "a" or identifier "b" ...)` sub-clause built from
     /// ``privilegedPeerBundleIdentifiers``.
     public static var privilegedPeerIdentifierClause: String {
-        let terms = privilegedPeerBundleIdentifiers.map { "identifier \"\($0)\"" }
-        return "(\(terms.joined(separator: " or ")))"
+        identifierClause(for: privilegedPeerBundleIdentifiers)
+    }
+
+    /// The `(identifier "a" or identifier "b" ...)` sub-clause built from
+    /// ``daemonRPCPeerBundleIdentifiers``.
+    public static var daemonRPCPeerIdentifierClause: String {
+        identifierClause(for: daemonRPCPeerBundleIdentifiers)
+    }
+
+    /// The `(identifier "a" or identifier "b" ...)` sub-clause built from
+    /// ``privilegedInputPeerBundleIdentifiers``.
+    public static var privilegedInputPeerIdentifierClause: String {
+        identifierClause(for: privilegedInputPeerBundleIdentifiers)
     }
 
     /// Designated requirement string passed to `SecRequirementCreateWithString` for peer validation.
     ///
     /// Requires an Apple-anchored Developer-ID / Apple Development signature, the
     /// OpenBurnBar Team ID on the leaf certificate, and one of the exact first-party
-    /// privileged-peer bundle identifiers.
+    /// privileged-input peer bundle identifiers.
     ///
     /// Security remediation M-9: hardened-runtime and library-validation are
     /// CodeDirectory flags that the requirement language cannot express
     /// (`(info[ApplicationFlags] & ...)` is rejected with `errSecCSReqInvalid`,
     /// verified), so they are enforced PROGRAMMATICALLY in
     /// ``validateCodeSignature(ofAuditToken:)`` via `SecCodeCopySigningInformation`.
-    public static let privilegedPeerDesignatedRequirement: String = """
-    anchor apple generic and certificate leaf[subject.OU] = "\(teamID)" and \(privilegedPeerIdentifierClause)
+    public static let privilegedInputPeerDesignatedRequirement: String = """
+    anchor apple generic and certificate leaf[subject.OU] = "\(teamID)" and \(privilegedInputPeerIdentifierClause)
     """
+
+    /// Designated requirement for main-daemon JSON-RPC clients. This includes
+    /// the signed CLI, whose authority is still bounded by the daemon bearer
+    /// token and RPC-level authorization.
+    public static let daemonRPCPeerDesignatedRequirement: String = """
+    anchor apple generic and certificate leaf[subject.OU] = "\(teamID)" and \(daemonRPCPeerIdentifierClause)
+    """
+
+    /// Backwards-compatible default: the strict privileged-input profile.
+    public static let privilegedPeerDesignatedRequirement = privilegedInputPeerDesignatedRequirement
 
     /// CodeDirectory signature flag for the hardened runtime (`kSecCodeSignatureRuntime`).
     public static let hardenedRuntimeFlag: UInt32 = 0x1_0000
@@ -111,7 +154,10 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// Validate that the process behind `auditToken` carries a valid first-party
     /// code signature: Apple anchor + Team ID + exact privileged identifier,
     /// plus hardened-runtime and library-validation CodeDirectory flags.
-    public static func validateCodeSignature(ofAuditToken auditToken: audit_token_t) throws {
+    public static func validateCodeSignature(
+        ofAuditToken auditToken: audit_token_t,
+        requirementString: String = privilegedPeerDesignatedRequirement
+    ) throws {
         var code: SecCode?
         var token = auditToken
         let tokenData = Data(bytes: &token, count: MemoryLayout<audit_token_t>.size)
@@ -120,7 +166,7 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         guard status == errSecSuccess, let code else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: status)
         }
-        try validateCodeSignature(code)
+        try validateCodeSignature(code, requirementString: requirementString)
     }
 
     /// Validate a helper binary on disk before installing or launching it.

@@ -110,14 +110,27 @@ final class PrivilegedPeerAuthenticatorTests: XCTestCase {
         )
     }
 
-    func test_designatedRequirement_enumeratesExactPrivilegedPeers() {
+    func test_designatedRequirement_enumeratesExactPrivilegedInputPeers() {
         let req = OpenBurnBarSigningIdentity.privilegedPeerDesignatedRequirement
         for id in OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers {
             XCTAssertTrue(req.contains("identifier \"\(id)\""), "requirement must include exact identifier \(id)")
         }
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.daemon"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.app"))
-        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"))
+        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.privileged-input-execution"))
+        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.virtual-hid-bridge"))
+        XCTAssertFalse(
+            OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"),
+            "the signed CLI must not be accepted as a privileged-input peer"
+        )
+        XCTAssertFalse(req.contains("identifier \"com.openburnbar.cli\""))
+    }
+
+    func test_daemonRPCRequirementEnumeratesCLISeparatelyFromPrivilegedInputPeers() {
+        let req = OpenBurnBarSigningIdentity.daemonRPCPeerDesignatedRequirement
+        XCTAssertTrue(OpenBurnBarSigningIdentity.daemonRPCPeerBundleIdentifiers.contains("com.openburnbar.cli"))
+        XCTAssertTrue(req.contains("identifier \"com.openburnbar.cli\""))
+        XCTAssertFalse(OpenBurnBarSigningIdentity.privilegedPeerDesignatedRequirement.contains("identifier \"com.openburnbar.cli\""))
     }
 
     func test_hardenedRuntimeAndLibraryValidationFlagConstants() {

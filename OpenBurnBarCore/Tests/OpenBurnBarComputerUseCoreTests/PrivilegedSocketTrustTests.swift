@@ -96,13 +96,30 @@ final class PrivilegedSocketTrustTests: XCTestCase {
 
     // MARK: - Designated requirement parity with the daemon-side tests
 
-    func test_designatedRequirement_enumeratesExactPrivilegedPeers() {
+    func test_designatedRequirement_enumeratesExactPrivilegedInputPeers() {
         let req = OpenBurnBarPrivilegedTrust.privilegedPeerDesignatedRequirement
         for id in OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers {
             XCTAssertTrue(req.contains("identifier \"\(id)\""))
         }
-        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"))
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.app"))
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.daemon"))
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.privileged-input-execution"))
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.virtual-hid-bridge"))
+        XCTAssertFalse(
+            OpenBurnBarPrivilegedTrust.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"),
+            "the general-purpose CLI is a daemon RPC client, not a privileged-input peer"
+        )
+        XCTAssertFalse(req.contains("identifier \"com.openburnbar.cli\""))
         XCTAssertFalse(req.contains("com.openburnbar.*"))
+    }
+
+    func test_daemonRPCRequirementKeepsCLIOutOfPrivilegedInputProfile() {
+        let daemonReq = OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement
+        XCTAssertTrue(OpenBurnBarPrivilegedTrust.daemonRPCPeerBundleIdentifiers.contains("com.openburnbar.cli"))
+        XCTAssertTrue(daemonReq.contains("identifier \"com.openburnbar.cli\""))
+        XCTAssertFalse(
+            OpenBurnBarPrivilegedTrust.privilegedInputPeerDesignatedRequirement.contains("identifier \"com.openburnbar.cli\"")
+        )
     }
 }
 
