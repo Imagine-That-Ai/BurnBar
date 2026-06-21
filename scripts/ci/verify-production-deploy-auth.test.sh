@@ -164,15 +164,30 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("      - name: Download deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download deploy artifact", 1)'
 expect_fail "cloud run deploy checkout fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/cloud-run-artifact-deploy-driver"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("            scripts/build-signal-envelope-contracts.sh \\\n", "            scripts/build-signal-envelope-contracts.sh \\\n            scripts/deploy-hosted-mcp.sh \\\n", 1)'
+expect_fail "cloud run artifact deploy driver fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-post-auth-artifact-driver"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("gcloud builds submit \"$DEPLOY_SOURCE_DIR\"", "bash \"$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh\"", 1)'
+expect_fail "cloud run post-auth artifact driver fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/cloud-run-missing-ancestor"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
 expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
 
-fixture="$TMP_ROOT/cloud-run-secret-upsert"
+fixture="$TMP_ROOT/cloud-run-accessor-only"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"false\"", "OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"true\"", 1)'
-expect_fail "cloud run secret upsert toggle fails" run_gate "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.secretAccessor", 1)'
+expect_fail "cloud run accessor-only secret metadata fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-secret-write-role"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("              \"roles/secretmanager.secretVersionAdder\",\n", "", 1)'
+expect_fail "cloud run missing secret write-role denylist fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-unreachable-failure-issue"
 copy_base_fixture "$fixture"

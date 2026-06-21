@@ -135,7 +135,6 @@ jobs:
             packages/signal-envelope-contracts \
             scripts/build-entitlements.sh \
             scripts/build-signal-envelope-contracts.sh \
-            scripts/deploy-hosted-mcp.sh \
             | tar -xf - -C "$artifact_dir"
 
           (
@@ -197,7 +196,10 @@ jobs:
               exit 1
             fi
             sha256sum -c SHA256SUMS
-            test -x scripts/deploy-hosted-mcp.sh
+            if test -e scripts/deploy-hosted-mcp.sh; then
+              echo "::error::Deploy artifact must not carry the post-auth deploy driver."
+              exit 1
+            fi
             test -f services/hosted-mcp/cloudbuild.yaml
             test -f services/hosted-mcp/Dockerfile
           )
@@ -241,10 +243,11 @@ jobs:
           }
           forbidden = {
               "roles/secretmanager.admin",
+              "roles/secretmanager.secretVersionAdder",
+              "roles/secretmanager.secretVersionManager",
           }
-          secret_read_roles = {
+          secret_metadata_roles = {
               "roles/secretmanager.viewer",
-              "roles/secretmanager.secretAccessor",
           }
           member = f"serviceAccount:{service_account}"
           with open(path, encoding="utf-8") as handle:
@@ -262,8 +265,8 @@ jobs:
           if present_forbidden:
               print(f"::error::Deploy service account {service_account} must not hold broad Secret Manager admin roles: {', '.join(present_forbidden)}")
               sys.exit(1)
-          if not (roles & secret_read_roles):
-              print(f"::error::Deploy service account {service_account} must have read-only Secret Manager visibility/access, not admin.")
+          if not (roles & secret_metadata_roles):
+              print(f"::error::Deploy service account {service_account} must have Secret Manager metadata visibility via roles/secretmanager.viewer, not accessor-only or admin.")
               sys.exit(1)
           print(f"deployer IAM ok: {service_account}")
           PY
@@ -330,15 +333,163 @@ jobs:
           GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ needs.resolve-release.outputs.commit }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
-          OPENBURNBAR_HOSTED_MCP_SKIP_LOCAL_BUILD: "true"
-          OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: "false"
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
             exit 1
           fi
-          bash "$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh"
+
+          cd "$DEPLOY_SOURCE_DIR"
+
+          SECRET_NAME="${REMOTE_MCP_TOKEN_HMAC_SECRET_NAME:-REMOTE_MCP_TOKEN_HMAC_SECRET}"
+          ED25519_PRIVATE_SECRET_NAME="${REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_SECRET_NAME:-REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64}"
+          ED25519_PUBLIC_SECRET_NAME="${MCP_TOKEN_ED25519_PUBLIC_KEY_SECRET_NAME:-MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64}"
+          IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:${OPENBURNBAR_SOURCE_COMMIT:0:12}"
+          ENV_VARS="MCP_RESOURCE=${MCP_RESOURCE},MCP_AUTH_ISSUER=${MCP_AUTH_ISSUER},OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT},OPENBURNBAR_CORRESPONDING_SOURCE_URL=${OPENBURNBAR_CORRESPONDING_SOURCE_URL}"
+          SECRET_BINDINGS=()
+
+          if [[ -n "${OPENBURNBAR_STORAGE_BUCKET:-}" ]]; then
+            ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"
+          fi
+
+          if gcloud secrets describe "$SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_HMAC_SECRET=${SECRET_NAME}:latest")
+          fi
+          if gcloud secrets describe "$ED25519_PRIVATE_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=${ED25519_PRIVATE_SECRET_NAME}:latest")
+          fi
+          if gcloud secrets describe "$ED25519_PUBLIC_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=${ED25519_PUBLIC_SECRET_NAME}:latest")
+            ENV_VARS="${ENV_VARS},MCP_ALLOW_LEGACY_HMAC_TOKENS=${MCP_ALLOW_LEGACY_HMAC_TOKENS:-false}"
+          fi
+
+          if [[ "${#SECRET_BINDINGS[@]}" -eq 0 ]]; then
+            echo "::error::At least one hosted MCP token signer must be configured: Ed25519 private/public secrets or legacy HMAC."
+            exit 1
+          fi
+          if [[ "${SECRET_BINDINGS[*]}" == *"MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64="* && "${SECRET_BINDINGS[*]}" != *"MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64="* ]]; then
+            echo "::error::Ed25519 private key is configured but MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 is missing."
+            exit 1
+          fi
+          SET_SECRETS="$(IFS=,; echo "${SECRET_BINDINGS[*]}")"
+
+          build_output="$(gcloud builds submit "$DEPLOY_SOURCE_DIR" \
+            --config "$DEPLOY_SOURCE_DIR/services/hosted-mcp/cloudbuild.yaml" \
+            --substitutions "_IMAGE=${IMAGE}" \
+            --suppress-logs \
+            --async \
+            --format=json \
+            --project "$GOOGLE_CLOUD_PROJECT")"
+
+          build_id="$(python3 -c '
+          import json
+          import re
+          import sys
+
+          raw = sys.stdin.read()
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError:
+              data = {}
+
+          paths = (
+              ("metadata", "build", "id"),
+              ("metadata", "build", "name"),
+              ("response", "id"),
+              ("response", "name"),
+              ("id",),
+              ("name",),
+          )
+          for path in paths:
+              node = data
+              for key in path:
+                  if not isinstance(node, dict):
+                      node = None
+                      break
+                  node = node.get(key)
+              if isinstance(node, str) and node:
+                  print(node.rsplit("/", 1)[-1])
+                  raise SystemExit(0)
+
+          match = re.search(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", raw)
+          if match:
+              print(match.group(0))
+          ' <<<"$build_output")"
+
+          if [[ -z "$build_id" ]]; then
+            echo "::error::Unable to determine Cloud Build ID from gcloud output."
+            echo "$build_output" >&2
+            exit 1
+          fi
+
+          echo "Cloud Build submitted: ${build_id}"
+          echo "Cloud Build logs: https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${GOOGLE_CLOUD_PROJECT}"
+
+          poll_interval="${CLOUD_BUILD_POLL_INTERVAL_SECONDS:-10}"
+          deadline=$((SECONDS + ${CLOUD_BUILD_TIMEOUT_SECONDS:-1800}))
+          while true; do
+            status="$(gcloud builds describe "$build_id" \
+              --project "$GOOGLE_CLOUD_PROJECT" \
+              --format='value(status)')"
+
+            case "$status" in
+              SUCCESS)
+                echo "Cloud Build succeeded: ${build_id}"
+                break
+                ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "::error::Cloud Build failed with status ${status}: ${build_id}"
+                exit 1
+                ;;
+              QUEUED|WORKING|PENDING|"")
+                if [[ "$SECONDS" -ge "$deadline" ]]; then
+                  echo "::error::Cloud Build timed out waiting for ${build_id}; last status: ${status:-unknown}"
+                  exit 1
+                fi
+                echo "Cloud Build ${build_id} status: ${status:-unknown}; waiting ${poll_interval}s..."
+                sleep "$poll_interval"
+                ;;
+              *)
+                echo "Cloud Build ${build_id} status: ${status}; waiting ${poll_interval}s..."
+                sleep "$poll_interval"
+                ;;
+            esac
+          done
+
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances "${MIN_INSTANCES:-0}" \
+            --max-instances "${MAX_INSTANCES:-20}" \
+            --set-env-vars "$ENV_VARS" \
+            --set-secrets "$SET_SECRETS"
+
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --to-latest
+
+          SERVICE_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$GOOGLE_CLOUD_PROJECT" --format='value(status.url)')"
+          HEALTH_PATH="${MCP_HEALTH_PATH:-/readyz}"
+          HEALTH_URL="${SERVICE_URL%/}${HEALTH_PATH}"
+          RETRIES="${DEPLOY_HEALTH_RETRIES:-12}"
+          SLEEP_SEC="${DEPLOY_HEALTH_SLEEP_SEC:-10}"
+          attempt=1
+          while [[ "$attempt" -le "$RETRIES" ]]; do
+            if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+              echo "OK: ${HEALTH_URL}"
+              exit 0
+            fi
+            echo "waiting for ${HEALTH_URL} (${attempt}/${RETRIES})..."
+            sleep "$SLEEP_SEC"
+            attempt=$((attempt + 1))
+          done
+          echo "::error::${HEALTH_URL} did not become healthy"
+          exit 1
 
       - name: Read back hosted MCP deployment
         id: readback

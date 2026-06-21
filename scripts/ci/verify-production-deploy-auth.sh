@@ -310,11 +310,12 @@ def validate_cloud_run(text: str) -> None:
         fail(f"{path} build-hosted-mcp-artifact must not bind the production environment")
     if "secrets." in build_job:
         fail(f"{path} build-hosted-mcp-artifact must not reference secrets")
+    if "scripts/deploy-hosted-mcp.sh" in build_job:
+        fail(f"{path} build-hosted-mcp-artifact must not package the post-auth deploy driver")
     for marker in (
         "npm ci --prefix services/hosted-mcp",
         "npm --prefix services/hosted-mcp test",
         "docker build -f services/hosted-mcp/Dockerfile",
-        "scripts/deploy-hosted-mcp.sh",
         "sha256sum > \"$manifest\"",
         "mv \"$manifest\" SHA256SUMS",
         "actions/upload-artifact@",
@@ -334,16 +335,24 @@ def validate_cloud_run(text: str) -> None:
         fail(f"{path} deploy-hosted-mcp must not check out repository code")
     if "uses: ./.github/actions" in deploy_job:
         fail(f"{path} deploy-hosted-mcp must not use local actions")
+    if "$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh" in deploy_job:
+        fail(f"{path} deploy-hosted-mcp must not execute a deploy driver from the downloaded artifact")
     for marker in (
         "actions/download-artifact@",
         "sha256sum -c SHA256SUMS",
+        "Deploy artifact must not carry the post-auth deploy driver.",
         "-type l",
         "-links +1",
         "DEPLOY_SOURCE_DIR",
-        "OPENBURNBAR_HOSTED_MCP_SKIP_LOCAL_BUILD: \"true\"",
-        "OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT: \"false\"",
+        "gcloud builds submit \"$DEPLOY_SOURCE_DIR\"",
+        "--config \"$DEPLOY_SOURCE_DIR/services/hosted-mcp/cloudbuild.yaml\"",
+        "gcloud run deploy \"$SERVICE\"",
+        "gcloud run services update-traffic \"$SERVICE\"",
         "roles/secretmanager.admin",
-        "bash \"$DEPLOY_SOURCE_DIR/scripts/deploy-hosted-mcp.sh\"",
+        "roles/secretmanager.secretVersionAdder",
+        "roles/secretmanager.secretVersionManager",
+        'secret_metadata_roles = {\n              "roles/secretmanager.viewer",\n          }',
+        "must have Secret Manager metadata visibility via roles/secretmanager.viewer",
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-hosted-mcp is missing deploy boundary marker {marker!r}")
