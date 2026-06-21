@@ -194,6 +194,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
 expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/cloud-run-loose-tag-grammar"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("^v[0-9]{1,3}\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$", "^v[0-9][0-9A-Za-z._-]*$", 1)'
+expect_fail "cloud run loose tag grammar fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/cloud-run-accessor-only"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.metadataReader_removed", 1)'

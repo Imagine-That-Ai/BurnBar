@@ -297,7 +297,7 @@ def validate_cloud_run(text: str) -> None:
         "tag_ref=\"refs/tags/${TAG}\"",
         "git fetch --force --tags origin \"+${tag_ref}:${tag_ref}\"",
         "git merge-base --is-ancestor \"$commit\" origin/main",
-        "[[ ! \"$TAG\" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]",
+        "[[ ! \"$TAG\" =~ ^v[0-9]{1,3}\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$ ]]",
     ):
         if marker not in resolve_job:
             fail(f"{path} resolve-release is missing release tag provenance guard marker {marker!r}")
