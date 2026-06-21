@@ -863,6 +863,9 @@ struct MenuBarPopoverView: View {
             }
             .popoverTooltip("Open settings")
 
+            PetCompanionToggleButton()
+                .popoverTooltip("Show or hide the desktop pet companion")
+
             GlassButton(
                 title: "Quit OpenBurnBar",
                 icon: "power",

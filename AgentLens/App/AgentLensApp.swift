@@ -1418,6 +1418,9 @@ struct OpenBurnBarApp: App {
                     accountManager: context.accountManager
                 )
             }
+            StartupProfiler.interval("pet_companion_activate") {
+                PetCompanionFeature.activateIfEnabled(chat: context.chatController)
+            }
 
             // Inject wallpaper dependencies
             appDelegate.settingsManager = context.settingsManager
