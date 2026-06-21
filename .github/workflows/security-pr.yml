@@ -96,7 +96,7 @@ jobs:
           # allow it so patched releases can land without vulnerable downgrades.
           allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0
           # Deny packages that have been deprecated or yanked
-          deny-packages: ''
+          deny-packages: ""
           comment-summary-in-pr: always
 
   npm-audit:
@@ -112,41 +112,7 @@ jobs:
           node-version: 22
 
       - name: Audit Node package locks
-        run: |
-          set -euo pipefail
-          for dir in \
-            functions \
-            extensions/openburnbar \
-            services/hermes-realtime-relay \
-            services/hosted-mcp \
-            tools/openburnbar-mcp-remote \
-            packages/libsignal-bridge \
-            packages/libsignal-protocol \
-            packages/signal-envelope-contracts
-          do
-            echo "==> npm audit: ${dir}"
-            audit_json="$(mktemp)"
-            npm audit --prefix "${dir}" --audit-level=high --json > "${audit_json}" 2>/dev/null || true
-            node - "${audit_json}" "${dir}" <<'NODE'
-          const fs = require("node:fs");
-          const [auditPath, dir] = process.argv.slice(2);
-          const raw = fs.readFileSync(auditPath, "utf8").trim();
-          const report = raw ? JSON.parse(raw) : {};
-          const vulnerabilities = report.vulnerabilities || {};
-          const high = Object.entries(vulnerabilities).filter(([, vuln]) =>
-            vuln.severity === "high" || vuln.severity === "critical"
-          );
-          if (high.length > 0) {
-            console.error(`High/critical vulnerabilities found in ${dir}:`);
-            for (const [name, vuln] of high) {
-              console.error(`  ${name}: ${vuln.severity}`);
-            }
-            process.exit(1);
-          }
-          console.log(`No high/critical vulnerabilities in ${dir}.`);
-          NODE
-            rm -f "${audit_json}"
-          done
+        run: node scripts/ci/check-npm-audit-fail-closed.mjs
 
   remote-installer-policy:
     name: Remote Installer Policy

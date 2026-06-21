@@ -15,7 +15,7 @@ import { getConfig } from "../config.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, onCallProduction } from "../logging.js";
-import { boundedTrimmedString } from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   MAC_ESCROW_PLATFORMS,
@@ -52,6 +52,7 @@ export const publishIrohPairingPublicKey = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing key.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const roleId = boundedTrimmedString(request.data.roleId ?? "host", "roleId", 32, true);
@@ -107,6 +108,7 @@ export const publishIrohPairingRecord = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing record.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
@@ -209,6 +211,7 @@ export const publishPhoneControlAuthority = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing phone-control authority.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
@@ -301,6 +304,7 @@ export const publishRelaySenderKey = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing a relay sender key.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
@@ -413,6 +417,7 @@ export const publishAgentGrantAuthority = onCallProduction(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an agent grant authority.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);

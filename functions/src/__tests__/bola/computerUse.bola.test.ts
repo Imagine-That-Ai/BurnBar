@@ -25,6 +25,13 @@ vi.mock("../../auth.js", () => ({
 vi.mock("../../callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
+vi.mock("../../callables/shared.js", async () => {
+  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+  return {
+    ...actual,
+    assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
+  };
+});
 vi.mock("../../appCheckAttestation.js", async () => {
   const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
   return {
