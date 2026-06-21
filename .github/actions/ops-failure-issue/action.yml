@@ -85,6 +85,12 @@ runs:
             'id_token',
             'api_key',
             'apikey',
+            'client_secret',
+            'secret_key',
+            'access_key',
+            'private_key',
+            'x-amz-signature',
+            'x-goog-signature',
             'dsn',
           ]);
           const decodeKey = (key) => {
@@ -109,7 +115,7 @@ runs:
           );
           const redactText = (value) => redactUrlSecrets(value)
             .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`)
-            .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|rk_(?:live|test)_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,}|(?:A3T|AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}|glpat-[A-Za-z0-9_-]{16,})\b/g, REDACTED)
+            .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|rk_(?:live|test)_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,}|(?:A3T|AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}|glpat-[A-Za-z0-9_-]{16,}|SK[0-9a-fA-F]{32})\b/g, REDACTED)
             .replace(/(["']?)([A-Za-z0-9_.-]+)\1(\s*[:=]\s*)"((?:\\.|[^"\\])*)"/gi, (match, quote, key, separator) => isSecretKeyName(key) ? `${quote}${key}${quote}${separator}"${REDACTED}"` : match)
             .replace(/(["']?)([A-Za-z0-9_.-]+)\1(\s*[:=]\s*)'((?:\\.|[^'\\])*)'/gi, (match, quote, key, separator) => isSecretKeyName(key) ? `${quote}${key}${quote}${separator}'${REDACTED}'` : match)
             .replace(/(\b([A-Za-z0-9_.-]+)\b\s*[:=]\s*)([^\s"'`,;|)]+)/gi, (match, prefix, key) => isSecretKeyName(key) ? `${prefix}${REDACTED}` : match)

@@ -63,6 +63,7 @@ def run_action_script(*, existing_issue: bool) -> dict:
         const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
         const stripe = 'sk_live_' + 'x'.repeat(24);
         const gitlab = 'glpat-' + 'a'.repeat(20);
+        const twilio = 'SK' + 'a'.repeat(32);
         const processShim = {{
           env: {{
             OPS_MODE: 'open',
@@ -74,9 +75,10 @@ def run_action_script(*, existing_issue: bool) -> dict:
               'client_secret: \"quoted-json-secret\"',
               \"private_key: 'quoted-yaml-secret'\",
               'secret_key: sample',
+              'Signed: https://artifact.example.test/pkg?refresh_token=sample&X-Amz-Signature=aws-sig&X-Goog-Signature=goog-sig#token=fragment-secret',
               'Path: /private/tmp/openburnbar/result.json?refresh_token=sample#private_key=sample',
               'Cache: /var/tmp/openburnbar/cache.json',
-              `Tokens: ${{aws}} ${{stripe}} ${{gitlab}}`,
+              `Tokens: ${{aws}} ${{stripe}} ${{gitlab}} ${{twilio}}`,
               '@ops-team',
             ].join('\\n'),
             OPS_LABELS: 'P0 - Critical,area: infra,secret=sample',
@@ -112,6 +114,10 @@ def assert_public_issue_payload_is_redacted(payload: dict) -> None:
     assert "quoted-yaml-secret" not in rendered
     assert "secret=sample" not in rendered
     assert "secret_key: sample" not in rendered
+    assert "aws-sig" not in rendered
+    assert "goog-sig" not in rendered
+    assert "fragment-secret" not in rendered
+    assert "SKaaaaaaaa" not in rendered
     assert "access_token=sample" not in rendered
     assert "refresh_token=sample" not in rendered
     assert "private_key=sample" not in rendered
