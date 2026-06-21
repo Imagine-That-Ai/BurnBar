@@ -126,6 +126,16 @@ vi.mock("../auth.js", () => ({
 vi.mock("../appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
+const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
+  requireTrustedDeviceActionProof: vi.fn(async () => ({
+    deviceId: "phone-survivor",
+    platform: "iOS",
+    signalIdentityKeyId: "phone-survivor_1",
+  })),
+}));
+vi.mock("../callables/computerUseSecurity.js", () => ({
+  requireTrustedDeviceActionProof,
+}));
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));
 vi.mock("../logging.js", async () => {
@@ -168,6 +178,7 @@ function survivorWrapper(targetDeviceId: string, sourceDeviceId: string) {
 
 beforeEach(() => {
   store.clear();
+  requireTrustedDeviceActionProof.mockClear();
 });
 
 describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
@@ -207,6 +218,8 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
         expectedVaultGeneration: 2,
         reason: "revocation_rewrap",
         rotationRequirementId: requirementId,
+        nonce: "nonce-success",
+        actionProof: { signature: "proof-success" },
         survivorWrappers: [survivorWrapper(SURVIVOR_A, SURVIVOR_B), survivorWrapper(SURVIVOR_B, SURVIVOR_B)],
       }),
     )) as { ok: boolean; status: string; vaultGeneration: number };
@@ -219,5 +232,127 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
     expect(state?.rotatedByDeviceId).toBe(SURVIVOR_B);
     // The revocation requirement is no longer pending.
     expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("queued");
+    expect(requireTrustedDeviceActionProof).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: UID,
+        deviceId: SURVIVOR_B,
+        actionKind: "cloud_vault_key_rotation",
+        subjectId: `${CURRENT_KEY}->${NEW_KEY}@2`,
+        approve: true,
+        nonce: "nonce-success",
+        proofRaw: { signature: "proof-success" },
+      }),
+    );
+  });
+
+  it("rejects caller/source spoofing without a trusted-device action proof", async () => {
+    requireTrustedDeviceActionProof.mockRejectedValueOnce(
+      Object.assign(new Error("actionProof is not bound to the trusted device identity."), {
+        code: "permission-denied",
+      }),
+    );
+    seedTrusted(SURVIVOR_A);
+    seedTrusted(SURVIVOR_B);
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 1,
+      status: "active",
+    });
+    const requirementId = "revoke_req_source_mismatch";
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`, {
+      requirementId,
+      uid: UID,
+      status: "pending",
+      reason: "device_revoked",
+      revokedDeviceId: REVOKER,
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 1,
+      survivorDeviceIds: [SURVIVOR_A, SURVIVOR_B].sort(),
+      rotateCallable: "rotateCloudVaultKey",
+      nextRotationReason: "revocation_rewrap",
+      schemaVersion: 1,
+    });
+
+    await expect(
+      rotateCloudVaultKey.run(
+        callRequest(UID, {
+          callerDeviceId: SURVIVOR_B,
+          currentVaultKeyID: CURRENT_KEY,
+          newVaultKeyID: NEW_KEY,
+          expectedVaultGeneration: 2,
+          reason: "revocation_rewrap",
+          rotationRequirementId: requirementId,
+          nonce: "nonce-source-spoof",
+          actionProof: { signature: "forged-proof" },
+          survivorWrappers: [
+            survivorWrapper(SURVIVOR_A, SURVIVOR_B),
+            survivorWrapper(SURVIVOR_B, SURVIVOR_B),
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/actionProof is not bound/);
+
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
+    expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("pending");
+    expect([...store.keys()].filter((key) => key.includes("/cloud_vault_rotation_jobs/"))).toHaveLength(0);
+    expect(requireTrustedDeviceActionProof).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: UID,
+        deviceId: SURVIVOR_B,
+        actionKind: "cloud_vault_key_rotation",
+        subjectId: `${CURRENT_KEY}->${NEW_KEY}@2`,
+        nonce: "nonce-source-spoof",
+        proofRaw: { signature: "forged-proof" },
+      }),
+    );
+  });
+
+  it("rejects survivor wrappers stamped with a different source device", async () => {
+    seedTrusted(SURVIVOR_A);
+    seedTrusted(SURVIVOR_B);
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 1,
+      status: "active",
+    });
+    const requirementId = "revoke_req_source_mismatch";
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`, {
+      requirementId,
+      uid: UID,
+      status: "pending",
+      reason: "device_revoked",
+      revokedDeviceId: REVOKER,
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 1,
+      survivorDeviceIds: [SURVIVOR_A, SURVIVOR_B].sort(),
+      rotateCallable: "rotateCloudVaultKey",
+      nextRotationReason: "revocation_rewrap",
+      schemaVersion: 1,
+    });
+
+    await expect(
+      rotateCloudVaultKey.run(
+        callRequest(UID, {
+          callerDeviceId: SURVIVOR_B,
+          currentVaultKeyID: CURRENT_KEY,
+          newVaultKeyID: NEW_KEY,
+          expectedVaultGeneration: 2,
+          reason: "revocation_rewrap",
+          rotationRequirementId: requirementId,
+          nonce: "nonce-source-mismatch",
+          actionProof: { signature: "proof-source-mismatch" },
+          survivorWrappers: [
+            survivorWrapper(SURVIVOR_A, REVOKER),
+            survivorWrapper(SURVIVOR_B, SURVIVOR_B),
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/sourceDeviceId must match/);
+
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
+    expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("pending");
+    expect([...store.keys()].filter((key) => key.includes("/cloud_vault_rotation_jobs/"))).toHaveLength(0);
   });
 });

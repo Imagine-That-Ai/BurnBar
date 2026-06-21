@@ -17,11 +17,14 @@ import { getConfig } from "../config.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import { logInfo, onCallProduction } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import { boundedTrimmedString } from "./shared.js";
 
 const CLOUD_VAULT_WRAPPER_ALGORITHM = "ECIES-P256-AESGCM";
 const CLOUD_VAULT_STATE_ALGORITHM = "AES-256-GCM";
 const CLOUD_VAULT_ROTATION_SCHEMA_VERSION = 1;
+const CLOUD_VAULT_ROTATION_ACTION_KIND = "cloud_vault_key_rotation";
+const CLOUD_VAULT_ROTATION_PROOF_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
 type SurvivorWrapperInput = {
   wrapperId: string;
@@ -125,11 +128,13 @@ export const rotateCloudVaultKey = onCallProduction(
       reason?: unknown;
       rotationRequirementId?: unknown;
       nonce?: unknown;
+      actionProof?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before rotating CloudVault.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
     const callerDeviceId = requireSafeId(request.data.callerDeviceId, "callerDeviceId", 256);
     await requireTrustedDevice(uid, callerDeviceId);
     const currentVaultKeyID = requireVaultKeyID(request.data.currentVaultKeyID, "currentVaultKeyID");
@@ -148,6 +153,24 @@ export const rotateCloudVaultKey = onCallProduction(
       newVaultKeyID,
       expectedVaultGeneration,
     );
+    await requireTrustedDeviceActionProof({
+      uid,
+      deviceId: callerDeviceId,
+      actionKind: CLOUD_VAULT_ROTATION_ACTION_KIND,
+      subjectId: `${currentVaultKeyID}->${newVaultKeyID}@${expectedVaultGeneration}`,
+      approve: true,
+      nonce,
+      proofRaw: request.data.actionProof,
+      allowedPlatforms: CLOUD_VAULT_ROTATION_PROOF_PLATFORMS,
+    });
+    for (const wrapper of survivorWrappers) {
+      if (wrapper.sourceDeviceId !== callerDeviceId) {
+        throw new HttpsError(
+          "permission-denied",
+          "CloudVault survivor wrapper sourceDeviceId must match the rotating trusted device.",
+        );
+      }
+    }
     if (!survivorWrappers.some((wrapper) => wrapper.targetDeviceId === callerDeviceId)) {
       throw new HttpsError("failed-precondition", "The rotating device must include its own survivor wrapper.");
     }

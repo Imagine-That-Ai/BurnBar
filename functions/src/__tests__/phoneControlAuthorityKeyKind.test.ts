@@ -169,6 +169,12 @@ function setBeforeTransactionHook(fn: (() => void) | null) {
 }
 beforeEach(() => {
   store.__hook = null;
+  requireTrustedDeviceActionProof.mockClear();
+  requireTrustedDeviceActionProof.mockResolvedValue({
+    deviceId: "mac-1",
+    platform: "macOS",
+    signalIdentityKeyId: "mac-1_1",
+  });
 });
 
 vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
@@ -187,6 +193,23 @@ vi.mock("../logging.js", async () => {
 });
 // Signal session cleanup is exercised elsewhere; stub to isolate the F2 paths.
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
+const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
+  requireTrustedDeviceActionProof: vi.fn(async () => ({
+    deviceId: "mac-1",
+    platform: "macOS",
+    signalIdentityKeyId: "mac-1_1",
+  })),
+}));
+vi.mock("../callables/computerUseSecurity.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/computerUseSecurity.js")>(
+    "../callables/computerUseSecurity.js",
+  );
+  return {
+    ...actual,
+    __testing__: { ...actual.__testing__, requireTrustedDeviceActionProof },
+    requireTrustedDeviceActionProof,
+  };
+});
 
 import {
   __testing__,
@@ -455,9 +478,16 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
   const CURRENT_KEY = `v1_${"a".repeat(32)}`;
   const NEXT_KEY = `v1_${"b".repeat(32)}`;
   const REQUIREMENT_ID = "revoke_receipt_1";
+  const ROTATION_NONCE = "rotation-handoff-nonce";
 
   beforeEach(() => {
     store.clear();
+    store.set(`users/${UID}/high_risk_action_nonces/${ROTATION_NONCE}`, {
+      nonce: ROTATION_NONCE,
+      createdAtMillis: Date.now(),
+      expiresAtMillis: Date.now() + 60_000,
+      consumedAt: null,
+    });
     store.set(`users/${UID}/escrow_devices/${MAC}`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
     store.set(`users/${UID}/escrow_devices/${DEVICE}`, { platform: "iOS", trustState: "revoked", keyVersion: 1 });
     store.set(`users/${UID}/cloud_vault_state/current`, {
@@ -509,6 +539,8 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
       expectedVaultGeneration: 8,
       reason: "revocation_rewrap",
       rotationRequirementId: REQUIREMENT_ID,
+      nonce: ROTATION_NONCE,
+      actionProof: { signature: "rotation-handoff-proof" },
       survivorWrappers: [survivorWrapper()],
       ...overrides,
     };
@@ -550,6 +582,17 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
     expect(job?.reason).toBe("revocation_rewrap");
     expect(job?.survivorDeviceIds).toEqual([MAC]);
     expect(job?.revokedDeviceIds).toEqual([DEVICE]);
+    expect(requireTrustedDeviceActionProof).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: UID,
+        deviceId: MAC,
+        actionKind: "cloud_vault_key_rotation",
+        subjectId: `${CURRENT_KEY}->${NEXT_KEY}@8`,
+        approve: true,
+        nonce: ROTATION_NONCE,
+        proofRaw: { signature: "rotation-handoff-proof" },
+      }),
+    );
   });
 
   it("rejects a stale or mismatched rotation requirement", async () => {
