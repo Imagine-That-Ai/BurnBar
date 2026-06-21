@@ -60,13 +60,25 @@ def run_action_script(*, existing_issue: bool) -> dict:
           notice() {{}},
           info() {{}},
         }};
+        const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+        const stripe = 'sk_live_' + 'x'.repeat(24);
+        const gitlab = 'glpat-' + 'a'.repeat(20);
         const processShim = {{
           env: {{
             OPS_MODE: 'open',
             OPS_LANE: 'nightly-e2e secret=sample',
             OPS_TITLE_PREFIX: 'Ops failed for ops@example.test with Bearer sample-token',
-            OPS_SUMMARY: 'Failed for ops@example.test at /Users/alberto/build.log',
-            OPS_DETAILS: 'api_key=sample\\nPath: /private/tmp/openburnbar/result.json?refresh_token=sample\\n@ops-team',
+            OPS_SUMMARY: 'Failed for ops@example.test at /Users/alberto/build.log and /root/.config/openburnbar/state.json',
+            OPS_DETAILS: [
+              'api_key=sample',
+              'client_secret: \"quoted-json-secret\"',
+              \"private_key: 'quoted-yaml-secret'\",
+              'secret_key: sample',
+              'Path: /private/tmp/openburnbar/result.json?refresh_token=sample#private_key=sample',
+              'Cache: /var/tmp/openburnbar/cache.json',
+              `Tokens: ${{aws}} ${{stripe}} ${{gitlab}}`,
+              '@ops-team',
+            ].join('\\n'),
             OPS_LABELS: 'P0 - Critical,area: infra,secret=sample',
           }},
         }};
@@ -90,11 +102,22 @@ def assert_public_issue_payload_is_redacted(payload: dict) -> None:
     assert "ops@example.test" not in rendered
     assert "sample-token" not in rendered
     assert "/Users/alberto" not in rendered
+    assert "/root/.config" not in rendered
     assert "/private/tmp/openburnbar" not in rendered
+    assert "/var/tmp/openburnbar" not in rendered
     assert "api_key=sample" not in rendered
+    assert "client_secret" in rendered
+    assert "quoted-json-secret" not in rendered
+    assert "private_key" in rendered
+    assert "quoted-yaml-secret" not in rendered
     assert "secret=sample" not in rendered
+    assert "secret_key: sample" not in rendered
     assert "access_token=sample" not in rendered
     assert "refresh_token=sample" not in rendered
+    assert "private_key=sample" not in rendered
+    assert "IOSFODNN7EXAMPLE" not in rendered
+    assert "sk_live_" not in rendered
+    assert "glpat-" not in rendered
     assert "[REDACTED" in rendered
 
 
