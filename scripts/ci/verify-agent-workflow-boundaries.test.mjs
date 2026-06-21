@@ -38,7 +38,7 @@ jobs:
     if: |
       (
         github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request == null
+        contains(github.event.comment.body, '@droid')
       ) ||
       (
         github.event_name == 'pull_request_review_comment' &&
@@ -65,8 +65,25 @@ jobs:
       - name: Skip
         if: env.FACTORY_API_KEY_AVAILABLE == 'false'
         run: echo skip
+      - name: Resolve PR comment scope
+        id: pr-comment-scope
+        env:
+          GH_TOKEN: \${{ github.token }}
+          ISSUE_IS_PR: \${{ github.event.issue.pull_request != null }}
+          PR_URL: \${{ github.event.issue.pull_request.url || '' }}
+          REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          allowed=true
+          if [[ "\${GITHUB_EVENT_NAME}" == "issue_comment" && "\${ISSUE_IS_PR}" == "true" ]]; then
+            head_repo="$(gh api "\${PR_URL}" --jq '.head.repo.full_name')"
+            if [[ "\${head_repo}" != "\${REPOSITORY}" ]]; then
+              allowed=false
+            fi
+          fi
+          echo "allowed=\${allowed}" >> "\${GITHUB_OUTPUT}"
       - name: Run Droid Exec
-        if: env.FACTORY_API_KEY_AVAILABLE == 'true'
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           github_token: \${{ github.token }}
@@ -116,6 +133,31 @@ jobs:
             echo "::error::FACTORY_API_KEY is unavailable"
             exit 1
           fi
+          droid exec --auto medium "/wiki"
+`;
+
+const REMEDIATED_DROID_CLI_FOLDED = fixture`
+name: Droid Wiki Refresh
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+jobs:
+  wiki-refresh:
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Generate Wiki
+        env:
+          FACTORY_API_KEY: \${{ secrets.FACTORY_API_KEY }}
+        run: >
+          set -euo pipefail &&
+          if [[ -z "\${FACTORY_API_KEY}" ]]; then
+          echo "::error::FACTORY_API_KEY is unavailable";
+          exit 1;
+          fi &&
           droid exec --auto medium "/wiki"
 `;
 
@@ -178,6 +220,8 @@ expect("remediated Droid workflow passes", { "droid.yml": REMEDIATED_DROID }, 0)
 
 expect("remediated Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI }, 0);
 
+expect("remediated folded Droid CLI workflow passes", { "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI_FOLDED }, 0);
+
 expect("legacy job-wide secret, write token, OIDC, and checkout credential pattern fails", { "droid.yml": LEGACY_DROID }, 1);
 
 expect("legacy Droid CLI workflow without key preflight or checkout isolation fails", { "droid-wiki-refresh.yml": LEGACY_DROID_CLI }, 1);
@@ -194,9 +238,9 @@ expect(
 );
 
 expect(
-  "missing non-PR issue comment guard fails",
+  "missing PR comment scope gate fails",
   {
-    "droid.yml": REMEDIATED_DROID.replace("github.event.issue.pull_request == null", "true"),
+    "droid.yml": REMEDIATED_DROID.replace(" && steps.pr-comment-scope.outputs.allowed == 'true'", ""),
   },
   1,
 );
@@ -210,11 +254,33 @@ expect(
 );
 
 expect(
+  "second checkout without credential isolation fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      - name: Skip\n",
+      "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n      - name: Skip\n",
+    ),
+  },
+  1,
+);
+
+expect(
   "job-wide Factory secret regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
       "      FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}",
       "      FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}",
+    ),
+  },
+  1,
+);
+
+expect(
+  "Factory secret on non-Droid step fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "      - name: Generate Wiki\n",
+      "      - name: Install Droid\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n        run: npm install -g @factory-ai/droid\n      - name: Generate Wiki\n",
     ),
   },
   1,

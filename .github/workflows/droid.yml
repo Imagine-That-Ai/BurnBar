@@ -21,7 +21,6 @@ jobs:
     if: |
       (
         github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request == null &&
         contains(github.event.comment.body, '@droid') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
@@ -65,8 +64,25 @@ jobs:
       - name: Skip Droid when Factory API key is unavailable
         if: env.FACTORY_API_KEY_AVAILABLE == 'false'
         run: echo "::notice::FACTORY_API_KEY is unavailable; skipping Droid run."
+      - name: Resolve PR comment scope
+        id: pr-comment-scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_IS_PR: ${{ github.event.issue.pull_request != null }}
+          PR_URL: ${{ github.event.issue.pull_request.url || '' }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          allowed=true
+          if [[ "${GITHUB_EVENT_NAME}" == "issue_comment" && "${ISSUE_IS_PR}" == "true" ]]; then
+            head_repo="$(gh api "${PR_URL}" --jq '.head.repo.full_name')"
+            if [[ "${head_repo}" != "${REPOSITORY}" ]]; then
+              allowed=false
+            fi
+          fi
+          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"
       - name: Run Droid Exec
-        if: env.FACTORY_API_KEY_AVAILABLE == 'true'
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           github_token: ${{ github.token }}
