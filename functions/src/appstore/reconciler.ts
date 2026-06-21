@@ -461,23 +461,25 @@ function entitlementOriginalTransactionId(raw: unknown): string | undefined {
 }
 
 async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
-  const cg = await db
-    .collectionGroup("entitlements")
-    .where("originalTransactionID", "==", originalTransactionId)
-    .limit(2)
-    .get();
-  if (cg.size > 1) {
+  const cg = await db.collectionGroup("entitlements").where("originalTransactionID", "==", originalTransactionId).get();
+  const uids = new Set<string>();
+  for (const doc of cg.docs) {
+    const m = doc.ref.path.match(/^users\/([^/]+)\//);
+    if (!m?.[1]) {
+      throw new EntitlementReconcileError(
+        "binding_mismatch",
+        "JWS has no appAccountToken and a matching entitlement is not user-scoped.",
+      );
+    }
+    uids.add(m[1]);
+  }
+  if (uids.size > 1) {
     throw new EntitlementReconcileError(
       "binding_mismatch",
       "JWS has no appAccountToken and the original transaction is owned by multiple users.",
     );
   }
-  if (cg.size === 1) {
-    const path = cg.docs[0].ref.path;
-    const m = path.match(/^users\/([^/]+)\//);
-    return m?.[1];
-  }
-  return undefined;
+  return uids.values().next().value;
 }
 
 // ---------------------------------------------------------------------------

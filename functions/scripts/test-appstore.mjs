@@ -926,6 +926,46 @@ test("reconcileEntitlement rejects no-token callable restore for multi-owner tra
   assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
 });
 
+test("reconcileEntitlement accepts no-token background reconcile with same-user crossgrade docs", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  db.setCollectionGroupResult("entitlements", {
+    size: 2,
+    docs: [
+      { ref: { path: "users/uid-crossgrade/entitlements/burnbar_pro" } },
+      { ref: { path: "users/uid-crossgrade/entitlements/burnbar_pro_max" } },
+    ],
+  });
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx-crossgrade",
+    originalTransactionId: "otx-crossgrade",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      source: "apple_s2s",
+      productID,
+    },
+    { verifier, fetchLive },
+  );
+
+  assert.equal(result.uid, "uid-crossgrade");
+  assert.equal(result.changed, true);
+  assert.equal(result.entitlement.transactionID, "tx-crossgrade");
+  assert.ok(writes.some((w) => w.path === "users/uid-crossgrade/entitlements/hosted_quota_sync"));
+});
+
 test("reconcileEntitlement allows legacy no-token callable restore only for an existing matching entitlement", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
