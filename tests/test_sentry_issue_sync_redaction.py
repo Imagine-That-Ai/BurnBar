@@ -39,7 +39,7 @@ def test_sentry_issue_text_redacts_structured_tokens_and_url_credentials() -> No
         "stripe sk_live_12345678901234567890 "
         "callback=https://example.test/callback?github_token=gh-secret-token&ok=1 "
         "db=postgres://sentry_user:db-password-secret@example.test/app "
-        "api_key=\"my secret passphrase\""
+        'api_key="my secret passphrase"'
     )
 
     assert "super-secret-json" not in text
@@ -65,12 +65,12 @@ def test_sentry_issue_body_redacts_culprit_and_normalizes_marker() -> None:
             "userCount": "1",
             "firstSeen": "2026-06-21T17:00:00Z",
             "lastSeen": "2026-06-21T17:03:00Z",
-                "culprit": (
-                    "handler failed for firebase_uid=abc1234567890abcdef "
-                    "with api_key=not-a-real-key at "
-                    "/private/tmp/openburnbar/event.json?refresh_token=rt-secret"
-                ),
-            },
+            "culprit": (
+                "handler failed for firebase_uid=abc1234567890abcdef "
+                "with api_key=not-a-real-key at "
+                "/private/tmp/openburnbar/event.json?refresh_token=rt-secret"
+            ),
+        },
     )
 
     assert "<!-- injected -->" not in body

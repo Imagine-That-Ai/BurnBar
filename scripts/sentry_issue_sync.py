@@ -131,11 +131,7 @@ def redact_url_secrets(value: str) -> str:
 
     return re.sub(
         r"([?&])([^=&#\s]+)=([^&#\s]+)",
-        lambda match: (
-            redact_query(match)
-            if is_sensitive_query_key(match.group(2))
-            else match.group(0)
-        ),
+        lambda match: redact_query(match) if is_sensitive_query_key(match.group(2)) else match.group(0),
         value,
     )
 
@@ -152,7 +148,9 @@ def redact_issue_text(value: object, *, fallback: str = "redacted") -> str:
     text = AUTH_HEADER_RE.sub(lambda match: f"{match.group(1)} {REDACTED}", text)
     text = TOKEN_RE.sub(REDACTED, text)
     text = STRUCTURED_ASSIGNMENT_RE.sub(
-        lambda match: f"{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}{match.group(4)}{REDACTED}{match.group(4)}",
+        lambda match: (
+            f"{match.group(1)}{match.group(2)}{match.group(1)}{match.group(3)}{match.group(4)}{REDACTED}{match.group(4)}"
+        ),
         text,
     )
     text = ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
