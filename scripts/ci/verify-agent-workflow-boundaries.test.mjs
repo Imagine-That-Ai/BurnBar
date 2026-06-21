@@ -301,6 +301,20 @@ expect(
 );
 
 expect(
+  "same-repository PR guard in step text only fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replaceAll(
+      "github.event.pull_request.head.repo.full_name == github.repository",
+      "contains(github.event.comment.body, '@droid')",
+    ).replace(
+      "      - name: Skip\n",
+      "      - name: github.event.pull_request.head.repo.full_name == github.repository\n        run: echo \"github.event.pull_request.head.repo.full_name == github.repository\"\n      - name: Skip\n",
+    ),
+  },
+  1,
+);
+
+expect(
   "missing PR comment scope gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(" && steps.pr-comment-scope.outputs.allowed == 'true'", ""),
@@ -314,6 +328,20 @@ expect(
     "droid.yml": REMEDIATED_DROID.replace(
       " && steps.pr-comment-scope.outputs.allowed == 'true'",
       " # steps.pr-comment-scope.outputs.allowed == 'true'",
+    ),
+  },
+  1,
+);
+
+expect(
+  "PR comment scope gate in step text only fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      " && steps.pr-comment-scope.outputs.allowed == 'true'",
+      "",
+    ).replace(
+      "      - name: Skip\n",
+      "      - name: steps.pr-comment-scope.outputs.allowed == 'true'\n        run: echo \"steps.pr-comment-scope.outputs.allowed == 'true'\"\n      - name: Skip\n",
     ),
   },
   1,
@@ -392,6 +420,28 @@ expect(
   "write-token regression fails",
   {
     "droid.yml": REMEDIATED_DROID.replace("      contents: read", "      contents: write"),
+  },
+  1,
+);
+
+expect(
+  "job write-all permission regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "    permissions:\n      contents: read\n      pull-requests: write\n      issues: write",
+      "    permissions: write-all",
+    ),
+  },
+  1,
+);
+
+expect(
+  "workflow write-all permission regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      "permissions: write-all\njobs:\n",
+    ),
   },
   1,
 );

@@ -216,7 +216,7 @@ function directEntryValue(block, key) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
   const firstLine = lines[0]?.match(/^\s*-\s+([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-  if (firstLine?.[1] === key) return normalizeYamlScalar(firstLine[2]);
+  if (firstLine?.[1] === key) return directEntryScalarValue(lines, 0, blockIndent, firstLine[2]);
 
   const directIndent = blockIndent + 2;
   for (let index = 1; index < lines.length; index += 1) {
@@ -227,9 +227,22 @@ function directEntryValue(block, key) {
     if (lineIndent !== directIndent) continue;
 
     const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
-    if (entry?.[1] === key) return normalizeYamlScalar(entry[2]);
+    if (entry?.[1] === key) return directEntryScalarValue(lines, index, lineIndent, entry[2]);
   }
   return null;
+}
+
+function directEntryScalarValue(lines, entryIndex, entryIndent, rawValue) {
+  const normalized = normalizeYamlScalar(rawValue);
+  if (!/^[>|]/u.test(normalized)) return normalized;
+
+  const scalarLines = [];
+  for (let index = entryIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!isBlank(line) && indentOf(line) <= entryIndent) break;
+    scalarLines.push(line.trim());
+  }
+  return scalarLines.join(normalized.startsWith(">") ? " " : "\n").trim();
 }
 
 function directSectionLines(block, sectionName) {
@@ -287,8 +300,23 @@ function stepUsesDroidAction(step) {
   return stepUsesAction(step, "Factory-AI/droid-action@");
 }
 
-function requireInBlock(file, block, needle, message) {
-  if (!block.source.includes(needle)) fail(file, message);
+function topLevelEntryValue(source, key) {
+  const lines = source.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line) || indentOf(line) !== 0) continue;
+    const entry = line.match(/^([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+    if (entry?.[1] === key) return directEntryScalarValue(lines, index, 0, entry[2]);
+  }
+  return null;
+}
+
+function jobSteps(job, steps) {
+  return steps.filter((step) => job.start <= step.start && step.start < job.end);
+}
+
+function stepWithId(job, steps, id) {
+  return jobSteps(job, steps).find((step) => directEntryValue(step, "id") === id) ?? null;
 }
 
 function hasDroidReviewOidcException(step) {
@@ -317,7 +345,11 @@ for (const file of workflowFiles()) {
       .filter(Boolean),
   );
 
-  if (/contents:\s*write/u.test(source)) {
+  if (
+    /contents:\s*write/u.test(source) ||
+    topLevelEntryValue(source, "permissions") === "write-all" ||
+    jobs.some((job) => directEntryValue(job, "permissions") === "write-all")
+  ) {
     fail(file, "interactive agent workflow must not request contents:write");
   }
   if (/id-token:\s*write/u.test(source) && !droidActionSteps.some(hasDroidReviewOidcException)) {
@@ -398,35 +430,54 @@ for (const file of workflowFiles()) {
     /pull_request_review_comment:/u.test(source)
   ) {
     for (const job of droidActionJobs) {
-      requireInBlock(
-        file,
-        job,
-        "github.event.pull_request.head.repo.full_name == github.repository",
-        "PR-triggered agent workflow must require same-repository pull requests",
-      );
+      if (
+        !directEntryIncludes(
+          job,
+          "if",
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        )
+      ) {
+        fail(file, "PR-triggered agent workflow must require same-repository pull requests");
+      }
     }
   }
 
   if (/issue_comment:/u.test(source)) {
     for (const job of droidActionJobs) {
-      requireInBlock(
-        file,
-        job,
-        "steps.pr-comment-scope.outputs.allowed == 'true'",
-        "issue-comment agent workflow must gate Droid execution on resolved PR comment scope",
-      );
-      requireInBlock(
-        file,
-        job,
-        "github.event.issue.pull_request.url",
-        "issue-comment agent workflow must look up PR metadata before running on PR comments",
-      );
-      requireInBlock(
-        file,
-        job,
-        ".head.repo.full_name",
-        "issue-comment agent workflow must verify PR comments come from same-repository pull requests",
-      );
+      if (
+        !droidActionSteps.some(
+          (step) =>
+            blockContainingLine(jobs, step.start) === job &&
+            directEntryIncludes(step, "if", "steps.pr-comment-scope.outputs.allowed == 'true'"),
+        )
+      ) {
+        fail(file, "issue-comment agent workflow must gate Droid execution on resolved PR comment scope");
+      }
+
+      const scopeStep = stepWithId(job, steps, "pr-comment-scope");
+      if (!scopeStep) {
+        fail(file, "issue-comment agent workflow must resolve PR comment scope before Droid execution");
+        continue;
+      }
+      if (
+        !sectionHasEntry(
+          scopeStep,
+          "env",
+          "ISSUE_IS_PR",
+          "${{ github.event.issue.pull_request != null }}",
+        ) ||
+        !sectionHasEntry(
+          scopeStep,
+          "env",
+          "PR_URL",
+          "${{ github.event.issue.pull_request.url || '' }}",
+        )
+      ) {
+        fail(file, "issue-comment agent workflow must look up PR metadata before running on PR comments");
+      }
+      if (!directEntryIncludes(scopeStep, "run", ".head.repo.full_name")) {
+        fail(file, "issue-comment agent workflow must verify PR comments come from same-repository pull requests");
+      }
     }
   }
 }
