@@ -15,6 +15,7 @@ import {
   CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
   defaultsForAllowanceMeter,
   evaluateCloudProAllowanceReservation,
+  isMatchingCloudProAllowanceReservation,
   monthKeyForDate,
   type CloudProAllowanceMeter,
 } from "./cloudProAllowanceCore.js";
@@ -114,6 +115,26 @@ async function reserveCloudProAllowance(args: {
     const existingReservation = await transaction.get(reservationRef);
     if (existingReservation.exists) {
       const existing = existingReservation.data();
+      if (
+        !isMatchingCloudProAllowanceReservation(existing, {
+          uid: args.uid,
+          monthKey,
+          meter: args.meter,
+          sessionId: args.sessionId,
+          reservationId: reservationDocID,
+          requestedUnits: args.requestedUnits,
+        })
+      ) {
+        throw new HttpsError(
+          "already-exists",
+          "reservationId was already used for a different allowance reservation.",
+          {
+            meter: args.meter,
+            monthKey,
+            reservationId: reservationDocID,
+          },
+        );
+      }
       const requestedUnits = numberFromDoc(existing, "requestedUnits", args.requestedUnits);
       return {
         monthKey,

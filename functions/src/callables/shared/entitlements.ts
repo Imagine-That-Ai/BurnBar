@@ -15,6 +15,7 @@ import { isTimestampWithToMillis, stripUndefinedObject } from "../../guards.js";
 import { db } from "../../adminRuntime.js";
 import {
   allowanceDocPath,
+  cloudProTopUpReceiptDocPath,
   CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
   monthKeyForDate,
   unitsForCloudProTopUp,
@@ -391,16 +392,42 @@ export async function creditCloudProTopUp(args: {
   const tier = await activeBurnBarCloudProEntitlementTier(args.uid);
   const monthKey = monthKeyForDate(new Date());
   const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
-  const topUpRef = allowanceRef
-    .collection("topups")
-    .doc(requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID"));
+  const receiptID = requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID");
+  const topUpRef = allowanceRef.collection("topups").doc(receiptID);
+  const receiptRef = db.doc(cloudProTopUpReceiptDocPath(args.uid, receiptID));
   const allowanceConfig = await loadCloudProAllowanceConfig();
   const topUp = unitsForCloudProTopUp(args.kind, args.quantity, allowanceConfig);
   const fusionDefaults = fusionAllowanceDefaultsForTier(tier, allowanceConfig);
 
   return db.runTransaction(async (transaction) => {
-    const existing = await transaction.get(topUpRef);
-    if (existing.exists) {
+    const [existingReceipt, existingMonthlyTopUp] = await Promise.all([
+      transaction.get(receiptRef),
+      transaction.get(topUpRef),
+    ]);
+    if (existingReceipt.exists || existingMonthlyTopUp.exists) {
+      if (!existingReceipt.exists) {
+        const now = Timestamp.now();
+        const existing = existingMonthlyTopUp.data();
+        transaction.set(
+          receiptRef,
+          stripUndefinedObject({
+            uid: args.uid,
+            firstMonthKey: typeof existing?.monthKey === "string" ? existing.monthKey : monthKey,
+            latestMonthKey: monthKey,
+            kind: typeof existing?.kind === "string" ? existing.kind : args.kind,
+            meter: typeof existing?.meter === "string" ? existing.meter : topUp.meter,
+            units: typeof existing?.units === "number" ? existing.units : topUp.units,
+            source: args.source,
+            externalPaymentID: args.externalPaymentID,
+            quantity: typeof existing?.quantity === "number" ? existing.quantity : (args.quantity ?? 1),
+            creditedAt: existing?.creditedAt,
+            receiptBackfilledAt: now,
+            updatedAt: now,
+            schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+          }),
+          { merge: true },
+        );
+      }
       return { credited: false, monthKey, units: topUp.units, kind: args.kind };
     }
 
@@ -436,6 +463,20 @@ export async function creditCloudProTopUp(args: {
       externalPaymentID: args.externalPaymentID,
       quantity: args.quantity ?? 1,
       creditedAt: now,
+      schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+    });
+    transaction.set(receiptRef, {
+      uid: args.uid,
+      firstMonthKey: monthKey,
+      latestMonthKey: monthKey,
+      kind: args.kind,
+      meter: topUp.meter,
+      units: topUp.units,
+      source: args.source,
+      externalPaymentID: args.externalPaymentID,
+      quantity: args.quantity ?? 1,
+      creditedAt: now,
+      updatedAt: now,
       schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
     });
     return { credited: true, monthKey, units: topUp.units, kind: args.kind };
