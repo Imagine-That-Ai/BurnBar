@@ -326,6 +326,17 @@ expect(
 );
 
 expect(
+  "same-repository PR guard with always-true negated false disjunct fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      )\n    env:",
+      "      ) || ((!false))\n    env:",
+    ),
+  },
+  1,
+);
+
+expect(
   "missing PR comment scope gate fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(" && steps.pr-comment-scope.outputs.allowed == 'true'", ""),
@@ -433,6 +444,17 @@ expect(
 );
 
 expect(
+  "quoted job-wide Factory secret regression fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "      FACTORY_API_KEY_AVAILABLE: ${{ secrets.FACTORY_API_KEY != '' }}",
+      "      FACTORY_API_KEY: '${{ secrets.FACTORY_API_KEY }}'",
+    ),
+  },
+  1,
+);
+
+expect(
   "Factory secret on non-Droid step fails",
   {
     "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
@@ -534,6 +556,31 @@ expect(
     "droid.yml": REMEDIATED_DROID.replace(
       "      contents: read",
       "      contents: read\n      id-token: write",
+    ),
+  },
+  1,
+);
+
+expect(
+  "cross-job Droid review OIDC regression fails",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "jobs:\n  droid-review:",
+      "jobs:\n  unrelated:\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo unrelated\n  droid-review:",
+    ),
+  },
+  1,
+);
+
+expect(
+  "workflow-scope Droid review OIDC regression fails",
+  {
+    "droid-review.yml": REMEDIATED_DROID_REVIEW.replace(
+      "jobs:\n",
+      "permissions:\n  contents: read\n  id-token: write\njobs:\n",
+    ).replace(
+      "      id-token: write\n",
+      "",
     ),
   },
   1,

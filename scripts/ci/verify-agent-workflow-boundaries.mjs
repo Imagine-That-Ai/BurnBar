@@ -26,7 +26,8 @@ const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows");
 
 const failures = [];
 const fail = (file, message) => failures.push(`${file}: ${message}`);
-const FACTORY_KEY_ENV = /^\s*FACTORY_API_KEY:\s*\$\{\{\s*secrets\.FACTORY_API_KEY\s*\}\}/mu;
+const FACTORY_KEY_ENV =
+  /^\s*FACTORY_API_KEY:\s*(['"]?)\$\{\{\s*secrets\.FACTORY_API_KEY\s*\}\}\1\s*$/mu;
 
 function workflowFiles() {
   if (!existsSync(WORKFLOW_DIR)) {
@@ -220,6 +221,27 @@ function normalizeYamlScalar(value) {
   return trimmed;
 }
 
+function topLevelSectionHasEntry(source, sectionName, key, expectedValue) {
+  const lines = source.split("\n");
+  const sectionIndex = lines.findIndex((line) =>
+    line.match(new RegExp(`^${sectionName}:\\s*$`, "u")),
+  );
+  if (sectionIndex === -1) return false;
+
+  for (let index = sectionIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    const lineIndent = indentOf(line);
+    if (lineIndent === 0) break;
+    if (lineIndent !== 2) continue;
+
+    const entry = line.match(/^\s*([A-Za-z0-9_-]+):\s*(.*?)\s*$/u);
+    if (entry?.[1] === key && normalizeYamlScalar(entry[2]) === expectedValue) return true;
+  }
+
+  return false;
+}
+
 function directEntryValue(block, key) {
   const lines = block.source.split("\n");
   const blockIndent = indentOf(lines[0] ?? "");
@@ -312,8 +334,41 @@ function conditionHasConjunct(condition, left, right) {
   );
 }
 
+function stripBalancedOuterParens(expression) {
+  let normalized = expression.trim();
+  while (normalized.startsWith("(") && normalized.endsWith(")")) {
+    let depth = 0;
+    let wraps = true;
+    for (let index = 0; index < normalized.length; index += 1) {
+      const char = normalized[index];
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+      if (depth === 0 && index < normalized.length - 1) {
+        wraps = false;
+        break;
+      }
+      if (depth < 0) {
+        wraps = false;
+        break;
+      }
+    }
+    if (!wraps || depth !== 0) break;
+    normalized = normalized.slice(1, -1).trim();
+  }
+  return normalized;
+}
+
 function conditionHasDisallowedAlwaysTrue(condition) {
-  return /\|\|\s*true\b|\btrue\s*\|\|/u.test(normalizedCondition(condition));
+  return normalizedCondition(condition)
+    .split(/\s*\|\|\s*/u)
+    .some((part) => {
+      const literal = stripBalancedOuterParens(part).replace(/\s+/gu, "");
+      const match = literal.match(/^(!*)(true|false)$/u);
+      if (!match) return false;
+      const value = match[2] === "true";
+      const negated = match[1].length % 2 === 1;
+      return negated ? !value : value;
+    });
 }
 
 function conditionHasRequiredConjunctsOnly(condition, requiredConjuncts) {
@@ -390,8 +445,14 @@ for (const file of workflowFiles()) {
   ) {
     fail(file, "interactive agent workflow must not request contents:write");
   }
-  if (/id-token:\s*write/u.test(source) && !droidActionSteps.some(hasDroidReviewOidcException)) {
-    fail(file, "interactive agent workflow must not request id-token:write outside automatic Droid review validation");
+  if (topLevelSectionHasEntry(source, "permissions", "id-token", "write")) {
+    fail(file, "interactive agent workflow must not grant id-token:write at workflow scope");
+  }
+  for (const job of jobs) {
+    if (!sectionHasEntry(job, "permissions", "id-token", "write")) continue;
+    if (!jobSteps(job, droidActionSteps).some(hasDroidReviewOidcException)) {
+      fail(file, "interactive agent workflow must not request id-token:write outside automatic Droid review validation");
+    }
   }
 
   if (usesDroidAction) {
