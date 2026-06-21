@@ -482,9 +482,14 @@ function stepWithId(job, steps, id) {
 
 function droidCliStepFailsClosed(step) {
   const run = stepRunValue(step);
-  return /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then[\s\S]*\bexit\s+[1-9][0-9]*\b[\s\S]*?\bfi\b/u.test(
-    run,
-  );
+  const preflightPattern =
+    /if\s+\[\[\s+-z\s+"\$\{FACTORY_API_KEY\}"\s*\]\]\s*;?\s*then([\s\S]*?)\bfi\b/gu;
+  let match = preflightPattern.exec(run);
+  while (match) {
+    if (/\bexit\s+[1-9][0-9]*\b/u.test(match[1])) return true;
+    match = preflightPattern.exec(run);
+  }
+  return false;
 }
 
 function hasDroidReviewOidcException(step) {
