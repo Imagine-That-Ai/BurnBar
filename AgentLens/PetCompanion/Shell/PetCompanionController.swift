@@ -71,6 +71,8 @@ final class PetCompanionController: ObservableObject {
         let panel = panel ?? makePanel()
         self.panel = panel
 
+        renderer?.unmount()
+        renderer = nil
         let renderer = rendererFactory(definition, resolvedForm)
         self.renderer = renderer
         if let content = panel.contentView {
@@ -133,14 +135,17 @@ final class PetCompanionController: ObservableObject {
     /// the currently-playing logical state.
     func setForm(_ newForm: PetForm) {
         guard let definition else { return }
+        let previousForm = form
         self.form = newForm
-        if let renderer {
+        if let renderer, previousForm?.isAtlas == newForm.isAtlas {
             renderer.setForm(newForm)
         } else if let content = panel?.contentView {
+            renderer?.unmount()
             let r = rendererFactory(definition, newForm)
             renderer = r
             r.mount(in: content)
             r.play(state: currentState)
+            installClickGesture(on: r.view)
         }
     }
 
@@ -256,7 +261,7 @@ final class PetCompanionController: ObservableObject {
         bubblePanel = bubble
         bubble.host(chat: chat, anchorProvider: { [weak self] in self?.bubbleAnchorPoint() })
         anchorBubble(bubble)
-        bubble.orderFront(nil)
+        bubble.makeKeyAndOrderFront(nil)
     }
 
     /// The on-screen point (screen coords) the bubble tail should aim at: the pet

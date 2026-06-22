@@ -23,7 +23,13 @@ final class PetCompanionRuntime {
         let controller = PetCompanionController()
         self.controller = controller
         self.hotkey = PetHotkey { [weak controller] in
-            controller?.handlePetClick()
+            guard let controller else { return }
+            if controller.isVisible {
+                controller.handlePetClick()
+            } else if UserDefaults.standard.bool(forKey: PetCompanionFeature.DefaultsKey.enabled) {
+                PetCompanionFeature.showCompanion()
+                controller.openBubble()
+            }
         }
         self.systemObservers = PetSystemObservers()
     }
@@ -115,7 +121,11 @@ enum PetCompanionFeature {
 
     /// Resolve the active pet's ``PetDefinition`` from the app bundle.
     static func loadActiveDefinition() -> PetDefinition? {
-        PetDefinition.loadBundled(id: activePetID)
+        if let active = PetDefinition.loadBundled(id: activePetID),
+           PetCatalog.isRenderable(active) {
+            return active
+        }
+        return PetDefinition.loadBundled(id: defaultPetID)
     }
 }
 

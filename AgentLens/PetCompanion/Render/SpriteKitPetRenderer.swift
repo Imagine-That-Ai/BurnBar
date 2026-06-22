@@ -191,7 +191,7 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
             : skView.bounds.size
         guard atlas.cell.w > 0, atlas.cell.h > 0 else { return nil }
         return CGPoint(x: p.x / atlas.cell.w * size.width,
-                       y: p.y / atlas.cell.h * size.height)
+                       y: (atlas.cell.h - p.y) / atlas.cell.h * size.height)
     }
 
     func containsVisibleContent(at point: CGPoint) -> Bool {

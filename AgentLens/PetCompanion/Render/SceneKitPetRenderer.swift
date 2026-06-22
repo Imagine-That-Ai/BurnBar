@@ -264,7 +264,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
             let size = scnView.bounds.size == .zero ? PetPanel.defaultSize : scnView.bounds.size
             guard atlas.cell.w > 0, atlas.cell.h > 0 else { return nil }
             return CGPoint(x: p.x / atlas.cell.w * size.width,
-                           y: p.y / atlas.cell.h * size.height)
+                           y: (atlas.cell.h - p.y) / atlas.cell.h * size.height)
         }
         let size = scnView.bounds.size == .zero ? PetPanel.defaultSize : scnView.bounds.size
         // "contact" → just above the model's head; default → center.

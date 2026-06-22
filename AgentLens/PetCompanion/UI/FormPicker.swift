@@ -9,6 +9,10 @@ import SwiftUI
 /// *enumeration* the picker needs.
 @MainActor
 enum PetCatalog {
+    /// Flip this when the production GLB loader is linked and model pets render
+    /// as their shipped assets instead of placeholders.
+    static let supportsModelForms = false
+
     /// The pet ids shipped in `PetCompanion/Resources/Pets/`. Discovered from the
     /// bundle so adding a pet folder needs no code change; falls back to the known
     /// roster when the bundle layout can't be enumerated (e.g. in tests).
@@ -30,7 +34,15 @@ enum PetCatalog {
 
     /// Load every bundled definition, skipping any that fail to decode.
     static func bundledDefinitions(in bundle: Bundle = .main) -> [PetDefinition] {
-        bundledPetIDs(in: bundle).compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
+        bundledPetIDs(in: bundle)
+            .compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
+            .filter(isRenderable)
+    }
+
+    /// Until the GLB loader is linked, only atlas-backed pets can render as their
+    /// actual shipped asset. Model-only definitions stay hidden from selection.
+    static func isRenderable(_ def: PetDefinition) -> Bool {
+        def.atlas2d != nil
     }
 
     /// The roster shipped today (kept as a deterministic fallback).
@@ -81,7 +93,7 @@ struct PetFormPickerView: View {
 
     private func cell(for def: PetDefinition) -> some View {
         let isSelected = def.id == selectedPetID
-        let has3D = def.model3d != nil
+        let has3D = PetCatalog.supportsModelForms && def.model3d != nil
         let has2D = def.atlas2d != nil
         return Button {
             selectedPetID = def.id
