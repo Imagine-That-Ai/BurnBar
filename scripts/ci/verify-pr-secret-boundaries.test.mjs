@@ -104,6 +104,18 @@ expect(
 );
 
 expect(
+  "QA commented INTERNAL_RUN gate fails",
+  (root) =>
+    mutate(root, ".github/workflows/qa.yml", (text) =>
+      text.replace(
+        "        if: env.INTERNAL_RUN == 'true'\n",
+        "        # if: env.INTERNAL_RUN == 'true'\n",
+      ),
+    ),
+  1,
+);
+
+expect(
   "QA secret outside Run QA fails",
   (root) =>
     mutate(root, ".github/workflows/qa.yml", (text) =>
@@ -140,6 +152,18 @@ expect(
 );
 
 expect(
+  "Android commented Firebase injection gate fails",
+  (root) =>
+    mutate(root, ".github/workflows/code-quality.yml", (text) =>
+      text.replace(
+        "        if: env.TRUSTED_PR_SECRET_RUN == 'true' && env.HAS_ANDROID_FIREBASE_SECRET == 'true'\n",
+        "        # if: env.TRUSTED_PR_SECRET_RUN == 'true' && env.HAS_ANDROID_FIREBASE_SECRET == 'true'\n",
+      ),
+    ),
+  1,
+);
+
+expect(
   "Android non-secret fallback removal fails",
   (root) =>
     mutate(root, ".github/workflows/code-quality.yml", (text) =>
@@ -169,6 +193,26 @@ expect(
 );
 
 expect(
+  "Android unallowlisted secret reference fails",
+  (root) =>
+    mutate(root, ".github/workflows/code-quality.yml", (text) =>
+      text.replace(
+        "      - name: Use Android Firebase template for untrusted PRs\n",
+        [
+          "      - name: Probe unrelated Android secret",
+          "        env:",
+          "          PLAY_STORE_UPLOAD_KEY: ${{ secrets.PLAY_STORE_UPLOAD_KEY }}",
+          "        run: echo masked",
+          "",
+          "      - name: Use Android Firebase template for untrusted PRs",
+          "",
+        ].join("\n"),
+      ),
+    ),
+  1,
+);
+
+expect(
   "workflow-lint verifier command removal fails",
   (root) =>
     mutate(root, ".github/workflows/workflow-lint.yml", (text) =>
@@ -176,6 +220,23 @@ expect(
         "        run: node scripts/ci/verify-pr-secret-boundaries.mjs",
         "        run: echo skipped-pr-secret-boundaries",
       ),
+    ),
+  1,
+);
+
+expect(
+  "workflow-lint verifier path filter removal fails",
+  (root) =>
+    mutate(root, ".github/workflows/workflow-lint.yml", (text) =>
+      text
+        .replaceAll(
+          '      - "scripts/ci/verify-pr-secret-boundaries.mjs"\n',
+          "",
+        )
+        .replaceAll(
+          '      - "scripts/ci/verify-pr-secret-boundaries.test.mjs"\n',
+          "",
+        ),
     ),
   1,
 );

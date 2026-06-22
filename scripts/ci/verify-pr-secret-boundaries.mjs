@@ -37,6 +37,27 @@ function readRepoFile(path) {
   return readFileSync(absolute, "utf8");
 }
 
+function stripYamlComment(line) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const previous = line[index - 1];
+    if (char === "'" && !doubleQuoted) singleQuoted = !singleQuoted;
+    if (char === '"' && !singleQuoted && previous !== "\\") {
+      doubleQuoted = !doubleQuoted;
+    }
+    if (char === "#" && !singleQuoted && !doubleQuoted) {
+      return line.slice(0, index).trimEnd();
+    }
+  }
+  return line;
+}
+
+function stripYamlComments(source) {
+  return source.split("\n").map(stripYamlComment).join("\n");
+}
+
 function indentOf(line) {
   return line.match(/^(\s*)/u)[1].length;
 }
@@ -46,7 +67,7 @@ function isBlank(line) {
 }
 
 function extractJob(source, jobName) {
-  const lines = source.split("\n");
+  const lines = stripYamlComments(source).split("\n");
   const start = lines.findIndex((line) =>
     line.match(new RegExp(`^  ${jobName}:\\s*$`, "u")),
   );
@@ -65,7 +86,7 @@ function extractJob(source, jobName) {
 }
 
 function extractStep(job, stepName) {
-  const lines = job.split("\n");
+  const lines = stripYamlComments(job).split("\n");
   const start = lines.findIndex((line) =>
     line.match(
       new RegExp(`^      - name:\\s*${escapeRegex(stepName)}\\s*$`, "u"),
@@ -108,22 +129,128 @@ function requireSingleOccurrence(file, source, needle, message) {
   if (count !== 1) fail(file, `${message} (found ${count})`);
 }
 
+function requireOccurrenceCount(file, source, needle, expected, message) {
+  const count = countNeedle(source, needle);
+  if (count !== expected) fail(file, `${message} (found ${count})`);
+}
+
+function fieldValue(block, key, indent) {
+  const prefix = `${" ".repeat(indent)}${key}:`;
+  const line = stripYamlComments(block)
+    .split("\n")
+    .find((candidate) => candidate.startsWith(prefix));
+  return line ? line.slice(prefix.length).trim() : null;
+}
+
+function requireFieldEquals(file, block, key, indent, expected, message) {
+  const actual = fieldValue(block, key, indent);
+  if (actual !== expected) {
+    fail(file, `${message} (found ${actual ?? "missing"})`);
+  }
+}
+
+function hasEnvEntry(block, envIndent, name, expectedValue) {
+  const prefix = `${" ".repeat(envIndent)}env:`;
+  const lines = stripYamlComments(block).split("\n");
+  const envStart = lines.findIndex((line) => line === prefix);
+  if (envStart === -1) return false;
+  for (let index = envStart + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    if (indentOf(line) <= envIndent) break;
+    if (
+      line.trim() === `${name}: ${expectedValue}` ||
+      line.trim() === `${name}: "${expectedValue}"`
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function requireEnvEntry(file, block, envIndent, name, expectedValue, message) {
+  if (!hasEnvEntry(block, envIndent, name, expectedValue)) {
+    fail(file, message);
+  }
+}
+
+function secretReferenceLines(block) {
+  return stripYamlComments(block)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /\$\{\{\s*secrets\.[A-Za-z0-9_]+/u.test(line));
+}
+
+function requireOnlyAllowedSecretLines(file, block, allowedLines, message) {
+  const allowed = new Set(allowedLines);
+  for (const line of secretReferenceLines(block)) {
+    if (!allowed.has(line)) fail(file, `${message}: ${line}`);
+  }
+}
+
+function extractTriggerPaths(source, triggerName) {
+  const lines = stripYamlComments(source).split("\n");
+  const triggerStart = lines.findIndex((line) => line === `  ${triggerName}:`);
+  if (triggerStart === -1) return [];
+
+  let triggerEnd = lines.length;
+  for (let index = triggerStart + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    if (indentOf(line) <= 2) {
+      triggerEnd = index;
+      break;
+    }
+  }
+
+  const block = lines.slice(triggerStart, triggerEnd);
+  const pathsStart = block.findIndex((line) => line === "    paths:");
+  if (pathsStart === -1) return [];
+
+  const paths = [];
+  for (let index = pathsStart + 1; index < block.length; index += 1) {
+    const line = block[index];
+    if (isBlank(line)) continue;
+    if (indentOf(line) <= 4) break;
+    const match = line.match(/^\s*-\s*["']?([^"']+)["']?\s*$/u);
+    if (match) paths.push(match[1]);
+  }
+  return paths;
+}
+
 function validateQaWorkflow() {
   const file = ".github/workflows/qa.yml";
-  const source = readRepoFile(file);
+  const source = stripYamlComments(readRepoFile(file));
   const job = extractJob(source, "functional-qa");
+  const resolvePr = extractStep(job, "Resolve PR metadata");
   const runQa = extractStep(job, "Run QA");
+  const postQa = extractStep(job, "Post QA report as PR comment");
+  const firebaseSecretsProbe =
+    "${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}";
+  const githubToken = "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}";
 
-  requireIncludes(
+  requireEnvEntry(
     file,
-    source,
-    `INTERNAL_RUN: \${{ ${TRUSTED_PR_EXPR} }}`,
+    job,
+    4,
+    "INTERNAL_RUN",
+    `\${{ ${TRUSTED_PR_EXPR} }}`,
     "functional QA must require trusted same-repo PR authors before exposing QA secrets",
   );
-  requireIncludes(
+  requireEnvEntry(
+    file,
+    job,
+    4,
+    "HAS_FIREBASE_SECRETS",
+    firebaseSecretsProbe,
+    "functional QA must probe Firebase QA secret availability without exposing values",
+  );
+  requireFieldEquals(
     file,
     runQa,
-    "if: env.INTERNAL_RUN == 'true'",
+    "if",
+    8,
+    "env.INTERNAL_RUN == 'true'",
     "Run QA secret-bearing step must be gated by INTERNAL_RUN",
   );
 
@@ -134,7 +261,8 @@ function validateQaWorkflow() {
     "QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}",
     "QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}",
   ]) {
-    requireIncludes(file, runQa, secret, `Run QA is missing ${secret}`);
+    const [name, value] = secret.split(": ");
+    requireEnvEntry(file, runQa, 8, name, value, `Run QA is missing ${secret}`);
     requireSingleOccurrence(
       file,
       source,
@@ -142,11 +270,48 @@ function validateQaWorkflow() {
       `${secret} must only appear in the Run QA step`,
     );
   }
+  requireEnvEntry(
+    file,
+    resolvePr,
+    8,
+    "GH_TOKEN",
+    "${{ secrets.GITHUB_TOKEN }}",
+    "Resolve PR metadata must be the first GITHUB_TOKEN consumer",
+  );
+  requireEnvEntry(
+    file,
+    postQa,
+    8,
+    "GH_TOKEN",
+    "${{ secrets.GITHUB_TOKEN }}",
+    "Post QA report must be the second GITHUB_TOKEN consumer",
+  );
+  requireOccurrenceCount(
+    file,
+    source,
+    githubToken,
+    2,
+    "GITHUB_TOKEN must only appear in QA metadata/comment steps",
+  );
+  requireOnlyAllowedSecretLines(
+    file,
+    job,
+    [
+      `HAS_FIREBASE_SECRETS: ${firebaseSecretsProbe}`,
+      "FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}",
+      "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}",
+      "FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}",
+      "QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}",
+      "QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}",
+      githubToken,
+    ],
+    "functional QA contains unallowlisted secret reference",
+  );
 }
 
 function validateCodeQualityWorkflow() {
   const file = ".github/workflows/code-quality.yml";
-  const source = readRepoFile(file);
+  const source = stripYamlComments(readRepoFile(file));
   const job = extractJob(source, "android-dependency-health");
   const templateStep = extractStep(
     job,
@@ -156,22 +321,28 @@ function validateCodeQualityWorkflow() {
   const androidSecret =
     "GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}";
 
-  requireIncludes(
+  requireEnvEntry(
     file,
     job,
-    `TRUSTED_PR_SECRET_RUN: \${{ ${TRUSTED_PR_EXPR} }}`,
+    4,
+    "TRUSTED_PR_SECRET_RUN",
+    `\${{ ${TRUSTED_PR_EXPR} }}`,
     "Android dependency health must require trusted same-repo PR authors before injecting Firebase secrets",
   );
-  requireIncludes(
+  requireEnvEntry(
     file,
     job,
-    "HAS_ANDROID_FIREBASE_SECRET: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+    4,
+    "HAS_ANDROID_FIREBASE_SECRET",
+    "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
     "Android dependency health must probe Firebase secret availability without exposing its value",
   );
-  requireIncludes(
+  requireFieldEquals(
     file,
     templateStep,
-    "if: env.TRUSTED_PR_SECRET_RUN != 'true' || env.HAS_ANDROID_FIREBASE_SECRET != 'true'",
+    "if",
+    8,
+    "env.TRUSTED_PR_SECRET_RUN != 'true' || env.HAS_ANDROID_FIREBASE_SECRET != 'true'",
     "untrusted or secretless PRs must use the non-secret Android Firebase template",
   );
   requireIncludes(
@@ -180,16 +351,20 @@ function validateCodeQualityWorkflow() {
     "cp android/app/google-services.json.template android/app/google-services.json",
     "untrusted or secretless PRs must materialize the non-secret Android Firebase template",
   );
-  requireIncludes(
+  requireFieldEquals(
     file,
     injectStep,
-    "if: env.TRUSTED_PR_SECRET_RUN == 'true' && env.HAS_ANDROID_FIREBASE_SECRET == 'true'",
+    "if",
+    8,
+    "env.TRUSTED_PR_SECRET_RUN == 'true' && env.HAS_ANDROID_FIREBASE_SECRET == 'true'",
     "real Android Firebase config injection must be trusted-author and secret-availability gated",
   );
-  requireIncludes(
+  requireEnvEntry(
     file,
     injectStep,
-    androidSecret,
+    8,
+    "GOOGLE_SERVICES_JSON_BASE64",
+    "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}",
     "real Android Firebase config injection step is missing its Firebase secret",
   );
   requireSingleOccurrence(
@@ -198,14 +373,32 @@ function validateCodeQualityWorkflow() {
     androidSecret,
     "Android Firebase secret must only appear in the guarded injection step",
   );
+  requireOnlyAllowedSecretLines(
+    file,
+    job,
+    [
+      "HAS_ANDROID_FIREBASE_SECRET: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+      androidSecret,
+    ],
+    "Android dependency health contains unallowlisted secret reference",
+  );
 }
 
 function validateWorkflowLintWiring() {
   const file = ".github/workflows/workflow-lint.yml";
-  const source = readRepoFile(file);
-  for (const needle of [
+  const source = stripYamlComments(readRepoFile(file));
+  for (const path of [
     "scripts/ci/verify-pr-secret-boundaries.mjs",
     "scripts/ci/verify-pr-secret-boundaries.test.mjs",
+  ]) {
+    for (const trigger of ["pull_request", "push"]) {
+      if (!extractTriggerPaths(source, trigger).includes(path)) {
+        fail(file, `${trigger} paths must include ${path}`);
+      }
+    }
+  }
+
+  for (const needle of [
     "node scripts/ci/verify-pr-secret-boundaries.test.mjs",
     "node scripts/ci/verify-pr-secret-boundaries.mjs",
   ]) {
