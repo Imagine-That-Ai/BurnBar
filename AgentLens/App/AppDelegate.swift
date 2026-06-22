@@ -539,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
             return
         }
 
-        switch OpenBurnBarStatusItemClick.action(for: event.type) {
+        switch OpenBurnBarStatusItemClick.action(for: event.eventType) {
         case .togglePopover:
             togglePopover(button)
         case .showSecondaryMenu:
@@ -558,7 +558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     private func shouldHandleStatusItemEvent(_ event: OpenBurnBarStatusItemFallbackEvent) -> Bool {
         let key = OpenBurnBarStatusItemClick.EventKey(
             eventNumber: event.eventNumber,
-            type: event.type,
+            eventTypeRawValue: event.eventTypeRawValue,
             timestamp: event.timestamp
         )
         return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
@@ -1365,18 +1365,18 @@ public extension Notification.Name {
 enum OpenBurnBarStatusItemClick {
     struct EventKey: Equatable {
         let eventNumber: Int
-        let type: NSEvent.EventType
+        let eventTypeRawValue: NSEvent.EventType.RawValue
         let timestampBucket: Int
 
         init(_ event: NSEvent) {
             self.eventNumber = event.eventNumber
-            self.type = event.type
+            self.eventTypeRawValue = event.type.rawValue
             self.timestampBucket = Int(event.timestamp * 1_000)
         }
 
-        init(eventNumber: Int, type: NSEvent.EventType, timestamp: TimeInterval) {
+        init(eventNumber: Int, eventTypeRawValue: NSEvent.EventType.RawValue, timestamp: TimeInterval) {
             self.eventNumber = eventNumber
-            self.type = type
+            self.eventTypeRawValue = eventTypeRawValue
             self.timestampBucket = Int(timestamp * 1_000)
         }
     }
@@ -1403,17 +1403,28 @@ enum OpenBurnBarStatusItemClick {
     }
 }
 
-private struct OpenBurnBarStatusItemFallbackEvent: @unchecked Sendable {
+private struct OpenBurnBarStatusItemFallbackEvent: Sendable {
     let eventNumber: Int
-    let type: NSEvent.EventType
+    let eventTypeRawValue: NSEvent.EventType.RawValue
     let timestamp: TimeInterval
-    let mouseLocation: NSPoint
+    let mouseLocationX: CGFloat
+    let mouseLocationY: CGFloat
+
+    var eventType: NSEvent.EventType? {
+        NSEvent.EventType(rawValue: eventTypeRawValue)
+    }
+
+    var mouseLocation: NSPoint {
+        NSPoint(x: mouseLocationX, y: mouseLocationY)
+    }
 
     init(_ event: NSEvent) {
         self.eventNumber = event.eventNumber
-        self.type = event.type
+        self.eventTypeRawValue = event.type.rawValue
         self.timestamp = event.timestamp
-        self.mouseLocation = NSEvent.mouseLocation
+        let mouseLocation = NSEvent.mouseLocation
+        self.mouseLocationX = mouseLocation.x
+        self.mouseLocationY = mouseLocation.y
     }
 }
 
