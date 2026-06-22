@@ -158,3 +158,76 @@ def test_rejects_reference_swap_between_duplicate_display_names(tmp_path: Path):
     assert result.returncode == 1
     assert "semantic drift" in result.stderr
     assert "OpenBurnBarDaemon/Analytics.swift" in result.stderr
+
+
+def test_allows_xcodegen_temp_package_product_id_churn(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* PBXTargetDependency */ = {
+      isa = PBXTargetDependency;
+      productRef = "TEMP_11111111-1111-1111-1111-111111111111" /* OpenBurnBarCore */;
+    };
+    "TEMP_11111111-1111-1111-1111-111111111111" /* OpenBurnBarCore */ = {
+      isa = XCSwiftPackageProductDependency;
+      productName = OpenBurnBarCore;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    BBBBBBBBBBBBBBBBBBBBBBBB /* PBXTargetDependency */ = {
+      isa = PBXTargetDependency;
+      productRef = "TEMP_22222222-2222-2222-2222-222222222222" /* OpenBurnBarCore */;
+    };
+    "TEMP_22222222-2222-2222-2222-222222222222" /* OpenBurnBarCore */ = {
+      isa = XCSwiftPackageProductDependency;
+      productName = OpenBurnBarCore;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 0
+    assert "PBX object ID churn ignored" in result.stdout
+
+
+def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* PBXTargetDependency */ = {
+      isa = PBXTargetDependency;
+      productRef = "TEMP_11111111-1111-1111-1111-111111111111" /* OpenBurnBarCore */;
+    };
+    "TEMP_11111111-1111-1111-1111-111111111111" /* OpenBurnBarCore */ = {
+      isa = XCSwiftPackageProductDependency;
+      productName = OpenBurnBarCore;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    BBBBBBBBBBBBBBBBBBBBBBBB /* PBXTargetDependency */ = {
+      isa = PBXTargetDependency;
+      productRef = "TEMP_22222222-2222-2222-2222-222222222222" /* OpenBurnBarMedia */;
+    };
+    "TEMP_22222222-2222-2222-2222-222222222222" /* OpenBurnBarMedia */ = {
+      isa = XCSwiftPackageProductDependency;
+      productName = OpenBurnBarMedia;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 1
+    assert "semantic drift" in result.stderr
+    assert "OpenBurnBarMedia" in result.stderr
