@@ -140,6 +140,31 @@ final class PetCompanionController: ObservableObject {
         }
     }
 
+    /// Swap to a different pet definition and renderer while keeping the panel
+    /// alive. Used by the dynamic picker when the selected id changes.
+    func setPet(_ newDefinition: PetDefinition, form requestedForm: PetForm? = nil) {
+        definition = newDefinition
+        guard let resolvedForm = requestedForm ?? newDefinition.defaultForm else { return }
+        form = resolvedForm
+
+        if let graph = newDefinition.behavior {
+            interpreter = BehaviorInterpreter(graph: graph, seed: Self.seed())
+            currentState = interpreter?.current ?? PetLogicalState.idle.rawValue
+        } else {
+            interpreter = nil
+            currentState = newDefinition.atlas2d?.defaultState ?? PetLogicalState.idle.rawValue
+        }
+
+        renderer?.unmount()
+        renderer = nil
+        guard let content = panel?.contentView else { return }
+        let nextRenderer = rendererFactory(newDefinition, resolvedForm)
+        renderer = nextRenderer
+        nextRenderer.mount(in: content)
+        installClickGesture(on: nextRenderer.view)
+        nextRenderer.play(state: currentState)
+    }
+
     // MARK: Behavior driving
 
     /// Feed an external trigger (cursor proximity, chat events) into the graph and

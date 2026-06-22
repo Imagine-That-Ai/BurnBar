@@ -1,0 +1,93 @@
+{
+  "schema": "petdef/1",
+  "id": "douglas-engelbart-mouse-roller",
+  "name": "douglas-engelbart-mouse-roller",
+  "kind": "model3d",
+  "displayName": "Douglas Engelbart",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (douglas-engelbart-mouse-roller-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "douglas-engelbart-mouse-roller-actions.glb",
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "dance": "dance",
+        "drag": "walk",
+        "greeting": "wave",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "wave",
+        "react": "cheer",
+        "scoop": "scoop",
+        "speak": "wave",
+        "success": "cheer",
+        "think": "clean",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

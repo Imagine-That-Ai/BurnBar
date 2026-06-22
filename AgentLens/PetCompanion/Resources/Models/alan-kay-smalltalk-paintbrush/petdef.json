@@ -1,0 +1,88 @@
+{
+  "schema": "petdef/1",
+  "id": "alan-kay-smalltalk-paintbrush",
+  "name": "alan-kay-smalltalk-paintbrush",
+  "kind": "model3d",
+  "displayName": "Alan Kay",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (alan-kay-smalltalk-paintbrush-walk.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "alan-kay-smalltalk-paintbrush-walk.glb",
+      "clips": {
+        "clean": "idle",
+        "drag": "walk",
+        "greeting": "idle",
+        "idle": "idle",
+        "listen": "idle",
+        "react": "idle",
+        "scoop": "idle",
+        "speak": "idle",
+        "success": "idle",
+        "think": "idle",
+        "walk": "walk",
+        "wander": "walk",
+        "work": "idle"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

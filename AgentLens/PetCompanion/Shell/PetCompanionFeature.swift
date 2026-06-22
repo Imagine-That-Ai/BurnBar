@@ -98,6 +98,15 @@ enum PetCompanionFeature {
     static func loadActiveDefinition() -> PetDefinition? {
         PetDefinition.loadBundled(id: activePetID)
     }
+
+    /// Persist a picker selection and hot-swap the live companion when visible.
+    static func selectPet(id: String, form: PetForm? = nil) {
+        UserDefaults.standard.set(id, forKey: DefaultsKey.activePetID)
+        guard let definition = PetDefinition.loadBundled(id: id) else { return }
+        if PetCompanionController.shared.isRunning || PetCompanionController.shared.isVisible {
+            PetCompanionController.shared.setPet(definition, form: form)
+        }
+    }
 }
 
 // MARK: - Menubar toggle control

@@ -81,6 +81,11 @@ targets:
       - path: AgentLens/PetCompanion/Resources/Models
         type: folder
         buildPhase: resources
+    preBuildScripts:
+      - name: Sync Imagine 3D Pets
+        script: |
+          "$SRCROOT/scripts/sync-imagine-pets.sh"
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar

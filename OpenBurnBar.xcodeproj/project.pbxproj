@@ -122,6 +122,7 @@
 		58EB44C0AB495E5DB5651749 /* SearchIndexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */; };
 		594B3F454FB649CED9D89D5E /* FactoryDroidParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E930653D4C121AAF5D7FF5 /* FactoryDroidParser.swift */; };
 		5A0F391A863990F08CAAB9CA /* Behavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A50FB323F514C90F4A537CC /* Behavior.swift */; };
+		5AB91A37124A064AF870FC0E /* BRIDGE.md in Resources */ = {isa = PBXBuildFile; fileRef = D50386D9EECD4646BF7CB24D /* BRIDGE.md */; };
 		5B2D95C2AD6F66C9AF52CC86 /* SettingsManagerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5680975338ECABA13DCFF397 /* SettingsManagerProtocol.swift */; };
 		5BB102316BBE2AD1C88ED756 /* FirstRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = D113B18DCDCBBD990F15940B /* FirstRun.swift */; };
 		5CF7E985046DD02B2F1E0DF8 /* ClaudeCodeParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECA3C6D8E44A1281315D20F /* ClaudeCodeParserTests.swift */; };
@@ -622,6 +623,7 @@
 		D113B18DCDCBBD990F15940B /* FirstRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRun.swift; sourceTree = "<group>"; };
 		D15909105EF616C0E525A5D1 /* InsightEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightEngineTests.swift; sourceTree = "<group>"; };
 		D3C1D227469CFCB265590E8A /* OpenBurnBarConnectorPlaneService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarConnectorPlaneService.swift; sourceTree = "<group>"; };
+		D50386D9EECD4646BF7CB24D /* BRIDGE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BRIDGE.md; sourceTree = "<group>"; };
 		D597D091C96C2CE36EB625AA /* CLIAssistantConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAssistantConsentSheet.swift; sourceTree = "<group>"; };
 		D5F4646CB1446CA3455C9997 /* OpenBurnBarOperatingLayer+MissionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarOperatingLayer+MissionActions.swift"; sourceTree = "<group>"; };
 		D62E8F68072B89ACEEA82D8F /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
@@ -836,6 +838,7 @@
 				873691E94763C330B8006D0A /* Resources */,
 				397CBD872E9DCC9E8B985CEA /* Shell */,
 				5C7923644D638682512A39DB /* UI */,
+				D50386D9EECD4646BF7CB24D /* BRIDGE.md */,
 				B8214B3FA52967A1F16353B8 /* BUILD-NOTES.md */,
 			);
 			path = PetCompanion;
@@ -1477,6 +1480,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5C166547F70E015F29ECE07F /* Build configuration list for PBXNativeTarget "OpenBurnBar" */;
 			buildPhases = (
+				1AEA1029E3DCC1C59FCD5242 /* Sync Imagine 3D Pets */,
 				EF7D3D6CF9326CBCD20C7DF5 /* Sources */,
 				BF543DDDE8456E6E5033A02D /* Resources */,
 				FAA70BABCC5CB9EA6AEC9DB9 /* Frameworks */,
@@ -1601,6 +1605,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9F6B4D4A706DCBC7C0D44CF4 /* Assets.xcassets in Resources */,
+				5AB91A37124A064AF870FC0E /* BRIDGE.md in Resources */,
 				EFFFB9A21F23E0BAA83087BD /* BUILD-NOTES.md in Resources */,
 				1303E789DE930B547998D00A /* GoogleService-Info.plist.example in Resources */,
 				029D53E8F2C8D56AC3E23787 /* Models in Resources */,
@@ -1612,6 +1617,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		1AEA1029E3DCC1C59FCD5242 /* Sync Imagine 3D Pets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync Imagine 3D Pets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/sync-imagine-pets.sh\"\n";
+		};
 		A9E0A628A99EA48CA01A3B0C /* Copy Swift Objective-C Interface Header */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1982,7 +2006,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_C0616241-35FB-4BE8-A494-37398D0C5901" /* OpenBurnBarCore */;
+			productRef = "TEMP_1F8FBF71-2844-4DFB-A84A-C49173AEB5B2" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -2451,7 +2475,7 @@
 			package = E0CBA8F156DDCAF7E827B423 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
 		};
-		"TEMP_C0616241-35FB-4BE8-A494-37398D0C5901" /* OpenBurnBarCore */ = {
+		"TEMP_1F8FBF71-2844-4DFB-A84A-C49173AEB5B2" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};

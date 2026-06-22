@@ -23,6 +23,8 @@ struct PetDefinition: Codable, Hashable, Sendable {
     /// Pet family, e.g. `"sweeper"`.
     var kind: String?
     var displayName: String?
+    /// Catalog grouping used by the form picker (e.g. Founders / Legends).
+    var group: String?
     var description: String?
     /// Identity swatches (locked palette per the atlas contract).
     var palette: [String]?
@@ -46,8 +48,8 @@ struct PetDefinition: Codable, Hashable, Sendable {
     var license: License?
 
     enum CodingKeys: String, CodingKey {
-        case schema, id, name, kind, displayName, description, palette
-        case atlas2d, model3d, behavior, behaviorMechanic, locomotion, agent, license
+        case schema, id, name, kind, displayName, group, description, palette
+        case atlas2d, model3d, forms, behavior, behaviorMechanic, locomotion, agent, license
         // Legacy top-level `pet.json` atlas keys (PET-ATLAS-CONTRACT v1).
         case legacyGrid = "grid"
         case legacyCell = "cell"
@@ -66,9 +68,12 @@ struct PetDefinition: Codable, Hashable, Sendable {
         name = try c.decode(String.self, forKey: .name)
         kind = try c.decodeIfPresent(String.self, forKey: .kind)
         displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
+        group = try c.decodeIfPresent(String.self, forKey: .group)
         description = try c.decodeIfPresent(String.self, forKey: .description)
         palette = try c.decodeIfPresent([String].self, forKey: .palette)
+        let canonicalForms = try c.decodeIfPresent([PetDefinitionForm].self, forKey: .forms) ?? []
         model3d = try c.decodeIfPresent(Model3D.self, forKey: .model3d)
+            ?? canonicalForms.compactMap(\.model3d).first
         behavior = try c.decodeIfPresent(PetBehaviorGraph.self, forKey: .behavior)
         behaviorMechanic = try c.decodeIfPresent(String.self, forKey: .behaviorMechanic)
         locomotion = try c.decodeIfPresent(String.self, forKey: .locomotion)
@@ -98,6 +103,8 @@ struct PetDefinition: Codable, Hashable, Sendable {
                 default: def,
                 sockets: nil
             )
+        } else if let canonicalAtlas = canonicalForms.compactMap(\.atlas2d).first {
+            atlas2d = canonicalAtlas
         } else {
             atlas2d = nil
         }
@@ -110,6 +117,7 @@ struct PetDefinition: Codable, Hashable, Sendable {
         try c.encode(name, forKey: .name)
         try c.encodeIfPresent(kind, forKey: .kind)
         try c.encodeIfPresent(displayName, forKey: .displayName)
+        try c.encodeIfPresent(group, forKey: .group)
         try c.encodeIfPresent(description, forKey: .description)
         try c.encodeIfPresent(palette, forKey: .palette)
         try c.encodeIfPresent(atlas2d, forKey: .atlas2d)
@@ -248,6 +256,37 @@ extension PetDefinition {
     }
 }
 
+private struct PetDefinitionForm: Decodable {
+    var atlas2d: PetDefinition.Atlas2D?
+    var model3d: PetDefinition.Model3D?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, modelKind, glb, clips, preview, usdz
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try c.decode(String.self, forKey: .kind)
+        switch kind {
+        case "atlas2d":
+            atlas2d = try PetDefinition.Atlas2D(from: decoder)
+            model3d = nil
+        case "model3d":
+            atlas2d = nil
+            model3d = PetDefinition.Model3D(
+                kind: try c.decodeIfPresent(String.self, forKey: .modelKind) ?? "rigged",
+                glb: try c.decode(String.self, forKey: .glb),
+                clips: try c.decodeIfPresent([String: String].self, forKey: .clips),
+                preview: try c.decodeIfPresent(String.self, forKey: .preview),
+                usdz: try c.decodeIfPresent(String.self, forKey: .usdz)
+            )
+        default:
+            atlas2d = nil
+            model3d = nil
+        }
+    }
+}
+
 // MARK: - AgentConfig
 
 extension PetDefinition {
@@ -284,9 +323,14 @@ extension PetDefinition {
     }
 
     /// Decode a bundled pet by id, looking for `petdef.json` then `pet.json`
-    /// inside a `Pets/<id>/` resource folder, mirroring the bundle layout in
-    /// PLAN §3. Returns `nil` if no definition resource is present.
+    /// inside a `Pets/<id>/` or synced `Models/<id>/` resource folder, mirroring
+    /// the bundle layout in PLAN §3. Returns `nil` if no definition resource is present.
     static func loadBundled(id: String, in bundle: Bundle = .main) -> PetDefinition? {
+        if let url = bundle.url(forResource: "petdef", withExtension: "json", subdirectory: "Models/\(id)")
+            ?? bundle.url(forResource: "\(id)/petdef", withExtension: "json", subdirectory: "Models") {
+            return try? load(contentsOf: url)
+        }
+
         let candidates = ["petdef", "pet"]
         for name in candidates {
             if let url = bundle.url(forResource: name, withExtension: "json", subdirectory: "Pets/\(id)")
