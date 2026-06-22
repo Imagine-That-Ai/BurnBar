@@ -372,6 +372,7 @@ export const requestKnowledgeResync = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to request a re-sync.");
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarCloudProEntitlement(uid);
 
     const reposSnap = await db.collection(`users/${uid}/knowledge_repos`).limit(200).get();
     const now = Timestamp.now();
