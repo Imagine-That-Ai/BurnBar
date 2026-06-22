@@ -891,6 +891,29 @@ function valueReferencesStepOutput(value, stepId) {
   ).test(normalized);
 }
 
+function valueReferencesStepObject(value, stepId) {
+  const normalized = normalizeYamlScalar(value);
+  if (
+    new RegExp(
+      `\\btoJSON\\s*\\(\\s*${contextPropertyAccessPattern("steps", stepId)}\\s*\\)`,
+      "iu",
+    ).test(normalized)
+  ) {
+    return true;
+  }
+  return new RegExp(
+    `${contextPropertyAccessPattern("steps", stepId)}(?!\\s*(?:\\.|\\[))`,
+    "iu",
+  ).test(normalized);
+}
+
+function valueReferencesTaintedStepMaterial(value, stepId) {
+  return (
+    valueReferencesStepObject(value, stepId) ||
+    valueReferencesStepOutput(value, stepId)
+  );
+}
+
 function stepWritesTaintedMaterialToGithubOutputChannel(
   step,
   taintedOutputs,
@@ -900,7 +923,9 @@ function stepWritesTaintedMaterialToGithubOutputChannel(
   const run = stepRunValue(step);
   if (valueReferencesSensitiveMaterial(run, taintedOutputs)) return true;
   if (
-    [...taintedStepIds].some((stepId) => valueReferencesStepOutput(run, stepId))
+    [...taintedStepIds].some((stepId) =>
+      valueReferencesTaintedStepMaterial(run, stepId),
+    )
   ) {
     return true;
   }
@@ -909,7 +934,7 @@ function stepWritesTaintedMaterialToGithubOutputChannel(
     if (valueReferencesSensitiveMaterial(entry.value, taintedOutputs))
       return true;
     return [...taintedStepIds].some((stepId) =>
-      valueReferencesStepOutput(entry.value, stepId),
+      valueReferencesTaintedStepMaterial(entry.value, stepId),
     );
   });
 }
@@ -953,7 +978,7 @@ function taintedJobOutputsByJobName(jobs, steps) {
         if (
           valueReferencesSensitiveMaterial(entry.value, taintedOutputs) ||
           [...taintedStepIds].some((stepId) =>
-            valueReferencesStepOutput(entry.value, stepId),
+            valueReferencesTaintedStepMaterial(entry.value, stepId),
           )
         ) {
           outputNames.add(normalizedContextName(entry.key));
