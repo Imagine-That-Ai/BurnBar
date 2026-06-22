@@ -128,6 +128,21 @@ function shellRunBlockFromStep(stepBlock) {
   return body.join("\n");
 }
 
+function stripShellHeredocBodies(source) {
+  const output = [];
+  let delimiter = null;
+  for (const line of source.split("\n")) {
+    if (delimiter) {
+      if (line.trim() === delimiter) delimiter = null;
+      continue;
+    }
+    output.push(line);
+    const heredoc = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/u.exec(line);
+    if (heredoc) delimiter = heredoc[1];
+  }
+  return output.join("\n");
+}
+
 function namedStepBlock(file, source, stepName, message) {
   const stepBlocks = workflowStepBlocks(source, stepName);
   if (stepBlocks.length === 0) {
@@ -153,7 +168,9 @@ function namedStepRunBlock(file, source, stepName, message) {
 }
 
 function requireStepFailClosedMode(file, source, stepName, message) {
-  const runBlock = namedStepRunBlock(file, source, stepName, message);
+  const runBlock = stripShellHeredocBodies(
+    namedStepRunBlock(file, source, stepName, message),
+  );
   if (!runBlock) {
     return;
   }
@@ -165,7 +182,9 @@ function requireStepFailClosedMode(file, source, stepName, message) {
 }
 
 function requireExecutableShellLine(file, source, stepName, command, message) {
-  const runBlock = namedStepRunBlock(file, source, stepName, message);
+  const runBlock = stripShellHeredocBodies(
+    namedStepRunBlock(file, source, stepName, message),
+  );
   if (!runBlock) {
     return;
   }
@@ -227,9 +246,10 @@ function requireNoWorkflowRunBranchFilter(file, source, message) {
 }
 
 function shellIfBlock(source, ifNeedle) {
-  const start = source.indexOf(ifNeedle);
+  const executableSource = stripShellHeredocBodies(source);
+  const start = executableSource.indexOf(ifNeedle);
   if (start === -1) return null;
-  const lines = source.slice(start).split("\n");
+  const lines = executableSource.slice(start).split("\n");
   const block = [];
   let depth = 0;
   for (const line of lines) {

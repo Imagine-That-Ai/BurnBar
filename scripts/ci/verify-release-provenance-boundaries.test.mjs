@@ -261,6 +261,16 @@ expect(
 );
 
 expect(
+  "release workflow heredoc-only manual tag-ref guard fails",
+  GOOD_RELEASE.replace(
+    'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n            echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1\n          fi',
+    'cat <<\'EOF\'\n          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n            echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1\n          fi\n          EOF\n          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then\n            exit 1\n          fi',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow neutered manual tag-ref guard body fails",
   GOOD_RELEASE.replace(
     'echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1',
@@ -382,6 +392,16 @@ expect(
   GOOD_RELEASE.replace(
     'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
     'echo \'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"\'',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow heredoc-only checkout equality check fails",
+  GOOD_RELEASE.replace(
+    'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+    'cat <<\'EOF\'\n          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"\n          EOF',
   ),
   GOOD_SUPPLY_CHAIN,
   1,
