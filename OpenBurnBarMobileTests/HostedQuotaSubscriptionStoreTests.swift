@@ -395,20 +395,16 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 1)
     }
 
-    func testSignedOutPurchaseStillPresentsStoreKitAndFinishesWithActionableRecovery() async throws {
+    func testSignedOutSubscriptionDoesNotStartStoreKitPurchase() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
         let service = FakeHostedQuotaEntitlementService()
-        var didFinishTransaction = false
-        var capturedOptions: Set<Product.PurchaseOption>?
+        var didCallPurchase = false
         let store = makeHostedQuotaSubscriptionStore(
             functions: service,
-            purchaseProduct: { _, options in
-                capturedOptions = options
-                return .success(
-                    signedTransactionJWS: "signed-out-transaction-jws",
-                    finish: { didFinishTransaction = true }
-                )
+            purchaseProduct: { _, _ in
+                didCallPurchase = true
+                return .pending
             },
             isSignedIn: { false }
         )
@@ -416,8 +412,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
 
         await store.purchase()
 
-        XCTAssertTrue(didFinishTransaction)
-        XCTAssertEqual(capturedOptions, [])
+        XCTAssertFalse(didCallPurchase)
         XCTAssertEqual(service.bindingRequests.count, 0)
         XCTAssertEqual(service.verifyRequests.count, 0)
         XCTAssertFalse(store.isActive)
