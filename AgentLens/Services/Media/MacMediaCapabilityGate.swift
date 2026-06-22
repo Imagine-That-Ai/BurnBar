@@ -95,6 +95,20 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         sessionDurationLimitSeconds: Int?,
         sessionByteBudget: Int64?
     ) async -> MediaCapabilityCheck {
+        await check(
+            feature: feature,
+            sessionDurationLimitSeconds: sessionDurationLimitSeconds,
+            sessionByteBudget: sessionByteBudget,
+            transferDirection: nil
+        )
+    }
+
+    nonisolated func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds: Int?,
+        sessionByteBudget: Int64?,
+        transferDirection: MediaCapabilityTransferDirection?
+    ) async -> MediaCapabilityCheck {
         await MainActor.run {
             let entitlement = entitlementProvider()
             guard entitlement.active else {
@@ -133,7 +147,8 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 envelope: envelope,
                 usage: usage,
                 sessionDurationLimitSeconds: sessionDurationLimitSeconds,
-                sessionByteBudget: sessionByteBudget
+                sessionByteBudget: sessionByteBudget,
+                transferDirection: transferDirection
             )
             if case .denied = dailyDecision { return dailyDecision }
 
@@ -179,18 +194,42 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         envelope: MediaBudgetEnvelope,
         usage: MediaQuotaUsageSnapshot,
         sessionDurationLimitSeconds: Int?,
-        sessionByteBudget: Int64?
+        sessionByteBudget: Int64?,
+        transferDirection: MediaCapabilityTransferDirection?
     ) -> MediaCapabilityCheck {
         switch feature {
         case .fileTransfer:
             let dailyBytesIn = Int64(envelope.fileTransferDailyGBIn) * 1_000_000_000
             let dailyBytesOut = Int64(envelope.fileTransferDailyGBOut) * 1_000_000_000
-            if usage.bytesDownloadedFile >= dailyBytesIn && usage.bytesUploadedFile >= dailyBytesOut {
-                return .denied(reason: .dailyCapReached)
-            }
-            if let sessionByteBudget,
-               (usage.bytesUploadedFile + sessionByteBudget) > dailyBytesOut {
+            if let sessionByteBudget, sessionByteBudget < 0 {
                 return .denied(reason: .sessionCapReached)
+            }
+            let requestedBytes = sessionByteBudget ?? 0
+            switch transferDirection {
+            case .inbound:
+                if usage.bytesDownloadedFile >= dailyBytesIn {
+                    return .denied(reason: .dailyCapReached)
+                }
+                if sessionByteBudget != nil,
+                   (usage.bytesDownloadedFile + requestedBytes) > dailyBytesIn {
+                    return .denied(reason: .sessionCapReached)
+                }
+            case .outbound:
+                if usage.bytesUploadedFile >= dailyBytesOut {
+                    return .denied(reason: .dailyCapReached)
+                }
+                if sessionByteBudget != nil,
+                   (usage.bytesUploadedFile + requestedBytes) > dailyBytesOut {
+                    return .denied(reason: .sessionCapReached)
+                }
+            case nil:
+                if usage.bytesDownloadedFile >= dailyBytesIn || usage.bytesUploadedFile >= dailyBytesOut {
+                    return .denied(reason: .dailyCapReached)
+                }
+                if sessionByteBudget != nil,
+                   (usage.bytesDownloadedFile + requestedBytes) > dailyBytesIn || (usage.bytesUploadedFile + requestedBytes) > dailyBytesOut {
+                    return .denied(reason: .sessionCapReached)
+                }
             }
         case .screenShare:
             let dailyCapSeconds = envelope.screenShareDailyMinutes * 60

@@ -45,6 +45,7 @@ final class MacFileTransferService: ObservableObject {
         case fetchFailed(String)
         case dispatchUnavailable
         case settingDisabled
+        case admissionDenied(String)
 
         var errorDescription: String? {
             switch self {
@@ -60,6 +61,8 @@ final class MacFileTransferService: ObservableObject {
                 return "No active iroh stream is available to advertise the file on."
             case .settingDisabled:
                 return "media_blob_transfer_enabled is off."
+            case .admissionDenied(let reason):
+                return "Media admission denied: \(reason)"
             }
         }
     }
@@ -193,6 +196,22 @@ final class MacFileTransferService: ObservableObject {
         guard settingsProvider() else { throw Failure.settingDisabled }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Failure.fileMissing(fileURL)
+        }
+        guard let outboundByteBudget = Self.fileSizeBytes(at: fileURL) else {
+            let failure = Failure.publishFailed("unable to read file size")
+            lastError = failure
+            throw failure
+        }
+        let admission = await capabilityGate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: outboundByteBudget,
+            transferDirection: .outbound
+        )
+        if case .denied(let reason) = admission {
+            let failure = Failure.admissionDenied(reason.rawValue)
+            lastError = failure
+            throw failure
         }
 
         incrementFileTransferCount()
@@ -391,7 +410,8 @@ final class MacFileTransferService: ObservableObject {
         let admission = await capabilityGate.check(
             feature: .fileTransfer,
             sessionDurationLimitSeconds: nil,
-            sessionByteBudget: manifest.size
+            sessionByteBudget: manifest.size,
+            transferDirection: .inbound
         )
         if case .denied(let reason) = admission {
             await sendDenialAck(
@@ -511,6 +531,16 @@ final class MacFileTransferService: ObservableObject {
     private func decrementFileTransferCount() {
         inFlightCount = max(0, inFlightCount - 1)
         MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
+    }
+
+    private static func fileSizeBytes(at url: URL) -> Int64? {
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let size = attributes[.size] as? NSNumber
+        else {
+            return nil
+        }
+        return size.int64Value
     }
 
     /// RR-18 — overwrite the freshly-fetched plaintext blob in place with its

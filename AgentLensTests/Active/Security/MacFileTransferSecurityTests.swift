@@ -109,6 +109,59 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testOutboundSendDeniedByCapabilityGateSkipsPublishAndAdvertise() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let backend = QuarantineBlobBackend()
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-send-gate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let outboundURL = temp.appendingPathComponent("outbound.txt")
+        try Data("outbound".utf8).write(to: outboundURL)
+
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            capabilityGate: DenyingCapabilityGate(reason: .killSwitchActive)
+        )
+        var advertisedFrames: [HermesRealtimeRelayFrame] = []
+        adapter.setAdvertiseSender { frame in
+            advertisedFrames.append(frame)
+        }
+
+        do {
+            _ = try await adapter.sendFile(
+                at: outboundURL,
+                uid: "uid-1",
+                connectionID: "connection-1",
+                peerDeviceID: "iphone-1"
+            )
+            XCTFail("expected outbound admission denial")
+        } catch let failure as MacFileTransferService.Failure {
+            guard case .admissionDenied(let reason) = failure else {
+                XCTFail("expected admissionDenied, got \(failure)")
+                return
+            }
+            XCTAssertEqual(reason, MediaCapabilityDenialReason.killSwitchActive.rawValue)
+        }
+
+        let publishedPaths = await backend.publishedPaths
+        XCTAssertTrue(publishedPaths.isEmpty, "denied send must not publish a blob")
+        XCTAssertTrue(advertisedFrames.isEmpty, "denied send must not advertise a ticket")
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .fileTransfer), 0)
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testInboundAdvertiseSealsReceivedBytesAtRestWhenSessionKeyAvailable() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -246,9 +299,14 @@ private struct DenyingCapabilityGate: MediaCapabilityGate {
 
 private actor QuarantineBlobBackend: IrohBlobBackend {
     private var fetchedTicketStorage: [String] = []
+    private var publishedPathStorage: [String] = []
 
     var fetchedTickets: [String] {
         fetchedTicketStorage
+    }
+
+    var publishedPaths: [String] {
+        publishedPathStorage
     }
 
     func bootstrap(
@@ -260,7 +318,8 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
     }
 
     func publishBlob(localPath: String) async throws -> String {
-        "blob1unused"
+        publishedPathStorage.append(localPath)
+        return "blob1unused"
     }
 
     func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {

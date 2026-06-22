@@ -248,13 +248,48 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let result = await gate.check(
             feature: .fileTransfer,
             sessionDurationLimitSeconds: nil,
-            sessionByteBudget: 1_000_000_000
+            sessionByteBudget: 1_000_000_000,
+            transferDirection: .outbound
         )
         guard case .denied(let reason) = result else {
             XCTFail("expected denied")
             return
         }
         XCTAssertEqual(reason, .sessionCapReached)
+    }
+
+    func testInboundFileTransferByteBudgetUsesDownloadCap() async {
+        let nearInboundCap = MediaQuotaUsageSnapshot(
+            bytesUploadedFile: 0,
+            bytesDownloadedFile: 4_500_000_000, // ~4.5 GB of 5 GB
+            fileTransfersInitiated: 5,
+            fileTransfersFailed: 0,
+            screenShareSecondsUsed: 0,
+            screenShareSessions: 0,
+            videoCallSecondsUsed: 0,
+            videoCallSessions: 0
+        )
+        let gate = makeGate(entitlement: happyEntitlement, usage: nearInboundCap, budget: normalBudget, concurrent: 0)
+
+        let inbound = await gate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: 1_000_000_000,
+            transferDirection: .inbound
+        )
+        guard case .denied(let inboundReason) = inbound else {
+            XCTFail("expected inbound denial")
+            return
+        }
+        XCTAssertEqual(inboundReason, .sessionCapReached)
+
+        let outbound = await gate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: 1_000_000_000,
+            transferDirection: .outbound
+        )
+        XCTAssertTrue(outbound.isAllowed, "download usage must not consume outbound allowance")
     }
 
     func testRemoteUnlockSessionRegistryBindsCredentialSessionToPeer() {
