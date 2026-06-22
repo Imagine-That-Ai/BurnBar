@@ -31,6 +31,8 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
+  issues:
+    types: [opened]
   pull_request:
     types: [opened, edited]
 jobs:
@@ -52,6 +54,12 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         contains(github.event.review.body, '@droid') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
+      ) ||
+      (
+        github.event_name == 'issues' &&
+        github.event.issue.pull_request == null &&
+        (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
       ) ||
       (
         github.event_name == 'pull_request' &&
@@ -100,13 +108,14 @@ jobs:
 const REMEDIATED_DROID_SINGLE_EVENT = fixture`
 name: Droid Tag
 on:
-  issue_comment:
-    types: [created]
+  issues:
+    types: [opened]
 jobs:
   droid:
     if: |
-      contains(github.event.comment.body, '@droid') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      github.event.issue.pull_request == null &&
+      contains(github.event.issue.body, '@droid') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     env:
       FACTORY_API_KEY_AVAILABLE: \${{ secrets.FACTORY_API_KEY != '' }}
     permissions:
@@ -368,7 +377,7 @@ expect(
 );
 
 expect(
-  "remediated single-event Droid workflow passes",
+  "remediated single-event issue Droid workflow passes",
   { "droid.yml": REMEDIATED_DROID_SINGLE_EVENT },
   0,
 );
@@ -447,10 +456,43 @@ expect(
 );
 
 expect(
-  "single-event issue-comment trigger without trusted author association fails",
+  "single-event issue trigger without trusted author association fails",
   {
     "droid.yml": REMEDIATED_DROID_SINGLE_EVENT.replace(
-      ' &&\n      contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.comment.author_association)',
+      ' &&\n      contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.issue.author_association)',
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "multi-event issue trigger without trusted author association fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      ' &&\n        contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.issue.author_association)',
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "issue trigger without explicit pure-issue guard fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "        github.event.issue.pull_request == null &&\n",
+      "",
+    ),
+  },
+  1,
+);
+
+expect(
+  "single-event issue trigger without explicit pure-issue guard fails",
+  {
+    "droid.yml": REMEDIATED_DROID_SINGLE_EVENT.replace(
+      "      github.event.issue.pull_request == null &&\n",
       "",
     ),
   },
