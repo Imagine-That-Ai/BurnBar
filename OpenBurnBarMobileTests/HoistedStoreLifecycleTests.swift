@@ -1,4 +1,5 @@
 import XCTest
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
@@ -111,6 +112,54 @@ final class HoistedStoreLifecycleTests: XCTestCase {
         await store.refresh()
         if store.error != nil {
             XCTAssertFalse(store.hasLoadedOnce, "A failed refresh must leave the store cold so loadIfNeeded retries")
+        }
+    }
+
+    func testMobileMediaBudgetStatusStore_skipsCloudListenerForAnonymousStartup() {
+        let store = MobileMediaBudgetStatusStore(
+            isFirebaseConfiguredProvider: { true },
+            isCloudAccountProvider: { false }
+        )
+
+        store.startListening()
+
+        XCTAssertFalse(store.isListening, "Anonymous/local startup must not open Firestore during app launch.")
+    }
+
+    func testMobileMediaBudgetStatusStore_rearmsCloudListenerAfterSignIn() {
+        var isCloudAccount = false
+        var registrations = 0
+        let listener = FakeListenerRegistration()
+        let store = MobileMediaBudgetStatusStore(
+            isFirebaseConfiguredProvider: { true },
+            isCloudAccountProvider: { isCloudAccount },
+            addSnapshotListener: { documentPath, _ in
+                XCTAssertEqual(documentPath, "ops/media_budget_status/state/current")
+                registrations += 1
+                return listener
+            }
+        )
+
+        store.startListening()
+        XCTAssertFalse(store.isListening, "Anonymous startup should not register Firestore.")
+        XCTAssertEqual(registrations, 0)
+
+        isCloudAccount = true
+        store.handleCloudAccountStateChanged(isCloudAccount: true)
+
+        XCTAssertTrue(store.isListening, "Cloud sign-in should re-arm the budget listener without relaunch.")
+        XCTAssertEqual(registrations, 1)
+
+        store.handleCloudAccountStateChanged(isCloudAccount: false)
+        XCTAssertFalse(store.isListening, "Returning to anonymous/signed-out state should remove the listener.")
+        XCTAssertEqual(listener.removeCallCount, 1)
+    }
+
+    private final class FakeListenerRegistration: NSObject, ListenerRegistration {
+        private(set) var removeCallCount = 0
+
+        func remove() {
+            removeCallCount += 1
         }
     }
 }
