@@ -6,6 +6,11 @@ import OpenBurnBarCore
 
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
 final class SearchIndexStore: Sendable {
+    private enum WriteTuning {
+        static let chunkMutationBatchSize = 64
+        static let interChunkMutationPauseNanoseconds: UInt64 = 10_000_000
+    }
+
     private let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
@@ -393,68 +398,33 @@ final class SearchIndexStore: Sendable {
             )
         }
 
-        // Apply the diff
-        let (actualAdded, actualDeleted) = try await dbQueue.write { db -> (Int, Int) in
-            var actualAdded = 0
-            let documentRow = try Row.fetchOne(
-                db,
-                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
-                arguments: [documentID]
-            )
-            let projectName = documentRow?["projectName"] as? String ?? ""
-            let provider = documentRow?["provider"] as? String ?? ""
+        var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0]!.map(\.id) }
+        var chunksToInsert: [SearchChunkRecord] = []
 
-            // Delete old chunks whose contentHash is no longer present
-            var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0]!.map(\.id) }
-
-            // Delete old chunks for rekeyed hashes where IDs differ.
-            // These chunks have the same contentHash but different chunk IDs (boundary shift).
-            // We delete the old chunks and insert the new chunks so the persisted
-            // chunk set matches the projected chunk set exactly.
-            for hash in unchangedHashes {
-                let oldIDs = Set(existingByHash[hash]!.map(\.id))
-                let newIDs = Set(newByHash[hash]!.map(\.id))
-                if oldIDs != newIDs {
-                    // New chunk IDs not in old set: these new chunks will be inserted below
-                    // Old chunk IDs not in new set: these old chunks need to be deleted
-                    let idsOnlyInOld = oldIDs.subtracting(newIDs)
-                    oldIDsToDelete.append(contentsOf: idsOnlyInOld)
-                }
-            }
-
-            // Perform deletes (only for truly deleted contentHashes and old rekeyed IDs)
-            for chunkID in oldIDsToDelete {
-                try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
-                try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
-            }
-            let actualDeleted = oldIDsToDelete.count
-
-            // Insert added chunks (new content hashes)
-            for hash in addedHashes {
-                for chunk in newByHash[hash]! {
-                    try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
-                    actualAdded += 1
-                }
-            }
-
-            // Insert new chunks for rekeyed hashes (same contentHash, different chunk IDs).
-            // This ensures the persisted chunk set matches the projected chunk set when
-            // boundary shifts cause chunk IDs to differ for the same content.
-            for hash in unchangedHashes {
-                let oldIDs = Set(existingByHash[hash]!.map(\.id))
-                let newIDs = Set(newByHash[hash]!.map(\.id))
-                if oldIDs != newIDs {
-                    // New IDs not in old set: insert these new chunks
-                    let idsOnlyInNew = newIDs.subtracting(oldIDs)
-                    for chunk in newByHash[hash]! where idsOnlyInNew.contains(chunk.id) {
-                        try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
-                        actualAdded += 1
-                    }
-                }
-            }
-
-            return (actualAdded, actualDeleted)
+        for hash in addedHashes {
+            chunksToInsert.append(contentsOf: newByHash[hash]!)
         }
+
+        for hash in unchangedHashes {
+            let oldIDs = Set(existingByHash[hash]!.map(\.id))
+            let newIDs = Set(newByHash[hash]!.map(\.id))
+            guard oldIDs != newIDs else { continue }
+            oldIDsToDelete.append(contentsOf: oldIDs.subtracting(newIDs))
+            let idsOnlyInNew = newIDs.subtracting(oldIDs)
+            chunksToInsert.append(contentsOf: newByHash[hash]!.filter { idsOnlyInNew.contains($0.id) })
+        }
+
+        let (projectName, provider) = try await fetchDocumentIndexContext(documentID: documentID)
+        let (actualAdded, actualDeleted) = try await applyChunkMutationsInBatches(
+            documentID: documentID,
+            title: title,
+            projectName: projectName,
+            provider: provider,
+            chunkIDsToDelete: oldIDsToDelete.sorted(),
+            chunksToInsert: chunksToInsert.sorted { lhs, rhs in
+                lhs.ordinal == rhs.ordinal ? lhs.id < rhs.id : lhs.ordinal < rhs.ordinal
+            }
+        )
 
         return ChunkDiffResult(
             unchanged: unchangedCount,
@@ -467,7 +437,28 @@ final class SearchIndexStore: Sendable {
     }
 
     func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
-        try await dbQueue.write { db in
+        let existingChunkIDs = try await dbQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT id FROM search_chunks WHERE documentID = ? ORDER BY ordinal ASC, id ASC",
+                arguments: [documentID]
+            )
+        }
+        let (projectName, provider) = try await fetchDocumentIndexContext(documentID: documentID)
+        _ = try await applyChunkMutationsInBatches(
+            documentID: documentID,
+            title: title,
+            projectName: projectName,
+            provider: provider,
+            chunkIDsToDelete: existingChunkIDs,
+            chunksToInsert: chunks.sorted { lhs, rhs in
+                lhs.ordinal == rhs.ordinal ? lhs.id < rhs.id : lhs.ordinal < rhs.ordinal
+            }
+        )
+    }
+
+    private func fetchDocumentIndexContext(documentID: String) async throws -> (projectName: String, provider: String) {
+        try await dbQueue.read { db in
             let documentRow = try Row.fetchOne(
                 db,
                 sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
@@ -475,20 +466,52 @@ final class SearchIndexStore: Sendable {
             )
             let projectName = documentRow?["projectName"] as? String ?? ""
             let provider = documentRow?["provider"] as? String ?? ""
+            return (projectName, provider)
+        }
+    }
 
-            try db.execute(
-                sql: "DELETE FROM search_chunks_fts WHERE documentID = ?",
-                arguments: [documentID]
-            )
-            try db.execute(
-                sql: "DELETE FROM search_chunks WHERE documentID = ?",
-                arguments: [documentID]
-            )
+    private func applyChunkMutationsInBatches(
+        documentID: String,
+        title: String,
+        projectName: String,
+        provider: String,
+        chunkIDsToDelete: [String],
+        chunksToInsert: [SearchChunkRecord]
+    ) async throws -> (added: Int, deleted: Int) {
+        let batchSize = max(1, WriteTuning.chunkMutationBatchSize)
+        var deleted = 0
+        var added = 0
 
-            for chunk in chunks.sorted(by: { $0.ordinal < $1.ordinal }) {
-                try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+        for start in stride(from: 0, to: chunkIDsToDelete.count, by: batchSize) {
+            let end = min(chunkIDsToDelete.count, start + batchSize)
+            let batch = Array(chunkIDsToDelete[start..<end])
+            try await dbQueue.write { db in
+                for chunkID in batch {
+                    try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
+                    try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
+                }
+            }
+            deleted += batch.count
+            if end < chunkIDsToDelete.count || chunksToInsert.isEmpty == false {
+                try await Task.sleep(nanoseconds: WriteTuning.interChunkMutationPauseNanoseconds)
             }
         }
+
+        for start in stride(from: 0, to: chunksToInsert.count, by: batchSize) {
+            let end = min(chunksToInsert.count, start + batchSize)
+            let batch = Array(chunksToInsert[start..<end])
+            try await dbQueue.write { db in
+                for chunk in batch {
+                    try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                }
+            }
+            added += batch.count
+            if end < chunksToInsert.count {
+                try await Task.sleep(nanoseconds: WriteTuning.interChunkMutationPauseNanoseconds)
+            }
+        }
+
+        return (added, deleted)
     }
 
     /// Fetches existing embeddings keyed by contentHash for a document.
