@@ -31,8 +31,6 @@ public struct PiConnectionRecord: Codable, Identifiable, Sendable, Equatable {
     public var advertisedModel: String?
     /// Active Pi gateway instance (when Redis discovery is wired).
     public var instanceID: String?
-    /// Optional Redis registry URL — only used when the host has multi-instance Pi.
-    public var redisURL: String?
     public var relayPublicKey: String?
     public var relayKeyVersion: Int?
     public var relayEncryption: String?
@@ -56,7 +54,6 @@ public struct PiConnectionRecord: Codable, Identifiable, Sendable, Equatable {
         case endpointURL
         case advertisedModel
         case instanceID = "selectedInstanceID"
-        case redisURL
         case relayPublicKey
         case relayKeyVersion
         case relayEncryption
@@ -81,7 +78,6 @@ public struct PiConnectionRecord: Codable, Identifiable, Sendable, Equatable {
         endpointURL: String? = nil,
         advertisedModel: String? = nil,
         instanceID: String? = nil,
-        redisURL: String? = nil,
         relayPublicKey: String? = nil,
         relayKeyVersion: Int? = nil,
         relayEncryption: String? = nil,
@@ -104,7 +100,6 @@ public struct PiConnectionRecord: Codable, Identifiable, Sendable, Equatable {
         self.endpointURL = endpointURL
         self.advertisedModel = advertisedModel
         self.instanceID = instanceID
-        self.redisURL = redisURL
         self.relayPublicKey = relayPublicKey
         self.relayKeyVersion = relayKeyVersion
         self.relayEncryption = relayEncryption

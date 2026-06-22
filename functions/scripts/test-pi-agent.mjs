@@ -105,6 +105,8 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
   assert.match(block, /allow create: if piRelayConnectionWrite\(userId, connectionId\);/);
   assert.match(block, /allow update: if piRelayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
   assert.match(rules, /function piRelayConnectionWrite\(userId, connectionId\)/);
+  assert.doesNotMatch(rules, /"redisURL"/, "Pi relay connection docs must not allow Redis registry URLs");
+  assert.doesNotMatch(rules, /request\.resource\.data\.redisURL/, "Pi relay rules must not validate a public Redis URL field");
 }
 {
   const start = rules.indexOf("match /users/{userId}/pi_agent_relay_requests/");

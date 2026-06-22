@@ -2890,6 +2890,13 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   await assertFails(setDoc(doc(db, connectionPath), connectionDoc));
   await seedHostedCloudEntitlement("gina");
   await assertSucceeds(setDoc(doc(db, connectionPath), connectionDoc));
+  await assertFails(
+    setDoc(doc(db, connectionPath), {
+      ...connectionDoc,
+      redisURL: "redis://:secret@127.0.0.1:6379/0",
+      updatedAt: "2026-05-12T00:00:02.000Z",
+    })
+  );
 
   await assertFails(
     setDoc(doc(db, requestPath), {

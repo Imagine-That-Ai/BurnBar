@@ -2,7 +2,7 @@
  * @fileoverview Pi Agent relay pairing and connection callables
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -118,7 +118,6 @@ export const completePiAgentPairing = onCall(
         endpointURL?: string;
         advertisedModel?: string;
         selectedInstanceID?: string;
-        redisURL?: string;
         capabilities?: string[];
         instances?: unknown[];
         models?: unknown[];
@@ -206,7 +205,6 @@ export const completePiAgentPairing = onCall(
             endpointURL,
             advertisedModel: boundedTrimmedString(request.data.advertisedModel, "advertisedModel", 160),
             selectedInstanceID: boundedTrimmedString(request.data.selectedInstanceID, "selectedInstanceID", 128),
-            redisURL: boundedTrimmedString(request.data.redisURL, "redisURL", 2048),
             relayPublicKey: boundedTrimmedString(request.data.relayPublicKey, "relayPublicKey", 256),
             relayKeyVersion:
               typeof request.data.relayKeyVersion === "number" ? request.data.relayKeyVersion : undefined,
@@ -221,7 +219,7 @@ export const completePiAgentPairing = onCall(
             updatedAt: now,
             schemaVersion: PI_AGENT_SCHEMA_VERSION,
           };
-          tx.set(connectionRef, stripUndefinedObject(doc), { merge: true });
+          tx.set(connectionRef, { ...stripUndefinedObject(doc), redisURL: FieldValue.delete() }, { merge: true });
           tx.set(pairingRef, { status: "completed", connectionId, updatedAt: now }, { merge: true });
           return doc;
         });

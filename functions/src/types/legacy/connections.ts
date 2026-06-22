@@ -567,7 +567,6 @@ export interface PiAgentConnectionDoc {
   endpointURL?: string;
   advertisedModel?: string;
   selectedInstanceID?: string;
-  redisURL?: string;
   relayPublicKey?: string;
   relayKeyVersion?: number;
   relayEncryption?: string;

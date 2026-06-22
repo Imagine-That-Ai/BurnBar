@@ -12,7 +12,6 @@ final class PiAgentRelayContractTests: XCTestCase {
             endpointURL: "http://127.0.0.1:8765",
             advertisedModel: "pi-default",
             instanceID: "default",
-            redisURL: "redis://127.0.0.1:6379/0",
             relayPublicKey: "public",
             relayKeyVersion: PiAgentRelayCrypto.keyVersion,
             relayEncryption: PiAgentRelayCrypto.algorithm,
@@ -66,11 +65,38 @@ final class PiAgentRelayContractTests: XCTestCase {
         let encodedConnectionJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: encodedConnection) as? [String: Any])
         XCTAssertEqual(encodedConnectionJSON["selectedInstanceID"] as? String, "default")
         XCTAssertNil(encodedConnectionJSON["instanceID"])
+        XCTAssertNil(encodedConnectionJSON["redisURL"])
         XCTAssertEqual(try roundTrip(connection), connection)
         XCTAssertEqual(try roundTrip(request), request)
         XCTAssertEqual(try roundTrip(chunk), chunk)
         XCTAssertEqual(request.operation.rawValue, "chatCompletions")
         XCTAssertEqual(chunk.kind.rawValue, "sse")
+    }
+
+    func testPiConnectionRecordIgnoresLegacyRedisURL() throws {
+        let legacy = """
+        {
+          "id": "relay-mac",
+          "displayName": "Mac Pi Relay",
+          "mode": "relayLink",
+          "status": "online",
+          "endpointURL": "http://127.0.0.1:8765",
+          "selectedInstanceID": "default",
+          "redisURL": "redis://:secret@127.0.0.1:6379/0",
+          "capabilities": ["chat_completions", "remote_relay"],
+          "instances": [],
+          "models": [],
+          "createdAt": "2026-05-10T00:00:00Z",
+          "updatedAt": "2026-05-10T00:00:00Z",
+          "schemaVersion": 2
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(PiConnectionRecord.self, from: legacy)
+        let reencoded = try JSONEncoder().encode(decoded)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        XCTAssertNil(json["redisURL"])
+        XCTAssertEqual(decoded.instanceID, "default")
     }
 
     func testRuntimePreferenceAndDeviceLinkRoundTrip() throws {
