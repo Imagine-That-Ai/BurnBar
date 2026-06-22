@@ -94,7 +94,10 @@ extension PetRenderer {
         let size = view.bounds.size
         let cell = atlas.cell
         guard cell.w > 0, cell.h > 0 else { return nil }
-        return CGPoint(x: p.x / cell.w * size.width, y: p.y / cell.h * size.height)
+        return CGPoint(
+            x: p.x / cell.w * size.width,
+            y: (cell.h - p.y) / cell.h * size.height
+        )
     }
 
     func containsVisibleContent(at point: CGPoint) -> Bool {
