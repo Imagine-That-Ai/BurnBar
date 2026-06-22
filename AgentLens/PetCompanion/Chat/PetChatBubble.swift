@@ -221,6 +221,10 @@ final class PetChatController {
                     let text = Self.renderedText(of: assistant)
                     if !text.isEmpty {
                         if !sawStreamActivity, !streaming, self.chat.activeStreamMessageId == nil {
+                            if Self.shouldUseLocalFallback(forNonStreamingAssistantText: text) {
+                                await self.answerLocally(history: self.pendingFallbackHistory, note: text)
+                                break
+                            }
                             sawText = true
                             self.replyText = text
                             self.pet?.fire(.streamStart)
@@ -403,6 +407,24 @@ final class PetChatController {
         let pieces = record.displayTranscript.filter { $0.kind == .text }
         if !pieces.isEmpty { return pieces.map(\.value).joined() }
         return record.content
+    }
+
+    static func shouldUseLocalFallback(forNonStreamingAssistantText text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return normalized.hasPrefix("Hermes isn’t running.")
+            || normalized.hasPrefix("Hermes gateway is running, but OpenBurnBar could not read its live model catalog.")
+            || normalized.hasPrefix("OpenClaw gateway is unavailable.")
+            || normalized.hasPrefix("Pi agent gateway is unavailable.")
+            || normalized.hasPrefix("Mac CLI assistants are off.")
+            || normalized.hasPrefix("Droid CLI was not found.")
+            || normalized.hasPrefix("Forge CLI was not found.")
+            || normalized.hasPrefix("Antigravity CLI was not found.")
+            || normalized.hasPrefix("Cursor Agent CLI was not found.")
+            || normalized.hasPrefix("Codex CLI was not found.")
+            || normalized.hasPrefix("Claude Code CLI was not found.")
+            || normalized.hasPrefix("No eligible route for ")
+            || (normalized.hasPrefix("Selected ") && normalized.contains("has not been verified against this gateway's live /v1/models catalog."))
     }
 
     /// Build a fallback history from the shared controller's messages, optionally
