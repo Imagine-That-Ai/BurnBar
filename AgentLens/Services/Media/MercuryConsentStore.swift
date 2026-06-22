@@ -53,8 +53,11 @@ final class MercuryConsentStore: ObservableObject {
     }
 
     var activeGrantCount: Int {
-        pruneExpired()
-        return grants.count
+        grants.count
+    }
+
+    func refreshExpiredMirrorAutoAcceptGrants(now: Date = Date()) {
+        pruneExpired(now: now)
     }
 
     func canAutoAccept(
@@ -125,11 +128,9 @@ final class MercuryConsentStore: ObservableObject {
     }
 
     private func pruneExpired(now: Date = Date()) {
-        let before = grants.count
+        guard grants.contains(where: { $0.expiresAt <= now }) else { return }
         grants.removeAll { $0.expiresAt <= now }
-        if grants.count != before {
-            persist()
-        }
+        persist()
     }
 
     private func persist() {

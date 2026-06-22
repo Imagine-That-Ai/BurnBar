@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import OpenBurnBar
 
@@ -146,5 +147,27 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
             ),
             "Reloaded ledger must still authorize the persisted peer"
         )
+    }
+
+    func testActiveGrantCountDoesNotPublishWhileRendering() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedMirrorPeers = true
+        store.rememberAcceptedPeer(
+            connectionId: "conn-a",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-a",
+            remotePeerNodeId: "peer-a",
+            requesterName: "Phone"
+        )
+
+        var publishCount = 0
+        let cancellable = store.objectWillChange.sink { _ in
+            publishCount += 1
+        }
+
+        XCTAssertEqual(store.activeGrantCount, 1)
+        XCTAssertEqual(store.activeGrantCount, 1)
+        XCTAssertEqual(publishCount, 0, "Reading activeGrantCount from a SwiftUI body must not publish")
+        cancellable.cancel()
     }
 }
