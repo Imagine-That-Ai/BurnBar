@@ -859,6 +859,22 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         ))
     }
 
+    func test_missionRuntimePlanner_keepsLocalMacWandDispatchNonBlocking() {
+        let readOnlyData: [String: Any] = [
+            "source": "mac",
+            "sourceSurface": "mac-wand",
+            "requestedRuntime": "droid",
+            "approvalMode": "existing_policy",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false
+        ]
+
+        XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
+            data: readOnlyData,
+            backend: CLIAgentMissionBackend(chatBackend: .droid)
+        ))
+    }
+
     func test_missionRuntimePlanner_keepsRiskyApprovalPolicyForHermes() {
         XCTAssertTrue(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
             data: [

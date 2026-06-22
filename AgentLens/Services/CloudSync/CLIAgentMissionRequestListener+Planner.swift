@@ -126,7 +126,20 @@ enum CLIAgentMissionRuntimePlanner {
         ) {
             return true
         }
+        if isLocalMacMission(data: data) {
+            return false
+        }
         return requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
+    }
+
+    static func isLocalMacMission(data: [String: Any]) -> Bool {
+        let source = ((data["source"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let sourceSurface = ((data["sourceSurface"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return source == "mac" || sourceSurface == "mac-wand"
     }
 
     static func requiresMacCLIAssistantConsentForRemoteMission(

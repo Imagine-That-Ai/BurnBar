@@ -933,8 +933,9 @@ final class CLIAgentMissionRequestListener {
         }
         if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
            !settingsManager.cliAssistantAllowed {
-            await fail(
+            await failAfterTrustedClaim(
                 document: document,
+                backend: backend,
                 message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
             )
             return true
@@ -954,6 +955,41 @@ final class CLIAgentMissionRequestListener {
 
     func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {
         CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend)
+    }
+
+    func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {
+        do {
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: document.documentID,
+                    payload: [
+                        "status": "failed",
+                        "claimedBy": accountManager.deviceId,
+                        "selectedRuntime": backend.rawValue,
+                        "selectedRuntimeName": backend.displayName,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: message,
+                    errorMessage: message
+                ),
+                merge: true
+            )
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "failed",
+                kind: "error",
+                title: "Failed",
+                message: message,
+                backend: backend,
+                isError: true
+            )
+            logger.info("marked trusted mission failed id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("trusted mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func requestApproval(
