@@ -55,6 +55,7 @@ final class SettingsManager {
     let routedClientWiring: RoutedClientWiringSettings
     let textExpansion: TextExpansionSettings
     let elderWand: ElderWandSettings
+    let pets: PetSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
 
     // MARK: - Init
@@ -104,6 +105,7 @@ final class SettingsManager {
         self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
         self.textExpansion = TextExpansionSettings(persistence: coordinator)
         self.elderWand = ElderWandSettings(persistence: coordinator)
+        self.pets = PetSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(

@@ -61,6 +61,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var originalDesktopImageURLByScreenID: [CGDirectDisplayID: URL] = [:]
     private var installedDesktopFallbackByScreenID: [CGDirectDisplayID: DesktopWallpaperBackground] = [:]
 
+    // Desktop pet
+    var chatController: ChatSessionController? {
+        didSet {
+            guard let chatController, let settingsManager,
+                  oldValue !== chatController else { return }
+            setupPetPanel(settingsManager: settingsManager, chatController: chatController)
+        }
+    }
+    private var petPanel: DesktopPetPanel?
+    private var petSettingsObserver: NSObjectProtocol?
+    private var petOpenSettingsObserver: NSObjectProtocol?
+    private var petOpenPopoverObserver: NSObjectProtocol?
+    private var petOpenDashboardObserver: NSObjectProtocol?
+
     // Observers
     private var wallpaperEnabledObserver: Any?
     private var wallpaperBackgroundObserver: Any?
@@ -130,6 +144,122 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // for — on every foreground and once right after a local revoke.
         observeCloudVaultRotationPickupTriggers()
         pickUpPendingCloudVaultRotations(force: true)
+        setupPetObservers()
+    }
+
+    // MARK: - Desktop Pet
+
+    private func setupPetPanel(settingsManager: SettingsManager, chatController: ChatSessionController) {
+        if let existing = petPanel {
+            existing.orderOut(nil)
+        }
+        let panel = DesktopPetPanel(settingsManager: settingsManager, chatController: chatController)
+        petPanel = panel
+        if settingsManager.pets.petEnabled {
+            panel.showPet()
+        }
+    }
+
+    private func setupPetObservers() {
+        guard !OpenBurnBarRuntime.isRunningTests else { return }
+
+        if petSettingsObserver == nil {
+            petSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .petSettingsDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.syncPetPanelVisibility() }
+            }
+        }
+
+        if petOpenSettingsObserver == nil {
+            petOpenSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .openPetSettings,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.openPetSettings() }
+            }
+        }
+
+        if petOpenPopoverObserver == nil {
+            petOpenPopoverObserver = NotificationCenter.default.addObserver(
+                forName: .openBurnBarPopover,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.openPopoverForPetChat() }
+            }
+        }
+
+        if petOpenDashboardObserver == nil {
+            petOpenDashboardObserver = NotificationCenter.default.addObserver(
+                forName: .openBurnBarDashboard,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.openDashboardForPetChat() }
+            }
+        }
+    }
+
+    private func syncPetPanelVisibility() {
+        guard let settingsManager, let chatController else { return }
+        if settingsManager.pets.petEnabled {
+            if petPanel == nil {
+                setupPetPanel(settingsManager: settingsManager, chatController: chatController)
+            } else {
+                petPanel?.showPet()
+            }
+        } else {
+            petPanel?.orderOut(nil)
+        }
+    }
+
+    private func openPetSettings() {
+        guard let settingsManager, let dataStore else { return }
+        // Park the pending tab so SettingsView picks it up on appear
+        UserDefaults.standard.set(SettingsTab.pets.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+        WindowManager.shared.openSettings(
+            settingsManager: settingsManager,
+            accountManager: .shared,
+            cloudSyncService: nil,
+            iCloudSessionMirrorService: nil,
+            dataStore: dataStore
+        )
+        // If Settings is already open, the onAppear won't fire again, so
+        // post the notification that SettingsView listens to for tab switches.
+        NotificationCenter.default.post(name: .openPetSettingsTab, object: nil)
+    }
+
+    private func openPopoverForPetChat() {
+        // Toggle the menu bar popover to show the Hermes strip
+        guard let popover else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: statusItem?.button?.bounds ?? .zero, of: statusItem?.button ?? NSView(), preferredEdge: .minY)
+        }
+    }
+
+    private func openDashboardForPetChat() {
+        guard let settingsManager, let dataStore, let chatController else { return }
+        WindowManager.shared.openDashboard(
+            dataStore: dataStore,
+            aggregator: nil,
+            accountManager: .shared,
+            cloudSyncService: nil,
+            iCloudSessionMirrorService: nil,
+            chatController: chatController,
+            operatingLayer: OpenBurnBarOperatingLayer(
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                chatController: chatController
+            ),
+            navigationCoordinator: NavigationCoordinator(),
+            settingsManager: settingsManager
+        )
     }
 
     /// Registers the foreground + post-revoke triggers for the RR-5 Cloud Vault

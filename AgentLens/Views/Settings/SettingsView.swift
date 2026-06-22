@@ -104,6 +104,11 @@ struct SettingsView: View {
             let itemID = notification.object as? String
             routeToSettingsItem(id: itemID)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openPetSettingsTab)) { _ in
+            router.selectedTab = .pets
+            router.path.removeAll()
+            UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        }
     }
 
     private var searchField: some View {
@@ -438,6 +443,9 @@ struct SettingsView: View {
             ComputerUseSettingsView(runtimeController: runtimeContext?.computerUseRuntimeController)
                 .navigationTitle("Computer Use")
             #endif
+        case .pets:
+            PetsSettingsView(settingsManager: settingsManager)
+                .navigationTitle("Pets")
         }
     }
 

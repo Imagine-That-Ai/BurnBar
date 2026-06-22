@@ -1424,6 +1424,7 @@ struct OpenBurnBarApp: App {
             appDelegate.settingsManager = context.settingsManager
             appDelegate.dataStore = context.dataStore
             appDelegate.daemonManager = context.daemonManager
+            appDelegate.chatController = context.chatController
             AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
                 accountManager?.userID
             }

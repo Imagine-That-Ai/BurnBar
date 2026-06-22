@@ -18,6 +18,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case media
     case dataPrivacy
     case computerUse
+    case pets
 
     var id: String { rawValue }
 
@@ -36,6 +37,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return "Media & Sharing"
         case .dataPrivacy: return "Data & Privacy"
         case .computerUse: return "Computer Use"
+        case .pets: return "Pets"
         }
     }
 
@@ -69,6 +71,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Pensieve vault, exports, deletion, recovery, and panic controls"
         case .computerUse:
             return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
+        case .pets:
+            return "Desktop pet companion, TLDR chat bubble, and position"
         }
     }
 
@@ -87,6 +91,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return "play.rectangle.on.rectangle"
         case .dataPrivacy: return "lock.shield.fill"
         case .computerUse: return "cursorarrow.click.2"
+        case .pets: return "pawprint.fill"
         }
     }
 
@@ -119,6 +124,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return DesignSystem.Colors.hermesMercury
         case .dataPrivacy: return DesignSystem.Colors.teal
         case .computerUse: return DesignSystem.Colors.blaze
+        case .pets: return DesignSystem.Colors.amber
         }
     }
 
