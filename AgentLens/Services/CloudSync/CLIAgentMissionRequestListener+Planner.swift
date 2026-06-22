@@ -115,6 +115,40 @@ enum CLIAgentMissionRuntimePlanner {
         return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
 
+    static func requiresPreDispatchApproval(
+        data: [String: Any],
+        backend: CLIAgentMissionBackend
+    ) -> Bool {
+        if InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: data["approvalMode"] as? String,
+            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
+        ) {
+            return true
+        }
+        return requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
+    }
+
+    static func requiresMacCLIAssistantConsentForRemoteMission(
+        backend: CLIAgentMissionBackend
+    ) -> Bool {
+        if let chatBackend = backend.chatBackend {
+            switch chatBackend {
+            case .hermes:
+                return false
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent:
+                return true
+            }
+        }
+
+        switch backend.rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "opencode", "ollama":
+            return true
+        default:
+            return false
+        }
+    }
+
     static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
         let source = ((data["source"] as? String) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

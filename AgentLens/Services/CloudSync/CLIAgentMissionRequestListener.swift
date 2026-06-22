@@ -927,14 +927,22 @@ final class CLIAgentMissionRequestListener {
     ) async -> Bool {
         let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
         let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if approvalStatus == "approved" {
-            return false
-        }
         if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
             await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
             return true
         }
-        guard missionRequiresApproval(data: data) else {
+        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+           !settingsManager.cliAssistantAllowed {
+            await fail(
+                document: document,
+                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
+            )
+            return true
+        }
+        if approvalStatus == "approved" {
+            return false
+        }
+        guard missionRequiresApproval(data: data, backend: backend) else {
             return false
         }
         if status == "waiting_for_approval" {
@@ -944,12 +952,8 @@ final class CLIAgentMissionRequestListener {
         return true
     }
 
-    func missionRequiresApproval(data: [String: Any]) -> Bool {
-        InsightMissionApprovalPolicy.requiresPreDispatchApproval(
-            approvalMode: data["approvalMode"] as? String,
-            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
-        )
+    func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {
+        CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend)
     }
 
     func requestApproval(

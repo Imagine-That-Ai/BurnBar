@@ -812,6 +812,64 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(CLIAgentMissionRuntimePlanner.presentationMode(from: [:]), .nativeChat)
     }
 
+    func test_missionRuntimePlanner_requiresApprovalForRemoteLocalAgentRuntimes() {
+        let readOnlyData: [String: Any] = [
+            "approvalMode": "existing_policy",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false
+        ]
+        let localAgentBackends = [
+            CLIAgentMissionBackend(chatBackend: .codex),
+            CLIAgentMissionBackend(chatBackend: .claude),
+            CLIAgentMissionBackend(chatBackend: .openclaw),
+            CLIAgentMissionBackend(chatBackend: .piAgent),
+            CLIAgentMissionBackend(chatBackend: .droid),
+            CLIAgentMissionBackend(chatBackend: .forge),
+            CLIAgentMissionBackend(chatBackend: .antigravity),
+            CLIAgentMissionBackend(chatBackend: .cursorAgent),
+            CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode"),
+            CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
+        ]
+
+        for backend in localAgentBackends {
+            XCTAssertTrue(
+                CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: readOnlyData, backend: backend),
+                "\(backend.rawValue) must not launch from a remote mission without approval"
+            )
+            XCTAssertTrue(
+                CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+                "\(backend.rawValue) must honor the Mac CLI assistant consent switch before local launch"
+            )
+        }
+    }
+
+    func test_missionRuntimePlanner_keepsHermesReadOnlyMissionNonBlocking() {
+        let readOnlyData: [String: Any] = [
+            "approvalMode": "existing_policy",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false
+        ]
+
+        XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
+            data: readOnlyData,
+            backend: CLIAgentMissionBackend(chatBackend: .hermes)
+        ))
+        XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(
+            backend: CLIAgentMissionBackend(chatBackend: .hermes)
+        ))
+    }
+
+    func test_missionRuntimePlanner_keepsRiskyApprovalPolicyForHermes() {
+        XCTAssertTrue(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
+            data: [
+                "approvalMode": "existing_policy",
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ],
+            backend: CLIAgentMissionBackend(chatBackend: .hermes)
+        ))
+    }
+
     func test_missionRuntimePlanner_buildsDirectLaunchPlansForAdditionalAgentRuntimes() throws {
         let baseData: [String: Any] = [
             "source": "ios",
