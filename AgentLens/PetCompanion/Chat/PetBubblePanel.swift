@@ -60,7 +60,13 @@ final class PetBubblePanel: NSPanel {
         self.anchorProvider = anchorProvider
 
         let root = AnyView(
-            PetChatBubbleView(controller: chat, tailAnchorX: 0.5)
+            PetChatBubbleView(
+                controller: chat,
+                tailAnchorX: 0.5,
+                onContentSizeChange: { [weak self] in
+                    self?.resizeToContent()
+                }
+            )
                 .fixedSize(horizontal: false, vertical: true)
         )
 

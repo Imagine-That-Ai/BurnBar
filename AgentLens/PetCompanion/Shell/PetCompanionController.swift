@@ -49,6 +49,8 @@ final class PetCompanionController: ObservableObject {
     /// NSObject shim that carries the gesture's `@objc` action into this
     /// (non-NSObject) controller.
     private var clickTarget: PetClickTarget?
+    /// Gesture gate that keeps empty renderer pixels click-through.
+    private var clickGestureGate: PetClickGestureGate?
 
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.
@@ -198,7 +200,9 @@ final class PetCompanionController: ObservableObject {
     /// controller is live. Idempotent.
     func attachChat(_ session: ChatSessionController) {
         guard chat == nil else { return }
-        chat = PetChatController(chat: session, pet: self)
+        chat = PetChatController(chat: session, pet: self) { [weak self] in
+            self?.closeBubble()
+        }
     }
 
     /// Open (or focus) the chat bubble: brings up the bubble panel anchored above
@@ -233,8 +237,14 @@ final class PetCompanionController: ObservableObject {
         if let old = clickGesture { old.view?.removeGestureRecognizer(old) }
         let target = clickTarget ?? PetClickTarget { [weak self] in self?.handlePetClick() }
         clickTarget = target
+        let gate = PetClickGestureGate { [weak self] point, view in
+            guard let self, let renderer = self.renderer, renderer.view === view else { return true }
+            return renderer.containsVisibleContent(at: point)
+        }
+        clickGestureGate = gate
         let gesture = NSClickGestureRecognizer(target: target, action: #selector(PetClickTarget.fire))
         gesture.numberOfClicksRequired = 1
+        gesture.delegate = gate
         view.addGestureRecognizer(gesture)
         clickGesture = gesture
     }
@@ -359,4 +369,19 @@ final class PetClickTarget: NSObject {
     private let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     @objc func fire() { action() }
+}
+
+@MainActor
+private final class PetClickGestureGate: NSObject, NSGestureRecognizerDelegate {
+    private let shouldAccept: (CGPoint, NSView) -> Bool
+
+    init(_ shouldAccept: @escaping (CGPoint, NSView) -> Bool) {
+        self.shouldAccept = shouldAccept
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
+                           shouldReceive event: NSEvent) -> Bool {
+        guard let view = gestureRecognizer.view else { return false }
+        return shouldAccept(view.convert(event.locationInWindow, from: nil), view)
+    }
 }

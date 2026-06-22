@@ -73,6 +73,10 @@ protocol PetRenderer: AnyObject {
     /// the renderer view's coordinate space, so the chat bubble can anchor its
     /// tail to the creature. Returns `nil` when the socket is undefined.
     func socketPoint(_ name: String) -> CGPoint?
+
+    /// Whether a click in renderer-view coordinates is close enough to visible
+    /// pet content to count as a pet click.
+    func containsVisibleContent(at point: CGPoint) -> Bool
 }
 
 // MARK: - Default conveniences
@@ -91,6 +95,10 @@ extension PetRenderer {
         let cell = atlas.cell
         guard cell.w > 0, cell.h > 0 else { return nil }
         return CGPoint(x: p.x / cell.w * size.width, y: p.y / cell.h * size.height)
+    }
+
+    func containsVisibleContent(at point: CGPoint) -> Bool {
+        view.bounds.contains(point)
     }
 }
 

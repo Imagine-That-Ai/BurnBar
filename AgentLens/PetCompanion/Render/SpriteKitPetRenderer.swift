@@ -194,6 +194,22 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
                        y: p.y / atlas.cell.h * size.height)
     }
 
+    func containsVisibleContent(at point: CGPoint) -> Bool {
+        let scenePoint = scene.convertPoint(fromView: point)
+        guard sprite.calculateAccumulatedFrame().contains(scenePoint) else { return false }
+        let localPoint = sprite.convert(scenePoint, from: scene)
+        let size = sprite.size
+        guard size.width > 0, size.height > 0 else { return false }
+
+        let normalized = CGPoint(
+            x: (localPoint.x / size.width) + sprite.anchorPoint.x,
+            y: (localPoint.y / size.height) + sprite.anchorPoint.y
+        )
+        let horizontalInset: CGFloat = 0.14
+        return (horizontalInset...(1 - horizontalInset)).contains(normalized.x)
+            && (0.06...0.96).contains(normalized.y)
+    }
+
     // MARK: Sheet loading
 
     /// Resolve the form's image to an `SKTexture`. Looks the bundled resource up
@@ -211,7 +227,7 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
             imageName = atlas.image ?? "sprite"
         }
 
-        if let image = Self.loadImage(named: imageName, in: .main),
+        if let image = Self.loadImage(named: imageName, petID: definition.id, in: .main),
            let tex = Self.makeTexture(from: image) {
             tex.filteringMode = .nearest
             sheetTexture = tex
@@ -287,16 +303,19 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
 
     /// Resolve a bundled sprite image by resource name. Tries the name verbatim,
     /// then common atlas extensions, then the conventional `Pets/<id>/` subfolder.
-    private static func loadImage(named name: String, in bundle: Bundle) -> NSImage? {
+    private static func loadImage(named name: String, petID: String, in bundle: Bundle) -> NSImage? {
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         let candidates = ext.isEmpty ? ["png", "webp"] : [ext]
 
         if let direct = NSImage(named: name) { return direct }
+        let subdirectories: [String?] = [nil, "Pets/\(petID)"]
         for e in candidates {
-            if let url = bundle.url(forResource: base, withExtension: e),
-               let img = NSImage(contentsOf: url) {
-                return img
+            for subdirectory in subdirectories {
+                if let url = bundle.url(forResource: base, withExtension: e, subdirectory: subdirectory),
+                   let img = NSImage(contentsOf: url) {
+                    return img
+                }
             }
         }
         return nil

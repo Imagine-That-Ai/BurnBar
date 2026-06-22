@@ -78,13 +78,20 @@ final class PetChatController {
     @ObservationIgnored private var mirroredMessageID: String?
     /// The local-floor stream task (cancelled on close / backend switch).
     @ObservationIgnored private var floorTask: Task<Void, Never>?
+    /// True only while this bubble owns the shared chat stream it started.
+    @ObservationIgnored private var ownsSharedStream = false
+    /// Called when the bubble chrome requests closure, so the owning panel hides
+    /// as well as the controller state closing.
+    @ObservationIgnored private let onCloseRequested: () -> Void
 
     init(chat: ChatSessionController,
          pet: PetCompanionController,
-         settings: SettingsManager = .shared) {
+         settings: SettingsManager = .shared,
+         onCloseRequested: @escaping () -> Void = {}) {
         self.chat = chat
         self.pet = pet
         self.settings = settings
+        self.onCloseRequested = onCloseRequested
         // Restore the persisted brain, preferring the shared controller's own
         // persisted value (its UserDefaults["chatBackendID"]) so we never fight it.
         self.activeBackend = chat.chatBackend
@@ -121,9 +128,13 @@ final class PetChatController {
         pet?.drive(to: .idle)
     }
 
+    func requestClose() {
+        onCloseRequested()
+    }
+
     func toggle() {
         if isOpen {
-            close()
+            requestClose()
         } else {
             open()
         }
@@ -148,10 +159,13 @@ final class PetChatController {
         pet?.drive(to: .think)
 
         let history = currentHistory(appendingUser: trimmed)
+        let ignoredAssistantIDs = Set(chat.messages.filter { $0.role == .assistant }.map(\.id))
+        let previousInput = chat.inputText
 
         // Hand the draft to the shared controller exactly as the main chat does.
         chat.inputText = trimmed
         draft = ""
+        ownsSharedStream = true
 
         // The mirroring observer owns the whole lifecycle from here: it streams
         // tokens into the bubble on success, and on an agent error (no CLI,
@@ -159,8 +173,11 @@ final class PetChatController {
         // to the local floor with the visible "answering locally" beat. It reads
         // `history` for the floor, so capture it on the controller for the observer.
         pendingFallbackHistory = history
-        beginMirroringStream()
+        beginMirroringStream(ignoringAssistantIDs: ignoredAssistantIDs)
         await chat.send()
+        if chat.inputText.isEmpty, !previousInput.isEmpty {
+            chat.inputText = previousInput
+        }
     }
 
     /// Snapshot of the conversation (incl. the just-sent user turn) the observer
@@ -172,10 +189,12 @@ final class PetChatController {
     /// Begin observing the shared controller's `messages`/`isStreaming` and
     /// mirror the in-flight assistant message into ``replyText``. Drives `speak`
     /// on first token and `react` when the result lands.
-    private func beginMirroringStream() {
+    private func beginMirroringStream(ignoringAssistantIDs ignoredAssistantIDs: Set<String>) {
         streamObserver?.cancel()
         mirroredMessageID = nil
         var sawText = false
+        var sawStreamActivity = false
+        var sawNewAssistant = false
 
         streamObserver = Task { [weak self] in
             guard let self else { return }
@@ -183,9 +202,18 @@ final class PetChatController {
             // simpler than threading a Combine publisher out of an @Observable.
             while !Task.isCancelled {
                 let streaming = self.chat.isStreaming
-                if let assistant = self.latestAssistant() {
+                if streaming || self.chat.activeStreamMessageId != nil {
+                    sawStreamActivity = true
+                }
+
+                if let assistant = self.latestAssistant(excluding: ignoredAssistantIDs) {
+                    sawNewAssistant = true
                     let text = Self.renderedText(of: assistant)
                     if !text.isEmpty {
+                        if !sawStreamActivity, !streaming, self.chat.activeStreamMessageId == nil {
+                            await self.answerLocally(history: self.pendingFallbackHistory, note: text)
+                            break
+                        }
                         if !sawText {
                             sawText = true
                             self.pet?.fire(.streamStart)
@@ -199,6 +227,10 @@ final class PetChatController {
                 }
 
                 if !streaming && self.chat.activeStreamMessageId == nil {
+                    guard sawStreamActivity || sawNewAssistant else {
+                        try? await Task.sleep(for: .milliseconds(60))
+                        continue
+                    }
                     // Stream finished (or never started). Decide success vs floor.
                     if let err = self.chat.streamError, !sawText {
                         await self.answerLocally(history: self.pendingFallbackHistory, note: err)
@@ -219,6 +251,7 @@ final class PetChatController {
     }
 
     private func finishCloudReply() {
+        ownsSharedStream = false
         isAnswering = false
         isAnsweringLocally = false
         pet?.fire(.resultLanded)
@@ -234,6 +267,7 @@ final class PetChatController {
         // Cancel any cloud mirroring; we own the bubble now.
         streamObserver?.cancel()
         floorTask?.cancel()
+        ownsSharedStream = false
 
         lastErrorNote = note
         isAnswering = true
@@ -268,6 +302,13 @@ final class PetChatController {
     /// (PLAN C7 "mid-reply switch cancels the stream and replays history").
     func switchBackend(to backend: ChatBackendID) {
         guard backend != activeBackend else { return }
+        Task { @MainActor in
+            await switchBackendAndReplay(to: backend)
+        }
+    }
+
+    private func switchBackendAndReplay(to backend: ChatBackendID) async {
+        guard backend != activeBackend else { return }
 
         let wasAnswering = isAnswering
         let lastUser = lastUserText()
@@ -276,7 +317,7 @@ final class PetChatController {
 
         // Reuse the existing switcher: it cancels the stream, swaps the per-backend
         // thread, reloads messages, and persists to UserDefaults["chatBackendID"].
-        chat.setChatBackend(backend)
+        await chat.setChatBackendAsync(backend)
         activeBackend = backend
         persistedAgentRaw = backend.rawValue
 
@@ -289,7 +330,7 @@ final class PetChatController {
         // so the switch produces a fresh answer rather than a dead bubble.
         if wasAnswering, let lastUser, !lastUser.isEmpty {
             draft = lastUser
-            Task { await send() }
+            await send()
         }
     }
 
@@ -315,7 +356,10 @@ final class PetChatController {
     private func cancelInFlight() {
         streamObserver?.cancel(); streamObserver = nil
         floorTask?.cancel(); floorTask = nil
-        chat.cancelGeneration()
+        if ownsSharedStream {
+            chat.cancelGeneration()
+        }
+        ownsSharedStream = false
     }
 
     /// Settle the pet back to idle a beat after a reply lands, so `react` is seen.
@@ -327,8 +371,8 @@ final class PetChatController {
         }
     }
 
-    private func latestAssistant() -> ChatMessageRecord? {
-        chat.messages.last { $0.role == .assistant }
+    private func latestAssistant(excluding ignoredIDs: Set<String> = []) -> ChatMessageRecord? {
+        chat.messages.last { $0.role == .assistant && !ignoredIDs.contains($0.id) }
     }
 
     private func lastUserText() -> String? {
@@ -373,6 +417,7 @@ struct PetChatBubbleView: View {
     /// Tail anchor (the renderer's `"contact"` socket projected into the bubble's
     /// space). The tail points at this x within the bubble width.
     var tailAnchorX: CGFloat = 0.5
+    var onContentSizeChange: () -> Void = {}
 
     @FocusState private var inputFocused: Bool
 
@@ -391,6 +436,10 @@ struct PetChatBubbleView: View {
         .overlay(alignment: .bottom) { bubbleTail }
         .onAppear { inputFocused = true }
         .onChange(of: controller.isOpen) { _, open in inputFocused = open }
+        .onChange(of: controller.replyText) { _, _ in onContentSizeChange() }
+        .onChange(of: controller.isAnswering) { _, _ in onContentSizeChange() }
+        .onChange(of: controller.isAnsweringLocally) { _, _ in onContentSizeChange() }
+        .onChange(of: controller.lastErrorNote) { _, _ in onContentSizeChange() }
         .animation(DesignSystem.Animation.gentle, value: controller.isAnswering)
         .animation(DesignSystem.Animation.gentle, value: controller.replyText)
     }
@@ -405,7 +454,7 @@ struct PetChatBubbleView: View {
                 localBadge
             }
             Button {
-                controller.close()
+                controller.requestClose()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
