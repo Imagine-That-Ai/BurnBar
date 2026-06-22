@@ -143,7 +143,7 @@ jobs:
           if ! git merge-base --is-ancestor "$commit" origin/main; then
             exit 1
           fi
-          if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "\${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then
+          if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "\${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then
             exit 1
           fi
       - name: Check out release tag
@@ -157,13 +157,19 @@ jobs:
         run: cosign attest --yes "$SBOM_PATH"
 `;
 
-function buildTree(releaseWorkflow = GOOD_RELEASE, provenanceWorkflow = GOOD_SUPPLY_CHAIN) {
+function buildTree(
+  releaseWorkflow = GOOD_RELEASE,
+  provenanceWorkflow = GOOD_SUPPLY_CHAIN,
+) {
   const root = mkdtempSync(join(tmpdir(), "release-provenance-boundary-"));
   roots.push(root);
   const workflowDir = join(root, ".github", "workflows");
   mkdirSync(workflowDir, { recursive: true });
   writeFileSync(join(workflowDir, "release.yml"), releaseWorkflow);
-  writeFileSync(join(workflowDir, "supply-chain-provenance.yml"), provenanceWorkflow);
+  writeFileSync(
+    join(workflowDir, "supply-chain-provenance.yml"),
+    provenanceWorkflow,
+  );
   return root;
 }
 
@@ -173,9 +179,13 @@ function runGate(root) {
       env: { ...process.env, RELEASE_PROVENANCE_BOUNDARY_ROOT: root },
       stdio: "pipe",
     });
-    return 0;
+    return { status: 0, output: "" };
   } catch (error) {
-    return error.status ?? 1;
+    return {
+      status: error.status ?? 1,
+      output:
+        `${error.stdout?.toString() ?? ""}${error.stderr?.toString() ?? ""}`.trim(),
+    };
   }
 }
 
@@ -183,18 +193,26 @@ let passed = 0;
 let failed = 0;
 function expect(label, releaseWorkflow, provenanceWorkflow, wantExit) {
   const got = runGate(buildTree(releaseWorkflow, provenanceWorkflow));
-  if (got === wantExit) {
-    console.log(`  PASS ${label} (exit ${got})`);
+  if (got.status === wantExit) {
+    console.log(`  PASS ${label} (exit ${got.status})`);
     passed += 1;
   } else {
-    console.error(`  FAIL ${label}: expected exit ${wantExit}, got ${got}`);
+    console.error(
+      `  FAIL ${label}: expected exit ${wantExit}, got ${got.status}`,
+    );
+    if (got.output) console.error(got.output);
     failed += 1;
   }
 }
 
 console.log("Self-test: verify-release-provenance-boundaries.mjs\n");
 
-expect("tag-bound release and provenance workflows pass", GOOD_RELEASE, GOOD_SUPPLY_CHAIN, 0);
+expect(
+  "tag-bound release and provenance workflows pass",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  0,
+);
 
 expect(
   "release workflow missing manual tag-ref guard fails",
@@ -264,6 +282,16 @@ expect(
 );
 
 expect(
+  "release workflow checkout step missing fail-closed shell mode fails",
+  GOOD_RELEASE.replace(
+    "      - name: Check out release tag\n        env:\n          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}\n        run: |\n          set -euo pipefail",
+    "      - name: Check out release tag\n        env:\n          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}\n        run: |\n          set -u",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow neutralized ancestor check fails",
   GOOD_RELEASE.replace(
     'if ! git merge-base --is-ancestor "$release_commit" origin/main; then',
@@ -324,9 +352,19 @@ expect(
 );
 
 expect(
+  "release workflow data-only checkout equality check fails",
+  GOOD_RELEASE.replace(
+    'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+    'echo \'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"\'',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release predicate missing checkout drift check fails",
   GOOD_RELEASE.replace(
-    "if commit != release_commit:\n              raise SystemExit(\"release checkout drifted\")",
+    'if commit != release_commit:\n              raise SystemExit("release checkout drifted")',
     "print(commit)",
   ),
   GOOD_SUPPLY_CHAIN,
@@ -354,6 +392,16 @@ expect(
 );
 
 expect(
+  "release predicate string-literal checkout drift guard fails",
+  GOOD_RELEASE.replace(
+    'if commit != release_commit:\n              raise SystemExit("release checkout drifted")',
+    '"""\n          if commit != release_commit:\n              raise SystemExit("release checkout drifted")\n          """',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow continue-on-error guard fails",
   GOOD_RELEASE.replace(
     "      - name: Resolve release tag and version\n",
@@ -364,10 +412,40 @@ expect(
 );
 
 expect(
+  "release workflow expression continue-on-error guard fails",
+  GOOD_RELEASE.replace(
+    "      - name: Resolve release tag and version\n",
+    "      - name: Resolve release tag and version\n        continue-on-error: \\${{ fromJSON('true') }}\n",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow job-level permission override fails",
+  GOOD_RELEASE.replace(
+    "  build-and-release:\n    steps:",
+    "  build-and-release:\n    permissions:\n      contents: write\n    steps:",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release publish missing provenance bundle fail-closed check fails",
   GOOD_RELEASE.replace(
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
-    "if [[ -z \"${PROVENANCE_PATHS[*]:-}\" ]]; then",
+    'if [[ -z "${PROVENANCE_PATHS[*]:-}" ]]; then',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release publish neutered provenance bundle guard body fails",
+  GOOD_RELEASE.replace(
+    'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',
+    'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "warning: missing bundles"\n          fi',
   ),
   GOOD_SUPPLY_CHAIN,
   1,
@@ -417,7 +495,7 @@ expect(
   "supply-chain workflow_run missing head-sha binding fails",
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN.replace(
-    'if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then',
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then',
     'if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then',
   ),
   1,
@@ -427,8 +505,8 @@ expect(
   "supply-chain workflow_run neutered head-sha guard body fails",
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN.replace(
-    'if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then\n            exit 1\n          fi',
-    'if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then\n            echo "head drift"\n          fi',
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then\n            exit 1\n          fi',
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then\n            echo "head drift"\n          fi',
   ),
   1,
 );
@@ -468,11 +546,51 @@ expect(
 );
 
 expect(
+  "supply-chain workflow expression continue-on-error guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    "      - name: Resolve release tag\n",
+    "      - name: Resolve release tag\n        continue-on-error: \\${{ fromJSON('true') }}\n",
+  ),
+  1,
+);
+
+expect(
+  "supply-chain workflow job-level permission override fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    "  attest-release:\n    steps:",
+    "  attest-release:\n    permissions:\n      contents: read\n    steps:",
+  ),
+  1,
+);
+
+expect(
+  "supply-chain workflow_run branch filter fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    "    types: [completed]\n",
+    "    types: [completed]\n    branches: [main]\n",
+  ),
+  1,
+);
+
+expect(
   "supply-chain workflow attest before checkout fails",
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN.replace(
-    '      - name: Check out release tag\n',
+    "      - name: Check out release tag\n",
     '      - name: Attest early\n        run: cosign attest --yes "$SBOM_PATH"\n      - name: Check out release tag\n',
+  ),
+  1,
+);
+
+expect(
+  "supply-chain workflow attest before manual ref guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    '          tag_ref="refs/tags/${TAG}"\n',
+    '          tag_ref="refs/tags/${TAG}"\n          cosign attest --yes "$SBOM_PATH"\n',
   ),
   1,
 );
@@ -492,4 +610,6 @@ if (failed > 0) {
   process.exit(1);
 }
 
-console.log(`\nPASS: ${passed} release provenance boundary verifier tests passed.`);
+console.log(
+  `\nPASS: ${passed} release provenance boundary verifier tests passed.`,
+);

@@ -48,7 +48,12 @@ function stripYamlLineComment(line) {
       doubleQuoted = !doubleQuoted;
       continue;
     }
-    if (char === "#" && !singleQuoted && !doubleQuoted && (index === 0 || /\s/u.test(previous))) {
+    if (
+      char === "#" &&
+      !singleQuoted &&
+      !doubleQuoted &&
+      (index === 0 || /\s/u.test(previous))
+    ) {
       return line.slice(0, index).trimEnd();
     }
   }
@@ -68,7 +73,8 @@ function requireIncludes(file, source, needle, message) {
 
 function requireMinOccurrences(file, source, needle, minimum, message) {
   const actual = source.split(needle).length - 1;
-  if (actual < minimum) fail(file, `${message} (found ${actual}, expected at least ${minimum})`);
+  if (actual < minimum)
+    fail(file, `${message} (found ${actual}, expected at least ${minimum})`);
 }
 
 function requirePattern(file, source, pattern, message) {
@@ -77,6 +83,124 @@ function requirePattern(file, source, pattern, message) {
 
 function requireNoPattern(file, source, pattern, message) {
   if (pattern.test(source)) fail(file, message);
+}
+
+function workflowTopLevelPermissionsBlock(source) {
+  const match = /^permissions:\n(?<body>(?:^[ \t]+[^\n]*\n?)+)/mu.exec(source);
+  return match?.groups?.body ?? "";
+}
+
+function workflowOnBlock(source) {
+  const match = /^on:\n(?<body>(?:^[ \t]+[^\n]*\n?)+)/mu.exec(source);
+  return match?.groups?.body ?? "";
+}
+
+function workflowJobBlock(source, jobName) {
+  const pattern = new RegExp(
+    `^  ${jobName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}:\\n(?<body>(?:^ {4}[^\\n]*\\n?|^\\s*$)+)`,
+    "mu",
+  );
+  return pattern.exec(source)?.groups?.body ?? "";
+}
+
+function workflowStepBlock(source, stepName) {
+  const escapedName = stepName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const pattern = new RegExp(
+    `^ {6}- name: ${escapedName}\\n(?<body>(?:^ {8}[^\\n]*\\n?|^ {10}[^\\n]*\\n?|^ {12}[^\\n]*\\n?|^\\s*$)+)`,
+    "mu",
+  );
+  return pattern.exec(source)?.groups?.body ?? "";
+}
+
+function shellRunBlockFromStep(stepBlock) {
+  const lines = stepBlock.split("\n");
+  const runIndex = lines.findIndex((line) => /^\s{8}run:\s*\|/u.test(line));
+  if (runIndex === -1) return "";
+  const body = [];
+  for (const line of lines.slice(runIndex + 1)) {
+    if (/^\s{10}/u.test(line) || /^\s*$/u.test(line)) {
+      body.push(line.replace(/^\s{10}/u, ""));
+      continue;
+    }
+    break;
+  }
+  return body.join("\n");
+}
+
+function requireStepFailClosedMode(file, source, stepName, message) {
+  const runBlock = shellRunBlockFromStep(workflowStepBlock(source, stepName));
+  if (!runBlock) {
+    fail(file, `${message}: missing run block`);
+    return;
+  }
+  if (
+    !runBlock.split("\n").some((line) => line.trim() === "set -euo pipefail")
+  ) {
+    fail(file, `${message}: step must run set -euo pipefail`);
+  }
+}
+
+function requireExecutableShellLine(file, source, stepName, command, message) {
+  const runBlock = shellRunBlockFromStep(workflowStepBlock(source, stepName));
+  if (!runBlock) {
+    fail(file, `${message}: missing run block`);
+    return;
+  }
+  if (!runBlock.split("\n").some((line) => line.trim() === command)) {
+    fail(file, `${message}: missing executable command ${command}`);
+  }
+}
+
+function requireNoContinueOnError(file, source, message) {
+  const offenders = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^continue-on-error\s*:/u.test(line))
+    .filter((line) => !/^continue-on-error\s*:\s*false\s*$/u.test(line));
+  if (offenders.length > 0) fail(file, `${message}: ${offenders.join("; ")}`);
+}
+
+function permissionValue(block, name) {
+  const match = new RegExp(`^\\s*${name}:\\s*(\\S+)`, "mu").exec(block);
+  return match?.[1] ?? null;
+}
+
+function requireEffectivePermission(
+  file,
+  source,
+  jobName,
+  permission,
+  expected,
+  message,
+) {
+  const jobBlock = workflowJobBlock(source, jobName);
+  if (!jobBlock) {
+    fail(file, `${message}: missing job ${jobName}`);
+    return;
+  }
+  const jobPermissions =
+    /^    permissions:\n(?<body>(?:^ {6}[^\n]*\n?)+)/mu.exec(jobBlock)?.groups
+      ?.body;
+  const value = permissionValue(
+    jobPermissions ?? workflowTopLevelPermissionsBlock(source),
+    permission,
+  );
+  if (value !== expected) {
+    fail(file, `${message}: effective ${permission} must be ${expected}`);
+  }
+}
+
+function requireNoWorkflowRunBranchFilter(file, source, message) {
+  const onBlock = workflowOnBlock(source);
+  const workflowRun =
+    /workflow_run:\n(?<body>(?:^ {4}[^\n]*\n?|^ {6}[^\n]*\n?)+)/mu.exec(onBlock)
+      ?.groups?.body ?? "";
+  if (
+    /^\s*branches\s*:/mu.test(workflowRun) ||
+    /^\s*branches-ignore\s*:/mu.test(workflowRun)
+  ) {
+    fail(file, message);
+  }
 }
 
 function shellIfBlock(source, ifNeedle) {
@@ -115,22 +239,35 @@ function requireShellIfExits(file, source, ifNeedle, message) {
   for (const line of bodyLines.slice(0, -1)) {
     if (/^(if|elif|else|fi|for|while|until|case|function)\b/u.test(line)) {
       fail(file, `${message}: guard block must stay flat before exit 1`);
-    } else if (/\b(?:exit|return)\b/u.test(line) || /(?:&&|\|\||;\s*true\b)/u.test(line)) {
-      fail(file, `${message}: guard block must not contain alternate exits or short-circuit escapes`);
+    } else if (
+      /\b(?:exit|return)\b/u.test(line) ||
+      /(?:&&|\|\||;\s*true\b)/u.test(line)
+    ) {
+      fail(
+        file,
+        `${message}: guard block must not contain alternate exits or short-circuit escapes`,
+      );
     } else if (!/^echo\s+/u.test(line)) {
       fail(file, `${message}: guard block may only echo before exit 1`);
     }
   }
 }
 
+function stripPythonTripleQuotedStrings(source) {
+  return source.replace(/(?:[rRuUbBfF]{0,2})("""|''')[\s\S]*?\1/gu, "");
+}
+
 function requirePythonIfRaises(file, source, ifNeedle, nextNeedle, message) {
-  const start = source.indexOf(ifNeedle);
-  const end = nextNeedle ? source.indexOf(nextNeedle, start + ifNeedle.length) : -1;
+  const executableSource = stripPythonTripleQuotedStrings(source);
+  const start = executableSource.indexOf(ifNeedle);
+  const end = nextNeedle
+    ? executableSource.indexOf(nextNeedle, start + ifNeedle.length)
+    : -1;
   if (start === -1 || end === -1) {
     fail(file, `${message}: missing guard block`);
     return;
   }
-  const block = source.slice(start, end);
+  const block = executableSource.slice(start, end);
   const bodyLines = block
     .split("\n")
     .slice(1)
@@ -153,28 +290,67 @@ function verifyReleaseWorkflow() {
   const file = "release.yml";
   const source = workflowSource(file);
 
-  requireIncludes(file, source, "workflow_dispatch:", "release workflow must support explicit manual release dispatch");
-  requireIncludes(file, source, "tag:", "manual release dispatch must require an explicit tag input");
-  requirePattern(file, source, /id-token:\s*write/u, "release workflow must keep OIDC enabled for keyless provenance");
-  requirePattern(file, source, /attestations:\s*write/u, "release workflow must keep attestations enabled");
-  requireNoPattern(
+  requireIncludes(
     file,
     source,
-    /continue-on-error:\s*true/u,
-    "release provenance guard steps must not continue on error",
-  );
-
-  requireMinOccurrences(
-    file,
-    source,
-    "set -euo pipefail",
-    2,
-    "release resolve and checkout steps must run fail-closed shell mode",
+    "workflow_dispatch:",
+    "release workflow must support explicit manual release dispatch",
   );
   requireIncludes(
     file,
     source,
-    'INPUT_TAG: ${{ github.event.inputs.tag }}',
+    "tag:",
+    "manual release dispatch must require an explicit tag input",
+  );
+  requirePattern(
+    file,
+    source,
+    /id-token:\s*write/u,
+    "release workflow must keep OIDC enabled for keyless provenance",
+  );
+  requirePattern(
+    file,
+    source,
+    /attestations:\s*write/u,
+    "release workflow must keep attestations enabled",
+  );
+  requireEffectivePermission(
+    file,
+    source,
+    "build-and-release",
+    "id-token",
+    "write",
+    "release build-and-release job must keep OIDC enabled for keyless provenance",
+  );
+  requireEffectivePermission(
+    file,
+    source,
+    "build-and-release",
+    "attestations",
+    "write",
+    "release build-and-release job must keep attestations enabled",
+  );
+  requireNoContinueOnError(
+    file,
+    source,
+    "release provenance guard steps must not continue on error",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Resolve release tag and version",
+    "release resolve step",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Check out release tag",
+    "release checkout step",
+  );
+  requireIncludes(
+    file,
+    source,
+    "INPUT_TAG: ${{ github.event.inputs.tag }}",
     "manual tag input must be passed through env before shell use",
   );
   requireIncludes(
@@ -250,9 +426,10 @@ function verifyReleaseWorkflow() {
     'git checkout --detach "$RELEASE_COMMIT"',
     "release build must checkout the resolved release commit",
   );
-  requireIncludes(
+  requireExecutableShellLine(
     file,
     source,
+    "Check out release tag",
     'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
     "release build must prove HEAD equals the resolved release commit",
   );
@@ -273,13 +450,13 @@ function verifyReleaseWorkflow() {
   requireIncludes(
     file,
     source,
-    'RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}',
+    "RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}",
     "Sigstore predicate step must receive the resolved release commit",
   );
   requireIncludes(
     file,
     source,
-    'RELEASE_REF: ${{ steps.version.outputs.tag_ref }}',
+    "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}",
     "Sigstore predicate step must receive the resolved release tag ref",
   );
   requireIncludes(
@@ -316,8 +493,14 @@ function verifyReleaseWorkflow() {
   requireIncludes(
     file,
     source,
-    'if ((${#PROVENANCE_PATHS[@]} == 0)); then',
+    "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     "publish job must fail closed when provenance bundles are missing",
+  );
+  requireShellIfExits(
+    file,
+    source,
+    "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+    "publish missing provenance bundle guard",
   );
 }
 
@@ -325,30 +508,87 @@ function verifySupplyChainWorkflow() {
   const file = "supply-chain-provenance.yml";
   const source = workflowSource(file);
 
-  requireIncludes(file, source, "workflow_dispatch:", "supply-chain provenance must support manual dispatch");
-  requireIncludes(file, source, "workflow_run:", "supply-chain provenance must support release workflow completion");
-  requirePattern(file, source, /contents:\s*read/u, "supply-chain provenance must not request contents:write");
+  requireIncludes(
+    file,
+    source,
+    "workflow_dispatch:",
+    "supply-chain provenance must support manual dispatch",
+  );
+  requireIncludes(
+    file,
+    source,
+    "workflow_run:",
+    "supply-chain provenance must support release workflow completion",
+  );
+  requirePattern(
+    file,
+    source,
+    /contents:\s*read/u,
+    "supply-chain provenance must not request contents:write",
+  );
   requireNoPattern(
     file,
     source,
     /contents:\s*write/u,
     "supply-chain provenance must not request contents:write",
   );
-  requireNoPattern(
+  requireNoWorkflowRunBranchFilter(
     file,
     source,
-    /continue-on-error:\s*true/u,
+    "supply-chain workflow_run trigger must not use branch filters that suppress tag release runs",
+  );
+  requireNoContinueOnError(
+    file,
+    source,
     "supply-chain provenance guard steps must not continue on error",
   );
-  requirePattern(file, source, /id-token:\s*write/u, "supply-chain provenance must keep OIDC enabled");
-  requirePattern(file, source, /attestations:\s*write/u, "supply-chain provenance must keep attestations enabled");
-
-  requireMinOccurrences(
+  requirePattern(
     file,
     source,
-    "set -euo pipefail",
-    2,
-    "supply-chain provenance resolve and checkout steps must run fail-closed shell mode",
+    /id-token:\s*write/u,
+    "supply-chain provenance must keep OIDC enabled",
+  );
+  requirePattern(
+    file,
+    source,
+    /attestations:\s*write/u,
+    "supply-chain provenance must keep attestations enabled",
+  );
+  requireEffectivePermission(
+    file,
+    source,
+    "attest-release",
+    "id-token",
+    "write",
+    "supply-chain attest-release job must keep OIDC enabled",
+  );
+  requireEffectivePermission(
+    file,
+    source,
+    "attest-release",
+    "attestations",
+    "write",
+    "supply-chain attest-release job must keep attestations enabled",
+  );
+  requireEffectivePermission(
+    file,
+    source,
+    "attest-release",
+    "contents",
+    "read",
+    "supply-chain attest-release job must keep contents read-only",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Resolve release tag",
+    "supply-chain resolve step",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Check out release tag",
+    "supply-chain checkout step",
   );
   requireIncludes(
     file,
@@ -379,6 +619,20 @@ function verifySupplyChainWorkflow() {
     source,
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     "manual provenance dispatch tag-ref guard",
+  );
+  requireOrder(
+    file,
+    source,
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+    'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
+    "manual provenance tag-ref guard must run before fetching provenance inputs",
+  );
+  requireOrder(
+    file,
+    source,
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+    "cosign attest --yes",
+    "manual provenance tag-ref guard must run before any Sigstore attestation",
   );
   requireIncludes(
     file,
@@ -419,13 +673,13 @@ function verifySupplyChainWorkflow() {
   requireIncludes(
     file,
     source,
-    'if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then',
-    "workflow_run provenance must fail unless the release run head matches the tag commit",
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then',
+    "workflow_run provenance must fail unless the release run head is present and matches the tag commit",
   );
   requireShellIfExits(
     file,
     source,
-    'if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "${RUN_HEAD_SHA:-}" && "$RUN_HEAD_SHA" != "$commit" ]]; then',
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then',
     "workflow_run head-sha provenance guard",
   );
   requireIncludes(
@@ -434,9 +688,10 @@ function verifySupplyChainWorkflow() {
     'git checkout --detach "$RELEASE_COMMIT"',
     "provenance workflow must checkout the resolved release commit",
   );
-  requireIncludes(
+  requireExecutableShellLine(
     file,
     source,
+    "Check out release tag",
     'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
     "provenance workflow must prove HEAD equals the resolved release commit",
   );
@@ -464,4 +719,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: release provenance workflows are tag-bound and commit-bound.");
+console.log(
+  "PASS: release provenance workflows are tag-bound and commit-bound.",
+);
