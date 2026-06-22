@@ -145,6 +145,7 @@ final class PetCompanionController: ObservableObject {
             renderer = r
             r.mount(in: content)
             r.play(state: currentState)
+            r.setPaused(!isVisible || !isRunning)
             installClickGesture(on: r.view)
         }
     }

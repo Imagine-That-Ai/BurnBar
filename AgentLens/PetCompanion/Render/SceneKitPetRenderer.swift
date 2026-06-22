@@ -370,6 +370,12 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     /// SceneKit imports key by their own ids, so we index by both the node's
     /// keys and the clip names the petdef expects.
     private func harvestClipPlayers(from root: SCNNode) {
+        for key in root.animationKeys {
+            if let player = root.animationPlayer(forKey: key) {
+                clipPlayers[key] = player
+            }
+        }
+
         root.enumerateChildNodes { node, _ in
             for key in node.animationKeys {
                 if let player = node.animationPlayer(forKey: key) {

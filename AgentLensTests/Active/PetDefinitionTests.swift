@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import OpenBurnBar
 
@@ -5,6 +6,27 @@ import XCTest
 /// plus the modern `petdef/1` superset) and proves the Swift frame-rect helper
 /// matches the shared TS math (192×208 cells, anchor 96/196).
 final class PetDefinitionTests: XCTestCase {
+
+    @MainActor
+    private final class StubRenderer: PetRenderer {
+        let definition: PetDefinition
+        let form: PetForm
+        let view: NSView
+
+        init(definition: PetDefinition) {
+            self.definition = definition
+            self.form = .atlas2d(imageName: "sprite.png")
+            self.view = NSView(frame: CGRect(x: 0, y: 0, width: 192, height: 208))
+        }
+
+        func mount(in container: NSView) {}
+        func unmount() {}
+        func play(state: String) {}
+        func setForm(_ form: PetForm) {}
+        func setFacing(_ direction: CGFloat) {}
+        func setPaused(_ paused: Bool) {}
+        func setAmbientFrameRate(_ fps: Int) {}
+    }
 
     // MARK: Fixtures
 
@@ -112,6 +134,17 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertEqual(def.behavior?.transitions.first?.effectiveWeight, 12)
         XCTAssertEqual(def.agent?.providersDesktop, ["hermes", "codex", "claude"])
         XCTAssertEqual(def.behaviorMechanic, "SWEEP")
+    }
+
+    @MainActor
+    func test_defaultRendererSocketPoint_flipsAtlasYForAppKitCoordinates() throws {
+        let def = try PetDefinition.decode(from: Data(modernPetdefJSON.utf8))
+        let renderer = StubRenderer(definition: def)
+
+        let point = try XCTUnwrap(renderer.socketPoint("contact"))
+
+        XCTAssertEqual(point.x, 0.82 * 192, accuracy: 0.0001)
+        XCTAssertEqual(point.y, (1.0 - 0.74) * 208, accuracy: 0.0001)
     }
 
     // MARK: Frame-rect math (matches TS A2)

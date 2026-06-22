@@ -25,6 +25,18 @@ final class PetChatBackendAvailabilityTests: XCTestCase {
                        "Absent setting (empty list) should fall back to every backend")
     }
 
+    func test_nonStreamingBackendDiagnosticsStillUseLocalFallback() {
+        XCTAssertTrue(PetChatController.shouldUseLocalFallback(
+            forNonStreamingAssistantText: "Mac CLI assistants are off. Use the Enable button above the chat composer."
+        ))
+        XCTAssertTrue(PetChatController.shouldUseLocalFallback(
+            forNonStreamingAssistantText: "Selected Hermes model 'foo' has not been verified against this gateway's live /v1/models catalog."
+        ))
+        XCTAssertFalse(PetChatController.shouldUseLocalFallback(
+            forNonStreamingAssistantText: "I can help with that from the current chat context."
+        ))
+    }
+
     func test_sendWhileSharedChatBusyPreservesMainDraft() async throws {
         let dataStore = try makeDiscoveryInMemoryStore()
         let session = ChatSessionController(
