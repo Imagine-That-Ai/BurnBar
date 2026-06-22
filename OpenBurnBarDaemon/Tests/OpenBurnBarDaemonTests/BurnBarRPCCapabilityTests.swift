@@ -72,12 +72,55 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 
+    func test_cliSupportProfileIsExactMethodAllowlist() {
+        let profile = BurnBarPeerCapabilityProfile.cliSupport
+        // Commands implemented by OpenBurnBarCLI.
+        XCTAssertTrue(profile.permits(.health))
+        XCTAssertTrue(profile.permits(.controllerSummary))
+        XCTAssertTrue(profile.permits(.questionsList))
+        XCTAssertTrue(profile.permits(.followupsList))
+        XCTAssertTrue(profile.permits(.missionsList))
+        XCTAssertTrue(profile.permits(.missionApprove))
+        XCTAssertTrue(profile.permits(.simulatorList))
+        XCTAssertTrue(profile.permits(.simulatorReplay))
+        XCTAssertTrue(profile.permits(.memoryRecall))
+        XCTAssertTrue(profile.permits(.codeIndexProject))
+        XCTAssertTrue(profile.permits(.codeWatchProject))
+        XCTAssertTrue(profile.permits(.codeSearch))
+        XCTAssertTrue(profile.permits(.codeIndexStatus))
+        XCTAssertTrue(profile.permits(.runResume))
+
+        // The CLI must not inherit whole capability groups just because one
+        // supported command lives there.
+        XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
+        XCTAssertFalse(profile.permits(.computerUseSessionStart))
+        XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.workspaceExecuteTool))
+        XCTAssertFalse(profile.permits(.runCreate))
+        XCTAssertFalse(profile.permits(.missionCreate))
+        XCTAssertFalse(profile.permits(.missionCancel))
+        XCTAssertFalse(profile.permits(.memoryRemember))
+        XCTAssertFalse(profile.permits(.codeOpsDiagnostics))
+    }
+
     func test_attenuationOnlyNarrows() {
         let narrowed = BurnBarPeerCapabilityProfile.full
             .attenuated(to: .readOnly)
-        XCTAssertEqual(narrowed.capabilities, BurnBarPeerCapabilityProfile.readOnly.capabilities)
+        XCTAssertEqual(narrowed.permittedMethods, BurnBarPeerCapabilityProfile.readOnly.permittedMethods)
         // Intersecting with full cannot widen readOnly.
         let stillNarrow = BurnBarPeerCapabilityProfile.readOnly.attenuated(to: .full)
-        XCTAssertEqual(stillNarrow.capabilities, BurnBarPeerCapabilityProfile.readOnly.capabilities)
+        XCTAssertEqual(stillNarrow.permittedMethods, BurnBarPeerCapabilityProfile.readOnly.permittedMethods)
+    }
+
+    func test_attenuationPreservesMethodScopedCLIBoundary() {
+        let narrowed = BurnBarPeerCapabilityProfile.full.attenuated(to: .cliSupport)
+        XCTAssertEqual(narrowed.permittedMethods, BurnBarPeerCapabilityProfile.cliSupport.permittedMethods)
+
+        let appReadOnly = BurnBarPeerCapabilityProfile.readOnly.attenuated(to: .cliSupport)
+        XCTAssertTrue(appReadOnly.permits(.health))
+        XCTAssertTrue(appReadOnly.permits(.memoryRecall))
+        XCTAssertFalse(appReadOnly.permits(.codeIndexProject))
+        XCTAssertFalse(appReadOnly.permits(.runResume))
     }
 }

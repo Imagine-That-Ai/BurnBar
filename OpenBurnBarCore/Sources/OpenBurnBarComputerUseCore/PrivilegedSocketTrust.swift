@@ -154,10 +154,11 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// Validate that the process behind `auditToken` carries a valid first-party
     /// code signature: Apple anchor + Team ID + exact privileged identifier,
     /// plus hardened-runtime and library-validation CodeDirectory flags.
+    @discardableResult
     public static func validateCodeSignature(
         ofAuditToken auditToken: audit_token_t,
         requirementString: String = privilegedPeerDesignatedRequirement
-    ) throws {
+    ) throws -> String {
         var code: SecCode?
         var token = auditToken
         let tokenData = Data(bytes: &token, count: MemoryLayout<audit_token_t>.size)
@@ -166,7 +167,7 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         guard status == errSecSuccess, let code else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: status)
         }
-        try validateCodeSignature(code, requirementString: requirementString)
+        return try validateCodeSignature(code, requirementString: requirementString)
     }
 
     /// Validate a helper binary on disk before installing or launching it.
@@ -185,10 +186,11 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// production designated requirement): unit tests cannot mint a process
     /// signed with the first-party identity, so they exercise the
     /// static-code/flag plumbing against the Apple-signed test host instead.
+    @discardableResult
     static func validateCodeSignature(
         _ code: SecCode,
         requirementString: String = privilegedPeerDesignatedRequirement
-    ) throws {
+    ) throws -> String {
         // M-9: enforce hardened runtime + library validation programmatically —
         // see `privilegedPeerDesignatedRequirement` for why these cannot live in
         // the requirement string.
@@ -197,15 +199,16 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         guard staticStatus == errSecSuccess, let staticCode else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: staticStatus)
         }
-        try validateStaticCode(staticCode, requirementString: requirementString)
+        return try validateStaticCode(staticCode, requirementString: requirementString)
     }
 
     /// `requirementString` is injectable for tests only; production callers use
     /// ``privilegedPeerDesignatedRequirement``.
+    @discardableResult
     static func validateStaticCode(
         _ staticCode: SecStaticCode,
         requirementString: String = privilegedPeerDesignatedRequirement
-    ) throws {
+    ) throws -> String {
         var requirement: SecRequirement?
         let requirementStatus = SecRequirementCreateWithString(
             requirementString as CFString,
@@ -225,10 +228,12 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         let infoStatus = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: 0), &infoCF)
         guard infoStatus == errSecSuccess,
               let info = infoCF as? [String: Any],
+              let identifier = info[kSecCodeInfoIdentifier as String] as? String,
               let flags = info[kSecCodeInfoFlags as String] as? UInt32 else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: infoStatus)
         }
         try validateCodeDirectoryFlags(flags)
+        return identifier
     }
 
     /// M-9 policy core, separated from the SecCode plumbing so the bit logic
