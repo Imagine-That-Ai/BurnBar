@@ -50,6 +50,9 @@ protocol SwitcherDataLoading {
     /// Validates and recovers active profile state.
     func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState
 
+    /// Fetches active profile state without running recovery writes.
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState
+
     /// Sets the active profile by ID.
     func setActiveProfile(_ profileID: String) throws
 
@@ -64,6 +67,10 @@ extension SwitcherDataLoading {
     // Defaults keep older conformers (e.g. test mocks) source-compatible while
     // the drain-target feature rolls out.
     func fetchAllActiveDrainTargets() throws -> [String: String] { [:] }
+
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState {
+        try validateAndRecoverActiveProfile()
+    }
 
     func setDrainTarget(_ profileID: String, for providerID: ProviderID) throws {
         try setActiveProfile(profileID)
@@ -84,6 +91,10 @@ final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
 
     func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
         try store.validateAndRecoverActiveProfile()
+    }
+
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState {
+        try store.fetchActiveProfileStateSnapshot()
     }
 
     func setActiveProfile(_ profileID: String) throws {
@@ -992,7 +1003,7 @@ struct DashboardQuickSwitchView: View {
         do {
             let loadedProfiles = try switcherDataLoading.fetchAllProfiles().filter { !$0.isDisabled }
             profiles = loadedProfiles
-            let state = try switcherDataLoading.validateAndRecoverActiveProfile()
+            let state = try switcherDataLoading.fetchActiveProfileStateSnapshot()
             activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
             drainTargets = (try? switcherDataLoading.fetchAllActiveDrainTargets()) ?? [:]

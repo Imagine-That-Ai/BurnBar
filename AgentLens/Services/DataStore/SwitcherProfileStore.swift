@@ -156,6 +156,30 @@ public final class SwitcherProfileStore: Sendable {
         }
     }
 
+    /// Fetches the active profile state without mutating legacy duplicate rows.
+    /// Use this from latency-sensitive UI paths so opening a popover never waits
+    /// behind unrelated writer work such as search-index maintenance.
+    public func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID, updatedAt FROM switcher_active_profile
+                    WHERE providerID IS NULL
+                    ORDER BY activeProfileID IS NOT NULL DESC,
+                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """
+            )
+            guard let row else {
+                return SwitcherActiveProfileState(activeProfileID: nil)
+            }
+            let activeProfileID: String? = row["activeProfileID"]
+            let updatedAt: Date = Self.parseDateValue(row["updatedAt"]) ?? Date()
+            return SwitcherActiveProfileState(activeProfileID: activeProfileID, updatedAt: updatedAt)
+        }
+    }
+
     /// Sets the active profile. Pass nil to clear active selection.
     /// Uses DELETE + INSERT to guarantee exactly one row in the active profile table.
     /// This avoids the non-deterministic LIMIT 1 behavior when multiple rows exist.

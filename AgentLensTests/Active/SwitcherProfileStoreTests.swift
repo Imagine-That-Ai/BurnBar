@@ -740,6 +740,41 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(rowCount, 1)
     }
 
+    func test_fetchActiveProfileStateSnapshot_doesNotRunWriterCleanup() async throws {
+        let olderProfile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "OlderSnapshotProfile"),
+            sortKey: 1
+        ))
+        let currentProfile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .safari,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "CurrentSnapshotProfile"),
+            sortKey: 2
+        ))
+
+        try await dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [olderProfile.id, Date().addingTimeInterval(-100)]
+            )
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [currentProfile.id, Date()]
+            )
+        }
+
+        let state = try store.fetchActiveProfileStateSnapshot()
+
+        XCTAssertEqual(state.activeProfileID, currentProfile.id)
+        let rowCount = try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowCount, 2)
+    }
+
     /// Verifies that repeated relaunch reads are deterministic even when
     /// legacy multi-row state was present initially.
     func test_fetchActiveProfileState_deterministicRepeatedRelaunchReads() async throws {
