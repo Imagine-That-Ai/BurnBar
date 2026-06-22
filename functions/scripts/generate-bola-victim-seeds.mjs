@@ -5,18 +5,11 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 const catalogPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
 const outPath = resolve(repoRoot, "functions/src/__tests__/bola/bolaVictimSeeds.generated.ts");
-
-function parseGeneratedLiteral(source) {
-  try {
-    return JSON.parse(source);
-  } catch {
-    return Function(`"use strict"; return (${source});`)();
-  }
-}
 
 const catalogSource = readFileSync(catalogPath, "utf8");
 const catalogMatch = catalogSource.match(

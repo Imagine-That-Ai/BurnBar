@@ -7,6 +7,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 const indexPath = resolve(repoRoot, "functions/src/index.ts");
@@ -28,14 +29,6 @@ function exportedNames() {
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
-}
-
-function parseGeneratedLiteral(source) {
-  try {
-    return JSON.parse(source);
-  } catch {
-    return Function(`"use strict"; return (${source});`)();
-  }
 }
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
