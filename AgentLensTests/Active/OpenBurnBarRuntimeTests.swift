@@ -109,11 +109,13 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         XCTAssertFalse(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(environment: [:]))
     }
 
-    func test_statusItemClickPolicy_opensOnMouseDownAndIgnoresMouseUp() {
-        XCTAssertEqual(OpenBurnBarStatusItemClick.actionMask, [.leftMouseDown, .rightMouseDown])
-        XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .leftMouseDown), .togglePopover)
+    func test_statusItemClickPolicy_opensOnMouseUpAndIgnoresMouseDown() {
+        XCTAssertEqual(OpenBurnBarStatusItemClick.primaryActionMask, [.leftMouseUp])
+        XCTAssertEqual(OpenBurnBarStatusItemClick.fallbackActionMask, [.leftMouseUp, .rightMouseDown])
+        XCTAssertEqual(OpenBurnBarStatusItemClick.actionMask, [.leftMouseUp, .rightMouseDown])
+        XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .leftMouseDown), .ignore)
         XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .rightMouseDown), .showSecondaryMenu)
-        XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .leftMouseUp), .ignore)
+        XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .leftMouseUp), .togglePopover)
         XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: .rightMouseUp), .ignore)
         XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: nil), .togglePopover)
     }

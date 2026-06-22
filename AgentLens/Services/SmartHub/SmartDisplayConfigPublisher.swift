@@ -6,13 +6,13 @@ import OpenBurnBarCore
 final class SmartDisplayConfigPublisher {
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
-    private let db: Firestore
+    private let db: Firestore?
     private var heartbeat: Task<Void, Never>?
 
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
-        db: Firestore = Firestore.firestore()
+        db: Firestore? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
@@ -35,7 +35,9 @@ final class SmartDisplayConfigPublisher {
     }
 
     func publishCurrent() async {
-        guard let uid = accountManager.currentUID else { return }
+        guard accountManager.isFirebaseAvailable,
+              let uid = accountManager.currentUID else { return }
+        let db = db ?? Firestore.firestore()
         let data = smartHubPayload()
         do {
             try await db.collection("users").document(uid)

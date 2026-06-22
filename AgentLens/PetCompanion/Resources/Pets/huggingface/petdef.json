@@ -1,0 +1,61 @@
+{
+  "schema": "petdef/1",
+  "id": "huggingface",
+  "name": "Hugging Face",
+  "kind": "sweeper",
+  "displayName": "Hugging Face",
+  "description": "Bounces along the baseline and scoops whole columns of debris up between its two welcoming hands.",
+  "palette": ["#ffd21e", "#3a2f25", "#ff9d00"],
+  "atlas2d": {
+    "image": "spritesheet.webp",
+    "imageWeb": "spritesheet.webp",
+    "grid": { "cols": 8, "rows": 9 },
+    "cell": { "w": 192, "h": 208 },
+    "anchor": { "x": 96, "y": 196 },
+    "states": {
+      "idle":       { "row": 0, "frames": 8, "fps":  8, "loop": true  },
+      "bounce":     { "row": 1, "frames": 8, "fps":  9, "loop": true  },
+      "hand_scoop": { "row": 2, "frames": 8, "fps": 10, "loop": true,  "hero": true },
+      "hug":        { "row": 3, "frames": 8, "fps":  9, "loop": false },
+      "wave":       { "row": 4, "frames": 8, "fps":  8, "loop": true  },
+      "roll":       { "row": 5, "frames": 8, "fps": 11, "loop": true  },
+      "cheer":      { "row": 6, "frames": 8, "fps": 11, "loop": false },
+      "sleep":      { "row": 7, "frames": 8, "fps":  6, "loop": true  },
+      "alert":      { "row": 8, "frames": 8, "fps": 10, "loop": false }
+    },
+    "default": "idle",
+    "sockets": { "contact": { "fx": 0.80, "fy": 0.16 } }
+  },
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      { "from": "idle",   "to": "wander", "when": "cooldownElapsed", "weight": 12 },
+      { "from": "idle",   "to": "sleep",  "when": "cooldownElapsed", "weight": 4  },
+      { "from": "idle",   "to": "react",  "when": "cooldownElapsed", "weight": 2  },
+      { "from": "idle",   "to": "listen", "when": "cursorNear",      "weight": 100 },
+      { "from": "wander", "to": "idle",   "when": "cooldownElapsed", "weight": 8  },
+      { "from": "wander", "to": "wander", "when": "cooldownElapsed", "weight": 6  },
+      { "from": "sleep",  "to": "idle",   "when": "cooldownElapsed", "weight": 10 },
+      { "from": "react",  "to": "idle",   "when": "cooldownElapsed", "weight": 12 },
+      { "from": "listen", "to": "think",  "when": "sendPressed" },
+      { "from": "think",  "to": "speak",  "when": "streamStart" },
+      { "from": "speak",  "to": "react",  "when": "resultLanded" },
+      { "from": "speak",  "to": "react",  "when": "fallbackFired" },
+      { "from": "react",  "to": "listen", "when": "inputFocused" },
+      { "from": "listen", "to": "idle",   "when": "idleElapsed" }
+    ]
+  },
+  "behaviorMechanic": "SWEEP",
+  "locomotion": "bounce",
+  "agent": {
+    "providersDesktop": ["hermes", "codex", "claude", "openclaw"],
+    "webFunction": "chat",
+    "persona": "muse",
+    "voiceLines": "front-desk"
+  },
+  "license": {
+    "ipStatus": "studio",
+    "licenseNote": "Imagine That sweeper companion; shared PetDefinition with the web NPC.",
+    "attribution": "Imagine That LLC"
+  }
+}

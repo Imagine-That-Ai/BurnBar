@@ -213,11 +213,27 @@ final class MacAgentReplyNotificationListener: NSObject {
         return value
     }
 
+    nonisolated private static var hasConfiguredFirebaseApp: Bool {
+        !(FirebaseApp.allApps ?? [:]).isEmpty
+    }
+
+    nonisolated private static var currentFirebaseUID: String? {
+        guard hasConfiguredFirebaseApp else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
     func start(chatController: ChatSessionController, accountManager: AccountManager) {
         self.chatController = chatController
         self.accountManager = accountManager
+        guard Self.hasConfiguredFirebaseApp else {
+            listener?.remove()
+            listener = nil
+            replyListener?.remove()
+            replyListener = nil
+            return
+        }
         guard !started else {
-            Task { await persistDeviceState(uid: Auth.auth().currentUser?.uid) }
+            Task { await persistDeviceState(uid: Self.currentFirebaseUID) }
             return
         }
         started = true
@@ -232,7 +248,7 @@ final class MacAgentReplyNotificationListener: NSObject {
                 self?.restart(uid: user?.uid)
             }
         }
-        restart(uid: Auth.auth().currentUser?.uid)
+        restart(uid: Self.currentFirebaseUID)
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -243,7 +259,7 @@ final class MacAgentReplyNotificationListener: NSObject {
     }
 
     deinit {
-        if let authHandle {
+        if let authHandle, Self.hasConfiguredFirebaseApp {
             Auth.auth().removeStateDidChangeListener(authHandle)
         }
         listener?.remove()
@@ -252,7 +268,7 @@ final class MacAgentReplyNotificationListener: NSObject {
     }
 
     @objc private func workspaceLifecycleDidChange() {
-        Task { await persistDeviceState(uid: Auth.auth().currentUser?.uid) }
+        Task { await persistDeviceState(uid: Self.currentFirebaseUID) }
     }
 
     private func restart(uid: String?) {
@@ -389,7 +405,7 @@ final class MacAgentReplyNotificationListener: NSObject {
         let callable = Functions.functions(region: "us-central1").httpsCallable("submitAgentNotificationReply")
         do {
             guard let accountManager else { return }
-            guard let uid = Auth.auth().currentUser?.uid else { return }
+            guard let uid = Self.currentFirebaseUID else { return }
             let key = try await MacCloudVaultKeyAccess.keyForWriting(
                 uid: uid,
                 deviceId: accountManager.deviceId,
@@ -438,11 +454,11 @@ final class MacAgentReplyNotificationListener: NSObject {
         if activate {
             NSApp.activate(ignoringOtherApps: true)
         }
-        await persistDeviceState(uid: Auth.auth().currentUser?.uid)
+        await persistDeviceState(uid: Self.currentFirebaseUID)
     }
 
     private func handleReplyCommand(documentID: String, data: [String: Any]) {
-        guard let uid = Auth.auth().currentUser?.uid,
+        guard let uid = Self.currentFirebaseUID,
               let command = MacAgentNotificationReplyCommand(documentID: documentID, data: data),
               !processedReplyIDs.contains(command.id) else { return }
         processedReplyIDs.insert(command.id)
@@ -554,7 +570,7 @@ extension MacAgentReplyNotificationListener: UNUserNotificationCenterDelegate {
     /// privacy (OPUS-F-006).
     private nonisolated func resolvedPayloadForPush(_ payload: MacAgentReplyNotificationPayload?) async -> MacAgentReplyNotificationPayload? {
         guard let payload, payload.threadID.isEmpty, !payload.eventID.isEmpty else { return payload }
-        guard let uid = Auth.auth().currentUser?.uid else { return payload }
+        guard let uid = Self.currentFirebaseUID else { return payload }
         do {
             let snapshot = try await Firestore.firestore()
                 .collection("users").document(uid)

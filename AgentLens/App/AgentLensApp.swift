@@ -1355,6 +1355,13 @@ struct OpenBurnBarApp: App {
             }
             context.cloudSyncService = sync
 
+            appDelegate.settingsManager = context.settingsManager
+            appDelegate.dataStore = context.dataStore
+            appDelegate.daemonManager = context.daemonManager
+            AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
+                accountManager?.userID
+            }
+
             StartupProfiler.interval("relay_services_start") {
                 context.startRelayServices()
             }
@@ -1418,14 +1425,7 @@ struct OpenBurnBarApp: App {
                     accountManager: context.accountManager
                 )
             }
-
-            // Inject wallpaper dependencies
-            appDelegate.settingsManager = context.settingsManager
-            appDelegate.dataStore = context.dataStore
-            appDelegate.daemonManager = context.daemonManager
-            AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
-                accountManager?.userID
-            }
+            StartupProfiler.interval("pet_companion_activate") { PetCompanionFeature.activateIfEnabled(chat: context.chatController); PetOnboardingWindowPresenter.openIfNeeded(chatController: context.chatController) }
 
             if !hasShownInitialDashboard {
                 hasShownInitialDashboard = true
@@ -1672,8 +1672,8 @@ struct OpenBurnBarApp: App {
         // Side effects stay OUTSIDE any result builder: a plain computed var
         // sequences statements freely, where `@SceneBuilder` would try to type
         // each one as a Scene component.
-        _ = installCommandRouter()
-        _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        installCommandRouter()
+        OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
         presentStartupRecoveryIfNeeded()
         // The AppDelegate owns the live status item + popover via AppKit
         // (`NSPopover` survives SwiftUI's macOS-26/Tahoe `MenuBarExtra(.window)`
