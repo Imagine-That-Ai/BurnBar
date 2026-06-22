@@ -8,7 +8,7 @@ import type {
   PiAgentInstanceDoc,
   PiAgentRuntimeModelDoc,
 } from "./types.js";
-import { recordOrUndefined, isRecord, isFirestoreTimestamp } from "./guards.js";
+import { recordOrUndefined, isRecord, isFirestoreTimestamp, stripUndefinedObject } from "./guards.js";
 
 export function randomPiAgentPairingCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -155,6 +155,32 @@ export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDo
     typeof record.updatedAt === "string" &&
     typeof record.schemaVersion === "number"
   );
+}
+
+export function piAgentConnectionResponseDoc(doc: PiAgentConnectionDoc): PiAgentConnectionDoc {
+  return stripUndefinedObject({
+    id: doc.id,
+    displayName: doc.displayName,
+    mode: doc.mode,
+    status: doc.status,
+    endpointURL: doc.endpointURL,
+    advertisedModel: doc.advertisedModel,
+    selectedInstanceID: doc.selectedInstanceID,
+    relayPublicKey: doc.relayPublicKey,
+    relayKeyVersion: doc.relayKeyVersion,
+    relayEncryption: doc.relayEncryption,
+    realtimeRelayURL: doc.realtimeRelayURL,
+    realtimeRelayStatus: doc.realtimeRelayStatus,
+    realtimeRelayLastSeenAt: doc.realtimeRelayLastSeenAt,
+    realtimeRelayProtocolVersion: doc.realtimeRelayProtocolVersion,
+    capabilities: doc.capabilities,
+    instances: doc.instances,
+    models: doc.models,
+    lastSeenAt: doc.lastSeenAt,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    schemaVersion: doc.schemaVersion,
+  }) as PiAgentConnectionDoc;
 }
 
 function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {

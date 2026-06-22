@@ -25,6 +25,7 @@ import { randomBytes } from "node:crypto";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   isPiAgentConnectionDoc,
+  piAgentConnectionResponseDoc,
   piAgentPairingCodeDigest,
   piAgentSafeEqualHex,
   parsePiAgentConnectionMode,
@@ -146,6 +147,9 @@ export const completePiAgentPairing = onCall(
       if (!code) {
         throw new HttpsError("invalid-argument", "code is required.");
       }
+      if (Object.prototype.hasOwnProperty.call(request.data, "redisURL")) {
+        throw new HttpsError("invalid-argument", "redisURL is no longer accepted by Pi Agent pairing.");
+      }
 
       const pairingRef = db.doc(`users/${uid}/pi_agent_pairings/${pairingId}`);
       const connectionId = safeIdentifier(request.data.connectionId, "pi_agent");
@@ -184,7 +188,7 @@ export const completePiAgentPairing = onCall(
             const existingSnap = await tx.get(db.doc(`users/${uid}/pi_agent_connections/${completedConnectionId}`));
             const existing = recordOrUndefined(existingSnap.data());
             if (existingSnap.exists && existing && isPiAgentConnectionDoc(existing)) {
-              return existing;
+              return piAgentConnectionResponseDoc(existing);
             }
             throw new HttpsError("failed-precondition", "Pairing is completed but its connection is unavailable.");
           }
@@ -278,7 +282,7 @@ export const listPiAgentConnections = onCall(
     const connections = snap.docs
       .flatMap((doc): PiAgentConnectionDoc[] => {
         const data = recordOrUndefined(doc.data());
-        return data && isPiAgentConnectionDoc(data) ? [data] : [];
+        return data && isPiAgentConnectionDoc(data) ? [piAgentConnectionResponseDoc(data)] : [];
       })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
       .sort((left, right) => (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt));
