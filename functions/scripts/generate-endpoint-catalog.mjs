@@ -123,11 +123,12 @@ const CATALOG_OVERRIDES = {
   },
   pollCliLink: {
     trigger: "http",
-    authMethod: "deviceCode plus deviceSecretHash proof (no Firebase Auth)",
+    authMethod: "deviceCode plus device-secret verifier proof (no Firebase Auth)",
     appCheck: "not-applicable",
     tenantSource: "cli_link_sessions/{deviceCode} resolved server-side",
     objectIdsFromClient: ["deviceCode"],
-    ownershipCheck: "poll requires matching deviceSecretHash for the deviceCode session",
+    ownershipCheck:
+      "poll requires a matching device-secret verifier for the deviceCode session and returns only a client-sealed credential envelope",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {
@@ -213,11 +214,12 @@ const CATALOG_OVERRIDES = {
   },
   startCliLink: {
     trigger: "http",
-    authMethod: "public rate-limited device enrollment (no tenant objects)",
+    authMethod: "public rate-limited device enrollment with credential-delivery key (no tenant objects)",
     appCheck: "not-applicable",
     tenantSource: "server-generated deviceCode",
     objectIdsFromClient: [],
-    ownershipCheck: "creates ephemeral cli_link_sessions without cross-tenant reads",
+    ownershipCheck:
+      "creates ephemeral cli_link_sessions with a verifier hash and credential-delivery public key; no cross-tenant reads",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {

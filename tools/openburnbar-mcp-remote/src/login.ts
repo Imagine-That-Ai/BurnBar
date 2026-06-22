@@ -1,4 +1,9 @@
-import { createHash, randomBytes } from "node:crypto";
+import {
+  createDecipheriv,
+  createECDH,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { userInfo, hostname } from "node:os";
@@ -10,6 +15,70 @@ const execFileAsync = promisify(execFile);
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+const SEALING_ALGORITHM = "p256-ecdh-aes-256-gcm-v1";
+const SEALING_CONTEXT = "OpenBurnBar CLI link credential delivery v1";
+
+type CliLinkCredentialEnvelope = {
+  algorithm: typeof SEALING_ALGORITHM;
+  ephemeralPublicKeyBase64: string;
+  ivBase64: string;
+  ciphertextBase64: string;
+  authTagBase64: string;
+  aad: string;
+};
+
+type CliLinkCredentials = {
+  accessToken: string;
+  refreshToken?: string;
+};
+
+function credentialDeliveryKey(secret: Buffer): Buffer {
+  return createHash("sha256")
+    .update(SEALING_CONTEXT)
+    .update("\0")
+    .update(secret)
+    .digest();
+}
+
+function openCredentialEnvelope(
+  envelope: CliLinkCredentialEnvelope,
+  deliveryKey: ReturnType<typeof createECDH>,
+): CliLinkCredentials {
+  if (envelope.algorithm !== SEALING_ALGORITHM) {
+    throw new Error("Unsupported CLI credential delivery envelope.");
+  }
+  const sharedSecret = deliveryKey.computeSecret(
+    Buffer.from(envelope.ephemeralPublicKeyBase64, "base64"),
+  );
+  const key = credentialDeliveryKey(sharedSecret);
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(envelope.ivBase64, "base64"),
+  );
+  decipher.setAAD(Buffer.from(envelope.aad, "utf8"));
+  decipher.setAuthTag(Buffer.from(envelope.authTagBase64, "base64"));
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(envelope.ciphertextBase64, "base64")),
+    decipher.final(),
+  ]);
+  const decoded = JSON.parse(
+    plaintext.toString("utf8"),
+  ) as Partial<CliLinkCredentials>;
+  if (!decoded.accessToken || typeof decoded.accessToken !== "string") {
+    throw new Error(
+      "CLI credential delivery envelope did not contain an access token.",
+    );
+  }
+  return {
+    accessToken: decoded.accessToken,
+    refreshToken:
+      typeof decoded.refreshToken === "string"
+        ? decoded.refreshToken
+        : undefined,
+  };
 }
 
 async function openUrl(url: string): Promise<void> {
@@ -49,6 +118,8 @@ export async function runLoginFlow(): Promise<void> {
 
   const deviceSecret = randomBytes(32).toString("hex");
   const deviceSecretHash = sha256(deviceSecret);
+  const deliveryKey = createECDH("prime256v1");
+  deliveryKey.generateKeys();
 
   console.log("Initiating CLI link flow...");
 
@@ -58,15 +129,21 @@ export async function runLoginFlow(): Promise<void> {
     body: JSON.stringify({
       clientType: "cli",
       displayName,
-      deviceSecretHash
-    })
+      deviceSecretHash,
+      credentialDelivery: {
+        algorithm: SEALING_ALGORITHM,
+        publicKeyBase64: deliveryKey.getPublicKey("base64", "uncompressed"),
+      },
+    }),
   });
 
   if (!startResponse.ok) {
-    throw new Error(`Failed to start link flow: ${startResponse.status} ${startResponse.statusText}\n${await startResponse.text()}`);
+    throw new Error(
+      `Failed to start link flow: ${startResponse.status} ${startResponse.statusText}\n${await startResponse.text()}`,
+    );
   }
 
-  const startData = await startResponse.json() as {
+  const startData = (await startResponse.json()) as {
     deviceCode: string;
     userCode: string;
     verificationUriComplete: string;
@@ -74,7 +151,9 @@ export async function runLoginFlow(): Promise<void> {
     expiresIn: number;
   };
 
-  console.log(`\nTo link this CLI, please open the following URL in your browser:\n`);
+  console.log(
+    `\nTo link this CLI, please open the following URL in your browser:\n`,
+  );
   console.log(`  ${startData.verificationUriComplete}\n`);
   console.log(`Confirm that the code matches: ${startData.userCode}\n`);
 
@@ -94,25 +173,42 @@ export async function runLoginFlow(): Promise<void> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deviceCode: startData.deviceCode,
-          deviceSecret
-        })
+          deviceSecret,
+        }),
       });
       if (!pollResponse.ok) {
         continue;
       }
-      const pollData = await pollResponse.json() as {
+      const pollData = (await pollResponse.json()) as {
         status: "authorization_pending" | "approved" | "expired" | "denied";
         accessToken?: string;
         refreshToken?: string;
+        credentialEnvelope?: CliLinkCredentialEnvelope;
       };
-      if (pollData.status === "approved" && pollData.accessToken) {
-        writeAccessToken(pollData.accessToken);
+      if (
+        pollData.status === "approved" &&
+        (pollData.accessToken || pollData.credentialEnvelope)
+      ) {
+        const credentials = pollData.credentialEnvelope
+          ? openCredentialEnvelope(pollData.credentialEnvelope, deliveryKey)
+          : typeof pollData.accessToken === "string"
+            ? {
+                accessToken: pollData.accessToken,
+                refreshToken: pollData.refreshToken,
+              }
+            : undefined;
+        if (!credentials) {
+          continue;
+        }
+        writeAccessToken(credentials.accessToken);
         // Store the durable refresh token so the shim can silently re-mint the
         // 15-minute access token instead of hard-401ing forever.
-        if (pollData.refreshToken) {
-          writeRefreshToken(pollData.refreshToken);
+        if (credentials.refreshToken) {
+          writeRefreshToken(credentials.refreshToken);
         }
-        console.log("✔ CLI device authorization approved. Token stored securely.");
+        console.log(
+          "✔ CLI device authorization approved. Token stored securely.",
+        );
         tokenStored = true;
         break;
       } else if (pollData.status === "denied") {
@@ -121,7 +217,10 @@ export async function runLoginFlow(): Promise<void> {
         throw new Error("Authorization request has expired.");
       }
     } catch (err) {
-      if (err instanceof Error && (err.message.includes("denied") || err.message.includes("expired"))) {
+      if (
+        err instanceof Error &&
+        (err.message.includes("denied") || err.message.includes("expired"))
+      ) {
         throw err;
       }
       // Ignore transient network errors
@@ -151,11 +250,13 @@ export async function runLoginFlow(): Promise<void> {
     }
     if (!linked) {
       console.log("\n⚠️  Vault key linking timed out.");
-      console.log("To complete linking manually, open the OpenBurnBar Mac App, go to Settings → Remote MCP, and click 'Link this Mac's CLI'.");
+      console.log(
+        "To complete linking manually, open the OpenBurnBar Mac App, go to Settings → Remote MCP, and click 'Link this Mac's CLI'.",
+      );
     }
   } else {
     console.log("✔ Vault key is already provisioned locally.");
   }
 
-  console.log("\n🎉 Linked successfully! Try running: obb resume \"my topic\"");
+  console.log('\n🎉 Linked successfully! Try running: obb resume "my topic"');
 }
