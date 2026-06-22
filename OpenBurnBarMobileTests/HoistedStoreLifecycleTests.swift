@@ -113,4 +113,15 @@ final class HoistedStoreLifecycleTests: XCTestCase {
             XCTAssertFalse(store.hasLoadedOnce, "A failed refresh must leave the store cold so loadIfNeeded retries")
         }
     }
+
+    func testMobileMediaBudgetStatusStore_skipsCloudListenerForAnonymousStartup() {
+        let store = MobileMediaBudgetStatusStore(
+            isFirebaseConfiguredProvider: { true },
+            isCloudAccountProvider: { false }
+        )
+
+        store.startListening()
+
+        XCTAssertFalse(store.isListening, "Anonymous/local startup must not open Firestore during app launch.")
+    }
 }
