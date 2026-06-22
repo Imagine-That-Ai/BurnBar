@@ -123,7 +123,7 @@ public struct SwarmCanvasView: View {
     }
 
     public var body: some View {
-        let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : 60.0)
+        let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : Self.defaultFrameRate)
         TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
             Canvas(rendersAsynchronously: rendersAsynchronously) { context, size in
                 simulation.panOffsets = logoOffsets
@@ -225,7 +225,7 @@ public struct SwarmCanvasView: View {
     /// further reduced under Low Power Mode.
     public static var adaptiveParticleCount: Int {
         #if os(macOS)
-        let base = 1800
+        let base = 900
         #else
         let base: Int = {
             if UIDevice.current.userInterfaceIdiom == .pad { return 1080 }
@@ -233,6 +233,17 @@ public struct SwarmCanvasView: View {
         }()
         #endif
         return ProcessInfo.processInfo.isLowPowerModeEnabled ? base / 2 : base
+    }
+
+    /// Default animation budget for decorative backgrounds. Explicit callers
+    /// can still opt into a higher `maxFrameRate`, but the dashboard should not
+    /// burn a full render core just to keep embers moving.
+    nonisolated public static var defaultFrameRate: Double {
+        #if os(macOS)
+        30.0
+        #else
+        60.0
+        #endif
     }
 
     nonisolated static func sanitizedFrameRate(_ frameRate: Double?, fallback: Double) -> Double {
@@ -316,6 +327,8 @@ public final class SwarmSimulation {
     var nextCycleAt: TimeInterval = 0
 
     var flowTime: Double = 0
+
+    var lastAdvanceAt: TimeInterval?
 
     var bounds: CGSize = .zero
 
@@ -448,6 +461,8 @@ public final class SwarmSimulation {
 
     public func advance(to date: Date, bounds size: CGSize, reduceMotion: Bool, isBatteryThrottled: Bool, uiMode: UIMode = .standard) {
         let now = date.timeIntervalSinceReferenceDate
+        let frameScale = Self.animationFrameScale(elapsed: lastAdvanceAt.map { now - $0 })
+        lastAdvanceAt = now
 
         if lastUIMode != uiMode {
             let wasNil = (lastUIMode == nil)
@@ -501,7 +516,7 @@ public final class SwarmSimulation {
         }
 
         // Time-driven noise field.
-        flowTime += timeStep * 1000.0 * motionSpeedMultiplier   // tuned to feel right at 60Hz
+        flowTime += timeStep * 1000.0 * motionSpeedMultiplier * frameScale   // tuned to feel right at 60Hz
 
         let width = Double(size.width)
         let height = Double(size.height)
@@ -519,15 +534,23 @@ public final class SwarmSimulation {
                 pointerX: pointerX,
                 pointerY: pointerY,
                 motion: motionFactor,
-                attract: attractFactor
+                attract: attractFactor,
+                frameScale: frameScale
             )
         }
 
         // Advance color transition.
         if colorTransitionProgress < 1.0 {
-            let dt = isBatteryThrottled ? (1.0 / 15.0) : (1.0 / 60.0)  // Adapt frame delta
+            let dt = frameScale / 60.0
             colorTransitionProgress = min(1.0, colorTransitionProgress + dt / activeTransitionDuration)
         }
+    }
+
+    nonisolated static func animationFrameScale(elapsed: TimeInterval?) -> Double {
+        guard let elapsed, elapsed.isFinite, elapsed > 0 else {
+            return 1.0
+        }
+        return (elapsed * 60.0).clamped(to: 0.25...4.0)
     }
 
     func stepParticle(
@@ -537,7 +560,8 @@ public final class SwarmSimulation {
         pointerX: Double?,
         pointerY: Double?,
         motion: Double,
-        attract: Double
+        attract: Double,
+        frameScale: Double
     ) {
         var p = particles[i]
 
@@ -559,10 +583,11 @@ public final class SwarmSimulation {
 
         switch mode {
         case .swarm:
-            p.vx += (noiseX * swarmNoise * motionSpeedMultiplier + pushX) * motion
-            p.vy += (noiseY * swarmNoise * motionSpeedMultiplier + pushY) * motion
-            p.vx *= swarmDrag
-            p.vy *= swarmDrag
+            p.vx += (noiseX * swarmNoise * motionSpeedMultiplier + pushX) * motion * frameScale
+            p.vy += (noiseY * swarmNoise * motionSpeedMultiplier + pushY) * motion * frameScale
+            let drag = pow(swarmDrag, frameScale)
+            p.vx *= drag
+            p.vy *= drag
 
             let speed = sqrt(p.vx * p.vx + p.vy * p.vy)
             let maxSpeed = (p.isGlyph ? maxSpeedGlyph : maxSpeedPixel) * motionSpeedMultiplier
@@ -571,8 +596,8 @@ public final class SwarmSimulation {
                 p.vy = (p.vy / speed) * maxSpeed
             }
 
-            p.x += p.vx
-            p.y += p.vy
+            p.x += p.vx * frameScale
+            p.y += p.vy * frameScale
 
             if p.x < 0 { p.x = width }
             if p.x > width { p.x = 0 }
@@ -602,7 +627,7 @@ public final class SwarmSimulation {
                     var tgtY = 0.0
                     if role == "path-1" { tgtY = -0.28 }
                     if role == "path-3" { tgtY = 0.28 }
-                    p.flowProgress += (pace_isEnergetic ? 0.006 : 0.003) * motionSpeedMultiplier
+                    p.flowProgress += (pace_isEnergetic ? 0.006 : 0.003) * motionSpeedMultiplier * frameScale
                     if p.flowProgress > 1.0 { p.flowProgress = 0.0 }
                     let t = p.flowProgress
                     let px = -0.45 + 0.9 * t
@@ -627,23 +652,25 @@ public final class SwarmSimulation {
                 let dy = targetY - p.y
                 let dist = sqrt(dx * dx + dy * dy)
                 if dist > 1 {
-                    p.vx += (dx / dist) * morphAttract * attract * motionSpeedMultiplier
-                    p.vy += (dy / dist) * morphAttract * attract * motionSpeedMultiplier
+                    p.vx += (dx / dist) * morphAttract * attract * motionSpeedMultiplier * frameScale
+                    p.vy += (dy / dist) * morphAttract * attract * motionSpeedMultiplier * frameScale
                 }
-                p.vx += (noiseX * morphNoise * motionSpeedMultiplier + pushX) * motion
-                p.vy += (noiseY * morphNoise * motionSpeedMultiplier + pushY) * motion
-                p.vx *= morphDrag
-                p.vy *= morphDrag
-                p.x += p.vx
-                p.y += p.vy
+                p.vx += (noiseX * morphNoise * motionSpeedMultiplier + pushX) * motion * frameScale
+                p.vy += (noiseY * morphNoise * motionSpeedMultiplier + pushY) * motion * frameScale
+                let drag = pow(morphDrag, frameScale)
+                p.vx *= drag
+                p.vy *= drag
+                p.x += p.vx * frameScale
+                p.y += p.vy * frameScale
             } else {
                 // Surplus particles do a gentle ambient swirl.
-                p.vx += (noiseX * swarmNoise * 0.75 * motionSpeedMultiplier + pushX) * motion
-                p.vy += (noiseY * swarmNoise * 0.75 * motionSpeedMultiplier + pushY) * motion
-                p.vx *= swarmDrag
-                p.vy *= swarmDrag
-                p.x += p.vx
-                p.y += p.vy
+                p.vx += (noiseX * swarmNoise * 0.75 * motionSpeedMultiplier + pushX) * motion * frameScale
+                p.vy += (noiseY * swarmNoise * 0.75 * motionSpeedMultiplier + pushY) * motion * frameScale
+                let drag = pow(swarmDrag, frameScale)
+                p.vx *= drag
+                p.vy *= drag
+                p.x += p.vx * frameScale
+                p.y += p.vy * frameScale
 
                 if p.x < 0 { p.x = width }
                 if p.x > width { p.x = 0 }
@@ -749,6 +776,13 @@ public final class SwarmSimulation {
         resolvedGlyphTextByKey.reserveCapacity(32)
         for (index, p) in particles.enumerated() where p.isGlyph {
             if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
+            guard Self.shouldDrawGlyphParticle(
+                at: index,
+                isBatteryThrottled: isBatteryThrottled,
+                particleCount: particles.count
+            ) else {
+                continue
+            }
             let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
             let resolved: GraphicsContext.ResolvedText
             if canReuseGlyphText,
@@ -776,6 +810,22 @@ public final class SwarmSimulation {
             }
             ctx.draw(resolved, at: CGPoint(x: p.x, y: p.y), anchor: .center)
         }
+    }
+
+    nonisolated static func shouldDrawGlyphParticle(
+        at index: Int,
+        isBatteryThrottled: Bool,
+        particleCount: Int
+    ) -> Bool {
+        let stride: Int
+        if isBatteryThrottled {
+            stride = 5
+        } else if particleCount >= 1_000 {
+            stride = 4
+        } else {
+            stride = 3
+        }
+        return index % stride == 0
     }
 
     func makeParticle() -> Particle {
