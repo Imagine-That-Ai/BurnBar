@@ -64,15 +64,19 @@ class OpenBurnBarIrohBlobFfiBackend(
     override suspend fun fetchBlob(
         ticketText: String,
         destination: String,
+        expectedSizeBytes: Long?,
     ): BlobTransferStats =
         withContext(dispatcher) {
             val instance = node ?: throw IrohBlobBackendError.NotInitialized
             val stats =
                 try {
                     reflected("IrohBlobNode.fetchBlob") {
-                        blobNodeClass()
-                            .getMethod("fetchBlob", String::class.java, String::class.java)
-                            .invoke(instance, ticketText, destination)
+                        invokeFetchBlob(
+                            instance = instance,
+                            ticketText = ticketText,
+                            destination = destination,
+                            expectedSizeBytes = expectedSizeBytes,
+                        )
                     } ?: throw IrohBlobBackendError.FetchFailed("fetchBlob returned null")
                 } catch (err: IrohBackendError.RuntimeFailed) {
                     throw IrohBlobBackendError.FetchFailed(err.detail)
@@ -97,6 +101,39 @@ class OpenBurnBarIrohBlobFfiBackend(
                         .requireFfiField<Boolean>("BlobTransferStats.didResume"),
             )
         }
+
+    private fun invokeFetchBlob(
+        instance: Any,
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: Long?,
+    ): Any? {
+        val nodeClass = blobNodeClass()
+        if (expectedSizeBytes == null) {
+            return nodeClass
+                .getMethod("fetchBlob", String::class.java, String::class.java)
+                .invoke(instance, ticketText, destination)
+        }
+
+        IrohBlobTransferLimits.validateExpectedFetchSize(expectedSizeBytes)
+        val method =
+            nodeClass.methods.firstOrNull {
+                it.name == "fetchBlobWithExpectedSize" && it.parameterTypes.size == 3
+            }
+                ?: nodeClass.methods.firstOrNull {
+                    it.name.startsWith("fetchBlobWithExpectedSize") && it.parameterTypes.size == 3
+                }
+                ?: throw IrohBlobBackendError.FetchFailed("expected-size blob fetch is unavailable")
+
+        val expectedSizeArgument: Any =
+            when (method.parameterTypes[2]) {
+                java.lang.Long.TYPE,
+                java.lang.Long::class.javaObjectType,
+                -> expectedSizeBytes
+                else -> expectedSizeBytes.toULong()
+            }
+        return method.invoke(instance, ticketText, destination, expectedSizeArgument)
+    }
 
     override suspend fun identity(): IrohEndpointIdentity =
         withContext(dispatcher) {
