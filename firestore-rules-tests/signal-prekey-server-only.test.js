@@ -89,6 +89,21 @@ const rotationEvent = {
   rewrapJobId: "rewrap-1",
 };
 
+function identityDocument(overrides = {}) {
+  return {
+    deviceId,
+    platform: "iOS",
+    identityKeyId,
+    publicKeyData: "S".repeat(44),
+    publicKeyFingerprint: "H".repeat(44),
+    keyVersion: 1,
+    algorithm: "signal-hpke-identity-seal-v1",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 let testEnv;
 let runs = 0;
 let failures = 0;
@@ -122,17 +137,7 @@ async function seedServerDirectory() {
       createdAt: now,
       updatedAt: now,
     });
-    await setDoc(doc(db, `users/${aliceUid}/signal_identity_public_keys/${identityKeyId}`), {
-      deviceId,
-      platform: "iOS",
-      identityKeyId,
-      publicKeyData: "S".repeat(44),
-      publicKeyFingerprint: "H".repeat(44),
-      keyVersion: 1,
-      algorithm: "signal-hpke-identity-seal-v1",
-      createdAt: now,
-      updatedAt: now,
-    });
+    await setDoc(doc(db, `users/${aliceUid}/signal_identity_public_keys/${identityKeyId}`), identityDocument());
     await setDoc(doc(db, path("signed_prekeys/spk-1")), signedPreKey);
     await setDoc(doc(db, path("one_time_prekeys/opk-1")), oneTimePreKey);
     await setDoc(doc(db, path("kyber_prekeys/kpk-1")), kyberPreKey);
@@ -166,6 +171,81 @@ async function main() {
 
   await step("cross-user Signal directory reads still fail", async () => {
     await assertFails(getDoc(doc(bobDB, path("signed_prekeys/spk-1"))));
+  });
+
+  await step("direct owner Signal identity create is path-bound to a known device version", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `users/${aliceUid}/escrow_devices/device-2`), {
+        deviceId: "device-2",
+        deviceName: "iPad",
+        platform: "iPadOS",
+        trustState: "pending",
+        publicKeyFingerprint: "G".repeat(44),
+        keyVersion: 2,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/signal_identity_public_keys/device-2_2`),
+        identityDocument({
+          deviceId: "device-2",
+          platform: "iPadOS",
+          identityKeyId: "device-2_2",
+          keyVersion: 2,
+          keyVersionLabel: "2",
+          publicKeyData: "T".repeat(44),
+        })
+      )
+    );
+
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/signal_identity_public_keys/device-2_3`),
+        identityDocument({
+          deviceId: "device-2",
+          identityKeyId: "device-2_3",
+          keyVersion: 3,
+          keyVersionLabel: "3",
+        })
+      )
+    );
+
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/signal_identity_public_keys/device-2_2_wrong`),
+        identityDocument({
+          deviceId: "device-2",
+          identityKeyId: "device-2_2",
+          keyVersion: 2,
+          keyVersionLabel: "2",
+        })
+      )
+    );
+
+    await assertFails(
+      setDoc(
+        doc(bobDB, `users/${aliceUid}/signal_identity_public_keys/device-2_2_bob`),
+        identityDocument({
+          deviceId: "device-2",
+          identityKeyId: "device-2_2_bob",
+          keyVersion: 2,
+          keyVersionLabel: "2",
+        })
+      )
+    );
+  });
+
+  await step("direct client Signal identity rewrites and deletes fail", async () => {
+    await assertFails(updateDoc(doc(aliceDB, `users/${aliceUid}/signal_identity_public_keys/${identityKeyId}`), {
+      publicKeyData: "Z".repeat(44),
+      publicKeyFingerprint: "Q".repeat(44),
+      updatedAt: now,
+    }));
+    await assertFails(deleteDoc(doc(aliceDB, `users/${aliceUid}/signal_identity_public_keys/${identityKeyId}`)));
   });
 
   await step("direct client prekey publishes fail", async () => {
