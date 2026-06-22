@@ -404,7 +404,11 @@ final class ClaudeCodeParser: LogParser, Sendable {
         }
 
         guard cached.conversation == nil else { return cached }
-        let parsed = try? parseClaudeSession(file: file, sessionId: sessionId, projectName: projectName)
+        let parsed = try? parseClaudeSession( // try?-ok(best-effort conversation cache rewarm)
+            file: file,
+            sessionId: sessionId,
+            projectName: projectName
+        )
         let refreshed = ClaudeCodeCacheEntry(
             signature: signature,
             usage: cached.usage ?? parsed?.usage,

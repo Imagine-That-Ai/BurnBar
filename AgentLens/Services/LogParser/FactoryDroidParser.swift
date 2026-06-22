@@ -428,7 +428,7 @@ final class FactoryDroidParser: LogParser, Sendable {
         }
 
         guard cached.conversation == nil else { return cached }
-        let parsed = try? parseSession(
+        let parsed = try? parseSession( // try?-ok(best-effort conversation cache rewarm)
             sessionId: sessionId,
             jsonlFile: jsonlFile,
             settingsFile: settingsFile,
