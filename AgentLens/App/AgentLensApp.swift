@@ -1355,9 +1355,6 @@ struct OpenBurnBarApp: App {
             }
             context.cloudSyncService = sync
 
-            // Wire local app shell dependencies before optional cloud listeners.
-            // A missing Firebase plist should degrade cloud sync, not leave the
-            // menu-bar icon/popover/dashboard stuck on fallback startup state.
             appDelegate.settingsManager = context.settingsManager
             appDelegate.dataStore = context.dataStore
             appDelegate.daemonManager = context.daemonManager
