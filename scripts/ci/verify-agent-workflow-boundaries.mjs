@@ -589,26 +589,33 @@ function exactConditionTerms(condition, operator) {
 function conditionRequiresEventConjunct(
   condition,
   eventConjunct,
-  requiredConjunct,
+  requiredConjuncts,
 ) {
+  const required = Array.isArray(requiredConjuncts)
+    ? requiredConjuncts
+    : [requiredConjuncts];
   const normalized = normalizedCondition(condition);
   let sawEventBranch = false;
   for (const branch of exactConditionTerms(normalized, "||")) {
     const conjuncts = new Set(exactConditionTerms(branch, "&&"));
     if (!conjuncts.has(eventConjunct)) continue;
     sawEventBranch = true;
-    if (!conjuncts.has(requiredConjunct)) return false;
+    if (!required.every((conjunct) => conjuncts.has(conjunct))) return false;
   }
   return sawEventBranch;
 }
 
 function conditionRequiresGlobalConjunctWithoutDisjunction(
   condition,
-  requiredConjunct,
+  requiredConjuncts,
 ) {
+  const required = Array.isArray(requiredConjuncts)
+    ? requiredConjuncts
+    : [requiredConjuncts];
   const normalized = normalizedCondition(condition);
   if (splitTopLevelBooleanOperator(normalized, "||").length > 1) return false;
-  return new Set(exactConditionTerms(normalized, "&&")).has(requiredConjunct);
+  const conjuncts = new Set(exactConditionTerms(normalized, "&&"));
+  return required.every((conjunct) => conjuncts.has(conjunct));
 }
 
 function conditionRequiresTrustedTrigger(
@@ -620,13 +627,13 @@ function conditionRequiresTrustedTrigger(
     return conditionRequiresEventConjunct(
       condition,
       check.eventConjunct,
-      check.requiredConjunct,
+      check.requiredConjuncts ?? check.requiredConjunct,
     );
   }
   if (!singleEventWorkflow) return false;
   return conditionRequiresGlobalConjunctWithoutDisjunction(
     condition,
-    check.requiredConjunct,
+    check.requiredConjuncts ?? check.requiredConjunct,
   );
 }
 
@@ -707,7 +714,10 @@ const TRUSTED_AGENT_TRIGGER_CONJUNCTS = [
   {
     workflowEvent: "issues:",
     eventConjunct: "github.event_name == 'issues'",
-    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.issue.author_association)`,
+    requiredConjuncts: [
+      "github.event.issue.pull_request == null",
+      `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.issue.author_association)`,
+    ],
     label: "issue agent trigger",
   },
   {
