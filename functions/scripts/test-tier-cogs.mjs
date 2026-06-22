@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { Timestamp } from "firebase-admin/firestore";
 
-import { buildTierCogsDailyDoc, TIER_COGS_UNIT_COSTS } from "../lib/tierCogs.js";
+import { buildTierCogsDailyDoc, tierCogsDailyDocPath, TIER_COGS_UNIT_COSTS } from "../lib/tierCogs.js";
 
 const doc = buildTierCogsDailyDoc(
   {
@@ -39,5 +39,7 @@ assert.equal(doc.mediaRelayCogsUSD, 1.2);
 assert.equal(doc.hostedVisionCogsUSD, 3.4);
 assert.equal(doc.cloudPro.grossMarginRatio, -2.2597);
 assert.equal(doc.schemaVersion, 1);
+assert.equal(tierCogsDailyDocPath(doc.dayKey), "ops/cogs_by_tier/days/2026-05-30");
+assert.equal(tierCogsDailyDocPath(doc.dayKey).split("/").length % 2, 0);
 
 console.log("Tier COGS daily document fixture passed.");

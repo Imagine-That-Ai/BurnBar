@@ -1349,7 +1349,6 @@ service cloud.firestore {
           "endpointURL",
           "advertisedModel",
           "selectedInstanceID",
-          "redisURL",
           "relayPublicKey",
           "relayKeyVersion",
           "relayEncryption",
@@ -1375,7 +1374,6 @@ service cloud.firestore {
         && (!("endpointURL" in request.resource.data) || (request.resource.data.endpointURL is string && request.resource.data.endpointURL.size() <= 2048))
         && (!("advertisedModel" in request.resource.data) || (request.resource.data.advertisedModel is string && request.resource.data.advertisedModel.size() <= 160))
         && (!("selectedInstanceID" in request.resource.data) || (request.resource.data.selectedInstanceID is string && request.resource.data.selectedInstanceID.size() <= 160))
-        && (!("redisURL" in request.resource.data) || (request.resource.data.redisURL is string && request.resource.data.redisURL.size() <= 2048))
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
@@ -1938,7 +1936,7 @@ service cloud.firestore {
         && validCliMissionApprovalControls()
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime is string)
-        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus is string)
+        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
         && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
         && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
         && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))

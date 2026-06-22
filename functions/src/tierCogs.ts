@@ -101,6 +101,10 @@ export function buildTierCogsDailyDoc(input: TierCogsDailyInput, updatedAt: Time
   };
 }
 
+export function tierCogsDailyDocPath(dayKey: string): string {
+  return `ops/cogs_by_tier/days/${dayKey}`;
+}
+
 function previousUtcDay(now: Date): string {
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return new Date(today - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -171,6 +175,6 @@ export const computeTierCogsDaily = onSchedule(
       Timestamp.now(),
     );
 
-    await getFirestore().doc(`ops/cogs_by_tier/${dayKey}`).set(doc, { merge: true });
+    await getFirestore().doc(tierCogsDailyDocPath(dayKey)).set(doc, { merge: true });
   },
 );

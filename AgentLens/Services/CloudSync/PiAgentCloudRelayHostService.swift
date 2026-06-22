@@ -127,6 +127,7 @@ final class PiAgentCloudRelayHostService {
                 "status": PiConnectionStatus.offline.rawValue,
                 "capabilities": ["chat_completions", "remote_relay"],
                 "advertisedModel": FieldValue.delete(),
+                "redisURL": FieldValue.delete(),
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
@@ -209,9 +210,7 @@ final class PiAgentCloudRelayHostService {
         if let selected = status.selectedInstanceID {
             data["selectedInstanceID"] = selected
         }
-        if !redisRaw.isEmpty {
-            data["redisURL"] = redisRaw
-        }
+        data["redisURL"] = FieldValue.delete()
         if !status.instances.isEmpty {
             data["instances"] = status.instances.map { instance in
                 var record: [String: Any] = [

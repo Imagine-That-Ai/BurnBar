@@ -109,6 +109,108 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testOutboundSendDeniedByCapabilityGateSkipsPublishAndAdvertise() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let backend = QuarantineBlobBackend()
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-send-gate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let outboundURL = temp.appendingPathComponent("outbound.txt")
+        try Data("outbound".utf8).write(to: outboundURL)
+
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            capabilityGate: DenyingCapabilityGate(reason: .killSwitchActive)
+        )
+        var advertisedFrames: [HermesRealtimeRelayFrame] = []
+        adapter.setAdvertiseSender { frame in
+            advertisedFrames.append(frame)
+        }
+
+        do {
+            _ = try await adapter.sendFile(
+                at: outboundURL,
+                uid: "uid-1",
+                connectionID: "connection-1",
+                peerDeviceID: "iphone-1"
+            )
+            XCTFail("expected outbound admission denial")
+        } catch let failure as MacFileTransferService.Failure {
+            guard case .admissionDenied(let reason) = failure else {
+                XCTFail("expected admissionDenied, got \(failure)")
+                return
+            }
+            XCTAssertEqual(reason, MediaCapabilityDenialReason.killSwitchActive.rawValue)
+        }
+
+        let publishedPaths = await backend.publishedPaths
+        XCTAssertTrue(publishedPaths.isEmpty, "denied send must not publish a blob")
+        XCTAssertTrue(advertisedFrames.isEmpty, "denied send must not advertise a ticket")
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .fileTransfer), 0)
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
+    func testOutboundSendPublishesImmutableSnapshotAfterAdmission() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let backend = QuarantineBlobBackend()
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-send-snapshot-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let outboundURL = temp.appendingPathComponent("outbound.txt")
+        try Data("small".utf8).write(to: outboundURL)
+
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let gate = MutatingAllowGate(fileURL: outboundURL)
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            capabilityGate: gate
+        )
+        var advertisedFrames: [HermesRealtimeRelayFrame] = []
+        adapter.setAdvertiseSender { frame in
+            advertisedFrames.append(frame)
+        }
+
+        let manifest = try await adapter.sendFile(
+            at: outboundURL,
+            uid: "uid-1",
+            connectionID: "connection-1",
+            peerDeviceID: "iphone-1"
+        )
+
+        let publishedPayloads = await backend.publishedPayloads
+        let publishedPaths = await backend.publishedPaths
+        XCTAssertEqual(gate.requestedBudgets, [Int64(5)])
+        XCTAssertEqual(publishedPayloads, [Data("small".utf8)])
+        XCTAssertFalse(publishedPaths.contains(outboundURL.path), "publish must use the immutable snapshot, not the mutable caller path")
+        XCTAssertEqual(manifest.size, 5)
+        XCTAssertEqual(manifest.filename, "outbound.txt")
+        XCTAssertEqual(advertisedFrames.first?.media?.attachment?.size, 5)
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testInboundAdvertiseSealsReceivedBytesAtRestWhenSessionKeyAvailable() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -246,9 +348,19 @@ private struct DenyingCapabilityGate: MediaCapabilityGate {
 
 private actor QuarantineBlobBackend: IrohBlobBackend {
     private var fetchedTicketStorage: [String] = []
+    private var publishedPathStorage: [String] = []
+    private var publishedPayloadStorage: [Data] = []
 
     var fetchedTickets: [String] {
         fetchedTicketStorage
+    }
+
+    var publishedPaths: [String] {
+        publishedPathStorage
+    }
+
+    var publishedPayloads: [Data] {
+        publishedPayloadStorage
     }
 
     func bootstrap(
@@ -260,7 +372,9 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
     }
 
     func publishBlob(localPath: String) async throws -> String {
-        "blob1unused"
+        publishedPathStorage.append(localPath)
+        publishedPayloadStorage.append(try Data(contentsOf: URL(fileURLWithPath: localPath)))
+        return "blob1unused"
     }
 
     func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
@@ -284,4 +398,37 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
     }
 
     func shutdown() async {}
+}
+
+private final class MutatingAllowGate: MediaCapabilityGate, @unchecked Sendable {
+    private let fileURL: URL
+    private(set) var requestedBudgets: [Int64?] = []
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
+
+    func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds: Int?,
+        sessionByteBudget: Int64?
+    ) async -> MediaCapabilityCheck {
+        await check(
+            feature: feature,
+            sessionDurationLimitSeconds: sessionDurationLimitSeconds,
+            sessionByteBudget: sessionByteBudget,
+            transferDirection: nil
+        )
+    }
+
+    func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds _: Int?,
+        sessionByteBudget: Int64?,
+        transferDirection _: MediaCapabilityTransferDirection?
+    ) async -> MediaCapabilityCheck {
+        requestedBudgets.append(sessionByteBudget)
+        try? Data(repeating: 0x41, count: 64).write(to: fileURL)
+        return .allowed(envelope: MediaCapabilityEnvelope(feature: feature))
+    }
 }

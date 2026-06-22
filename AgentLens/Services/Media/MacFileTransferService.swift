@@ -45,6 +45,7 @@ final class MacFileTransferService: ObservableObject {
         case fetchFailed(String)
         case dispatchUnavailable
         case settingDisabled
+        case admissionDenied(String)
 
         var errorDescription: String? {
             switch self {
@@ -60,6 +61,8 @@ final class MacFileTransferService: ObservableObject {
                 return "No active iroh stream is available to advertise the file on."
             case .settingDisabled:
                 return "media_blob_transfer_enabled is off."
+            case .admissionDenied(let reason):
+                return "Media admission denied: \(reason)"
             }
         }
     }
@@ -194,13 +197,48 @@ final class MacFileTransferService: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Failure.fileMissing(fileURL)
         }
+        let snapshot: (url: URL, directory: URL)
+        do {
+            snapshot = try Self.snapshotForPublish(originalURL: fileURL)
+        } catch let failure as Failure {
+            lastError = failure
+            throw failure
+        } catch {
+            let failure = Failure.publishFailed(error.localizedDescription)
+            lastError = failure
+            throw failure
+        }
+        defer { Self.removeSnapshotDirectory(snapshot.directory) }
+
+        let outboundByteBudget: Int64
+        do {
+            outboundByteBudget = try Self.fileSizeBytes(at: snapshot.url)
+        } catch let failure as Failure {
+            lastError = failure
+            throw failure
+        } catch {
+            let failure = Failure.publishFailed(error.localizedDescription)
+            lastError = failure
+            throw failure
+        }
+        let admission = await capabilityGate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: outboundByteBudget,
+            transferDirection: .outbound
+        )
+        if case .denied(let reason) = admission {
+            let failure = Failure.admissionDenied(reason.rawValue)
+            lastError = failure
+            throw failure
+        }
 
         incrementFileTransferCount()
         defer { decrementFileTransferCount() }
 
         let publish: MediaFileTransferService.PublishResult
         do {
-            publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
+            publish = try await service.publish(localFile: snapshot.url, peerDeviceID: peerDeviceID)
         } catch let serviceError as MediaFileTransferService.ServiceError {
             let failure = Failure.publishFailed(String(describing: serviceError))
             lastError = failure
@@ -391,7 +429,8 @@ final class MacFileTransferService: ObservableObject {
         let admission = await capabilityGate.check(
             feature: .fileTransfer,
             sessionDurationLimitSeconds: nil,
-            sessionByteBudget: manifest.size
+            sessionByteBudget: manifest.size,
+            transferDirection: .inbound
         )
         if case .denied(let reason) = admission {
             await sendDenialAck(
@@ -511,6 +550,39 @@ final class MacFileTransferService: ObservableObject {
     private func decrementFileTransferCount() {
         inFlightCount = max(0, inFlightCount - 1)
         MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
+    }
+
+    private static func fileSizeBytes(at url: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber else {
+            throw Failure.publishFailed("unable to read file size")
+        }
+        return size.int64Value
+    }
+
+    private static func snapshotForPublish(originalURL: URL) throws -> (url: URL, directory: URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-media-send-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let snapshotURL = directory.appendingPathComponent(originalURL.lastPathComponent, isDirectory: false)
+        do {
+            try FileManager.default.copyItem(at: originalURL, to: snapshotURL)
+            return (snapshotURL, directory)
+        } catch {
+            removeSnapshotDirectory(directory)
+            throw Failure.publishFailed("snapshot file for publish: \(error.localizedDescription)")
+        }
+    }
+
+    private static func removeSnapshotDirectory(_ directory: URL) {
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            AppLogger.sync.error(
+                "media_file_transfer_snapshot_cleanup_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
     }
 
     /// RR-18 — overwrite the freshly-fetched plaintext blob in place with its

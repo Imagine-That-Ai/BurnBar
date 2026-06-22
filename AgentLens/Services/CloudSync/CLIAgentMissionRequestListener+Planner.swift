@@ -115,6 +115,53 @@ enum CLIAgentMissionRuntimePlanner {
         return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
 
+    static func requiresPreDispatchApproval(
+        data: [String: Any],
+        backend: CLIAgentMissionBackend
+    ) -> Bool {
+        if InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: data["approvalMode"] as? String,
+            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
+        ) {
+            return true
+        }
+        if isLocalMacMission(data: data) {
+            return false
+        }
+        return requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
+    }
+
+    static func isLocalMacMission(data: [String: Any]) -> Bool {
+        let source = ((data["source"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let sourceSurface = ((data["sourceSurface"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return source == "mac" || sourceSurface == "mac-wand"
+    }
+
+    static func requiresMacCLIAssistantConsentForRemoteMission(
+        backend: CLIAgentMissionBackend
+    ) -> Bool {
+        if let chatBackend = backend.chatBackend {
+            switch chatBackend {
+            case .hermes:
+                return false
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent:
+                return true
+            }
+        }
+
+        switch backend.rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "opencode", "ollama":
+            return true
+        default:
+            return false
+        }
+    }
+
     static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
         let source = ((data["source"] as? String) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
