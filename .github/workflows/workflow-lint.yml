@@ -15,6 +15,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/verify-release-provenance-boundaries.mjs"
+      - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
@@ -34,6 +36,8 @@ on:
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.mjs"
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
+      - "scripts/ci/verify-release-provenance-boundaries.mjs"
+      - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
@@ -89,6 +93,12 @@ jobs:
 
       - name: Verify agent workflow boundaries
         run: node scripts/ci/verify-agent-workflow-boundaries.mjs
+
+      - name: Self-test release provenance boundaries
+        run: node scripts/ci/verify-release-provenance-boundaries.test.mjs
+
+      - name: Verify release provenance boundaries
+        run: node scripts/ci/verify-release-provenance-boundaries.mjs
 
       - name: Self-test wiki mem0 workflow boundary
         run: node scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs
