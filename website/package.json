@@ -55,7 +55,7 @@
     "@amplitude/analytics-browser": "2.44.1",
     "@astrojs/check": "^0.9.9",
     "@astrojs/mdx": "^5.0.5",
-    "@chenglou/pretext": "0.0.7",
+    "@chenglou/pretext": "0.0.8",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
