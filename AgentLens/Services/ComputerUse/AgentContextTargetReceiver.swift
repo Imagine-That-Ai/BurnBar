@@ -11,6 +11,7 @@ import OpenBurnBarComputerUseCore
 final class AgentContextTargetReceiver: Sendable {
     typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     typealias DisplayBoundsProvider = @Sendable () -> [MacInputCore.DisplayBounds]
+    typealias AuthorizedPeerNodeProvider = @MainActor @Sendable () -> String?
 
     let sessionId: ComputerUseSessionID
     let validator: PhoneControlAuthorityValidator
@@ -19,6 +20,7 @@ final class AgentContextTargetReceiver: Sendable {
     private let displayBoundsProvider: DisplayBoundsProvider
     private let replyFrameSink: FrameSink
     private let auditLoggerProvider: @MainActor () -> ComputerUseAuditLogger?
+    private let authorizedPeerNodeProvider: AuthorizedPeerNodeProvider?
 
     private let seenClientIntentIds = Locked<Set<String>>([])
 
@@ -28,6 +30,7 @@ final class AgentContextTargetReceiver: Sendable {
         chatControllerProvider: @escaping @MainActor () -> ChatSessionController?,
         macAccessibilityInspector: MacAccessibilityInspector = MacAccessibilityInspector(),
         displayBoundsProvider: @escaping DisplayBoundsProvider,
+        authorizedPeerNodeProvider: AuthorizedPeerNodeProvider? = nil,
         replyFrameSink: @escaping FrameSink,
         auditLoggerProvider: @escaping @MainActor () -> ComputerUseAuditLogger?
     ) {
@@ -38,6 +41,7 @@ final class AgentContextTargetReceiver: Sendable {
         self.displayBoundsProvider = displayBoundsProvider
         self.replyFrameSink = replyFrameSink
         self.auditLoggerProvider = auditLoggerProvider
+        self.authorizedPeerNodeProvider = authorizedPeerNodeProvider
     }
 
     func ingest(_ frame: HermesRealtimeRelayFrame) async {
@@ -45,9 +49,20 @@ final class AgentContextTargetReceiver: Sendable {
               let payload = frame.control,
               let target = payload.agentContextTarget else { return }
 
+        guard target.sessionId == sessionId.rawValue else {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "session_mismatch",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
+            return
+        }
+
         // 1. Validate authority & counter replay.
+        let validation: PhoneControlAuthorityValidator.ValidationResult
         do {
-            _ = try validator.validate(
+            validation = try validator.validate(
                 envelope: target.authority,
                 target: target,
                 now: Date()
@@ -57,6 +72,19 @@ final class AgentContextTargetReceiver: Sendable {
             return
         } catch {
             await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)
+            return
+        }
+
+        let authorizedPeerNode = await MainActor.run { authorizedPeerNodeProvider?() }
+        if let authorizedPeerNode,
+           !authorizedPeerNode.isEmpty,
+           validation.peerNodeId != authorizedPeerNode {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "control_owned_by_other_viewer",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
             return
         }
 
