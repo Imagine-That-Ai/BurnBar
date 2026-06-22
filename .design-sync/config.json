@@ -1,0 +1,39 @@
+{
+  "projectId": "f21e8d7b-5de3-44ac-aebc-d647a31ace98",
+  "shape": "package",
+  "pkg": "@openburnbar/console",
+  "globalName": "OpenBurnBarConsole",
+  "entry": "apps/console/.ds-entry.tsx",
+  "srcDir": "components",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": ".ds-preview.css",
+  "docsDir": "../../.design-sync/docs",
+  "readmeHeader": ".design-sync/conventions.md",
+  "buildCmd": "(cd apps/console && npm run sync:domains && node .ds-build-css.mjs .ds-preview.css)",
+  "componentSrcMap": {
+    "Button": "components/ui/button.tsx",
+    "Badge": "components/ui/badge.tsx",
+    "Card": "components/ui/card.tsx",
+    "Dialog": "components/ui/dialog.tsx",
+    "Progress": "components/ui/progress.tsx",
+    "BrandMark": "components/BrandMark.tsx",
+    "TierGlyph": "components/brand/TierGlyph.tsx",
+    "TierBadge": "components/brand/TierBadge.tsx",
+    "DotCrestField": "components/DotCrestField.tsx"
+  },
+  "overrides": {
+    "Button": { "cardMode": "column" },
+    "Dialog": { "cardMode": "single", "viewport": "680x460" }
+  },
+  "dtsPropsFor": {
+    "Button": "/** Visual style. `primary` is the single accent (oxblood); `destructive` is for dangerous actions ONLY; `link` renders inline. */\nvariant?: \"primary\" | \"secondary\" | \"ghost\" | \"destructive\" | \"link\";\n/** Control height/padding. `icon` is a square icon-only button. */\nsize?: \"sm\" | \"md\" | \"lg\" | \"icon\";\n/** Render as the single child element (Radix Slot), merging props onto it instead of a `<button>`. */\nasChild?: boolean;\nchildren?: React.ReactNode;\nclassName?: string;\n/** All native `<button>` attributes are also accepted (onClick, disabled, type, name, aria-*, …). */\ndisabled?: boolean;\nonClick?: React.MouseEventHandler<HTMLButtonElement>;\ntype?: \"button\" | \"submit\" | \"reset\";",
+    "Badge": "/** Encryption-tier identity; selects the colour. `neutral` (default) is a plain grey pill. */\ntier?: \"server_readable\" | \"zero_access\" | \"end_to_end\" | \"neutral\";\n/** Badge content — a short label, optionally with a leading icon. */\nchildren?: React.ReactNode;\nclassName?: string;\ntitle?: string;",
+    "Card": "/** Card body. Compose with the compound parts exported from the same module: `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`. */\nchildren?: React.ReactNode;\nclassName?: string;\n/** All native `<div>` attributes are also accepted. */",
+    "Dialog": "/** Controlled open state. Omit for uncontrolled (use `defaultOpen`). */\nopen?: boolean;\ndefaultOpen?: boolean;\nonOpenChange?: (open: boolean) => void;\n/** When true (default), interaction outside the content is blocked. */\nmodal?: boolean;\n/** Compose with `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `DialogClose` (all exported from the same module). */\nchildren?: React.ReactNode;",
+    "Progress": "/** Fill fraction, 0..1. Values > 1 clamp the bar to full and tint it crimson (over-quota). */\nvalue: number;\n/** CSS custom-property name for the fill colour (default \"--color-brass-core\", the accent). */\nfillVar?: string;\nclassName?: string;",
+    "BrandMark": "/** Square size of the framed mark, in pixels (default 92). Plays /brand/burnbar-mark.mp4 when present, else falls back to the static logo. */\nsize?: number;",
+    "TierGlyph": "/** Which encryption crest to draw: shield (end-to-end), lock (zero-access), or eye (server-readable). */\nglyph: \"shield\" | \"lock\" | \"eye\";\n/** CSS custom-property name the glyph is lit in, e.g. \"--color-tier-end-to-end\". */\ncolorVar: string;\n/** Square canvas size in pixels (default 34). */\nsize?: number;\n/** Accessible label (defaults to \"<glyph> tier mark\"). */\nlabel?: string;",
+    "TierBadge": "/** Encryption tier; selects the icon (eye/shield/lock) and the member-facing copy. */\ntier: \"server_readable\" | \"zero_access\" | \"end_to_end\";",
+    "DotCrestField": "/** No props. Ambient full-viewport canvas that drifts the BurnBar crests and provider logos as dot constellations; renders fixed at z-index -1 (behind page content). Expects the brand assets under /brand/ to be served by the host app. */"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "global": "OpenBurnBarConsole",
+  "pkg": "@openburnbar/console",
+  "pkgDir": "/Users/albertonunez/Documents/Developer/BurnBar/apps/console",
+  "extraEntries": [],
+  "exported": [],
+  "storybookStatic": null,
+  "keyRecipe": 7,
+  "cfgSliceGlobal": "a139d95ad8ab0a8ba08b44a258c54602e36090304087f48fe923c61aa5a8ae08",
+  "components": [
+    {
+      "name": "Badge",
+      "group": "primitives",
+      "srcSha": null,
+      "sourceKey": "08a235f0a5c5f7d3",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "BrandMark",
+      "group": "brand",
+      "srcSha": null,
+      "sourceKey": "c1453cad65fce438",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Button",
+      "group": "primitives",
+      "srcSha": null,
+      "sourceKey": "4468e997306eddd4",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Card",
+      "group": "primitives",
+      "srcSha": null,
+      "sourceKey": "11dec71bae8b86fa",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Dialog",
+      "group": "primitives",
+      "srcSha": null,
+      "sourceKey": "e95ba2f0bf7e66d7",
+      "cfgSlice": "c49c064c2e4b43b750e6a20c66c420ba7610433ee57f85693de0ded100c7257f",
+      "stories": []
+    },
+    {
+      "name": "DotCrestField",
+      "group": "brand",
+      "srcSha": null,
+      "sourceKey": "39e99120b35f12f2",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Progress",
+      "group": "primitives",
+      "srcSha": null,
+      "sourceKey": "4ac70dc993b580af",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "TierBadge",
+      "group": "brand",
+      "srcSha": null,
+      "sourceKey": "b69d0dafdbd21830",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "TierGlyph",
+      "group": "brand",
+      "srcSha": null,
+      "sourceKey": "e7cc67b91bd1e02f",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    }
+  ]
+}
