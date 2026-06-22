@@ -120,6 +120,8 @@ REASON = re.compile(r"reason\s*[:=]\s*\S[^\n]{6,}", re.IGNORECASE)
 PREV_REASON = re.compile(r"^\s*(?://|/\*|\*|#(?!\[)).*reason\s*[:=]\s*\S[^\n]{6,}", re.IGNORECASE)
 NOQA_CODED = re.compile(r"#\s*noqa\s*:\s*\S")
 # ESLint's own sanctioned justification: `eslint-disable… -- <description>`.
+# Evaluated only inside the line's real comment suffix; a string literal that
+# happens to contain this shape must not justify a later bare directive.
 ESLINT_DESC = re.compile(r"eslint-disable[\w-]*\b[^\n]*?--\s*\S[^\n]{2,}")
 
 ESLINT_RE = re.compile(r"eslint-disable(?:-next-line|-line)?\b")
@@ -189,6 +191,12 @@ def reason_in_comment(line, ext):
     return i != -1 and bool(REASON.search(line[i:]))
 
 
+def eslint_desc_in_comment(line, ext):
+    """True iff ESLint's native `-- description` sits in the real directive comment."""
+    i = comment_start(line, ext)
+    return i != -1 and bool(ESLINT_DESC.search(line[i:]))
+
+
 def is_config_file(path):
     base = os.path.basename(path)
     if base.endswith(".gradle") or base.endswith(".gradle.kts"):
@@ -207,11 +215,18 @@ def justified(kind, line, prev, ext, path):
         return True
     if reason_in_comment(line, ext) or PREV_REASON.match(prev):
         return True
-    if kind == "eslint-disable" and ESLINT_DESC.search(line):
+    if kind == "eslint-disable" and eslint_desc_in_comment(line, ext):
         return True
     if kind == "noqa" and NOQA_CODED.search(line):
         return True
     return False
+
+
+def line_contains_occurrence(kind, rx, line, ext):
+    if kind == "eslint-disable":
+        i = comment_start(line, ext)
+        return i != -1 and bool(rx.search(line[i:]))
+    return bool(rx.search(line))
 
 
 violations = []  # (path, lineno, kind, text)
@@ -239,7 +254,7 @@ for f in tracked:
     for idx, line in enumerate(lines):
         prev = lines[idx - 1] if idx > 0 else ""
         for kind, rx in pats:
-            if not rx.search(line):
+            if not line_contains_occurrence(kind, rx, line, ext):
                 continue
             if justified(kind, line, prev, ext, f):
                 continue
