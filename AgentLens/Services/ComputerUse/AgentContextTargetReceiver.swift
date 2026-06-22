@@ -49,7 +49,9 @@ final class AgentContextTargetReceiver: Sendable {
               let payload = frame.control,
               let target = payload.agentContextTarget else { return }
 
-        guard target.sessionId == sessionId.rawValue else {
+        if let targetSessionId = target.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !targetSessionId.isEmpty,
+           targetSessionId != sessionId.rawValue {
             await emitDeniedFrame(
                 reason: .scope,
                 detail: "session_mismatch",
@@ -75,10 +77,19 @@ final class AgentContextTargetReceiver: Sendable {
             return
         }
 
-        let authorizedPeerNode = await MainActor.run { authorizedPeerNodeProvider?() }
-        if let authorizedPeerNode,
-           !authorizedPeerNode.isEmpty,
-           validation.peerNodeId != authorizedPeerNode {
+        guard let authorizedPeerNode = await MainActor.run({ authorizedPeerNodeProvider?() })?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !authorizedPeerNode.isEmpty else {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "control_owner_missing",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
+            return
+        }
+
+        if validation.peerNodeId != authorizedPeerNode {
             await emitDeniedFrame(
                 reason: .scope,
                 detail: "control_owned_by_other_viewer",

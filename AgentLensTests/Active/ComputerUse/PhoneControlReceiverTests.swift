@@ -661,6 +661,71 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testAgentContextTargetReceiverAcceptsLegacyNilSessionFromActivePeer() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "android-phone-copilot"
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: peerNodeId, publicKey: privateKey.publicKey)
+
+        let target = HermesRealtimeRelayAgentContextTarget(
+            requestId: UUID().uuidString,
+            sessionId: nil,
+            runtime: "hermes",
+            threadId: "test-thread",
+            displayId: "main",
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            normalizedRect: nil,
+            instruction: "Click this button",
+            focusContext: nil,
+            clientIntentId: UUID().uuidString,
+            requestedAt: Date(),
+            authority: emptyAuthority()
+        )
+
+        let signed = try ComputerUsePhoneControlSigner().sign(
+            target: target,
+            peerNodeId: peerNodeId,
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+
+        var signedTarget = target
+        signedTarget.authority = envelope(from: signed)
+
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlAgentContextTarget,
+            uid: "uid-copilot",
+            connectionId: "conn-copilot",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue,
+                agentContextTarget: signedTarget
+            )
+        )
+
+        var replyReceived: HermesRealtimeRelayFrame?
+        let receiver = AgentContextTargetReceiver(
+            sessionId: ComputerUseSessionID(rawValue: "test-session"),
+            validator: validator,
+            chatControllerProvider: { nil },
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 1_000)]
+            },
+            authorizedPeerNodeProvider: { peerNodeId },
+            replyFrameSink: { frame in
+                replyReceived = frame
+            },
+            auditLoggerProvider: { nil }
+        )
+        await receiver.ingest(frame)
+
+        XCTAssertNotNil(replyReceived)
+        XCTAssertEqual(replyReceived?.type, .controlDenied)
+        XCTAssertEqual(replyReceived?.control?.denied?.reason, .agentUnavailable)
+    }
+
+    @MainActor
     func testAgentContextTargetReceiverRejectsWrongSession() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let peerNodeId = "android-phone-copilot"
@@ -789,6 +854,71 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(replyReceived?.type, .controlDenied)
         XCTAssertEqual(replyReceived?.control?.denied?.reason, .scope)
         XCTAssertEqual(replyReceived?.control?.denied?.detail, "control_owned_by_other_viewer")
+    }
+
+    @MainActor
+    func testAgentContextTargetReceiverRejectsWhenNoPhonePeerOwnsControl() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "android-phone-copilot"
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: peerNodeId, publicKey: privateKey.publicKey)
+
+        let target = HermesRealtimeRelayAgentContextTarget(
+            requestId: UUID().uuidString,
+            sessionId: "test-session",
+            runtime: "hermes",
+            threadId: "test-thread",
+            displayId: "main",
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            normalizedRect: nil,
+            instruction: "Click this button",
+            focusContext: nil,
+            clientIntentId: UUID().uuidString,
+            requestedAt: Date(),
+            authority: emptyAuthority()
+        )
+
+        let signed = try ComputerUsePhoneControlSigner().sign(
+            target: target,
+            peerNodeId: peerNodeId,
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+
+        var signedTarget = target
+        signedTarget.authority = envelope(from: signed)
+
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlAgentContextTarget,
+            uid: "uid-copilot",
+            connectionId: "conn-copilot",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: MediaStreamClass.controlInput.rawValue,
+                agentContextTarget: signedTarget
+            )
+        )
+
+        var replyReceived: HermesRealtimeRelayFrame?
+        let receiver = AgentContextTargetReceiver(
+            sessionId: ComputerUseSessionID(rawValue: "test-session"),
+            validator: validator,
+            chatControllerProvider: { nil },
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 1_000)]
+            },
+            authorizedPeerNodeProvider: { nil },
+            replyFrameSink: { frame in
+                replyReceived = frame
+            },
+            auditLoggerProvider: { nil }
+        )
+        await receiver.ingest(frame)
+
+        XCTAssertEqual(replyReceived?.type, .controlDenied)
+        XCTAssertEqual(replyReceived?.control?.denied?.reason, .scope)
+        XCTAssertEqual(replyReceived?.control?.denied?.detail, "control_owner_missing")
     }
 
     @MainActor
