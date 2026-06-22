@@ -17,7 +17,7 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { doc, setDoc, updateDoc, Timestamp, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, Timestamp, deleteDoc } from "firebase/firestore";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +55,17 @@ async function step(label, fn) {
   }
 }
 
+async function seedEscrowDevice(testEnv, uid, deviceId, trustState = "trusted") {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/escrow_devices/${deviceId}`), {
+      deviceId,
+      platform: deviceId.startsWith("mac-") ? "macOS" : "iOS",
+      trustState,
+      keyVersion: 1,
+    });
+  });
+}
+
 async function main() {
   const testEnv = await initializeTestEnvironment({
     projectId: PROJECT_ID,
@@ -72,11 +83,56 @@ async function main() {
 
   const grantPath = (id) => `users/${aliceUid}/escrow_grants/${id}`;
 
+  await seedEscrowDevice(testEnv, aliceUid, "mac-device-abc123");
+  await seedEscrowDevice(testEnv, aliceUid, "phone-device-xyz789");
+
   // ── CREATE: legit shape ──────────────────────────────────────────────────
   await step("owner can create an escrow grant with the exact Mac-writer shape", async () => {
     await assertSucceeds(
       setDoc(doc(aliceDB, grantPath("grant-1")), validGrantDoc())
     );
+  });
+
+  await step("create with a revoked source device is rejected", async () => {
+    await seedEscrowDevice(testEnv, aliceUid, "mac-device-revoked", "revoked");
+    await assertFails(
+      setDoc(doc(aliceDB, grantPath("grant-revoked-source")), {
+        ...validGrantDoc(),
+        sourceDeviceId: "mac-device-revoked",
+      })
+    );
+  });
+
+  await step("create with a revoked target device is rejected", async () => {
+    await seedEscrowDevice(testEnv, aliceUid, "phone-device-revoked", "revoked");
+    await assertFails(
+      setDoc(doc(aliceDB, grantPath("grant-revoked-target")), {
+        ...validGrantDoc(),
+        targetDeviceId: "phone-device-revoked",
+      })
+    );
+  });
+
+  await step("owner cannot read an active grant from a revoked source device", async () => {
+    await seedEscrowDevice(testEnv, aliceUid, "mac-device-revoked-read", "revoked");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), grantPath("grant-read-revoked-source")), {
+        ...validGrantDoc(),
+        sourceDeviceId: "mac-device-revoked-read",
+      });
+    });
+    await assertFails(getDoc(doc(aliceDB, grantPath("grant-read-revoked-source"))));
+  });
+
+  await step("owner cannot read an active grant to a revoked target device", async () => {
+    await seedEscrowDevice(testEnv, aliceUid, "phone-device-revoked-read", "revoked");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), grantPath("grant-read-revoked-target")), {
+        ...validGrantDoc(),
+        targetDeviceId: "phone-device-revoked-read",
+      });
+    });
+    await assertFails(getDoc(doc(aliceDB, grantPath("grant-read-revoked-target"))));
   });
 
   // ── CREATE: extra unknown field is rejected ──────────────────────────────

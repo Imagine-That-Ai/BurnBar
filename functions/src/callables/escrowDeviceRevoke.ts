@@ -9,7 +9,7 @@
 
 import { randomBytes } from "node:crypto";
 
-import { FieldValue, Timestamp, type WriteBatch } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type DocumentData, type QueryDocumentSnapshot, type WriteBatch } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -113,6 +113,21 @@ async function clearRevokedControllerPairings(args: {
   return revokedControllerPeerNodeIds;
 }
 
+type EscrowGrantDoc = QueryDocumentSnapshot<DocumentData>;
+
+async function activeEscrowGrantDocsForDevice(uid: string, deviceId: string): Promise<EscrowGrantDoc[]> {
+  const grantsRef = db.collection(`users/${uid}/escrow_grants`);
+  const [targetGrants, sourceGrants] = await Promise.all([
+    grantsRef.where("targetDeviceId", "==", deviceId).where("status", "==", "granted").get(),
+    grantsRef.where("sourceDeviceId", "==", deviceId).where("status", "==", "granted").get(),
+  ]);
+  const grantsByPath = new Map<string, EscrowGrantDoc>();
+  for (const grant of [...targetGrants.docs, ...sourceGrants.docs]) {
+    grantsByPath.set(grant.ref.path, grant);
+  }
+  return [...grantsByPath.values()];
+}
+
 export const revokeEscrowDeviceTrust = onCall(
   {
     region: FUNCTIONS_REGION,
@@ -133,13 +148,22 @@ export const revokeEscrowDeviceTrust = onCall(
         throw new HttpsError("not-found", "Escrow device is not registered.");
       }
 
-      const grants = await db
-        .collection(`users/${uid}/escrow_grants`)
-        .where("targetDeviceId", "==", deviceId)
-        .where("status", "==", "granted")
-        .get();
       const now = Timestamp.now();
       const receiptId = `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
+      // Flip the parent trust state before sweeping child grant records. Client
+      // rules require trusted source/target devices for new grants, so once this
+      // write commits, a new grant cannot race in after the sweep query. The
+      // cleanup batch repeats the same parent write so the durable receipt and
+      // child revocations converge idempotently if the callable is retried.
+      await ref.set(
+        {
+          trustState: "revoked",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      const grants = await activeEscrowGrantDocsForDevice(uid, deviceId);
       const batch = db.batch();
       batch.set(
         ref,
@@ -149,7 +173,7 @@ export const revokeEscrowDeviceTrust = onCall(
         },
         { merge: true },
       );
-      for (const grant of grants.docs) {
+      for (const grant of grants) {
         batch.set(
           grant.ref,
           {
@@ -230,7 +254,7 @@ export const revokeEscrowDeviceTrust = onCall(
         message: "phone_control_peer_revoked_receipt",
         receiptId,
         deviceId,
-        revokedGrants: grants.size,
+        revokedGrants: grants.length,
         revokedControllerPeerNodeIds,
         clearedAgentGrantAuthority,
         revokedSignalSessions,
@@ -245,7 +269,7 @@ export const revokeEscrowDeviceTrust = onCall(
         event: "callable_info",
         message: "escrow_device_trust_revoked",
         device_id: deviceId,
-        revoked_grants: grants.size,
+        revoked_grants: grants.length,
         revoked_controllers: revokedControllerPeerNodeIds.length,
         cleared_agent_grant_authority: clearedAgentGrantAuthority,
         revoked_signal_sessions: revokedSignalSessions,
@@ -260,7 +284,7 @@ export const revokeEscrowDeviceTrust = onCall(
         ok: true,
         deviceId,
         trustState: "revoked",
-        revokedGrants: grants.size,
+        revokedGrants: grants.length,
         revokedControllerPeerNodeIds,
         clearedAgentGrantAuthority,
         revokedSignalSessions,
