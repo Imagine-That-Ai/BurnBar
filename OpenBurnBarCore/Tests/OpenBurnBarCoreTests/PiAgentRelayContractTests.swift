@@ -86,8 +86,8 @@ final class PiAgentRelayContractTests: XCTestCase {
           "capabilities": ["chat_completions", "remote_relay"],
           "instances": [],
           "models": [],
-          "createdAt": "2026-05-10T00:00:00Z",
-          "updatedAt": "2026-05-10T00:00:00Z",
+          "createdAt": 800150400.0,
+          "updatedAt": 800150400.0,
           "schemaVersion": 2
         }
         """.data(using: .utf8)!
