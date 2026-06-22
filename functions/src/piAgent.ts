@@ -8,7 +8,7 @@ import type {
   PiAgentInstanceDoc,
   PiAgentRuntimeModelDoc,
 } from "./types.js";
-import { recordOrUndefined, isRecord, isFirestoreTimestamp, stripUndefinedObject } from "./guards.js";
+import { recordOrUndefined, isRecord, isFirestoreTimestamp } from "./guards.js";
 
 export function randomPiAgentPairingCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -158,29 +158,31 @@ export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDo
 }
 
 export function piAgentConnectionResponseDoc(doc: PiAgentConnectionDoc): PiAgentConnectionDoc {
-  return stripUndefinedObject({
+  return {
     id: doc.id,
     displayName: doc.displayName,
     mode: doc.mode,
     status: doc.status,
-    endpointURL: doc.endpointURL,
-    advertisedModel: doc.advertisedModel,
-    selectedInstanceID: doc.selectedInstanceID,
-    relayPublicKey: doc.relayPublicKey,
-    relayKeyVersion: doc.relayKeyVersion,
-    relayEncryption: doc.relayEncryption,
-    realtimeRelayURL: doc.realtimeRelayURL,
-    realtimeRelayStatus: doc.realtimeRelayStatus,
-    realtimeRelayLastSeenAt: doc.realtimeRelayLastSeenAt,
-    realtimeRelayProtocolVersion: doc.realtimeRelayProtocolVersion,
     capabilities: doc.capabilities,
-    instances: doc.instances,
-    models: doc.models,
-    lastSeenAt: doc.lastSeenAt,
     createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
     schemaVersion: doc.schemaVersion,
-  }) as PiAgentConnectionDoc;
+    ...(doc.endpointURL === undefined ? {} : { endpointURL: doc.endpointURL }),
+    ...(doc.advertisedModel === undefined ? {} : { advertisedModel: doc.advertisedModel }),
+    ...(doc.selectedInstanceID === undefined ? {} : { selectedInstanceID: doc.selectedInstanceID }),
+    ...(doc.relayPublicKey === undefined ? {} : { relayPublicKey: doc.relayPublicKey }),
+    ...(doc.relayKeyVersion === undefined ? {} : { relayKeyVersion: doc.relayKeyVersion }),
+    ...(doc.relayEncryption === undefined ? {} : { relayEncryption: doc.relayEncryption }),
+    ...(doc.realtimeRelayURL === undefined ? {} : { realtimeRelayURL: doc.realtimeRelayURL }),
+    ...(doc.realtimeRelayStatus === undefined ? {} : { realtimeRelayStatus: doc.realtimeRelayStatus }),
+    ...(doc.realtimeRelayLastSeenAt === undefined ? {} : { realtimeRelayLastSeenAt: doc.realtimeRelayLastSeenAt }),
+    ...(doc.realtimeRelayProtocolVersion === undefined
+      ? {}
+      : { realtimeRelayProtocolVersion: doc.realtimeRelayProtocolVersion }),
+    ...(doc.instances === undefined ? {} : { instances: doc.instances }),
+    ...(doc.models === undefined ? {} : { models: doc.models }),
+    ...(doc.lastSeenAt === undefined ? {} : { lastSeenAt: doc.lastSeenAt }),
+    ...(doc.updatedAt === undefined ? {} : { updatedAt: doc.updatedAt }),
+  };
 }
 
 function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {
