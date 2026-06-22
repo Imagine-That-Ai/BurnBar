@@ -72,12 +72,12 @@ final class PetBubblePanel: NSPanel {
             contentView = view
             hosting = view
         }
-        layoutIfNeeded()
+        resizeToContent()
     }
 
     /// Resize the panel to the SwiftUI content's fitting size (called before the
     /// controller positions it).
-    func layoutIfNeeded() {
+    func resizeToContent() {
         guard let hosting else { return }
         let fitting = hosting.fittingSize
         let size = NSSize(

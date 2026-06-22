@@ -259,7 +259,7 @@ final class PetCompanionController: ObservableObject {
     /// Position the bubble panel just above the pet's contact socket.
     private func anchorBubble(_ bubble: PetBubblePanel) {
         guard let anchor = bubbleAnchorPoint() else { return }
-        bubble.layoutIfNeeded()
+        bubble.resizeToContent()
         let size = bubble.frame.size
         // Center the bubble horizontally over the anchor, sit it above with a gap.
         let origin = CGPoint(
