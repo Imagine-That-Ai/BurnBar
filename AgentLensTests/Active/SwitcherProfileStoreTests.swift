@@ -775,6 +775,37 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(rowCount, 2)
     }
 
+    func test_persistedActiveProfileID_resolvesOnlyExistingSnapshotProfile() throws {
+        let firstProfile = SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "First"),
+            sortKey: 1
+        )
+        let activeProfile = SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .safari,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Active"),
+            sortKey: 2
+        )
+        let profiles = [firstProfile, activeProfile]
+
+        XCTAssertEqual(
+            persistedActiveProfileID(
+                from: SwitcherActiveProfileState(activeProfileID: activeProfile.id),
+                loadedProfiles: profiles
+            ),
+            activeProfile.id
+        )
+        XCTAssertNil(
+            persistedActiveProfileID(
+                from: SwitcherActiveProfileState(activeProfileID: "deleted-profile"),
+                loadedProfiles: profiles
+            ),
+            "Snapshot hydration must not mark the first loaded profile active until recovery writes it."
+        )
+    }
+
     /// Verifies that repeated relaunch reads are deterministic even when
     /// legacy multi-row state was present initially.
     func test_fetchActiveProfileState_deterministicRepeatedRelaunchReads() async throws {

@@ -77,6 +77,19 @@ extension SwitcherDataLoading {
     }
 }
 
+/// Resolves the persisted active profile only when the read-only snapshot points
+/// at a profile that still exists in the currently loaded list.
+func persistedActiveProfileID(
+    from snapshot: SwitcherActiveProfileState,
+    loadedProfiles: [SwitcherProfileRecord]
+) -> String? {
+    guard let activeProfileID = snapshot.activeProfileID,
+          loadedProfiles.contains(where: { $0.id == activeProfileID }) else {
+        return nil
+    }
+    return activeProfileID
+}
+
 /// Production implementation that wraps `DataStore.switcherStore`.
 final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
     private let store: SwitcherProfileStore
@@ -1004,7 +1017,7 @@ struct DashboardQuickSwitchView: View {
             let loadedProfiles = try switcherDataLoading.fetchAllProfiles().filter { !$0.isDisabled }
             profiles = loadedProfiles
             let state = try switcherDataLoading.fetchActiveProfileStateSnapshot()
-            activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
+            activeProfileID = persistedActiveProfileID(from: state, loadedProfiles: loadedProfiles)
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
             drainTargets = (try? switcherDataLoading.fetchAllActiveDrainTargets()) ?? [:]
 
