@@ -74,6 +74,31 @@ class HermesCompositeRelayTransportTest {
     }
 
     @Test
+    fun unary_pairing_rejection_fails_closed_without_firestore_fallback() = runTest {
+        val iroh = mockk<HermesRelayTransporting>()
+        val firestore = mockk<HermesRelayTransporting>()
+        coEvery { iroh.sendUnary(payload, any()) } throws IrohRelayTransportError.PairingRejected("pairing record expired")
+
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
+        val err =
+            assertThrows(HermesRelayException::class.java) {
+                kotlinx.coroutines.runBlocking { composite.sendUnary(payload, 100) }
+            }
+
+        assertEquals(
+            "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
+                "Iroh pairing rejected: pairing record expired. No Firestore fallback was attempted, " +
+                "so the selected model is not silently rerouted.",
+            err.message,
+        )
+        coVerify(exactly = 0) { firestore.sendUnary(any(), any()) }
+    }
+
+    @Test
     fun unary_propagates_non_transport_errors() = runTest {
         val iroh = mockk<HermesRelayTransporting>()
         val firestore = mockk<HermesRelayTransporting>()
@@ -116,10 +141,38 @@ class HermesCompositeRelayTransportTest {
     }
 
     @Test
-    fun streaming_chat_falls_back_to_firestore_when_iroh_pairing_is_rejected() = runTest {
+    fun streaming_chat_pairing_rejection_fails_closed_without_firestore_fallback() = runTest {
         val iroh = mockk<HermesRelayTransporting>()
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { iroh.sendStreaming(payload, any(), any()) } throws IrohRelayTransportError.PairingRejected("pairing record expired")
+
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
+        val err =
+            assertThrows(HermesRelayException::class.java) {
+                kotlinx.coroutines.runBlocking {
+                    composite.sendStreaming(payload, 100) {}
+                }
+            }
+
+        assertEquals(
+            "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
+                "Iroh pairing rejected: pairing record expired. No Firestore fallback was attempted, " +
+                "so the selected model is not silently rerouted.",
+            err.message,
+        )
+        coVerify(exactly = 1) { iroh.sendStreaming(payload, 100, any()) }
+        coVerify(exactly = 0) { firestore.sendStreaming(any(), any(), any()) }
+    }
+
+    @Test
+    fun streaming_chat_falls_back_when_iroh_pairing_is_unavailable() = runTest {
+        val iroh = mockk<HermesRelayTransporting>()
+        val firestore = mockk<HermesRelayTransporting>()
+        coEvery { iroh.sendStreaming(payload, any(), any()) } throws IrohRelayTransportError.PairingUnavailable("pairing record not found")
         coEvery { firestore.sendStreaming(payload, any(), any()) } answers {
             val cb = thirdArg<suspend (String) -> Unit>()
             kotlinx.coroutines.runBlocking { cb("via-firestore") }

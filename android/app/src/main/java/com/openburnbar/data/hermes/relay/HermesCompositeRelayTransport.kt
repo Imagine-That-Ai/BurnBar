@@ -16,12 +16,13 @@ private const val AUDIT_FALLBACK_REASON_MAX_CHARS = 256
  *   1. If the kill switch is set (`hermes_iroh_transport_enabled`
  *      remote-config flag returns false), skip iroh entirely.
  *   2. Otherwise attempt iroh. Unary control-plane calls fall back to
- *      Firestore. Streaming `/v1/chat/completions` surfaces direct iroh
+ *      Firestore on retryable transport loss or when no pairing record is
+ *      available yet. A rejected pairing never falls back, because the selected
+ *      Mac identity was not verified. Streaming `/v1/chat/completions` surfaces direct iroh
  *      stream failures instead of silently rerouting the selected model
- *      through a different relay path, but stale/invalid iroh pairing
- *      metadata falls back to the same selected Mac's Firestore relay.
- *      Streaming `/v1/cli-agent/chat` also falls back to Firestore because
- *      it still targets the same selected Mac executor.
+ *      through a different relay path. Streaming `/v1/cli-agent/chat` falls
+ *      back to Firestore for retryable transport loss because it still targets
+ *      the same selected Mac executor.
  */
 class HermesCompositeRelayTransport(
     private val iroh: HermesRelayTransporting,
@@ -36,6 +37,9 @@ class HermesCompositeRelayTransport(
         return try {
             iroh.sendUnary(payload, timeoutMillis)
         } catch (err: IrohRelayTransportError) {
+            if (!shouldFallbackUnary(err)) {
+                throw fallbackDeniedException(err)
+            }
             auditFallback(payload, err)
             firestoreFallback.sendUnary(payload, timeoutMillis)
         }
@@ -48,22 +52,29 @@ class HermesCompositeRelayTransport(
         try {
             iroh.sendStreaming(payload, timeoutMillis, onSseEvent)
         } catch (err: IrohRelayTransportError) {
-            auditFallback(payload, err)
             if (shouldFallbackStreaming(payload, err)) {
+                auditFallback(payload, err)
                 return firestoreFallback.sendStreaming(payload, timeoutMillis, onSseEvent)
             }
-            throw HermesRelayException(
-                "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
-                    "${err.message ?: err.javaClass.simpleName}. No Firestore fallback was attempted, " +
-                    "so the selected model is not silently rerouted.",
-                err,
-            )
+            throw fallbackDeniedException(err)
         }
     }
 
+    private fun shouldFallbackUnary(err: IrohRelayTransportError): Boolean = err !is IrohRelayTransportError.PairingRejected
+
     private fun shouldFallbackStreaming(payload: HermesRelayPayload, err: IrohRelayTransportError): Boolean =
-        payload.operation == HermesRelayOperationName.CLI_AGENT_CHAT ||
-            err is IrohRelayTransportError.PairingRejected
+        err is IrohRelayTransportError.PairingUnavailable ||
+            (
+                payload.operation == HermesRelayOperationName.CLI_AGENT_CHAT &&
+                    err !is IrohRelayTransportError.PairingRejected
+                )
+
+    private fun fallbackDeniedException(err: IrohRelayTransportError): HermesRelayException = HermesRelayException(
+        "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
+            "${err.message ?: err.javaClass.simpleName}. No Firestore fallback was attempted, " +
+            "so the selected model is not silently rerouted.",
+        err,
+    )
 
     private suspend fun auditFallback(payload: HermesRelayPayload, err: IrohRelayTransportError) {
         auditLogger.record(

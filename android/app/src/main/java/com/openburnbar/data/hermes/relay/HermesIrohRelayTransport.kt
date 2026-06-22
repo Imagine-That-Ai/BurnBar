@@ -158,10 +158,23 @@ class HermesIrohRelayTransport(
             )
             target
         } catch (err: IrohPairingDirectoryException) {
-            throw pairingVerificationFailure(uid, payload.connectionID, err)
+            throw pairingUnavailable(uid, payload.connectionID, err)
         } catch (err: IrohPairingError) {
             throw pairingVerificationFailure(uid, payload.connectionID, err)
         }
+    }
+
+    private suspend fun pairingUnavailable(uid: String, connectionId: String, err: IrohPairingDirectoryException): IrohRelayTransportError {
+        val detail = err.message ?: err.javaClass.simpleName
+        auditLogger.record(
+            event = IrohTransportAuditEvent.PAIRING_REJECTED,
+            uid = uid,
+            connectionId = connectionId,
+            transport = null,
+            rttMillis = null,
+            detail = mapOf("error" to detail.take(AUDIT_ERROR_DETAIL_MAX_CHARS)),
+        )
+        return IrohRelayTransportError.PairingUnavailable(detail = detail, source = err)
     }
 
     private suspend fun pairingVerificationFailure(uid: String, connectionId: String, err: Throwable): IrohRelayTransportError {
