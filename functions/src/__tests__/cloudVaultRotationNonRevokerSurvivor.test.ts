@@ -151,6 +151,7 @@ const NEW_KEY = "v1_" + "b".repeat(32);
 const REVOKER = "phone-revoker";
 const SURVIVOR_A = "mac-survivor";
 const SURVIVOR_B = "phone-survivor";
+const SURVIVOR_C = "ipad-survivor";
 
 function callRequest<T extends Record<string, unknown>>(uid: string, data: T): CallableRequest<T> {
   return {
@@ -353,6 +354,78 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
 
     expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
     expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${requirementId}`)?.status).toBe("pending");
+    expect([...store.keys()].filter((key) => key.includes("/cloud_vault_rotation_jobs/"))).toHaveLength(0);
+  });
+
+  it("accepts manual rotation only when every trusted device receives a survivor wrapper", async () => {
+    seedTrusted(SURVIVOR_A);
+    seedTrusted(SURVIVOR_B);
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 1,
+      status: "active",
+    });
+
+    const result = (await rotateCloudVaultKey.run(
+      callRequest(UID, {
+        callerDeviceId: SURVIVOR_B,
+        currentVaultKeyID: CURRENT_KEY,
+        newVaultKeyID: NEW_KEY,
+        expectedVaultGeneration: 2,
+        reason: "manual",
+        nonce: "nonce-manual-complete",
+        actionProof: { signature: "proof-manual-complete" },
+        survivorWrappers: [survivorWrapper(SURVIVOR_A, SURVIVOR_B), survivorWrapper(SURVIVOR_B, SURVIVOR_B)],
+      }),
+    )) as { ok: boolean; jobId: string; status: string; vaultGeneration: number };
+
+    expect(result).toMatchObject({ ok: true, status: "queued", vaultGeneration: 2 });
+    const job = store.get(`users/${UID}/cloud_vault_rotation_jobs/${result.jobId}`);
+    expect(job?.survivorDeviceIds).toEqual([SURVIVOR_A, SURVIVOR_B].sort());
+    expect(requireTrustedDeviceActionProof).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: UID,
+        deviceId: SURVIVOR_B,
+        actionKind: "cloud_vault_key_rotation",
+        subjectId: `${CURRENT_KEY}->${NEW_KEY}@2`,
+        approve: true,
+        nonce: "nonce-manual-complete",
+        proofRaw: { signature: "proof-manual-complete" },
+      }),
+    );
+  });
+
+  it("rejects manual rotation that omits a still-trusted device", async () => {
+    seedTrusted(SURVIVOR_A);
+    seedTrusted(SURVIVOR_B);
+    seedTrusted(SURVIVOR_C);
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 1,
+      status: "active",
+    });
+
+    await expect(
+      rotateCloudVaultKey.run(
+        callRequest(UID, {
+          callerDeviceId: SURVIVOR_B,
+          currentVaultKeyID: CURRENT_KEY,
+          newVaultKeyID: NEW_KEY,
+          expectedVaultGeneration: 2,
+          reason: "manual",
+          nonce: "nonce-manual-omitted",
+          actionProof: { signature: "proof-manual-omitted" },
+          survivorWrappers: [
+            survivorWrapper(SURVIVOR_A, SURVIVOR_B),
+            survivorWrapper(SURVIVOR_B, SURVIVOR_B),
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/cover every currently trusted device/);
+
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
     expect([...store.keys()].filter((key) => key.includes("/cloud_vault_rotation_jobs/"))).toHaveLength(0);
   });
 });
