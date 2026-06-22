@@ -292,6 +292,67 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertTrue(outbound.isAllowed, "download usage must not consume outbound allowance")
     }
 
+    func testLegacyFileTransferByteBudgetUsesUploadCompatibilityPath() async {
+        let exhaustedDownload = MediaQuotaUsageSnapshot(
+            bytesUploadedFile: 0,
+            bytesDownloadedFile: 5_000_000_000,
+            fileTransfersInitiated: 5,
+            fileTransfersFailed: 0,
+            screenShareSecondsUsed: 0,
+            screenShareSessions: 0,
+            videoCallSecondsUsed: 0,
+            videoCallSessions: 0
+        )
+        let gate = makeGate(entitlement: happyEntitlement, usage: exhaustedDownload, budget: normalBudget, concurrent: 0)
+
+        let result = await gate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: 100_000_000
+        )
+
+        XCTAssertTrue(result.isAllowed, "legacy callers without direction must not be denied by exhausted download quota when upload quota remains")
+    }
+
+    func testOutboundFileTransferRejectsSingleFileAbovePerFileCeiling() async {
+        let gate = makeGate(entitlement: happyEntitlement, usage: zeroUsage, budget: normalBudget, concurrent: 0)
+
+        let result = await gate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: 2_000_000_000,
+            transferDirection: .outbound
+        )
+
+        guard case .denied(let reason) = result else {
+            XCTFail("expected oversized outbound file to be denied")
+            return
+        }
+        XCTAssertEqual(reason, .sessionCapReached)
+    }
+
+    func testMediaQuotaUsageSnapshotParsesFirestoreNumberShapes() {
+        let snapshot = MacMediaQuotaUsageStore.parseSnapshot([
+            "bytesUploadedFile": NSNumber(value: 123_456_789),
+            "bytesDownloadedFile": 42.0,
+            "fileTransfersInitiated": NSNumber(value: 3),
+            "fileTransfersFailed": 1,
+            "screenShareSecondsUsed": NSNumber(value: 90),
+            "screenShareSessions": 2.0,
+            "videoCallSecondsUsed": Int64(12),
+            "videoCallSessions": NSNumber(value: 4)
+        ])
+
+        XCTAssertEqual(snapshot.bytesUploadedFile, 123_456_789)
+        XCTAssertEqual(snapshot.bytesDownloadedFile, 42)
+        XCTAssertEqual(snapshot.fileTransfersInitiated, 3)
+        XCTAssertEqual(snapshot.fileTransfersFailed, 1)
+        XCTAssertEqual(snapshot.screenShareSecondsUsed, 90)
+        XCTAssertEqual(snapshot.screenShareSessions, 2)
+        XCTAssertEqual(snapshot.videoCallSecondsUsed, 12)
+        XCTAssertEqual(snapshot.videoCallSessions, 4)
+    }
+
     func testRemoteUnlockSessionRegistryBindsCredentialSessionToPeer() {
         let service = makeRemoteUnlockReadinessService()
         let now = Date(timeIntervalSince1970: 1_774_000_000)

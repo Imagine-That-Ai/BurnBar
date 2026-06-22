@@ -3,6 +3,9 @@ import Darwin
 import Foundation
 import CryptoKit
 import CoreGraphics
+import FirebaseAuth
+import FirebaseCore
+import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
@@ -24,6 +27,7 @@ import Security
 final class MacMediaCapabilityGate: MediaCapabilityGate {
     static func live(settingsManager: SettingsManager) -> MacMediaCapabilityGate {
         MediaBudgetStatusStore.shared.startListening()
+        MacMediaQuotaUsageStore.shared.startListening()
         MacCloudEntitlementStore.shared.start()
         return MacMediaCapabilityGate(
             entitlementProvider: {
@@ -33,7 +37,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 )
             },
             usageProvider: {
-                MediaQuotaUsageSnapshot()
+                MacMediaQuotaUsageStore.shared.currentSnapshot
             },
             budgetProvider: {
                 MediaBudgetStatusStore.shared.effectiveStatus
@@ -201,6 +205,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         case .fileTransfer:
             let dailyBytesIn = Int64(envelope.fileTransferDailyGBIn) * 1_000_000_000
             let dailyBytesOut = Int64(envelope.fileTransferDailyGBOut) * 1_000_000_000
+            let perFileBytes = perSessionMaxBytes(feature: .fileTransfer, envelope: envelope) ?? dailyBytesOut
             if let sessionByteBudget, sessionByteBudget < 0 {
                 return .denied(reason: .sessionCapReached)
             }
@@ -210,6 +215,9 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 if usage.bytesDownloadedFile >= dailyBytesIn {
                     return .denied(reason: .dailyCapReached)
                 }
+                if sessionByteBudget != nil, requestedBytes > perFileBytes {
+                    return .denied(reason: .sessionCapReached)
+                }
                 if sessionByteBudget != nil,
                    (usage.bytesDownloadedFile + requestedBytes) > dailyBytesIn {
                     return .denied(reason: .sessionCapReached)
@@ -218,16 +226,22 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 if usage.bytesUploadedFile >= dailyBytesOut {
                     return .denied(reason: .dailyCapReached)
                 }
+                if sessionByteBudget != nil, requestedBytes > perFileBytes {
+                    return .denied(reason: .sessionCapReached)
+                }
                 if sessionByteBudget != nil,
                    (usage.bytesUploadedFile + requestedBytes) > dailyBytesOut {
                     return .denied(reason: .sessionCapReached)
                 }
             case nil:
-                if usage.bytesDownloadedFile >= dailyBytesIn || usage.bytesUploadedFile >= dailyBytesOut {
+                if usage.bytesDownloadedFile >= dailyBytesIn && usage.bytesUploadedFile >= dailyBytesOut {
                     return .denied(reason: .dailyCapReached)
                 }
+                if sessionByteBudget != nil, requestedBytes > perFileBytes {
+                    return .denied(reason: .sessionCapReached)
+                }
                 if sessionByteBudget != nil,
-                   (usage.bytesDownloadedFile + requestedBytes) > dailyBytesIn || (usage.bytesUploadedFile + requestedBytes) > dailyBytesOut {
+                   (usage.bytesUploadedFile + requestedBytes) > dailyBytesOut {
                     return .denied(reason: .sessionCapReached)
                 }
             }
@@ -319,6 +333,79 @@ struct MediaQuotaUsageSnapshot: Sendable, Equatable {
     var screenShareSessions: Int = 0
     var videoCallSecondsUsed: Int = 0
     var videoCallSessions: Int = 0
+}
+
+@MainActor
+final class MacMediaQuotaUsageStore {
+    static let shared = MacMediaQuotaUsageStore()
+
+    private var listener: ListenerRegistration?
+    private(set) var currentSnapshot = MediaQuotaUsageSnapshot()
+
+    func startListening() {
+        guard listener == nil else { return }
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
+        listener = Firestore.firestore()
+            .collection("users")
+            .document(uid)
+            .collection("media_quota_usage")
+            .document(Self.dayKey())
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        AppLogger.sync.error(
+                            "media_quota_usage_listener_failed",
+                            metadata: ["error": error.localizedDescription]
+                        )
+                        return
+                    }
+                    self?.currentSnapshot = Self.parseSnapshot(snapshot?.data() ?? [:])
+                }
+            }
+    }
+
+    func stopListening() {
+        listener?.remove()
+        listener = nil
+    }
+
+    static func parseSnapshot(_ data: [String: Any]) -> MediaQuotaUsageSnapshot {
+        MediaQuotaUsageSnapshot(
+            bytesUploadedFile: int64Value(data["bytesUploadedFile"]),
+            bytesDownloadedFile: int64Value(data["bytesDownloadedFile"]),
+            fileTransfersInitiated: intValue(data["fileTransfersInitiated"]),
+            fileTransfersFailed: intValue(data["fileTransfersFailed"]),
+            screenShareSecondsUsed: intValue(data["screenShareSecondsUsed"]),
+            screenShareSessions: intValue(data["screenShareSessions"]),
+            videoCallSecondsUsed: intValue(data["videoCallSecondsUsed"]),
+            videoCallSessions: intValue(data["videoCallSessions"])
+        )
+    }
+
+    private static func dayKey(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: now)
+    }
+
+    private static func intValue(_ value: Any?) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? Int64 { return Int(value) }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? Double { return Int(value) }
+        return 0
+    }
+
+    private static func int64Value(_ value: Any?) -> Int64 {
+        if let value = value as? Int64 { return value }
+        if let value = value as? Int { return Int64(value) }
+        if let value = value as? NSNumber { return value.int64Value }
+        if let value = value as? Double { return Int64(value) }
+        return 0
+    }
 }
 
 @MainActor

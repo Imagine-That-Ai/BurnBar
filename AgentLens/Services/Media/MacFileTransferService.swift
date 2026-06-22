@@ -197,9 +197,22 @@ final class MacFileTransferService: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Failure.fileMissing(fileURL)
         }
+        let snapshot: (url: URL, directory: URL)
+        do {
+            snapshot = try Self.snapshotForPublish(originalURL: fileURL)
+        } catch let failure as Failure {
+            lastError = failure
+            throw failure
+        } catch {
+            let failure = Failure.publishFailed(error.localizedDescription)
+            lastError = failure
+            throw failure
+        }
+        defer { try? FileManager.default.removeItem(at: snapshot.directory) }
+
         let outboundByteBudget: Int64
         do {
-            outboundByteBudget = try Self.fileSizeBytes(at: fileURL)
+            outboundByteBudget = try Self.fileSizeBytes(at: snapshot.url)
         } catch let failure as Failure {
             lastError = failure
             throw failure
@@ -225,7 +238,7 @@ final class MacFileTransferService: ObservableObject {
 
         let publish: MediaFileTransferService.PublishResult
         do {
-            publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
+            publish = try await service.publish(localFile: snapshot.url, peerDeviceID: peerDeviceID)
         } catch let serviceError as MediaFileTransferService.ServiceError {
             let failure = Failure.publishFailed(String(describing: serviceError))
             lastError = failure
@@ -545,6 +558,20 @@ final class MacFileTransferService: ObservableObject {
             throw Failure.publishFailed("unable to read file size")
         }
         return size.int64Value
+    }
+
+    private static func snapshotForPublish(originalURL: URL) throws -> (url: URL, directory: URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-media-send-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let snapshotURL = directory.appendingPathComponent(originalURL.lastPathComponent, isDirectory: false)
+        do {
+            try FileManager.default.copyItem(at: originalURL, to: snapshotURL)
+            return (snapshotURL, directory)
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw Failure.publishFailed("snapshot file for publish: \(error.localizedDescription)")
+        }
     }
 
     /// RR-18 — overwrite the freshly-fetched plaintext blob in place with its
