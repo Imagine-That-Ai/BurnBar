@@ -149,6 +149,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Computer Use
     case computerUseRoot
 
+    // Pets
+    case petsRoot
+
     // The Elder Wand (analysis-model fusion configurator)
     case analysisConfigurator
 
@@ -274,6 +277,9 @@ enum SettingsAnchor {
     // Computer Use
     static let computerUseReadiness = "computerUse.readiness"
     static let computerUsePermissionsSetup = "computerUse.permissionsSetup"
+
+    // Pets
+    static let petsCompanion = "pets.companion"
 
     // The Elder Wand (analysis-model fusion configurator)
     static let analysisConfigurator = "agents.analysisConfigurator"

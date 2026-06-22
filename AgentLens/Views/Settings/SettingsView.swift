@@ -439,7 +439,7 @@ struct SettingsView: View {
                 .navigationTitle("Computer Use")
             #endif
         case .pets:
-            PetCompanionSettingsView()
+            PetCompanionSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Pets")
         }
     }
@@ -457,6 +457,7 @@ struct SettingsView: View {
 }
 
 private struct PetCompanionSettingsView: View {
+    @Bindable var settingsManager: SettingsManager
     @AppStorage(PetCompanionFeature.DefaultsKey.enabled)
     private var petEnabled = false
     @AppStorage(PetCompanionFeature.DefaultsKey.activePetID)
@@ -469,19 +470,30 @@ private struct PetCompanionSettingsView: View {
     }
 
     private var activeAgentName: String {
-        (ChatBackendID(rawValue: activeAgentRaw) ?? .codex).displayName
+        activeAgent.displayName
+    }
+
+    private var availableBackends: [ChatBackendID] {
+        PetChatController.resolveAvailableBackends(enabled: settingsManager.enabledChatBackends)
+    }
+
+    private var activeAgent: ChatBackendID {
+        let persisted = ChatBackendID(rawValue: activeAgentRaw) ?? .codex
+        return availableBackends.contains(persisted) ? persisted : availableBackends.first ?? persisted
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                enableSection
-                petPickerSection
-                agentSection
-                summonSection
+        SettingsDeepLinkScrollContainer(route: .petsRoot) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    enableSection
+                    petPickerSection
+                    agentSection
+                    summonSection
+                }
+                .padding(DesignSystem.Spacing.xl)
+                .frame(maxWidth: 820, alignment: .leading)
             }
-            .padding(DesignSystem.Spacing.xl)
-            .frame(maxWidth: 820, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -500,6 +512,7 @@ private struct PetCompanionSettingsView: View {
                         if enabled {
                             PetCompanionFeature.showCompanion()
                         } else {
+                            PetCompanionFeature.runtime.controller.closeBubble()
                             PetCompanionFeature.hideCompanion()
                         }
                     }
@@ -510,6 +523,7 @@ private struct PetCompanionSettingsView: View {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(0.45))
             )
+            .settingsAnchor(SettingsAnchor.petsCompanion)
         }
     }
 
@@ -555,7 +569,7 @@ private struct PetCompanionSettingsView: View {
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
-                PetAgentSwitcher { backend in
+                PetAgentSwitcher(backends: availableBackends) { backend in
                     activeAgentRaw = backend.rawValue
                     PetCompanionFeature.runtime.controller.chat?.switchBackend(to: backend)
                 }
@@ -583,6 +597,7 @@ private struct PetCompanionSettingsView: View {
 
                 Button {
                     petEnabled = false
+                    PetCompanionFeature.runtime.controller.closeBubble()
                     PetCompanionFeature.hideCompanion()
                 } label: {
                     Label("Hide", systemImage: "eye.slash")
