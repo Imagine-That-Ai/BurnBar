@@ -19,7 +19,7 @@ import { createECDH, createHash, randomBytes, generateKeyPairSync, sign as crypt
 
 const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   // The store is a Map for path→data. We also hang a __hook on the store
-  // object so the runTransaction mock can see hook mutations at call time
+  // object so query/transaction mocks can see hook mutations at call time
   // without relying on module-level variables (which are not in scope
   // inside vi.hoisted callbacks due to ESM hoisting order).
   const store = Object.assign(new Map<string, Record<string, unknown>>(), {
@@ -65,6 +65,11 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       return makeQuery(collectionPath, [...filters, { field, op, value }]);
     },
     async get() {
+      if (store.__hook && collectionPath.endsWith("/escrow_grants")) {
+        const hook = store.__hook;
+        store.__hook = null;
+        hook();
+      }
       const docs = directChildren(collectionPath)
         .filter(([, data]) => filters.every((f) => (f.op === "==" ? data[f.field] === f.value : true)))
         .map(([path]) => snapshotFor(path));
@@ -161,7 +166,8 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 });
 
 // setBeforeTransactionHook: sets a function to run at the START of the next
-// runTransaction call (simulates concurrent writes in the TOCTOU race window).
+// escrow_grants query or runTransaction call (simulates concurrent writes in
+// the TOCTOU race window).
 // Stored on store.__hook so it's visible to the hoisted mock without module-
 // level variable hoisting issues.
 function setBeforeTransactionHook(fn: (() => void) | null) {
@@ -911,58 +917,59 @@ describe("F-RR04-004 deliveryMode=live does not bypass mac_approval_required", (
 });
 
 // ---------------------------------------------------------------------------
-// F-RR04-005: revokeEscrowDeviceTrust has a known TOCTOU gap.
+// F-RR04-005: revokeEscrowDeviceTrust grant-revocation race.
 //
-// The revocation callable queries escrow_grants by targetDeviceId, then commits
-// revocations in a transaction. A grant created AFTER the query but BEFORE the
-// commit cannot be detected by Firestore's transaction conflict model (the query
-// was for a collection, not a specific document).
-//
-// This test documents the gap with a concrete assertion. If the assertion changes
-// from toBe("active") to toBe("revoked"), the storage layer now provides stronger
-// conflict detection — update the fix-audit documentation accordingly.
-//
-// Secondary defense: queueAgentCapabilityGrantRequest re-checks device trust
-// inside its own transaction — any new grant REQUESTS issued after the revoke
-// commits will see trustState=revoked and be rejected.
+// The revocation callable must flip the parent device to trustState=revoked
+// before it sweeps escrow_grants. Firestore rules then reject new active grant
+// creates for the revoked target, while the post-flip sweep catches grants that
+// raced in before the parent revoke write committed.
 // ---------------------------------------------------------------------------
-describe("F-RR04-005 revokeEscrowDeviceTrust known TOCTOU gap (documented)", () => {
-  beforeEach(seedTrustedDeviceAndPairing);
+describe("F-RR04-005 revokeEscrowDeviceTrust grant-revocation race", () => {
+  beforeEach(() => {
+    seedTrustedDeviceAndPairing();
+    store.set(`users/${UID}/escrow_devices/mac-1`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
+  });
 
-  it("documents that a grant created after the revocation query but before commit survives the sweep", async () => {
-    // Seed: trusted device with one pre-existing grant (this one will be swept).
+  it("revokes target and source grants created before the sweep query", async () => {
+    // Seed: trusted device with pre-existing grants in both directions.
     store.set(`users/${UID}/escrow_grants/pre-existing-grant`, {
+      sourceDeviceId: "mac-1",
       targetDeviceId: DEVICE,
-      status: "active",
+      status: "granted",
+    });
+    store.set(`users/${UID}/escrow_grants/pre-existing-source-grant`, {
+      sourceDeviceId: DEVICE,
+      targetDeviceId: "mac-1",
+      status: "granted",
     });
 
-    // Inject a concurrent grant that is created inside the hook — after the
-    // transaction's collection query has run but before it commits.
-    // This simulates the race window described in F-RR04-005.
+    // Inject a concurrent grant immediately before the escrow_grants sweep
+    // query. The parent device has already been flipped to revoked at this
+    // point, so a real client write is rule-denied; this admin-side simulation
+    // proves the sweep still catches any grant that slipped in before rules saw
+    // the revoke write.
     setBeforeTransactionHook(() => {
       store.set(`users/${UID}/escrow_grants/concurrent-grant`, {
+        sourceDeviceId: "mac-1",
         targetDeviceId: DEVICE,
-        status: "active",
+        status: "granted",
+      });
+      store.set(`users/${UID}/escrow_grants/concurrent-source-grant`, {
+        sourceDeviceId: DEVICE,
+        targetDeviceId: "mac-1",
+        status: "granted",
       });
     });
 
     await invokeCallable(revokeEscrowDeviceTrust, {
       deviceId: DEVICE,
-      nonce: "n".repeat(64),
-    }).catch(() => {
-      // revokeEscrowDeviceTrust may throw if nonce validation fails in test;
-      // we only care about the grant state, not the callable result.
     });
 
-    // The pre-existing grant should have been revoked (swept before the hook).
-    // The concurrent grant may or may not be swept depending on when Firestore
-    // processes the collection query — in the test double it will NOT be swept
-    // because it was created after the query. This is the documented gap.
-    //
-    // NOTE: If this assertion changes to toBe(false) it means the storage layer
-    // now provides stronger collection-query conflict detection. Update the
-    // F-RR04-005 fix-audit documentation accordingly.
+    expect(store.get(`users/${UID}/escrow_grants/pre-existing-grant`)?.status).toBe("revoked");
+    expect(store.get(`users/${UID}/escrow_grants/pre-existing-source-grant`)?.status).toBe("revoked");
     const concurrentGrantStatus = store.get(`users/${UID}/escrow_grants/concurrent-grant`)?.status;
-    expect(["active", "revoked"]).toContain(concurrentGrantStatus);
+    expect(concurrentGrantStatus).toBe("revoked");
+    const concurrentSourceGrantStatus = store.get(`users/${UID}/escrow_grants/concurrent-source-grant`)?.status;
+    expect(concurrentSourceGrantStatus).toBe("revoked");
   });
 });

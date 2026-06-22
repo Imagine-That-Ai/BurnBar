@@ -4310,6 +4310,19 @@ service cloud.firestore {
       // F-RR07-006: allowlist the exact fields the Mac writer emits on create
       // and the server revoke callable sets on update, so no extra keys can
       // ride in on either path.
+      function escrowGrantDeviceTrusted(deviceId) {
+        return exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId))
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.trustState == "trusted";
+      }
+      function escrowGrantReadAllowed() {
+        return resource.data.status != "granted"
+          || (
+            resource.data.sourceDeviceId is string
+            && resource.data.targetDeviceId is string
+            && escrowGrantDeviceTrusted(resource.data.sourceDeviceId)
+            && escrowGrantDeviceTrusted(resource.data.targetDeviceId)
+          );
+      }
       function validEscrowGrantCreate() {
         return request.resource.data.keys().hasOnly([
           "sourceDeviceId",
@@ -4332,7 +4345,9 @@ service cloud.firestore {
           "api_key", "oauth_token", "bearer_token", "unknown"
         ]
         && request.resource.data.status == "granted"
-        && request.resource.data.grantedAt is timestamp;
+        && request.resource.data.grantedAt is timestamp
+        && escrowGrantDeviceTrusted(request.resource.data.sourceDeviceId)
+        && escrowGrantDeviceTrusted(request.resource.data.targetDeviceId);
       }
       // Revoke is a server-side merge patch that touches only status + revokedAt.
       // The affectedKeys() check confines what the client can change on update;
@@ -4346,7 +4361,8 @@ service cloud.firestore {
         && request.resource.data.status == "revoked"
         && (!("revokedAt" in request.resource.data) || request.resource.data.revokedAt is timestamp);
       }
-      allow read: if ownsUserNamespace(userId);
+      allow read: if ownsUserNamespace(userId)
+        && escrowGrantReadAllowed();
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
