@@ -116,6 +116,19 @@ export class EntitlementReconcileError extends Error {
   }
 }
 
+export function assertConfiguredAppStoreEnvironment(
+  cfg: AppStoreConfig,
+  environment: AppStoreConfig["environment"],
+  source: string,
+): void {
+  if (environment !== cfg.environment) {
+    throw new EntitlementReconcileError(
+      "environment_mismatch",
+      `${source} App Store environment ${environment} does not match configured environment ${cfg.environment}.`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -132,13 +145,15 @@ export async function reconcileEntitlement(
   // 1) Verify the supplied JWS.
   const seedTx = await verifier.verifyTransaction(input.signedTransactionJWS);
   assertBundle(cfg, seedTx);
+  assertConfiguredAppStoreEnvironment(cfg, seedTx.environment, "seed transaction");
 
   if (input.signedRenewalInfoJWS) {
     // We don't currently use renewal info for the entitlement decision —
     // expiresDate on the transaction is authoritative — but verifying it
     // guarantees the webhook is not pairing a real transaction JWS with
     // a forged renewal info.
-    await verifier.verifyRenewalInfo(input.signedRenewalInfoJWS);
+    const renewal = await verifier.verifyRenewalInfo(input.signedRenewalInfoJWS, seedTx.environment);
+    assertConfiguredAppStoreEnvironment(cfg, renewal.environment, "renewal info");
   }
 
   const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
@@ -522,6 +537,7 @@ async function fetchLiveStatusVerified(
     try {
       const tx = await verifier.verifyTransaction(pair.signedTransactionInfo, seed.environment);
       assertBundle(cfg, tx);
+      assertConfiguredAppStoreEnvironment(cfg, tx.environment, "live transaction");
       verified.push(tx);
     } catch (err) {
       logWarn({

@@ -28,6 +28,7 @@ import { creditCloudProTopUp } from "../callables/shared.js";
 
 import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
 import {
+  assertConfiguredAppStoreEnvironment,
   appStoreEntitlementTarget,
   beginBinding,
   consumeBindingByToken,
@@ -175,6 +176,11 @@ export const verifyCloudProTopUp = onCall(
       }
       if (decoded.payload.bundleId !== cfg.bundleId) {
         throw httpsError("permission-denied", "transaction bundleID does not match this app");
+      }
+      try {
+        assertConfiguredAppStoreEnvironment(cfg, decoded.environment, "top-up transaction");
+      } catch (err) {
+        throw mapReconcileError(err);
       }
       const kind = appStoreTopUpKind(transactionProductID);
       if (!kind) {
@@ -347,6 +353,7 @@ function mapReconcileError(err: unknown): functions.HttpsError {
     if (
       err.code === "binding_mismatch" ||
       err.code === "binding_unknown" ||
+      err.code === "environment_mismatch" ||
       err.code === "uid_unresolved" ||
       err.code === "bundle_id_mismatch"
     ) {
