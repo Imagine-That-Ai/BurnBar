@@ -76,3 +76,85 @@ def test_rejects_build_setting_drift_even_when_ids_change(tmp_path: Path):
 
     assert result.returncode == 1
     assert "ENABLE_HARDENED_RUNTIME = NO" in result.stderr
+
+
+def test_allows_id_churn_that_reorders_object_dictionary_entries(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Debug */ = {
+      isa = XCBuildConfiguration;
+      name = Debug;
+    };
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Run Script */ = {
+      isa = PBXShellScriptBuildPhase;
+      shellScript = "swiftlint lint --strict";
+    };
+  };
+  rootObject = CCCCCCCCCCCCCCCCCCCCCCCC /* Project object */;
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Run Script */ = {
+      isa = PBXShellScriptBuildPhase;
+      shellScript = "swiftlint lint --strict";
+    };
+    222222222222222222222222 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      name = Debug;
+    };
+  };
+  rootObject = 333333333333333333333333 /* Project object */;
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 0
+
+
+def test_rejects_reference_swap_between_duplicate_display_names(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Analytics.swift */ = {
+      isa = PBXFileReference;
+      path = AgentLens/Analytics.swift;
+    };
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Analytics.swift */ = {
+      isa = PBXFileReference;
+      path = OpenBurnBarDaemon/Analytics.swift;
+    };
+    CCCCCCCCCCCCCCCCCCCCCCCC /* Analytics.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = AAAAAAAAAAAAAAAAAAAAAAAA /* Analytics.swift */;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Analytics.swift */ = {
+      isa = PBXFileReference;
+      path = AgentLens/Analytics.swift;
+    };
+    222222222222222222222222 /* Analytics.swift */ = {
+      isa = PBXFileReference;
+      path = OpenBurnBarDaemon/Analytics.swift;
+    };
+    333333333333333333333333 /* Analytics.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 222222222222222222222222 /* Analytics.swift */;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 1
+    assert "semantic drift" in result.stderr
+    assert "OpenBurnBarDaemon/Analytics.swift" in result.stderr
