@@ -4,24 +4,13 @@
  */
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 const bolaDir = resolve(repoRoot, "functions/src/__tests__/bola");
 const catalogPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
-
-const catalogSource = readFileSync(catalogPath, "utf8");
-const catalogMatch = catalogSource.match(
-  /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,
-);
-const catalog = JSON.parse(catalogMatch[1]);
-const coverageByName = Object.fromEntries(
-  catalog.map((entry) => {
-    const ref = entry.bolaCoverage?.find(
-      (row) => row.kind === "runtime-cross-user" && row.covers?.includes(entry.exportedName),
-    );
-    return [entry.exportedName, ref];
-  }),
-);
 
 const skipFiles = new Set([
   "authOnly.bola.test.ts",
@@ -45,50 +34,79 @@ const skipTests = new Set([
 const denyCall =
   /await expectCallableDenial\(\s*run,\s*callableRequest\(ALICE_UID,\s*bolaCrossUserData\(\)\),\s*"([^"]+)"\s*\);/gu;
 
-for (const file of readdirSync(bolaDir).filter((name) => name.endsWith(".bola.test.ts"))) {
-  if (skipFiles.has(file)) continue;
-  const path = resolve(bolaDir, file);
-  let source = readFileSync(path, "utf8");
-  if (!source.includes("expectCallableDenial")) continue;
-
-  if (!source.includes("tier2CallableProof")) {
-    source = source.replace(
-      /import \{([^}]+)\} from "\.\/callableBolaHarness\.js";/u,
-      (match, imports) => {
-        const names = imports.split(",").map((part) => part.trim()).filter(Boolean);
-        if (!names.includes("tier2CallableProof")) names.push("tier2CallableProof");
-        return `import { ${names.join(", ")} } from "./callableBolaHarness.js";`;
-      },
-    );
+export function loadEndpointAuthorizationCatalog(catalogSource, label = catalogPath) {
+  const catalogMatch = catalogSource.match(
+    /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,
+  );
+  if (!catalogMatch) {
+    throw new Error(`Could not find endpointAuthorizationCatalog in ${label}`);
   }
+  return parseGeneratedLiteral(catalogMatch[1], label);
+}
 
-  source = source.replace(
-    /it\("([^"]+)", async \(\) => \{([\s\S]*?)\n  \}\);/gu,
-    (block, title, body) => {
-      if (skipTests.has(title)) return block;
-      if (!body.includes("expectCallableDenial")) return block;
-      const exportedMatch = title.match(/^(\w+) rejects cross-user object access$/u);
-      if (!exportedMatch) return block;
-
-      const exportedName = exportedMatch[1];
-      if (new RegExp(`exportedName:\\s*"${exportedName}"`, "u").test(body) && body.includes("tier2CallableProof")) {
-        return block;
-      }
-      const coverage = coverageByName[exportedName];
-      const expectedCode = coverage?.expectedCode ?? "not-found";
-      const expectedOutcome = coverage?.expectedOutcome ?? "throws";
-
-      let updatedBody = body.replace(denyCall, "");
-      updatedBody = updatedBody.replace(
-        /const run = callableRunner\([^)]+\);\s*/u,
-        (runLine) => `${runLine}\n    await tier2CallableProof(bolaStore, {\n      exportedName: "${exportedName}",\n      run,\n      expectedCode: "${expectedCode}",\n      expectedOutcome: "${expectedOutcome}",\n    });`,
+export function migrateBolaTier2Proofs({
+  catalogSource = readFileSync(catalogPath, "utf8"),
+  targetBolaDir = bolaDir,
+} = {}) {
+  const catalog = loadEndpointAuthorizationCatalog(catalogSource);
+  const coverageByName = Object.fromEntries(
+    catalog.map((entry) => {
+      const ref = entry.bolaCoverage?.find(
+        (row) => row.kind === "runtime-cross-user" && row.covers?.includes(entry.exportedName),
       );
-
-      if (updatedBody === body) return block;
-      return `it("${title}", async () => {${updatedBody}\n  });`;
-    },
+      return [entry.exportedName, ref];
+    }),
   );
 
-  writeFileSync(path, source);
-  console.log(`tier2 migrated ${file}`);
+  for (const file of readdirSync(targetBolaDir).filter((name) => name.endsWith(".bola.test.ts"))) {
+    if (skipFiles.has(file)) continue;
+    const path = resolve(targetBolaDir, file);
+    let source = readFileSync(path, "utf8");
+    if (!source.includes("expectCallableDenial")) continue;
+
+    if (!source.includes("tier2CallableProof")) {
+      source = source.replace(
+        /import \{([^}]+)\} from "\.\/callableBolaHarness\.js";/u,
+        (match, imports) => {
+          const names = imports.split(",").map((part) => part.trim()).filter(Boolean);
+          if (!names.includes("tier2CallableProof")) names.push("tier2CallableProof");
+          return `import { ${names.join(", ")} } from "./callableBolaHarness.js";`;
+        },
+      );
+    }
+
+    source = source.replace(
+      /it\("([^"]+)", async \(\) => \{([\s\S]*?)\n  \}\);/gu,
+      (block, title, body) => {
+        if (skipTests.has(title)) return block;
+        if (!body.includes("expectCallableDenial")) return block;
+        const exportedMatch = title.match(/^(\w+) rejects cross-user object access$/u);
+        if (!exportedMatch) return block;
+
+        const exportedName = exportedMatch[1];
+        if (new RegExp(`exportedName:\\s*"${exportedName}"`, "u").test(body) && body.includes("tier2CallableProof")) {
+          return block;
+        }
+        const coverage = coverageByName[exportedName];
+        const expectedCode = coverage?.expectedCode ?? "not-found";
+        const expectedOutcome = coverage?.expectedOutcome ?? "throws";
+
+        let updatedBody = body.replace(denyCall, "");
+        updatedBody = updatedBody.replace(
+          /const run = callableRunner\([^)]+\);\s*/u,
+          (runLine) => `${runLine}\n    await tier2CallableProof(bolaStore, {\n      exportedName: "${exportedName}",\n      run,\n      expectedCode: "${expectedCode}",\n      expectedOutcome: "${expectedOutcome}",\n    });`,
+        );
+
+        if (updatedBody === body) return block;
+        return `it("${title}", async () => {${updatedBody}\n  });`;
+      },
+    );
+
+    writeFileSync(path, source);
+    console.log(`tier2 migrated ${file}`);
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  migrateBolaTier2Proofs();
 }
