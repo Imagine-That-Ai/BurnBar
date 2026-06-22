@@ -24,6 +24,11 @@ final class DataStoreCoordinator {
     static let legacyChatThreadID = OpenBurnBarDatabase.legacyChatThreadID
     private static let quickHydrationLimit = 5_000
 
+    private struct DatabaseOpenResult {
+        let pool: DatabasePool
+        let migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder?
+    }
+
     nonisolated let actor: DataStoreActor
 
     nonisolated var switcherStore: SwitcherProfileStore { actor.switcherStore }
@@ -188,7 +193,7 @@ final class DataStoreCoordinator {
     /// database is a legacy plaintext SQLite file, the verified SQLCipher export
     /// migration runs before the encrypted pool opens; migration failure aborts
     /// startup instead of silently violating the data-at-rest contract.
-    private static func makeDatabasePool(path: String) throws -> DatabasePool {
+    private static func makeDatabaseOpenResult(path: String) throws -> DatabaseOpenResult {
         let defaults = UserDefaults.standard
         // Default-on for new installs: only treat as disabled when explicitly stored false.
         let encryptionEnabled = (defaults.object(forKey: "databaseEncryptionEnabled") as? Bool) ?? true
@@ -197,7 +202,10 @@ final class DataStoreCoordinator {
             var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
             installStartupPragmas(on: &config)
             installDebugQueryTracer(on: &config)
-            return try openDatabasePool(path: path, configuration: config)
+            return DatabaseOpenResult(
+                pool: try openDatabasePool(path: path, configuration: config),
+                migrationBackupConfigurationBuilder: nil
+            )
         }
 
         guard DatabaseEncryptionService.isCipherAvailable() else {
@@ -237,7 +245,16 @@ final class DataStoreCoordinator {
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         installStartupPragmas(on: &config)
         installDebugQueryTracer(on: &config)
-        return try openDatabasePool(path: path, configuration: config)
+        return DatabaseOpenResult(
+            pool: try openDatabasePool(path: path, configuration: config),
+            migrationBackupConfigurationBuilder: {
+                try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+            }
+        )
+    }
+
+    private static func makeDatabasePool(path: String) throws -> DatabasePool {
+        try makeDatabaseOpenResult(path: path).pool
     }
 
     private static func openDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
@@ -337,17 +354,25 @@ final class DataStoreCoordinator {
         let dbPath = appDir.appendingPathComponent(OpenBurnBarIdentity.databaseFileName).path
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
-        let pool = try Self.makeDatabasePool(path: dbPath)
-        try OpenBurnBarDatabase.configureWALMode(pool)
-        try self.init(databaseQueue: pool)
+        let openResult = try Self.makeDatabaseOpenResult(path: dbPath)
+        try OpenBurnBarDatabase.configureWALMode(openResult.pool)
+        try self.init(
+            databaseQueue: openResult.pool,
+            migrationBackupConfigurationBuilder: openResult.migrationBackupConfigurationBuilder
+        )
     }
 
     init(
         databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
-        refreshOnInit: Bool = true
+        refreshOnInit: Bool = true,
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
     ) throws {
-        let actor = try DataStoreActor(databaseQueue: databaseQueue, runMigrations: runMigrations)
+        let actor = try DataStoreActor(
+            databaseQueue: databaseQueue,
+            runMigrations: runMigrations,
+            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
+        )
         self.actor = actor
 
         // Callers that disable migrations often provide fixture schemas, or no

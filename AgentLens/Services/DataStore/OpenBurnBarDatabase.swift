@@ -11,17 +11,24 @@ import OpenBurnBarCore
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
 final class OpenBurnBarDatabase: Sendable {
+    typealias MigrationBackupConfigurationBuilder = @Sendable () throws -> Configuration
+
     /// The identifier of the last registered migration, derived from the migrator
     /// so the backup gate always tracks the newest schema and self-heals on every
     /// future migration. Hardcoding this previously pinned it to a stale "v45",
     /// which silently skipped the integrity-check + pre-migration backup on a
     /// v45→v46 upgrade (any destructive v46+ step then ran with no safety net).
-    private static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
+    static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
 
     let dbQueue: any DatabaseWriter
+    let migrationBackupConfigurationBuilder: MigrationBackupConfigurationBuilder?
 
-    init(databaseQueue: any DatabaseWriter) {
+    init(
+        databaseQueue: any DatabaseWriter,
+        migrationBackupConfigurationBuilder: MigrationBackupConfigurationBuilder? = nil
+    ) {
         self.dbQueue = databaseQueue
+        self.migrationBackupConfigurationBuilder = migrationBackupConfigurationBuilder
     }
 
     /// Run all registered migrations in order.
@@ -30,12 +37,6 @@ final class OpenBurnBarDatabase: Sendable {
     }
 
     // MARK: - Safe Migrations (Integrity Check + Backup)
-
-    enum OpenBurnBarDatabaseError: Error {
-        case integrityCheckFailed(details: String)
-        case backupFailed(underlying: Error)
-        case migrationFailed(restoredFromBackup: Bool, underlying: Error)
-    }
 
     /// Run integrity check and backup only when the schema actually needs a
     /// migration, then migrate. A full SQLite `integrity_check` walks large FTS
@@ -93,149 +94,6 @@ final class OpenBurnBarDatabase: Sendable {
                 restoredFromBackup: restoredFromBackup,
                 underlying: error
             )
-        }
-    }
-
-    private static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
-        guard let dbError = error as? DatabaseError else { return false }
-        return dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB
-    }
-
-    private func runIntegrityCheck() throws {
-        let result = try dbQueue.read { db -> String in
-            try String.fetchOne(db, sql: "PRAGMA integrity_check") ?? "unknown"
-        }
-        guard result == "ok" else {
-            AppLogger.dataStore.error("Database integrity check failed", metadata: ["details": result])
-            throw OpenBurnBarDatabaseError.integrityCheckFailed(details: result)
-        }
-    }
-
-    private var isInMemoryDatabase: Bool {
-        let path = dbQueue.path
-        return path == ":memory:" || path.hasPrefix("file:")
-    }
-
-    private func needsBackupBeforeMigration() throws -> Bool {
-        guard !isInMemoryDatabase else { return false }
-        return try dbQueue.read { db in
-            let userTableCount = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-            ) ?? 0
-            guard userTableCount > 0 else { return false }
-
-            let hasMigrationTable = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'grdb_migrations'"
-            ) ?? 0
-            guard hasMigrationTable > 0 else { return true }
-
-            let latestApplied = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM grdb_migrations WHERE identifier = ?",
-                arguments: [Self.latestMigrationIdentifier]
-            ) ?? 0
-            return latestApplied == 0
-        }
-    }
-
-    private func createBackupIfNeeded() throws -> URL? {
-        guard !isInMemoryDatabase else { return nil }
-
-        let dbPath = dbQueue.path
-        let dbURL = URL(fileURLWithPath: dbPath)
-        let supportDir = dbURL.deletingLastPathComponent()
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "yyyyMMdd-HHmmss"
-        let timestamp = dateFormatter.string(from: Date())
-        let backupName = "\(dbURL.lastPathComponent).backup.\(timestamp)"
-        let backupURL = supportDir.appendingPathComponent(backupName)
-
-        // Ensure the database file actually exists before backing up
-        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
-
-        let destinationQueue: DatabaseQueue
-        do {
-            destinationQueue = try DatabaseQueue(path: backupURL.path)
-        } catch {
-            AppLogger.dataStore.silentFailure("Database backup: failed to open destination queue", error: error)
-            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
-        }
-        defer {
-            _ = destinationQueue
-        }
-
-        do {
-            try dbQueue.backup(to: destinationQueue)
-            AppLogger.dataStore.info("Database backup created", metadata: ["path": backupURL.path])
-        } catch {
-            AppLogger.dataStore.silentFailure("Database backup: backup operation failed", error: error)
-            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
-        }
-
-        pruneOldBackups(in: supportDir, keeping: 5)
-        return backupURL
-    }
-
-    private func restoreDatabaseFromBackup(backupURL: URL) throws {
-        guard !isInMemoryDatabase else { return }
-
-        let dbPath = dbQueue.path
-        let dbURL = URL(fileURLWithPath: dbPath)
-        let fileManager = FileManager.default
-
-        if let pool = dbQueue as? DatabasePool {
-            try pool.close()
-        } else if let queue = dbQueue as? DatabaseQueue {
-            try queue.close()
-        }
-
-        if fileManager.fileExists(atPath: dbPath) {
-            try fileManager.removeItem(atPath: dbPath)
-        }
-        for suffix in ["-wal", "-shm"] {
-            let sidecarPath = dbPath + suffix
-            if fileManager.fileExists(atPath: sidecarPath) {
-                try fileManager.removeItem(atPath: sidecarPath)
-            }
-        }
-
-        try fileManager.copyItem(at: backupURL, to: dbURL)
-        AppLogger.dataStore.info(
-            "Restored database from pre-migration backup",
-            metadata: ["backup_path": backupURL.path, "database_path": dbPath]
-        )
-    }
-
-    private func pruneOldBackups(in directory: URL, keeping max: Int) {
-        let fileManager = FileManager.default
-        // try?-ok(skip prune on read fail)
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: []
-        ) else { return }
-
-        let backups = contents
-            .filter { $0.lastPathComponent.contains(".backup.") }
-            .compactMap { url -> (url: URL, date: Date)? in
-                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]), // try?-ok(skip undated backup)
-                      let date = values.contentModificationDate else { return nil }
-                return (url, date)
-            }
-            .sorted { $0.date > $1.date }
-
-        guard backups.count > max else { return }
-
-        for item in backups[max...] {
-            do {
-                try fileManager.removeItem(at: item.url)
-                AppLogger.dataStore.info("Pruned old database backup", metadata: ["path": item.url.path])
-            } catch {
-                AppLogger.dataStore.silentFailure("Prune old database backup failed", error: error)
-            }
         }
     }
 
