@@ -283,6 +283,12 @@ private actor RequestRecorder {
     func urls() -> [URL] { requests.compactMap(\.url) }
 }
 
+private actor URLRecorder {
+    private var recordedURLs: [URL] = []
+    func append(_ url: URL) { recordedURLs.append(url) }
+    func urls() -> [URL] { recordedURLs }
+}
+
 // MARK: - Tool loop + web tools
 
 final class ElderWandToolLoopTests: XCTestCase {
@@ -410,6 +416,47 @@ final class ElderWandToolLoopTests: XCTestCase {
         let output = await fetch?.invoke(#"{"url":"http://169.254.169.254/latest/meta-data"}"#)
         XCTAssertNotNil(output)
         XCTAssertEqual(output?.lowercased().contains("error"), true, "metadata host must be refused (SSRF)")
+    }
+
+    func testWebFetchRejectsResolvedPrivateHostBeforeFetcherDispatch() async throws {
+        let recorder = URLRecorder()
+        let tools = ElderWandWebTools(
+            searchBackend: .unavailable,
+            hostResolver: { _ in ["10.0.0.8"] },
+            fetcher: { url in
+                await recorder.append(url)
+                let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (Data("<html><body>unsafe</body></html>".utf8), response)
+            }
+        ).makeTools()
+        let fetch = try XCTUnwrap(tools.first { $0.name == "web_fetch" })
+
+        let output = await fetch.invoke(#"{"url":"https://public-looking.example/report"}"#)
+
+        let recordedURLs = await recorder.urls()
+        XCTAssertTrue(output.contains("anti-rebind"), "DNS-resolved private targets must be refused")
+        XCTAssertEqual(recordedURLs, [], "blocked DNS targets must not reach the fetcher")
+    }
+
+    func testWebFetchAllowsPublicResolvedHostAndDispatchesFetcher() async throws {
+        let recorder = URLRecorder()
+        let tools = ElderWandWebTools(
+            searchBackend: .unavailable,
+            hostResolver: { _ in ["93.184.216.34"] },
+            fetcher: { url in
+                await recorder.append(url)
+                let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (Data("<html><title>Example</title><body>Readable page</body></html>".utf8), response)
+            }
+        ).makeTools()
+        let fetch = try XCTUnwrap(tools.first { $0.name == "web_fetch" })
+
+        let output = await fetch.invoke(#"{"url":"https://example.com/report"}"#)
+
+        let recordedURLs = await recorder.urls()
+        XCTAssertTrue(output.contains("Title: Example"))
+        XCTAssertTrue(output.contains("Readable page"))
+        XCTAssertEqual(recordedURLs, [URL(string: "https://example.com/report")!])
     }
 
     func testSearchBackendResolvesFromEnvironment() {

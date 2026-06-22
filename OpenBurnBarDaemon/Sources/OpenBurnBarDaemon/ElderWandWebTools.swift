@@ -127,6 +127,9 @@ struct ElderWandWebTools: Sendable {
     private let searchBackends: [ElderWandSearchBackend]
     private let runID: String
     private let logger: BurnBarDaemonLogger
+    /// Resolver used for both the initial URL check and redirect checks so
+    /// DNS-rebinding decisions stay testable and consistent.
+    private let hostResolver: BurnBarBrowserHostResolver
     /// Injectable fetcher so the SSRF + strip path is unit-testable without
     /// real network. Defaults to the same posture as the browser subsystem.
     private let fetcher: @Sendable (URL) async throws -> (Data, HTTPURLResponse)
@@ -139,6 +142,7 @@ struct ElderWandWebTools: Sendable {
         searchBackend: ElderWandSearchBackend? = nil,
         runID: String = "elder-wand-\(UUID().uuidString)",
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "elder-wand-web-tools"),
+        hostResolver: @escaping BurnBarBrowserHostResolver = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses,
         fetcher: (@Sendable (URL) async throws -> (Data, HTTPURLResponse))? = nil,
         searchRunner: (@Sendable (URLRequest) async throws -> (Data, HTTPURLResponse))? = nil
     ) {
@@ -146,8 +150,9 @@ struct ElderWandWebTools: Sendable {
         self.searchBackends = searchBackend.map { [$0] } ?? ElderWandSearchBackend.resolveAll()
         self.runID = runID
         self.logger = logger
+        self.hostResolver = hostResolver
         self.fetcher = fetcher ?? { url in
-            let delegate = BurnBarBrowserRedirectGuard()
+            let delegate = BurnBarBrowserRedirectGuard(resolver: hostResolver)
             let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
             defer { session.invalidateAndCancel() }
             let (data, response) = try await session.data(from: url)
@@ -197,6 +202,7 @@ struct ElderWandWebTools: Sendable {
         ])
         let fetcher = self.fetcher
         let logger = self.logger
+        let hostResolver = self.hostResolver
         return ElderWandTool(name: "web_fetch", schema: schema) { arguments in
             guard let rawURL = Self.stringArgument("url", from: arguments),
                   !rawURL.isEmpty else {
@@ -204,7 +210,10 @@ struct ElderWandWebTools: Sendable {
             }
             let url: URL
             do {
-                url = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(rawURL)
+                url = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(
+                    rawURL,
+                    resolver: hostResolver
+                )
             } catch {
                 return "web_fetch error: \(error.localizedDescription)"
             }
