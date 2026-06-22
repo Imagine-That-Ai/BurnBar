@@ -285,6 +285,14 @@ final class OpenBurnBarRuntimeContext {
     }
 
     func startRelayServices() {
+        startRoutedClientWiringSentry()
+
+        guard accountManager.isFirebaseAvailable else {
+            hermesRelayHostService?.stop()
+            piAgentRelayHostService?.stop()
+            return
+        }
+
         let hermesRelayHost: HermesRelayHostService
         if let existingRelayHost = hermesRelayHostService {
             hermesRelayHost = existingRelayHost
@@ -311,8 +319,6 @@ final class OpenBurnBarRuntimeContext {
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         startComputerUseServices(relayHostService: hermesRelayHost)
         #endif
-
-        startRoutedClientWiringSentry()
 
         let piRelayHost: PiAgentCloudRelayHostService
         if let existingPiRelayHost = piAgentRelayHostService {
@@ -526,6 +532,15 @@ final class OpenBurnBarRuntimeContext {
                 pixelClockController: pixelClock
             )
             smartDisplayRepairCoordinator = repairCoordinator
+        }
+
+        guard accountManager.isFirebaseAvailable else {
+            smartDisplayConfigPublisher?.stop()
+            smartDisplayActionsListener?.stop()
+            castActionsListener?.stop()
+            cliAgentMissionRequestListener?.stop()
+            agentHarnessImportJobListener?.stop()
+            return
         }
 
         let publisher: SmartDisplayConfigPublisher

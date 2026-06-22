@@ -15,7 +15,7 @@ import OpenBurnBarCore
 /// popover's content is the same SwiftUI view tree (`MenuBarPopoverView`) used
 /// by the rest of the app, vended through `AppCommandRouter`.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     // Internal read access (`private(set)`) is the unit-test seam for the
     // popover prewarm wiring — the menu-bar status item never exists in the
@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private(set) var popover: NSPopover?
     private(set) var popoverPrewarmer: PopoverContentPrewarmer?
     private var statusItemLocalMouseMonitor: Any?
+    private var statusItemEventBridgeMenu: NSMenu?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     private var lastHandledStatusItemEventTime: TimeInterval = 0
 
@@ -94,7 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// rapid activate/deactivate cycles don't spam the server callable.
     private static let cloudVaultRotationPickupDebounceInterval: TimeInterval = 30
 
-    func application(_ application: NSApplication, open urls: [URL]) {
+    nonisolated func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            applicationOnMainActor(application, open: urls)
+        }
+    }
+
+    private func applicationOnMainActor(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         if AppCommandRouter.shared.handle(url) {
             return
@@ -102,7 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = GIDSignIn.sharedInstance.handle(url)
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            applicationDidFinishLaunchingOnMainActor()
+        }
+    }
+
+    private func applicationDidFinishLaunchingOnMainActor() {
         guard enforceSingleOpenBurnBarInstance() else { return }
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
 
@@ -261,15 +274,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = OpenBurnBarStatusItemBrandMark.image(
-                colorful: settingsManager?.appearance.colorfulMenuBarIcon ?? false
+                colorful: shouldRenderColorfulMenuBarIcon
             )
             button.imagePosition = .imageOnly
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
-            button.sendAction(on: OpenBurnBarStatusItemClick.actionMask)
+            button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)
         }
+        let bridgeMenu = NSMenu()
+        bridgeMenu.addItem(withTitle: "Open OpenBurnBar", action: nil, keyEquivalent: "")
+        bridgeMenu.delegate = self
+        item.menu = bridgeMenu
+        statusItemEventBridgeMenu = bridgeMenu
         self.statusItem = item
         installStatusItemMouseFallback()
         observeMenuBarIconStyle()
@@ -296,8 +314,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func refreshMenuBarIconStyle() {
         guard let button = statusItem?.button else { return }
         button.image = OpenBurnBarStatusItemBrandMark.image(
-            colorful: settingsManager?.appearance.colorfulMenuBarIcon ?? false
+            colorful: shouldRenderColorfulMenuBarIcon
         )
+    }
+
+    private var shouldRenderColorfulMenuBarIcon: Bool {
+        settingsManager?.appearance.colorfulMenuBarIcon ?? true
     }
 
     private var updateBadgeObservation: Any?
@@ -353,14 +375,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         #endif
     }
 
-    @objc private func handleStatusItemClick(_ sender: Any?) {
-        guard let button = sender as? NSStatusBarButton ?? statusItem?.button else {
+    @objc nonisolated private func handleStatusItemClick(_ sender: Any?) {
+        Task { @MainActor [weak self] in
+            self?.handleStatusItemClickOnMainActor()
+        }
+    }
+
+    private func handleStatusItemClickOnMainActor() {
+        guard let button = statusItem?.button else {
             return
         }
-        let event = NSApp.currentEvent
-        guard shouldHandleStatusItemEvent(event) else { return }
+        guard shouldHandleStatusItemEventWithoutEvent() else {
+            return
+        }
 
-        switch OpenBurnBarStatusItemClick.action(for: event?.type) {
+        switch OpenBurnBarStatusItemClick.action(for: nil) {
         case .togglePopover:
             togglePopover(button)
         case .showSecondaryMenu:
@@ -368,6 +397,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .ignore:
             break
         }
+    }
+
+    nonisolated func menuWillOpen(_ menu: NSMenu) {
+        menu.cancelTracking()
+        Task { @MainActor [weak self] in
+            self?.handleStatusItemMenuBridgeOpen()
+        }
+    }
+
+    private func handleStatusItemMenuBridgeOpen() {
+        guard statusItemEventBridgeMenu != nil,
+              let button = statusItem?.button,
+              shouldHandleStatusItemEventWithoutEvent() else {
+            return
+        }
+        togglePopover(button)
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
@@ -389,15 +434,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             installPopoverContent(into: popover)
         }
 
-        // Cheap when prewarmed (layout already ran during the prime);
-        // re-reading keeps the size honest for data that changed since.
-        let size = popover.contentViewController?.view.fittingSize ?? .zero
-        if size.width > 1 && size.height > 1 {
-            popover.contentSize = size
-        } else {
-            // Fallback to defaults if fittingSize is not yet available
-            popover.contentSize = NSSize(width: 340, height: 540)
-        }
+        // Avoid synchronously forcing SwiftUI layout from the AppKit click
+        // callback. On macOS 26 / Swift 6 this can trip a main-executor runtime
+        // check while DynamicProperty state is being initialized. The SwiftUI
+        // root view owns its exact frame; this only seeds the popover shell.
+        popover.contentSize = NSSize(width: 340, height: 540)
 
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
@@ -458,7 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard AppCommandRouter.shared.makeMenuBarPopoverContent != nil else { return }
         let popover = ensurePopover()
         installPopoverContent(into: popover)
-        _ = popover.contentViewController?.view.fittingSize
+        popover.contentSize = NSSize(width: 340, height: 540)
     }
 
     private func installStatusItemMouseFallback() {
@@ -466,9 +507,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return
         }
 
-        let mask = OpenBurnBarStatusItemClick.actionMask
-        statusItemLocalMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-            self?.handleStatusItemFallbackMouseEvent(event)
+        statusItemLocalMouseMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: OpenBurnBarStatusItemClick.fallbackActionMask,
+            handler: Self.makeStatusItemMouseFallbackHandler(delegate: self)
+        )
+    }
+
+    nonisolated private static func makeStatusItemMouseFallbackHandler(delegate: AppDelegate) -> (NSEvent) -> NSEvent? {
+        { [weak delegate] event in
+            let snapshot = OpenBurnBarStatusItemFallbackEvent(event)
+            Task { @MainActor [weak delegate] in
+                delegate?.handleStatusItemFallbackMouseEvent(snapshot)
+            }
             return event
         }
     }
@@ -480,10 +530,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func handleStatusItemFallbackMouseEvent(_ event: NSEvent) {
+    private func handleStatusItemFallbackMouseEvent(_ event: OpenBurnBarStatusItemFallbackEvent) {
         guard let button = statusItem?.button,
               let frame = button.openBurnBarScreenFrame,
-              OpenBurnBarMenuExtraClickFallback.click(NSEvent.mouseLocation, hits: frame),
+              OpenBurnBarMenuExtraClickFallback.click(event.mouseLocation, hits: frame),
               shouldHandleStatusItemEvent(event)
         else {
             return
@@ -502,14 +552,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func shouldHandleStatusItemEvent(_ event: NSEvent?) -> Bool {
         guard let event else { return true }
         let key = OpenBurnBarStatusItemClick.EventKey(event)
-        if key == lastHandledStatusItemEventKey {
+        return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
+    }
+
+    private func shouldHandleStatusItemEvent(_ event: OpenBurnBarStatusItemFallbackEvent) -> Bool {
+        let key = OpenBurnBarStatusItemClick.EventKey(
+            eventNumber: event.eventNumber,
+            type: event.type,
+            timestamp: event.timestamp
+        )
+        return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
+    }
+
+    private func shouldHandleStatusItemEventWithoutEvent() -> Bool {
+        shouldHandleStatusItemEvent(key: nil, timestamp: ProcessInfo.processInfo.systemUptime)
+    }
+
+    private func shouldHandleStatusItemEvent(
+        key: OpenBurnBarStatusItemClick.EventKey?,
+        timestamp: TimeInterval
+    ) -> Bool {
+        if let key, key == lastHandledStatusItemEventKey {
             return false
         }
-        if event.timestamp - lastHandledStatusItemEventTime < 0.12 {
+        if timestamp - lastHandledStatusItemEventTime < 0.12 {
             return false
         }
         lastHandledStatusItemEventKey = key
-        lastHandledStatusItemEventTime = event.timestamp
+        lastHandledStatusItemEventTime = timestamp
         return true
     }
 
@@ -1258,7 +1328,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popoverPrewarmer?.schedulePrime()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    nonisolated func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            applicationWillTerminateOnMainActor()
+        }
+    }
+
+    private func applicationWillTerminateOnMainActor() {
         Analytics.shared.track(.appSessionEnded)
         uninstallStatusItemMouseFallback()
         teardownWallpaperPanels()
@@ -1297,6 +1373,12 @@ enum OpenBurnBarStatusItemClick {
             self.type = event.type
             self.timestampBucket = Int(event.timestamp * 1_000)
         }
+
+        init(eventNumber: Int, type: NSEvent.EventType, timestamp: TimeInterval) {
+            self.eventNumber = eventNumber
+            self.type = type
+            self.timestampBucket = Int(timestamp * 1_000)
+        }
     }
 
     enum Action: Equatable {
@@ -1305,17 +1387,33 @@ enum OpenBurnBarStatusItemClick {
         case ignore
     }
 
-    static let actionMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+    static let primaryActionMask: NSEvent.EventTypeMask = [.leftMouseUp]
+    static let fallbackActionMask: NSEvent.EventTypeMask = [.leftMouseUp, .rightMouseDown]
+    static let actionMask: NSEvent.EventTypeMask = primaryActionMask.union(fallbackActionMask)
 
     static func action(for eventType: NSEvent.EventType?) -> Action {
         switch eventType {
-        case .leftMouseDown, nil:
+        case .leftMouseUp, nil:
             return .togglePopover
         case .rightMouseDown:
             return .showSecondaryMenu
         default:
             return .ignore
         }
+    }
+}
+
+private struct OpenBurnBarStatusItemFallbackEvent: @unchecked Sendable {
+    let eventNumber: Int
+    let type: NSEvent.EventType
+    let timestamp: TimeInterval
+    let mouseLocation: NSPoint
+
+    init(_ event: NSEvent) {
+        self.eventNumber = event.eventNumber
+        self.type = event.type
+        self.timestamp = event.timestamp
+        self.mouseLocation = NSEvent.mouseLocation
     }
 }
 

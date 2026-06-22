@@ -385,9 +385,8 @@ private final class PetClickGestureGate: NSObject, NSGestureRecognizerDelegate {
         self.shouldAccept = shouldAccept
     }
 
-    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
-                           shouldReceive event: NSEvent) -> Bool {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool {
         guard let view = gestureRecognizer.view else { return false }
-        return shouldAccept(view.convert(event.locationInWindow, from: nil), view)
+        return shouldAccept(gestureRecognizer.location(in: view), view)
     }
 }
