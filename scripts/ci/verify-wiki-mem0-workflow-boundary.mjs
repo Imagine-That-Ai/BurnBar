@@ -58,6 +58,13 @@ function topMapping(source, section, key) {
   return null;
 }
 
+function topScalar(source, section) {
+  const match = source.match(
+    new RegExp(`^${section}:\\s*([^\\n#]+?)\\s*$`, "mu"),
+  );
+  return match ? scalar(match[1]) : null;
+}
+
 function topSection(source, section) {
   const lines = source.split("\n");
   const start = lines.findIndex((line) => line === `${section}:`);
@@ -170,8 +177,15 @@ function stepName(step) {
 }
 
 function needsReconcile(job) {
+  const needs = directJobValue(job, "needs");
   return (
-    directJobValue(job, "needs") === "reconcile" ||
+    needs === "reconcile" ||
+    (needs?.startsWith("[") &&
+      needs
+        .slice(1, -1)
+        .split(",")
+        .map((entry) => scalar(entry.trim()))
+        .includes("reconcile")) ||
     /(?:^|\n)    needs:\s*\n(?:      -\s+reconcile\s*(?:\n|$)|      reconcile:\s*)/u.test(
       job.source,
     )
@@ -199,7 +213,10 @@ if (!existsSync(WORKFLOW)) {
 }
 
 const source = stripComments(readFileSync(WORKFLOW, "utf8"));
-const topContents = topMapping(source, "permissions", "contents");
+const topPermissions = topScalar(source, "permissions");
+const topContents =
+  topMapping(source, "permissions", "contents") ??
+  (topPermissions === "read-all" ? "read" : null);
 const topEnv = topSection(source, "env");
 const allJobs = jobs(source);
 const reconcile = allJobs.get("reconcile");
@@ -230,6 +247,13 @@ if (reconcile) {
     !reconcile.source.includes("mem0-manifest.json")
   ) {
     fail("reconcile job must hand off the manifest by artifact");
+  }
+  if (
+    !reconcile.source.includes("outputs:") ||
+    !reconcile.source.includes("base-sha:") ||
+    !reconcile.source.includes("git rev-parse HEAD")
+  ) {
+    fail("reconcile job must publish its checkout SHA for the commit job");
   }
   const secretSteps = steps(reconcile).filter((step) => step.includes(MEM0));
   if (
@@ -262,6 +286,9 @@ if (commit) {
     !commit.source.includes("droid-wiki/.mem0-manifest.json")
   ) {
     fail("manifest commit job must restore the manifest from the artifact");
+  }
+  if (!commit.source.includes("ref: ${{ needs.reconcile.outputs.base-sha }}")) {
+    fail("manifest commit job must check out the reconcile base SHA");
   }
 }
 

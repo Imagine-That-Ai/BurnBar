@@ -30,10 +30,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      base-sha: \${{ steps.capture-base.outputs.sha }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           persist-credentials: false
+      - name: Capture reconcile base
+        id: capture-base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Reconcile droid-wiki to mem0
         run: node scripts/wiki/mem0-sync.mjs --all --verbose
         env:
@@ -53,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
+          ref: \${{ needs.reconcile.outputs.base-sha }}
           persist-credentials: false
       - name: Download refreshed manifest
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
@@ -103,6 +109,21 @@ function expect(label, workflow, wantExit) {
 console.log("Self-test: verify-wiki-mem0-workflow-boundary.mjs\n");
 
 expect("split read/write workflow passes", GOOD_WORKFLOW, 0);
+
+expect(
+  "top-level scalar read-all workflow passes",
+  GOOD_WORKFLOW.replace(
+    "permissions:\n  contents: read",
+    "permissions: read-all",
+  ),
+  0,
+);
+
+expect(
+  "flow-style reconcile needs passes",
+  GOOD_WORKFLOW.replace("    needs: reconcile", "    needs: [reconcile]"),
+  0,
+);
 
 expect(
   "workflow-scope contents write fails",
@@ -193,6 +214,15 @@ expect(
   GOOD_WORKFLOW.replace(
     "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
+  ),
+  1,
+);
+
+expect(
+  "commit job missing reconcile base checkout fails",
+  GOOD_WORKFLOW.replace(
+    "          ref: ${{ needs.reconcile.outputs.base-sha }}\n",
+    "",
   ),
   1,
 );
