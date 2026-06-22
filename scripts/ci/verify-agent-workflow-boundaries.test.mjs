@@ -1663,7 +1663,7 @@ expect(
         "          DATA: ${{ secrets.OPENAI_API_KEY }}",
         '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
         "      - id: relay",
-        "        run: echo \"derived=${{ toJSON(steps['helper']) }}\" >> \"$GITHUB_OUTPUT\"",
+        '        run: echo "derived=${{ toJSON(steps[\'helper\']) }}" >> "$GITHUB_OUTPUT"',
         "",
       ].join("\n"),
     )
