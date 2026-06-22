@@ -197,8 +197,14 @@ final class MacFileTransferService: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Failure.fileMissing(fileURL)
         }
-        guard let outboundByteBudget = Self.fileSizeBytes(at: fileURL) else {
-            let failure = Failure.publishFailed("unable to read file size")
+        let outboundByteBudget: Int64
+        do {
+            outboundByteBudget = try Self.fileSizeBytes(at: fileURL)
+        } catch let failure as Failure {
+            lastError = failure
+            throw failure
+        } catch {
+            let failure = Failure.publishFailed(error.localizedDescription)
             lastError = failure
             throw failure
         }
@@ -533,12 +539,10 @@ final class MacFileTransferService: ObservableObject {
         MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
     }
 
-    private static func fileSizeBytes(at url: URL) -> Int64? {
-        guard
-            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-            let size = attributes[.size] as? NSNumber
-        else {
-            return nil
+    private static func fileSizeBytes(at url: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber else {
+            throw Failure.publishFailed("unable to read file size")
         }
         return size.int64Value
     }
