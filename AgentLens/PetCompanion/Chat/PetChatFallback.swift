@@ -70,7 +70,7 @@ enum PetChatFallback {
             reason: "it wants soft, luminous light that bleeds and breathes",
             keywords: [
                 "calm", "wellness", "health", "meditat", "dream", "ethereal", "soft",
-                "ambient", "music", "sleep", "aura", "glow", "spa", "serene", "northern",
+                "ambient", "music", "sleep", "aura", "glow", "spa", "serene", "northern"
             ]
         ),
         WorldSignal(
@@ -79,7 +79,7 @@ enum PetChatFallback {
             keywords: [
                 "fintech", "finance", "data", "dashboard", "enterprise", "crypto",
                 "analytics", "premium", "luxury", "architect", "3d", "spatial", "geometry",
-                "precision", "engineering", "hardware",
+                "precision", "engineering", "hardware"
             ]
         ),
         WorldSignal(
@@ -88,7 +88,7 @@ enum PetChatFallback {
             keywords: [
                 "story", "narrative", "editorial", "writing", "art", "portfolio", "fashion",
                 "creative", "agency", "brand", "magazine", "poetry", "craft", "studio",
-                "design", "elegant",
+                "design", "elegant"
             ]
         ),
         WorldSignal(
@@ -97,9 +97,9 @@ enum PetChatFallback {
             keywords: [
                 "community", "network", "social", "ai", "agent", "swarm", "developer",
                 "platform", "connect", "map", "graph", "collaborat", "team", "startup",
-                "saas", "tool",
+                "saas", "tool"
             ]
-        ),
+        )
     ]
 
     /// Default when nothing matches — constellation is the house default world.
@@ -129,7 +129,7 @@ enum PetChatFallback {
         IntentSignal(intent: .startABrief,
                      keywords: ["start", "begin", "brief", "hire", "work with", "get started", "kick off", "kickoff", "commission", "engage"]),
         IntentSignal(intent: .whatWeDo,
-                     keywords: ["what do you", "who are you", "what is this", "what's this", "about", "services", "what can you", "help me with"]),
+                     keywords: ["what do you", "who are you", "what is this", "what's this", "about", "services", "what can you", "help me with"])
     ]
 
     private static func intentReply(_ intent: Intent) -> String {

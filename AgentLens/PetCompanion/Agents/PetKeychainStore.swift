@@ -67,8 +67,6 @@ struct PetKeychainStore: Sendable {
     /// more than one value under the same provider service.
     static let defaultAccount = "token"
 
-    init() {}
-
     // MARK: Round-trip API
 
     /// Store (or overwrite) `secret` for `slot` under `account`. Passing an empty
@@ -135,7 +133,7 @@ struct PetKeychainStore: Sendable {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: slot.service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
     }
 }

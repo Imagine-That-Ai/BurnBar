@@ -118,7 +118,11 @@ final class PetCompanionController: ObservableObject {
     }
 
     func toggle() {
-        isVisible ? hide() : show()
+        if isVisible {
+            hide()
+        } else {
+            show()
+        }
     }
 
     // MARK: Form swap (C8)
