@@ -160,7 +160,7 @@ def _canonicalize_text(text: str) -> str:
 
     canonical_body = "\n" + "".join(entry for _, entry in sorted(canonical_entries)) + "\t"
     prefix = _replace_ids(text[: block.open_brace + 1], labels)
-    suffix = _replace_ids(text[block.close_brace:], labels)
+    suffix = _replace_ids(text[block.close_brace :], labels)
     return prefix + canonical_body + suffix
 
 
