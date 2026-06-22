@@ -2,10 +2,10 @@
 """Fail closed on semantic Xcode project drift while tolerating PBX object IDs.
 
 XcodeGen can regenerate stable project content with different 24-character PBX
-object identifiers. Those identifiers are implementation details. The rest of
-the pbxproj is the contract: sources, targets, build phases, settings,
-entitlements, package products, and shell scripts must already match the
-generated project.
+object identifiers and quoted TEMP_<UUID> package-product identifiers. Those
+identifiers are implementation details. The rest of the pbxproj is the
+contract: sources, targets, build phases, settings, entitlements, package
+products, and shell scripts must already match the generated project.
 """
 
 from __future__ import annotations
@@ -18,10 +18,12 @@ import sys
 from pathlib import Path
 
 
-PBX_ID = re.compile(r"\b[A-F0-9]{24}\b")
+PBX_ID_PATTERN = r"[A-F0-9]{24}"
+TEMP_ID_PATTERN = r"TEMP_[A-F0-9]{8}(?:-[A-F0-9]{4}){3}-[A-F0-9]{12}"
+PBX_ID = re.compile(rf"\b(?:{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})\b")
 OBJECTS_DECL = re.compile(r"\bobjects\s*=\s*\{")
 OBJECT_ENTRY = re.compile(
-    r"\s*(?P<id>[A-F0-9]{24})(?:\s*/\*\s*(?P<comment>.*?)\s*\*/)?\s*=\s*\{",
+    rf'\s*"?(?P<id>{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})"?(?:\s*/\*\s*(?P<comment>.*?)\s*\*/)?\s*=\s*\{{',
     re.DOTALL,
 )
 ISA = re.compile(r"\bisa\s*=\s*(?P<isa>[A-Za-z0-9_]+)\s*;")
