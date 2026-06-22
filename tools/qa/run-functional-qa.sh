@@ -8,6 +8,16 @@ logs_dir="$results_dir/logs"
 report_path="$results_dir/report.md"
 summary_path="$results_dir/summary.json"
 env_probe_path="$results_dir/environment-probe.txt"
+qa_secret_mode="${OPENBURNBAR_QA_SECRET_MODE:-full}"
+
+case "$qa_secret_mode" in
+  full|pr-safe)
+    ;;
+  *)
+    echo "Unsupported OPENBURNBAR_QA_SECRET_MODE: $qa_secret_mode" >&2
+    exit 2
+    ;;
+esac
 
 mkdir -p "$logs_dir"
 
@@ -67,12 +77,38 @@ require_env() {
   [[ -n "${!name:-}" ]]
 }
 
+strip_pr_safe_secret_environment() {
+  local secret_name
+  for secret_name in \
+    FACTORY_API_KEY \
+    FIREBASE_PLIST_BASE64 \
+    FIREBASE_APP_CHECK_DEBUG_TOKEN \
+    OPENBURNBAR_USE_DEBUG_APP_CHECK \
+    QA_FIREBASE_EMAIL \
+    QA_FIREBASE_PASSWORD \
+    ANTHROPIC_API_KEY \
+    OPENAI_API_KEY \
+    OPENROUTER_API_KEY \
+    ZAI_API_KEY \
+    Z_AI_API_KEY \
+    MINIMAX_API_KEY \
+    PROVIDER_GITHUB_PAT \
+    FACTORY_SESSION_BEARER \
+    FACTORY_SESSION_COOKIE \
+    API_SERVER_KEY \
+    SENTRY_DSN
+  do
+    unset "$secret_name"
+  done
+}
+
 write_environment_probe() {
   {
     echo "OpenBurnBar functional QA environment probe"
     echo "timestamp_utc=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     echo "repo_root=$repo_root"
     echo "git_head=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "qa_secret_mode=$qa_secret_mode"
     echo
     echo "tooling:"
     for tool in node npm tuistory xcodebuild droid; do
@@ -91,13 +127,17 @@ write_environment_probe() {
     echo "secrets:"
     for secret in FACTORY_API_KEY FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_TOKEN QA_FIREBASE_EMAIL QA_FIREBASE_PASSWORD ANTHROPIC_API_KEY; do
       if require_env "$secret"; then
-        printf "  %s=set\n" "$secret"
+        printf "  %s status: present\n" "$secret"
       else
-        printf "  %s=unset\n" "$secret"
+        printf "  %s status: absent\n" "$secret"
       fi
     done
   } > "$env_probe_path"
 }
+
+if [[ "$qa_secret_mode" == "pr-safe" ]]; then
+  strip_pr_safe_secret_environment
+fi
 
 run_logged() {
   local test_case="$1"
@@ -142,8 +182,16 @@ write_report() {
     echo
     echo "### What was verified"
     echo
-    echo "- Firebase/App Check CI config can be decoded, validated, and injected into the macOS and iOS resource plists without printing secret values."
-    echo "- Dedicated QA auth credentials are present for authenticated flows."
+    if [[ "$qa_secret_mode" == "pr-safe" ]]; then
+      echo "- PR-safe mode ran without secret-backed QA credentials."
+      echo "- Firebase/App Check and authenticated QA-account flows were intentionally skipped rather than receiving secrets in PR code."
+    elif [[ "${#missing_required[@]}" -gt 0 ]]; then
+      echo "- Full mode failed closed when required QA credentials were absent; missing values were not logged."
+      echo "- Firebase/App Check injection remains required for full mode and did not run with missing inputs."
+    else
+      echo "- Firebase/App Check CI config can be decoded, validated, and injected into the macOS and iOS resource plists without printing secret values."
+      echo "- Dedicated QA auth credentials are present for authenticated flows."
+    fi
     echo "- Extension operator flows execute through the real extension unit and extension-host smoke surface."
     echo "- Environment evidence is attached at \`qa-results/environment-probe.txt\` and command logs are under \`qa-results/logs/\`."
     echo
@@ -188,19 +236,25 @@ for env_name in FACTORY_API_KEY FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_T
   fi
 done
 
-if [[ "${#missing_required[@]}" -eq 0 ]]; then
-  add_result "Required QA credential preflight" "qa" "operator" "PASS" "Required CI-only QA credentials are present; values are intentionally not logged."
+if [[ "$qa_secret_mode" == "pr-safe" ]]; then
+  add_result "Secret-backed QA credential preflight" "qa" "operator" "SKIPPED" "PR-safe mode intentionally receives no secret-backed QA credentials."
+elif [[ "${#missing_required[@]}" -eq 0 ]]; then
+  add_result "Secret-backed QA credential preflight" "qa" "operator" "PASS" "Required CI-only QA credentials are present; values are intentionally not logged."
 else
-  add_result "Required QA credential preflight" "qa" "operator" "FAIL" "Missing required environment variable(s): ${missing_required[*]}. Values were not logged."
+  add_result "Secret-backed QA credential preflight" "qa" "operator" "FAIL" "Missing required environment variable(s): ${missing_required[*]}. Values were not logged."
 fi
 
-if require_env ANTHROPIC_API_KEY; then
+if [[ "$qa_secret_mode" == "pr-safe" ]]; then
+  add_result "Provider-backed deep agent flow readiness" "agent/Hermes" "operator" "SKIPPED" "PR-safe mode intentionally runs deterministic checks without provider credentials."
+elif require_env ANTHROPIC_API_KEY; then
   add_result "Provider-backed deep agent flow readiness" "agent/Hermes" "operator" "PASS" "ANTHROPIC_API_KEY is present for provider-backed follow-up flows."
 else
   add_result "Provider-backed deep agent flow readiness" "agent/Hermes" "operator" "SKIPPED" "ANTHROPIC_API_KEY is not set; deterministic CI smoke does not require it."
 fi
 
-if require_env FIREBASE_PLIST_BASE64 && require_env FIREBASE_APP_CHECK_DEBUG_TOKEN; then
+if [[ "$qa_secret_mode" == "pr-safe" ]]; then
+  add_result "Firebase/App Check config injection" "macOS+iOS app" "qa-auth" "SKIPPED" "PR-safe mode intentionally does not decode or inject Firebase/App Check secrets."
+elif require_env FIREBASE_PLIST_BASE64 && require_env FIREBASE_APP_CHECK_DEBUG_TOKEN; then
   run_logged \
     "Firebase/App Check config injection" \
     "macOS+iOS app" \

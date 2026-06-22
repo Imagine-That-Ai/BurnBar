@@ -32,8 +32,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
-      INTERNAL_RUN: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)) }}
-      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+      RUN_PR_SAFE_QA: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+      RUN_SECRET_BACKED_QA: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -80,22 +80,49 @@ jobs:
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
-      # Defense-in-depth: GitHub redacts secrets for fork PRs on pull_request,
-      # but the if: guard also requires a trusted same-repo PR actor before
-      # exposing QA credentials to repo-controlled smoke code.
-      - name: Run QA
-        if: env.INTERNAL_RUN == 'true'
-        id: qa
+      # Pull-request code runs the deterministic QA surface without any
+      # secret-backed credentials. Manual dispatch on main is the only lane
+      # allowed to exercise Firebase/App Check and QA-authenticated flows.
+      - name: Run PR-safe QA
+        if: env.RUN_PR_SAFE_QA == 'true'
+        id: qa_pr_safe
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          CI: true
+          OPENBURNBAR_QA_SECRET_MODE: pr-safe
+        run: |
+          set +e -uo pipefail
+          mkdir -p qa-results
+          bash tools/qa/run-functional-qa.sh 2>&1 | node scripts/ci/redact-qa-artifacts.mjs --stream | tee qa-results/qa-output.txt
+          statuses=("${PIPESTATUS[@]}")
+          qa_status="${statuses[0]}"
+          stream_redactor_status="${statuses[1]}"
+          tee_status="${statuses[2]}"
+          artifact_redactor_status=0
+          node scripts/ci/redact-qa-artifacts.mjs qa-results || artifact_redactor_status="$?"
+
+          if [[ "$stream_redactor_status" -ne 0 || "$tee_status" -ne 0 || "$artifact_redactor_status" -ne 0 ]]; then
+            echo "::error::Functional QA artifact redaction failed."
+            exit 1
+          fi
+
+          exit "$qa_status"
+
+      - name: Run secret-backed QA
+        if: env.RUN_SECRET_BACKED_QA == 'true'
+        id: qa_secret
         # continue-on-error keeps later steps running; artifact upload and PR
         # comments are still gated on a final successful redaction pass below.
         continue-on-error: true
         timeout-minutes: 20
-        # Minimum-scoped secret set (diligence H26): this step receives ONLY
-        # the credentials functional QA actually needs and nothing else.
+        # Minimum-scoped secret set: this step receives ONLY the credentials
+        # functional QA actually needs and nothing else. It is restricted to
+        # workflow_dispatch on main so PR-controlled code never receives them.
         #   - FACTORY_API_KEY: retained as a required QA environment preflight
         #     because downstream agent/Hermes QA flows need Factory auth.
-        #   - FIREBASE_*: build/run the app under App Check (these two also gate
-        #     INTERNAL_RUN's HAS_FIREBASE_SECRETS above).
+        #   - FIREBASE_*: build/run the app under App Check in the manual-main
+        #     lane.
         #   - QA_FIREBASE_*: the dedicated QA Auth account the qa skill signs in
         #     with (tools/qa/README.md).
         # Deliberately NOT in scope (removed to shrink the curl-CLI blast radius):
@@ -105,6 +132,7 @@ jobs:
         # one of these, add it back narrowly with a note on why.
         env:
           CI: true
+          OPENBURNBAR_QA_SECRET_MODE: full
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
@@ -225,18 +253,23 @@ jobs:
           PY
 
       - name: Honest conclusion
-        if: always() && env.INTERNAL_RUN == 'true'
+        if: always()
         env:
-          QA_STEP_OUTCOME: ${{ steps.qa.outcome }}
+          QA_PR_SAFE_OUTCOME: ${{ steps.qa_pr_safe.outcome }}
+          QA_SECRET_OUTCOME: ${{ steps.qa_secret.outcome }}
           QA_ARTIFACTS_READY: ${{ steps.qa_artifacts.outputs.ready }}
         run: |
           set -euo pipefail
+          qa_step_outcome="${QA_SECRET_OUTCOME:-}"
+          if [[ -z "$qa_step_outcome" || "$qa_step_outcome" == "skipped" ]]; then
+            qa_step_outcome="${QA_PR_SAFE_OUTCOME:-}"
+          fi
           if [[ "${QA_ARTIFACTS_READY}" != "true" ]]; then
             echo "::error::Functional QA artifacts were not published because redaction did not complete successfully."
             exit 1
           fi
-          if [[ "${QA_STEP_OUTCOME}" != "success" ]]; then
-            echo "::error::Functional QA did not complete (step outcome: ${QA_STEP_OUTCOME}). The PR comment/artifacts have details."
+          if [[ "$qa_step_outcome" != "success" ]]; then
+            echo "::error::Functional QA did not complete (step outcome: ${qa_step_outcome:-none}). The PR comment/artifacts have details."
             exit 1
           fi
           python3 - <<'PY'
