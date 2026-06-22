@@ -69,6 +69,12 @@ jobs:
           fi
 
           tag_ref="refs/tags/${TAG}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
+            echo "::error::Manual Cloud Run deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."
+            echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."
+            exit 1
+          fi
+
           git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
           git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
 
