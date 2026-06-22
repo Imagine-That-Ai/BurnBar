@@ -174,7 +174,9 @@ round-trips through iOS, iPadOS, Android, and Firestore without translation.
 - **Model preference.** `InsightModelPreference` carries automatic vs
   explicit mode plus `restrictToLocalOnly`, `maxEgressTier`, and
   `deepTranscriptOptIn`. Composers surface the active egress tier and the
-  larger-budget warning before any non-local call.
+  larger-budget warning before any non-local call. The visible model chip is
+  the Q&A egress contract: a `local-rules` selection remains deterministic and
+  local until the user visibly chooses a non-local route.
 - **Schema gate.** Gateway responses that fail
   `analysisResultSchemaV1` validation are rejected at the engine boundary
   and recorded as `status: schemaViolation`; the engine then falls back to

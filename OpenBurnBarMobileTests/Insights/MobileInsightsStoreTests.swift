@@ -9,6 +9,58 @@ import OpenBurnBarCore
 @MainActor
 final class MobileInsightsStoreTests: XCTestCase {
 
+    func testMobileFollowUpKeepsVisibleLocalRulesSelectionLocal() {
+        let selected = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+
+        let resolved = InsightsStore.resolvedAnalysisModel(
+            selectedModelTag: selected,
+            modelCatalog: [
+                InsightCatalogModel(
+                    id: "hermes-auto",
+                    displayName: "Hermes",
+                    providerKey: "hermes",
+                    egressTier: .userRelay,
+                    capabilities: .init()
+                ),
+                InsightCatalogModel(
+                    id: "hosted-answer",
+                    displayName: "Hosted",
+                    providerKey: "burnbar-hosted",
+                    egressTier: .hosted,
+                    capabilities: .init()
+                )
+            ],
+            privacyMode: false,
+            instruction: .answerFollowUp
+        )
+
+        XCTAssertEqual(resolved.providerKey, "local-rules")
+        XCTAssertEqual(resolved.egressTier, .localOnly)
+    }
+
+    func testMobilePersistedLocalRulesPreferenceIsExplicitAfterUserSelection() {
+        let selected = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+
+        let preference = InsightsStore.persistedModelPreference(
+            selectedModelTag: selected,
+            privacyMode: false
+        )
+
+        XCTAssertEqual(preference.mode, .explicit)
+        XCTAssertEqual(preference.explicitModel?.providerKey, "local-rules")
+        XCTAssertEqual(preference.explicitModel?.egressTier, .localOnly)
+    }
+
     func testInsightsStoreSeedsFromTemplateOnFirstRun() async throws {
         // Use an isolated working directory so tests don't share state
         // with each other or with the running app's Application Support.

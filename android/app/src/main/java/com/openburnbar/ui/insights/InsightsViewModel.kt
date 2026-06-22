@@ -13,7 +13,6 @@ import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightFilter
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
-import com.openburnbar.data.insights.services.AndroidBurnBarHostedInsightGateway
 import com.openburnbar.data.insights.services.AndroidHermesInsightAnalysisGateway
 import com.openburnbar.data.insights.services.AndroidInsightAnalysisEngine
 import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
@@ -150,6 +149,14 @@ class InsightsViewModel(
         private const val KEY_MODEL_ID = "modelID"
         private const val KEY_DISPLAY_NAME = "displayName"
         private const val KEY_LOCAL_ONLY = "localOnly"
+
+        internal fun resolvedAnalysisModel(selected: InsightModelTag, instruction: InsightAnalysisRequest.Instruction): InsightModelTag = when (instruction) {
+            InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP,
+            InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
+            InsightAnalysisRequest.Instruction.GENERATE_REPORT,
+            InsightAnalysisRequest.Instruction.UPDATE_CANVAS,
+            -> selected
+        }
     }
 
     fun load() {
@@ -324,27 +331,11 @@ class InsightsViewModel(
     }
 
     private fun modelForAnalysis(instruction: InsightAnalysisRequest.Instruction): InsightModelTag {
-        val selected = _selectedModel.value
-        if (instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) return selected
-        if (selected.providerKey != "local-rules") return selected
-        val available =
-            if (_localOnlyMode.value) {
-                _modelOptions.value.filter { it.egressTier == InsightEgressTier.LOCAL_ONLY }
-            } else {
-                _modelOptions.value
-            }
-        // Preference order: user-relay (Hermes) → user-key cloud → Ollama
-        // → BurnBar hosted → anything non-local-rules.
-        return available.firstOrNull { it.providerKey == "hermes" }
-            ?: available.firstOrNull {
-                it.egressTier != InsightEgressTier.LOCAL_ONLY &&
-                    it.providerKey != "ollama" &&
-                    it.providerKey != AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
-            }
-            ?: available.firstOrNull { it.providerKey == "ollama" }
-            ?: available.firstOrNull { it.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY }
-            ?: available.firstOrNull { it.providerKey != "local-rules" }
-            ?: selected
+        // The visible model chip is the egress contract. If the user is seeing
+        // Local rules, follow-ups must stay deterministic/local instead of
+        // silently promoting themselves to a relay, user-key provider, or
+        // hosted fallback.
+        return resolvedAnalysisModel(_selectedModel.value, instruction)
     }
 
     private fun missionKind(prompt: String): String {
