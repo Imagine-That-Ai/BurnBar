@@ -659,6 +659,44 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "fsmonitorBoundaryKept", projectPath: fixture.project.path)).symbols.isEmpty)
     }
 
+    func testIndexProjectRespectsGlobalGitExcludesFile() throws {
+        let fixture = try makeFixture()
+        try withTemporaryHome(fixture.root) {
+            try runGit(["init"], cwd: fixture.project)
+            let excludes = fixture.root.appendingPathComponent("global-excludes", isDirectory: false)
+            try write("*.local-secret.swift\n", to: excludes)
+            try runGit(["config", "--global", "core.excludesFile", excludes.path], cwd: fixture.project)
+            try write(
+                "func globallyIgnoredSecretSymbol() {}\n",
+                to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("ignored.local-secret.swift")
+            )
+            try write(
+                "func normalSymbolStillIndexed() {}\n",
+                to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Normal.swift")
+            )
+
+            let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+            _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+            XCTAssertTrue(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "globallyIgnoredSecretSymbol", projectPath: fixture.project.path)).symbols.isEmpty)
+            XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "normalSymbolStillIndexed", projectPath: fixture.project.path)).symbols.isEmpty)
+        }
+    }
+
+    func testGitHelperPreservesProtectedBareRepositoryPolicy() throws {
+        let fixture = try makeFixture()
+        try withTemporaryHome(fixture.root) {
+            let bare = fixture.root.appendingPathComponent("bare.git", isDirectory: true)
+            try runGit(["config", "--global", "safe.bareRepository", "explicit"], cwd: fixture.root)
+            try runGit(["init", "--bare", bare.path], cwd: fixture.root)
+
+            XCTAssertNil(
+                BurnBarProjectCodeMemoryStore.gitOutput(root: bare, arguments: ["rev-parse", "--is-bare-repository"]),
+                "Project indexing Git helpers must preserve protected safe.bareRepository policy instead of overriding global/system config."
+            )
+        }
+    }
+
     func testIndexProjectEnforcesStorageBudgetAndReportsVacuumMetadata() throws {
         let fixture = try makeFixture()
         try write("func smallBudgetKept() {}\n", to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Kept.swift"))
@@ -1342,6 +1380,21 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     private func write(_ text: String, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func withTemporaryHome(_ root: URL, _ body: () throws -> Void) throws {
+        let oldHome = getenv("HOME").map { String(cString: $0) }
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        setenv("HOME", home.path, 1)
+        defer {
+            if let oldHome {
+                setenv("HOME", oldHome, 1)
+            } else {
+                unsetenv("HOME")
+            }
+        }
+        try body()
     }
 
     private func expectedAuditHash(for event: BurnBarProjectMemoryAuditEvent) throws -> String {

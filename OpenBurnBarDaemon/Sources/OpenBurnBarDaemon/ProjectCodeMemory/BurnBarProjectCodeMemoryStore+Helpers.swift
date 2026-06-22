@@ -605,8 +605,6 @@ extension BurnBarProjectCodeMemoryStore {
             entry.key.hasPrefix("GIT_") == false
         }
         environment["GIT_ASKPASS"] = "/usr/bin/false"
-        environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
-        environment["GIT_CONFIG_NOSYSTEM"] = "1"
         environment["GIT_OPTIONAL_LOCKS"] = "0"
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["SSH_ASKPASS"] = "/usr/bin/false"
