@@ -7,6 +7,7 @@ import com.openburnbar.irohrelay.IrohBlobBackendError
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -42,6 +43,9 @@ class MediaFileTransferService(
     private companion object {
         const val MILLIS_PER_SECOND = 1000.0
         const val APPLE_REFERENCE_EPOCH_OFFSET_SECONDS = 978_307_200.0
+        const val SAFE_NAME_PREFIX_LENGTH = 48
+        const val MAX_EXTENSION_LENGTH = 16
+        val PARENT_DIRECTORY_MARKER = Regex("\\.{2,}")
     }
 
     data class Configuration(
@@ -68,6 +72,8 @@ class MediaFileTransferService(
         data class LocalFileMissing(val path: String) : ServiceError("Missing file: $path")
 
         data class InvalidTicket(val detail: String) : ServiceError("Invalid ticket: $detail")
+
+        data class InvalidManifest(val detail: String) : ServiceError("Invalid attachment manifest: $detail")
     }
 
     private val mutex = Mutex()
@@ -157,10 +163,73 @@ class MediaFileTransferService(
     }
 
     private fun inboxFile(manifest: HermesRealtimeRelayAttachmentManifest): File {
-        val ext = manifest.filename.substringAfterLast('.', missingDelimiterValue = "")
-        val nameBase = manifest.blobHash.replace("/", "_")
+        val inboxRoot = configuration.inboxDirectory.canonicalFile
+        val ext = safeExtension(manifest.filename)
+        val nameBase = safeInboxNameBase(manifest.blobHash)
         val fullName = if (ext.isNotBlank()) "$nameBase.$ext" else nameBase
-        return File(configuration.inboxDirectory, fullName)
+        val destination = File(inboxRoot, fullName).canonicalFile
+        if (destination.parentFile?.canonicalFile != inboxRoot) {
+            throw ServiceError.InvalidManifest("attachment destination must remain inside the inbox directory")
+        }
+        return destination
+    }
+
+    private fun safeInboxNameBase(blobHash: String): String {
+        val normalized = blobHash.trim()
+        if (normalized.isBlank()) {
+            throw ServiceError.InvalidManifest("blank blob hash")
+        }
+        if (containsControlCharacter(normalized)) {
+            throw ServiceError.InvalidManifest("blob hash contains control characters")
+        }
+
+        val prefix =
+            normalized
+                .map { if (isPortableFilenameCharacter(it)) it else '_' }
+                .joinToString(separator = "")
+                .replace(PARENT_DIRECTORY_MARKER, "_")
+                .trim('.', '_', '-')
+                .take(SAFE_NAME_PREFIX_LENGTH)
+                .ifBlank { "blob" }
+        return "$prefix-${sha256Hex(normalized)}"
+    }
+
+    private fun safeExtension(filename: String): String {
+        val normalized = filename.trim()
+        if (normalized.isBlank()) {
+            return ""
+        }
+        if (containsControlCharacter(normalized)) {
+            throw ServiceError.InvalidManifest("filename contains control characters")
+        }
+
+        val leafName =
+            normalized
+                .replace('\\', '/')
+                .substringAfterLast('/')
+        val ext = leafName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+        if (ext.isBlank()) {
+            return ""
+        }
+        if (ext.length > MAX_EXTENSION_LENGTH || ext.any { !it.isLetterOrDigit() }) {
+            return ""
+        }
+        return ext
+    }
+
+    private fun isPortableFilenameCharacter(character: Char): Boolean {
+        return character.isLetterOrDigit() || character == '.' || character == '_' || character == '-'
+    }
+
+    private fun containsControlCharacter(value: String): Boolean {
+        return value.any { it == '\u0000' || it.code < 0x20 || it.code == 0x7f }
+    }
+
+    private fun sha256Hex(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        return digest.joinToString(separator = "") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
     }
 
     private fun ensureDirectoryExists(directory: File) {
