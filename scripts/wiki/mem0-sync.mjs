@@ -42,6 +42,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deleteManifestMemory } from "../lib/mem0-delete-boundary.mjs";
 import { buildDesired, planActions, runPool } from "../lib/verbatim-chunker.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -103,13 +104,14 @@ function writeManifest(manifestAbs, manifest) {
 
 function makeClient(apiKey) {
   const headers = { Authorization: `Token ${apiKey}`, "Content-Type": "application/json" };
-  async function call(method, path, body) {
+  async function call(method, path, body, options = {}) {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(`${MEM0_BASE}${path}`, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
+      if (options.allowNotFound && res.status === 404) return null;
       if (res.status === 429 || res.status >= 500) {
         if (attempt < 4) {
           await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
@@ -122,6 +124,7 @@ function makeClient(apiKey) {
     }
   }
   return {
+    get: (id) => call("GET", `/v1/memories/${encodeURIComponent(id)}/`, undefined, { allowNotFound: true }),
     async create(text, userId, appId, metadata) {
       const out = await call("POST", "/v1/memories/", {
         messages: [{ role: "user", content: text }],
@@ -213,12 +216,24 @@ async function main() {
 
   // Deletes first (frees space + clears stale ids), then updates (delete+create), then creates.
   await runPool(deletes, args.concurrency, async (d) => {
-    await client.delete(d.memory_id);
+    await deleteManifestMemory({
+      client,
+      memoryId: d.memory_id,
+      key: d.key,
+      userId: args.userId,
+      appId: args.appId,
+    });
     delete manifest.entries[d.key];
     if (args.verbose) log(`  deleted ${d.key}`);
   });
   await runPool(updates, args.concurrency, async (u) => {
-    await client.delete(u.oldId).catch((e) => log(`  warn: stale delete ${u.key}: ${e.message}`));
+    await deleteManifestMemory({
+      client,
+      memoryId: u.oldId,
+      key: u.key,
+      userId: args.userId,
+      appId: args.appId,
+    }).catch((e) => log(`  warn: stale delete ${u.key}: ${e.message}`));
     const id = await client.create(u.text, args.userId, args.appId, u.metadata);
     manifest.entries[u.key] = { memory_id: id, content_hash: u.contentHash };
     if (args.verbose) log(`  updated ${u.key}`);
