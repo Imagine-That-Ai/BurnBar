@@ -295,6 +295,8 @@ def validate_cloud_run(text: str) -> None:
 
     for marker in (
         "tag_ref=\"refs/tags/${TAG}\"",
+        'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+        "production credentials stay tag-bound",
         "git fetch --force --tags origin \"+${tag_ref}:${tag_ref}\"",
         "git merge-base --is-ancestor \"$commit\" origin/main",
         "[[ ! \"$TAG\" =~ ^v[0-9]{1,3}\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$ ]]",
@@ -391,6 +393,8 @@ def validate_production_functions(text: str) -> None:
         "INPUT_TAG: ${{ inputs.tag }}",
         "INPUT_DRY_RUN: ${{ inputs.dry_run }}",
         'tag_ref="refs/tags/${TAG}"',
+        'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+        "production credentials stay tag-bound",
         'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
         'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
         'git rev-list -n 1 "${tag_ref}^{commit}"',

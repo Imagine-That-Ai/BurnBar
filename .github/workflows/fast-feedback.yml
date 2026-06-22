@@ -748,6 +748,12 @@ jobs:
       - name: Verify factory security-review boundary
         run: node scripts/ci/verify-factory-security-review-boundary.mjs
 
+      - name: Self-test production deploy auth boundary
+        run: bash scripts/ci/verify-production-deploy-auth.test.sh
+
+      - name: Verify production deploy auth boundary
+        run: bash scripts/ci/verify-production-deploy-auth.sh
+
   # ── Mac/iOS Swift twin-basename gate (stop new forked twins) ───────────────
   twin-basenames:
     name: Swift twin basenames

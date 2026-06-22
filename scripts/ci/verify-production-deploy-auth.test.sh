@@ -144,6 +144,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("TAG=\"$INPUT_TAG\"", "TAG=\"${{ inputs.tag }}\"", 1)'
 expect_fail "functions raw dispatch tag interpolation fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/functions-missing-manual-tag-ref"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("          if [[ \"$EVENT_NAME\" == \"workflow_dispatch\" && \"${GITHUB_REF}\" != \"$tag_ref\" ]]; then\n            echo \"::error::Manual production deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}.\"\n            echo \"::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound.\"\n            exit 1\n          fi\n\n", "", 1)'
+expect_fail "functions missing manual tag-ref guard fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/functions-missing-ancestor"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
@@ -193,6 +198,11 @@ fixture="$TMP_ROOT/cloud-run-missing-ancestor"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if ! git merge-base --is-ancestor \"$commit\" origin/main; then", "          if false; then", 1)'
 expect_fail "cloud run missing tag ancestry guard fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-missing-manual-tag-ref"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          if [[ \"$EVENT_NAME\" == \"workflow_dispatch\" && \"${GITHUB_REF}\" != \"$tag_ref\" ]]; then\n            echo \"::error::Manual Cloud Run deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}.\"\n            echo \"::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound.\"\n            exit 1\n          fi\n\n", "", 1)'
+expect_fail "cloud run missing manual tag-ref guard fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-loose-tag-grammar"
 copy_base_fixture "$fixture"
