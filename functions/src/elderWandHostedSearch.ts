@@ -2,8 +2,8 @@
  * @fileoverview Paid hosted web_search for Elder Wand Fusion.
  *
  * Provider keys stay server-side. Perplexity Search API is primary; Tavily is
- * the fallback. The allowance debit happens only after a successful provider
- * response, with per-run dedupe and caps to control Fusion fan-out.
+ * the fallback. The allowance debit is reserved in the claim transaction before
+ * provider work starts, with per-run dedupe and caps to control Fusion fan-out.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -110,6 +110,18 @@ function numberFromDoc(raw: FirebaseFirestore.DocumentData | undefined, field: s
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function allowanceNumbersFromDoc(
+  raw: FirebaseFirestore.DocumentData | undefined,
+  defaults: ReturnType<typeof allowanceDefaults>,
+): AllowanceNumbers {
+  return {
+    included: numberFromDoc(raw, "includedFusionSearches", defaults.included),
+    used: numberFromDoc(raw, "fusionSearchesUsed", 0),
+    purchased: numberFromDoc(raw, "topupFusionSearchesPurchased", 0),
+    monthlyCap: numberFromDoc(raw, "monthlyFusionSearchCap", defaults.monthlyCap),
+  };
+}
+
 function activeEntitlement(raw: FirebaseFirestore.DocumentData | undefined): boolean {
   if (!raw || raw.active !== true) return false;
   const expireAt = raw.expireAt;
@@ -166,23 +178,15 @@ function boundedPositiveInteger(raw: unknown, fallback: number, max: number): nu
 function cachedResponse(raw: FirebaseFirestore.DocumentData | undefined): HostedSearchResponse | undefined {
   if (!raw || raw.status !== "ready" || !Array.isArray(raw.results)) return undefined;
   const provider = raw.provider === "tavily" ? "tavily" : raw.provider === "perplexity" ? "perplexity" : undefined;
-  const quotaRaw = isRecord(raw.quota) ? raw.quota : undefined;
-  if (!provider || !quotaRaw) return undefined;
+  const quota = quotaFromRaw(raw.quota, monthKeyForDate(new Date()));
+  if (!provider || !quota) return undefined;
   const results = normalizeProviderResults(raw.results);
   return {
     provider,
     cached: true,
     results,
     monthKey: typeof raw.monthKey === "string" ? raw.monthKey : monthKeyForDate(new Date()),
-    quota: {
-      meter: "fusion_searches",
-      included: Number(quotaRaw.included) || 0,
-      purchased: Number(quotaRaw.purchased) || 0,
-      used: Number(quotaRaw.used) || 0,
-      remaining: Number(quotaRaw.remaining) || 0,
-      monthlyCap: Number(quotaRaw.monthlyCap) || 0,
-      resetAt: typeof quotaRaw.resetAt === "string" ? quotaRaw.resetAt : nextMonthResetISO(monthKeyForDate(new Date())),
-    },
+    quota,
   };
 }
 
@@ -231,6 +235,10 @@ async function claimSearch(args: {
     if (cache?.status === "pending" && lockStillActive) {
       return { pendingPath: cacheRef.path };
     }
+    const reusablePendingReservation =
+      cache?.status === "pending" &&
+      cache.reservationStatus === "reserved" &&
+      numberFromDoc(cache, "reservedUnits", 0) >= 1;
 
     const attemptedSearches = numberFromDoc(runSnap.data(), "attemptedSearches", 0);
     if (attemptedSearches >= args.runSearchCap) {
@@ -243,24 +251,41 @@ async function claimSearch(args: {
     }
 
     const allowance = allowanceSnap.data();
-    const preflight = evaluateCloudProAllowanceReservation({
-      includedUnits: numberFromDoc(allowance, "includedFusionSearches", defaults.included),
-      usedUnits: numberFromDoc(allowance, "fusionSearchesUsed", 0),
-      topUpUnits: numberFromDoc(allowance, "topupFusionSearchesPurchased", 0),
-      monthlyCap: numberFromDoc(allowance, "monthlyFusionSearchCap", defaults.monthlyCap),
-      requestedUnits: 1,
-    });
-    if (!preflight.ok) {
-      throw new HttpsError("resource-exhausted", "Fusion hosted search quota is exhausted.", {
-        meter: "fusion_searches",
-        monthKey,
-        availableUnits: preflight.availableUnits,
-        monthlyCapRemaining: preflight.monthlyCapRemaining,
-        reason: preflight.reason,
-      });
-    }
-
+    const before = allowanceNumbersFromDoc(allowance, defaults);
     const now = Timestamp.now();
+    let quota = quotaFromRaw(cache?.quota, monthKey) ?? quotaResponse(before, monthKey);
+    if (!reusablePendingReservation) {
+      const preflight = evaluateCloudProAllowanceReservation({
+        includedUnits: before.included,
+        usedUnits: before.used,
+        topUpUnits: before.purchased,
+        monthlyCap: before.monthlyCap,
+        requestedUnits: 1,
+      });
+      if (!preflight.ok) {
+        throw new HttpsError("resource-exhausted", "Fusion hosted search quota is exhausted.", {
+          meter: "fusion_searches",
+          monthKey,
+          availableUnits: preflight.availableUnits,
+          monthlyCapRemaining: preflight.monthlyCapRemaining,
+          reason: preflight.reason,
+        });
+      }
+
+      quota = quotaResponse({ ...before, used: preflight.usedAfter }, monthKey);
+      transaction.set(
+        allowanceRef,
+        {
+          includedFusionSearches: before.included,
+          fusionSearchesUsed: FieldValue.increment(1),
+          topupFusionSearchesPurchased: before.purchased,
+          monthlyFusionSearchCap: before.monthlyCap,
+          updatedAt: now,
+          schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+        },
+        { merge: true },
+      );
+    }
     transaction.set(
       runRef,
       {
@@ -283,9 +308,13 @@ async function claimSearch(args: {
         runId: args.runId,
         queryHash: hash,
         status: "pending",
+        reservationStatus: "reserved",
+        reservedUnits: 1,
+        reservedAt: cache?.reservedAt ?? now,
+        quota,
         lockId,
         lockExpiresAt: Timestamp.fromMillis(Date.now() + PENDING_LOCK_TTL_MS),
-        createdAt: now,
+        createdAt: cache?.createdAt ?? now,
         updatedAt: now,
         schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
       },
@@ -319,6 +348,56 @@ function quotaResponse(numbers: AllowanceNumbers, monthKey: string): HostedSearc
   };
 }
 
+function quotaFromRaw(raw: unknown, monthKey: string): HostedSearchResponse["quota"] | undefined {
+  if (!isRecord(raw)) return undefined;
+  return {
+    meter: "fusion_searches",
+    included: Number(raw.included) || 0,
+    purchased: Number(raw.purchased) || 0,
+    used: Number(raw.used) || 0,
+    remaining: Number(raw.remaining) || 0,
+    monthlyCap: Number(raw.monthlyCap) || 0,
+    resetAt: typeof raw.resetAt === "string" ? raw.resetAt : nextMonthResetISO(monthKey),
+  };
+}
+
+function quotaSnapshotData(args: {
+  quota: HostedSearchResponse["quota"];
+  tier: ElderWandTier;
+  nowString: string;
+}): FirebaseFirestore.DocumentData {
+  return {
+    sourceKind: "provider",
+    sourceId: "elder-wand-fusion",
+    provider: "OpenBurnBar",
+    providerID: "openburnbar",
+    accountID: "elder-wand-fusion",
+    accountLabel: "Elder Wand Fusion",
+    accountStorageScope: "server_private",
+    fetchedAt: args.nowString,
+    source: "OpenBurnBar hosted search",
+    sourceLabel: "OpenBurnBar hosted search",
+    resetAt: args.quota.resetAt,
+    planTier: args.tier === "ultra" ? "Ultra" : "Cloud Pro",
+    confidence: "high",
+    managementURL: "https://openburnbar.com",
+    statusMessage: `${args.quota.remaining} hosted Fusion searches remaining this month.`,
+    buckets: [
+      {
+        name: "Elder Wand hosted searches",
+        used: args.quota.used,
+        limit: Math.min(args.quota.monthlyCap, args.quota.included + args.quota.purchased),
+        unit: "searches",
+        remaining: args.quota.remaining,
+        window: "monthly",
+        resetAt: args.quota.resetAt,
+      },
+    ],
+    schemaVersion: 2,
+    updatedAt: args.nowString,
+  };
+}
+
 async function commitSuccessfulSearch(args: {
   uid: string;
   tier: ElderWandTier;
@@ -348,34 +427,7 @@ async function commitSuccessfulSearch(args: {
     }
 
     const allowance = allowanceSnap.data();
-    const before: AllowanceNumbers = {
-      included: numberFromDoc(allowance, "includedFusionSearches", defaults.included),
-      used: numberFromDoc(allowance, "fusionSearchesUsed", 0),
-      purchased: numberFromDoc(allowance, "topupFusionSearchesPurchased", 0),
-      monthlyCap: numberFromDoc(allowance, "monthlyFusionSearchCap", defaults.monthlyCap),
-    };
-    const evaluation = evaluateCloudProAllowanceReservation({
-      includedUnits: before.included,
-      usedUnits: before.used,
-      topUpUnits: before.purchased,
-      monthlyCap: before.monthlyCap,
-      requestedUnits: 1,
-    });
-    if (!evaluation.ok) {
-      throw new HttpsError("resource-exhausted", "Fusion hosted search quota is exhausted.", {
-        meter: "fusion_searches",
-        monthKey: args.claim.monthKey,
-        availableUnits: evaluation.availableUnits,
-        monthlyCapRemaining: evaluation.monthlyCapRemaining,
-        reason: evaluation.reason,
-      });
-    }
-
-    const after: AllowanceNumbers = {
-      ...before,
-      used: evaluation.usedAfter,
-    };
-    const quota = quotaResponse(after, args.claim.monthKey);
+    const quota = quotaResponse(allowanceNumbersFromDoc(allowance, defaults), args.claim.monthKey);
     const now = Timestamp.now();
     const nowString = nowISO();
     const response: HostedSearchResponse = {
@@ -387,21 +439,10 @@ async function commitSuccessfulSearch(args: {
     };
 
     transaction.set(
-      allowanceRef,
-      {
-        includedFusionSearches: defaults.included,
-        fusionSearchesUsed: FieldValue.increment(1),
-        topupFusionSearchesPurchased: FieldValue.increment(0),
-        monthlyFusionSearchCap: defaults.monthlyCap,
-        updatedAt: now,
-        schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
-      },
-      { merge: true },
-    );
-    transaction.set(
       cacheRef,
       {
         status: "ready",
+        reservationStatus: "consumed",
         provider: args.providerPayload.provider,
         results: args.providerPayload.results,
         quota,
@@ -444,59 +485,41 @@ async function commitSuccessfulSearch(args: {
       }),
       { merge: true },
     );
-    transaction.set(
-      quotaRef,
-      {
-        sourceKind: "provider",
-        sourceId: "elder-wand-fusion",
-        provider: "OpenBurnBar",
-        providerID: "openburnbar",
-        accountID: "elder-wand-fusion",
-        accountLabel: "Elder Wand Fusion",
-        accountStorageScope: "server_private",
-        fetchedAt: nowString,
-        source: "OpenBurnBar hosted search",
-        sourceLabel: "OpenBurnBar hosted search",
-        resetAt: quota.resetAt,
-        planTier: args.tier === "ultra" ? "Ultra" : "Cloud Pro",
-        confidence: "high",
-        managementURL: "https://openburnbar.com",
-        statusMessage: `${quota.remaining} hosted Fusion searches remaining this month.`,
-        buckets: [
-          {
-            name: "Elder Wand hosted searches",
-            used: quota.used,
-            limit: Math.min(quota.monthlyCap, quota.included + quota.purchased),
-            unit: "searches",
-            remaining: quota.remaining,
-            window: "monthly",
-            resetAt: quota.resetAt,
-          },
-        ],
-        schemaVersion: 2,
-        updatedAt: nowString,
-      },
-      { merge: true },
-    );
+    transaction.set(quotaRef, quotaSnapshotData({ quota, tier: args.tier, nowString }), { merge: true });
 
     return response;
   });
 }
 
-async function markFailedClaim(claim: SearchClaim, uid: string, error: unknown): Promise<void> {
-  const cacheRef = db
-    .doc(allowanceDocPath(uid, claim.monthKey))
-    .collection("fusion_search_cache")
-    .doc(claim.cacheDocId);
-  await cacheRef.set(
-    {
-      status: "failed",
-      error: errorMessage(error).slice(0, 240),
-      lockExpiresAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    },
-    { merge: true },
-  );
+async function markFailedClaim(claim: SearchClaim, uid: string, tier: ElderWandTier, error: unknown): Promise<void> {
+  const allowanceRef = db.doc(allowanceDocPath(uid, claim.monthKey));
+  const cacheRef = allowanceRef.collection("fusion_search_cache").doc(claim.cacheDocId);
+  const quotaRef = db.doc(`users/${uid}/quota_snapshots/openburnbar_elder_wand_fusion`);
+  const allowanceConfig = await loadCloudProAllowanceConfig();
+  const defaults = allowanceDefaults(tier, allowanceConfig);
+
+  await db.runTransaction(async (transaction) => {
+    const [allowanceSnap, cacheSnap] = await Promise.all([transaction.get(allowanceRef), transaction.get(cacheRef)]);
+    const cache = cacheSnap.data();
+    if (cache?.lockId !== claim.lockId) return;
+
+    const now = Timestamp.now();
+    const nowString = nowISO();
+    const quota = quotaResponse(allowanceNumbersFromDoc(allowanceSnap.data(), defaults), claim.monthKey);
+    transaction.set(
+      cacheRef,
+      {
+        status: "failed",
+        reservationStatus: "consumed_failed",
+        quota,
+        error: errorMessage(error).slice(0, 240),
+        lockExpiresAt: now,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    transaction.set(quotaRef, quotaSnapshotData({ quota, tier, nowString }), { merge: true });
+  });
 }
 
 export const performElderWandHostedSearch = onCallProduction<HostedSearchRequest, HostedSearchResponse>(
@@ -535,7 +558,7 @@ export const performElderWandHostedSearch = onCallProduction<HostedSearchRequest
       const providerPayload = await performProviderSearch(query, maxResults);
       return await commitSuccessfulSearch({ uid, tier, claim, providerPayload, toolCallId });
     } catch (err) {
-      await markFailedClaim(claim, uid, err);
+      await markFailedClaim(claim, uid, tier, err);
       logWarn({
         event: "elder_wand_hosted_search.failed",
         uid,
