@@ -52,6 +52,11 @@ sealed class IrohRelayTransportError(message: String, cause: Throwable? = null) 
         val source: Throwable? = null,
     ) : IrohRelayTransportError("Iroh pairing rejected: $detail", source)
 
+    data class PairingUnavailable(
+        val detail: String,
+        val source: Throwable? = null,
+    ) : IrohRelayTransportError("Iroh pairing unavailable: $detail", source)
+
     data class NodeIdUnreachable(val nodeId: String) : IrohRelayTransportError("Iroh node is unreachable: $nodeId.")
 
     data class StreamRejected(val detail: String) : IrohRelayTransportError(detail)

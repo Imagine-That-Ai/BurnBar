@@ -314,6 +314,41 @@ class HermesIrohRelayTransportTest {
     }
 
     @Test
+    fun missing_pairing_record_surfaces_unavailable_transport_error_for_fallback() = runTest {
+        val uid = "uid-missing-pairing"
+        val connectionId = "conn-missing-pairing"
+        val publicKeyProvider =
+            object : IrohPairingPublicKeyProviding {
+                override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
+            }
+        val transport =
+            HermesIrohRelayTransport(
+                context = mockk(relaxed = true),
+                keyStore = mockk(relaxed = true),
+                pairingDirectory = InMemoryIrohPairingDirectory(),
+                pairingPublicKeyProvider = publicKeyProvider,
+                transportFactory = { error("missing pairing must fail before iroh dial") },
+                auth = fakeAuth(uid),
+            )
+
+        val payload =
+            HermesRelayPayload(
+                operation = "chatCompletions",
+                method = "POST",
+                path = "/v1/chat/completions",
+                connectionID = connectionId,
+                relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+            )
+
+        val thrown = runCatching { transport.sendUnary(payload, 100) }.exceptionOrNull()
+        assertTrue(
+            "expected PairingUnavailable transport error, got $thrown",
+            thrown is IrohRelayTransportError.PairingUnavailable &&
+                thrown.message == "Iroh pairing unavailable: pairing record not found",
+        )
+    }
+
+    @Test
     fun timeout_cascades_when_host_never_replies() = runTest {
         val uid = "uid-timeout"
         val connectionId = "conn-timeout"
