@@ -50,6 +50,9 @@ protocol SwitcherDataLoading {
     /// Validates and recovers active profile state.
     func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState
 
+    /// Fetches active profile state without running recovery writes.
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState
+
     /// Sets the active profile by ID.
     func setActiveProfile(_ profileID: String) throws
 
@@ -65,9 +68,26 @@ extension SwitcherDataLoading {
     // the drain-target feature rolls out.
     func fetchAllActiveDrainTargets() throws -> [String: String] { [:] }
 
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState {
+        try validateAndRecoverActiveProfile()
+    }
+
     func setDrainTarget(_ profileID: String, for providerID: ProviderID) throws {
         try setActiveProfile(profileID)
     }
+}
+
+/// Resolves the persisted active profile only when the read-only snapshot points
+/// at a profile that still exists in the currently loaded list.
+func persistedActiveProfileID(
+    from snapshot: SwitcherActiveProfileState,
+    loadedProfiles: [SwitcherProfileRecord]
+) -> String? {
+    guard let activeProfileID = snapshot.activeProfileID,
+          loadedProfiles.contains(where: { $0.id == activeProfileID }) else {
+        return nil
+    }
+    return activeProfileID
 }
 
 /// Production implementation that wraps `DataStore.switcherStore`.
@@ -84,6 +104,10 @@ final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
 
     func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
         try store.validateAndRecoverActiveProfile()
+    }
+
+    func fetchActiveProfileStateSnapshot() throws -> SwitcherActiveProfileState {
+        try store.fetchActiveProfileStateSnapshot()
     }
 
     func setActiveProfile(_ profileID: String) throws {
@@ -992,8 +1016,8 @@ struct DashboardQuickSwitchView: View {
         do {
             let loadedProfiles = try switcherDataLoading.fetchAllProfiles().filter { !$0.isDisabled }
             profiles = loadedProfiles
-            let state = try switcherDataLoading.validateAndRecoverActiveProfile()
-            activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
+            let state = try switcherDataLoading.fetchActiveProfileStateSnapshot()
+            activeProfileID = persistedActiveProfileID(from: state, loadedProfiles: loadedProfiles)
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
             drainTargets = (try? switcherDataLoading.fetchAllActiveDrainTargets()) ?? [:]
 

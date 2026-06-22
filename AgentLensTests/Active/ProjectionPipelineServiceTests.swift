@@ -2276,6 +2276,75 @@ extension ProjectionPipelineServiceTests {
         XCTAssertFalse(storedIDs.contains("chunk-v1-b"), "Old v1 chunks should be deleted.")
     }
 
+    func test_applyChunkDiff_largeRekeyedCorpus_reconcilesAcrossMutationBatches() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let documentID = "doc-incr-test-large-rekey"
+        let title = "Large Rekey Test"
+        let base = Date(timeIntervalSince1970: 1_743_002_500)
+        let chunkCount = 90
+
+        let document = SearchDocumentRecord(
+            id: documentID,
+            sourceKind: .conversation,
+            sourceID: "conv-incr-large-rekey",
+            sourceVersionID: "v1",
+            provider: "claudeCode",
+            projectName: "Test",
+            title: title,
+            subtitle: "sub",
+            bodyPreview: "preview",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-large-rekey",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.upsertSearchDocument(document)
+
+        let v1Chunks = (0..<chunkCount).map { index in
+            SearchChunkRecord(
+                id: "chunk-large-v1-\(index)",
+                documentID: documentID,
+                sourceKind: .conversation,
+                sourceID: "conv-incr-large-rekey",
+                sourceVersionID: "v1",
+                ordinal: index,
+                startOffset: index * 100,
+                endOffset: (index + 1) * 100,
+                text: "Stable chunk \(index)",
+                contentHash: "hash-large-\(index)",
+                createdAt: base,
+                updatedAt: base
+            )
+        }
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
+
+        let v2Chunks = (0..<chunkCount).map { index in
+            SearchChunkRecord(
+                id: "chunk-large-v2-\(index)",
+                documentID: documentID,
+                sourceKind: .conversation,
+                sourceID: "conv-incr-large-rekey",
+                sourceVersionID: "v2",
+                ordinal: index,
+                startOffset: index * 100,
+                endOffset: (index + 1) * 100,
+                text: "Stable chunk \(index)",
+                contentHash: "hash-large-\(index)",
+                createdAt: base,
+                updatedAt: base
+            )
+        }
+
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
+
+        XCTAssertEqual(result.rekeyed, chunkCount)
+        XCTAssertEqual(result.added, chunkCount)
+        XCTAssertEqual(result.deleted, chunkCount)
+        let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
+        XCTAssertEqual(storedChunks.map(\.id), v2Chunks.map(\.id))
+    }
+
     func test_applyChunkDiff_partialEdit_onlyWritesImpactedChunks() async throws {
         // Partial edit: one chunk deleted, one changed, one unchanged.
 

@@ -865,8 +865,8 @@ struct PopoverQuickSwitchView: View {
         do {
             let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles().filter { !$0.isDisabled }
             profiles = loadedProfiles
-            let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
-            activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
+            let state = try dataStore.switcherStore.fetchActiveProfileStateSnapshot()
+            activeProfileID = persistedActiveProfileID(from: state, loadedProfiles: loadedProfiles)
             selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
             drainTargets = (try? dataStore.switcherStore.fetchAllActiveDrainTargets()) ?? [:]
 
