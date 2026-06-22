@@ -127,6 +127,34 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         error?.code == -32001
     }
 
+    private final class RacingDuplicatePinBacking: DaemonPhoneKeyPinBacking, @unchecked Sendable {
+        private let duplicateRecord: DaemonPhoneKeyPinRecord
+        private let lock = NSLock()
+        private var loadCount = 0
+        private(set) var saveCount = 0
+
+        init(duplicateRecord: DaemonPhoneKeyPinRecord) {
+            self.duplicateRecord = duplicateRecord
+        }
+
+        func load(deviceId: String) -> DaemonPhoneKeyPinLoad {
+            lock.lock()
+            defer { lock.unlock() }
+            loadCount += 1
+            return loadCount == 1 ? .absent : .found(duplicateRecord)
+        }
+
+        @discardableResult
+        func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+            lock.lock()
+            defer { lock.unlock() }
+            saveCount += 1
+            return -25299
+        }
+
+        func delete(deviceId: String) {}
+    }
+
     // MARK: - Tests
 
     func test_enforcedDaemon_refusesSessionStartWithNoProof() async throws {
@@ -337,6 +365,184 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             return
         }
         XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+    }
+
+    func test_phoneControlPinProvision_isIdempotentForSameExistingKey() async throws {
+        let socketPath = makeSocketPath(name: "pin-idempotent")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
+        let first: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: publicKeyBase64,
+                id: "pin-first"
+            ),
+            socketPath: socketPath
+        )
+        let retry: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: publicKeyBase64,
+                id: "pin-retry"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(first.result?.pinned, true)
+        XCTAssertEqual(retry.result?.pinned, true)
+        XCTAssertNil(retry.error)
+        guard case .pinned(let resolved) = pinStore.pinnedKey(deviceId: deviceId) else {
+            XCTFail("expected original key to remain pinned")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+    }
+
+    func test_phoneControlPinStore_sameKeyRetryPreservesOriginalPinnedAt() throws {
+        let backing = DaemonPhoneKeyInMemoryPinBacking()
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let originalPinnedAt = 1_789_000_123.25
+        let record = DaemonPhoneKeyPinRecord(
+            deviceId: deviceId,
+            publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+            keyKind: .ed25519,
+            pinnedAtEpoch: originalPinnedAt
+        )
+        XCTAssertEqual(backing.save(record), 0)
+
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let verifyingKey = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: privateKey.publicKey.rawRepresentation
+        )
+        guard case .pinned(let resolved) = pinStore.pin(deviceId: deviceId, key: verifyingKey) else {
+            XCTFail("same-key retry should be admitted as idempotent")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+
+        guard case .found(let stored) = backing.load(deviceId: deviceId) else {
+            XCTFail("expected original backing record to remain present")
+            return
+        }
+        XCTAssertEqual(stored.pinnedAtEpoch, originalPinnedAt)
+    }
+
+    func test_phoneControlPinStore_duplicateSaveReloadsSameKeyAsIdempotent() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let duplicateRecord = DaemonPhoneKeyPinRecord(
+            deviceId: deviceId,
+            publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+            keyKind: .ed25519
+        )
+        let backing = RacingDuplicatePinBacking(duplicateRecord: duplicateRecord)
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let verifyingKey = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: privateKey.publicKey.rawRepresentation
+        )
+
+        guard case .pinned(let resolved) = pinStore.pin(deviceId: deviceId, key: verifyingKey) else {
+            XCTFail("duplicate insert with the same stored key should reload as idempotent")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+        XCTAssertEqual(backing.saveCount, 1)
+    }
+
+    func test_phoneControlPinStore_duplicateSaveReloadsDifferentKeyAsConflict() throws {
+        let originalKey = Curve25519.Signing.PrivateKey()
+        let replacementKey = Curve25519.Signing.PrivateKey()
+        let duplicateRecord = DaemonPhoneKeyPinRecord(
+            deviceId: deviceId,
+            publicKeyBase64: originalKey.publicKey.rawRepresentation.base64EncodedString(),
+            keyKind: .ed25519
+        )
+        let backing = RacingDuplicatePinBacking(duplicateRecord: duplicateRecord)
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let verifyingKey = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: replacementKey.publicKey.rawRepresentation
+        )
+
+        guard case .conflict = pinStore.pin(deviceId: deviceId, key: verifyingKey) else {
+            XCTFail("duplicate insert with a different stored key should fail closed as a conflict")
+            return
+        }
+        XCTAssertEqual(backing.saveCount, 1)
+    }
+
+    func test_phoneControlPinStore_clearPinAllowsDeliberateLocalRekey() throws {
+        let originalKey = Curve25519.Signing.PrivateKey()
+        let replacementKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let originalVerifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: originalKey.publicKey.rawRepresentation
+        )
+        let replacementVerifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: replacementKey.publicKey.rawRepresentation
+        )
+
+        guard case .pinned = pinStore.pin(deviceId: deviceId, key: originalVerifier) else {
+            XCTFail("expected original key to pin")
+            return
+        }
+        guard case .conflict = pinStore.pin(deviceId: deviceId, key: replacementVerifier) else {
+            XCTFail("replacement must not overwrite before a deliberate local clear")
+            return
+        }
+
+        pinStore.clearPin(deviceId: deviceId)
+
+        guard case .pinned(let resolved) = pinStore.pin(deviceId: deviceId, key: replacementVerifier) else {
+            XCTFail("replacement should pin after the local trust reset clears the old row")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, replacementKey.publicKey.rawRepresentation)
+    }
+
+    func test_phoneControlPinProvision_rejectsDifferentKeyForExistingDevice() async throws {
+        let socketPath = makeSocketPath(name: "pin-conflict")
+        let originalKey = Curve25519.Signing.PrivateKey()
+        let replacementKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let first: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: originalKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-original"
+            ),
+            socketPath: socketPath
+        )
+        let replacement: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: replacementKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-replacement"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(first.result?.pinned, true)
+        XCTAssertNil(replacement.result)
+        XCTAssertEqual(replacement.error?.code, BurnBarRPCErrorCode.unauthorized)
+        guard case .pinned(let resolved) = pinStore.pinnedKey(deviceId: deviceId) else {
+            XCTFail("expected original key to remain pinned")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, originalKey.publicKey.rawRepresentation)
+        XCTAssertNotEqual(resolved.publicKeyRepresentation, replacementKey.publicKey.rawRepresentation)
     }
 
     func test_phoneControlPinProvision_rejectsMalformedPublicKey() async throws {

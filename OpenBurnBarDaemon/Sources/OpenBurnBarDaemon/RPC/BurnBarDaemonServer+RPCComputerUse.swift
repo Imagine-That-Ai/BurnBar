@@ -186,6 +186,18 @@ extension BurnBarDaemonServer {
                 code: BurnBarRPCErrorCode.internalError,
                 message: "Unexpected absent pin result for device \(request.deviceId)."
             )
+        case .conflict:
+            logger.warning(
+                "phone_control_pin_provision_conflict",
+                metadata: [
+                    "device_id": request.deviceId,
+                    "key_kind": request.keyKind.rawValue
+                ]
+            )
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "Phone-control pin already exists for device \(request.deviceId); a trusted-pairing and local-trust reset is required before rotating its key."
+            )
         case .storeError(let status):
             logger.error(
                 "phone_control_pin_provision_failed",
