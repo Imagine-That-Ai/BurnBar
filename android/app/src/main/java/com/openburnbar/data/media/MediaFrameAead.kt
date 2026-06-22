@@ -130,7 +130,7 @@ object MediaFrameAead {
 
     /** Same check order as the Swift opener: length, then magic, then version. */
     private fun headerFailure(envelope: ByteArray): MediaFrameAeadSealException? {
-        if (envelope.size <= HEADER_BYTES + NONCE_BYTES + TAG_BYTES) {
+        if (envelope.size < HEADER_BYTES + NONCE_BYTES + TAG_BYTES) {
             return MediaFrameAeadSealException.EnvelopeTooShort()
         }
         if (!isSealedEnvelope(envelope)) return MediaFrameAeadSealException.InvalidMagic()

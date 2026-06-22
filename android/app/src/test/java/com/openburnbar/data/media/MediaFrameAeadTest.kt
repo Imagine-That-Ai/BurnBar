@@ -75,6 +75,14 @@ class MediaFrameAeadTest {
     }
 
     @Test
+    fun `empty sealed payload is a valid nonce and tag envelope`() {
+        val sealed = MediaFrameAead.seal(ByteArray(0), key, streamClass, kind, gopId, frameIndex)
+        assertEquals(6 + 1 + 12 + 16, sealed.size)
+        assertTrue(MediaFrameAead.isSealedEnvelope(sealed))
+        assertArrayEquals(ByteArray(0), MediaFrameAead.open(sealed, key, streamClass, kind, gopId, frameIndex))
+    }
+
+    @Test
     fun `two seals of the same frame never reuse a nonce`() {
         val first = MediaFrameAead.seal(payload, key, streamClass, kind, gopId, frameIndex)
         val second = MediaFrameAead.seal(payload, key, streamClass, kind, gopId, frameIndex)
@@ -115,7 +123,7 @@ class MediaFrameAeadTest {
     fun `header failures surface in swift check order with the version surfaced`() {
         val sealed = MediaFrameAead.seal(payload, key, streamClass, kind, gopId, frameIndex)
         assertThrows(MediaFrameAeadSealException.EnvelopeTooShort::class.java) {
-            MediaFrameAead.open(sealed.copyOfRange(0, 35), key, streamClass, kind, gopId, frameIndex)
+            MediaFrameAead.open(sealed.copyOfRange(0, 34), key, streamClass, kind, gopId, frameIndex)
         }
         val badMagic = sealed.copyOf().also { it[0] = (it[0].toInt() xor 0xFF).toByte() }
         assertThrows(MediaFrameAeadSealException.InvalidMagic::class.java) {
