@@ -186,7 +186,7 @@ export async function initSentry(extensionVersion: string, environment: string):
   if (_initialized) return;
 
   // DSN sources (first non-empty wins):
-  //  1. Injected at build time by CI (BURNBAR_EXTENSION_SENTRY_DSN env → sed replacement)
+  //  1. Injected at build time by CI (BURNBAR_EXTENSION_SENTRY_DSN env -> string literal replacement)
   //  2. Runtime env var (developers running from source with env set)
   // DSNs are public ingest endpoints — safe to embed in the compiled bundle.
   const dsn =

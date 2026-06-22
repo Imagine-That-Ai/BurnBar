@@ -20,6 +20,28 @@ public protocol MediaCapabilityGate: Sendable {
         sessionDurationLimitSeconds: Int?,
         sessionByteBudget: Int64?
     ) async -> MediaCapabilityCheck
+
+    func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds: Int?,
+        sessionByteBudget: Int64?,
+        transferDirection: MediaCapabilityTransferDirection?
+    ) async -> MediaCapabilityCheck
+}
+
+public extension MediaCapabilityGate {
+    func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds: Int?,
+        sessionByteBudget: Int64?,
+        transferDirection _: MediaCapabilityTransferDirection?
+    ) async -> MediaCapabilityCheck {
+        await check(
+            feature: feature,
+            sessionDurationLimitSeconds: sessionDurationLimitSeconds,
+            sessionByteBudget: sessionByteBudget
+        )
+    }
 }
 
 public enum MediaCapabilityCheck: Sendable, Equatable {
@@ -30,6 +52,11 @@ public enum MediaCapabilityCheck: Sendable, Equatable {
         if case .allowed = self { return true }
         return false
     }
+}
+
+public enum MediaCapabilityTransferDirection: String, Sendable, Codable, Equatable {
+    case inbound
+    case outbound
 }
 
 public enum MediaCapabilityDenialReason: String, Sendable, Codable, Equatable {
