@@ -26,9 +26,16 @@ actor DataStoreActor {
     let providerAccountStore: ProviderAccountStore
     let textExpansionSnippetStore: TextExpansionSnippetStore
 
-    init(databaseQueue: any DatabaseWriter, runMigrations: Bool = true) throws {
+    init(
+        databaseQueue: any DatabaseWriter,
+        runMigrations: Bool = true,
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
+    ) throws {
         dbQueue = databaseQueue
-        database = OpenBurnBarDatabase(databaseQueue: databaseQueue)
+        database = OpenBurnBarDatabase(
+            databaseQueue: databaseQueue,
+            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
+        )
         usageStore = UsageStore(dbQueue: databaseQueue)
         conversationStore = ConversationStore(dbQueue: databaseQueue)
         searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)

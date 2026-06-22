@@ -2219,6 +2219,74 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func test_runMigrationsSafely_encryptsPreMigrationBackup_whenSourceIsEncrypted() async throws {
+        try XCTSkipUnless(
+            DatabaseEncryptionService.isCipherAvailable(),
+            "Requires SQLCipher to prove encrypted migration backups."
+        )
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dbPath = tempDir.appendingPathComponent("test.sqlite").path
+        let encryptionKey = String(repeating: "b", count: 64)
+        let queue = try DatabaseQueue(
+            path: dbPath,
+            configuration: try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        )
+        defer { try? queue.close() }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v46_drain_target_per_provider")
+
+        let database = OpenBurnBarDatabase(
+            databaseQueue: queue,
+            migrationBackupConfigurationBuilder: {
+                try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+            }
+        )
+        try database.runMigrationsSafely()
+
+        let backupURLs = try FileManager.default.contentsOfDirectory(
+            at: tempDir,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.lastPathComponent.contains(".backup.") && !$0.lastPathComponent.hasSuffix("-wal") && !$0.lastPathComponent.hasSuffix("-shm") }
+        XCTAssertEqual(backupURLs.count, 1, "Expected exactly one encrypted migration backup.")
+        let backupURL = try XCTUnwrap(backupURLs.first)
+
+        XCTAssertTrue(
+            DatabaseEncryptionService.isEncryptedDatabaseFile(at: backupURL.path),
+            "Migration backups for encrypted stores must not be plaintext SQLite files."
+        )
+
+        let plainConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        XCTAssertThrowsError(
+            try {
+                let plainBackup = try DatabaseQueue(path: backupURL.path, configuration: plainConfig)
+                defer { try? plainBackup.close() }
+                _ = try plainBackup.read { db in
+                    try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM grdb_migrations")
+                }
+            }(),
+            "A plaintext handle must not read an encrypted migration backup."
+        )
+
+        let keyedBackup = try DatabaseQueue(
+            path: backupURL.path,
+            configuration: try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        )
+        defer { try? keyedBackup.close() }
+        let applied = try await keyedBackup.read { db in
+            try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
+        }
+        XCTAssertTrue(
+            applied.contains("v46_drain_target_per_provider"),
+            "The encrypted backup must remain restorable with the database key."
+        )
+    }
+
     func test_runMigrationsSafely_skipsIntegrityCheck_whenFileBasedDBIsCurrent() throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
