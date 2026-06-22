@@ -259,7 +259,7 @@ final class PetCompanionController: ObservableObject {
     private func presentBubble(for chat: PetChatController) {
         let bubble = bubblePanel ?? PetBubblePanel()
         bubblePanel = bubble
-        bubble.host(chat: chat, anchorProvider: { [weak self] in self?.bubbleAnchorPoint() })
+        bubble.host(chat: chat)
         anchorBubble(bubble)
         bubble.makeKeyAndOrderFront(nil)
     }

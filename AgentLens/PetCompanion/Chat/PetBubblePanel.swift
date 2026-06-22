@@ -17,9 +17,6 @@ final class PetBubblePanel: NSPanel {
 
     /// The hosting view wrapping the SwiftUI bubble (rebuilt when chat is hosted).
     private var hosting: NSHostingView<AnyView>?
-    /// Closure returning the current contact anchor in screen coords (for the
-    /// tail's horizontal alignment), refreshed each `host(...)`.
-    private var anchorProvider: (() -> CGPoint?)?
 
     init() {
         super.init(
@@ -56,9 +53,7 @@ final class PetBubblePanel: NSPanel {
 
     /// Install (or refresh) the SwiftUI bubble bound to `chat`, sizing the panel
     /// to the content's fitting size.
-    func host(chat: PetChatController, anchorProvider: @escaping () -> CGPoint?) {
-        self.anchorProvider = anchorProvider
-
+    func host(chat: PetChatController) {
         let root = AnyView(
             PetChatBubbleView(
                 controller: chat,

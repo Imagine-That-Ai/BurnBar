@@ -536,7 +536,7 @@ struct PetChatBubbleView: View {
                     .fill(DesignSystem.Colors.textMuted)
                     .frame(width: 5, height: 5)
                     .opacity(0.4)
-                    .scaleEffect(1)
+                    .scaleEffect(controller.isAnswering ? 1.3 : 1.0)
                     .animation(
                         .easeInOut(duration: 0.6).repeatForever().delay(Double(i) * 0.18),
                         value: controller.isAnswering

@@ -37,11 +37,12 @@ enum PetAuthStatus: String, Sendable, Equatable {
 /// uses is ``PetChatController`` driving the shared ``ChatSessionController``
 /// directly — these providers do **not** replace that transport. They are the
 /// thin, uniform façade onboarding needs to (a) show a live auth state per
-/// provider and (b) offer a provider-agnostic `send(history:) -> AsyncStream`
-/// for any surface that wants tokens without the heavyweight controller. Each
-/// concrete provider *wraps* the matching ``CLIBridge`` stream method and maps
-/// its `CLIChatStreamEvent.text` into bare token strings; any throw is mapped to
-/// stream termination so the caller can fall through to ``PetChatFallback``.
+/// provider and (b) offer a provider-agnostic throwing token stream for any
+/// surface that wants tokens without the heavyweight controller. Each concrete
+/// provider *wraps* the matching ``CLIBridge`` stream method and maps
+/// `CLIChatStreamEvent.text` into bare token strings; upstream errors either
+/// use the local floor before any token is emitted or propagate after partial
+/// output so callers never mistake a truncated stream for a complete answer.
 @MainActor
 protocol AgentChatProvider: AnyObject {
     /// The backend this provider answers as.
@@ -51,9 +52,8 @@ protocol AgentChatProvider: AnyObject {
     /// Probe whether the provider is usable *right now* (CLI present / gateway up).
     func checkAuth() async -> PetAuthStatus
     /// Stream a reply token-by-token for `history`. Implementations translate the
-    /// underlying `CLIChatStreamEvent.text` to bare strings and finish (rather
-    /// than throw) on error, so the bubble can route to the local floor.
-    func send(history: [ChatMessageRecord]) -> AsyncStream<String>
+    /// underlying `CLIChatStreamEvent.text` to bare strings.
+    func send(history: [ChatMessageRecord]) -> AsyncThrowingStream<String, Error>
 }
 
 extension AgentChatProvider {
@@ -151,10 +151,10 @@ final class CLIBridgeChatProvider: AgentChatProvider {
 
     // MARK: send
 
-    func send(history: [ChatMessageRecord]) -> AsyncStream<String> {
+    func send(history: [ChatMessageRecord]) -> AsyncThrowingStream<String, Error> {
         let user = history.last { $0.role == .user }?.content ?? ""
         let upstream = upstreamStream(userMessage: user, history: history)
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 var sentTokens = false
                 do {
@@ -169,6 +169,9 @@ final class CLIBridgeChatProvider: AgentChatProvider {
                         for await token in Self.fallbackStream(history: history) {
                             continuation.yield(token)
                         }
+                    } else {
+                        continuation.finish(throwing: error)
+                        return
                     }
                 }
                 continuation.finish()
