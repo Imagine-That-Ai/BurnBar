@@ -1,6 +1,8 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import CryptoKit
 import Foundation
+import OpenBurnBarComputerUseCore
+import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 
@@ -13,6 +15,21 @@ import XCTest
 /// loss is observable, while a healthy store still yields the material to certify with.
 @MainActor
 final class RemoteClipboardControllerMattersTests: XCTestCase {
+    private let phoneSigner = ComputerUsePhoneControlSigner()
+    private var temporaryFiles: [URL] = []
+    private var temporaryDefaultsSuites: [String] = []
+
+    override func tearDown() {
+        for url in temporaryFiles {
+            try? FileManager.default.removeItem(at: url)
+        }
+        for suite in temporaryDefaultsSuites {
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        temporaryFiles.removeAll()
+        temporaryDefaultsSuites.removeAll()
+        super.tearDown()
+    }
 
     // MARK: - Fakes
 
@@ -102,6 +119,192 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
     /// `RemoteUnlockCredentialKeyStore` seam — guards the injectable-init signature.
     func testDefaultControllerConstructs() {
         _ = RemoteUnlockCredentialController()
+    }
+
+    func testRemoteUnlockCredentialRequiresActiveSessionAttestationBeforeDecrypting() async throws {
+        let now = Date()
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = makeValidator()
+        XCTAssertTrue(validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey))
+        let readiness = makeRemoteUnlockReadinessService()
+        readiness.recordRemoteUnlockSession(
+            remoteUnlockSession(
+                sessionId: "remote-unlock-session",
+                peerNodeId: "peer-1",
+                viewerDeviceId: "iphone-1",
+                attestationHashBlake3: "session-attestation",
+                now: now
+            ),
+            now: now
+        )
+        let credential = try signedRemoteUnlockCredential(
+            privateKey: privateKey,
+            attestationHashBlake3: "wrong-attestation",
+            now: now
+        )
+        let controller = RemoteUnlockCredentialController(keyStore: FaultingKeyStore())
+
+        let response = await controller.handle(
+            credential: credential,
+            context: RemoteUnlockCredentialController.RuntimeContext(
+                validator: validator,
+                activeSessionId: ComputerUseSessionID("computer-use-session"),
+                state: makeSessionState(phoneViewerNodeId: "peer-1", now: now),
+                isDirectPhoneControl: true,
+                authorizedPeerNodeId: "peer-1",
+                attestation: .none,
+                readiness: readiness
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.detail, "attestation_mismatch")
+    }
+
+    // MARK: - Helpers
+
+    private func temporaryFileURL(_ name: String) -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-\(name)-\(UUID().uuidString).json")
+        temporaryFiles.append(url)
+        return url
+    }
+
+    private func makeValidator() -> PhoneControlAuthorityValidator {
+        PhoneControlAuthorityValidator(
+            controllerPinStore: nil,
+            replayCounterStore: PhoneControlReplayCounterStore(fileURL: temporaryFileURL("remote-unlock-replay")),
+            consumedProofStore: PhoneControlConsumedProofStore(fileURL: temporaryFileURL("remote-unlock-proofs"))
+        )
+    }
+
+    private func makeRemoteUnlockReadinessService() -> MacRemoteUnlockReadinessService {
+        let defaultsSuite = "RemoteClipboardControllerMattersTests-\(UUID().uuidString)"
+        temporaryDefaultsSuites.append(defaultsSuite)
+        let defaults = UserDefaults(suiteName: defaultsSuite)!
+        let material = makeMaterial()
+        return MacRemoteUnlockReadinessService(
+            defaults: defaults,
+            snapshotProvider: {
+                RemoteUnlockReadinessSnapshot(
+                    featureFlagEnabled: true,
+                    directDownloadBuild: true,
+                    daemonInstalled: true,
+                    systemScreenSharingAvailable: true,
+                    loopbackOnlyFirewallActive: true,
+                    generatedCredentialInSystemKeychain: true,
+                    remoteDesktopPermissionGranted: true,
+                    virtualHIDDriverInstalled: true,
+                    virtualHIDDriverActive: true,
+                    backendCertificationFresh: true,
+                    currentOSBuild: "test-os-build",
+                    certifiedOSBuild: "test-os-build",
+                    certifiedAt: Date(),
+                    fileVaultEnabled: false,
+                    fileVaultSSHSupported: false,
+                    lastLockScreenProbeSucceeded: true,
+                    lastCredentialInputProbeSucceeded: true,
+                    lastUnlockProbeSucceeded: true,
+                    credentialRecipientKeyId: "recipient-key",
+                    credentialRecipientPublicKeyBase64: material.publicKeyBase64
+                )
+            },
+            revokesPublishedTrustOnClearAll: false,
+            credentialKeyMaterialProvider: { material },
+            issuerTrustPublisher: {},
+            publishedTrustRevoker: {},
+            lockStateProvider: { .loginWindow }
+        )
+    }
+
+    private func makeSessionState(
+        phoneViewerNodeId: String,
+        now: Date
+    ) -> ComputerUseSessionState {
+        let sessionId = ComputerUseSessionID("computer-use-session")
+        let manifest = ComputerUseSessionManifest(
+            sessionId: sessionId,
+            mode: .system,
+            trustMode: .manual,
+            startedAt: now,
+            userId: "uid-remote-unlock",
+            macHostNodeId: "mac-1",
+            phoneViewerNodeId: phoneViewerNodeId,
+            entitlementProductId: "hosted_computer_use_sync",
+            actionCap: 10,
+            sessionTimeoutSeconds: 300
+        )
+        return ComputerUseSessionState(
+            sessionId: sessionId,
+            manifest: manifest,
+            liveTrustMode: .manual
+        )
+    }
+
+    private func remoteUnlockSession(
+        sessionId: String,
+        peerNodeId: String,
+        viewerDeviceId: String,
+        attestationHashBlake3: String,
+        now: Date
+    ) -> HermesRealtimeRelayRemoteUnlockSession {
+        HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "remote-unlock-request",
+            sessionId: sessionId,
+            intent: .request,
+            requesterDisplayName: "Alberto's iPhone",
+            viewerDeviceId: viewerDeviceId,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
+            localAuthenticationSatisfied: true,
+            requestedBackend: .openBurnBarVirtualHID,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: peerNodeId,
+                counter: 1,
+                timestamp: now,
+                intentHashBlake3: "session-hash",
+                signatureEd25519: "session-signature",
+                attestationHashBlake3: attestationHashBlake3
+            )
+        )
+    }
+
+    private func signedRemoteUnlockCredential(
+        privateKey: Curve25519.Signing.PrivateKey,
+        attestationHashBlake3: String,
+        now: Date
+    ) throws -> HermesRealtimeRelayRemoteUnlockCredentialEnvelope {
+        var credential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId: "credential-request",
+            sessionId: "remote-unlock-session",
+            clientIntentId: "credential-intent",
+            credentialKind: .typedPassword,
+            recipientKeyId: "recipient-key",
+            algorithm: "X25519-XSalsa20Poly1305",
+            ciphertextBase64: Data("ciphertext".utf8).base64EncodedString(),
+            aadBase64: Data("aad".utf8).base64EncodedString(),
+            redactedByteCount: 12,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(60),
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "peer-1",
+                counter: 1,
+                timestamp: now,
+                intentHashBlake3: "",
+                signatureEd25519: "",
+                attestationHashBlake3: attestationHashBlake3
+            )
+        )
+        let signed = try phoneSigner.sign(
+            remoteUnlockCredential: credential,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: now,
+            privateKey: privateKey
+        )
+        credential.authority.intentHashBlake3 = signed.intentHashHex
+        credential.authority.signatureEd25519 = signed.signatureBase64
+        return credential
     }
 }
 #endif
