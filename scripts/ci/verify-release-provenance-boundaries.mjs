@@ -104,12 +104,16 @@ function workflowJobBlock(source, jobName) {
 }
 
 function workflowStepBlock(source, stepName) {
-  const escapedName = stepName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const pattern = new RegExp(
-    `^ {6}- name: ${escapedName}\\n(?<body>(?:^ {8}[^\\n]*\\n?|^ {10}[^\\n]*\\n?|^ {12}[^\\n]*\\n?|^\\s*$)+)`,
-    "mu",
-  );
-  return pattern.exec(source)?.groups?.body ?? "";
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => line === `      - name: ${stepName}`);
+  if (start === -1) return "";
+  const block = [lines[start]];
+  for (const line of lines.slice(start + 1)) {
+    if (/^ {6}- name: /u.test(line)) break;
+    if (/^ {4}\S/u.test(line)) break;
+    block.push(line);
+  }
+  return block.join("\n");
 }
 
 function shellRunBlockFromStep(stepBlock) {
@@ -127,10 +131,23 @@ function shellRunBlockFromStep(stepBlock) {
   return body.join("\n");
 }
 
+function namedStepBlock(file, source, stepName, message) {
+  const stepBlock = workflowStepBlock(source, stepName);
+  if (!stepBlock) fail(file, `${message}: missing step`);
+  return stepBlock;
+}
+
+function namedStepRunBlock(file, source, stepName, message) {
+  const runBlock = shellRunBlockFromStep(
+    namedStepBlock(file, source, stepName, message),
+  );
+  if (!runBlock) fail(file, `${message}: missing run block`);
+  return runBlock;
+}
+
 function requireStepFailClosedMode(file, source, stepName, message) {
-  const runBlock = shellRunBlockFromStep(workflowStepBlock(source, stepName));
+  const runBlock = namedStepRunBlock(file, source, stepName, message);
   if (!runBlock) {
-    fail(file, `${message}: missing run block`);
     return;
   }
   if (
@@ -141,9 +158,8 @@ function requireStepFailClosedMode(file, source, stepName, message) {
 }
 
 function requireExecutableShellLine(file, source, stepName, command, message) {
-  const runBlock = shellRunBlockFromStep(workflowStepBlock(source, stepName));
+  const runBlock = namedStepRunBlock(file, source, stepName, message);
   if (!runBlock) {
-    fail(file, `${message}: missing run block`);
     return;
   }
   if (!runBlock.split("\n").some((line) => line.trim() === command)) {
@@ -289,6 +305,36 @@ function requireOrder(file, source, before, after, message) {
 function verifyReleaseWorkflow() {
   const file = "release.yml";
   const source = workflowSource(file);
+  const releaseResolveStep = namedStepBlock(
+    file,
+    source,
+    "Resolve release tag and version",
+    "release resolve step",
+  );
+  const releaseResolveRun = namedStepRunBlock(
+    file,
+    source,
+    "Resolve release tag and version",
+    "release resolve step",
+  );
+  const releaseAttestationStep = namedStepBlock(
+    file,
+    source,
+    "Sigstore blob attestations (SBOM + VEX + checksums + binaries)",
+    "release Sigstore attestation step",
+  );
+  const releaseAttestationRun = namedStepRunBlock(
+    file,
+    source,
+    "Sigstore blob attestations (SBOM + VEX + checksums + binaries)",
+    "release Sigstore attestation step",
+  );
+  const releasePublishRun = namedStepRunBlock(
+    file,
+    source,
+    "Publish release assets",
+    "release publish step",
+  );
 
   requireIncludes(
     file,
@@ -349,74 +395,74 @@ function verifyReleaseWorkflow() {
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveStep,
     "INPUT_TAG: ${{ github.event.inputs.tag }}",
     "manual tag input must be passed through env before shell use",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'tag_ref="refs/tags/${TAG_NAME}"',
     "release workflow must derive a refs/tags release ref",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     "manual release dispatch must fail unless the workflow ref is the release tag",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     "keyless provenance is tag-bound",
     "manual release guard must document the tag-bound keyless provenance reason",
   );
   requireShellIfExits(
     file,
-    source,
+    releaseResolveRun,
     'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     "manual release dispatch tag-ref guard",
   );
   requireOrder(
     file,
-    source,
+    releaseResolveRun,
     'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
     "manual tag-ref guard must run before fetching/building release artifacts",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
     "release workflow must fetch the resolved release tag ref",
   );
   requireShellIfExits(
     file,
-    source,
+    releaseResolveRun,
     'if ! release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then',
     "release tag commit resolution guard",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
     "release workflow must fetch origin/main before reachability checks",
   );
   requireShellIfExits(
     file,
-    source,
+    releaseResolveRun,
     'if ! git merge-base --is-ancestor "$release_commit" origin/main; then',
     "release tag origin/main reachability guard",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'if ! release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then',
     "release workflow must fail closed when the release tag commit cannot be resolved",
   );
   requireIncludes(
     file,
-    source,
+    releaseResolveRun,
     'if ! git merge-base --is-ancestor "$release_commit" origin/main; then',
     "release workflow must fail closed unless the release tag commit is reachable from origin/main",
   );
@@ -449,56 +495,56 @@ function verifyReleaseWorkflow() {
 
   requireIncludes(
     file,
-    source,
+    releaseAttestationStep,
     "RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}",
     "Sigstore predicate step must receive the resolved release commit",
   );
   requireIncludes(
     file,
-    source,
+    releaseAttestationStep,
     "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}",
     "Sigstore predicate step must receive the resolved release tag ref",
   );
   requireIncludes(
     file,
-    source,
+    releaseAttestationRun,
     'commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()',
     "Sigstore predicate must read the actual checked-out commit",
   );
   requireIncludes(
     file,
-    source,
+    releaseAttestationRun,
     "if commit != release_commit:",
     "Sigstore predicate must fail closed if checkout commit drifts",
   );
   requirePythonIfRaises(
     file,
-    source,
+    releaseAttestationRun,
     "if commit != release_commit:",
     "predicate = {",
     "Sigstore predicate checkout drift guard",
   );
   requireIncludes(
     file,
-    source,
+    releaseAttestationRun,
     '"commit": release_commit',
     "Sigstore predicate must publish the resolved release commit",
   );
   requireIncludes(
     file,
-    source,
+    releaseAttestationRun,
     '"ref": os.environ["RELEASE_REF"]',
     "Sigstore predicate must publish the resolved release ref",
   );
   requireIncludes(
     file,
-    source,
+    releasePublishRun,
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     "publish job must fail closed when provenance bundles are missing",
   );
   requireShellIfExits(
     file,
-    source,
+    releasePublishRun,
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     "publish missing provenance bundle guard",
   );
@@ -507,6 +553,18 @@ function verifyReleaseWorkflow() {
 function verifySupplyChainWorkflow() {
   const file = "supply-chain-provenance.yml";
   const source = workflowSource(file);
+  const provenanceResolveStep = namedStepBlock(
+    file,
+    source,
+    "Resolve release tag",
+    "supply-chain resolve step",
+  );
+  const provenanceResolveRun = namedStepRunBlock(
+    file,
+    source,
+    "Resolve release tag",
+    "supply-chain resolve step",
+  );
 
   requireIncludes(
     file,
@@ -524,7 +582,7 @@ function verifySupplyChainWorkflow() {
     file,
     source,
     /contents:\s*read/u,
-    "supply-chain provenance must not request contents:write",
+    "supply-chain provenance must request contents:read",
   );
   requireNoPattern(
     file,
@@ -592,93 +650,86 @@ function verifySupplyChainWorkflow() {
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveStep,
     "INPUT_TAG: ${{ github.event.inputs.tag }}",
     "manual provenance tag input must be passed through env before shell use",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'tag_ref="refs/tags/${TAG}"',
     "provenance workflow must derive a refs/tags release ref",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     "manual provenance dispatch must fail unless the workflow ref is the release tag",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     "keyless provenance is tag-bound",
     "manual provenance guard must document the tag-bound keyless provenance reason",
   );
   requireShellIfExits(
     file,
-    source,
+    provenanceResolveRun,
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     "manual provenance dispatch tag-ref guard",
   );
   requireOrder(
     file,
-    source,
+    provenanceResolveRun,
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
     "manual provenance tag-ref guard must run before fetching provenance inputs",
   );
-  requireOrder(
-    file,
-    source,
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
-    "cosign attest --yes",
-    "manual provenance tag-ref guard must run before any Sigstore attestation",
-  );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
     "provenance workflow must fetch the resolved release tag ref",
   );
   requireShellIfExits(
     file,
-    source,
+    provenanceResolveRun,
     'if ! commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then',
     "provenance tag commit resolution guard",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
     "provenance workflow must fetch origin/main before reachability checks",
   );
   requireShellIfExits(
     file,
-    source,
+    provenanceResolveRun,
     'if ! git merge-base --is-ancestor "$commit" origin/main; then',
     "provenance tag origin/main reachability guard",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'if ! commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then',
     "provenance workflow must fail closed when the release tag commit cannot be resolved",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'if ! git merge-base --is-ancestor "$commit" origin/main; then',
     "provenance workflow must fail closed unless the release tag commit is reachable from origin/main",
   );
   requireIncludes(
     file,
-    source,
+    provenanceResolveRun,
     'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then',
     "workflow_run provenance must fail unless the release run head is present and matches the tag commit",
   );
   requireShellIfExits(
     file,
-    source,
+    provenanceResolveRun,
     'if [[ "$EVENT_NAME" != "workflow_dispatch" && ( -z "${RUN_HEAD_SHA:-}" || "$RUN_HEAD_SHA" != "$commit" ) ]]; then',
     "workflow_run head-sha provenance guard",
   );

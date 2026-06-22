@@ -235,6 +235,19 @@ expect(
 );
 
 expect(
+  "release workflow decoy-step manual tag-ref guard fails",
+  GOOD_RELEASE.replace(
+    'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+    'if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then',
+  ).replace(
+    "      - name: Resolve release tag and version\n",
+    '      - name: Decoy release guard\n        if: false\n        run: |\n          set -euo pipefail\n          tag_ref="refs/tags/${TAG_NAME}"\n          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n            echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1\n          fi\n          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"\n      - name: Resolve release tag and version\n',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow neutered manual tag-ref guard body fails",
   GOOD_RELEASE.replace(
     'echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1',
@@ -422,6 +435,16 @@ expect(
 );
 
 expect(
+  "release workflow uppercase continue-on-error guard fails",
+  GOOD_RELEASE.replace(
+    "      - name: Resolve release tag and version\n",
+    "      - name: Resolve release tag and version\n        continue-on-error: True\n",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow job-level permission override fails",
   GOOD_RELEASE.replace(
     "  build-and-release:\n    steps:",
@@ -457,6 +480,19 @@ expect(
   GOOD_SUPPLY_CHAIN.replace(
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
     'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+  ),
+  1,
+);
+
+expect(
+  "supply-chain workflow decoy-step manual tag-ref guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+  ).replace(
+    "      - name: Resolve release tag\n",
+    '      - name: Decoy provenance guard\n        if: false\n        run: |\n          set -euo pipefail\n          tag_ref="refs/tags/${TAG}"\n          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n            echo "::error::Select the release tag as the workflow dispatch ref so keyless provenance is tag-bound."\n            exit 1\n          fi\n          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"\n      - name: Resolve release tag\n',
   ),
   1,
 );
@@ -551,6 +587,16 @@ expect(
   GOOD_SUPPLY_CHAIN.replace(
     "      - name: Resolve release tag\n",
     "      - name: Resolve release tag\n        continue-on-error: \\${{ fromJSON('true') }}\n",
+  ),
+  1,
+);
+
+expect(
+  "supply-chain workflow uppercase continue-on-error guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN.replace(
+    "      - name: Resolve release tag\n",
+    "      - name: Resolve release tag\n        continue-on-error: TRUE\n",
   ),
   1,
 );
