@@ -66,6 +66,41 @@ final class InsightBriefStartupTests: XCTestCase {
         XCTAssertEqual(resolved.egressTier, .userRelay)
     }
 
+    func test_persistedLocalRulesPreferenceIsExplicitAfterUserSelection() {
+        let selected = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+
+        let preference = InsightsMacEnvironment.persistedModelPreference(
+            selectedModelTag: selected,
+            privacyMode: false
+        )
+
+        XCTAssertEqual(preference.mode, .explicit)
+        XCTAssertEqual(preference.explicitModel?.providerKey, "local-rules")
+    }
+
+    func test_automaticModelSelectionStillPersistsAsAutomatic() {
+        let selected = InsightModelTag(
+            providerKey: "hermes",
+            modelID: "hermes-auto",
+            displayName: "Hermes",
+            egressTier: .userRelay
+        )
+
+        let preference = InsightsMacEnvironment.persistedModelPreference(
+            selectedModelTag: selected,
+            privacyMode: false,
+            automaticSelection: true
+        )
+
+        XCTAssertEqual(preference.mode, .automatic)
+        XCTAssertEqual(preference.explicitModel?.providerKey, "hermes")
+    }
+
     func test_fetchSessionLogSummaries_omitsTranscriptBodies() async throws {
         let store = try makeInMemoryStore()
         try await store.upsertConversation(

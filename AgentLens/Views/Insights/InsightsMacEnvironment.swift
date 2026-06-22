@@ -25,6 +25,7 @@ final class InsightsMacEnvironment {
     var privacyMode: Bool = false {
         didSet { persistModelPreference() }
     }
+    private var isApplyingAutomaticModelSelection = false
     var lastInvestigationUsage: InsightTokenUsage?
     var currentAnalysis: InsightAnalysisResult?
 
@@ -381,6 +382,8 @@ final class InsightsMacEnvironment {
             ?? available.first { $0.providerKey == "ollama" }
             ?? available.first { $0.providerKey == "local-rules" }
         guard let preferred else { return }
+        isApplyingAutomaticModelSelection = true
+        defer { isApplyingAutomaticModelSelection = false }
         selectedModelTag = .init(
             providerKey: preferred.providerKey,
             modelID: preferred.id,
@@ -408,13 +411,25 @@ final class InsightsMacEnvironment {
         }
     }
 
-    private func persistModelPreference() {
-        let preference = InsightModelPreference(
-            mode: selectedModelTag.providerKey == "local-rules" ? .automatic : .explicit,
+    nonisolated static func persistedModelPreference(
+        selectedModelTag: InsightModelTag,
+        privacyMode: Bool,
+        automaticSelection: Bool = false
+    ) -> InsightModelPreference {
+        InsightModelPreference(
+            mode: automaticSelection ? .automatic : .explicit,
             explicitModel: selectedModelTag,
             restrictToLocalOnly: privacyMode,
             maxEgressTier: privacyMode ? .localOnly : nil,
             deepTranscriptOptIn: false
+        )
+    }
+
+    private func persistModelPreference() {
+        let preference = Self.persistedModelPreference(
+            selectedModelTag: selectedModelTag,
+            privacyMode: privacyMode,
+            automaticSelection: isApplyingAutomaticModelSelection
         )
         guard let data = try? JSONEncoder().encode(preference) else { return }
         UserDefaults.standard.set(data, forKey: Self.modelPreferenceDefaultsKey)

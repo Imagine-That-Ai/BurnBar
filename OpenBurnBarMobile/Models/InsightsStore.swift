@@ -46,6 +46,7 @@ final class InsightsStore {
     var privacyMode: Bool = false {
         didSet { persistModelPreference() }
     }
+    private var isApplyingAutomaticModelSelection = false
     var currentAnalysis: InsightAnalysisResult?
 
     let dataSource: InsightDataSource
@@ -450,6 +451,8 @@ final class InsightsStore {
             ?? available.first { $0.providerKey == "ollama" }
             ?? available.first { $0.providerKey == "local-rules" }
         guard let preferred else { return }
+        isApplyingAutomaticModelSelection = true
+        defer { isApplyingAutomaticModelSelection = false }
         selectedModelTag = .init(
             providerKey: preferred.providerKey,
             modelID: preferred.id,
@@ -460,48 +463,49 @@ final class InsightsStore {
 
     /// Resolve the model the engine should ask first for a Q&A turn.
     ///
-    /// Preference order:
-    ///   1. The user's explicitly selected gateway (Hermes, Pi,
-    ///      OpenClaw, Claude, Codex, OpenCode, OpenAI, Ollama, etc.).
-    ///   2. Any registered Hermes relay (covers Pi/OpenClaw too).
-    ///   3. Any registered user-key cloud route (Claude/OpenAI/etc.).
-    ///   4. Ollama (the local relay).
-    ///   5. The BurnBar-hosted fallback — only reached when nothing
-    ///      user-owned is registered.
-    ///   6. Local rules (deterministic).
-    ///
-    /// Privacy mode short-circuits past every non-local tier.
+    /// The visible model chip is the egress contract. If the user is seeing
+    /// Local rules, follow-ups stay deterministic/local instead of silently
+    /// promoting themselves to a relay, user-key provider, or hosted fallback.
     private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
-        guard instruction == .answerFollowUp else { return selectedModelTag }
-        guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
-        let available = privacyMode
-            ? modelCatalog.filter { $0.egressTier == .localOnly }
-            : modelCatalog
-        let preferred = available.first { $0.providerKey == "hermes" }
-            ?? available.first {
-                $0.egressTier != .localOnly
-                && $0.providerKey != "ollama"
-                && $0.providerKey != BurnBarHostedInsightAdapter.providerKeyRaw
-            }
-            ?? available.first { $0.providerKey == "ollama" }
-            ?? available.first { $0.providerKey == BurnBarHostedInsightAdapter.providerKeyRaw }
-            ?? available.first { $0.providerKey != "local-rules" }
-        guard let preferred else { return selectedModelTag }
-        return .init(
-            providerKey: preferred.providerKey,
-            modelID: preferred.id,
-            displayName: preferred.displayName,
-            egressTier: preferred.egressTier
+        Self.resolvedAnalysisModel(
+            selectedModelTag: selectedModelTag,
+            modelCatalog: modelCatalog,
+            privacyMode: privacyMode,
+            instruction: instruction
         )
     }
 
-    private func persistModelPreference() {
-        let preference = InsightModelPreference(
-            mode: selectedModelTag.providerKey == "local-rules" ? .automatic : .explicit,
+    nonisolated static func resolvedAnalysisModel(
+        selectedModelTag: InsightModelTag,
+        modelCatalog _: [InsightCatalogModel],
+        privacyMode _: Bool,
+        instruction: InsightAnalysisRequest.Instruction
+    ) -> InsightModelTag {
+        switch instruction {
+        case .answerFollowUp, .defaultBrief, .generateReport, .updateCanvas:
+            return selectedModelTag
+        }
+    }
+
+    nonisolated static func persistedModelPreference(
+        selectedModelTag: InsightModelTag,
+        privacyMode: Bool,
+        automaticSelection: Bool = false
+    ) -> InsightModelPreference {
+        InsightModelPreference(
+            mode: automaticSelection ? .automatic : .explicit,
             explicitModel: selectedModelTag,
             restrictToLocalOnly: privacyMode,
             maxEgressTier: privacyMode ? .localOnly : nil,
             deepTranscriptOptIn: false
+        )
+    }
+
+    private func persistModelPreference() {
+        let preference = Self.persistedModelPreference(
+            selectedModelTag: selectedModelTag,
+            privacyMode: privacyMode,
+            automaticSelection: isApplyingAutomaticModelSelection
         )
         guard let data = try? JSONEncoder().encode(preference) else { return }
         UserDefaults.standard.set(data, forKey: Self.modelPreferenceDefaultsKey)
