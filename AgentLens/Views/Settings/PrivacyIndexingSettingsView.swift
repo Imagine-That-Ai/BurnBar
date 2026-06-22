@@ -430,6 +430,9 @@ struct PrivacyIndexingSettingsView: View {
                 "setting_key": "conversation_indexing",
                 "new_value": .bool(newValue)
             ])
+            if !newValue {
+                scrubParserConversationCaches()
+            }
             refreshStorage()
             refreshSourceArtifactCount()
             refreshSearchCounts()
@@ -523,6 +526,27 @@ struct PrivacyIndexingSettingsView: View {
             let bytes = (try? await dataStore.approximateConversationStorageBytes()) ?? 0
             await MainActor.run {
                 storageBytes = bytes
+            }
+        }
+    }
+
+    private func scrubParserConversationCaches() {
+        Task.detached(priority: .utility) {
+            let options = LogParseOptions(includeConversationBodies: false)
+            ParserConversationCacheScrubber().scrubKnownParserCaches()
+            _ = try? await CodexParser().parse(options: options)
+            _ = try? await ClaudeCodeParser().parse(options: options)
+            _ = try? await FactoryDroidParser().parse(options: options)
+            for parser in [
+                (pattern: "zai", provider: AgentProvider.zai),
+                (pattern: "minimax", provider: .minimax),
+                (pattern: "ollama", provider: .ollama),
+                (pattern: "mimo", provider: .mimo)
+            ] {
+                _ = try? await ModelFilterParser(
+                    modelPattern: parser.pattern,
+                    provider: parser.provider
+                ).parse(options: options)
             }
         }
     }

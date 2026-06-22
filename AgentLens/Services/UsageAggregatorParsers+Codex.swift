@@ -35,6 +35,10 @@ final class CodexParser: LogParser, Sendable {
     }
 
     func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
         let dbPath = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)
@@ -44,11 +48,17 @@ final class CodexParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
-        let parsed = try parseCodexDatabase(dbPath: dbPath)
+        let parsed = try parseCodexDatabase(
+            dbPath: dbPath,
+            includeConversationBodies: options.includeConversationBodies
+        )
         return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
-    private func parseCodexDatabase(dbPath: String) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    private func parseCodexDatabase(
+        dbPath: String,
+        includeConversationBodies: Bool
+    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var sessionCache = cacheStore.load()
@@ -113,7 +123,7 @@ final class CodexParser: LogParser, Sendable {
                 var foundExact = false
 
                 var parsedConversation: CodexConversationCacheEntry?
-                var shouldEmitConversation = expandedRolloutPath == nil
+                var shouldEmitConversation = includeConversationBodies && expandedRolloutPath == nil
 
                 if let expandedPath = expandedRolloutPath {
                     let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
@@ -122,15 +132,39 @@ final class CodexParser: LogParser, Sendable {
                     if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)),
                        let cached = sessionCache.fileEntries[cacheKey],
                        cached.signature == signature {
+                        let cachedTokenUsage = cached.tokenUsage
                         if let tokenUsage = cached.tokenUsage {
                             inputTokens = tokenUsage.input
                             outputTokens = tokenUsage.output
                             cacheReadTokens = tokenUsage.cacheRead
                             foundExact = true
                         }
-                        parsedConversation = cached.conversation
-                        shouldEmitConversation = cached.conversation != nil
+                        if includeConversationBodies {
+                            parsedConversation = cached.conversation
+                                ?? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
+                            shouldEmitConversation = parsedConversation != nil
+                            if parsedConversation != cached.conversation {
+                                sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
+                                    signature: signature,
+                                    tokenUsage: cachedTokenUsage,
+                                    conversation: parsedConversation
+                                )
+                                cacheMutated = true
+                            }
+                        } else {
+                            parsedConversation = nil
+                            shouldEmitConversation = false
+                            if cached.conversation != nil {
+                                sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
+                                    signature: signature,
+                                    tokenUsage: cachedTokenUsage,
+                                    conversation: nil
+                                )
+                                cacheMutated = true
+                            }
+                        }
                     } else {
+                        let cached = sessionCache.fileEntries[cacheKey]
                         let parsed = parseCodexSessionJSONL(path: expandedPath)
                         if let parsed {
                             inputTokens = parsed.input
@@ -138,8 +172,10 @@ final class CodexParser: LogParser, Sendable {
                             cacheReadTokens = parsed.cacheRead
                             foundExact = true
                         }
-                        parsedConversation = parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
-                        shouldEmitConversation = true
+                        parsedConversation = includeConversationBodies
+                            ? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
+                            : nil
+                        shouldEmitConversation = includeConversationBodies && parsedConversation != nil
 
                         if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)) {
                             sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
@@ -153,6 +189,9 @@ final class CodexParser: LogParser, Sendable {
                                 },
                                 conversation: parsedConversation
                             )
+                            cacheMutated = true
+                        } else if cached != nil {
+                            sessionCache.fileEntries.removeValue(forKey: cacheKey)
                             cacheMutated = true
                         }
                     }

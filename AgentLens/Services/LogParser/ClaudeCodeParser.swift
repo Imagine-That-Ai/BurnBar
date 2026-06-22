@@ -9,13 +9,16 @@ final class ClaudeCodeParser: LogParser, Sendable {
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<ClaudeCodeCacheEntry>
+    private let projectsDirectoryOverride: URL?
 
     init(
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarAppPaths = .live(),
+        projectsDirectoryOverride: URL? = nil
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.projectsDirectoryOverride = projectsDirectoryOverride
         self.cacheURL = appPaths.claudeCodeParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
@@ -27,8 +30,13 @@ final class ClaudeCodeParser: LogParser, Sendable {
     }
 
     func parse() async throws -> ParseResult {
-        let projectsPath = (provider.logDirectory as NSString).expandingTildeInPath
-        let projectsURL = URL(fileURLWithPath: projectsPath)
+        try await parse(options: .default)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        let projectsURL = projectsDirectoryOverride
+            ?? URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
+        let projectsPath = projectsURL.path
 
         guard fileManager.fileExists(atPath: projectsPath) else {
             return ParseResult(usages: [], conversations: [])
@@ -67,20 +75,41 @@ final class ClaudeCodeParser: LogParser, Sendable {
                 if let signature = FileSignature(for: jsonlFile),
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
-                    appendCached(cached, includeConversation: true, usages: &usages, conversations: &conversations)
+                    let cached = updateCacheEntry(
+                        cached,
+                        signature: signature,
+                        file: jsonlFile,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies,
+                        parseCache: &parseCache,
+                        cacheKey: cacheKey,
+                        cacheMutated: &cacheMutated
+                    )
+                    appendCached(
+                        cached,
+                        includeConversation: options.includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
                 } else {
                     let parsed = try? parseClaudeSession( // try?-ok(best-effort log parse)
                         file: jsonlFile,
                         sessionId: sessionId,
                         projectName: projectName
                     )
-                    appendParsed(parsed, includeConversation: true, usages: &usages, conversations: &conversations)
+                    appendParsed(
+                        parsed,
+                        includeConversation: options.includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
 
                     if let signature = FileSignature(for: jsonlFile) {
                         parseCache.fileEntries[cacheKey] = ClaudeCodeCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: parsed?.conversation
+                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
                         )
                         cacheMutated = true
                     }
@@ -106,6 +135,12 @@ final class ClaudeCodeParser: LogParser, Sendable {
                         if let signature = FileSignature(for: agentFile),
                            let cached = parseCache.fileEntries[subagentCacheKey],
                            cached.signature == signature {
+                            let cached = stripCachedConversationIfNeeded(
+                                cached,
+                                parseCache: &parseCache,
+                                cacheKey: subagentCacheKey,
+                                cacheMutated: &cacheMutated
+                            )
                             appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
                         } else {
                             let parsed = try? parseClaudeSession( // try?-ok(best-effort log parse)
@@ -119,7 +154,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
                                 parseCache.fileEntries[subagentCacheKey] = ClaudeCodeCacheEntry(
                                     signature: signature,
                                     usage: parsed?.usage,
-                                    conversation: parsed?.conversation
+                                    conversation: nil
                                 )
                                 cacheMutated = true
                             }
@@ -346,6 +381,61 @@ final class ClaudeCodeParser: LogParser, Sendable {
         if includeConversation, let conversation = parsed.conversation {
             conversations.append(conversation)
         }
+    }
+
+    private func updateCacheEntry(
+        _ cached: ClaudeCodeCacheEntry,
+        signature: FileSignature,
+        file: URL,
+        sessionId: String,
+        projectName: String,
+        includeConversationBodies: Bool,
+        parseCache: inout ParserDiskCache<ClaudeCodeCacheEntry>,
+        cacheKey: String,
+        cacheMutated: inout Bool
+    ) -> ClaudeCodeCacheEntry {
+        if !includeConversationBodies {
+            return stripCachedConversationIfNeeded(
+                cached,
+                parseCache: &parseCache,
+                cacheKey: cacheKey,
+                cacheMutated: &cacheMutated
+            )
+        }
+
+        guard cached.conversation == nil else { return cached }
+        let parsed = try? parseClaudeSession( // try?-ok(best-effort conversation cache rewarm)
+            file: file,
+            sessionId: sessionId,
+            projectName: projectName
+        )
+        let refreshed = ClaudeCodeCacheEntry(
+            signature: signature,
+            usage: cached.usage ?? parsed?.usage,
+            conversation: parsed?.conversation
+        )
+        if refreshed != cached {
+            parseCache.fileEntries[cacheKey] = refreshed
+            cacheMutated = true
+        }
+        return refreshed
+    }
+
+    private func stripCachedConversationIfNeeded(
+        _ cached: ClaudeCodeCacheEntry,
+        parseCache: inout ParserDiskCache<ClaudeCodeCacheEntry>,
+        cacheKey: String,
+        cacheMutated: inout Bool
+    ) -> ClaudeCodeCacheEntry {
+        guard cached.conversation != nil else { return cached }
+        let stripped = ClaudeCodeCacheEntry(
+            signature: cached.signature,
+            usage: cached.usage,
+            conversation: nil
+        )
+        parseCache.fileEntries[cacheKey] = stripped
+        cacheMutated = true
+        return stripped
     }
 
     private static func parseTimestamp(_ raw: Any?) -> Date? {

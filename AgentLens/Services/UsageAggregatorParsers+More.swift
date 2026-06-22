@@ -40,8 +40,13 @@ final class ModelFilterParser: LogParser, Sendable {
     }
 
     func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
         let sessionsPath = "~/.factory/sessions"
         let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
+        let includeConversationBodies = options.includeConversationBodies
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else {
             return ParseResult(usages: [], conversations: [])
@@ -76,10 +81,29 @@ final class ModelFilterParser: LogParser, Sendable {
                 ),
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
-                    appendCached(cached, usages: &usages, conversations: &conversations)
+                    appendCached(
+                        cached,
+                        includeConversation: includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
+                    if !includeConversationBodies,
+                       cached.conversation != nil {
+                        parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
+                            signature: cached.signature,
+                            usage: cached.usage,
+                            conversation: nil
+                        )
+                        cacheMutated = true
+                    }
                 } else {
                     let parsed = try? parseSession(file: jsonlFile, projectName: projectName) // try?-ok(per-session parse, skip)
-                    appendParsed(parsed, usages: &usages, conversations: &conversations)
+                    appendParsed(
+                        parsed,
+                        includeConversation: includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
 
                     if let signature = compositeSignature(
                         jsonlFile: jsonlFile,
@@ -89,7 +113,7 @@ final class ModelFilterParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: parsed?.conversation
+                            conversation: includeConversationBodies ? parsed?.conversation : nil
                         )
                         cacheMutated = true
                     }
@@ -337,19 +361,21 @@ final class ModelFilterParser: LogParser, Sendable {
 
     private func appendCached(
         _ cached: ModelFilterCacheEntry,
+        includeConversation: Bool,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
         if let usage = cached.usage {
             usages.append(usage)
         }
-        if let conversation = cached.conversation {
+        if includeConversation, let conversation = cached.conversation {
             conversations.append(conversation)
         }
     }
 
     private func appendParsed(
         _ parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?,
+        includeConversation: Bool,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
@@ -357,7 +383,7 @@ final class ModelFilterParser: LogParser, Sendable {
         if let usage = parsed.usage {
             usages.append(usage)
         }
-        if let conversation = parsed.conversation {
+        if includeConversation, let conversation = parsed.conversation {
             conversations.append(conversation)
         }
     }

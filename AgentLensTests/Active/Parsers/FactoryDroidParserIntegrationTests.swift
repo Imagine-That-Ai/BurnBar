@@ -47,6 +47,41 @@ final class FactoryDroidParserIntegrationTests: XCTestCase {
         XCTAssertEqual(usage.outputTokens, 400)
     }
 
+    func test_factoryDroidParser_scrubsCachedConversationsWhenIndexingDisabled() async throws {
+        let privatePrompt = "private factory prompt \(UUID().uuidString)"
+        let (jsonl, settings, _) = ParserTestFixtures.factoryDroidSessionWithSettings(
+            sessionId: "factory-privacy",
+            model: "glm-4",
+            inputTokens: 800,
+            outputTokens: 400,
+            userMessage: privatePrompt
+        )
+        let sessionsRoot = harness.rootURL.appendingPathComponent(".factory/sessions", isDirectory: true)
+        _ = try harness.createFactoryDroidProject(
+            projectName: "TestFactory",
+            sessions: [(sessionId: "factory-privacy", content: jsonl, settings: settings, metadata: nil)]
+        )
+
+        let appPaths = OpenBurnBarAppPaths(
+            applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+        )
+        let parser = FactoryDroidParser(
+            fileManager: harness.fileManager,
+            appPaths: appPaths,
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let cacheURL = appPaths.factoryDroidParserCacheURL
+
+        let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(indexed.conversations.count, 1)
+        XCTAssertTrue(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+
+        let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(redacted.usages.count, 1)
+        XCTAssertTrue(redacted.conversations.isEmpty)
+        XCTAssertFalse(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+    }
+
     func test_factoryDroidParser_extractsFromMetadata() async throws {
         let (jsonl, _, metadata) = ParserTestFixtures.factoryDroidSessionWithSettings(
             sessionId: "factory-metadata-001",

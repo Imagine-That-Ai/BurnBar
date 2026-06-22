@@ -67,6 +67,35 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
         XCTAssertEqual(conversation.projectName, "~/Documents/TestProject")
     }
 
+    func test_claudeCodeParser_scrubsCachedConversationsWhenIndexingDisabled() async throws {
+        let privatePrompt = "private claude prompt \(UUID().uuidString)"
+        let sessionContent = ParserTestFixtures.claudeCodeSession(userMessage: privatePrompt)
+        let projectsRoot = harness.rootURL.appendingPathComponent(".claude/projects", isDirectory: true)
+        _ = try harness.createClaudeCodeProject(
+            projectName: "-Users-test-Documents-TestProject",
+            sessions: [("session-privacy", sessionContent)]
+        )
+
+        let appPaths = OpenBurnBarAppPaths(
+            applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+        )
+        let parser = ClaudeCodeParser(
+            fileManager: harness.fileManager,
+            appPaths: appPaths,
+            projectsDirectoryOverride: projectsRoot
+        )
+        let cacheURL = appPaths.claudeCodeParserCacheURL
+
+        let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(indexed.conversations.count, 1)
+        XCTAssertTrue(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+
+        let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(redacted.usages.count, 1)
+        XCTAssertTrue(redacted.conversations.isEmpty)
+        XCTAssertFalse(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+    }
+
     func test_claudeCodeParser_decodesProjectPath() async throws {
         let sessionContent = ParserTestFixtures.claudeCodeSession()
         _ = try harness.createClaudeCodeProject(

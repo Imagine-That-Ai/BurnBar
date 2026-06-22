@@ -17,11 +17,12 @@ enum ParserTestFixtures {
         inputTokens: Int = 1000,
         outputTokens: Int = 500,
         cacheCreationTokens: Int = 0,
-        cacheReadTokens: Int = 0
+        cacheReadTokens: Int = 0,
+        userMessage: String = "Hello, help me write a function that adds two numbers."
     ) -> String {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         return """
-        {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":[{"type":"text","text":"Hello, help me write a function that adds two numbers."}]}}
+        {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":[{"type":"text","text":"\(userMessage)"}]}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":[{"type":"text","text":"Here's a simple Swift function:"},{"type":"text","text":"func add(_ a: Int, _ b: Int) -> Int { a + b }"}],"usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens),"cache_creation_input_tokens":\(cacheCreationTokens),"cache_read_input_tokens":\(cacheReadTokens)},"model":"\(model)"}}
         """
     }
@@ -73,11 +74,12 @@ enum ParserTestFixtures {
         sessionId: String,
         model: String,
         inputTokens: Int,
-        outputTokens: Int
+        outputTokens: Int,
+        userMessage: String = "Hello"
     ) -> (jsonl: String, settings: String, metadata: String?) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let jsonl = """
-        {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":"Hello"}}
+        {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":"\(userMessage)"}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":"Hi there","model":"\(model)","usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens)}}}
         """
 

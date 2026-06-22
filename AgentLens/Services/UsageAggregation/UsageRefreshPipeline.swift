@@ -50,7 +50,9 @@ struct UsageRefreshPipeline: Sendable {
 
         for (provider, parser) in discovery.parserEntries {
             do {
-                let parseResult = try await parser.parse()
+                let parseResult = try await parser.parse(
+                    options: LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
+                )
                 let usages = parseResult.usages
                 let providerHealth: ParserHealth = usages.isEmpty
                     ? .empty
