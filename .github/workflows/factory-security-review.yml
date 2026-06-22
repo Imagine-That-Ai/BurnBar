@@ -164,7 +164,7 @@ jobs:
               vulnerabilities: [
                 {
                   package: {
-                    ecosystem: "OTHER",
+                    ecosystem: "other",
                     name: "repository-codebase"
                   },
                   vulnerable_version_range: ">= 0.0.0"
@@ -177,16 +177,19 @@ jobs:
           # a generic entry since the scan reports code-level issues, not
           # specific package CVEs. Repo admins can refine from the Security tab.
           advisory_created=false
-          if gh api --method POST "/repos/${GITHUB_REPOSITORY}/security-advisories" \
-            --input "${payload_tmp}" \
-            2>/dev/null; then
-            advisory_created=true
-            echo "Private security advisory created for ${today}."
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::warning::SECURITY_ADVISORY_TOKEN is not configured; workflow will fail closed after alert routing."
           else
-            # The GITHUB_TOKEN's security-events:write scope covers code
-            # scanning alerts but may not grant admin-level advisory creation.
-            # Continue to alert-only Slack routing, then fail closed below.
-            echo "::warning::Failed to create security advisory (GITHUB_TOKEN may lack admin scope). Workflow will fail closed after alert routing."
+            if gh api --silent --method POST "/repos/${GITHUB_REPOSITORY}/security-advisories" \
+              --input "${payload_tmp}" \
+              2>/dev/null; then
+              advisory_created=true
+              echo "Private security advisory created for ${today}."
+            else
+              # SECURITY_ADVISORY_TOKEN must belong to a repository admin or
+              # security manager with repository advisory write permission.
+              echo "::warning::Failed to create security advisory (SECURITY_ADVISORY_TOKEN may lack repository advisory write permission). Workflow will fail closed after alert routing."
+            fi
           fi
 
           # Slack notification. This is alert-only routing; the private advisory
@@ -219,5 +222,5 @@ jobs:
             exit 1
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SECURITY_ADVISORY_TOKEN }}
           SLACK_SECURITY_WEBHOOK: ${{ secrets.SLACK_SECURITY_WEBHOOK }}

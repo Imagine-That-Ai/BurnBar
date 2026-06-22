@@ -76,12 +76,16 @@ jobs:
           jq -n \
             --arg summary "Weekly security review" \
             --rawfile description "\${description_tmp}" \
-            '{summary: $summary, description: $description, severity: "critical", confidential: true}' > "\${payload_tmp}"
+            '{summary: $summary, description: $description, severity: "critical", confidential: true, vulnerabilities: [{package: {ecosystem: "other", name: "repository-codebase"}, vulnerable_version_range: ">= 0.0.0"}]}' > "\${payload_tmp}"
           advisory_created=false
-          if gh api --method POST "/repos/\${GITHUB_REPOSITORY}/security-advisories" \
-            --input "\${payload_tmp}" \
-            2>/dev/null; then
-            advisory_created=true
+          if [[ -z "\${GH_TOKEN:-}" ]]; then
+            echo "::warning::SECURITY_ADVISORY_TOKEN is not configured; workflow will fail closed after alert routing."
+          else
+            if gh api --silent --method POST "/repos/\${GITHUB_REPOSITORY}/security-advisories" \
+              --input "\${payload_tmp}" \
+              2>/dev/null; then
+              advisory_created=true
+            fi
           fi
           if [[ "\${advisory_created}" == "true" ]]; then
             slack_text="Private advisory created."
@@ -93,6 +97,8 @@ jobs:
             echo "::error::Critical findings detected but private advisory routing failed. Raw report intentionally not printed to CI logs."
             exit 1
           fi
+        env:
+          GH_TOKEN: \${{ secrets.SECURITY_ADVISORY_TOKEN }}
 `;
 
 function buildTree(workflow) {
@@ -175,6 +181,36 @@ expect(
     'if [[ "${advisory_created}" == "true" ]]; then',
     'uses: actions/upload-artifact@v4\n          with:\n            path: ${HOME}/security-audits\n          if [[ "${advisory_created}" == "true" ]]; then',
   ),
+  1,
+);
+
+expect(
+  "optioned report print fails",
+  GOOD_WORKFLOW.replace(
+    'slack_text="Private advisory created."',
+    'head -c 200 "${report_tmp}"\n            slack_text="Private advisory created."',
+  ),
+  1,
+);
+
+expect(
+  "advisory response body print fails",
+  GOOD_WORKFLOW.replace("gh api --silent --method POST", "gh api --method POST"),
+  1,
+);
+
+expect(
+  "default GitHub token fails",
+  GOOD_WORKFLOW.replace(
+    "GH_TOKEN: ${{ secrets.SECURITY_ADVISORY_TOKEN }}",
+    "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+  ),
+  1,
+);
+
+expect(
+  "uppercase advisory ecosystem fails",
+  GOOD_WORKFLOW.replace('ecosystem: "other"', 'ecosystem: "OTHER"'),
   1,
 );
 
