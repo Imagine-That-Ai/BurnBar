@@ -159,6 +159,16 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertTrue(warmedCache.contains(privatePrompt))
         XCTAssertTrue(warmedCache.contains(privateAnswer))
 
+        try harness.fileManager.removeItem(at: rolloutURL)
+        let missingFileScrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(missingFileScrubbed.usages.count, 1)
+        XCTAssertTrue(missingFileScrubbed.conversations.isEmpty)
+        let missingFileScrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
+        XCTAssertFalse(missingFileScrubbedCache.contains(privatePrompt))
+        XCTAssertFalse(missingFileScrubbedCache.contains(privateAnswer))
+
+        try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
+        _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         let scrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertTrue(scrubbed.conversations.isEmpty)
         let scrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)

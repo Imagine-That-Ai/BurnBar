@@ -164,6 +164,7 @@ final class CodexParser: LogParser, Sendable {
                             }
                         }
                     } else {
+                        let cached = sessionCache.fileEntries[cacheKey]
                         let parsed = parseCodexSessionJSONL(path: expandedPath)
                         if let parsed {
                             inputTokens = parsed.input
@@ -188,6 +189,9 @@ final class CodexParser: LogParser, Sendable {
                                 },
                                 conversation: parsedConversation
                             )
+                            cacheMutated = true
+                        } else if cached != nil {
+                            sessionCache.fileEntries.removeValue(forKey: cacheKey)
                             cacheMutated = true
                         }
                     }

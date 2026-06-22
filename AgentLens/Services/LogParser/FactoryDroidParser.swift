@@ -31,6 +31,10 @@ final class FactoryDroidParser: LogParser, Sendable {
     }
 
     func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
         let sessionsURL = sessionsDirectoryOverride
             ?? URL(fileURLWithPath: NSString(string: provider.logDirectory).expandingTildeInPath)
         let sessionsPath = sessionsURL.path
@@ -66,7 +70,24 @@ final class FactoryDroidParser: LogParser, Sendable {
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
                 ), let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
-                    appendCached(cached, usages: &usages, conversations: &conversations)
+                    let cached = updateCacheEntry(
+                        cached,
+                        signature: signature,
+                        jsonlFile: jsonlFile,
+                        settingsFile: settingsFile,
+                        sessionId: baseName,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies,
+                        parseCache: &parseCache,
+                        cacheKey: cacheKey,
+                        cacheMutated: &cacheMutated
+                    )
+                    appendCached(
+                        cached,
+                        includeConversation: options.includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
                 } else {
                     let parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?
                     if fileManager.fileExists(atPath: settingsFile.path) {
@@ -80,7 +101,12 @@ final class FactoryDroidParser: LogParser, Sendable {
                     } else {
                         parsed = nil
                     }
-                    appendParsed(parsed, usages: &usages, conversations: &conversations)
+                    appendParsed(
+                        parsed,
+                        includeConversation: options.includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
 
                     if let signature = compositeSignature(
                         jsonlFile: jsonlFile,
@@ -90,7 +116,7 @@ final class FactoryDroidParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: parsed?.conversation
+                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
                         )
                         cacheMutated = true
                     }
@@ -350,19 +376,21 @@ final class FactoryDroidParser: LogParser, Sendable {
 
     private func appendCached(
         _ cached: FactoryDroidCacheEntry,
+        includeConversation: Bool,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
         if let usage = cached.usage {
             usages.append(usage)
         }
-        if let conversation = cached.conversation {
+        if includeConversation, let conversation = cached.conversation {
             conversations.append(conversation)
         }
     }
 
     private func appendParsed(
         _ parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?,
+        includeConversation: Bool,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
@@ -370,9 +398,52 @@ final class FactoryDroidParser: LogParser, Sendable {
         if let usage = parsed.usage {
             usages.append(usage)
         }
-        if let conversation = parsed.conversation {
+        if includeConversation, let conversation = parsed.conversation {
             conversations.append(conversation)
         }
+    }
+
+    private func updateCacheEntry(
+        _ cached: FactoryDroidCacheEntry,
+        signature: CompositeFileSignature<FileSignature>,
+        jsonlFile: URL,
+        settingsFile: URL,
+        sessionId: String,
+        projectName: String,
+        includeConversationBodies: Bool,
+        parseCache: inout ParserDiskCache<FactoryDroidCacheEntry>,
+        cacheKey: String,
+        cacheMutated: inout Bool
+    ) -> FactoryDroidCacheEntry {
+        if !includeConversationBodies {
+            guard cached.conversation != nil else { return cached }
+            let stripped = FactoryDroidCacheEntry(
+                signature: cached.signature,
+                usage: cached.usage,
+                conversation: nil
+            )
+            parseCache.fileEntries[cacheKey] = stripped
+            cacheMutated = true
+            return stripped
+        }
+
+        guard cached.conversation == nil else { return cached }
+        let parsed = try? parseSession(
+            sessionId: sessionId,
+            jsonlFile: jsonlFile,
+            settingsFile: settingsFile,
+            projectName: projectName
+        )
+        let refreshed = FactoryDroidCacheEntry(
+            signature: signature,
+            usage: cached.usage ?? parsed?.usage,
+            conversation: parsed?.conversation
+        )
+        if refreshed != cached {
+            parseCache.fileEntries[cacheKey] = refreshed
+            cacheMutated = true
+        }
+        return refreshed
     }
 
     private func resolveModel(structuredModel: String, inlineModel: String?) -> String {
