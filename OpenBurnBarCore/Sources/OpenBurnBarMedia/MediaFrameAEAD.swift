@@ -115,7 +115,7 @@ public struct MediaFrameAEAD: Sendable {
     ) throws -> Data {
         // No defensive copy (see isSealedEnvelope) — indexing is
         // startIndex-relative throughout, so slices open correctly.
-        guard envelope.count > Self.headerByteCount + Self.nonceByteCount + Self.tagByteCount else {
+        guard envelope.count >= Self.headerByteCount + Self.nonceByteCount + Self.tagByteCount else {
             throw SealError.envelopeTooShort
         }
         guard envelope.prefix(Self.magic.count).elementsEqual(Self.magic) else { throw SealError.invalidMagic }
