@@ -5,6 +5,67 @@ import OpenBurnBarCore
 @MainActor
 final class InsightBriefStartupTests: XCTestCase {
 
+    func test_insightsFollowUp_keepsVisibleLocalRulesSelectionLocal() {
+        let selected = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+
+        let resolved = InsightsMacEnvironment.resolvedAnalysisModel(
+            selectedModelTag: selected,
+            modelCatalog: [
+                InsightCatalogModel(
+                    id: "hermes-auto",
+                    displayName: "Hermes",
+                    providerKey: "hermes",
+                    egressTier: .userRelay,
+                    capabilities: .init()
+                ),
+                InsightCatalogModel(
+                    id: "hosted-answer",
+                    displayName: "Hosted",
+                    providerKey: "burnbar-hosted",
+                    egressTier: .hosted,
+                    capabilities: .init()
+                )
+            ],
+            privacyMode: false,
+            instruction: .answerFollowUp
+        )
+
+        XCTAssertEqual(resolved.providerKey, "local-rules")
+        XCTAssertEqual(resolved.egressTier, .localOnly)
+    }
+
+    func test_insightsFollowUp_preservesExplicitNonLocalSelection() {
+        let selected = InsightModelTag(
+            providerKey: "hermes",
+            modelID: "hermes-auto",
+            displayName: "Hermes",
+            egressTier: .userRelay
+        )
+
+        let resolved = InsightsMacEnvironment.resolvedAnalysisModel(
+            selectedModelTag: selected,
+            modelCatalog: [
+                InsightCatalogModel(
+                    id: "local-rules-v1",
+                    displayName: "Local rules",
+                    providerKey: "local-rules",
+                    egressTier: .localOnly,
+                    capabilities: .init()
+                )
+            ],
+            privacyMode: false,
+            instruction: .answerFollowUp
+        )
+
+        XCTAssertEqual(resolved.providerKey, "hermes")
+        XCTAssertEqual(resolved.egressTier, .userRelay)
+    }
+
     func test_fetchSessionLogSummaries_omitsTranscriptBodies() async throws {
         let store = try makeInMemoryStore()
         try await store.upsertConversation(

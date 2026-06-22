@@ -248,7 +248,9 @@ The picker is sorted with `localOnly` first. Each chip shows an egress tier
 badge so you always know where data is going. Insights uses the user's
 configured provider credentials or local runtime; it does not route analysis
 through OpenBurnBar-owned model accounts. The composer shows the selected
-model before analysis and records that model in the audit log.
+model before analysis and records that model in the audit log. The visible
+model chip is also the Q&A egress contract: if it shows Local rules, follow-up
+answers stay deterministic and local until the user picks a non-local model.
 
 On macOS, OpenBurnBar registers user-key gateways for OpenAI/Codex, Claude,
 MiniMax, Z.ai, and Kimi when those credentials are already configured in the
@@ -268,24 +270,20 @@ anyone else. Clients catch this and switch the brief's CTA from "Connect
 a model" to **"Upgrade to BurnBar Pro"**, which the shell wires to
 StoreKit (Apple) / Play Billing (Android).
 
-Intelligence Brief Q&A turns will **always** try to use a real LLM. Routing
-order:
+Intelligence Brief Q&A turns honor the model shown in the picker:
 
-1. The user's explicitly selected model (whatever the picker shows).
-2. Any user-owned Hermes / Pi / OpenClaw relay.
-3. Any registered user-key cloud route (Claude, OpenAI, MiniMax, Z.ai,
-   Kimi, etc.).
-4. Local Ollama.
-5. **BurnBar Hosted** — the `insightsHostedAnswer` Firebase callable, which
-   proxies to OpenRouter using **MiniMax 2.7** server-side so the
-   OpenRouter API key never lands on a client device. This route is only
-   reached when nothing user-owned is reachable. The brief discloses it
-   honestly via the eyebrow ("Answered by MiniMax 2.7 · hosted fallback")
-   and surfaces a "Connect your own model" CTA so the next turn can run
-   on the user's own route.
-6. Local rules (deterministic, no LLM). Always disclosed with
-   `isFallback = true` so the UI shows a "showing local fallback" hint
-   and a Retry affordance. Privacy mode short-circuits straight to local
+1. **Local rules** — deterministic, no LLM, no network egress. When this chip is
+   selected, Q&A stays local instead of silently promoting to a relay or hosted
+   model.
+2. **User-selected non-local model** — Hermes / Pi / OpenClaw relay, user-key
+   cloud route (Claude, OpenAI, MiniMax, Z.ai, Kimi, etc.), or local Ollama.
+3. **BurnBar Hosted** — the `insightsHostedAnswer` Firebase callable, which
+   proxies to OpenRouter using **MiniMax 2.7** server-side so the OpenRouter API
+   key never lands on a client device. This route is only reached as a disclosed
+   fallback after a selected non-local route is unreachable or unregistered.
+4. **Local rules fallback** — deterministic, no LLM. Used when no selected
+   non-local route or hosted fallback can answer. The UI shows a local fallback
+   hint and a Retry affordance. Privacy mode short-circuits straight to local
    rules without ever touching the hosted route.
 
 Operator configuration for the hosted route:
