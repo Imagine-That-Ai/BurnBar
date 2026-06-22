@@ -149,6 +149,14 @@ class InsightsViewModel(
         private const val KEY_MODEL_ID = "modelID"
         private const val KEY_DISPLAY_NAME = "displayName"
         private const val KEY_LOCAL_ONLY = "localOnly"
+
+        internal fun resolvedAnalysisModel(selected: InsightModelTag, instruction: InsightAnalysisRequest.Instruction): InsightModelTag = when (instruction) {
+            InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP,
+            InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
+            InsightAnalysisRequest.Instruction.GENERATE_REPORT,
+            InsightAnalysisRequest.Instruction.UPDATE_CANVAS,
+            -> selected
+        }
     }
 
     fun load() {
@@ -323,14 +331,11 @@ class InsightsViewModel(
     }
 
     private fun modelForAnalysis(instruction: InsightAnalysisRequest.Instruction): InsightModelTag {
-        val selected = _selectedModel.value
-        return when (instruction) {
-            InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP,
-            InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
-            InsightAnalysisRequest.Instruction.GENERATE_REPORT,
-            InsightAnalysisRequest.Instruction.UPDATE_CANVAS,
-            -> selected
-        }
+        // The visible model chip is the egress contract. If the user is seeing
+        // Local rules, follow-ups must stay deterministic/local instead of
+        // silently promoting themselves to a relay, user-key provider, or
+        // hosted fallback.
+        return resolvedAnalysisModel(_selectedModel.value, instruction)
     }
 
     private fun missionKind(prompt: String): String {

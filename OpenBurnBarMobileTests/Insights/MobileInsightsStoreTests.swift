@@ -58,6 +58,7 @@ final class MobileInsightsStoreTests: XCTestCase {
 
         XCTAssertEqual(preference.mode, .explicit)
         XCTAssertEqual(preference.explicitModel?.providerKey, "local-rules")
+        XCTAssertEqual(preference.explicitModel?.egressTier, .localOnly)
     }
 
     func testInsightsStoreSeedsFromTemplateOnFirstRun() async throws {

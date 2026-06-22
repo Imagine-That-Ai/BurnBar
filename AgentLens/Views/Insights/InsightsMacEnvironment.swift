@@ -411,13 +411,13 @@ final class InsightsMacEnvironment {
         }
     }
 
-    nonisolated static func persistedModelPreference(
+    nonisolated static func modelPreference(
         selectedModelTag: InsightModelTag,
         privacyMode: Bool,
-        automaticSelection: Bool = false
+        isAutomaticSelection: Bool
     ) -> InsightModelPreference {
         InsightModelPreference(
-            mode: automaticSelection ? .automatic : .explicit,
+            mode: isAutomaticSelection ? .automatic : .explicit,
             explicitModel: selectedModelTag,
             restrictToLocalOnly: privacyMode,
             maxEgressTier: privacyMode ? .localOnly : nil,
@@ -425,11 +425,23 @@ final class InsightsMacEnvironment {
         )
     }
 
-    private func persistModelPreference() {
-        let preference = Self.persistedModelPreference(
+    nonisolated static func persistedModelPreference(
+        selectedModelTag: InsightModelTag,
+        privacyMode: Bool,
+        automaticSelection: Bool = false
+    ) -> InsightModelPreference {
+        modelPreference(
             selectedModelTag: selectedModelTag,
             privacyMode: privacyMode,
-            automaticSelection: isApplyingAutomaticModelSelection
+            isAutomaticSelection: automaticSelection
+        )
+    }
+
+    private func persistModelPreference() {
+        let preference = Self.modelPreference(
+            selectedModelTag: selectedModelTag,
+            privacyMode: privacyMode,
+            isAutomaticSelection: isApplyingAutomaticModelSelection
         )
         guard let data = try? JSONEncoder().encode(preference) else { return }
         UserDefaults.standard.set(data, forKey: Self.modelPreferenceDefaultsKey)
