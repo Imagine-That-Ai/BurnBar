@@ -4,8 +4,8 @@
 
 import { onRequest } from "firebase-functions/v2/https";
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { Timestamp } from "firebase-admin/firestore";
-import { randomBytes, createHash } from "node:crypto";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { createCipheriv, createECDH, createHash, randomBytes } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
@@ -28,7 +28,8 @@ import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import { setPublicJsonSecurityHeaders } from "../publicHttpSecurityHeaders.js";
 
 interface CliLinkSessionDoc {
-  deviceSecretHash: string;
+  deviceSecretHash?: string;
+  deviceSecretVerifierHash?: string;
   expiresAt: Timestamp;
   status: string;
   accessToken?: string;
@@ -39,15 +40,42 @@ interface CliLinkSessionDoc {
   grantMode?: string;
   clientType?: string;
   displayName?: string;
+  credentialDelivery?: CliLinkCredentialDelivery;
+  credentialEnvelope?: CliLinkCredentialEnvelope;
+}
+
+const CLI_LINK_SEALING_ALGORITHM = "p256-ecdh-aes-256-gcm-v1";
+const CLI_LINK_SEALING_CONTEXT = "OpenBurnBar CLI link credential delivery v1";
+const CLI_LINK_SEALING_AAD = "openburnbar:cli-link:credential-delivery:v1";
+
+interface CliLinkCredentialDelivery {
+  algorithm: typeof CLI_LINK_SEALING_ALGORITHM;
+  publicKeyBase64: string;
+}
+
+interface CliLinkCredentialEnvelope {
+  algorithm: typeof CLI_LINK_SEALING_ALGORITHM;
+  ephemeralPublicKeyBase64: string;
+  ivBase64: string;
+  ciphertextBase64: string;
+  authTagBase64: string;
+  aad: string;
 }
 
 function readCliLinkSessionData(raw: FirebaseFirestore.DocumentData | undefined): CliLinkSessionDoc | undefined {
   if (raw == null) return undefined;
   const expiresAt = raw.expiresAt;
   if (!(expiresAt instanceof Timestamp)) return undefined;
-  if (typeof raw.deviceSecretHash !== "string" || typeof raw.status !== "string") return undefined;
+  if (
+    typeof raw.status !== "string" ||
+    (typeof raw.deviceSecretVerifierHash !== "string" && typeof raw.deviceSecretHash !== "string")
+  ) {
+    return undefined;
+  }
   return {
-    deviceSecretHash: raw.deviceSecretHash,
+    deviceSecretHash: typeof raw.deviceSecretHash === "string" ? raw.deviceSecretHash : undefined,
+    deviceSecretVerifierHash:
+      typeof raw.deviceSecretVerifierHash === "string" ? raw.deviceSecretVerifierHash : undefined,
     expiresAt,
     status: raw.status,
     accessToken: typeof raw.accessToken === "string" ? raw.accessToken : undefined,
@@ -60,6 +88,99 @@ function readCliLinkSessionData(raw: FirebaseFirestore.DocumentData | undefined)
     grantMode: typeof raw.grantMode === "string" ? raw.grantMode : undefined,
     clientType: typeof raw.clientType === "string" ? raw.clientType : undefined,
     displayName: typeof raw.displayName === "string" ? raw.displayName : undefined,
+    credentialDelivery: readCliLinkCredentialDelivery(raw.credentialDelivery),
+    credentialEnvelope: readCliLinkCredentialEnvelope(raw.credentialEnvelope),
+  };
+}
+
+function sha256Hex(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function cliLinkCredentialDeliveryKey(secret: Buffer): Buffer {
+  return createHash("sha256").update(CLI_LINK_SEALING_CONTEXT).update("\0").update(secret).digest();
+}
+
+function readCliLinkCredentialDelivery(raw: unknown): CliLinkCredentialDelivery | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const algorithm = Reflect.get(raw, "algorithm");
+  const publicKeyBase64 = Reflect.get(raw, "publicKeyBase64");
+  if (algorithm !== CLI_LINK_SEALING_ALGORITHM || typeof publicKeyBase64 !== "string") return undefined;
+  const publicKey = Buffer.from(publicKeyBase64, "base64");
+  if (publicKey.length !== 65 || publicKey[0] !== 0x04 || publicKey.toString("base64") !== publicKeyBase64) {
+    return undefined;
+  }
+  try {
+    const probe = createECDH("prime256v1");
+    probe.generateKeys();
+    probe.computeSecret(publicKey);
+  } catch {
+    return undefined;
+  }
+  return { algorithm, publicKeyBase64 };
+}
+
+function requireCliLinkCredentialDelivery(raw: unknown): CliLinkCredentialDelivery {
+  const delivery = readCliLinkCredentialDelivery(raw);
+  if (!delivery) {
+    throw new HttpsError(
+      "invalid-argument",
+      "credentialDelivery must contain a valid P-256 public key for credential delivery.",
+    );
+  }
+  return delivery;
+}
+
+function readCliLinkCredentialEnvelope(raw: unknown): CliLinkCredentialEnvelope | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const algorithm = Reflect.get(raw, "algorithm");
+  const ephemeralPublicKeyBase64 = Reflect.get(raw, "ephemeralPublicKeyBase64");
+  const ivBase64 = Reflect.get(raw, "ivBase64");
+  const ciphertextBase64 = Reflect.get(raw, "ciphertextBase64");
+  const authTagBase64 = Reflect.get(raw, "authTagBase64");
+  const aad = Reflect.get(raw, "aad");
+  if (
+    algorithm !== CLI_LINK_SEALING_ALGORITHM ||
+    typeof ephemeralPublicKeyBase64 !== "string" ||
+    typeof ivBase64 !== "string" ||
+    typeof ciphertextBase64 !== "string" ||
+    typeof authTagBase64 !== "string" ||
+    aad !== CLI_LINK_SEALING_AAD
+  ) {
+    return undefined;
+  }
+  return { algorithm, ephemeralPublicKeyBase64, ivBase64, ciphertextBase64, authTagBase64, aad };
+}
+
+export function sealCliLinkCredentialsForDelivery(
+  delivery: CliLinkCredentialDelivery,
+  credentials: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    clientId: string;
+    scopes: string[];
+    grantMode: string;
+  },
+): CliLinkCredentialEnvelope {
+  const clientPublicKey = Buffer.from(delivery.publicKeyBase64, "base64");
+  const ephemeral = createECDH("prime256v1");
+  ephemeral.generateKeys();
+  const sharedSecret = ephemeral.computeSecret(clientPublicKey);
+  const key = cliLinkCredentialDeliveryKey(sharedSecret);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(CLI_LINK_SEALING_AAD, "utf8"));
+  const plaintext = Buffer.from(JSON.stringify(credentials), "utf8");
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return {
+    algorithm: CLI_LINK_SEALING_ALGORITHM,
+    ephemeralPublicKeyBase64: ephemeral.getPublicKey("base64", "uncompressed"),
+    ivBase64: iv.toString("base64"),
+    ciphertextBase64: ciphertext.toString("base64"),
+    authTagBase64: authTag.toString("base64"),
+    aad: CLI_LINK_SEALING_AAD,
   };
 }
 
@@ -98,12 +219,17 @@ export const startCliLink = onRequest(
       return;
     }
     try {
-      const { clientType, displayName, deviceSecretHash } = req.body;
+      const { clientType, displayName, deviceSecretHash, credentialDelivery } = req.body;
       if (!deviceSecretHash || typeof deviceSecretHash !== "string" || !isSha256Hex(deviceSecretHash)) {
         res.status(400).json({ error: "invalid_device_secret_hash" });
         return;
       }
       const normalizedDeviceSecretHash = deviceSecretHash.trim().toLowerCase();
+      const delivery = readCliLinkCredentialDelivery(credentialDelivery);
+      if (!delivery) {
+        res.status(400).json({ error: "invalid_credential_delivery" });
+        return;
+      }
 
       const deviceCode = randomBytes(24).toString("hex");
       const userCode = generateUserCode();
@@ -111,7 +237,8 @@ export const startCliLink = onRequest(
 
       await db.doc(`cli_link_sessions/${deviceCode}`).set({
         userCode,
-        deviceSecretHash: normalizedDeviceSecretHash,
+        deviceSecretVerifierHash: sha256Hex(normalizedDeviceSecretHash),
+        credentialDelivery: delivery,
         status: "pending",
         clientType: clientType || "cli",
         displayName: displayName || "CLI Session",
@@ -183,8 +310,13 @@ export const pollCliLink = onRequest(
       }
 
       // Verify deviceSecretHash matches sha256(deviceSecret)
-      const computedHash = createHash("sha256").update(deviceSecret).digest("hex");
-      if (!safeEqualHex(computedHash, data.deviceSecretHash)) {
+      const computedHash = sha256Hex(deviceSecret);
+      const verifierHash = sha256Hex(computedHash);
+      const matchesCurrentVerifier =
+        typeof data.deviceSecretVerifierHash === "string" && safeEqualHex(verifierHash, data.deviceSecretVerifierHash);
+      const matchesLegacyVerifier =
+        typeof data.deviceSecretHash === "string" && safeEqualHex(computedHash, data.deviceSecretHash);
+      if (!matchesCurrentVerifier && !matchesLegacyVerifier) {
         res.status(403).json({ error: "invalid_secret" });
         return;
       }
@@ -197,6 +329,14 @@ export const pollCliLink = onRequest(
       }
 
       if (data.status === "approved") {
+        if (data.credentialEnvelope) {
+          res.status(200).json({
+            status: "approved",
+            credentialEnvelope: data.credentialEnvelope,
+          });
+          await sessionRef.delete();
+          return;
+        }
         res.status(200).json({
           status: "approved",
           accessToken: data.accessToken,
@@ -279,6 +419,8 @@ export const completeCliLink = onCall(
       throw new HttpsError("failed-precondition", "This link code has expired.");
     }
 
+    const credentialDelivery = requireCliLinkCredentialDelivery(sessionData.credentialDelivery);
+
     // Issue Remote MCP Grant
     const grantResult = await issueRemoteMcpGrantForSignedInUser(db, uid, {
       clientType: sessionData.clientType,
@@ -289,17 +431,27 @@ export const completeCliLink = onCall(
       audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
     });
 
-    // Write resulting token and status to session doc. The refreshToken is
-    // persisted here and surfaced by pollCliLink exactly once so the CLI can
-    // store a durable credential and silently re-mint 15-minute access tokens.
-    await sessionRef.update({
-      status: "approved",
+    const credentialEnvelope = sealCliLinkCredentialsForDelivery(credentialDelivery, {
       accessToken: grantResult.accessToken,
       refreshToken: grantResult.refreshToken,
       expiresIn: grantResult.expiresIn,
       clientId: grantResult.clientId,
       scopes: grantResult.scopes,
       grantMode: grantResult.grantMode,
+    });
+
+    // Store only a sealed credential envelope on the transient polling document.
+    // The polling device must still prove possession of the device secret, and
+    // only its locally-held delivery private key can open the returned envelope.
+    await sessionRef.update({
+      status: "approved",
+      credentialEnvelope,
+      accessToken: FieldValue.delete(),
+      refreshToken: FieldValue.delete(),
+      expiresIn: FieldValue.delete(),
+      clientId: FieldValue.delete(),
+      scopes: FieldValue.delete(),
+      grantMode: FieldValue.delete(),
       tokenSigningAlgorithm: grantResult.tokenSigningAlgorithm,
     });
 
