@@ -186,6 +186,16 @@ async function main() {
         createdAt: now,
         updatedAt: now,
       });
+      await setDoc(doc(db, `users/${aliceUid}/escrow_devices/device-3`), {
+        deviceId: "device-3",
+        deviceName: "MacBook",
+        platform: "macOS",
+        trustState: "pending",
+        publicKeyFingerprint: "R".repeat(44),
+        keyVersion: 3,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     await assertSucceeds(
@@ -228,12 +238,12 @@ async function main() {
 
     await assertFails(
       setDoc(
-        doc(bobDB, `users/${aliceUid}/signal_identity_public_keys/device-2_2_bob`),
+        doc(bobDB, `users/${aliceUid}/signal_identity_public_keys/device-3_3`),
         identityDocument({
-          deviceId: "device-2",
-          identityKeyId: "device-2_2_bob",
-          keyVersion: 2,
-          keyVersionLabel: "2",
+          deviceId: "device-3",
+          identityKeyId: "device-3_3",
+          keyVersion: 3,
+          keyVersionLabel: "3",
         })
       )
     );

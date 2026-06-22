@@ -139,9 +139,12 @@ async function main() {
         doc(aliceDB, `users/${aliceUid}/memory_facts/memory-legacy-seal`),
         memoryFact(aliceUid, "memory-legacy-seal", {
           sealedMemory: {
+            schemaVersion: 1,
             algorithm: "AES-256-GCM",
             keyVersion: 1,
+            plaintextSHA256: "e".repeat(64),
             sealedBoxBase64: "Q2lwaGVydGV4dA==",
+            createdAt: now,
           },
         })
       )
