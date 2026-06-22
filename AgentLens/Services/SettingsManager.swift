@@ -568,7 +568,15 @@ final class SettingsManager {
     // MARK: Indexing
     var conversationIndexingEnabled: Bool {
         get { index.conversationIndexingEnabled }
-        set { index.conversationIndexingEnabled = newValue }
+        set {
+            let wasEnabled = index.conversationIndexingEnabled
+            index.conversationIndexingEnabled = newValue
+            if wasEnabled && !newValue {
+                Task.detached(priority: .utility) {
+                    ParserConversationCacheScrubber().scrubKnownParserCaches()
+                }
+            }
+        }
     }
 
     var restrictedLogAccess: Bool {

@@ -22,8 +22,81 @@ protocol LogParser: LogParserProtocol {
 }
 
 extension LogParser {
-    func parse(options _: LogParseOptions) async throws -> ParseResult {
-        try await parse()
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        let result = try await parse()
+        guard options.includeConversationBodies else {
+            return ParseResult(usages: result.usages, conversations: [])
+        }
+        return result
+    }
+}
+
+struct ParserConversationCacheScrubber {
+    private let fileManager: FileManager
+    private let appPaths: OpenBurnBarAppPaths
+
+    init(
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.appPaths = appPaths
+    }
+
+    func scrubKnownParserCaches() {
+        for cacheURL in knownCacheURLs() {
+            scrubCache(at: cacheURL)
+        }
+    }
+
+    private func knownCacheURLs() -> [URL] {
+        var urls = [
+            appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
+            appPaths.claudeCodeParserCacheURL,
+            appPaths.factoryDroidParserCacheURL
+        ]
+
+        if let dynamicURLs = try? fileManager.contentsOfDirectory(
+            at: appPaths.supportDirectory,
+            includingPropertiesForKeys: nil
+        ) {
+            urls.append(
+                contentsOf: dynamicURLs.filter {
+                    $0.lastPathComponent.hasPrefix("model_filter_parser_")
+                        && $0.pathExtension == "json"
+                }
+            )
+        }
+
+        return urls
+    }
+
+    private func scrubCache(at cacheURL: URL) {
+        guard fileManager.fileExists(atPath: cacheURL.path),
+              let data = try? Data(contentsOf: cacheURL),
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var entries = root["fileEntries"] as? [String: Any] else {
+            return
+        }
+
+        var mutated = false
+        for (key, value) in entries {
+            guard var entry = value as? [String: Any],
+                  entry["conversation"] != nil else { continue }
+            entry["conversation"] = NSNull()
+            entries[key] = entry
+            mutated = true
+        }
+
+        guard mutated else { return }
+        root["fileEntries"] = entries
+        guard let scrubbedData = try? JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys]
+        ) else {
+            return
+        }
+        try? scrubbedData.write(to: cacheURL, options: .atomic)
     }
 }
 

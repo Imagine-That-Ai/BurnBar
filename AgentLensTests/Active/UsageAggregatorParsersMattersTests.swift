@@ -176,6 +176,41 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertFalse(scrubbedCache.contains(privateAnswer))
     }
 
+    func testParserConversationCacheScrubberRedactsKnownParserCaches() throws {
+        let supportRoot = uniqueTempURL()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        try FileManager.default.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+
+        let privateMarker = "private parser cache body \(UUID().uuidString)"
+        let cacheURLs = [
+            appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
+            appPaths.claudeCodeParserCacheURL,
+            appPaths.factoryDroidParserCacheURL,
+            appPaths.supportDirectory.appendingPathComponent("model_filter_parser_zai.json")
+        ]
+
+        for cacheURL in cacheURLs {
+            try seedParserCache(at: cacheURL, marker: privateMarker)
+        }
+
+        ParserConversationCacheScrubber(
+            fileManager: .default,
+            appPaths: appPaths
+        ).scrubKnownParserCaches()
+
+        for cacheURL in cacheURLs {
+            let raw = try String(contentsOf: cacheURL, encoding: .utf8)
+            XCTAssertFalse(raw.contains(privateMarker), "\(cacheURL.lastPathComponent) still contains private text")
+
+            let root = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+            )
+            let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
+            let entry = try XCTUnwrap(entries["session"] as? [String: Any])
+            XCTAssertTrue(entry["conversation"] is NSNull)
+        }
+    }
+
     /// `ModelFilterParser` (used for Zai / MiniMax) must likewise stay constructible
     /// and degrade gracefully when the support directory cannot be prepared.
     func testModelFilterParserConstructsWhenSupportDirUnavailable() throws {
@@ -191,5 +226,23 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             appPaths: paths
         )
         XCTAssertEqual(parser.provider, .zai)
+    }
+
+    private func seedParserCache(at cacheURL: URL, marker: String) throws {
+        let json: [String: Any] = [
+            "schemaVersion": 2,
+            "fileEntries": [
+                "session": [
+                    "signature": ["size": 1, "modifiedAt": 1],
+                    "usage": NSNull(),
+                    "conversation": [
+                        "id": "session",
+                        "fullText": marker
+                    ]
+                ]
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: cacheURL, options: .atomic)
     }
 }
