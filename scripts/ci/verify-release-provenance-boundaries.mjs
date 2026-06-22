@@ -97,14 +97,54 @@ function workflowJobBlock(source, jobName) {
   return pattern.exec(source)?.groups?.body ?? "";
 }
 
+function yamlStepNameValue(line) {
+  const match = /^ {6}- name:\s*(?<raw>.+?)\s*$/u.exec(line);
+  if (!match?.groups?.raw) return null;
+
+  let value = match.groups.raw.trim();
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    const anchored = /^&[A-Za-z0-9_-]+(?:\s+|$)/u.exec(value);
+    if (anchored) {
+      value = value.slice(anchored[0].length).trimStart();
+      stripped = true;
+      continue;
+    }
+    const tagged = /^!(?:![A-Za-z0-9_-]+|<[^>]+>|[A-Za-z0-9_-]+)(?:\s+|$)/u.exec(
+      value,
+    );
+    if (tagged) {
+      value = value.slice(tagged[0].length).trimStart();
+      stripped = true;
+    }
+  }
+
+  const singleQuoted = /^'(?<body>(?:[^']|'')*)'$/u.exec(value);
+  if (singleQuoted?.groups?.body !== undefined) {
+    return singleQuoted.groups.body.replaceAll("''", "'");
+  }
+
+  const doubleQuoted = /^"(?<body>(?:[^"\\]|\\.)*)"$/u.exec(value);
+  if (doubleQuoted?.groups?.body !== undefined) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return doubleQuoted.groups.body.replaceAll('\\"', '"');
+    }
+  }
+
+  return value;
+}
+
 function workflowStepBlocks(source, stepName) {
   const lines = source.split("\n");
   const blocks = [];
   for (const [index, line] of lines.entries()) {
-    if (line !== `      - name: ${stepName}`) continue;
+    if (yamlStepNameValue(line) !== stepName) continue;
     const block = [line];
     for (const nextLine of lines.slice(index + 1)) {
-      if (/^ {6}- name: /u.test(nextLine)) break;
+      if (yamlStepNameValue(nextLine) !== null) break;
       if (/^ {4}\S/u.test(nextLine)) break;
       block.push(nextLine);
     }
