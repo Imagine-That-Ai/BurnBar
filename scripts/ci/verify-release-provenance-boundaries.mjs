@@ -71,12 +71,6 @@ function requireIncludes(file, source, needle, message) {
   if (!source.includes(needle)) fail(file, message);
 }
 
-function requireMinOccurrences(file, source, needle, minimum, message) {
-  const actual = source.split(needle).length - 1;
-  if (actual < minimum)
-    fail(file, `${message} (found ${actual}, expected at least ${minimum})`);
-}
-
 function requirePattern(file, source, pattern, message) {
   if (!pattern.test(source)) fail(file, message);
 }
@@ -103,17 +97,20 @@ function workflowJobBlock(source, jobName) {
   return pattern.exec(source)?.groups?.body ?? "";
 }
 
-function workflowStepBlock(source, stepName) {
+function workflowStepBlocks(source, stepName) {
   const lines = source.split("\n");
-  const start = lines.findIndex((line) => line === `      - name: ${stepName}`);
-  if (start === -1) return "";
-  const block = [lines[start]];
-  for (const line of lines.slice(start + 1)) {
-    if (/^ {6}- name: /u.test(line)) break;
-    if (/^ {4}\S/u.test(line)) break;
-    block.push(line);
+  const blocks = [];
+  for (const [index, line] of lines.entries()) {
+    if (line !== `      - name: ${stepName}`) continue;
+    const block = [line];
+    for (const nextLine of lines.slice(index + 1)) {
+      if (/^ {6}- name: /u.test(nextLine)) break;
+      if (/^ {4}\S/u.test(nextLine)) break;
+      block.push(nextLine);
+    }
+    blocks.push(block.join("\n"));
   }
-  return block.join("\n");
+  return blocks;
 }
 
 function shellRunBlockFromStep(stepBlock) {
@@ -132,8 +129,18 @@ function shellRunBlockFromStep(stepBlock) {
 }
 
 function namedStepBlock(file, source, stepName, message) {
-  const stepBlock = workflowStepBlock(source, stepName);
-  if (!stepBlock) fail(file, `${message}: missing step`);
+  const stepBlocks = workflowStepBlocks(source, stepName);
+  if (stepBlocks.length === 0) {
+    fail(file, `${message}: missing step`);
+    return "";
+  }
+  if (stepBlocks.length > 1) {
+    fail(file, `${message}: duplicate step name ${stepName}`);
+  }
+  const stepBlock = stepBlocks[0];
+  if (/^ {8}if\s*:/mu.test(stepBlock)) {
+    fail(file, `${message}: protected step must not be conditional`);
+  }
   return stepBlock;
 }
 
