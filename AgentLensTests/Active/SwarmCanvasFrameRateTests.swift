@@ -46,6 +46,33 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(0.5, fallback: 60), 1)
     }
 
+    func testDefaultFrameRate_isBoundedForDecorativeDashboardCanvas() {
+        #if os(macOS)
+        XCTAssertLessThanOrEqual(SwarmCanvasView.defaultFrameRate, 30)
+        #else
+        XCTAssertLessThanOrEqual(SwarmCanvasView.defaultFrameRate, 60)
+        #endif
+    }
+
+    func testAnimationFrameScale_preservesWallClockMotionAtLowerFrameRates() {
+        XCTAssertEqual(SwarmSimulation.animationFrameScale(elapsed: nil), 1.0)
+        XCTAssertEqual(SwarmSimulation.animationFrameScale(elapsed: 1.0 / 60.0), 1.0, accuracy: 0.001)
+        XCTAssertEqual(SwarmSimulation.animationFrameScale(elapsed: 1.0 / 30.0), 2.0, accuracy: 0.001)
+        XCTAssertEqual(SwarmSimulation.animationFrameScale(elapsed: 1.0 / 15.0), 4.0, accuracy: 0.001)
+        XCTAssertEqual(SwarmSimulation.animationFrameScale(elapsed: 10.0), 4.0, accuracy: 0.001)
+    }
+
+    func testGlyphParticleSampling_boundsTextResolutionCost() {
+        XCTAssertTrue(SwarmSimulation.shouldDrawGlyphParticle(at: 0, isBatteryThrottled: false, particleCount: 900))
+        XCTAssertFalse(SwarmSimulation.shouldDrawGlyphParticle(at: 1, isBatteryThrottled: false, particleCount: 900))
+        XCTAssertFalse(SwarmSimulation.shouldDrawGlyphParticle(at: 2, isBatteryThrottled: false, particleCount: 900))
+        XCTAssertTrue(SwarmSimulation.shouldDrawGlyphParticle(at: 3, isBatteryThrottled: false, particleCount: 900))
+        XCTAssertFalse(SwarmSimulation.shouldDrawGlyphParticle(at: 6, isBatteryThrottled: true, particleCount: 900))
+        XCTAssertTrue(SwarmSimulation.shouldDrawGlyphParticle(at: 10, isBatteryThrottled: true, particleCount: 900))
+        XCTAssertFalse(SwarmSimulation.shouldDrawGlyphParticle(at: 9, isBatteryThrottled: false, particleCount: 1_200))
+        XCTAssertTrue(SwarmSimulation.shouldDrawGlyphParticle(at: 12, isBatteryThrottled: false, particleCount: 1_200))
+    }
+
     // MARK: - RGBA.bucketKey
 
     func testBucketKey_isStableAcrossEqualValues() {
