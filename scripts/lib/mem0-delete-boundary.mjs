@@ -27,6 +27,26 @@ function field(record, names) {
   return undefined;
 }
 
+function requiredField(record, names, label, key) {
+  const value = field(record, names);
+  if (value === undefined || String(value).trim() === "") {
+    throw new Error(`refusing to delete ${key}: remote ${label} missing`);
+  }
+  return value;
+}
+
+function parseMetadataChunkIndex(value, key) {
+  if (Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^(0|[1-9]\d*)$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
+  }
+  throw new Error(`refusing to delete ${key}: remote metadata chunk_index mismatch`);
+}
+
 export function assertMem0DeleteScope(rawMemory, { key, userId, appId }) {
   const record = firstRecord(rawMemory);
   const metadata = record?.metadata;
@@ -44,19 +64,19 @@ export function assertMem0DeleteScope(rawMemory, { key, userId, appId }) {
     const actualValue = metadata[name];
     const equal =
       name === "chunk_index"
-        ? Number(actualValue) === expectedValue
+        ? parseMetadataChunkIndex(actualValue, key) === expectedValue
         : String(actualValue || "") === String(expectedValue);
     if (!equal) {
       throw new Error(`refusing to delete ${key}: remote metadata ${name} mismatch`);
     }
   }
 
-  const remoteUserId = field(record, ["user_id", "userId"]);
-  if (remoteUserId !== undefined && String(remoteUserId) !== String(userId)) {
+  const remoteUserId = requiredField(record, ["user_id", "userId"], "user_id", key);
+  if (String(remoteUserId) !== String(userId)) {
     throw new Error(`refusing to delete ${key}: remote user_id mismatch`);
   }
-  const remoteAppId = field(record, ["app_id", "appId"]);
-  if (remoteAppId !== undefined && String(remoteAppId) !== String(appId)) {
+  const remoteAppId = requiredField(record, ["app_id", "appId"], "app_id", key);
+  if (String(remoteAppId) !== String(appId)) {
     throw new Error(`refusing to delete ${key}: remote app_id mismatch`);
   }
 }

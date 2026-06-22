@@ -115,7 +115,35 @@ test("assertMem0DeleteScope refuses non-wiki remote memories", () => {
   );
 });
 
-test("assertMem0DeleteScope refuses user or app boundary mismatches when present", () => {
+test("assertMem0DeleteScope refuses missing user or app boundary fields", () => {
+  assert.throws(
+    () =>
+      assertMem0DeleteScope(
+        { ...matchingMemory, user_id: undefined },
+        {
+          key: "apps/android-app.md#2",
+          userId: "burnbar",
+          appId: "burnbar",
+        },
+      ),
+    /user_id missing/,
+  );
+
+  assert.throws(
+    () =>
+      assertMem0DeleteScope(
+        { ...matchingMemory, app_id: null },
+        {
+          key: "apps/android-app.md#2",
+          userId: "burnbar",
+          appId: "burnbar",
+        },
+      ),
+    /app_id missing/,
+  );
+});
+
+test("assertMem0DeleteScope refuses user or app boundary mismatches", () => {
   assert.throws(
     () =>
       assertMem0DeleteScope(
@@ -141,6 +169,26 @@ test("assertMem0DeleteScope refuses user or app boundary mismatches when present
       ),
     /app_id mismatch/,
   );
+});
+
+test("assertMem0DeleteScope refuses empty chunk index values for chunk zero", () => {
+  for (const chunkIndex of [null, ""]) {
+    assert.throws(
+      () =>
+        assertMem0DeleteScope(
+          {
+            ...matchingMemory,
+            metadata: { ...matchingMemory.metadata, chunk_index: chunkIndex },
+          },
+          {
+            key: "apps/android-app.md#0",
+            userId: "burnbar",
+            appId: "burnbar",
+          },
+        ),
+      /chunk_index mismatch/,
+    );
+  }
 });
 
 test("assertMem0DeleteScope refuses missing metadata and malformed keys", () => {
