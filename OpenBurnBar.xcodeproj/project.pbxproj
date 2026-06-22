@@ -8297,7 +8297,6 @@
 				};
 			};
 			buildConfigurationList = 6EEF3E2501935085EB8CDA63 /* Build configuration list for PBXProject "OpenBurnBar" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -8318,6 +8317,7 @@
 				113BF79EDCC82484903F09CC /* XCLocalSwiftPackageReference "OpenBurnBarCore" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 9EB16CE9323CA9B903646B1C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -10792,11 +10792,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_8A82F96F-05BB-4311-A00C-9EB916F6EC73" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_1C094443-B5B1-450B-8CA1-DF2B816D5A81" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_8399FC7F-6DBB-4DB5-9662-8827C1A4DA76" /* OpenBurnBarCore */;
+			productRef = "TEMP_CCC53B26-13C8-4690-A66E-215084D9B31D" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10849,7 +10849,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_1DB15609-339B-427B-888F-9A78F3ADE6AA" /* OpenBurnBarCore */;
+			productRef = "TEMP_22076ABC-72BC-4C5C-9BD2-91E357629427" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -10867,15 +10867,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_4A07DF8A-AB29-4FB1-AA4B-4BB1B3A46C55" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_AD31BAC5-DDE5-4CB7-B2AE-DC2EE211112E" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_4D2368A7-66F0-42DA-B399-916EB68FDBD9" /* OpenBurnBarMedia */;
+			productRef = "TEMP_1F0088E0-1BC2-4B1E-AC53-BA56A09ACDE9" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A77C0356-7A32-479A-8DB4-3743B5189316" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_74AC4B46-693E-4750-B917-C335B012F494" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -12092,29 +12092,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_1DB15609-339B-427B-888F-9A78F3ADE6AA" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_4A07DF8A-AB29-4FB1-AA4B-4BB1B3A46C55" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_1C094443-B5B1-450B-8CA1-DF2B816D5A81" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_4D2368A7-66F0-42DA-B399-916EB68FDBD9" /* OpenBurnBarMedia */ = {
+		"TEMP_1F0088E0-1BC2-4B1E-AC53-BA56A09ACDE9" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_8399FC7F-6DBB-4DB5-9662-8827C1A4DA76" /* OpenBurnBarCore */ = {
+		"TEMP_22076ABC-72BC-4C5C-9BD2-91E357629427" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_8A82F96F-05BB-4311-A00C-9EB916F6EC73" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_74AC4B46-693E-4750-B917-C335B012F494" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_A77C0356-7A32-479A-8DB4-3743B5189316" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_AD31BAC5-DDE5-4CB7-B2AE-DC2EE211112E" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_CCC53B26-13C8-4690-A66E-215084D9B31D" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
