@@ -196,6 +196,30 @@ let signalBinaryTargets: [Target] = {
     return targets
 }()
 
+func signalFfiLibraryDirectory(in xcframeworkRelativePath: String) -> String? {
+    let root = packageRoot
+        .appendingPathComponent(xcframeworkRelativePath)
+        .standardizedFileURL
+    let candidates = [
+        "macos-arm64_x86_64",
+        "macos-arm64",
+        "macos-x86_64"
+    ]
+
+    return candidates
+        .map { root.appendingPathComponent($0).path }
+        .first { FileManager.default.fileExists(atPath: "\($0)/libsignal_ffi.dylib") }
+}
+
+let signalFfiLinkerSettings: [LinkerSetting] = {
+    let directory = signalFfiLibraryDirectory(in: "../Vendor/OpenBurnBarSignalFfiMac.xcframework")
+        ?? signalFfiLibraryDirectory(in: "../Vendor/OpenBurnBarSignalFfi.xcframework")
+    guard let directory else { return [] }
+    return [
+        .unsafeFlags(["-L", directory, "-lsignal_ffi"], .when(platforms: [.macOS]))
+    ]
+}()
+
 let swiftTestingDependency: Target.Dependency = .product(name: "Testing", package: "swift-testing")
 
 let firstPartyTargets: [Target] = [
@@ -266,7 +290,8 @@ let firstPartyTargets: [Target] = [
         .target(
             name: "OpenBurnBarSignalCore",
             dependencies: signalCoreDependencies,
-            path: "Sources/OpenBurnBarSignalCore"
+            path: "Sources/OpenBurnBarSignalCore",
+            linkerSettings: signalFfiLinkerSettings
         ),
         .target(
             name: "OpenBurnBarSignalSessionTransport",

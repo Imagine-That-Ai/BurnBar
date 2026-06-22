@@ -147,10 +147,7 @@ struct PetFirstRunView: View {
         case .pickPet:
             PetFormPickerView(definitions: model.petDefinitions, selectedPetID: $model.selectedPetID) { id, form in
                 model.selectedPetID = id
-                // Live skin swap if the pet is already on screen (PLAN C8 accept).
-                if PetCompanionFeature.runtime.controller.isVisible {
-                    PetCompanionFeature.runtime.controller.setForm(form)
-                }
+                PetCompanionFeature.selectPet(id: id, form: form)
             }
         case .pickAgent:
             PetAgentSwitcher(authStates: model.authStates) { backend in

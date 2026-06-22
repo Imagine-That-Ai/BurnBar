@@ -133,6 +133,11 @@ targets:
         buildPhase: resources
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
+    preBuildScripts:
+      - name: Sync Imagine 3D Pets
+        script: |
+          "$SRCROOT/scripts/sync-imagine-pets.sh"
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar

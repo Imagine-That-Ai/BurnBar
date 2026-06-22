@@ -112,6 +112,7 @@ final class PetChatController {
         isOpen = true
         lastErrorNote = nil
         refreshAvailableBackends()
+        pet?.recordUserTyping()
         pet?.fire(.inputFocused)        // graph-driven listen, if the petdef wires it
         pet?.drive(to: .listen)         // …and force the listen pose regardless
     }
@@ -125,6 +126,7 @@ final class PetChatController {
         replyText = ""
         isAnswering = false
         isAnsweringLocally = false
+        pet?.noteAgentBusy(false)
         pet?.drive(to: .idle)
     }
 
@@ -156,7 +158,10 @@ final class PetChatController {
         isAnsweringLocally = false
 
         pet?.fire(.sendPressed)
-        pet?.drive(to: .think)
+        let intent = pet?.recordUserMessage(trimmed) ?? .neutral
+        if intent == .neutral || intent == .question {
+            pet?.drive(to: .think)
+        }
 
         let history = currentHistory(appendingUser: trimmed)
         let ignoredAssistantIDs = Set(chat.messages.filter { $0.role == .assistant }.map(\.id))
@@ -228,14 +233,12 @@ final class PetChatController {
                             sawText = true
                             self.replyText = text
                             self.pet?.fire(.streamStart)
-                            self.pet?.drive(to: .speak)
                             self.finishCloudReply()
                             break
                         }
                         if !sawText {
                             sawText = true
                             self.pet?.fire(.streamStart)
-                            self.pet?.drive(to: .speak)
                         } else {
                             self.pet?.fire(.streamToken)
                         }
@@ -277,7 +280,7 @@ final class PetChatController {
         isAnswering = false
         isAnsweringLocally = false
         pet?.fire(.resultLanded)
-        pet?.drive(to: .react)
+        pet?.recordTaskOutcome(.normalReply)
         settleToIdleSoon()
     }
 
@@ -298,8 +301,9 @@ final class PetChatController {
 
         // The legible "I'm answering locally" beat: alert/react, then speak.
         pet?.fire(.fallbackFired)
-        pet?.drive(to: .react)
+        pet?.recordTaskOutcome(.failure)
         try? await Task.sleep(for: .milliseconds(420))
+        pet?.noteAgentBusy(true)
         pet?.drive(to: .speak)
 
         let stream = PetChatFallback.stream(history: history)
@@ -311,7 +315,7 @@ final class PetChatController {
             guard let self, !Task.isCancelled else { return }
             self.isAnswering = false
             self.isAnsweringLocally = false
-            self.pet?.drive(to: .react)
+            self.pet?.recordTaskOutcome(.normalReply)
             self.settleToIdleSoon()
         }
     }
@@ -327,6 +331,11 @@ final class PetChatController {
         Task { @MainActor in
             await switchBackendAndReplay(to: backend)
         }
+    }
+
+    func userDidType() {
+        guard isOpen, !draft.isEmpty else { return }
+        pet?.recordUserTyping()
     }
 
     private func switchBackendAndReplay(to backend: ChatBackendID) async {
@@ -476,6 +485,7 @@ struct PetChatBubbleView: View {
         .overlay(alignment: .bottom) { bubbleTail }
         .onAppear { inputFocused = true }
         .onChange(of: controller.isOpen) { _, open in inputFocused = open }
+        .onChange(of: controller.draft) { _, _ in controller.userDidType() }
         .onChange(of: controller.replyText) { _, _ in onContentSizeChange() }
         .onChange(of: controller.isAnswering) { _, _ in onContentSizeChange() }
         .onChange(of: controller.isAnsweringLocally) { _, _ in onContentSizeChange() }

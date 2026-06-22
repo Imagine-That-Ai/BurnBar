@@ -9,9 +9,13 @@ import SwiftUI
 /// *enumeration* the picker needs.
 @MainActor
 enum PetCatalog {
-    /// Flip this when the production GLB loader is linked and model pets render
-    /// as their shipped assets instead of placeholders.
-    static let supportsModelForms = false
+    struct PetGroup: Identifiable {
+        var id: String { name }
+        let name: String
+        let definitions: [PetDefinition]
+    }
+
+    static let groupOrder = ["Family", "Founders", "Legends", "Kawaii Animals", "Meshy"]
 
     /// The pet ids shipped in `PetCompanion/Resources/Pets/`. Discovered from the
     /// bundle so adding a pet folder needs no code change; falls back to the known
@@ -32,17 +36,30 @@ enum PetCatalog {
         return knownRoster
     }
 
-    /// Load every bundled definition, skipping any that fail to decode.
-    static func bundledDefinitions(in bundle: Bundle = .main) -> [PetDefinition] {
-        bundledPetIDs(in: bundle)
-            .compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
-            .filter(isRenderable)
+    /// The synced model pet ids shipped in `PetCompanion/Resources/Models/<id>/`.
+    static func bundledModelPetIDs(in bundle: Bundle = .main) -> [String] {
+        guard let modelsRoot = bundle.url(forResource: "Models", withExtension: nil),
+              let entries = try? FileManager.default.contentsOfDirectory(
+                    at: modelsRoot,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+              ) else { return [] }
+        return entries
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+            .filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("petdef.json").path) }
+            .map { $0.lastPathComponent }
+            .sorted()
     }
 
-    /// Until the GLB loader is linked, only atlas-backed pets can render as their
-    /// actual shipped asset. Model-only definitions stay hidden from selection.
-    static func isRenderable(_ def: PetDefinition) -> Bool {
-        def.atlas2d != nil
+    /// Load every bundled definition, skipping only malformed files.
+    static func bundledDefinitions(in bundle: Bundle = .main) -> [PetDefinition] {
+        var seen = Set<String>()
+        let synced = bundledModelPetIDs(in: bundle).compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
+        let legacyModels = bundledPetIDs(in: bundle).compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
+
+        return (synced + legacyModels)
+            .filter { $0.defaultForm != nil }
+            .filter { seen.insert($0.id).inserted }
     }
 
     /// The roster shipped today (kept as a deterministic fallback).
@@ -51,6 +68,35 @@ enum PetCatalog {
     /// The image resource name for a pet's 2D atlas preview, if it has one.
     static func atlasPreviewName(for def: PetDefinition) -> String? {
         def.atlas2d?.image
+    }
+
+    static func preferredForm(for def: PetDefinition) -> PetForm? {
+        def.defaultForm
+    }
+
+    static func groupedDefinitions(_ definitions: [PetDefinition]) -> [PetGroup] {
+        let selectableDefinitions = definitions.filter { $0.defaultForm != nil }
+        let grouped = Dictionary(grouping: selectableDefinitions, by: groupName(for:))
+        let orderedNames = groupOrder + grouped.keys
+            .filter { !groupOrder.contains($0) }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+        return orderedNames.compactMap { name in
+            guard let defs = grouped[name], !defs.isEmpty else { return nil }
+            return PetGroup(
+                name: name,
+                definitions: defs.sorted {
+                    ($0.displayName ?? $0.name).localizedCaseInsensitiveCompare($1.displayName ?? $1.name) == .orderedAscending
+                }
+            )
+        }
+    }
+
+    static func groupName(for def: PetDefinition) -> String {
+        if let group = def.group?.trimmingCharacters(in: .whitespacesAndNewlines), !group.isEmpty { return group }
+        if def.id.hasPrefix("founder-") { return "Founders" }
+        if def.id.hasPrefix("kawaii-") { return "Kawaii Animals" }
+        return "Legends"
     }
 }
 
@@ -82,9 +128,18 @@ struct PetFormPickerView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.md) {
-                ForEach(definitions, id: \.id) { def in
-                    cell(for: def)
+            LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                ForEach(PetCatalog.groupedDefinitions(definitions)) { group in
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text(group.name)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.md) {
+                            ForEach(group.definitions, id: \.id) { def in
+                                cell(for: def)
+                            }
+                        }
+                    }
                 }
             }
             .padding(DesignSystem.Spacing.xs)
@@ -93,11 +148,10 @@ struct PetFormPickerView: View {
 
     private func cell(for def: PetDefinition) -> some View {
         let isSelected = def.id == selectedPetID
-        let has3D = PetCatalog.supportsModelForms && def.model3d != nil
-        let has2D = def.atlas2d != nil
+        let has3D = def.model3d != nil
         return Button {
             selectedPetID = def.id
-            if let form = def.defaultForm { onSelect(def.id, form) }
+            if let form = PetCatalog.preferredForm(for: def) { onSelect(def.id, form) }
         } label: {
             VStack(spacing: DesignSystem.Spacing.xs) {
                 preview(for: def)
@@ -109,7 +163,6 @@ struct PetFormPickerView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: DesignSystem.Spacing.xxs) {
-                    if has2D { formBadge("2D") }
                     if has3D { formBadge("3D") }
                 }
             }
