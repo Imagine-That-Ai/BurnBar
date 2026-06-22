@@ -1864,6 +1864,17 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch("ivy", "mission-1", {
+        approvalStatus: "Approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch("ivy", "mission-1", {
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
         approvedByDeviceId: "mac-1",
@@ -2890,6 +2901,13 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   await assertFails(setDoc(doc(db, connectionPath), connectionDoc));
   await seedHostedCloudEntitlement("gina");
   await assertSucceeds(setDoc(doc(db, connectionPath), connectionDoc));
+  await assertFails(
+    setDoc(doc(db, connectionPath), {
+      ...connectionDoc,
+      redisURL: "redis://:secret@127.0.0.1:6379/0",
+      updatedAt: "2026-05-12T00:00:02.000Z",
+    })
+  );
 
   await assertFails(
     setDoc(doc(db, requestPath), {

@@ -208,6 +208,7 @@ export const rotateCloudVaultKey = onCallProduction(
       if (expectedVaultGeneration !== currentGeneration + 1) {
         throw new HttpsError("failed-precondition", "CloudVault generation must advance by exactly one.");
       }
+      const requestedSurvivors = survivorWrappers.map((wrapper) => wrapper.targetDeviceId).sort();
       for (const [index, deviceSnap] of deviceSnaps.entries()) {
         const wrapper = survivorWrappers[index];
         if (!deviceSnap.exists || deviceSnap.get("trustState") !== "trusted") {
@@ -223,7 +224,6 @@ export const rotateCloudVaultKey = onCallProduction(
         const requirementSurvivors = Array.isArray(requirement?.survivorDeviceIds)
           ? requirement.survivorDeviceIds.filter((item): item is string => typeof item === "string").sort()
           : [];
-        const requestedSurvivors = survivorWrappers.map((wrapper) => wrapper.targetDeviceId).sort();
         if (
           !requirementSnap.exists ||
           !requirement ||
@@ -236,6 +236,17 @@ export const rotateCloudVaultKey = onCallProduction(
           throw new HttpsError(
             "failed-precondition",
             "CloudVault rotation requirement does not match this rotation request.",
+          );
+        }
+      } else {
+        const trustedDevicesSnap = await transaction.get(
+          db.collection(`users/${uid}/escrow_devices`).where("trustState", "==", "trusted"),
+        );
+        const currentTrustedDeviceIds = trustedDevicesSnap.docs.map((doc) => doc.id).sort();
+        if (JSON.stringify(currentTrustedDeviceIds) !== JSON.stringify(requestedSurvivors)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "CloudVault survivor wrappers must cover every currently trusted device.",
           );
         }
       }

@@ -927,14 +927,23 @@ final class CLIAgentMissionRequestListener {
     ) async -> Bool {
         let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
         let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if approvalStatus == "approved" {
-            return false
-        }
         if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
             await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
             return true
         }
-        guard missionRequiresApproval(data: data) else {
+        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+           !settingsManager.cliAssistantAllowed {
+            await failAfterTrustedClaim(
+                document: document,
+                backend: backend,
+                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
+            )
+            return true
+        }
+        if approvalStatus == "approved" {
+            return false
+        }
+        guard missionRequiresApproval(data: data, backend: backend) else {
             return false
         }
         if status == "waiting_for_approval" {
@@ -944,12 +953,43 @@ final class CLIAgentMissionRequestListener {
         return true
     }
 
-    func missionRequiresApproval(data: [String: Any]) -> Bool {
-        InsightMissionApprovalPolicy.requiresPreDispatchApproval(
-            approvalMode: data["approvalMode"] as? String,
-            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
-        )
+    func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {
+        CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend)
+    }
+
+    func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {
+        do {
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: document.documentID,
+                    payload: [
+                        "status": "failed",
+                        "claimedBy": accountManager.deviceId,
+                        "selectedRuntime": backend.rawValue,
+                        "selectedRuntimeName": backend.displayName,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: message,
+                    errorMessage: message
+                ),
+                merge: true
+            )
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "failed",
+                kind: "error",
+                title: "Failed",
+                message: message,
+                backend: backend,
+                isError: true
+            )
+            logger.info("marked trusted mission failed id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("trusted mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func requestApproval(
