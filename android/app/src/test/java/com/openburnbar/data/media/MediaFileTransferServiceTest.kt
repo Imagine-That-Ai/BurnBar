@@ -3,6 +3,7 @@ package com.openburnbar.data.media
 import com.openburnbar.irohrelay.BlobTransferStats
 import com.openburnbar.irohrelay.HermesRealtimeRelayAttachmentManifest
 import com.openburnbar.irohrelay.IrohBlobBackend
+import com.openburnbar.irohrelay.IrohBlobTransferLimits
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.io.File
@@ -55,6 +56,7 @@ class MediaFileTransferServiceTest {
         assertFalse(fetchedDestination.name.contains(".."))
         assertTrue(fetchedDestination.name.endsWith(".jpg"))
         assertEquals(1, backend.fetchCalls)
+        assertEquals(42L, backend.fetchedExpectedSizeBytes)
         assertEquals("hash", stats.blake3Hash)
     }
 
@@ -92,6 +94,45 @@ class MediaFileTransferServiceTest {
         assertEquals(0, backend.fetchCalls)
     }
 
+    @Test
+    fun fetch_rejectsNegativeManifestSizeBeforeBackendWrite() = runTest {
+        val backend = RecordingBlobBackend()
+        val service = service(backend)
+
+        val error =
+            runCatching {
+                service.fetch(
+                    ticketText = "ticket-text",
+                    manifest = manifest(blobHash = "blob-hash", filename = "photo.png", size = -1),
+                )
+            }.exceptionOrNull()
+
+        assertTrue(error is MediaFileTransferService.ServiceError.InvalidManifest)
+        assertEquals(0, backend.fetchCalls)
+    }
+
+    @Test
+    fun fetch_rejectsOversizedManifestBeforeBackendWrite() = runTest {
+        val backend = RecordingBlobBackend()
+        val service = service(backend)
+
+        val error =
+            runCatching {
+                service.fetch(
+                    ticketText = "ticket-text",
+                    manifest =
+                    manifest(
+                        blobHash = "blob-hash",
+                        filename = "photo.png",
+                        size = IrohBlobTransferLimits.MAX_EXPECTED_FETCH_BYTES + 1,
+                    ),
+                )
+            }.exceptionOrNull()
+
+        assertTrue(error is MediaFileTransferService.ServiceError.InvalidManifest)
+        assertEquals(0, backend.fetchCalls)
+    }
+
     private fun service(backend: RecordingBlobBackend): MediaFileTransferService = MediaFileTransferService(
         backend = backend,
         configuration =
@@ -103,13 +144,13 @@ class MediaFileTransferServiceTest {
         ),
     )
 
-    private fun manifest(blobHash: String, filename: String): HermesRealtimeRelayAttachmentManifest {
+    private fun manifest(blobHash: String, filename: String, size: Long = 42): HermesRealtimeRelayAttachmentManifest {
         return HermesRealtimeRelayAttachmentManifest(
             manifestId = "att_test",
             blobHash = blobHash,
             filename = filename,
             mime = "image/jpeg",
-            size = 42,
+            size = size,
             peerDeviceId = "peer-device-1",
             createdAt = 0.0,
         )
@@ -119,6 +160,8 @@ class MediaFileTransferServiceTest {
         var fetchCalls = 0
             private set
         var fetchedDestination: String? = null
+            private set
+        var fetchedExpectedSizeBytes: Long? = null
             private set
 
         override suspend fun bootstrap(secret: ByteArray, storeDirectoryPath: String, relayURL: String?): IrohEndpointIdentity {
@@ -131,9 +174,10 @@ class MediaFileTransferServiceTest {
 
         override suspend fun publishBlob(localPath: String): String = "ticket-text"
 
-        override suspend fun fetchBlob(ticketText: String, destination: String): BlobTransferStats {
+        override suspend fun fetchBlob(ticketText: String, destination: String, expectedSizeBytes: Long?): BlobTransferStats {
             fetchCalls += 1
             fetchedDestination = destination
+            fetchedExpectedSizeBytes = expectedSizeBytes
             return BlobTransferStats(
                 bytesTotal = 42,
                 blake3Hash = "hash",

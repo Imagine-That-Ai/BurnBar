@@ -4,6 +4,7 @@ import com.openburnbar.irohrelay.BlobTransferStats
 import com.openburnbar.irohrelay.HermesRealtimeRelayAttachmentManifest
 import com.openburnbar.irohrelay.IrohBlobBackend
 import com.openburnbar.irohrelay.IrohBlobBackendError
+import com.openburnbar.irohrelay.IrohBlobTransferLimits
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.io.File
@@ -140,11 +141,23 @@ class MediaFileTransferService(
 
     /** Fetch a peer's blob into the inbox directory and return the destination URL + transfer stats. */
     suspend fun fetch(ticketText: String, manifest: HermesRealtimeRelayAttachmentManifest): Pair<File, BlobTransferStats> {
+        val expectedSizeBytes =
+            try {
+                IrohBlobTransferLimits.validateExpectedFetchSize(manifest.size)
+                manifest.size
+            } catch (err: IrohBlobBackendError) {
+                throw ServiceError.InvalidManifest(err.message ?: err.javaClass.simpleName)
+                    .also { it.initCause(err) }
+            }
         bootstrap()
         val destination = inboxFile(manifest)
         val stats =
             try {
-                backend.fetchBlob(ticketText = ticketText, destination = destination.absolutePath)
+                backend.fetchBlob(
+                    ticketText = ticketText,
+                    destination = destination.absolutePath,
+                    expectedSizeBytes = expectedSizeBytes,
+                )
             } catch (err: IrohBlobBackendError) {
                 throw ServiceError.FetchFailed(err.message ?: err.javaClass.simpleName)
                     .also { it.initCause(err) }

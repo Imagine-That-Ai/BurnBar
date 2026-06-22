@@ -27,10 +27,13 @@ interface IrohBlobBackend {
     /**
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Resume across reconnects is handled internally.
+     * When `expectedSizeBytes` is present, the backend must fail before export
+     * if the served blob exceeds the receiver's manifest-advertised size.
      */
     suspend fun fetchBlob(
         ticketText: String,
         destination: String,
+        expectedSizeBytes: Long? = null,
     ): BlobTransferStats
 
     /** Returns the cached identity. Throws if `bootstrap` has not been called. */
@@ -62,4 +65,19 @@ sealed class IrohBlobBackendError(message: String) : RuntimeException(message) {
     data class StoreUnavailable(val detail: String) : IrohBlobBackendError("store unavailable: $detail")
 
     data class RuntimeFailed(val detail: String) : IrohBlobBackendError("runtime failed: $detail")
+}
+
+object IrohBlobTransferLimits {
+    const val MAX_EXPECTED_FETCH_BYTES: Long = 512L * 1024L * 1024L
+
+    fun validateExpectedFetchSize(expectedSizeBytes: Long) {
+        if (expectedSizeBytes < 0) {
+            throw IrohBlobBackendError.FetchFailed("attachment manifest size is negative")
+        }
+        if (expectedSizeBytes > MAX_EXPECTED_FETCH_BYTES) {
+            throw IrohBlobBackendError.FetchFailed(
+                "expected blob size $expectedSizeBytes bytes exceeds maximum $MAX_EXPECTED_FETCH_BYTES bytes",
+            )
+        }
+    }
 }
