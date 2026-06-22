@@ -55,12 +55,18 @@ struct MediaPermissionsView: View {
         }
         .background(DesignSystem.Colors.background)
         .navigationTitle("Media & Sharing")
-        .task { await refreshAll() }
+        .task {
+            await refreshAll()
+            consentStore.refreshExpiredMirrorAutoAcceptGrants()
+        }
         .onAppear { entitlement.start() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // System Settings changes don't notify us — re-poll when the
             // user comes back to the app so the badges update.
-            Task { await refreshAll() }
+            Task {
+                await refreshAll()
+                consentStore.refreshExpiredMirrorAutoAcceptGrants()
+            }
         }
     }
 
