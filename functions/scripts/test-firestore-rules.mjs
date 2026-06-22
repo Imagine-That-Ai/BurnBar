@@ -1864,6 +1864,17 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch("ivy", "mission-1", {
+        approvalStatus: "Approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch("ivy", "mission-1", {
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
         approvedByDeviceId: "mac-1",
