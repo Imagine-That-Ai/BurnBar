@@ -196,10 +196,13 @@ struct BehaviorInterpreter: Sendable {
     /// draws a point in `[0, totalWeight)` from the RNG and walks the cumulative
     /// weights — identical to the TS selection so golden vectors line up.
     private mutating func pick(_ candidates: [PetBehaviorGraph.Transition]) -> PetBehaviorGraph.Transition? {
+        // Mirror the TS core's `step` EXACTLY so golden vectors line up: no RNG draw
+        // when nothing is eligible or total weight ≤ 0 (the pet stays put), and a
+        // draw on EVERY positive-weight tick — including a lone candidate — so the
+        // shared RNG stream never desyncs between the two runtimes.
         guard !candidates.isEmpty else { return nil }
-        if candidates.count == 1 { return candidates[0] }
         let total = candidates.reduce(0) { $0 + $1.effectiveWeight }
-        guard total > 0 else { return candidates[0] }
+        guard total > 0 else { return nil }
         var point = rng.nextUnit() * Double(total)
         for t in candidates {
             point -= Double(t.effectiveWeight)
@@ -222,16 +225,21 @@ struct BehaviorInterpreter: Sendable {
 // MARK: - Golden vector fixture shape
 
 /// Decodes the `packages/petcore/test/golden/behavior.json` fixture the TS core
-/// exports for the Swift port (PLAN A4 / C3). Shape: a seed, the graph, and the
-/// ordered trigger → expected-state pairs the TS interpreter produced.
-struct BehaviorGoldenVector: Codable, Sendable {
-    var seed: UInt32
+/// exports for the Swift port (PLAN A4 / C3). Shape: the shared graph + a fixed
+/// trigger `script` (one condition-set per tick), and one `vector` per seed
+/// carrying the exact `states` sequence the TS interpreter produced — the
+/// cross-runtime parity contract. The Swift interpreter must reproduce each
+/// vector's `states` byte-for-byte from the same seed.
+struct BehaviorGoldenSuite: Codable, Sendable {
+    var seeds: [UInt32]
     var graph: PetBehaviorGraph
-    var steps: [Step]
+    /// One condition-set per tick (each element is the set of triggers fired that tick).
+    var script: [[PetBehaviorTrigger]]
+    var vectors: [Vector]
 
-    struct Step: Codable, Sendable {
-        var trigger: PetBehaviorTrigger
-        /// Expected `current` after firing `trigger` (`nil` ⇒ no transition).
-        var expected: String?
+    struct Vector: Codable, Sendable {
+        var seed: UInt32
+        /// The interpreter's `current` state after each tick of `script`.
+        var states: [String]
     }
 }

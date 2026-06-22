@@ -107,12 +107,20 @@ final class BehaviorTests: XCTestCase {
         guard let data = Self.loadGoldenVectorData() else {
             throw XCTSkip("petcore golden behavior.json not present; determinism covered above")
         }
-        let vector = try JSONDecoder().decode(BehaviorGoldenVector.self, from: data)
-        var interp = BehaviorInterpreter(graph: vector.graph, seed: vector.seed)
-        for (i, step) in vector.steps.enumerated() {
-            let produced = interp.fire(step.trigger)
-            XCTAssertEqual(produced, step.expected,
-                           "golden step \(i) trigger=\(step.trigger.rawValue)")
+        let suite = try JSONDecoder().decode(BehaviorGoldenSuite.self, from: data)
+        XCTAssertFalse(suite.vectors.isEmpty, "golden suite carried no vectors")
+        for vector in suite.vectors {
+            var interp = BehaviorInterpreter(graph: suite.graph, seed: vector.seed)
+            var produced: [String] = []
+            produced.reserveCapacity(suite.script.count)
+            for tick in suite.script {
+                // The contract's script fires one condition per tick; `fire` moves
+                // `current` to the weighted target, or leaves it unchanged when no
+                // transition matches — the per-tick `current` is what the TS core records.
+                for trigger in tick { _ = interp.fire(trigger) }
+                produced.append(interp.current)
+            }
+            XCTAssertEqual(produced, vector.states, "golden parity drift for seed \(vector.seed)")
         }
     }
 
