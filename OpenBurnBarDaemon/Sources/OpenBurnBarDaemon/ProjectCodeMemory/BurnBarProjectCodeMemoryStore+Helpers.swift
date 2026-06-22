@@ -569,9 +569,7 @@ extension BurnBarProjectCodeMemoryStore {
     }
 
     static func gitOutput(root: URL, arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "-C", root.path] + arguments
+        let process = hardenedGitProcess(root: root, arguments: arguments)
         let input = Pipe()
         let output = Pipe()
         process.standardInput = input
@@ -587,6 +585,32 @@ extension BurnBarProjectCodeMemoryStore {
             return nil
         }
         return value
+    }
+
+    private static func hardenedGitProcess(root: URL, arguments: [String]) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = [
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+            "-c", "credential.helper=",
+            "-C", root.path
+        ] + arguments
+        process.environment = hardenedGitEnvironment()
+        return process
+    }
+
+    private static func hardenedGitEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment.filter { entry in
+            entry.key.hasPrefix("GIT_") == false
+        }
+        environment["GIT_ASKPASS"] = "/usr/bin/false"
+        environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
+        environment["GIT_CONFIG_NOSYSTEM"] = "1"
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        environment["SSH_ASKPASS"] = "/usr/bin/false"
+        return environment
     }
 
     static func runHelperProcess(_ process: Process, input: Pipe, payload: Data) -> Bool {
@@ -793,11 +817,10 @@ extension BurnBarProjectCodeMemoryStore {
 
     static func gitIgnoredPaths(root: URL) -> Set<String> {
         guard isGitWorktree(root: root) else { return [] }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
-            "git", "-C", root.path, "status", "--ignored", "--porcelain=v1", "-z", "--untracked-files=all"
-        ]
+        let process = hardenedGitProcess(
+            root: root,
+            arguments: ["status", "--ignored", "--porcelain=v1", "-z", "--untracked-files=all"]
+        )
         let input = Pipe()
         let output = Pipe()
         process.standardInput = input

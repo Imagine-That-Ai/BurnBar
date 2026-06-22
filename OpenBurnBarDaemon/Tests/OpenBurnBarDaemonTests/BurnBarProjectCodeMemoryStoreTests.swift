@@ -631,6 +631,34 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "kept_secret_symbol", projectPath: fixture.project.path)).symbols.isEmpty)
     }
 
+    func testIndexProjectDoesNotExecuteRepoConfiguredGitFSMonitor() throws {
+        let fixture = try makeFixture()
+        try runGit(["init"], cwd: fixture.project)
+        try write(
+            "func fsmonitorBoundaryKept() {}\n",
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("FSMonitor.swift")
+        )
+
+        let marker = fixture.root.appendingPathComponent("fsmonitor-ran.txt", isDirectory: false)
+        let fsmonitor = fixture.root.appendingPathComponent("fsmonitor-hook.sh", isDirectory: false)
+        try write(
+            """
+            #!/bin/sh
+            printf ran > "\(marker.path)"
+            exit 0
+            """,
+            to: fsmonitor
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fsmonitor.path)
+        try runGit(["config", "core.fsmonitor", fsmonitor.path], cwd: fixture.project)
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "Project indexing must not execute repo-configured Git fsmonitor helpers.")
+        XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "fsmonitorBoundaryKept", projectPath: fixture.project.path)).symbols.isEmpty)
+    }
+
     func testIndexProjectEnforcesStorageBudgetAndReportsVacuumMetadata() throws {
         let fixture = try makeFixture()
         try write("func smallBudgetKept() {}\n", to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Kept.swift"))
