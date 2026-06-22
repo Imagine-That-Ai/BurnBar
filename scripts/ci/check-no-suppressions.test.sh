@@ -173,6 +173,27 @@ r="$(new_repo)"
 printf '// eslint-disable-next-line no-console -- prints the CLI banner\nconsole.log(1);\n' >"${r}/a.ts"
 assert_exit 0 "${r}" "eslint -- description passes"
 
+r="$(new_repo)"
+printf '/*\neslint-disable no-console\n*/\nconsole.log(1);\n' >"${r}/a.ts"
+assert_exit 1 "${r}" "multiline block eslint directive is caught"
+r="$(new_repo)"
+printf '/*\neslint-disable no-console -- temporary generated file banner\n*/\nconsole.log(1);\n' >"${r}/a.ts"
+assert_exit 0 "${r}" "multiline block eslint directive with description passes"
+
+r="$(new_repo)"
+printf '<template>\n<!-- eslint-disable vue/no-v-html -->\n</template>\n' >"${r}/a.vue"
+assert_exit 1 "${r}" "vue html eslint directive is caught"
+r="$(new_repo)"
+printf '<template>\n<!-- eslint-disable vue/no-v-html -- third-party widget markup -->\n</template>\n' >"${r}/a.vue"
+assert_exit 0 "${r}" "vue html eslint directive with description passes"
+
+r="$(new_repo)"
+printf 'const re = /"/; console.log(1); // eslint-disable-line no-console\n' >"${r}/a.ts"
+assert_exit 1 "${r}" "regex literal quote does not hide eslint directive"
+r="$(new_repo)"
+printf 'const re = /"/; console.log(1); // eslint-disable-line no-console -- generated cli banner\n' >"${r}/a.ts"
+assert_exit 0 "${r}" "regex literal quote with eslint description passes"
+
 # ── .astro is scanned (was a live blind spot) ────────────────────────────────
 r="$(new_repo)"
 printf -- '---\n// eslint-disable-next-line\nconst x = 1;\n---\n' >"${r}/a.astro"

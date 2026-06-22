@@ -137,6 +137,7 @@ RALLOW_RE = re.compile(r"#!?\[\s*allow\s*\(")
 
 TS_EXTS = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
            ".astro", ".vue", ".svelte")
+HTML_COMMENT_EXTS = (".astro", ".vue", ".svelte")
 EXT_PATTERNS = {
     TS_EXTS: [("eslint-disable", ESLINT_RE), ("ts-suppress", TS_RE)],
     (".py", ".pyi"): [("noqa", NOQA_RE)],
@@ -155,6 +156,104 @@ def patterns_for(path):
         if ext in exts:
             return pats, ext
     return None, None
+
+
+def looks_like_regex_start(line, index):
+    """Heuristic for JS regex literals so quotes inside `/.../` don't fake strings."""
+    j = index - 1
+    while j >= 0 and line[j].isspace():
+        j -= 1
+    if j < 0:
+        return True
+    if line[j] in "([{=,:;!&|?+-*~^<>%":
+        return True
+    k = j
+    while k >= 0 and (line[k].isalnum() or line[k] in "_$"):
+        k -= 1
+    return line[k + 1:j + 1] in {"return", "case", "throw", "typeof", "void", "delete", "yield"}
+
+
+def skip_regex_literal(line, index):
+    i = index + 1
+    in_class = False
+    while i < len(line):
+        c = line[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "[":
+            in_class = True
+        elif c == "]":
+            in_class = False
+        elif c == "/" and not in_class:
+            i += 1
+            while i < len(line) and line[i].isalpha():
+                i += 1
+            return i
+        i += 1
+    return index + 1
+
+
+def comment_ranges(line, ext, in_block=False):
+    """Real comment ranges on a line, skipping markers inside strings/regexes."""
+    if ext in (".py", ".pyi", ".yml", ".yaml"):
+        start = comment_start(line, ext)
+        return ([(start, len(line))] if start != -1 else []), False
+
+    ranges = []
+    quote = None
+    i, n = 0, len(line)
+    if in_block:
+        end = line.find("*/")
+        if end == -1:
+            return [(0, n)], True
+        ranges.append((0, end + 2))
+        i = end + 2
+        in_block = False
+
+    markers = ("//", "/*") + (("<!--",) if ext in HTML_COMMENT_EXTS else ())
+    while i < n:
+        c = line[i]
+        if quote is not None:
+            if c == "\\":
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in ("'", '"', "`"):
+            quote = c
+            i += 1
+            continue
+        if line.startswith("/", i) and not line.startswith(("//", "/*"), i) and looks_like_regex_start(line, i):
+            i = skip_regex_literal(line, i)
+            continue
+        matched = False
+        for mk in markers:
+            if not line.startswith(mk, i):
+                continue
+            if mk == "//":
+                ranges.append((i, n))
+                return ranges, False
+            if mk == "/*":
+                end = line.find("*/", i + 2)
+                if end == -1:
+                    ranges.append((i, n))
+                    return ranges, True
+                ranges.append((i, end + 2))
+                i = end + 2
+                matched = True
+                break
+            end = line.find("-->", i + 4)
+            ranges.append((i, n if end == -1 else end + 3))
+            i = n if end == -1 else end + 3
+            matched = True
+            break
+        if matched:
+            continue
+        i += 1
+    return ranges, False
 
 
 def comment_start(line, ext):
@@ -185,14 +284,18 @@ def comment_start(line, ext):
     return -1
 
 
-def reason_in_comment(line, ext):
+def reason_in_comment(line, ext, ranges=None):
     """True iff a `reason:` token sits in the line's real comment (not in code/args)."""
+    if ranges is not None:
+        return any(REASON.search(line[start:end]) for start, end in ranges)
     i = comment_start(line, ext)
     return i != -1 and bool(REASON.search(line[i:]))
 
 
-def eslint_desc_in_comment(line, ext):
+def eslint_desc_in_comment(line, ext, ranges=None):
     """True iff ESLint's native `-- description` sits in the real directive comment."""
+    if ranges is not None:
+        return any(ESLINT_DESC.search(line[start:end]) for start, end in ranges)
     i = comment_start(line, ext)
     return i != -1 and bool(ESLINT_DESC.search(line[i:]))
 
@@ -210,22 +313,22 @@ def is_config_file(path):
     return False
 
 
-def justified(kind, line, prev, ext, path):
+def justified(kind, line, prev, ext, path, ranges=None):
     if kind in inline_allow.get(path, ()):
         return True
-    if reason_in_comment(line, ext) or PREV_REASON.match(prev):
+    if reason_in_comment(line, ext, ranges) or PREV_REASON.match(prev):
         return True
-    if kind == "eslint-disable" and eslint_desc_in_comment(line, ext):
+    if kind == "eslint-disable" and eslint_desc_in_comment(line, ext, ranges):
         return True
     if kind == "noqa" and NOQA_CODED.search(line):
         return True
     return False
 
 
-def line_contains_occurrence(kind, rx, line, ext):
+def line_contains_occurrence(kind, rx, line, ext, ranges=None):
     if kind == "eslint-disable":
-        i = comment_start(line, ext)
-        return i != -1 and bool(rx.search(line[i:]))
+        ranges = ranges if ranges is not None else comment_ranges(line, ext)[0]
+        return any(rx.search(line[start:end]) for start, end in ranges)
     return bool(rx.search(line))
 
 
@@ -251,12 +354,14 @@ for f in tracked:
     except OSError as exc:
         violations.append((f, 0, "unreadable", f"cannot scan file: {exc}"))
         continue
+    in_block_comment = False
     for idx, line in enumerate(lines):
         prev = lines[idx - 1] if idx > 0 else ""
+        line_ranges, in_block_comment = comment_ranges(line, ext, in_block_comment)
         for kind, rx in pats:
-            if not line_contains_occurrence(kind, rx, line, ext):
+            if not line_contains_occurrence(kind, rx, line, ext, line_ranges):
                 continue
-            if justified(kind, line, prev, ext, f):
+            if justified(kind, line, prev, ext, f, line_ranges):
                 continue
             violations.append((f, idx + 1, kind, line.strip()[:160]))
             break  # one finding per line
