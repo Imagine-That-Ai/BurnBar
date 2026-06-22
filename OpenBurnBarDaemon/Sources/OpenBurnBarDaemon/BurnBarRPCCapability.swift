@@ -117,14 +117,28 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
 /// method whose capability is not in the set.
 public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     public let capabilities: Set<BurnBarRPCCapability>
+    public let allowedMethods: Set<BurnBarRPCMethod>?
 
-    public init(capabilities: Set<BurnBarRPCCapability>) {
+    public init(
+        capabilities: Set<BurnBarRPCCapability>,
+        allowedMethods: Set<BurnBarRPCMethod>? = nil
+    ) {
         self.capabilities = capabilities
+        self.allowedMethods = allowedMethods
     }
 
     /// Whether `method` is permitted under this profile.
     public func permits(_ method: BurnBarRPCMethod) -> Bool {
-        capabilities.contains(BurnBarRPCCapability.capability(for: method))
+        if let allowedMethods {
+            return allowedMethods.contains(method)
+        }
+        return capabilities.contains(BurnBarRPCCapability.capability(for: method))
+    }
+
+    /// Method-level view of this profile. Capability-scoped profiles expand to
+    /// all methods in their capability groups; method-scoped profiles stay exact.
+    public var permittedMethods: Set<BurnBarRPCMethod> {
+        Set(BurnBarRPCMethod.allCases.filter(permits))
     }
 
     /// Full agency — every capability group. This is the BACKWARD-COMPATIBLE
@@ -148,9 +162,36 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         capabilities: [.lifecycle, .client, .run, .tooling, .observability, .search, .missionControl, .memoryRead, .codeRead]
     )
 
+    /// Signed CLI support posture. Keep this as an exact method allowlist, not
+    /// coarse capability groups: the CLI needs `run.resume`, for example, but
+    /// must not inherit the rest of the workspace tool/run-dispatch surface.
+    public static let cliSupport = methodScoped([
+        .health,
+        .controllerSummary,
+        .questionsList,
+        .followupsList,
+        .missionsList,
+        .missionApprove,
+        .simulatorList,
+        .simulatorReplay,
+        .memoryRecall,
+        .codeIndexProject,
+        .codeWatchProject,
+        .codeSearch,
+        .codeIndexStatus,
+        .runResume
+    ])
+
     /// Intersect with `other` so a peer can only ever be FURTHER attenuated,
     /// never widened. Useful when layering a session scope on top of a peer scope.
     public func attenuated(to other: BurnBarPeerCapabilityProfile) -> BurnBarPeerCapabilityProfile {
-        BurnBarPeerCapabilityProfile(capabilities: capabilities.intersection(other.capabilities))
+        Self.methodScoped(permittedMethods.intersection(other.permittedMethods))
+    }
+
+    private static func methodScoped(_ methods: Set<BurnBarRPCMethod>) -> BurnBarPeerCapabilityProfile {
+        BurnBarPeerCapabilityProfile(
+            capabilities: Set(methods.map { BurnBarRPCCapability.capability(for: $0) }),
+            allowedMethods: methods
+        )
     }
 }

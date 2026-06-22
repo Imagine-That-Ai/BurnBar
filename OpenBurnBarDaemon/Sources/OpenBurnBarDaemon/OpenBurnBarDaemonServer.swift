@@ -402,7 +402,11 @@ public actor BurnBarDaemonServer {
         await responseData(for: requestData, peerPID: nil)
     }
 
-    private func responseData(for requestData: Data, peerPID: pid_t?) async -> Data {
+    private func responseData(
+        for requestData: Data,
+        peerPID: pid_t?,
+        peerCapabilityProfile: BurnBarPeerCapabilityProfile? = nil
+    ) async -> Data {
         let rpcStartedAt = ContinuousClock.now
         defer {
             let elapsed = rpcStartedAt.duration(to: ContinuousClock.now)
@@ -455,7 +459,10 @@ public actor BurnBarDaemonServer {
             // — any method whose capability group is outside this peer's scoped
             // profile, BEFORE the rate limiter or any handler runs. This bounds
             // what an authenticated-but-compromised first-party peer may do.
-            guard capabilityProfile.permits(method) else {
+            let effectiveCapabilityProfile = peerCapabilityProfile
+                .map { capabilityProfile.attenuated(to: $0) }
+                ?? capabilityProfile
+            guard effectiveCapabilityProfile.permits(method) else {
                 BurnBarDaemonMetricsCounters.recordRPCError()
                 logger.warning(
                     "rpc_request_capability_denied",
@@ -668,8 +675,9 @@ public actor BurnBarDaemonServer {
         // forged, or swapped peer binary never reaches `responseData`, so the
         // bearer token alone can no longer authorize a non-first-party process.
         let peerAuthenticator = server.peerAuthenticator
+        let peerCapabilityProfile: BurnBarPeerCapabilityProfile
         do {
-            try peerAuthenticator.validatePeer(
+            peerCapabilityProfile = try peerAuthenticator.validatePeer(
                 socketFD: clientFileDescriptor,
                 peerPID: peerPID
             )
@@ -691,7 +699,8 @@ public actor BurnBarDaemonServer {
             )
             let responseData = await server.responseData(
                 for: requestData,
-                peerPID: peerPID
+                peerPID: peerPID,
+                peerCapabilityProfile: peerCapabilityProfile
             ) + Data([0x0A])
             try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
             logger.debug(

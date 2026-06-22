@@ -37,9 +37,11 @@ final class BurnBarDaemonPeerAuthenticatorTests: XCTestCase {
         let observed = DaemonTestObservedToken()
         let authenticator = BurnBarDaemonPeerAuthenticator(enforced: true) { token in
             observed.record(token)
+            return .app
         }
-        XCTAssertNoThrow(try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil))
+        let profile = try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
         XCTAssertTrue(observed.wasInvoked, "code-signature validator must receive the live audit token")
+        XCTAssertEqual(profile, .full)
     }
 
     func test_validatePeer_isNoOpWhenNotEnforced() throws {
@@ -52,15 +54,43 @@ final class BurnBarDaemonPeerAuthenticatorTests: XCTestCase {
             observed.record(token)
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: -1)
         }
-        XCTAssertNoThrow(try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil))
+        let profile = try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
         XCTAssertFalse(observed.wasInvoked, "non-enforcing authenticator must skip the signature check entirely")
+        XCTAssertEqual(profile, .full)
     }
 
     func test_disabled_admitsEveryPeer() throws {
         let pair = try DaemonTestUnixSocketConnection.establish()
         defer { pair.closeAll() }
         XCTAssertFalse(BurnBarDaemonPeerAuthenticator.disabled.isEnforced)
-        XCTAssertNoThrow(try BurnBarDaemonPeerAuthenticator.disabled.validatePeer(socketFD: pair.acceptedFD, peerPID: nil))
+        let profile = try BurnBarDaemonPeerAuthenticator.disabled.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
+        XCTAssertEqual(profile, .full)
+    }
+
+    func test_validatePeer_scopesSignedCLIToCLISupportProfile() throws {
+        let pair = try DaemonTestUnixSocketConnection.establish()
+        defer { pair.closeAll() }
+
+        let authenticator = BurnBarDaemonPeerAuthenticator(enforced: true) { _ in
+            .cli
+        }
+
+        let profile = try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
+        XCTAssertTrue(profile.permits(.health))
+        XCTAssertTrue(profile.permits(.codeSearch))
+        XCTAssertTrue(profile.permits(.runResume))
+        XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
+        XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.workspaceExecuteTool))
+        XCTAssertFalse(profile.permits(.runCreate))
+    }
+
+    func test_peerIdentityMapsBundleIdentifierToAuthorityProfile() {
+        XCTAssertEqual(BurnBarDaemonPeerIdentity(bundleIdentifier: "com.openburnbar.app")?.capabilityProfile, .full)
+        XCTAssertEqual(BurnBarDaemonPeerIdentity(bundleIdentifier: "com.openburnbar.daemon")?.capabilityProfile, .full)
+        XCTAssertEqual(BurnBarDaemonPeerIdentity(bundleIdentifier: "com.openburnbar.cli")?.capabilityProfile, .cliSupport)
+        XCTAssertNil(BurnBarDaemonPeerIdentity(bundleIdentifier: "com.openburnbar.not-a-peer"))
     }
 
     func test_mapsSharedTrustErrorToDaemonFailure() throws {

@@ -15,6 +15,26 @@ public enum BurnBarDaemonPeerAuthenticationFailure: Error, Equatable, Sendable {
     case codeSignatureInvalid(status: OSStatus)
 }
 
+/// First-party daemon RPC peer identity after code-signature validation.
+public enum BurnBarDaemonPeerIdentity: String, CaseIterable, Codable, Sendable {
+    case app = "com.openburnbar.app"
+    case daemon = "com.openburnbar.daemon"
+    case cli = "com.openburnbar.cli"
+
+    public var capabilityProfile: BurnBarPeerCapabilityProfile {
+        switch self {
+        case .app, .daemon:
+            return .full
+        case .cli:
+            return .cliSupport
+        }
+    }
+
+    public init?(bundleIdentifier: String) {
+        self.init(rawValue: bundleIdentifier)
+    }
+}
+
 /// Validates UNIX-socket peers of the main daemon control socket against the
 /// first-party designated requirement.
 ///
@@ -30,7 +50,7 @@ public enum BurnBarDaemonPeerAuthenticationFailure: Error, Equatable, Sendable {
 /// signature gate is what makes a swapped/forged peer binary fail closed even
 /// when it learned the token.
 public struct BurnBarDaemonPeerAuthenticator: Sendable {
-    public typealias CodeSignatureValidator = @Sendable (audit_token_t) throws -> Void
+    public typealias CodeSignatureValidator = @Sendable (audit_token_t) throws -> BurnBarDaemonPeerIdentity
 
     /// `true` enforces the first-party code-signature gate on every accepted
     /// peer. `false` lets every peer through — used for local in-process tests
@@ -90,11 +110,12 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     }
 
     /// Validate the accepted client socket. When enforcement is off this is a
-    /// no-op. When on, the peer's audit token must satisfy the first-party
-    /// designated requirement; any failure (token unreadable, signature invalid,
-    /// or unavailable) is fail-closed and logged.
-    public func validatePeer(socketFD: Int32, peerPID: pid_t?) throws {
-        guard isEnforced else { return }
+    /// no-op returning `.full`. When on, the peer's audit token must satisfy the
+    /// first-party designated requirement; any failure (token unreadable,
+    /// signature invalid, or unavailable) is fail-closed and logged. The
+    /// returned profile scopes the accepted peer's RPC authority.
+    public func validatePeer(socketFD: Int32, peerPID: pid_t?) throws -> BurnBarPeerCapabilityProfile {
+        guard isEnforced else { return .full }
 
         let auditToken: audit_token_t
         do {
@@ -105,7 +126,8 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         }
 
         do {
-            try validateCodeSignature(auditToken)
+            let identity = try validateCodeSignature(auditToken)
+            return identity.capabilityProfile
         } catch let failure as BurnBarDaemonPeerAuthenticationFailure {
             reject(failure, peerPID: peerPID)
             throw failure
@@ -133,18 +155,23 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     /// Production validator: delegate to the shared first-party trust primitive
     /// and re-map its error into the daemon-peer failure space.
     @Sendable
-    public static func defaultCodeSignatureValidation(auditToken: audit_token_t) throws {
+    public static func defaultCodeSignatureValidation(auditToken: audit_token_t) throws -> BurnBarDaemonPeerIdentity {
         #if os(macOS)
         do {
-            try OpenBurnBarPrivilegedTrust.validateCodeSignature(
+            let identifier = try OpenBurnBarPrivilegedTrust.validateCodeSignature(
                 ofAuditToken: auditToken,
                 requirementString: OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement
             )
+            guard let identity = BurnBarDaemonPeerIdentity(bundleIdentifier: identifier) else {
+                throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+            }
+            return identity
         } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
         }
         #else
         _ = auditToken
+        return .app
         #endif
     }
 }
