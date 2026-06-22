@@ -61,6 +61,7 @@ const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
+const ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT = 50;
 
 interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
@@ -461,7 +462,11 @@ function entitlementOriginalTransactionId(raw: unknown): string | undefined {
 }
 
 async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
-  const cg = await db.collectionGroup("entitlements").where("originalTransactionID", "==", originalTransactionId).get();
+  const cg = await db
+    .collectionGroup("entitlements")
+    .where("originalTransactionID", "==", originalTransactionId)
+    .limit(ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT)
+    .get();
   const uids = new Set<string>();
   for (const doc of cg.docs) {
     const m = doc.ref.path.match(/^users\/([^/]+)\//);
@@ -472,6 +477,12 @@ async function findUidByOriginalTransaction(db: Firestore, originalTransactionId
       );
     }
     uids.add(m[1]);
+  }
+  if (cg.docs.length >= ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction owner lookup is too broad.",
+    );
   }
   if (uids.size > 1) {
     throw new EntitlementReconcileError(

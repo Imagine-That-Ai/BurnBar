@@ -926,6 +926,46 @@ test("reconcileEntitlement rejects no-token callable restore for multi-owner tra
   assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
 });
 
+test("reconcileEntitlement rejects saturated no-token original-transaction owner lookup", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  db.setCollectionGroupResult("entitlements", {
+    size: 50,
+    docs: Array.from({ length: 50 }, (_, i) => ({
+      ref: { path: `users/uid-owner/entitlements/legacy_tier_${i}` },
+    })),
+  });
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx-saturated",
+    originalTransactionId: "otx-saturated",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-owner",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /binding_mismatch/,
+  );
+
+  assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
+});
+
 test("reconcileEntitlement accepts no-token background reconcile with same-user crossgrade docs", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
