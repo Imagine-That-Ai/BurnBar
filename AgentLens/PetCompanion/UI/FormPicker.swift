@@ -51,14 +51,14 @@ enum PetCatalog {
             .sorted()
     }
 
-    /// Load every bundled 3D definition, skipping atlas-only pets and malformed files.
+    /// Load every bundled definition, skipping only malformed files.
     static func bundledDefinitions(in bundle: Bundle = .main) -> [PetDefinition] {
         var seen = Set<String>()
         let synced = bundledModelPetIDs(in: bundle).compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
         let legacyModels = bundledPetIDs(in: bundle).compactMap { PetDefinition.loadBundled(id: $0, in: bundle) }
 
         return (synced + legacyModels)
-            .filter { $0.model3d != nil }
+            .filter { $0.defaultForm != nil }
             .filter { seen.insert($0.id).inserted }
     }
 
@@ -70,14 +70,13 @@ enum PetCatalog {
         def.atlas2d?.image
     }
 
-    static func preferredModelForm(for def: PetDefinition) -> PetForm? {
-        guard let model = def.model3d else { return nil }
-        return .model3d(glbName: model.glb)
+    static func preferredForm(for def: PetDefinition) -> PetForm? {
+        def.defaultForm
     }
 
     static func groupedDefinitions(_ definitions: [PetDefinition]) -> [PetGroup] {
-        let modelDefinitions = definitions.filter { $0.model3d != nil }
-        let grouped = Dictionary(grouping: modelDefinitions, by: groupName(for:))
+        let selectableDefinitions = definitions.filter { $0.defaultForm != nil }
+        let grouped = Dictionary(grouping: selectableDefinitions, by: groupName(for:))
         let orderedNames = groupOrder + grouped.keys
             .filter { !groupOrder.contains($0) }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
@@ -152,7 +151,7 @@ struct PetFormPickerView: View {
         let has3D = def.model3d != nil
         return Button {
             selectedPetID = def.id
-            if let form = PetCatalog.preferredModelForm(for: def) { onSelect(def.id, form) }
+            if let form = PetCatalog.preferredForm(for: def) { onSelect(def.id, form) }
         } label: {
             VStack(spacing: DesignSystem.Spacing.xs) {
                 preview(for: def)

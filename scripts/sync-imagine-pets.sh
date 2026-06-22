@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 node --input-type=module <<'NODE'
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -13,6 +13,7 @@ const defaultPetsDir = path.resolve(repoRoot, "../imaginethat-llc/public/pet-mod
 const remoteFallback = "https://imaginethat-llc.onrender.com/pet-models";
 const sourceInput = process.env.IMAGINE_PETS_DIR || defaultPetsDir;
 const strictSync = /^(1|true|yes)$/i.test(process.env.IMAGINE_PETS_SYNC_STRICT || "");
+const allowRemoteSync = /^(1|true|yes)$/i.test(process.env.IMAGINE_PETS_SYNC_REMOTE || "");
 const modelsDir = path.join(repoRoot, "AgentLens", "PetCompanion", "Resources", "Models");
 
 function isURL(value) {
@@ -37,13 +38,23 @@ async function readMaybeRemote(base, relativePath) {
 
 async function readManifest() {
   const attempts = [];
-  const sources = sourceInput === remoteFallback ? [sourceInput] : [sourceInput, remoteFallback];
+  const sources = [sourceInput];
+  if ((allowRemoteSync || isURL(sourceInput)) && sourceInput !== remoteFallback) {
+    sources.push(remoteFallback);
+  }
+
   for (const source of sources) {
     try {
       const bytes = await readMaybeRemote(source, "pets-3d.json");
       return { source, pets: JSON.parse(bytes.toString("utf8")) };
     } catch (error) {
       attempts.push(`${source}: ${error.message}`);
+      if (!isURL(source) && !strictSync && !allowRemoteSync && await hasBundledPetdefs()) {
+        console.warn("Imagine pet sync skipped: local pets-3d.json is unavailable.");
+        for (const attempt of attempts) console.warn(`  ${attempt}`);
+        console.warn("Using bundled PetCompanion model resources. Set IMAGINE_PETS_SYNC_REMOTE=1 to refresh from the hosted manifest.");
+        return null;
+      }
     }
   }
 
@@ -69,6 +80,12 @@ async function hasBundledPetdefs() {
   }
 }
 
+function assertSafeSlug(value, label) {
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(value)) {
+    throw new Error(`${label} must be a safe slug: ${value}`);
+  }
+}
+
 async function writeIfChanged(file, bytes) {
   if (existsSync(file)) {
     const current = await readFile(file);
@@ -88,6 +105,7 @@ function assertPet(entry) {
   if (!Array.isArray(entry.clips) || entry.clips.some((clip) => typeof clip !== "string" || clip.length === 0)) {
     throw new Error(`${entry.id}: "clips" must be a non-empty string array`);
   }
+  assertSafeSlug(entry.id, "pet id");
   if (!entry.glb.endsWith(".glb")) {
     throw new Error(`${entry.id}: glb must be a .glb filename`);
   }
@@ -95,14 +113,36 @@ function assertPet(entry) {
 
 function manifestGlbPath(glb) {
   const relative = glb.replace(/^\/+/, "");
-  if (relative.includes("..")) {
+  const segments = relative.split("/");
+  if (
+    relative.includes("\\") ||
+    segments.some((segment) =>
+      segment.length === 0 ||
+      segment === "." ||
+      segment === ".." ||
+      !/^[A-Za-z0-9._-]+$/.test(segment)
+    )
+  ) {
     throw new Error(`unsafe glb path in pets-3d.json: ${glb}`);
   }
   return relative.includes("/") ? relative : `opt/${relative}`;
 }
 
-function bundledGlbName(glb) {
-  return path.basename(manifestGlbPath(glb));
+function bundledGlbName(entry) {
+  const relative = entry.glb.replace(/^\/+/, "");
+  const baseName = path.basename(manifestGlbPath(entry.glb));
+  if (!relative.includes("/")) return baseName;
+  return `${entry.id}-${baseName}`;
+}
+
+function normalizedClips(entry) {
+  if (
+    entry.id === "alan-kay-smalltalk-paintbrush" &&
+    entry.glb === "alan-kay-smalltalk-paintbrush-walk.glb"
+  ) {
+    return ["Armature|walking_man|baselayer"];
+  }
+  return entry.clips;
 }
 
 function clipMap(clips) {
@@ -137,7 +177,8 @@ function clipMap(clips) {
 }
 
 function petDefinition(entry) {
-  const glbName = bundledGlbName(entry.glb);
+  const glbName = bundledGlbName(entry);
+  const clips = normalizedClips(entry);
   const sourceLabel = entry.source ? `${entry.source} via Imagine That's 3D pet manifest` : `Imagine That's 3D pet manifest`;
   return {
     schema: "petdef/1",
@@ -152,8 +193,8 @@ function petDefinition(entry) {
         kind: "model3d",
         modelKind: entry.kind === "static" ? "static" : "rigged",
         glb: glbName,
-        clipNames: entry.clips,
-        clips: clipMap(entry.clips),
+        clipNames: clips,
+        clips: clipMap(clips),
       },
     ],
     behavior: {
@@ -176,6 +217,27 @@ function petDefinition(entry) {
   };
 }
 
+async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
+  const entries = await readdir(modelsDir, { withFileTypes: true });
+  let pruned = 0;
+
+  for (const entry of entries) {
+    const fullPath = path.join(modelsDir, entry.name);
+    if (entry.isDirectory()) {
+      const petdefPath = path.join(fullPath, "petdef.json");
+      if (existsSync(petdefPath) && !currentIDs.has(entry.name)) {
+        await rm(fullPath, { recursive: true, force: true });
+        pruned += 1;
+      }
+    } else if (entry.isFile() && entry.name.endsWith(".glb") && !currentGlbs.has(entry.name)) {
+      await rm(fullPath, { force: true });
+      pruned += 1;
+    }
+  }
+
+  return pruned;
+}
+
 const manifest = await readManifest();
 if (!manifest) process.exit(0);
 
@@ -186,11 +248,19 @@ if (!Array.isArray(pets)) {
 
 await mkdir(modelsDir, { recursive: true });
 
+const currentIDs = new Set();
+const currentGlbs = new Set();
+for (const pet of pets) {
+  assertPet(pet);
+  currentIDs.add(pet.id);
+  currentGlbs.add(bundledGlbName(pet));
+}
+
 let copied = 0;
 let written = 0;
 for (const pet of pets) {
   assertPet(pet);
-  const glbName = bundledGlbName(pet.glb);
+  const glbName = bundledGlbName(pet);
   const glbBytes = await readMaybeRemote(source, manifestGlbPath(pet.glb));
   if (await writeIfChanged(path.join(modelsDir, glbName), glbBytes)) copied += 1;
 
@@ -198,6 +268,8 @@ for (const pet of pets) {
   if (await writeIfChanged(path.join(modelsDir, pet.id, "petdef.json"), petdefBytes)) written += 1;
 }
 
+const pruned = await pruneStaleManifestOutputs(currentIDs, currentGlbs);
+
 console.log(`Synced ${pets.length} Imagine 3D pets from ${source}`);
-console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}`);
+console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}; stale outputs pruned: ${pruned}`);
 NODE
