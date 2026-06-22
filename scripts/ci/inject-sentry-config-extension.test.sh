@@ -13,7 +13,7 @@ const dsn =
 TS
 
 BURNBAR_EXTENSION_SENTRY_TARGET="$TARGET" \
-BURNBAR_EXTENSION_SENTRY_DSN="https://public@example.ingest.sentry.io/12345?note=quote%27and%5Cnnewline&marker=%24%7Bnot_code%7D" \
+BURNBAR_EXTENSION_SENTRY_DSN="https://public@example.ingest.sentry.io/12345?note=quote%27and%5Cnnewline&marker=$&replacement=%24%7Bnot_code%7D" \
   bash "$ROOT/scripts/ci/inject-sentry-config-extension.sh" >/dev/null
 
 node - "$TARGET" <<'NODE'
@@ -27,7 +27,7 @@ if (source.includes("'__SENTRY_DSN__'")) {
 if (source.includes("quote'and\\nnewline") || source.includes("${not_code}")) {
   throw new Error("raw DSN text was injected instead of serialized data");
 }
-if (!source.includes('"https://public@example.ingest.sentry.io/12345?note=quote%27and%5Cnnewline&marker=%24%7Bnot_code%7D"')) {
+if (!source.includes('"https://public@example.ingest.sentry.io/12345?note=quote%27and%5Cnnewline&marker=$&replacement=%24%7Bnot_code%7D"')) {
   throw new Error(`serialized DSN literal missing from output:\n${source}`);
 }
 new Function(`${source}\nreturn dsn;`);

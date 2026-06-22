@@ -65,7 +65,7 @@ if (!target || !literal) {
 }
 
 const source = fs.readFileSync(target, "utf8");
-const next = source.replaceAll("'__SENTRY_DSN__'", literal);
+const next = source.split("'__SENTRY_DSN__'").join(literal);
 if (next === source) {
   console.error(`::error::Sentry DSN placeholder not found in ${target}.`);
   process.exit(1);
