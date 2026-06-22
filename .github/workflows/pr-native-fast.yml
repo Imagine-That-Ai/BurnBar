@@ -207,48 +207,11 @@ jobs:
           fi
 
           # XcodeGen can churn internal PBX object IDs across versions/runner
-          # installs. Those IDs are not the contract. The contract this gate
-          # enforces is semantic build membership: every generated source,
-          # resource, framework, and Swift package product must already be in
-          # the committed project. This catches missing source/test files like
-          # the test-file drop that motivated this workflow without failing on
-          # meaningless object-ID churn.
+          # installs. Those IDs are not the contract. Everything else is:
+          # sources, targets, build phases, settings, entitlements, packages,
+          # and shell scripts must already match the generated project.
           git show HEAD:OpenBurnBar.xcodeproj/project.pbxproj > /tmp/committed.pbxproj
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          build_file = re.compile(r"/\* ([^*]+?) \*/ = \{isa = PBXBuildFile;")
-          product_name = re.compile(r"productName = ([^;]+);")
-
-          def membership(path: str) -> str:
-              entries: list[str] = []
-              in_product_section = False
-              for line in Path(path).read_text().splitlines():
-                  if "/* Begin XCSwiftPackageProductDependency section */" in line:
-                      in_product_section = True
-                      continue
-                  if "/* End XCSwiftPackageProductDependency section */" in line and in_product_section:
-                      in_product_section = False
-                      continue
-                  if in_product_section:
-                      match = product_name.search(line)
-                      if match:
-                          entries.append(f"swift-package-product:{match.group(1)}")
-                      continue
-                  match = build_file.search(line)
-                  if match:
-                      entries.append(f"build-file:{match.group(1)}")
-              return "\n".join(sorted(entries)) + "\n"
-
-          Path("/tmp/committed.membership").write_text(membership("/tmp/committed.pbxproj"))
-          Path("/tmp/generated.membership").write_text(
-              membership("OpenBurnBar.xcodeproj/project.pbxproj")
-          )
-          PY
-
-          if diff -u /tmp/committed.membership /tmp/generated.membership; then
-            echo "project.pbxproj build membership is in sync with project.yml; diff is generated PBX object-ID churn only."
+          if python3 scripts/ci/verify-xcodegen-pbxproj-drift.py /tmp/committed.pbxproj OpenBurnBar.xcodeproj/project.pbxproj; then
             exit 0
           fi
 
