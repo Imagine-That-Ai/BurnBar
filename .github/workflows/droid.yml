@@ -38,6 +38,7 @@ jobs:
       ) ||
       (
         github.event_name == 'issues' &&
+        github.event.issue.pull_request == null &&
         (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid')) &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
       ) ||

@@ -8,8 +8,10 @@ import Security
 
 #if canImport(Security)
 private let daemonErrSecSuccessCompat: Int32 = errSecSuccess
+private let daemonErrSecDuplicateItemCompat: Int32 = errSecDuplicateItem
 #else
 private let daemonErrSecSuccessCompat: Int32 = 0
+private let daemonErrSecDuplicateItemCompat: Int32 = -25299
 #endif
 
 /// T-DMN-04 — daemon-side pinned phone local-auth verifying-key store.
@@ -45,6 +47,8 @@ public enum DaemonPhoneKeyPinLoad: Equatable, Sendable {
 
 public protocol DaemonPhoneKeyPinBacking: Sendable {
     func load(deviceId: String) -> DaemonPhoneKeyPinLoad
+    /// Insert a new pin. Existing rows must not be overwritten; return
+    /// `errSecDuplicateItem` semantics when a device is already pinned.
     @discardableResult func save(_ record: DaemonPhoneKeyPinRecord) -> Int32
     func delete(deviceId: String)
 }
@@ -54,6 +58,7 @@ public struct DaemonPhoneKeyPinStore: Sendable {
         case pinned(PhoneControlVerifyingKey)
         case absent
         case malformed
+        case conflict
         case storeError(Int32)
     }
 
@@ -67,12 +72,40 @@ public struct DaemonPhoneKeyPinStore: Sendable {
     public func pin(deviceId: String, key: PhoneControlVerifyingKey) -> PinResult {
         let normalizedDeviceId = deviceId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedDeviceId.isEmpty else { return .malformed }
+
+        switch pinnedKey(deviceId: normalizedDeviceId) {
+        case .pinned(let existing):
+            return Self.keysEqual(existing, key) ? .pinned(existing) : .conflict
+        case .absent:
+            break
+        case .malformed:
+            return .malformed
+        case .conflict:
+            return .conflict
+        case .storeError(let status):
+            return .storeError(status)
+        }
+
         let record = DaemonPhoneKeyPinRecord(
             deviceId: normalizedDeviceId,
             publicKeyBase64: key.publicKeyRepresentation.base64EncodedString(),
             keyKind: key.kind
         )
         let status = backing.save(record)
+        if status == daemonErrSecDuplicateItemCompat {
+            switch pinnedKey(deviceId: normalizedDeviceId) {
+            case .pinned(let existing):
+                return Self.keysEqual(existing, key) ? .pinned(existing) : .conflict
+            case .absent:
+                return .storeError(status)
+            case .malformed:
+                return .malformed
+            case .conflict:
+                return .conflict
+            case .storeError(let reloadStatus):
+                return .storeError(reloadStatus)
+            }
+        }
         guard status == daemonErrSecSuccessCompat else {
             return .storeError(status)
         }
@@ -101,6 +134,10 @@ public struct DaemonPhoneKeyPinStore: Sendable {
 
     public func clearPin(deviceId: String) {
         backing.delete(deviceId: deviceId.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private static func keysEqual(_ lhs: PhoneControlVerifyingKey, _ rhs: PhoneControlVerifyingKey) -> Bool {
+        lhs.kind == rhs.kind && lhs.publicKeyRepresentation == rhs.publicKeyRepresentation
     }
 }
 
@@ -142,14 +179,10 @@ public struct DaemonPhoneKeyKeychainPinBacking: DaemonPhoneKeyPinBacking {
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: record.deviceId
         ]
-        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if updateStatus == errSecItemNotFound {
-            var create = query
-            create[kSecValueData as String] = data
-            create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            return SecItemAdd(create as CFDictionary, nil)
-        }
-        return updateStatus
+        var create = query
+        create[kSecValueData as String] = data
+        create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(create as CFDictionary, nil)
     }
 
     public func delete(deviceId: String) {
@@ -206,6 +239,7 @@ public final class DaemonPhoneKeyInMemoryPinBacking: DaemonPhoneKeyPinBacking, S
     public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
         state.withLock { state in
             if let forcedWriteError = state.forcedWriteError { return forcedWriteError }
+            guard state.store[record.deviceId] == nil else { return daemonErrSecDuplicateItemCompat }
             state.store[record.deviceId] = record
             return daemonErrSecSuccessCompat
         }
