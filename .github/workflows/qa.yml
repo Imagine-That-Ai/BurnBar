@@ -32,7 +32,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
-      INTERNAL_RUN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      INTERNAL_RUN: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - name: Checkout repository
@@ -81,7 +81,8 @@ jobs:
         run: npm ci --prefix extensions/openburnbar
 
       # Defense-in-depth: GitHub redacts secrets for fork PRs on pull_request,
-      # but the if: guard skips QA entirely to avoid wasting runner minutes.
+      # but the if: guard also requires a trusted same-repo PR actor before
+      # exposing QA credentials to repo-controlled smoke code.
       - name: Run QA
         if: env.INTERNAL_RUN == 'true'
         id: qa
