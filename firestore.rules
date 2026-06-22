@@ -1938,7 +1938,7 @@ service cloud.firestore {
         && validCliMissionApprovalControls()
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime is string)
-        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus is string)
+        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
         && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
         && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
         && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
