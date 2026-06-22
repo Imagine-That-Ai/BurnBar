@@ -838,6 +838,26 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  createCredentialTransfer: [
+    {
+      path: "credential_transfers/ct_bbbbbbbbbbbbbbbbbbbbbbbb",
+      data: {
+        ownerUid: "__BOB_UID__",
+        schemaVersion: 2,
+        state: "ready",
+        consumed: false,
+        payload: "v2.ssssssssssssssssssssss.iiiiiiiiiiiiiiii.cccccccccccccccccccccccccccccccc",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/transferId/ct_bbbbbbbbbbbbbbbbbbbbbbbb",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   createHermesPairing: [
     {
       path: "users/__BOB_UID__/hermes_pairings/bob-pair",
