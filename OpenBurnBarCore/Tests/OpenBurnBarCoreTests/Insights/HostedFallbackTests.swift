@@ -598,4 +598,32 @@ final class HostedFallbackTests: XCTestCase {
         XCTAssertFalse(answer.isFallback,
                        "Direct local-rules selection isn't a fallback.")
     }
+
+    func testLocalOnlySelectionNeverPromotesToHostedFallback() async throws {
+        let catalog = InsightModelCatalog()
+        await catalog.register(makeHostedStub())
+
+        let engine = OrchestratedInsightAnalysisEngine(
+            platform: .macOS,
+            fallback: RuleBasedInsightAnalysisEngine(platform: .macOS),
+            catalog: catalog,
+            configuration: .init(privacyModeRestrictsToLocal: false)
+        )
+        let localOnlyTag = InsightModelTag(
+            providerKey: "ollama",
+            modelID: "llama-local",
+            displayName: "Local Ollama",
+            egressTier: .localOnly
+        )
+        let request = try makeRequest(
+            prompt: "Explain the local digest without egress.",
+            selected: localOnlyTag
+        )
+        let result = try await engine.analyze(request)
+        let answer = try XCTUnwrap(result.briefingAnswer)
+        XCTAssertEqual(answer.source, .localRules,
+                       "A visible local-only model is the egress contract; missing local gateways must degrade locally instead of invoking hosted fallback.")
+        XCTAssertEqual(result.modelTag.egressTier, .localOnly)
+        XCTAssertNotEqual(result.modelTag.providerKey, BurnBarHostedInsightAdapter.providerKeyRaw)
+    }
 }

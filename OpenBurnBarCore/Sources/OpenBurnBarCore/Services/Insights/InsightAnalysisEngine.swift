@@ -1525,9 +1525,13 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
         after originalError: Error,
         for request: InsightAnalysisRequest
     ) async throws -> InsightAnalysisResult? {
-        // The hosted fallback is only viable for Q&A turns and when
-        // privacy mode permits non-local egress.
+        // The hosted fallback is only viable for Q&A turns when the
+        // visible selected model already permits non-local egress.
+        // Local-only choices are the user's egress contract; a missing
+        // or failed local gateway must degrade to local rules, not
+        // silently promote the context to BurnBar Hosted.
         guard request.instruction == .answerFollowUp else { return nil }
+        guard request.selectedModel.egressTier != .localOnly else { return nil }
         if configuration.privacyModeRestrictsToLocal { return nil }
 
         guard let catalog else { return nil }
