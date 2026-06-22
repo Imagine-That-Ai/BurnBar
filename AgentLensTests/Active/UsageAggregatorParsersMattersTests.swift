@@ -154,7 +154,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
 
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(indexed.conversations.count, 1)
-        XCTAssertTrue(indexed.conversations.first?.fullText.contains(privatePrompt) == true)
+        XCTAssertEqual(indexed.conversations.first?.fullText.contains(privatePrompt), true)
         let warmedCache = try String(contentsOf: cacheURL, encoding: .utf8)
         XCTAssertTrue(warmedCache.contains(privatePrompt))
         XCTAssertTrue(warmedCache.contains(privateAnswer))
