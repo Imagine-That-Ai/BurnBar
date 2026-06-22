@@ -10,13 +10,11 @@ import Foundation
 /// the three existing `NSWindow`s in `WindowManager` (separate cached panel), so
 /// it cannot disturb dashboard/settings/onboarding.
 ///
-/// `@MainActor` singleton, matching the app's other shell singletons
-/// (`WindowManager`, `SettingsManager`). It uses legacy `ObservableObject` for
-/// parity with `WindowManager` (the menubar toggle observes `isVisible`).
+/// `@MainActor`, owned by ``PetCompanionRuntime``. It uses legacy
+/// `ObservableObject` for parity with `WindowManager` (the menubar toggle
+/// observes `isVisible`).
 @MainActor
 final class PetCompanionController: ObservableObject {
-    static let shared = PetCompanionController()
-
     /// Whether the pet panel is currently on screen.
     @Published private(set) var isVisible = false
     /// Whether the ambient behavior loop is running.
@@ -56,7 +54,7 @@ final class PetCompanionController: ObservableObject {
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.
     private var ambientTimer: Timer?
 
-    private init() {}
+    init() {}
 
     // MARK: Lifecycle
 

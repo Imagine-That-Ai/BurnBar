@@ -13,7 +13,26 @@ import SwiftUI
 /// `@AppStorage("pet.activeAgent")`. When the integrator later folds it into
 /// `SettingsManager`, the same UserDefaults key carries over.
 @MainActor
+final class PetCompanionRuntime {
+    let controller: PetCompanionController
+    let hotkey: PetHotkey
+    let systemObservers: PetSystemObservers
+    let keychain = PetKeychainStore()
+
+    init() {
+        let controller = PetCompanionController()
+        self.controller = controller
+        self.hotkey = PetHotkey { [weak controller] in
+            controller?.handlePetClick()
+        }
+        self.systemObservers = PetSystemObservers()
+    }
+}
+
+@MainActor
 enum PetCompanionFeature {
+    static let runtime = PetCompanionRuntime()
+
     /// UserDefaults keys the feature owns (kept in one place for the integrator).
     enum DefaultsKey {
         static let enabled = "pet.companionEnabled"
@@ -44,20 +63,20 @@ enum PetCompanionFeature {
         // SceneKit layered on top to route `model3d` forms to 3D (atlas forms
         // stay on SpriteKit). Order matters — `SceneKitPetRenderer.register`
         // wraps the current (SpriteKit) factory for the atlas branch.
-        SpriteKitPetRenderer.registerAsDefault()
-        SceneKitPetRenderer.register()
+        SpriteKitPetRenderer.registerAsDefault(on: runtime.controller)
+        SceneKitPetRenderer.register(on: runtime.controller)
 
         // Reuse the app's shared chat controller for the bubble's answering brain
         // (Ground Truth #2 — never duplicate the agent layer). Safe to pass nil
         // when the chat stack isn't built yet; the pet then runs ambient-only.
         if let chat {
-            PetCompanionController.shared.attachChat(chat)
+            runtime.controller.attachChat(chat)
         }
 
         // Hardening + summon hotkey come up regardless of the enable flag so the
         // pet can be summoned the first time the user flips it on (C8/C9).
-        PetHotkey.shared.enable()
-        PetSystemObservers.shared.start()
+        runtime.hotkey.enable()
+        runtime.systemObservers.start(controller: runtime.controller)
 
         guard isEnabled else { return }
         showCompanion()
@@ -74,17 +93,17 @@ enum PetCompanionFeature {
     /// silently if the definition resource is missing (no crash, no error toast).
     static func showCompanion() {
         guard let definition = loadActiveDefinition() else { return }
-        PetCompanionController.shared.start(with: definition)
-        PetCompanionController.shared.show()
+        runtime.controller.start(with: definition)
+        runtime.controller.show()
     }
 
     static func hideCompanion() {
-        PetCompanionController.shared.hide()
+        runtime.controller.hide()
     }
 
     /// Toggle visibility and persist the new enabled state.
     static func toggleCompanion() {
-        let controller = PetCompanionController.shared
+        let controller = runtime.controller
         if controller.isVisible {
             controller.hide()
             UserDefaults.standard.set(false, forKey: DefaultsKey.enabled)

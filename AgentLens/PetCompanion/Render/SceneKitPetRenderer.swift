@@ -459,7 +459,7 @@ extension SceneKitPetRenderer {
     /// after ``SpriteKitPetRenderer/registerAsDefault(on:)`` so 2D stays default
     /// and 3D routes here.
     @MainActor
-    static func register(on controller: PetCompanionController = .shared) {
+    static func register(on controller: PetCompanionController) {
         let spriteFactory = controller.rendererFactory
         controller.rendererFactory = { definition, form in
             switch form {

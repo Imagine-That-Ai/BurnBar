@@ -17,23 +17,20 @@ import AppKit
 ///   floating above the newly-active Space.
 /// - **Reduced-motion change** → propagate to the renderer.
 ///
-/// `@MainActor`: it touches AppKit panel state via the controller. Singleton to
-/// match the other shell coordinators; `start()`/`stop()` are idempotent.
+/// `@MainActor`: it touches AppKit panel state via the controller. Owned by
+/// ``PetCompanionRuntime``; `start()`/`stop()` are idempotent.
 @MainActor
 final class PetSystemObservers {
-    static let shared = PetSystemObservers()
-
     private weak var controller: PetCompanionController?
     private var tokens: [NSObjectProtocol] = []
     private var isObserving = false
 
-    private init() {}
+    init() {}
 
     // MARK: Lifecycle
 
-    /// Begin observing, forwarding events to `controller` (defaults to the shared
-    /// instance). Idempotent.
-    func start(controller: PetCompanionController = .shared) {
+    /// Begin observing, forwarding events to `controller`. Idempotent.
+    func start(controller: PetCompanionController) {
         guard !isObserving else { return }
         self.controller = controller
         isObserving = true

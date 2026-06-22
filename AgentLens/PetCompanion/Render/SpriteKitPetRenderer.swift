@@ -319,7 +319,7 @@ extension SpriteKitPetRenderer {
     /// until the SceneKit backend (C5) registers itself. The integrator calls
     /// this once at launch (see `PetCompanionFeature.activateIfEnabled`).
     @MainActor
-    static func registerAsDefault(on controller: PetCompanionController = .shared) {
+    static func registerAsDefault(on controller: PetCompanionController) {
         controller.rendererFactory = { definition, form in
             SpriteKitPetRenderer(definition: definition, form: form)
         }

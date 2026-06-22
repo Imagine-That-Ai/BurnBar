@@ -77,7 +77,7 @@ enum PetChatProviders {
     /// All providers in ``ChatBackendID`` order, sharing one bridge + keychain.
     static func all(
         bridge: CLIBridge,
-        keychain: PetKeychainStore = .shared,
+        keychain: PetKeychainStore = PetKeychainStore(),
         workspace: URL? = nil
     ) -> [AgentChatProvider] {
         ChatBackendID.allCases.map { provider(for: $0, bridge: bridge, keychain: keychain, workspace: workspace) }
@@ -86,7 +86,7 @@ enum PetChatProviders {
     static func provider(
         for backend: ChatBackendID,
         bridge: CLIBridge,
-        keychain: PetKeychainStore = .shared,
+        keychain: PetKeychainStore = PetKeychainStore(),
         workspace: URL? = nil
     ) -> AgentChatProvider {
         CLIBridgeChatProvider(
@@ -164,8 +164,9 @@ final class CLIBridgeChatProvider: AgentChatProvider {
                         }
                     }
                 } catch {
-                    // Surface nothing further; the caller treats an empty/finished
-                    // stream as "route to the local floor" (PLAN C6).
+                    for await token in Self.fallbackStream(history: history) {
+                        continuation.yield(token)
+                    }
                 }
                 continuation.finish()
             }
@@ -209,6 +210,19 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         case .cursorAgent:
             return bridge.chatCursorAgentStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }
+    }
+
+    private static func fallbackStream(history: [ChatMessageRecord]) -> AsyncStream<String> {
+        let turns = history.map { record in
+            let role: PetChatFallback.Turn.Role
+            switch record.role {
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: role = .system
+            }
+            return PetChatFallback.Turn(role: role, text: record.content)
+        }
+        return PetChatFallback.stream(history: turns)
     }
 
     /// The configured OpenClaw base URL (stored alongside the token under a

@@ -62,7 +62,7 @@ final class PetFirstRunModel {
     /// Carbon hotkeys don't require Accessibility, but we still surface the
     /// Accessibility prompt for users who want richer cursor-aware behavior).
     func grantHotkey() {
-        hotkeyRegistered = PetHotkey.shared.enable()
+        hotkeyRegistered = PetCompanionFeature.runtime.hotkey.enable()
     }
 
     /// Open System Settings → Privacy → Accessibility so the user can grant the
@@ -79,7 +79,7 @@ final class PetFirstRunModel {
         UserDefaults.standard.set(selectedPetID, forKey: PetCompanionFeature.DefaultsKey.activePetID)
         UserDefaults.standard.set(true, forKey: PetCompanionFeature.DefaultsKey.enabled)
         PetCompanionFeature.showCompanion()
-        PetSystemObservers.shared.start()
+        PetCompanionFeature.runtime.systemObservers.start(controller: PetCompanionFeature.runtime.controller)
         Self.markCompleted()
     }
 
@@ -140,13 +140,13 @@ struct PetFirstRunView: View {
             PetFormPickerView(selectedPetID: $model.selectedPetID) { id, form in
                 model.selectedPetID = id
                 // Live skin swap if the pet is already on screen (PLAN C8 accept).
-                if PetCompanionController.shared.isVisible {
-                    PetCompanionController.shared.setForm(form)
+                if PetCompanionFeature.runtime.controller.isVisible {
+                    PetCompanionFeature.runtime.controller.setForm(form)
                 }
             }
         case .pickAgent:
             PetAgentSwitcher(authStates: model.authStates) { backend in
-                PetCompanionController.shared.chat?.switchBackend(to: backend)
+                PetCompanionFeature.runtime.controller.chat?.switchBackend(to: backend)
             }
             if model.isProbing {
                 Label("Checking agents…", systemImage: "antenna.radiowaves.left.and.right")
@@ -163,7 +163,7 @@ struct PetFirstRunView: View {
     private var permissionsStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             permissionRow(
-                title: "Summon hotkey (\(PetHotkey.shared.combo.displayString))",
+                title: "Summon hotkey (\(PetCompanionFeature.runtime.hotkey.combo.displayString))",
                 detail: "Press it from anywhere to summon or dismiss the chat bubble.",
                 granted: model.hotkeyRegistered,
                 action: { model.grantHotkey() },
@@ -213,7 +213,7 @@ struct PetFirstRunView: View {
             Image(systemName: "pawprint.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(DesignSystem.Colors.primaryGradient)
-            Text("Your companion will land in the corner. Click it to chat, or press \(PetHotkey.shared.combo.displayString) to summon the bubble.")
+            Text("Your companion will land in the corner. Click it to chat, or press \(PetCompanionFeature.runtime.hotkey.combo.displayString) to summon the bubble.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)

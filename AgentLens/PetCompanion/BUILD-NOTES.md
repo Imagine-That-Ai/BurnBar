@@ -326,7 +326,7 @@ persisted in `@AppStorage("pet.companionEnabled")`). Or complete first-run.
       Accessibility/Input-Monitoring permission required). Rebind persists across
       relaunch (`pet.hotkey.combo`).
 11. **Form swap (claudecode).**
-    - Open the FormPicker (or call `PetCompanionController.shared.setForm(.model3d(glbName:"claudecode-crab"))`)
+    - Open the FormPicker (or call `PetCompanionFeature.runtime.controller.setForm(.model3d(glbName:"claudecode-crab"))`)
       → 2D↔3D swap with the **same** behavior graph running, no panel teardown.
 
 ---

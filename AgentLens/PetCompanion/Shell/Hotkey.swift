@@ -14,11 +14,9 @@ import Carbon.HIToolbox
 /// live.
 ///
 /// `@MainActor`: it mutates AppKit/Carbon UI registration, which is main-thread
-/// only. A small singleton like the app's other shell coordinators.
+/// only. Owned by ``PetCompanionRuntime``.
 @MainActor
 final class PetHotkey {
-    static let shared = PetHotkey()
-
     /// A persisted key combo: a Carbon virtual keycode + Carbon modifier mask.
     struct Combo: Equatable, Codable, Sendable {
         var keyCode: UInt32
@@ -54,9 +52,7 @@ final class PetHotkey {
     /// The action fired when the hotkey is pressed. Defaults to toggling the
     /// bubble on the shared controller; the host can override (e.g. to also
     /// summon the pet if hidden).
-    var onTrigger: () -> Void = {
-        PetCompanionController.shared.handlePetClick()
-    }
+    var onTrigger: () -> Void
 
     private static let defaultsKey = "pet.hotkey.combo"
     private let hotKeyID = EventHotKeyID(signature: OSType(0x42425052 /* "BBPR" */), id: 1)
@@ -65,8 +61,9 @@ final class PetHotkey {
     private var eventHandler: EventHandlerRef?
     private(set) var combo: Combo
 
-    private init() {
+    init(onTrigger: @escaping () -> Void) {
         combo = Self.loadCombo() ?? .defaultCombo
+        self.onTrigger = onTrigger
     }
 
     // MARK: Registration

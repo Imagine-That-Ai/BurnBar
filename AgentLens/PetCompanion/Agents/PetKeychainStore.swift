@@ -67,9 +67,6 @@ struct PetKeychainStore: Sendable {
     /// more than one value under the same provider service.
     static let defaultAccount = "token"
 
-    /// The shared instance (stateless — a convenience, not a singleton with state).
-    static let shared = PetKeychainStore()
-
     init() {}
 
     // MARK: Round-trip API
