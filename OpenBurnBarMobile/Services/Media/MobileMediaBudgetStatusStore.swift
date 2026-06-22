@@ -15,9 +15,12 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
     private(set) var lastKnownStatus: MediaBudgetStatus?
     private(set) var failClosedDueToPermissionDenied = false
     @Published private(set) var mediaKillSwitch = true
+    var isListening: Bool { listener != nil }
 
     private let documentPath: String
-    private let isSignedInProvider: () -> Bool
+    private let isFirebaseConfiguredProvider: () -> Bool
+    private let isCloudAccountProvider: () -> Bool
+    private let addSnapshotListener: (String, @escaping (DocumentSnapshot?, Error?) -> Void) -> ListenerRegistration
     private static let commercialRemoteConfigDefaults: [String: NSObject] = [
         "media_kill_switch": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
@@ -50,12 +53,25 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
 
     init(
         documentPath: String = "ops/media_budget_status/state/current",
-        isSignedInProvider: @escaping () -> Bool = {
-            Auth.auth().currentUser != nil
-        }
+        isFirebaseConfiguredProvider: @escaping () -> Bool = {
+            FirebaseApp.app() != nil
+        },
+        isCloudAccountProvider: @escaping () -> Bool = {
+            Auth.auth().currentUser?.isAnonymous == false
+        },
+        addSnapshotListener: @escaping (String, @escaping (DocumentSnapshot?, Error?) -> Void) -> ListenerRegistration
+            = { documentPath, handler in
+                Firestore.firestore()
+                    .document(documentPath)
+                    .addSnapshotListener { snapshot, error in
+                        handler(snapshot, error)
+                    }
+            }
     ) {
         self.documentPath = documentPath
-        self.isSignedInProvider = isSignedInProvider
+        self.isFirebaseConfiguredProvider = isFirebaseConfiguredProvider
+        self.isCloudAccountProvider = isCloudAccountProvider
+        self.addSnapshotListener = addSnapshotListener
     }
 
     var effectiveStatus: MediaBudgetStatus {
@@ -70,8 +86,16 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         startListening()
     }
 
+    func handleCloudAccountStateChanged(isCloudAccount: Bool) {
+        if isCloudAccount {
+            startListening()
+        } else {
+            stopListening()
+        }
+    }
+
     func refreshRemoteConfigKillSwitch() {
-        guard FirebaseApp.app() != nil else { return }
+        guard isFirebaseConfiguredProvider() else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
         remoteConfig.fetchAndActivate { [weak self] _, error in
@@ -86,14 +110,13 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
 
     func startListening() {
         guard listener == nil else { return }
-        guard FirebaseApp.app() != nil else { return }
-        listener = Firestore.firestore()
-            .document(documentPath)
-            .addSnapshotListener { [weak self] snapshot, error in
-                Task { @MainActor in
-                    self?.handleSnapshot(snapshot: snapshot, error: error)
-                }
+        guard isFirebaseConfiguredProvider() else { return }
+        guard isCloudAccountProvider() else { return }
+        listener = addSnapshotListener(documentPath) { [weak self] snapshot, error in
+            Task { @MainActor in
+                self?.handleSnapshot(snapshot: snapshot, error: error)
             }
+        }
     }
 
     func stopListening() {
@@ -135,7 +158,7 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         let nsError = error as NSError
         let code = FirestoreErrorCode.Code(rawValue: nsError.code)
         switch code {
-        case .permissionDenied where isSignedInProvider():
+        case .permissionDenied where isCloudAccountProvider():
             failClosedDueToPermissionDenied = true
             if lastKnownStatus == nil {
                 latestStatus = nil

@@ -224,8 +224,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             await Self.validateAppCheckIfNeeded()
         }
         Auth.auth().addStateDidChangeListener { _, user in
-            guard user != nil, user?.isAnonymous == false else { return }
+            let isCloudAccount = user?.isAnonymous == false
             Task { @MainActor in
+                MobileMediaBudgetStatusStore.shared.handleCloudAccountStateChanged(isCloudAccount: isCloudAccount)
+                guard isCloudAccount else { return }
                 await Self.validateAppCheckIfNeeded()
             }
         }
