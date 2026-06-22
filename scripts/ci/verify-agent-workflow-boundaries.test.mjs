@@ -1339,6 +1339,43 @@ expect(
 );
 
 expect(
+  "Droid action same-job relayed needs output export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "      - name: Run Droid Exec\n",
+        [
+          "      - name: Relay tainted needs output",
+          "        id: relay",
+          '        run: echo "derived=${{ needs.prepare.outputs.payload }}" >> "$GITHUB_OUTPUT"',
+          "      - name: Run Droid Exec",
+          "",
+        ].join("\n"),
+      )
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n        env:\n          EXTRA_PAYLOAD: ${{ steps.relay.outputs.derived }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
   "Droid action toJSON needs job tainted output export fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -1360,6 +1397,33 @@ expect(
       .replace(
         "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
         "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ toJSON(needs.prepare) }}\n",
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid action bare needs context tainted output export fails",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs }}\n",
       ),
   },
   1,
@@ -1737,6 +1801,35 @@ expect(
 );
 
 expect(
+  "Droid action natural-language steps output remains clean",
+  {
+    "droid.yml": REMEDIATED_DROID.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      summary: ${{ steps.note.outputs.summary }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "      - id: note",
+        '        run: echo "summary=All steps done" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  droid:\n", "  droid:\n    needs: prepare\n")
+      .replace(
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          factory_api_key: ${{ secrets.FACTORY_API_KEY }}\n          extra_payload: ${{ needs.prepare.outputs.summary }}\n",
+      ),
+  },
+  0,
+);
+
+expect(
   "Droid action relay job GITHUB_OUTPUT taint export fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
@@ -1950,6 +2043,47 @@ expect(
       .replace(
         "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
         "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n          EXTRA_PAYLOAD: ${{ needs.prepare.outputs.payload }}\n",
+      )
+      .replace(
+        '          droid exec --auto medium "/wiki"',
+        '          droid exec --auto medium "/wiki" "$EXTRA_PAYLOAD"',
+      ),
+  },
+  1,
+);
+
+expect(
+  "Droid CLI same-job relayed needs output export fails",
+  {
+    "droid-wiki-refresh.yml": REMEDIATED_DROID_CLI.replace(
+      "jobs:\n",
+      [
+        "jobs:",
+        "  prepare:",
+        "    outputs:",
+        "      payload: ${{ steps.helper.outputs.payload }}",
+        "    steps:",
+        "      - id: helper",
+        "        env:",
+        "          DATA: ${{ secrets.OPENAI_API_KEY }}",
+        '        run: echo "payload=${DATA:-fallback}" >> "$GITHUB_OUTPUT"',
+        "",
+      ].join("\n"),
+    )
+      .replace("  wiki-refresh:\n", "  wiki-refresh:\n    needs: prepare\n")
+      .replace(
+        "      - name: Generate Wiki\n",
+        [
+          "      - name: Relay tainted needs output",
+          "        id: relay",
+          '        run: echo "derived=${{ needs.prepare.outputs.payload }}" >> "$GITHUB_OUTPUT"',
+          "      - name: Generate Wiki",
+          "",
+        ].join("\n"),
+      )
+      .replace(
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
+        "          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n          EXTRA_PAYLOAD: ${{ steps.relay.outputs.derived }}\n",
       )
       .replace(
         '          droid exec --auto medium "/wiki"',

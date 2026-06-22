@@ -816,36 +816,82 @@ function stepWritesToGithubChannel(step, channel) {
   return new RegExp(`\\bGITHUB_${channel}\\b`, "u").test(stepRunValue(step));
 }
 
-function stepWritesSecretOrTokenToGithubChannel(step, channel) {
-  const run = stepRunValue(step);
+function valueReferencesSensitiveOrTaintedStepMaterial(
+  value,
+  taintedOutputs,
+  taintedStepIds,
+) {
+  return (
+    valueReferencesSensitiveMaterial(value, taintedOutputs) ||
+    valueReferencesTaintedStepState(value, taintedStepIds)
+  );
+}
+
+function stepWritesSensitiveMaterialToGithubChannel(
+  step,
+  channel,
+  taintedOutputs,
+  taintedStepIds,
+) {
   if (!stepWritesToGithubChannel(step, channel)) return false;
-  if (valueReferencesSecretOrToken(run)) return true;
+  const run = stepRunValue(step);
+  if (
+    valueReferencesSensitiveOrTaintedStepMaterial(
+      run,
+      taintedOutputs,
+      taintedStepIds,
+    )
+  ) {
+    return true;
+  }
   return mappingEntries(step, "env").some(
     (entry) =>
-      valueReferencesSecretOrToken(entry.value) &&
-      stepRunReferencesEnvName(step, entry.key),
+      stepRunReferencesEnvName(step, entry.key) &&
+      valueReferencesSensitiveOrTaintedStepMaterial(
+        entry.value,
+        taintedOutputs,
+        taintedStepIds,
+      ),
   );
 }
 
-function stepWritesSecretOrTokenToGithubEnvironmentChannel(step) {
+function stepWritesSensitiveMaterialToGithubEnvironmentChannel(
+  step,
+  taintedOutputs,
+  taintedStepIds,
+) {
   return (
-    stepWritesSecretOrTokenToGithubChannel(step, "ENV") ||
-    stepWritesSecretOrTokenToGithubChannel(step, "OUTPUT")
+    stepWritesSensitiveMaterialToGithubChannel(
+      step,
+      "ENV",
+      taintedOutputs,
+      taintedStepIds,
+    ) ||
+    stepWritesSensitiveMaterialToGithubChannel(
+      step,
+      "OUTPUT",
+      taintedOutputs,
+      taintedStepIds,
+    )
   );
 }
 
-function stepWritesSecretOrTokenToGithubOutputChannel(step) {
-  return stepWritesSecretOrTokenToGithubChannel(step, "OUTPUT");
-}
-
-function precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+function precedingStepsWriteSensitiveMaterialToGithubEnvironmentChannel(
   job,
   steps,
   step,
+  taintedOutputs,
+  taintedStepIds,
 ) {
   return jobSteps(job, steps)
     .filter((candidate) => candidate.start < step.start)
-    .some(stepWritesSecretOrTokenToGithubEnvironmentChannel);
+    .some((candidate) =>
+      stepWritesSensitiveMaterialToGithubEnvironmentChannel(
+        candidate,
+        taintedOutputs,
+        taintedStepIds,
+      ),
+    );
 }
 
 function topLevelEntryValue(source, key) {
@@ -909,8 +955,15 @@ function valueReferencesStepObject(value, stepId) {
 
 function valueReferencesStepsContext(value) {
   const normalized = normalizeYamlScalar(value);
-  if (/\btoJSON\s*\(\s*steps\s*\)/iu.test(normalized)) return true;
-  return /\bsteps\b(?!\s*(?:\.|\[))/iu.test(normalized);
+  if (
+    /\$\{\{[\s\S]*?\btoJSON\s*\(\s*steps\s*\)[\s\S]*?\}\}/iu.test(
+      normalized,
+    )
+  )
+    return true;
+  return /\$\{\{[\s\S]*?\bsteps\b(?!\s*(?:\.|\[))[\s\S]*?\}\}/iu.test(
+    normalized,
+  );
 }
 
 function valueReferencesStepOutputOrObject(value, stepId) {
@@ -933,18 +986,38 @@ function stepWritesTaintedMaterialToGithubOutputChannel(
   taintedOutputs,
   taintedStepIds,
 ) {
-  if (!stepWritesToGithubChannel(step, "OUTPUT")) return false;
-  const run = stepRunValue(step);
-  if (valueReferencesSensitiveMaterial(run, taintedOutputs)) return true;
-  if (valueReferencesTaintedStepState(run, taintedStepIds)) {
-    return true;
+  return stepWritesSensitiveMaterialToGithubChannel(
+    step,
+    "OUTPUT",
+    taintedOutputs,
+    taintedStepIds,
+  );
+}
+
+function taintedStepIdsForJob(job, steps, taintedOutputs) {
+  const currentJobSteps = jobSteps(job, steps);
+  const taintedStepIds = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const step of currentJobSteps) {
+      const id = directEntryValue(step, "id");
+      if (!id) continue;
+      const normalizedId = normalizedContextName(id);
+      if (taintedStepIds.has(normalizedId)) continue;
+      if (
+        stepWritesTaintedMaterialToGithubOutputChannel(
+          step,
+          taintedOutputs,
+          taintedStepIds,
+        )
+      ) {
+        taintedStepIds.add(normalizedId);
+        changed = true;
+      }
+    }
   }
-  return mappingEntries(step, "env").some((entry) => {
-    if (!stepRunReferencesEnvName(step, entry.key)) return false;
-    if (valueReferencesSensitiveMaterial(entry.value, taintedOutputs))
-      return true;
-    return valueReferencesTaintedStepState(entry.value, taintedStepIds);
-  });
+  return taintedStepIds;
 }
 
 function taintedJobOutputsByJobName(jobs, steps) {
@@ -956,28 +1029,7 @@ function taintedJobOutputsByJobName(jobs, steps) {
       const name = jobName(job);
       if (!name) continue;
 
-      const currentJobSteps = jobSteps(job, steps);
-      const taintedStepIds = new Set();
-      let stepChanged = true;
-      while (stepChanged) {
-        stepChanged = false;
-        for (const step of currentJobSteps) {
-          const id = directEntryValue(step, "id");
-          if (!id) continue;
-          const normalizedId = normalizedContextName(id);
-          if (taintedStepIds.has(normalizedId)) continue;
-          if (
-            stepWritesTaintedMaterialToGithubOutputChannel(
-              step,
-              taintedOutputs,
-              taintedStepIds,
-            )
-          ) {
-            taintedStepIds.add(normalizedId);
-            stepChanged = true;
-          }
-        }
-      }
+      const taintedStepIds = taintedStepIdsForJob(job, steps, taintedOutputs);
 
       const normalizedName = normalizedContextName(name);
       const outputNames = new Set(taintedOutputs.get(normalizedName) ?? []);
@@ -999,6 +1051,15 @@ function taintedJobOutputsByJobName(jobs, steps) {
     }
   }
   return taintedOutputs;
+}
+
+function taintedStepIdsByJobStart(jobs, steps, taintedOutputs) {
+  return new Map(
+    jobs.map((job) => [
+      job.start,
+      taintedStepIdsForJob(job, steps, taintedOutputs),
+    ]),
+  );
 }
 
 function valueReferencesNeedsContext(value) {
@@ -1051,6 +1112,12 @@ function valueReferencesTaintedNeedsOutput(value, taintedOutputs) {
   }
   const normalized = normalizeYamlScalar(value);
   if (/\btoJSON\s*\(\s*needs\s*\)/iu.test(normalized)) return true;
+  if (
+    /\$\{\{[\s\S]*?\bneeds\b(?!\s*(?:\.|\[))[\s\S]*?\}\}/iu.test(
+      normalized,
+    )
+  )
+    return true;
   for (const [name, outputs] of taintedOutputs) {
     if (!valueReferencesNeedsJob(value, name)) continue;
     if (valueReferencesNeedsJobObject(value, name)) return true;
@@ -1368,6 +1435,11 @@ for (const file of workflowFiles()) {
     ...droidCliJobs,
   ]);
   const taintedNeedsOutputs = taintedJobOutputsByJobName(jobs, steps);
+  const taintedStepIdsByJob = taintedStepIdsByJobStart(
+    jobs,
+    steps,
+    taintedNeedsOutputs,
+  );
   const workflowEvents = scopedWorkflowEvents(source);
   const singleScopedWorkflowEvent =
     workflowEvents.length === 1 ? workflowEvents[0] : null;
@@ -1458,6 +1530,10 @@ for (const file of workflowFiles()) {
     }
 
     for (const step of droidActionSteps) {
+      const job = blockContainingLine(jobs, step.start);
+      const taintedStepIds = job
+        ? (taintedStepIdsByJob.get(job.start) ?? new Set())
+        : new Set();
       const requiredActionConjuncts = [
         "env.FACTORY_API_KEY_AVAILABLE == 'true'",
       ];
@@ -1500,7 +1576,11 @@ for (const file of workflowFiles()) {
       }
       for (const entry of mappingEntries(step, "with")) {
         if (
-          !valueReferencesSensitiveMaterial(entry.value, taintedNeedsOutputs)
+          !valueReferencesSensitiveOrTaintedStepMaterial(
+            entry.value,
+            taintedNeedsOutputs,
+            taintedStepIds,
+          )
         ) {
           continue;
         }
@@ -1512,7 +1592,11 @@ for (const file of workflowFiles()) {
       }
       for (const entry of mappingEntries(step, "env")) {
         if (
-          !valueReferencesSensitiveMaterial(entry.value, taintedNeedsOutputs)
+          !valueReferencesSensitiveOrTaintedStepMaterial(
+            entry.value,
+            taintedNeedsOutputs,
+            taintedStepIds,
+          )
         ) {
           continue;
         }
@@ -1521,13 +1605,14 @@ for (const file of workflowFiles()) {
           "agent action step must not expose secrets or tokens through env",
         );
       }
-      const job = blockContainingLine(jobs, step.start);
       if (
         job &&
-        precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+        precedingStepsWriteSensitiveMaterialToGithubEnvironmentChannel(
           job,
           steps,
           step,
+          taintedNeedsOutputs,
+          taintedStepIds,
         )
       ) {
         fail(
@@ -1575,8 +1660,16 @@ for (const file of workflowFiles()) {
   }
 
   for (const step of droidCliSteps) {
+    const job = blockContainingLine(jobs, step.start);
+    const taintedStepIds = job
+      ? (taintedStepIdsByJob.get(job.start) ?? new Set())
+      : new Set();
     if (
-      valueReferencesSensitiveMaterial(stepRunValue(step), taintedNeedsOutputs)
+      valueReferencesSensitiveOrTaintedStepMaterial(
+        stepRunValue(step),
+        taintedNeedsOutputs,
+        taintedStepIds,
+      )
     ) {
       fail(
         file,
@@ -1584,7 +1677,13 @@ for (const file of workflowFiles()) {
       );
     }
     for (const entry of mappingEntries(step, "env")) {
-      if (!valueReferencesSensitiveMaterial(entry.value, taintedNeedsOutputs)) {
+      if (
+        !valueReferencesSensitiveOrTaintedStepMaterial(
+          entry.value,
+          taintedNeedsOutputs,
+          taintedStepIds,
+        )
+      ) {
         continue;
       }
       if (isAllowedDroidCliSecretEnv(entry.key, entry.value)) continue;
@@ -1605,10 +1704,20 @@ for (const file of workflowFiles()) {
         entry.value,
         taintedNeedsOutputs,
       );
-      if (!referencesSecretOrToken && !referencesTaintedNeedsOutput) continue;
+      const referencesTaintedStepState = valueReferencesTaintedStepState(
+        entry.value,
+        taintedStepIds,
+      );
+      if (
+        !referencesSecretOrToken &&
+        !referencesTaintedNeedsOutput &&
+        !referencesTaintedStepState
+      )
+        continue;
       if (
         referencesSecretOrToken &&
         !referencesTaintedNeedsOutput &&
+        !referencesTaintedStepState &&
         !sensitiveEnvName(entry.key)
       )
         continue;
@@ -1618,13 +1727,14 @@ for (const file of workflowFiles()) {
         "Droid CLI execution body must not pass inherited extra secrets to droid",
       );
     }
-    const job = blockContainingLine(jobs, step.start);
     if (
       job &&
-      precedingStepsWriteSecretOrTokenToGithubEnvironmentChannel(
+      precedingStepsWriteSensitiveMaterialToGithubEnvironmentChannel(
         job,
         steps,
         step,
+        taintedNeedsOutputs,
+        taintedStepIds,
       )
     ) {
       fail(
