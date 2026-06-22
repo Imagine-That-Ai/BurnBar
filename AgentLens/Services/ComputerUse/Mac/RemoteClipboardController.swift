@@ -587,11 +587,23 @@ final class RemoteUnlockCredentialController {
         }
 
         let validationNow = Date()
+        guard let activeBinding = context.readiness.activeRemoteUnlockBinding(
+            sessionId: credential.sessionId,
+            peerNodeId: credential.authority.peerNodeId,
+            now: validationNow
+        ) else {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=session_mismatch")
+            return result(.denied, detail: "session_mismatch")
+        }
+        let attestationRequirement = remoteUnlockCredentialAttestationRequirement(
+            base: context.attestation,
+            activeBinding: activeBinding
+        )
         do {
             _ = try context.validator.validate(
                 envelope: credential.authority,
                 remoteUnlockCredential: credential,
-                attestation: context.attestation,
+                attestation: attestationRequirement,
                 now: validationNow
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
@@ -600,15 +612,6 @@ final class RemoteUnlockCredentialController {
         } catch {
             Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=signature_failure")
             return result(.denied, detail: "signature_failure")
-        }
-
-        guard context.readiness.isRemoteUnlockSessionActive(
-            sessionId: credential.sessionId,
-            peerNodeId: credential.authority.peerNodeId,
-            now: validationNow
-        ) else {
-            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=session_mismatch")
-            return result(.denied, detail: "session_mismatch")
         }
 
         switch policy.validate(credential: credential, sessionId: credential.sessionId, now: validationNow) {
@@ -671,16 +674,11 @@ final class RemoteUnlockCredentialController {
                         "remote_unlock_virtual_hid_input_start requestID=\(credential.requestId, privacy: .public)"
                     )
                     Self.debugTrace("remote_unlock_virtual_hid_input_start requestID=\(credential.requestId)")
-                    let binding = context.readiness.activeRemoteUnlockBinding(
-                        sessionId: credential.sessionId,
-                        peerNodeId: credential.authority.peerNodeId,
-                        now: validationNow
-                    )
                     try await RemoteUnlockVirtualHIDClient(
                         sessionId: credential.sessionId,
                         peerNodeId: credential.authority.peerNodeId,
-                        presentingEscrowDeviceId: binding?.viewerDeviceId,
-                        requiredAttestationHashBlake3: binding?.attestationHashBlake3 ?? credential.authority.attestationHashBlake3
+                        presentingEscrowDeviceId: activeBinding.viewerDeviceId,
+                        requiredAttestationHashBlake3: activeBinding.attestationHashBlake3 ?? credential.authority.attestationHashBlake3
                     ).typeCredential(password)
                 } else {
                     Self.log.info(
@@ -748,6 +746,17 @@ final class RemoteUnlockCredentialController {
 
     private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
         error.auditDetailToken
+    }
+
+    private func remoteUnlockCredentialAttestationRequirement(
+        base: PhoneControlAttestationRequirement,
+        activeBinding: MacRemoteUnlockReadinessService.ActiveRemoteUnlockBinding
+    ) -> PhoneControlAttestationRequirement {
+        guard let activeAttestation = activeBinding.attestationHashBlake3,
+              activeAttestation.isEmpty == false else {
+            return base
+        }
+        return .required(digest: activeAttestation)
     }
 
     /// Read (or create) the HPKE recipient key material that certification is recorded against.
