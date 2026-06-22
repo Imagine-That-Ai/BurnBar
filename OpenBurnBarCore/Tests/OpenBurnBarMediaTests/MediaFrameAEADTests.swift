@@ -20,6 +20,16 @@ final class MediaFrameAEADTests: XCTestCase {
         XCTAssertEqual(opened, plaintext)
     }
 
+    func testEmptyPlaintextRoundTripOpens() throws {
+        let k = key()
+        let sealed = try aead.seal(plaintext: Data(), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
+        let expectedEmptyEnvelopeLength = MediaFrameAEAD.magic.count + 1 + 12 + 16 // version + AES-GCM nonce/tag
+        XCTAssertEqual(sealed.count, expectedEmptyEnvelopeLength)
+
+        let opened = try aead.open(envelope: sealed, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
+        XCTAssertEqual(opened, Data())
+    }
+
     func testSlicedEnvelopeWithNonZeroStartIndexOpens() throws {
         // The open path deliberately avoids a defensive whole-envelope copy
         // (a per-frame cost at 30-60fps), so it must handle Data SLICES whose
