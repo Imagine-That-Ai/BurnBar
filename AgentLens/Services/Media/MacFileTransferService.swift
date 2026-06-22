@@ -208,7 +208,7 @@ final class MacFileTransferService: ObservableObject {
             lastError = failure
             throw failure
         }
-        defer { try? FileManager.default.removeItem(at: snapshot.directory) }
+        defer { Self.removeSnapshotDirectory(snapshot.directory) }
 
         let outboundByteBudget: Int64
         do {
@@ -569,8 +569,19 @@ final class MacFileTransferService: ObservableObject {
             try FileManager.default.copyItem(at: originalURL, to: snapshotURL)
             return (snapshotURL, directory)
         } catch {
-            try? FileManager.default.removeItem(at: directory)
+            removeSnapshotDirectory(directory)
             throw Failure.publishFailed("snapshot file for publish: \(error.localizedDescription)")
+        }
+    }
+
+    private static func removeSnapshotDirectory(_ directory: URL) {
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            AppLogger.sync.error(
+                "media_file_transfer_snapshot_cleanup_failed",
+                metadata: ["error": error.localizedDescription]
+            )
         }
     }
 

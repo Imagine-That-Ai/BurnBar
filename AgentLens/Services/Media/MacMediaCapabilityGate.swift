@@ -27,7 +27,8 @@ import Security
 final class MacMediaCapabilityGate: MediaCapabilityGate {
     static func live(settingsManager: SettingsManager) -> MacMediaCapabilityGate {
         MediaBudgetStatusStore.shared.startListening()
-        MacMediaQuotaUsageStore.shared.startListening()
+        let quotaUsageStore = MacMediaQuotaUsageStore()
+        quotaUsageStore.startListening()
         MacCloudEntitlementStore.shared.start()
         return MacMediaCapabilityGate(
             entitlementProvider: {
@@ -37,7 +38,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 )
             },
             usageProvider: {
-                MacMediaQuotaUsageStore.shared.currentSnapshot
+                quotaUsageStore.currentSnapshot
             },
             budgetProvider: {
                 MediaBudgetStatusStore.shared.effectiveStatus
@@ -337,8 +338,6 @@ struct MediaQuotaUsageSnapshot: Sendable, Equatable {
 
 @MainActor
 final class MacMediaQuotaUsageStore {
-    static let shared = MacMediaQuotaUsageStore()
-
     private var listener: ListenerRegistration?
     private(set) var currentSnapshot = MediaQuotaUsageSnapshot()
 
