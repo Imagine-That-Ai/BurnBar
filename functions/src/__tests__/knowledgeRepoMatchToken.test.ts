@@ -12,6 +12,8 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const assertCloudProMock = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
   error: vi.fn(),
@@ -25,7 +27,7 @@ vi.mock("../callables/shared.js", async () => {
   const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
   return {
     ...actual,
-    assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
+    assertActiveBurnBarCloudProEntitlement: assertCloudProMock,
   };
 });
 
@@ -43,9 +45,16 @@ vi.mock("firebase-admin/firestore", () => ({
 const stored = new Map<string, Record<string, unknown>>();
 
 function makeDb() {
+  const snapshotForPath = (path: string) => ({
+    id: path.split("/").pop(),
+    ref: { __path: path },
+    exists: stored.has(path),
+    data: () => stored.get(path),
+    get: (field: string) => stored.get(path)?.[field],
+  });
   const docRef = (path: string) => ({
     __path: path,
-    get: async () => ({ exists: stored.has(path), data: () => stored.get(path) }),
+    get: async () => snapshotForPath(path),
     set: async (data: Record<string, unknown>) => {
       const merged: Record<string, unknown> = { ...stored.get(path), ...data };
       for (const key of Object.keys(merged)) {
@@ -55,7 +64,18 @@ function makeDb() {
     },
     delete: async () => void stored.delete(path),
   });
-  return { doc: (path: string) => docRef(path) };
+  const collectionRef = (path: string) => ({
+    limit: (_n: number) => ({
+      get: async () => {
+        const prefix = `${path}/`;
+        const docs = [...stored.keys()]
+          .filter((storedPath) => storedPath.startsWith(prefix))
+          .map((storedPath) => snapshotForPath(storedPath));
+        return { empty: docs.length === 0, size: docs.length, docs };
+      },
+    }),
+  });
+  return { doc: (path: string) => docRef(path), collection: (path: string) => collectionRef(path) };
 }
 
 vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
@@ -106,7 +126,10 @@ function expectStoredRecord(path: string): Record<string, unknown> {
 
 describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext repo name", () => {
   beforeEach(() => stored.clear());
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.clearAllMocks();
+    assertCloudProMock.mockResolvedValue(undefined);
+  });
 
   it("stores repoMatchToken + sealed name, never the cleartext repoFullName", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
@@ -215,5 +238,24 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     };
     walk(record);
     expect(leaves).not.toContain("repo-docs-secret");
+  });
+
+  it("requires the Cloud Pro gate before queueing repo resync work", async () => {
+    const { requestKnowledgeResync } = await import("../callables/knowledgeSync.js");
+    const sourceManifestId = "ab".repeat(32);
+    stored.set("users/userA/knowledge_repos/repo-a", { sourceManifestId });
+    assertCloudProMock.mockRejectedValueOnce(new Error("cloud pro suspended"));
+
+    await expect(
+      runTestCallable(requestKnowledgeResync.run, {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "test-app" },
+        rawRequest: { headers: {} },
+        data: {},
+      }),
+    ).rejects.toThrow("cloud pro suspended");
+
+    expect(assertCloudProMock).toHaveBeenCalledWith("userA");
+    expect(stored.get(`users/userA/knowledge_sync_manifests/${sourceManifestId}`)).toBeUndefined();
   });
 });
