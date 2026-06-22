@@ -109,6 +109,63 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertTrue(result.conversations.isEmpty)
     }
 
+    @MainActor
+    func testCodexParserDoesNotCacheConversationBodiesWhenIndexingDisabled() async throws {
+        let harness = try ParserIntegrationTestHarness(name: "codex-cache-privacy-\(UUID().uuidString.prefix(8))")
+        defer { harness.cleanup() }
+
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/06/22", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let rolloutURL = rolloutDirectory.appendingPathComponent("rollout-2026-06-22T19-45-00.jsonl")
+        let privatePrompt = "private codex prompt \(UUID().uuidString)"
+        let privateAnswer = "private codex answer \(UUID().uuidString)"
+        let session = """
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":140,"cached_input_tokens":20,"output_tokens":12},"model":"openai/gpt-5.2-codex"}}}
+        {"item":{"role":"user","content":[{"text":"\(privatePrompt)"}]}}
+        {"item":{"role":"assistant","content":[{"text":"\(privateAnswer)"}]}}
+        """
+        try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
+
+        _ = try harness.createCodexThreadDatabase(threads: [(
+            id: "codex-cache-privacy-thread",
+            model: "openai/gpt-5.2-codex",
+            tokensUsed: 152,
+            rolloutPath: rolloutURL.path,
+            createdAt: 1_782_156_300,
+            updatedAt: 1_782_156_360,
+            cwd: "/tmp/OpenBurnBar"
+        )])
+
+        let supportRoot = harness.rootURL.appendingPathComponent("support", isDirectory: true)
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: appPaths
+        )
+        let cacheURL = appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json")
+
+        let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(redacted.usages.count, 1)
+        XCTAssertTrue(redacted.conversations.isEmpty)
+        let redactedCache = try String(contentsOf: cacheURL, encoding: .utf8)
+        XCTAssertFalse(redactedCache.contains(privatePrompt))
+        XCTAssertFalse(redactedCache.contains(privateAnswer))
+
+        let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(indexed.conversations.count, 1)
+        XCTAssertTrue(indexed.conversations.first?.fullText.contains(privatePrompt) == true)
+        let warmedCache = try String(contentsOf: cacheURL, encoding: .utf8)
+        XCTAssertTrue(warmedCache.contains(privatePrompt))
+        XCTAssertTrue(warmedCache.contains(privateAnswer))
+
+        let scrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertTrue(scrubbed.conversations.isEmpty)
+        let scrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
+        XCTAssertFalse(scrubbedCache.contains(privatePrompt))
+        XCTAssertFalse(scrubbedCache.contains(privateAnswer))
+    }
+
     /// `ModelFilterParser` (used for Zai / MiniMax) must likewise stay constructible
     /// and degrade gracefully when the support directory cannot be prepared.
     func testModelFilterParserConstructsWhenSupportDirUnavailable() throws {

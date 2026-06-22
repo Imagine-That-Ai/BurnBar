@@ -109,7 +109,9 @@ enum RefreshBackgroundWork {
         var result = SingleProviderResult()
 
         do {
-            let parseResult = try await parser.parse()
+            let parseResult = try await parser.parse(
+                options: LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
+            )
             result.usages = parseResult.usages
             result.conversations = parseResult.conversations
             result.health = parseResult.usages.isEmpty

@@ -16,11 +16,15 @@ final class TestableCodexParser: LogParser, @unchecked Sendable {
     }
 
     func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
         let parser = CodexParser(
             fileManager: fileManager,
             appPaths: appPaths,
             homeDirectoryURL: homeDirectoryURL
         )
-        return try await parser.parse()
+        return try await parser.parse(options: options)
     }
 }

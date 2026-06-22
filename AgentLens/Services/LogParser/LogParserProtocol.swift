@@ -8,10 +8,23 @@ struct ParseResult: Sendable {
     let conversations: [ConversationRecord]
 }
 
+struct LogParseOptions: Sendable {
+    var includeConversationBodies: Bool
+
+    static let `default` = LogParseOptions(includeConversationBodies: true)
+}
+
 // MARK: - Log Parser Protocol
 
 protocol LogParser: LogParserProtocol {
     func parse() async throws -> ParseResult
+    func parse(options: LogParseOptions) async throws -> ParseResult
+}
+
+extension LogParser {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
+        try await parse()
+    }
 }
 
 // MARK: - FileHandle Extensions
