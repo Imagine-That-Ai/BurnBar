@@ -21,17 +21,26 @@ struct PetAgentSwitcher: View {
     /// to dim unauthenticated brains. Empty = no gating.
     var authStates: [ChatBackendID: PetAuthStatus] = [:]
 
+    /// Backends offered by the host. Empty preserves the legacy all-backends
+    /// fallback used before Settings had an enabled-engine list.
+    var backends: [ChatBackendID] = ChatBackendID.allCases
+
     /// Called after the selection changes, so the host can route it into the live
     /// ``PetChatController``.
     var onSwitch: (ChatBackendID) -> Void = { _ in }
 
+    private var offeredBackends: [ChatBackendID] {
+        backends.isEmpty ? ChatBackendID.allCases : backends
+    }
+
     private var active: ChatBackendID {
-        ChatBackendID(rawValue: activeAgentRaw) ?? .codex
+        let persisted = ChatBackendID(rawValue: activeAgentRaw) ?? .codex
+        return offeredBackends.contains(persisted) ? persisted : offeredBackends.first ?? persisted
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            ForEach(ChatBackendID.allCases) { backend in
+            ForEach(offeredBackends) { backend in
                 row(for: backend)
             }
         }

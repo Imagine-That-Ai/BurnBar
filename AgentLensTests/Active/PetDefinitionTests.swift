@@ -177,4 +177,19 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertEqual(again.atlas2d?.states["work"]?.hero, true)
         XCTAssertEqual(again.behavior?.transitions.first?.when, .cooldownElapsed)
     }
+
+    func test_settingsSidebarExposesPetCompanionTab() {
+        XCTAssertTrue(SettingsTab.visibleTabs.contains(.pets))
+        XCTAssertEqual(SettingsTab.pets.title, "Pets")
+        XCTAssertEqual(SettingsTab.pets.icon, "pawprint.fill")
+    }
+
+    func test_settingsManifestExposesPetCompanionControls() throws {
+        let item = try XCTUnwrap(SettingsManifest.all.first { $0.id == "pets.companion" })
+
+        XCTAssertEqual(item.tab, .pets)
+        XCTAssertEqual(item.pageRoute, .petsRoot)
+        XCTAssertEqual(item.anchorID, SettingsAnchor.petsCompanion)
+        XCTAssertTrue(SettingsManifest.visibleAnchorIDs.contains(SettingsAnchor.petsCompanion))
+    }
 }

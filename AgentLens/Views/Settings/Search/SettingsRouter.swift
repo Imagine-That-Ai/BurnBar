@@ -153,7 +153,8 @@ final class SettingsRouter {
              .textExpansionRoot,
              .mediaRoot,
              .dataControlCenterRoot,
-             .computerUseRoot:
+             .computerUseRoot,
+             .petsRoot:
             return []
 
         // Agents sub-pages: single drill from the agents landing.
