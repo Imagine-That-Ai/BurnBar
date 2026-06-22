@@ -1,0 +1,111 @@
+{
+  "schema": "petdef/1",
+  "id": "founder-musk",
+  "name": "founder-musk",
+  "kind": "model3d",
+  "displayName": "Elon Musk",
+  "group": "Founders",
+  "description": "Synced from Imagine That's 3D pet manifest (founder-musk-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "founder-musk-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "dance": "dance",
+        "dismiss": "idle",
+        "drag": "walk",
+        "failure": "idle",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "idle",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "wave",
+        "negate": "idle",
+        "praise": "cheer",
+        "question": "clean",
+        "react": "cheer",
+        "scoop": "scoop",
+        "speak": "wave",
+        "success": "cheer",
+        "think": "clean",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

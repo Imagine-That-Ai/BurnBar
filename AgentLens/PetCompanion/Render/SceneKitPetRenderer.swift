@@ -99,6 +99,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     private var clipPlayers: [String: SCNAnimationPlayer] = [:]
     /// The clip key currently playing (for restore after pause / form swap).
     private var activeClipKey: String?
+    /// Increments on every playback change so delayed settle tasks cannot race
+    /// an interrupted reaction.
+    private var playbackGeneration = 0
 
     private var currentStateKey: String
     private var facing: CGFloat = 1
@@ -162,6 +165,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         contentRoot = nil
         clipPlayers.removeAll(keepingCapacity: false)
         activeClipKey = nil
+        playbackGeneration += 1
         scnView.removeFromSuperview()
     }
 
@@ -176,6 +180,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         contentRoot = nil
         clipPlayers.removeAll(keepingCapacity: true)
         activeClipKey = nil
+        playbackGeneration += 1
         loadScene(for: form)
         play(state: currentStateKey)
     }
@@ -201,14 +206,22 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
             // Static model (no clips) or unknown state: settle and run the
             // gentle host-driven idle bob so the panel isn't frozen.
             activeClipKey = nil
+            playbackGeneration += 1
             applyIdleBob()
             return
         }
 
         contentRoot?.removeAction(forKey: Self.idleBobActionKey)
-        configurePlayer(player, loop: !reducedMotion)
+        let shouldLoop = !reducedMotion && Self.shouldLoop(logical: state, clipName: clipName)
+        configurePlayer(player, loop: shouldLoop)
+        playbackGeneration += 1
+        let generation = playbackGeneration
+        player.animation.blendInDuration = 0.15
         player.play()
         activeClipKey = clipName
+        if !shouldLoop {
+            settleToIdle(after: player.animation.duration, generation: generation)
+        }
     }
 
     func setFacing(_ direction: CGFloat) {
@@ -391,6 +404,18 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         player.speed = 1
     }
 
+    private func settleToIdle(after duration: TimeInterval, generation: Int) {
+        let delay = max(0.6, min(duration, 4.0))
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(delay * 1000)))
+            guard let self,
+                  self.playbackGeneration == generation,
+                  !self.paused,
+                  self.currentStateKey != PetLogicalState.idle.rawValue else { return }
+            self.play(state: PetLogicalState.idle.rawValue)
+        }
+    }
+
     /// Resolve a logical state to a glTF clip name present in `clipPlayers`.
     private func resolveClipName(for logical: String, in model: PetDefinition.Model3D) -> String? {
         let clips = model.clips ?? [:]
@@ -447,13 +472,26 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         case "idle":   return ["idle"]
         case "wander": return ["walk", "travel", "scuttle"]
         case "drag":   return ["walk", "travel", "scuttle"]
-        case "listen": return ["listen", "idle"]
-        case "think":  return ["work", "idle"]
-        case "speak":  return ["talk", "work", "idle"]
-        case "sleep":  return ["sleep", "idle"]
-        case "react":  return ["cheer", "react", "idle"]
+        case "listen": return ["listen", "wave", "idle"]
+        case "greeting": return ["wave", "listen", "idle"]
+        case "think":  return ["think", "confused", "clean", "scoop", "work", "idle"]
+        case "speak":  return ["nod", "listen", "wave", "talk", "work", "idle"]
+        case "work":   return ["clean", "scoop", "work", "idle"]
+        case "clean":  return ["clean", "scoop", "work", "idle"]
+        case "scoop":  return ["scoop", "clean", "work", "idle"]
+        case "sleep":  return ["sleep", "doze", "idle"]
+        case "react":  return ["cheer", "clap", "jump", "dance", "celebrate", "react", "idle"]
+        case "success": return ["victory", "cheer", "celebrate", "clap", "jump", "dance", "react", "idle"]
         default:       return []
         }
+    }
+
+    private static func shouldLoop(logical: String, clipName: String) -> Bool {
+        let looping = Set([
+            "idle", "idleVar", "walk", "wander", "listen", "think", "sleep",
+            "doze", "sip", "phone", "sitDown"
+        ])
+        return looping.contains(logical) || looping.contains(clipName)
     }
 }
 

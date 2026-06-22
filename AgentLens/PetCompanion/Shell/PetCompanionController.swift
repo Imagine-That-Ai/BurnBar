@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 import Foundation
 
 // MARK: - PetCompanionController
@@ -55,6 +56,17 @@ final class PetCompanionController: ObservableObject {
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.
     private var ambientTimer: Timer?
+    private var lastInteractionAt = Date()
+    private var lastTypingAt: Date?
+    private var isAgentBusy = false
+    private var appFocused = NSApp.isActive
+    private var osIdle = false
+    private var lastIntent: PetMessageIntent?
+    private var lastIntentAt: Date?
+    private var repeatedIntentCount = 0
+    private var lastOutcome: PetTaskOutcome?
+    private var lastOutcomeAt: Date?
+    private var lastAmbientReactionAt = Date.distantPast
 
     init() {}
 
@@ -87,6 +99,7 @@ final class PetCompanionController: ObservableObject {
             interpreter = nil
             currentState = definition.atlas2d?.defaultState ?? PetLogicalState.idle.rawValue
         }
+        resetReactionState()
         renderer.play(state: currentState)
 
         isRunning = true
@@ -150,6 +163,32 @@ final class PetCompanionController: ObservableObject {
         }
     }
 
+    /// Swap to a different pet definition and renderer while keeping the panel
+    /// alive. Used by the dynamic picker when the selected id changes.
+    func setPet(_ newDefinition: PetDefinition, form requestedForm: PetForm? = nil) {
+        definition = newDefinition
+        guard let resolvedForm = requestedForm ?? newDefinition.defaultForm else { return }
+        form = resolvedForm
+
+        if let graph = newDefinition.behavior {
+            interpreter = BehaviorInterpreter(graph: graph, seed: Self.seed())
+            currentState = interpreter?.current ?? PetLogicalState.idle.rawValue
+        } else {
+            interpreter = nil
+            currentState = newDefinition.atlas2d?.defaultState ?? PetLogicalState.idle.rawValue
+        }
+        resetReactionState()
+
+        renderer?.unmount()
+        renderer = nil
+        guard let content = panel?.contentView else { return }
+        let nextRenderer = rendererFactory(newDefinition, resolvedForm)
+        renderer = nextRenderer
+        nextRenderer.mount(in: content)
+        installClickGesture(on: nextRenderer.view)
+        nextRenderer.play(state: currentState)
+    }
+
     // MARK: Behavior driving
 
     /// Feed an external trigger (cursor proximity, chat events) into the graph and
@@ -166,8 +205,62 @@ final class PetCompanionController: ObservableObject {
     /// send→`think`, tokens→`speak`, fallback→`react`). Does not consult the
     /// graph; used when the host owns the transition.
     func drive(to state: PetLogicalState) {
-        currentState = state.rawValue
-        renderer?.play(state)
+        drive(to: state.rawValue)
+    }
+
+    /// Drive to any semantic clip/state name produced by the reaction brain.
+    func drive(to state: String, force: Bool = false) {
+        guard force || state != currentState else { return }
+        currentState = state
+        renderer?.play(state: state)
+    }
+
+    @discardableResult
+    func recordUserMessage(_ text: String) -> PetMessageIntent {
+        let now = Date()
+        let intent = PetReactionBrain.classifyMessage(text)
+        if intent == lastIntent, let lastIntentAt, now.timeIntervalSince(lastIntentAt) < 30 {
+            repeatedIntentCount += 1
+        } else {
+            repeatedIntentCount = 1
+        }
+        lastIntent = intent
+        lastIntentAt = now
+        lastInteractionAt = now
+        lastOutcome = nil
+        lastOutcomeAt = nil
+        isAgentBusy = true
+        resolveReaction(force: true)
+        return intent
+    }
+
+    func recordUserTyping() {
+        let now = Date()
+        lastTypingAt = now
+        lastInteractionAt = now
+        resolveReaction(force: false)
+    }
+
+    func noteAgentBusy(_ busy: Bool) {
+        isAgentBusy = busy
+        resolveReaction(force: busy)
+    }
+
+    func recordTaskOutcome(_ outcome: PetTaskOutcome) {
+        lastOutcome = outcome
+        lastOutcomeAt = Date()
+        isAgentBusy = false
+        resolveReaction(force: true)
+    }
+
+    func setAppFocused(_ focused: Bool) {
+        appFocused = focused
+        resolveReaction(force: true)
+    }
+
+    func setSystemIdle(_ idle: Bool) {
+        osIdle = idle
+        resolveReaction(force: true)
     }
 
     // MARK: Energy gating (PLAN §4, C9)
@@ -231,6 +324,7 @@ final class PetCompanionController: ObservableObject {
     /// ``PetClickTarget`` NSObject shim below (the gesture's `@objc` action must
     /// live on an NSObject; this controller is a plain `ObservableObject`).
     func handlePetClick() {
+        lastInteractionAt = Date()
         guard let chat else { drive(to: .react); return }
         if chat.isOpen {
             closeBubble()
@@ -318,6 +412,9 @@ final class PetCompanionController: ObservableObject {
 
     /// One ambient step: offer the time-driven triggers the current node accepts.
     private func ambientTick() {
+        if resolveReaction(force: false) { return }
+        settleControllerStateIfNeeded()
+
         guard let interpreter, let graph = definition?.behavior else { return }
         let timeDriven: [PetBehaviorTrigger] = [.cooldownElapsed, .idleElapsed]
         for trigger in graph.triggers(from: interpreter.current) where timeDriven.contains(trigger) {
@@ -329,6 +426,101 @@ final class PetCompanionController: ObservableObject {
     /// Deterministic-enough ambient seed (time-derived). Tests inject their own.
     private static func seed() -> UInt32 {
         UInt32(truncatingIfNeeded: UInt64(Date().timeIntervalSince1970)) | 1
+    }
+
+    private func resetReactionState() {
+        let now = Date()
+        lastInteractionAt = now
+        lastTypingAt = nil
+        isAgentBusy = false
+        appFocused = NSApp.isActive
+        osIdle = false
+        lastIntent = nil
+        lastIntentAt = nil
+        repeatedIntentCount = 0
+        lastOutcome = nil
+        lastOutcomeAt = nil
+        lastAmbientReactionAt = .distantPast
+    }
+
+    @discardableResult
+    private func resolveReaction(force: Bool) -> Bool {
+        guard let target = PetReactionBrain.pickReaction(makeReactionSenses()) else {
+            return false
+        }
+        if target == currentState && !force {
+            return true
+        }
+        if target != currentState || force {
+            drive(to: target, force: force)
+            if isAmbientState(target) {
+                lastAmbientReactionAt = Date()
+            }
+            return true
+        }
+        return false
+    }
+
+    private func makeReactionSenses() -> PetReactionSenses {
+        let now = Date()
+        let osUserIdle = userIdleSeconds() >= 120
+        return PetReactionSenses(
+            availableClips: availableReactionNames(),
+            sinceInteraction: now.timeIntervalSince(lastInteractionAt),
+            userTyping: lastTypingAt.map { now.timeIntervalSince($0) <= 2.5 } ?? false,
+            agentBusy: isAgentBusy,
+            appFocused: appFocused,
+            osIdle: osIdle || osUserIdle,
+            pointerNear: pointerNearPet(),
+            lastIntent: lastIntent,
+            lastIntentAge: lastIntentAt.map { now.timeIntervalSince($0) },
+            repeatedIntentCount: repeatedIntentCount,
+            lastOutcome: lastOutcome,
+            lastOutcomeAge: lastOutcomeAt.map { now.timeIntervalSince($0) },
+            timeOfDayHour: Calendar.current.component(.hour, from: now),
+            wasSleeping: ["sleep", "doze"].contains(currentState),
+            ambientPulse: now.timeIntervalSince(lastAmbientReactionAt) >= 15
+        )
+    }
+
+    private func availableReactionNames() -> Set<String> {
+        if let model = definition?.model3d {
+            let semantic = model.availableSemanticClips
+            if !semantic.isEmpty { return semantic }
+            guard let clips = model.clips else { return [] }
+            return Set(clips.keys)
+        }
+        if let atlas = definition?.atlas2d {
+            return Set(atlas.states.keys).union(PetLogicalState.allCases.map(\.rawValue))
+        }
+        return Set(PetLogicalState.allCases.map(\.rawValue))
+    }
+
+    private func pointerNearPet() -> Bool {
+        guard isVisible, let panel else { return false }
+        return panel.frame.insetBy(dx: -64, dy: -64).contains(NSEvent.mouseLocation)
+    }
+
+    private func userIdleSeconds() -> TimeInterval {
+        let state = CGEventSourceStateID.combinedSessionState
+        let key = CGEventSource.secondsSinceLastEventType(state, eventType: .keyDown)
+        let move = CGEventSource.secondsSinceLastEventType(state, eventType: .mouseMoved)
+        let click = CGEventSource.secondsSinceLastEventType(state, eventType: .leftMouseDown)
+        let values = [key, move, click].filter { $0.isFinite && $0 >= 0 }
+        return values.min() ?? 0
+    }
+
+    private func settleControllerStateIfNeeded() {
+        guard !isHoldingState(currentState) else { return }
+        drive(to: PetLogicalState.idle.rawValue)
+    }
+
+    private func isHoldingState(_ state: String) -> Bool {
+        ["idle", "walk", "wander", "listen", "think", "sleep", "doze", "retreat"].contains(state)
+    }
+
+    private func isAmbientState(_ state: String) -> Bool {
+        ["idleVar", "stretch", "lookAround", "sip", "vanity", "excited"].contains(state)
     }
 }
 

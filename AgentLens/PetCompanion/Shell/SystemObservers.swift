@@ -41,23 +41,44 @@ final class PetSystemObservers {
 
         // Energy gate: pause while the screen is asleep or locked.
         observe(workspaceCenter, NSWorkspace.screensDidSleepNotification) { [weak self] in
+            self?.controller?.setSystemIdle(true)
             self?.controller?.setPaused(true)
         }
         observe(workspaceCenter, NSWorkspace.screensDidWakeNotification) { [weak self] in
+            self?.controller?.setSystemIdle(false)
             self?.controller?.setPaused(false)
         }
         observe(workspaceCenter, NSWorkspace.willSleepNotification) { [weak self] in
+            self?.controller?.setSystemIdle(true)
             self?.controller?.setPaused(true)
         }
         observe(workspaceCenter, NSWorkspace.didWakeNotification) { [weak self] in
+            self?.controller?.setSystemIdle(false)
             self?.controller?.setPaused(false)
         }
         // Screen lock/unlock arrives via the distributed center.
         observe(distributed, Notification.Name("com.apple.screenIsLocked")) { [weak self] in
+            self?.controller?.setSystemIdle(true)
             self?.controller?.setPaused(true)
         }
         observe(distributed, Notification.Name("com.apple.screenIsUnlocked")) { [weak self] in
+            self?.controller?.setSystemIdle(false)
             self?.controller?.setPaused(false)
+        }
+        observe(distributed, Notification.Name("com.apple.screensaver.didstart")) { [weak self] in
+            self?.controller?.setSystemIdle(true)
+        }
+        observe(distributed, Notification.Name("com.apple.screensaver.didstop")) { [weak self] in
+            self?.controller?.setSystemIdle(false)
+        }
+
+        // App focus is a sense, not an energy gate: blur can doze the pet while
+        // still allowing the panel to remain visible.
+        observe(appCenter, NSApplication.didBecomeActiveNotification) { [weak self] in
+            self?.controller?.setAppFocused(true)
+        }
+        observe(appCenter, NSApplication.didResignActiveNotification) { [weak self] in
+            self?.controller?.setAppFocused(false)
         }
 
         // Placement hardening: re-clamp on display reconfigure, re-assert level on

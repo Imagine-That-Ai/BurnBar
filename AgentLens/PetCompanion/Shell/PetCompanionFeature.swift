@@ -121,11 +121,20 @@ enum PetCompanionFeature {
 
     /// Resolve the active pet's ``PetDefinition`` from the app bundle.
     static func loadActiveDefinition() -> PetDefinition? {
-        if let active = PetDefinition.loadBundled(id: activePetID),
-           PetCatalog.isRenderable(active) {
+        if let active = PetDefinition.loadBundled(id: activePetID) {
             return active
         }
         return PetDefinition.loadBundled(id: defaultPetID)
+    }
+
+    /// Persist a picker selection and hot-swap the live companion when visible.
+    static func selectPet(id: String, form: PetForm? = nil) {
+        UserDefaults.standard.set(id, forKey: DefaultsKey.activePetID)
+        guard let definition = PetDefinition.loadBundled(id: id) else { return }
+        let controller = runtime.controller
+        if controller.isRunning || controller.isVisible {
+            controller.setPet(definition, form: form)
+        }
     }
 }
 
