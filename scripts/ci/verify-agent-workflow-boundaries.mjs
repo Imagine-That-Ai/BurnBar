@@ -891,6 +891,43 @@ function valueReferencesStepOutput(value, stepId) {
   ).test(normalized);
 }
 
+function valueReferencesStepObject(value, stepId) {
+  const normalized = normalizeYamlScalar(value);
+  if (
+    new RegExp(
+      `\\btoJSON\\s*\\(\\s*${contextPropertyAccessPattern("steps", stepId)}\\s*\\)`,
+      "iu",
+    ).test(normalized)
+  ) {
+    return true;
+  }
+  return new RegExp(
+    `${contextPropertyAccessPattern("steps", stepId)}(?!\\s*(?:\\.|\\[))`,
+    "iu",
+  ).test(normalized);
+}
+
+function valueReferencesStepsContext(value) {
+  const normalized = normalizeYamlScalar(value);
+  if (/\btoJSON\s*\(\s*steps\s*\)/iu.test(normalized)) return true;
+  return /\bsteps\b(?!\s*(?:\.|\[))/iu.test(normalized);
+}
+
+function valueReferencesStepOutputOrObject(value, stepId) {
+  return (
+    valueReferencesStepOutput(value, stepId) ||
+    valueReferencesStepObject(value, stepId)
+  );
+}
+
+function valueReferencesTaintedStepState(value, taintedStepIds) {
+  if (taintedStepIds.size === 0) return false;
+  if (valueReferencesStepsContext(value)) return true;
+  return [...taintedStepIds].some((stepId) =>
+    valueReferencesStepOutputOrObject(value, stepId),
+  );
+}
+
 function stepWritesTaintedMaterialToGithubOutputChannel(
   step,
   taintedOutputs,
@@ -899,18 +936,14 @@ function stepWritesTaintedMaterialToGithubOutputChannel(
   if (!stepWritesToGithubChannel(step, "OUTPUT")) return false;
   const run = stepRunValue(step);
   if (valueReferencesSensitiveMaterial(run, taintedOutputs)) return true;
-  if (
-    [...taintedStepIds].some((stepId) => valueReferencesStepOutput(run, stepId))
-  ) {
+  if (valueReferencesTaintedStepState(run, taintedStepIds)) {
     return true;
   }
   return mappingEntries(step, "env").some((entry) => {
     if (!stepRunReferencesEnvName(step, entry.key)) return false;
     if (valueReferencesSensitiveMaterial(entry.value, taintedOutputs))
       return true;
-    return [...taintedStepIds].some((stepId) =>
-      valueReferencesStepOutput(entry.value, stepId),
-    );
+    return valueReferencesTaintedStepState(entry.value, taintedStepIds);
   });
 }
 
@@ -952,9 +985,7 @@ function taintedJobOutputsByJobName(jobs, steps) {
       for (const entry of mappingEntries(job, "outputs")) {
         if (
           valueReferencesSensitiveMaterial(entry.value, taintedOutputs) ||
-          [...taintedStepIds].some((stepId) =>
-            valueReferencesStepOutput(entry.value, stepId),
-          )
+          valueReferencesTaintedStepState(entry.value, taintedStepIds)
         ) {
           outputNames.add(normalizedContextName(entry.key));
         }
