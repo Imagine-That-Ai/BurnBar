@@ -736,6 +736,12 @@ jobs:
       - name: Verify credential-transfer secret boundary
         run: bash scripts/ci/verify-credential-transfer-secret-boundary.sh
 
+      - name: Self-test factory security-review boundary
+        run: node scripts/ci/verify-factory-security-review-boundary.test.mjs
+
+      - name: Verify factory security-review boundary
+        run: node scripts/ci/verify-factory-security-review-boundary.mjs
+
   # ── Mac/iOS Swift twin-basename gate (stop new forked twins) ───────────────
   twin-basenames:
     name: Swift twin basenames
