@@ -56,7 +56,7 @@ struct ParserConversationCacheScrubber {
             appPaths.factoryDroidParserCacheURL
         ]
 
-        if let dynamicURLs = try? fileManager.contentsOfDirectory(
+        if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)
             at: appPaths.supportDirectory,
             includingPropertiesForKeys: nil
         ) {
@@ -73,8 +73,8 @@ struct ParserConversationCacheScrubber {
 
     private func scrubCache(at cacheURL: URL) {
         guard fileManager.fileExists(atPath: cacheURL.path),
-              let data = try? Data(contentsOf: cacheURL),
-              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let data = try? Data(contentsOf: cacheURL), // try?-ok(best-effort cache read)
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
               var entries = root["fileEntries"] as? [String: Any] else {
             return
         }
@@ -90,13 +90,13 @@ struct ParserConversationCacheScrubber {
 
         guard mutated else { return }
         root["fileEntries"] = entries
-        guard let scrubbedData = try? JSONSerialization.data(
+        guard let scrubbedData = try? JSONSerialization.data( // try?-ok(best-effort cache encode)
             withJSONObject: root,
             options: [.prettyPrinted, .sortedKeys]
         ) else {
             return
         }
-        try? scrubbedData.write(to: cacheURL, options: .atomic)
+        try? scrubbedData.write(to: cacheURL, options: .atomic) // try?-ok(best-effort cache rewrite)
     }
 }
 
