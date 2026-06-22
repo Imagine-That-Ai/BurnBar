@@ -135,6 +135,18 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             guard let base = openClawBaseURL() else { return .needsLogin }
             await bridge.probeOpenClawAvailability(baseURL: base, bearerToken: try? keychain.get(.openclaw))
             return bridge.openClawAvailable ? .ready : .error
+        case .piAgent:
+            let base = piAgentBaseURL()
+            await bridge.probePiAgentAvailability(baseURL: base, bearerToken: try? keychain.get(.piAgent))
+            return bridge.piAgentAvailable ? .ready : .error
+        case .droid:
+            return await bridge.isExecutableAvailable(named: "droid") ? .ready : .needsLogin
+        case .forge:
+            return await bridge.isExecutableAvailable(named: "forge") ? .ready : .needsLogin
+        case .antigravity:
+            return await bridge.isExecutableAvailable(named: "agy") ? .ready : .needsLogin
+        case .cursorAgent:
+            return await bridge.isExecutableAvailable(named: "cursor-agent") ? .ready : .needsLogin
         }
     }
 
@@ -181,6 +193,21 @@ final class CLIBridgeChatProvider: AgentChatProvider {
                 history: history,
                 bearerToken: try? keychain.get(.openclaw)
             )
+        case .piAgent:
+            return bridge.chatPiAgent(
+                baseURL: piAgentBaseURL(),
+                systemPrompt: persona,
+                history: history,
+                bearerToken: try? keychain.get(.piAgent)
+            )
+        case .droid:
+            return bridge.chatDroidStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .forge:
+            return bridge.chatForgeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .antigravity:
+            return bridge.chatAntigravityStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .cursorAgent:
+            return bridge.chatCursorAgentStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }
     }
 
@@ -191,5 +218,12 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return nil
         }
         return url
+    }
+
+    private func piAgentBaseURL() -> URL {
+        if let raw = try? keychain.get(.piAgent, account: "baseURL"), let url = URL(string: raw) {
+            return url
+        }
+        return URL(string: "http://127.0.0.1:8765")!
     }
 }
