@@ -14,6 +14,8 @@ import {
   shouldContentScan,
   hasSelfDeclaredMarker,
   publishableFiles,
+  stagedFiles,
+  makeStagedReader,
 } from "../scan-internal-content.mjs";
 
 const noContent = () => null;
@@ -210,4 +212,25 @@ test("publishableFiles includes untracked files and excludes ignored internal wo
   assert.ok(files.includes("docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md"));
   assert.equal(files.includes("security-audit/merged/FINAL_REPORT.md"), false);
   assert.equal(files.includes("security/audit/glm-5.2/findings.md"), false);
+});
+
+test("staged scan reads the Git index blob instead of worktree bytes", () => {
+  const root = mkdtempSync(join(tmpdir(), "obb-staged-confidentiality-"));
+  execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+
+  mkdirSync(join(root, "docs"), { recursive: true });
+  const note = join(root, "docs", "release-note.md");
+  writeFileSync(note, "BurnBar-Confidential: internal\nprivate staged content\n");
+  execFileSync("git", ["add", "docs/release-note.md"], { cwd: root });
+
+  writeFileSync(note, "# public worktree copy\n");
+
+  const files = stagedFiles(root);
+  assert.deepEqual(files, ["docs/release-note.md"]);
+
+  const result = scan(files, makeStagedReader(root));
+  assert.equal(result.blocking.length, 1);
+  assert.equal(result.blocking[0].path, "docs/release-note.md");
+  assert.equal(result.blocking[0].ruleId, "self-declared");
+  assert.equal(result.blocking[0].matchedOn, "content");
 });

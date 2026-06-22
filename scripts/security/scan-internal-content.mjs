@@ -17,8 +17,8 @@
 // Exit codes: 0 = clean, 1 = block-severity violation(s) (or any violation with --strict),
 //             2 = usage/internal error.
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { openSync, readSync, closeSync, fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -167,6 +167,31 @@ function makeReader(root) {
   };
 }
 
+function makeStagedReader(root) {
+  return (path) => {
+    const result = spawnSync(
+      "git",
+      ["show", "--no-ext-diff", "--no-textconv", `:${path}`],
+      {
+        cwd: root,
+        encoding: "buffer",
+        maxBuffer: MAX_CONTENT_BYTES + 1,
+      },
+    );
+
+    const toleratedBufferLimit = result.error?.code === "ENOBUFS";
+    if (result.error && !toleratedBufferLimit) return null;
+    if (result.status !== 0 && !toleratedBufferLimit) return null;
+
+    const output = Buffer.isBuffer(result.stdout)
+      ? result.stdout
+      : Buffer.from(result.stdout ?? "");
+    const buf = output.subarray(0, Math.min(output.length, MAX_CONTENT_BYTES));
+    if (buf.includes(0)) return null;
+    return buf.toString("utf8");
+  };
+}
+
 // ── CLI ────────────────────────────────────────────────────────────────────
 
 function printHuman(result, { mode, fileCount }) {
@@ -233,7 +258,7 @@ function main(argv) {
       : mode === "publishable"
         ? publishableFiles(root)
         : trackedFiles(root);
-  const read = makeReader(root);
+  const read = mode === "staged" ? makeStagedReader(root) : makeReader(root);
   const result = scan(files, read);
 
   if (asJson) {
@@ -261,4 +286,13 @@ if (isMain) {
   process.exit(main(process.argv));
 }
 
-export { repoRoot, trackedFiles, stagedFiles, publishableFiles, makeReader, main, dirname };
+export {
+  repoRoot,
+  trackedFiles,
+  stagedFiles,
+  publishableFiles,
+  makeReader,
+  makeStagedReader,
+  main,
+  dirname,
+};
