@@ -11,7 +11,8 @@
  *   1. Verify the supplied JWS via `AppleJWSVerifier`.
  *   2. Resolve the Firebase UID:
  *      - Prefer `appAccountToken` ⇒ lookup `entitlement_bindings`.
- *      - Else use the supplied `claimedUid` (callable's `request.auth.uid`).
+ *      - Else, for callables, require an existing entitlement owned by
+ *        the supplied `claimedUid`.
  *      - Else use the doc owner from the existing entitlement.
  *      - Mismatch ⇒ reject with `binding_mismatch`.
  *   3. Pull live state from `getAllSubscriptionStatuses` to catch
@@ -60,6 +61,7 @@ const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
+const ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT = 50;
 
 interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
@@ -76,7 +78,7 @@ interface ReconcileInput {
   /** Optional notification type/subtype, surfaced in the audit log. */
   notificationType?: string;
   notificationSubtype?: string;
-  /** Caller-asserted UID. Trusted only when no `appAccountToken` is present. */
+  /** Caller-asserted UID. Used only to scope binding or legacy entitlement lookups. */
   claimedUid?: string;
   /** Trust path that originated the call. */
   source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
@@ -139,14 +141,14 @@ export async function reconcileEntitlement(
     await verifier.verifyRenewalInfo(input.signedRenewalInfoJWS);
   }
 
+  const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
+  const target = appStoreEntitlementTarget(productID);
+
   // 2) Resolve UID.
-  const uid = await resolveUid(db, input, seedTx);
+  const uid = await resolveUid(db, input, seedTx, target);
 
   // 3+4) Live truth: re-verify every JWS Apple returns.
   const live = await fetchLiveStatusVerified(verifier, cfg, seedTx, fetchLive);
-
-  const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
-  const target = appStoreEntitlementTarget(productID);
 
   // 5) Best-of all transactions for the productId.
   const candidate = pickWinning([seedTx, ...live], productID);
@@ -343,7 +345,12 @@ export async function beginBinding(
   return { appAccountToken: token };
 }
 
-async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTransaction): Promise<string> {
+async function resolveUid(
+  db: Firestore,
+  input: ReconcileInput,
+  tx: DecodedTransaction,
+  target: AppStoreEntitlementTarget,
+): Promise<string> {
   const tokenRaw = tx.payload.appAccountToken;
   const token = typeof tokenRaw === "string" ? tokenRaw.toLowerCase() : "";
 
@@ -359,16 +366,25 @@ async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTrans
   }
 
   // No appAccountToken on the JWS. Two legitimate cases:
-  //   - Pre-binding migration: existing user with a verified callable.
+  //   - Pre-binding migration: existing user restoring a server-known entitlement.
   //   - S2S notification for a legacy purchase pre-migration.
-  if (input.claimedUid) return input.claimedUid;
+  const originalTransactionId = requireString(tx.payload.originalTransactionId, "originalTransactionId");
+  if (input.claimedUid) {
+    if (await claimedUidHasMatchingEntitlement(db, input.claimedUid, target, originalTransactionId)) {
+      return input.claimedUid;
+    }
+    const existingUid = await findUidByOriginalTransaction(db, originalTransactionId);
+    if (!existingUid) return input.claimedUid;
+    if (existingUid === input.claimedUid) return input.claimedUid;
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is already owned by a different user.",
+    );
+  }
 
   // Last resort: look up the entitlement doc that already references this
   // originalTransactionId; if exactly one user owns it, attribute there.
-  const fallbackUid = await findUidByOriginalTransaction(
-    db,
-    requireString(tx.payload.originalTransactionId, "originalTransactionId"),
-  );
+  const fallbackUid = await findUidByOriginalTransaction(db, originalTransactionId);
   if (!fallbackUid) {
     throw new EntitlementReconcileError(
       "uid_unresolved",
@@ -425,18 +441,56 @@ export async function consumeBindingByToken(db: Firestore, token: string, claime
   return d.uid;
 }
 
+async function claimedUidHasMatchingEntitlement(
+  db: Firestore,
+  claimedUid: string,
+  target: AppStoreEntitlementTarget,
+  originalTransactionId: string,
+): Promise<boolean> {
+  const snap = await db.doc(`users/${claimedUid}/entitlements/${target.sourceEntitlementID}`).get();
+  if (!snap.exists) return false;
+  const existingOriginalTransactionId = entitlementOriginalTransactionId(snap.data());
+  return existingOriginalTransactionId === originalTransactionId;
+}
+
+function entitlementOriginalTransactionId(raw: unknown): string | undefined {
+  const parsed = parseHostedQuotaEntitlementDoc(raw);
+  if (parsed) return parsed.originalTransactionID;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !("originalTransactionID" in raw)) return undefined;
+  const original = (raw as { originalTransactionID?: unknown }).originalTransactionID;
+  return typeof original === "string" && original ? original : undefined;
+}
+
 async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
   const cg = await db
     .collectionGroup("entitlements")
     .where("originalTransactionID", "==", originalTransactionId)
-    .limit(2)
+    .limit(ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT)
     .get();
-  if (cg.size === 1) {
-    const path = cg.docs[0].ref.path;
-    const m = path.match(/^users\/([^/]+)\//);
-    return m?.[1];
+  const uids = new Set<string>();
+  for (const doc of cg.docs) {
+    const m = doc.ref.path.match(/^users\/([^/]+)\//);
+    if (!m?.[1]) {
+      throw new EntitlementReconcileError(
+        "binding_mismatch",
+        "JWS has no appAccountToken and a matching entitlement is not user-scoped.",
+      );
+    }
+    uids.add(m[1]);
   }
-  return undefined;
+  if (cg.docs.length >= ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction owner lookup is too broad.",
+    );
+  }
+  if (uids.size > 1) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is owned by multiple users.",
+    );
+  }
+  return uids.values().next().value;
 }
 
 // ---------------------------------------------------------------------------

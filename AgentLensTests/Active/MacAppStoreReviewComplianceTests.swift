@@ -36,6 +36,7 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(purchaseSource.contains("guard let productID = tier.monthlyProductID"))
         XCTAssertTrue(purchaseSource.contains("Product.products(for: [productID])"))
         XCTAssertTrue(purchaseSource.contains("purchaseTarget.purchase(options: purchaseOptions)"))
+        XCTAssertTrue(purchaseSource.contains("MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase"))
         XCTAssertTrue(purchaseSource.contains("beginEntitlementBinding"))
         XCTAssertTrue(purchaseSource.contains("verifyHostedQuotaEntitlement"))
         XCTAssertTrue(source.contains("Restore Purchases"))

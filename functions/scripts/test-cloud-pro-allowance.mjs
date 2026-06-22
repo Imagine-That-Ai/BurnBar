@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   allowanceDocPath,
+  cloudProTopUpReceiptDocPath,
   CLOUD_PRO_ACTION_TOP_UP_UNIT,
   CLOUD_PRO_FUSION_SEARCH_LARGE_TOP_UP_UNIT,
   CLOUD_PRO_FUSION_SEARCH_TOP_UP_UNIT,
@@ -13,6 +14,7 @@ import {
   CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
   CLOUD_PRO_RELAY_TOP_UP_UNIT_GB,
   evaluateCloudProAllowanceReservation,
+  isMatchingCloudProAllowanceReservation,
   normalizeCloudProAllowanceConfig,
   monthKeyForDate,
   unitsForCloudProTopUp,
@@ -22,6 +24,28 @@ const monthKey = monthKeyForDate(new Date("2026-05-30T12:00:00Z"));
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 assert.equal(monthKey, "2026-05");
 assert.equal(allowanceDocPath("user_123", monthKey), "users/user_123/billing/allowances/months/2026-05");
+assert.equal(
+  cloudProTopUpReceiptDocPath("user_123", "appstore_tx_123"),
+  "users/user_123/billing/cloud_pro_topups/receipts/appstore_tx_123",
+);
+
+const reservationIdentity = {
+  uid: "user_123",
+  monthKey,
+  meter: "hosted_actions",
+  sessionId: "session_1",
+  reservationId: "hosted_actions_reservation_1",
+  requestedUnits: 3,
+};
+assert.equal(isMatchingCloudProAllowanceReservation({ ...reservationIdentity }, reservationIdentity), true);
+assert.equal(
+  isMatchingCloudProAllowanceReservation({ ...reservationIdentity, sessionId: "session_2" }, reservationIdentity),
+  false,
+);
+assert.equal(
+  isMatchingCloudProAllowanceReservation({ ...reservationIdentity, requestedUnits: 1 }, reservationIdentity),
+  false,
+);
 
 const firstReservation = evaluateCloudProAllowanceReservation({
   includedUnits: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
@@ -111,13 +135,24 @@ const entitlementSource = readFileSync(join(root, "src/callables/shared/entitlem
 assert.match(entitlementSource, /isActiveBurnBarCloudProEntitlement/);
 assert.match(entitlementSource, /isActiveBurnBarUltraEntitlement\(ultraSnap\.data\(\)\)/);
 assert.match(entitlementSource, /ensureCloudProAllowanceLedger/);
-assert.match(entitlementSource, /entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID \|\| entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID/);
+assert.match(entitlementSource, /cloudProTopUpReceiptDocPath/);
+assert.match(entitlementSource, /existingReceipt\.exists \|\| existingMonthlyTopUp\.exists/);
+assert.match(
+  entitlementSource,
+  /entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID \|\| entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID/,
+);
 assert.match(entitlementSource, /cloudProAllowanceTierForEntitlement\(entitlementID, args\.productID\)/);
-assert.doesNotMatch(entitlementSource, /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/);
+assert.doesNotMatch(
+  entitlementSource,
+  /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/,
+);
 
 const sharedStripeSource = readFileSync(join(root, "src/callables/shared/stripe.ts"), "utf8");
 assert.match(sharedStripeSource, /return lineItems\.find\(\(item\) => item\.productId === productID\);/);
-assert.doesNotMatch(sharedStripeSource, /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/);
+assert.doesNotMatch(
+  sharedStripeSource,
+  /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/,
+);
 
 const mediaSkuSource = readFileSync(join(root, "src/callables/mediaSku.ts"), "utf8");
 assert.match(mediaSkuSource, /standalone media subscription is retired/i);
