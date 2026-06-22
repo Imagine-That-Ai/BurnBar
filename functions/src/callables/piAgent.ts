@@ -2,7 +2,7 @@
  * @fileoverview Pi Agent relay pairing and connection callables
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -25,6 +25,7 @@ import { randomBytes } from "node:crypto";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   isPiAgentConnectionDoc,
+  piAgentConnectionResponseDoc,
   piAgentPairingCodeDigest,
   piAgentSafeEqualHex,
   parsePiAgentConnectionMode,
@@ -118,7 +119,6 @@ export const completePiAgentPairing = onCall(
         endpointURL?: string;
         advertisedModel?: string;
         selectedInstanceID?: string;
-        redisURL?: string;
         capabilities?: string[];
         instances?: unknown[];
         models?: unknown[];
@@ -146,6 +146,9 @@ export const completePiAgentPairing = onCall(
       const code = boundedTrimmedString(request.data.code, "code", 32, true);
       if (!code) {
         throw new HttpsError("invalid-argument", "code is required.");
+      }
+      if (Object.prototype.hasOwnProperty.call(request.data, "redisURL")) {
+        throw new HttpsError("invalid-argument", "redisURL is no longer accepted by Pi Agent pairing.");
       }
 
       const pairingRef = db.doc(`users/${uid}/pi_agent_pairings/${pairingId}`);
@@ -185,7 +188,7 @@ export const completePiAgentPairing = onCall(
             const existingSnap = await tx.get(db.doc(`users/${uid}/pi_agent_connections/${completedConnectionId}`));
             const existing = recordOrUndefined(existingSnap.data());
             if (existingSnap.exists && existing && isPiAgentConnectionDoc(existing)) {
-              return existing;
+              return piAgentConnectionResponseDoc(existing);
             }
             throw new HttpsError("failed-precondition", "Pairing is completed but its connection is unavailable.");
           }
@@ -206,7 +209,6 @@ export const completePiAgentPairing = onCall(
             endpointURL,
             advertisedModel: boundedTrimmedString(request.data.advertisedModel, "advertisedModel", 160),
             selectedInstanceID: boundedTrimmedString(request.data.selectedInstanceID, "selectedInstanceID", 128),
-            redisURL: boundedTrimmedString(request.data.redisURL, "redisURL", 2048),
             relayPublicKey: boundedTrimmedString(request.data.relayPublicKey, "relayPublicKey", 256),
             relayKeyVersion:
               typeof request.data.relayKeyVersion === "number" ? request.data.relayKeyVersion : undefined,
@@ -221,7 +223,7 @@ export const completePiAgentPairing = onCall(
             updatedAt: now,
             schemaVersion: PI_AGENT_SCHEMA_VERSION,
           };
-          tx.set(connectionRef, stripUndefinedObject(doc), { merge: true });
+          tx.set(connectionRef, { ...stripUndefinedObject(doc), redisURL: FieldValue.delete() }, { merge: true });
           tx.set(pairingRef, { status: "completed", connectionId, updatedAt: now }, { merge: true });
           return doc;
         });
@@ -280,7 +282,7 @@ export const listPiAgentConnections = onCall(
     const connections = snap.docs
       .flatMap((doc): PiAgentConnectionDoc[] => {
         const data = recordOrUndefined(doc.data());
-        return data && isPiAgentConnectionDoc(data) ? [data] : [];
+        return data && isPiAgentConnectionDoc(data) ? [piAgentConnectionResponseDoc(data)] : [];
       })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
       .sort((left, right) => (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt));
