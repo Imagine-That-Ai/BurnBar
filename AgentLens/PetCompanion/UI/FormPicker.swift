@@ -57,7 +57,7 @@ struct PetFormPickerView: View {
     var onSelect: (String, PetForm) -> Void
 
     init(
-        definitions: [PetDefinition] = PetCatalog.bundledDefinitions(),
+        definitions: [PetDefinition],
         selectedPetID: Binding<String>,
         onSelect: @escaping (String, PetForm) -> Void
     ) {
@@ -124,7 +124,7 @@ struct PetFormPickerView: View {
     @ViewBuilder
     private func preview(for def: PetDefinition) -> some View {
         if let name = PetCatalog.atlasPreviewName(for: def),
-           let image = NSImage(named: name) ?? bundledImage(named: name) {
+           let image = NSImage(named: name) ?? bundledImage(named: name, petID: def.id) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
@@ -147,10 +147,10 @@ struct PetFormPickerView: View {
 
     /// Look up an atlas master image inside the `Pets/<id>` resource subfolder
     /// when it isn't a top-level asset-catalog image.
-    private func bundledImage(named name: String) -> NSImage? {
+    private func bundledImage(named name: String, petID: String) -> NSImage? {
         let stem = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension.isEmpty ? "png" : (name as NSString).pathExtension
-        guard let url = Bundle.main.url(forResource: stem, withExtension: ext, subdirectory: "Pets")
+        guard let url = Bundle.main.url(forResource: stem, withExtension: ext, subdirectory: "Pets/\(petID)")
             ?? Bundle.main.url(forResource: stem, withExtension: ext) else { return nil }
         return NSImage(contentsOf: url)
     }

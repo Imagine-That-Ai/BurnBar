@@ -37,9 +37,17 @@ final class PetFirstRunModel {
     /// The provider façades used purely for the live auth probe (reuses the shared
     /// ``CLIBridge`` — never a parallel transport, Ground Truth #2).
     private let providers: [AgentChatProvider]
+    /// Bundled pet definitions loaded once for the picker; SwiftUI may recreate
+    /// views often, but bundle scans and JSON decoding should not ride that path.
+    let petDefinitions: [PetDefinition]
 
-    init(bridge: CLIBridge, selectedPetID: String = PetCompanionFeature.activePetID) {
+    init(
+        bridge: CLIBridge,
+        selectedPetID: String = PetCompanionFeature.activePetID,
+        petDefinitions: [PetDefinition] = PetCatalog.bundledDefinitions()
+    ) {
         self.selectedPetID = selectedPetID
+        self.petDefinitions = petDefinitions
         self.providers = PetChatProviders.all(bridge: bridge)
         for backend in ChatBackendID.allCases { authStates[backend] = .unknown }
     }
@@ -137,7 +145,7 @@ struct PetFirstRunView: View {
     private var content: some View {
         switch model.step {
         case .pickPet:
-            PetFormPickerView(selectedPetID: $model.selectedPetID) { id, form in
+            PetFormPickerView(definitions: model.petDefinitions, selectedPetID: $model.selectedPetID) { id, form in
                 model.selectedPetID = id
                 // Live skin swap if the pet is already on screen (PLAN C8 accept).
                 if PetCompanionFeature.runtime.controller.isVisible {

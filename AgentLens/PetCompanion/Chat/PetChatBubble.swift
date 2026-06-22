@@ -74,8 +74,6 @@ final class PetChatController {
 
     /// Observation of the shared controller's streaming output.
     @ObservationIgnored private var streamObserver: Task<Void, Never>?
-    /// The id of the assistant message we are mirroring into the bubble.
-    @ObservationIgnored private var mirroredMessageID: String?
     /// The local-floor stream task (cancelled on close / backend switch).
     @ObservationIgnored private var floorTask: Task<Void, Never>?
     /// True only while this bubble owns the shared chat stream it started.
@@ -191,7 +189,6 @@ final class PetChatController {
     /// on first token and `react` when the result lands.
     private func beginMirroringStream(ignoringAssistantIDs ignoredAssistantIDs: Set<String>) {
         streamObserver?.cancel()
-        mirroredMessageID = nil
         var sawText = false
         var sawStreamActivity = false
         var sawNewAssistant = false
@@ -223,7 +220,6 @@ final class PetChatController {
                         }
                         self.replyText = text
                     }
-                    self.mirroredMessageID = assistant.id
                 }
 
                 if !streaming && self.chat.activeStreamMessageId == nil {

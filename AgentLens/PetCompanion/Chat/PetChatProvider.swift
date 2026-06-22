@@ -132,8 +132,7 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             await bridge.probeHermesAvailability(bearerToken: try? keychain.get(.hermes))
             return bridge.hermesAvailable ? .ready : .error
         case .openclaw:
-            guard let base = openClawBaseURL() else { return .needsLogin }
-            await bridge.probeOpenClawAvailability(baseURL: base, bearerToken: try? keychain.get(.openclaw))
+            await bridge.probeOpenClawAvailability(baseURL: openClawBaseURL(), bearerToken: try? keychain.get(.openclaw))
             return bridge.openClawAvailable ? .ready : .error
         case .piAgent:
             let base = piAgentBaseURL()
@@ -157,15 +156,19 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         let upstream = upstreamStream(userMessage: user, history: history)
         return AsyncStream { continuation in
             let task = Task {
+                var sentTokens = false
                 do {
                     for try await event in upstream {
                         if case let .text(chunk) = event, !chunk.isEmpty {
+                            sentTokens = true
                             continuation.yield(chunk)
                         }
                     }
                 } catch {
-                    for await token in Self.fallbackStream(history: history) {
-                        continuation.yield(token)
+                    if !sentTokens {
+                        for await token in Self.fallbackStream(history: history) {
+                            continuation.yield(token)
+                        }
                     }
                 }
                 continuation.finish()
@@ -187,9 +190,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         case .hermes:
             return bridge.chatHermes(systemPrompt: persona, history: history, bearerToken: try? keychain.get(.hermes))
         case .openclaw:
-            let base = openClawBaseURL() ?? URL(string: "http://localhost:8642")!
             return bridge.chatOpenClaw(
-                baseURL: base,
+                baseURL: openClawBaseURL(),
                 systemPrompt: persona,
                 history: history,
                 bearerToken: try? keychain.get(.openclaw)
@@ -226,12 +228,12 @@ final class CLIBridgeChatProvider: AgentChatProvider {
     }
 
     /// The configured OpenClaw base URL (stored alongside the token under a
-    /// distinct Keychain account), if any.
-    private func openClawBaseURL() -> URL? {
-        guard let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) else {
-            return nil
+    /// distinct Keychain account), falling back to the local gateway default.
+    private func openClawBaseURL() -> URL {
+        if let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) {
+            return url
         }
-        return url
+        return URL(string: "http://localhost:8642")!
     }
 
     private func piAgentBaseURL() -> URL {

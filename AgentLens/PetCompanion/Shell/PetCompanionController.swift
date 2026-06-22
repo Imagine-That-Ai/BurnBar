@@ -169,10 +169,11 @@ final class PetCompanionController: ObservableObject {
     /// Pause/resume the renderer and the ambient loop together. Called by the
     /// system observers on occlusion / display sleep / screen lock.
     func setPaused(_ paused: Bool) {
-        renderer?.setPaused(paused)
-        if paused {
+        let shouldPause = paused || !isRunning || !isVisible
+        renderer?.setPaused(shouldPause)
+        if shouldPause {
             stopAmbientLoop()
-        } else if isRunning, isVisible {
+        } else {
             startAmbientLoop()
         }
     }
