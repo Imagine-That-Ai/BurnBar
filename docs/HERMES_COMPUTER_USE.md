@@ -237,6 +237,16 @@ signatureEd25519 (base64 Ed25519 over UTF8(intentHash) ‖ u64BE(counter) ‖ i6
 
 For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so iOS issuer and Mac validator share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture. Android mirrors the same contract in `PhoneControlSigner.kt` with Tink Ed25519: sorted authority-free JSON, SHA-256 hex in the `intentHashBlake3` field, `UTF8(hash) || u64BE(counter) || i64BE(timestampMs)`, replay/freshness/tamper checks, and Swift Date reference-second conversion for the Mac-bound `timestamp` JSON field. `PhoneControlSender.kt` then wraps the signed authority in the Android relay model as a `control.input.intent` frame with `control.streamClass = "control.input"` and `control.inputIntent.authority` attached. iOS and Android publish the verifier root through `publishPhoneControlAuthority`; the server writes `iroh_pairing/{connectionId}/controllers/{peerNodeId}` only after the phone escrow device is trusted, the pairing document exists, the peer node is derived from the Ed25519 public key, proof-of-possession verifies, and the account has the hosted Computer Use entitlement. Android `PhoneControlSigningKeyStore` keeps the Ed25519 seed wrapped by Android Keystore AES-GCM.
 
+The daemon also pins the phone-control verifier root in its own Keychain-backed
+store before honoring local-auth proofs. Pinning is trust-on-first-use per
+`deviceId`: re-provisioning the same key is idempotent, but a different key is
+rejected until an operator-controlled trusted-pairing and local-trust reset is
+performed. Clearing is intentionally outside the provisioning RPC; a relay,
+queued grant, or compromised app retry cannot silently rotate the daemon's
+independent verifier root. Any future reset UI/CLI must require explicit local
+operator action and must not be reachable from queued grants or phone-published
+authority records.
+
 Remote approval responses are also signed. `control.approval.response` carries
 `requestHashBlake3` plus an authority envelope whose signed hash binds
 `approvalId`, `sessionId`, `runId`, decision, pending request hash, response
