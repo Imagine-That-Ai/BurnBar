@@ -121,7 +121,13 @@ final class PetChatController {
         pet?.drive(to: .idle)
     }
 
-    func toggle() { isOpen ? close() : open() }
+    func toggle() {
+        if isOpen {
+            close()
+        } else {
+            open()
+        }
+    }
 
     // MARK: Send
 
