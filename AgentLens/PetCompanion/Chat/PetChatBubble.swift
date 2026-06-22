@@ -160,6 +160,15 @@ final class PetChatController {
         let ignoredAssistantIDs = Set(chat.messages.filter { $0.role == .assistant }.map(\.id))
         let previousInput = chat.inputText
 
+        guard !chat.isSendBusy else {
+            draft = ""
+            await answerLocally(
+                history: history,
+                note: "A chat response is already in progress. Answering locally instead."
+            )
+            return
+        }
+
         // Hand the draft to the shared controller exactly as the main chat does.
         chat.inputText = trimmed
         draft = ""

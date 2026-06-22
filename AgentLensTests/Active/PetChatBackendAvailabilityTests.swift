@@ -24,4 +24,32 @@ final class PetChatBackendAvailabilityTests: XCTestCase {
         XCTAssertEqual(resolved, ChatBackendID.allCases,
                        "Absent setting (empty list) should fall back to every backend")
     }
+
+    func test_sendWhileSharedChatBusyPreservesMainDraft() async throws {
+        let dataStore = try makeDiscoveryInMemoryStore()
+        let session = ChatSessionController(
+            dataStore: dataStore,
+            searchService: ControlledChatSessionSearchProvider(responses: [:])
+        )
+        session.inputText = "main chat draft"
+        session.sendInFlight = true
+
+        let pet = PetCompanionController()
+        pet.attachChat(session)
+        let controller = try XCTUnwrap(pet.chat)
+        controller.open()
+        controller.draft = "pet question"
+
+        await controller.send()
+
+        XCTAssertEqual(session.inputText, "main chat draft")
+        XCTAssertTrue(session.sendInFlight)
+        XCTAssertTrue(controller.draft.isEmpty)
+        XCTAssertTrue(controller.isAnswering)
+        XCTAssertTrue(controller.isAnsweringLocally)
+        XCTAssertEqual(controller.lastErrorNote, "A chat response is already in progress. Answering locally instead.")
+
+        controller.close()
+        XCTAssertTrue(session.sendInFlight)
+    }
 }
