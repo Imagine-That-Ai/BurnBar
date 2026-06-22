@@ -282,7 +282,7 @@ internal fun ScreenShareViewerActivity.sendPhoneControlContextTarget(
             sender.send(
                 PhoneControlAgentContextTarget(
                     requestId = UUID.randomUUID().toString(),
-                    sessionId = null,
+                    sessionId = mirrorSessionID,
                     runtime = runtime,
                     threadId = threadId,
                     displayId = displayId,

@@ -49,12 +49,31 @@ final class AgentContextTargetReceiver: Sendable {
               let payload = frame.control,
               let target = payload.agentContextTarget else { return }
 
-        if let targetSessionId = target.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !targetSessionId.isEmpty,
-           targetSessionId != sessionId.rawValue {
+        let targetSessionID = Self.nonEmptyTrimmed(target.sessionId)
+        let payloadSessionID = Self.nonEmptyTrimmed(payload.sessionId)
+        if let targetSessionID, targetSessionID != sessionId.rawValue {
             await emitDeniedFrame(
                 reason: .scope,
                 detail: "session_mismatch",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
+            return
+        }
+        if targetSessionID == nil, let payloadSessionID, payloadSessionID != sessionId.rawValue {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "session_mismatch",
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
+            return
+        }
+
+        guard let authorizedPeerNode = await activeAuthorizedPeerNode() else {
+            await emitDeniedFrame(
+                reason: .scope,
+                detail: "no_active_control_viewer",
                 uid: frame.uid,
                 connectionId: frame.connectionId
             )
@@ -74,18 +93,6 @@ final class AgentContextTargetReceiver: Sendable {
             return
         } catch {
             await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)
-            return
-        }
-
-        guard let authorizedPeerNode = await MainActor.run({ authorizedPeerNodeProvider?() })?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !authorizedPeerNode.isEmpty else {
-            await emitDeniedFrame(
-                reason: .scope,
-                detail: "control_owner_missing",
-                uid: frame.uid,
-                connectionId: frame.connectionId
-            )
             return
         }
 
@@ -309,6 +316,18 @@ final class AgentContextTargetReceiver: Sendable {
             seenClientIntentIds.insert(clientIntentId)
             return true
         }
+    }
+
+    private func activeAuthorizedPeerNode() async -> String? {
+        await MainActor.run {
+            Self.nonEmptyTrimmed(authorizedPeerNodeProvider?())
+        }
+    }
+
+    private static func nonEmptyTrimmed(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func emitDeniedFrame(

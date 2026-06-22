@@ -502,7 +502,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             validator: phoneValidator,
             chatControllerProvider: { [weak self] in self?.chatController },
             displayBoundsProvider: displayBoundsProvider,
-            authorizedPeerNodeProvider: phoneControlAuthorizedPeerNodeProvider,
+            authorizedPeerNodeProvider: { [weak self] in
+                guard let self else { return nil }
+                return self.phoneControlAuthorizedPeerNodeProvider?()?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    ?? self.state?.manifest.phoneViewerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            },
             replyFrameSink: { [weak self] frame in
                 try await self?.latestReplySender?(frame)
             },

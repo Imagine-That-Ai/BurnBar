@@ -1036,7 +1036,7 @@ extension MercuryLiveSheet {
         let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
         let target = HermesRealtimeRelayAgentContextTarget(
             requestId: UUID().uuidString,
-            sessionId: nil,
+            sessionId: activeMirrorSessionId ?? lastAck?.sessionId,
             runtime: runtime,
             threadId: threadId,
             displayId: displayId,
