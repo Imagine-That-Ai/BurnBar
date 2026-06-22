@@ -9,7 +9,7 @@ auth-required QA flows in `.factory/skills/qa`.
 |--------|---------|
 | `provision-qa-firebase.js` | Create or rotate the dedicated Firebase Auth QA account (`qa+local@openburnbar.app`). Generates a shell-safe password, sets `{ qa: true, env: "local" }` custom claims, seals creds into `~/.openburnbar/qa.env` (chmod 0600) + macOS Keychain (`OpenBurnBar.QAFirebase`), and optionally mirrors them to GitHub repo secrets. |
 | `inject-app-check-debug-token.sh` | Stamps a stable Firebase App Check debug token into `AgentLens/Resources/GoogleService-Info.plist` and `OpenBurnBarMobile/Resources/GoogleService-Info.plist`, persisting the token in `~/.openburnbar/qa.env` so subsequent runs reuse it. After running, register the token in the Firebase console under **App Check → Apps → Manage debug tokens**. |
-| `run-functional-qa.sh` | Non-interactive CI runner used by `.factory/skills/qa/SKILL.md`. It writes `qa-results/report.md`, environment evidence, and command logs while failing closed on missing required QA credentials or failed smoke checks. |
+| `run-functional-qa.sh` | Non-interactive CI runner used by `.factory/skills/qa/SKILL.md`. It writes `qa-results/report.md`, environment evidence, and command logs while failing closed on missing required QA credentials in full mode or failed required smoke checks. |
 | `../../scripts/ci/redact-qa-artifacts.mjs` | Scrubs secret-shaped values from QA stdout, markdown, JSON, plist, and log artifacts before workflow upload or PR comment publication. |
 
 All scripts are idempotent and safe to re-run.
@@ -23,16 +23,24 @@ checked-in runner directly:
 bash tools/qa/run-functional-qa.sh
 ```
 
-The runner deliberately records only secret presence/absence, never secret
-values. It requires `FACTORY_API_KEY`, `FIREBASE_PLIST_BASE64`,
-`FIREBASE_APP_CHECK_DEBUG_TOKEN`, `QA_FIREBASE_EMAIL`, and
-`QA_FIREBASE_PASSWORD`; `ANTHROPIC_API_KEY` enables deeper provider-backed flows
-when available but is not required for the deterministic CI smoke.
+The runner has two modes:
+
+| Mode | Use | Secret behavior |
+|------|-----|-----------------|
+| `OPENBURNBAR_QA_SECRET_MODE=pr-safe` | Pull requests and non-main manual dispatches | Receives no QA secrets. Secret-backed credential, provider, and Firebase/App Check checks are recorded as intentionally skipped; deterministic extension smoke remains required. |
+| `OPENBURNBAR_QA_SECRET_MODE=full` | Manual dispatch on `main` only | Requires `FACTORY_API_KEY`, `FIREBASE_PLIST_BASE64`, `FIREBASE_APP_CHECK_DEBUG_TOKEN`, `QA_FIREBASE_EMAIL`, and `QA_FIREBASE_PASSWORD`; missing required values fail closed. |
+
+`full` is the default for local/operator runs. `ANTHROPIC_API_KEY` enables
+deeper provider-backed flows when available but is not required for the
+deterministic CI smoke.
 
 The workflow pipes live QA output through `scripts/ci/redact-qa-artifacts.mjs`
 before writing `qa-results/qa-output.txt`, and runs the same scrubber across
 `qa-results/` before artifacts or PR comments are published. The runner also
 scrubs its result directory on exit as a local defense-in-depth guard.
+The workflow's secret-backed step is restricted to `workflow_dispatch` on
+`refs/heads/main`, so pull-request code never receives the QA credential
+environment.
 
 ## First-time setup (one developer-laptop bootstrap)
 

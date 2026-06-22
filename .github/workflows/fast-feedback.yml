@@ -736,6 +736,12 @@ jobs:
       - name: Verify credential-transfer secret boundary
         run: bash scripts/ci/verify-credential-transfer-secret-boundary.sh
 
+      - name: Self-test PR secret boundaries
+        run: node scripts/ci/verify-pr-secret-boundaries.test.mjs
+
+      - name: Verify PR secret boundaries
+        run: node scripts/ci/verify-pr-secret-boundaries.mjs
+
       - name: Self-test factory security-review boundary
         run: node scripts/ci/verify-factory-security-review-boundary.test.mjs
 

@@ -2,11 +2,12 @@
 /**
  * Static boundary gate for PR-adjacent workflow secrets.
  *
- * Pull-request workflows may run untrusted repository code. Any lane that
- * exposes real runtime secrets to that code must first prove the PR is a
- * same-repository branch from a trusted actor, and must provide a non-secret
- * fallback for untrusted PRs. This verifier covers the current QA and Android
- * dependency-health secret surfaces and is wired through workflow-lint.
+ * Pull-request workflows may run untrusted repository code. QA must keep
+ * secret-backed functional flows off pull_request entirely, and other lanes
+ * that expose real runtime secrets must prove the PR is a same-repository
+ * branch from a trusted actor with a non-secret fallback for untrusted PRs.
+ * This verifier covers the current QA and Android dependency-health secret
+ * surfaces and is wired through workflow-lint.
  *
  * Usage: node scripts/ci/verify-pr-secret-boundaries.mjs
  */
@@ -220,54 +221,110 @@ function extractTriggerPaths(source, triggerName) {
 
 function validateQaWorkflow() {
   const file = ".github/workflows/qa.yml";
+  const runnerFile = "tools/qa/run-functional-qa.sh";
   const source = stripYamlComments(readRepoFile(file));
+  const runner = readRepoFile(runnerFile);
   const job = extractJob(source, "functional-qa");
   const resolvePr = extractStep(job, "Resolve PR metadata");
-  const runQa = extractStep(job, "Run QA");
+  const runPrSafeQa = extractStep(job, "Run PR-safe QA");
+  const runSecretBackedQa = extractStep(job, "Run secret-backed QA");
   const postQa = extractStep(job, "Post QA report as PR comment");
-  const firebaseSecretsProbe =
-    "${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}";
   const githubToken = "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}";
-
-  requireEnvEntry(
-    file,
-    job,
-    4,
-    "INTERNAL_RUN",
-    `\${{ ${TRUSTED_PR_EXPR} }}`,
-    "functional QA must require trusted same-repo PR authors before exposing QA secrets",
-  );
-  requireEnvEntry(
-    file,
-    job,
-    4,
-    "HAS_FIREBASE_SECRETS",
-    firebaseSecretsProbe,
-    "functional QA must probe Firebase QA secret availability without exposing values",
-  );
-  requireFieldEquals(
-    file,
-    runQa,
-    "if",
-    8,
-    "env.INTERNAL_RUN == 'true'",
-    "Run QA secret-bearing step must be gated by INTERNAL_RUN",
-  );
-
-  for (const secret of [
+  const requiredQaSecrets = [
     "FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}",
     "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}",
     "FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}",
     "QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}",
     "QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}",
-  ]) {
+  ];
+
+  requireEnvEntry(
+    file,
+    job,
+    4,
+    "RUN_PR_SAFE_QA",
+    "${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}",
+    "functional QA must run the non-secret PR-safe lane for pull requests and non-main manual dispatches",
+  );
+  requireEnvEntry(
+    file,
+    job,
+    4,
+    "RUN_SECRET_BACKED_QA",
+    "${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}",
+    "functional QA secret-backed lane must be restricted to manual dispatch on main",
+  );
+  requireFieldEquals(
+    file,
+    runPrSafeQa,
+    "if",
+    8,
+    "env.RUN_PR_SAFE_QA == 'true'",
+    "PR-safe QA step must run only through the non-secret QA lane",
+  );
+  requireEnvEntry(
+    file,
+    runPrSafeQa,
+    8,
+    "CI",
+    "true",
+    "PR-safe QA must run in CI mode",
+  );
+  requireEnvEntry(
+    file,
+    runPrSafeQa,
+    8,
+    "OPENBURNBAR_QA_SECRET_MODE",
+    "pr-safe",
+    "PR-safe QA must explicitly select the no-secret runner mode",
+  );
+  const prSafeSecretLines = secretReferenceLines(runPrSafeQa);
+  if (prSafeSecretLines.length > 0) {
+    fail(
+      file,
+      `PR-safe QA step must not reference secrets: ${prSafeSecretLines.join(", ")}`,
+    );
+  }
+  requireFieldEquals(
+    file,
+    runSecretBackedQa,
+    "if",
+    8,
+    "env.RUN_SECRET_BACKED_QA == 'true'",
+    "secret-backed QA step must be gated by workflow_dispatch on main",
+  );
+  requireEnvEntry(
+    file,
+    runSecretBackedQa,
+    8,
+    "OPENBURNBAR_QA_SECRET_MODE",
+    "full",
+    "secret-backed QA must explicitly select the full runner mode",
+  );
+  requireEnvEntry(
+    file,
+    runSecretBackedQa,
+    8,
+    "OPENBURNBAR_USE_DEBUG_APP_CHECK",
+    "YES",
+    "secret-backed QA must be the only lane that enables debug App Check injection",
+  );
+
+  for (const secret of requiredQaSecrets) {
     const [name, value] = secret.split(": ");
-    requireEnvEntry(file, runQa, 8, name, value, `Run QA is missing ${secret}`);
+    requireEnvEntry(
+      file,
+      runSecretBackedQa,
+      8,
+      name,
+      value,
+      `secret-backed QA is missing ${secret}`,
+    );
     requireSingleOccurrence(
       file,
       source,
       secret,
-      `${secret} must only appear in the Run QA step`,
+      `${secret} must only appear in the secret-backed QA step`,
     );
   }
   requireEnvEntry(
@@ -297,15 +354,46 @@ function validateQaWorkflow() {
     file,
     job,
     [
-      `HAS_FIREBASE_SECRETS: ${firebaseSecretsProbe}`,
-      "FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}",
-      "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}",
-      "FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}",
-      "QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}",
-      "QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}",
+      ...requiredQaSecrets,
       githubToken,
     ],
     "functional QA contains unallowlisted secret reference",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    'qa_secret_mode="${OPENBURNBAR_QA_SECRET_MODE:-full}"',
+    "functional QA runner must default to full secret-backed mode",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    "full|pr-safe)",
+    "functional QA runner must support explicit pr-safe mode",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    "PR-safe mode intentionally receives no secret-backed QA credentials.",
+    "functional QA runner must treat secret-backed credentials as skipped in pr-safe mode",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    "strip_pr_safe_secret_environment",
+    "functional QA runner must strip inherited secret variables in pr-safe mode",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    'unset "$secret_name"',
+    "functional QA runner must unset known secret variables in pr-safe mode",
+  );
+  requireIncludes(
+    runnerFile,
+    runner,
+    'if [[ "$qa_secret_mode" == "pr-safe" ]]; then\n  strip_pr_safe_secret_environment\nfi',
+    "functional QA runner must call the pr-safe secret stripper before checks run",
   );
 }
 

@@ -30,10 +30,12 @@ function buildTree(mutator = () => {}) {
   roots.push(root);
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
   mkdirSync(join(root, "scripts", "ci"), { recursive: true });
+  mkdirSync(join(root, "tools", "qa"), { recursive: true });
   for (const path of [
     ".github/workflows/qa.yml",
     ".github/workflows/code-quality.yml",
     ".github/workflows/workflow-lint.yml",
+    "tools/qa/run-functional-qa.sh",
   ]) {
     copyFileSync(join(REPO_ROOT, path), join(root, path));
   }
@@ -83,45 +85,87 @@ console.log("Self-test: verify-pr-secret-boundaries.mjs\n");
 expect("current workflow fixtures pass", () => {}, 0);
 
 expect(
-  "QA same-repo-only gate without trusted author fails",
+  "QA secret-backed lane on pull_request fails",
   (root) =>
     mutate(root, ".github/workflows/qa.yml", (text) =>
       text.replace(
-        'github.event_name != \'pull_request\' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))',
-        "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
+        "RUN_SECRET_BACKED_QA: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}",
+        "RUN_SECRET_BACKED_QA: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
       ),
     ),
   1,
 );
 
 expect(
-  "QA secret-bearing step without INTERNAL_RUN gate fails",
+  "QA secret-backed step without manual-main gate fails",
   (root) =>
     mutate(root, ".github/workflows/qa.yml", (text) =>
-      text.replace("        if: env.INTERNAL_RUN == 'true'\n", ""),
+      text.replace("        if: env.RUN_SECRET_BACKED_QA == 'true'\n", ""),
     ),
   1,
 );
 
 expect(
-  "QA commented INTERNAL_RUN gate fails",
+  "QA commented secret-backed gate fails",
   (root) =>
     mutate(root, ".github/workflows/qa.yml", (text) =>
       text.replace(
-        "        if: env.INTERNAL_RUN == 'true'\n",
-        "        # if: env.INTERNAL_RUN == 'true'\n",
+        "        if: env.RUN_SECRET_BACKED_QA == 'true'\n",
+        "        # if: env.RUN_SECRET_BACKED_QA == 'true'\n",
       ),
     ),
   1,
 );
 
 expect(
-  "QA secret outside Run QA fails",
+  "QA secret outside secret-backed step fails",
   (root) =>
     mutate(root, ".github/workflows/qa.yml", (text) =>
       text.replace(
         "      - name: Install ImageMagick\n",
         "      - name: Install ImageMagick\n        env:\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "QA PR-safe step with a secret fails",
+  (root) =>
+    mutate(root, ".github/workflows/qa.yml", (text) =>
+      text.replace(
+        "          OPENBURNBAR_QA_SECRET_MODE: pr-safe\n",
+        "          OPENBURNBAR_QA_SECRET_MODE: pr-safe\n          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "QA PR-safe runner mode removal fails",
+  (root) =>
+    mutate(root, ".github/workflows/qa.yml", (text) =>
+      text.replace("          OPENBURNBAR_QA_SECRET_MODE: pr-safe\n", ""),
+    ),
+  1,
+);
+
+expect(
+  "QA runner pr-safe support removal fails",
+  (root) =>
+    mutate(root, "tools/qa/run-functional-qa.sh", (text) =>
+      text.replace("full|pr-safe)", "full)"),
+    ),
+  1,
+);
+
+expect(
+  "QA runner inherited-secret strip removal fails",
+  (root) =>
+    mutate(root, "tools/qa/run-functional-qa.sh", (text) =>
+      text.replace(
+        'if [[ "$qa_secret_mode" == "pr-safe" ]]; then\n  strip_pr_safe_secret_environment\nfi\n\n',
+        "",
       ),
     ),
   1,
