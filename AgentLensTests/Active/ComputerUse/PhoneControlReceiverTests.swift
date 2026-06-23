@@ -1925,6 +1925,61 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testAttestationRequirementNotificationRefreshesLiveCoordinatorConfiguration() async throws {
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-attestation-refresh",
+                macHostNodeId: "mac-attestation-refresh",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-06-23"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-attestation-refresh-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test",
+                phoneControlAttestationRequired: false,
+                clipboardConsentGranted: true
+            ),
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+
+        XCTAssertFalse(coordinator.configuration.phoneControlAttestationRequired)
+        NotificationCenter.default.post(
+            name: .phoneControlAttestationDidChange,
+            object: nil,
+            userInfo: [
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired: true
+            ]
+        )
+        for _ in 0..<5 where !coordinator.configuration.phoneControlAttestationRequired {
+            await Task.yield()
+        }
+        XCTAssertTrue(coordinator.configuration.phoneControlAttestationRequired)
+
+        NotificationCenter.default.post(
+            name: .phoneControlAttestationDidChange,
+            object: nil,
+            userInfo: [
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired: false
+            ]
+        )
+        for _ in 0..<5 where coordinator.configuration.phoneControlAttestationRequired {
+            await Task.yield()
+        }
+        XCTAssertFalse(coordinator.configuration.phoneControlAttestationRequired)
+    }
+
+    @MainActor
     func testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation() async throws {
         let previousStrictSetting = SettingsManager.shared.computerUsePhoneControlAttestationRequired
         SettingsManager.shared.computerUsePhoneControlAttestationRequired = true
