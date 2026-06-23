@@ -299,7 +299,22 @@ final class OpenBurnBarRuntimeContext {
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
             let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery(settingsManager: settingsManager)
-            let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(daemonManager: daemonManager)
+            let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(
+                daemonManager: daemonManager,
+                approvalPresenter: { request in
+                    #if canImport(AppKit) && !DISTRIBUTION_MAS
+                    await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
+                    #else
+                    HermesRealtimeRelayApprovalResponse(
+                        approvalId: request.approvalId,
+                        decision: .reject,
+                        respondedBy: "mac",
+                        respondedAt: Date(),
+                        note: "Mac approval UI is unavailable in this build."
+                    )
+                    #endif
+                }
+            )
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
                 settingsManager: settingsManager,

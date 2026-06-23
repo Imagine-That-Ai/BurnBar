@@ -14,12 +14,45 @@ typealias CLIAgentSessionActionDispatcher = @MainActor @Sendable (
     _ request: CLIAgentSessionActionRequest
 ) async throws -> CLIAgentSessionActionResponse
 
+typealias CLIAgentSessionActionApprovalPresenter = @MainActor @Sendable (
+    _ request: HermesRealtimeRelayApprovalRequest
+) async -> HermesRealtimeRelayApprovalResponse
+
+typealias CLIAgentSessionActionResumeRunner = @MainActor @Sendable (
+    _ sessionID: String,
+    _ targetHarness: String?,
+    _ targetModel: String?,
+    _ mode: BurnBarResumeMode
+) async throws -> BurnBarRunResumeResponse
+
 @MainActor
 struct CLIAgentSessionActionDaemonDispatcher {
-    private let daemonManager: OpenBurnBarDaemonManager
+    private let resumeRunner: CLIAgentSessionActionResumeRunner
+    private let approvalPresenter: CLIAgentSessionActionApprovalPresenter?
 
-    init(daemonManager: OpenBurnBarDaemonManager = .shared) {
-        self.daemonManager = daemonManager
+    init(
+        daemonManager: OpenBurnBarDaemonManager = .shared,
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil
+    ) {
+        self.init(
+            resumeRunner: { sessionID, targetHarness, targetModel, mode in
+                try await daemonManager.runResume(
+                    sessionID: sessionID,
+                    targetHarness: targetHarness,
+                    targetModel: targetModel,
+                    mode: mode
+                )
+            },
+            approvalPresenter: approvalPresenter
+        )
+    }
+
+    init(
+        resumeRunner: @escaping CLIAgentSessionActionResumeRunner,
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil
+    ) {
+        self.resumeRunner = resumeRunner
+        self.approvalPresenter = approvalPresenter
     }
 
     func perform(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
@@ -28,14 +61,17 @@ struct CLIAgentSessionActionDaemonDispatcher {
         case .packageOnly:
             mode = .open
         case .resume, .handoff:
+            guard await approvalAllowsExecution(for: request) else {
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "Mac approval is required before this session action can run.",
+                    errorCode: "mac_approval_required",
+                    errorRecovery: "Approve the session action on the Mac, then try again."
+                )
+            }
             mode = .spawn
         }
-        let response = try await daemonManager.runResume(
-            sessionID: request.sessionID,
-            targetHarness: request.targetRuntime,
-            targetModel: request.targetModelID,
-            mode: mode
-        )
+        let response = try await resumeRunner(request.sessionID, request.targetRuntime, request.targetModelID, mode)
         let status: CLIAgentSessionActionStatus
         switch response.kind {
         case "native":
@@ -66,6 +102,38 @@ struct CLIAgentSessionActionDaemonDispatcher {
             note: response.note,
             errorCode: response.errorCode,
             errorRecovery: response.errorRecovery
+        )
+    }
+
+    private func approvalAllowsExecution(for request: CLIAgentSessionActionRequest) async -> Bool {
+        guard let approvalPresenter else { return false }
+        let approval = await approvalPresenter(approvalRequest(for: request))
+        return approval.decision == .approve
+    }
+
+    private func approvalRequest(for request: CLIAgentSessionActionRequest) -> HermesRealtimeRelayApprovalRequest {
+        let target = request.targetRuntime?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetText = target.flatMap { $0.isEmpty ? nil : " in \($0)" } ?? ""
+        let actionTitle: String
+        switch request.action {
+        case .resume:
+            actionTitle = "Resume CLI session"
+        case .handoff:
+            actionTitle = "Handoff CLI session"
+        case .packageOnly:
+            actionTitle = "Prepare CLI session package"
+        }
+        let summary = "\(actionTitle)\(targetText)"
+        return HermesRealtimeRelayApprovalRequest(
+            approvalId: UUID().uuidString,
+            runId: "cli-session-action-\(request.sessionID)",
+            sessionId: request.sessionID,
+            toolKind: "cli.session.\(request.action.rawValue)",
+            title: actionTitle,
+            message: "\(summary) on this Mac.",
+            actionSummary: summary,
+            requestedAt: Date(),
+            trustMode: "manual"
         )
     }
 }
