@@ -35,6 +35,12 @@ interface RemoteMcpGrantDoc {
   schemaVersion: 1;
 }
 
+interface RemoteMcpGrantWriter {
+  doc(path: string): {
+    set(data: object, options?: { merge?: boolean }): Promise<unknown>;
+  };
+}
+
 export function hashRemoteMcpSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -44,7 +50,7 @@ function randomRemoteMcpSecret(prefix: string): string {
 }
 
 export async function upsertRemoteMcpClient(
-  db: Firestore,
+  db: RemoteMcpGrantWriter,
   uid: string,
   input: {
     clientId: string;
@@ -72,7 +78,7 @@ export async function upsertRemoteMcpClient(
 }
 
 export async function createRemoteMcpGrant(
-  db: Firestore,
+  db: RemoteMcpGrantWriter,
   uid: string,
   input: {
     clientId: string;
