@@ -922,6 +922,104 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testSystemPermissionReceiverAcceptsActivePhonePeer() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "android-phone-system-permission"
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: peerNodeId, publicKey: privateKey.publicKey)
+
+        let frame = try systemPermissionFrame(
+            sessionId: "test-session",
+            privateKey: privateKey,
+            peerNodeId: peerNodeId,
+            counter: 1
+        )
+
+        var deniedFrame: HermesRealtimeRelayFrame?
+        let receiver = SystemPermissionReceiver(
+            sessionId: ComputerUseSessionID(rawValue: "test-session"),
+            validator: validator,
+            monitor: SystemPermissionMonitor(),
+            authorizedPeerNodeProvider: { peerNodeId },
+            denyFrameSink: { frame in
+                deniedFrame = frame
+            },
+            statusFrameSink: { _ in }
+        )
+
+        await receiver.ingest(frame)
+
+        XCTAssertNil(deniedFrame)
+    }
+
+    @MainActor
+    func testSystemPermissionReceiverRejectsWrongSession() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "android-phone-system-permission"
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: peerNodeId, publicKey: privateKey.publicKey)
+
+        let frame = try systemPermissionFrame(
+            sessionId: "other-session",
+            privateKey: privateKey,
+            peerNodeId: peerNodeId,
+            counter: 1
+        )
+
+        var deniedFrame: HermesRealtimeRelayFrame?
+        let receiver = SystemPermissionReceiver(
+            sessionId: ComputerUseSessionID(rawValue: "test-session"),
+            validator: validator,
+            monitor: SystemPermissionMonitor(),
+            authorizedPeerNodeProvider: { peerNodeId },
+            denyFrameSink: { frame in
+                deniedFrame = frame
+            },
+            statusFrameSink: { _ in }
+        )
+
+        await receiver.ingest(frame)
+
+        XCTAssertEqual(deniedFrame?.type, .controlDenied)
+        XCTAssertEqual(deniedFrame?.control?.denied?.reason, .scope)
+        XCTAssertEqual(deniedFrame?.control?.denied?.detail, "session_mismatch")
+    }
+
+    @MainActor
+    func testSystemPermissionReceiverRejectsNonActivePhonePeer() async throws {
+        let attackerKey = Curve25519.Signing.PrivateKey()
+        let attackerPeerNodeId = "android-phone-other-system-permission"
+        let activePeerNodeId = "android-phone-active-system-permission"
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: attackerPeerNodeId, publicKey: attackerKey.publicKey)
+
+        let frame = try systemPermissionFrame(
+            sessionId: "test-session",
+            privateKey: attackerKey,
+            peerNodeId: attackerPeerNodeId,
+            counter: 1
+        )
+
+        var deniedFrame: HermesRealtimeRelayFrame?
+        let receiver = SystemPermissionReceiver(
+            sessionId: ComputerUseSessionID(rawValue: "test-session"),
+            validator: validator,
+            monitor: SystemPermissionMonitor(),
+            authorizedPeerNodeProvider: { activePeerNodeId },
+            denyFrameSink: { frame in
+                deniedFrame = frame
+            },
+            statusFrameSink: { _ in }
+        )
+
+        await receiver.ingest(frame)
+
+        XCTAssertEqual(deniedFrame?.type, .controlDenied)
+        XCTAssertEqual(deniedFrame?.control?.denied?.reason, .scope)
+        XCTAssertEqual(deniedFrame?.control?.denied?.detail, "control_owned_by_other_viewer")
+    }
+
+    @MainActor
     func testPhoneControlGateDenialEmitsControlDeniedFrame() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let peerNodeId = "ios-phone-denied"
@@ -2005,6 +2103,40 @@ final class PhoneControlReceiverTests: XCTestCase {
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
             attestationHashBlake3: attestationHashBlake3
+        )
+    }
+
+    private func systemPermissionFrame(
+        sessionId: String,
+        privateKey: Curve25519.Signing.PrivateKey,
+        peerNodeId: String,
+        counter: UInt64
+    ) throws -> HermesRealtimeRelayFrame {
+        var request = HermesRealtimeRelaySystemPermissionRequest(
+            requestId: "permission-\(UUID().uuidString)",
+            clientIntentId: "intent-\(UUID().uuidString)",
+            kind: .accessibility,
+            action: .probeOnly,
+            requestedAt: Date(),
+            authority: emptyAuthority()
+        )
+        let signed = try ComputerUsePhoneControlSigner().sign(
+            systemPermissionRequest: request,
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        request.authority = envelope(from: signed)
+        return HermesRealtimeRelayFrame(
+            type: .controlSystemPermissionRequest,
+            uid: "uid-system-permission",
+            connectionId: "conn-system-permission",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.system.permission",
+                sessionId: sessionId,
+                systemPermissionRequest: request
+            )
         )
     }
 }

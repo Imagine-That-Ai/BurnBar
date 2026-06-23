@@ -23,21 +23,28 @@ public final class SystemPermissionReceiver {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "SystemPermissionConcierge")
 
     public typealias FrameSink = @MainActor @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    public typealias AuthorizedPeerNodeProvider = @MainActor @Sendable () -> String?
 
+    private let sessionId: ComputerUseSessionID?
     private let validator: PhoneControlAuthorityValidator
     private let monitor: SystemPermissionMonitor
     private let denyFrameSink: FrameSink
     private let statusFrameSink: FrameSink
+    private let authorizedPeerNodeProvider: AuthorizedPeerNodeProvider?
     private var seenClientIntentIds: Set<String> = []
 
     public init(
+        sessionId: ComputerUseSessionID? = nil,
         validator: PhoneControlAuthorityValidator,
         monitor: SystemPermissionMonitor = .shared,
+        authorizedPeerNodeProvider: AuthorizedPeerNodeProvider? = nil,
         denyFrameSink: @escaping FrameSink,
         statusFrameSink: @escaping FrameSink
     ) {
+        self.sessionId = sessionId
         self.validator = validator
         self.monitor = monitor
+        self.authorizedPeerNodeProvider = authorizedPeerNodeProvider
         self.denyFrameSink = denyFrameSink
         self.statusFrameSink = statusFrameSink
     }
@@ -47,9 +54,32 @@ public final class SystemPermissionReceiver {
               let payload = frame.control,
               let request = payload.systemPermissionRequest else { return }
 
+        if let sessionId,
+           let payloadSessionId = nonEmptyTrimmed(payload.sessionId),
+           payloadSessionId != sessionId.rawValue {
+            await emitDeniedFrame(
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                reason: .scope,
+                detail: "session_mismatch"
+            )
+            return
+        }
+
+        guard let authorizedPeerNode = activeAuthorizedPeerNode() else {
+            await emitDeniedFrame(
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                reason: .scope,
+                detail: "no_active_control_viewer"
+            )
+            return
+        }
+
         // 1. Authority validation.
+        let validation: PhoneControlAuthorityValidator.ValidationResult
         do {
-            _ = try validator.validate(
+            validation = try validator.validate(
                 envelope: request.authority,
                 systemPermissionRequest: request,
                 now: Date()
@@ -59,6 +89,16 @@ public final class SystemPermissionReceiver {
             return
         } catch {
             await emitDeniedFrame(uid: frame.uid, connectionId: frame.connectionId, reason: .signatureFailure)
+            return
+        }
+
+        guard validation.peerNodeId == authorizedPeerNode else {
+            await emitDeniedFrame(
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                reason: .scope,
+                detail: "control_owned_by_other_viewer"
+            )
             return
         }
 
@@ -165,6 +205,15 @@ public final class SystemPermissionReceiver {
         guard let urlString = kind.systemSettingsDeepLink,
               let url = URL(string: urlString) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func activeAuthorizedPeerNode() -> String? {
+        nonEmptyTrimmed(authorizedPeerNodeProvider?())
+    }
+
+    private func nonEmptyTrimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func emitDeniedFrame(

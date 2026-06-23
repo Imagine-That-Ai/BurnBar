@@ -542,8 +542,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         )
 
         systemPermissionReceiver = SystemPermissionReceiver(
+            sessionId: sessionId,
             validator: phoneValidator,
             monitor: .shared,
+            authorizedPeerNodeProvider: { [weak self] in
+                guard let self else { return nil }
+                return self.phoneControlAuthorizedPeerNodeProvider?()?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    ?? self.state?.manifest.phoneViewerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            },
             denyFrameSink: { [weak self] frame in
                 try await self?.latestReplySender?(frame)
             },
