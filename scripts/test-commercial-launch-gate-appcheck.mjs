@@ -6,9 +6,11 @@
 import assert from "node:assert/strict";
 import {
   REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  buildFirebaseAppCheckCurlConfig,
   evaluateFirebaseAppCheckEnforcement,
   evaluateFirebaseAppCheckServiceSet,
-} from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+  firebaseAppCheckCurlArgs,
+} from "./commercial-launch-gate.mjs";
 
 {
   const enforced = evaluateFirebaseAppCheckEnforcement({
@@ -86,6 +88,34 @@ import {
   assert.deepEqual(
     failedServiceIds,
     REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  );
+}
+
+{
+  const config = buildFirebaseAppCheckCurlConfig(
+    "projects/123/services/firestore.googleapis.com",
+    "ya29.test-access-token",
+    {
+      userProject: "burnbar-test",
+    },
+  );
+  assert.match(config, /retry = 2/u);
+  assert.match(config, /retry-all-errors/u);
+  assert.match(config, /connect-timeout = 15/u);
+  assert.match(config, /max-time = 45/u);
+  assert.match(config, /header = "Authorization: Bearer ya29\.test-access-token"/u);
+  assert.match(config, /header = "x-goog-user-project: burnbar-test"/u);
+  assert.match(
+    config,
+    /url = "https:\/\/firebaseappcheck\.googleapis\.com\/v1beta\/projects\/123\/services\/firestore\.googleapis\.com"/u,
+  );
+  assert.deepEqual(firebaseAppCheckCurlArgs("/tmp/private-curl.conf"), [
+    "--config",
+    "/tmp/private-curl.conf",
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(firebaseAppCheckCurlArgs("/tmp/private-curl.conf")),
+    /ya29\.test-access-token/u,
   );
 }
 
