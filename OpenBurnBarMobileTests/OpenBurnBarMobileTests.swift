@@ -4935,4 +4935,101 @@ final class ControlSealSealingSinkTests: XCTestCase {
         XCTAssertEqual(frames.count, 1)
         XCTAssertNil(frames.first?.control)
     }
+
+    func testSealingSinkUsesLatestRegisteredSessionForConnection() async throws {
+        let oldKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 4, count: 32),
+            salt: Data("conn-refresh".utf8)
+        )
+        let freshKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 5, count: 32),
+            salt: Data("conn-refresh".utf8)
+        )
+        let oldSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-refresh",
+                senderPeerNodeId: "iphone-refresh",
+                senderKeyId: "relay-v3-refresh-old",
+                senderCounter: 1,
+                relayKeyVersion: 3
+            ),
+            key: oldKey,
+            controllerPeerNodeId: "ios-phone-refresh0000000000000000000"
+        )
+        let freshSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-refresh",
+                senderPeerNodeId: "iphone-refresh",
+                senderKeyId: "relay-v3-refresh-new",
+                senderCounter: 2,
+                relayKeyVersion: 3
+            ),
+            key: freshKey,
+            controllerPeerNodeId: "ios-phone-refresh0000000000000000000"
+        )
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-refresh")
+        }
+        let captured = CapturedFrames()
+        let sink = ControlSealSessionEstablisher.sealingFrameSink(
+            { frame in await captured.append(frame) },
+            session: oldSession
+        )
+        await MainActor.run {
+            ControlSealSessionEstablisher.register(freshSession, connectionID: "conn-refresh")
+        }
+
+        try await sink(HermesRealtimeRelayFrame(
+            type: .controlInputIntent,
+            uid: "uid-refresh",
+            connectionId: "conn-refresh",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                inputIntent: HermesRealtimeRelayInputIntent(
+                    kind: .tap,
+                    displayId: nil,
+                    normalizedX: 0.1,
+                    normalizedY: 0.2,
+                    normalizedX2: nil,
+                    normalizedY2: nil,
+                    text: nil,
+                    key: nil,
+                    modifiers: nil,
+                    mouseButton: nil,
+                    clientIntentId: "intent-refresh",
+                    authority: HermesRealtimeRelayAuthorityEnvelope(
+                        peerNodeId: "ios-phone-refresh0000000000000000000",
+                        counter: 9,
+                        timestamp: Date(),
+                        intentHashBlake3: String(repeating: "ef", count: 32),
+                        signatureEd25519: Data(repeating: 3, count: 64).base64EncodedString()
+                    )
+                )
+            )
+        ))
+
+        let frames = await captured.frames
+        let control = try XCTUnwrap(frames.first?.control)
+        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
+            control,
+            key: oldKey,
+            peerNodeId: "ios-phone-refresh0000000000000000000",
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        ))
+        let opened = try ControlFrameSealSession.openPayload(
+            control,
+            key: freshKey,
+            peerNodeId: "ios-phone-refresh0000000000000000000",
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        )
+        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-refresh")
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+        }
+    }
 }

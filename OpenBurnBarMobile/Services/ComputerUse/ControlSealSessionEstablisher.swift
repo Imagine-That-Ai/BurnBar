@@ -32,6 +32,16 @@ enum ControlSealSessionEstablisher {
         sessionsByConnection[connectionID] = session
     }
 
+    #if DEBUG
+    static func clearForTests() {
+        sessionsByConnection.removeAll()
+    }
+    #endif
+
+    private static func sessionForSealing(connectionID: String, fallback: Session) -> Session {
+        sessionsByConnection[connectionID] ?? fallback
+    }
+
     /// Establish when (and only when) the default-off RC flag is on AND the
     /// Mac advertised `control_seal_v1` in its heartbeat reply. Returns nil —
     /// the legacy plaintext-at-app-layer lane — otherwise, or when wrap
@@ -116,10 +126,11 @@ enum ControlSealSessionEstablisher {
         { frame in
             var frame = frame
             if let control = frame.control {
+                let sealSession = await sessionForSealing(connectionID: frame.connectionId, fallback: session)
                 frame.control = try ControlFrameSealSession.sealPayload(
                     control,
-                    key: session.key,
-                    peerNodeId: session.controllerPeerNodeId,
+                    key: sealSession.key,
+                    peerNodeId: sealSession.controllerPeerNodeId,
                     frameType: frame.type.rawValue
                 )
             }

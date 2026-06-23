@@ -102,14 +102,15 @@ object ControlSealSessionEstablisher {
      */
     fun sealingFrameSink(base: suspend (HermesRealtimeRelayFrame) -> Unit, session: Session): suspend (HermesRealtimeRelayFrame) -> Unit = { frame ->
         val control = frame.control
+        val sealSession = sessionsByConnection[frame.connectionId] ?: session
         val outbound =
             if (control != null) {
                 frame.copy(
                     control =
                     ControlFrameSealSession.sealPayload(
                         payload = control,
-                        key = session.key,
-                        peerNodeId = session.controllerPeerNodeId,
+                        key = sealSession.key,
+                        peerNodeId = sealSession.controllerPeerNodeId,
                         frameType = frame.type.wireValue,
                     ),
                 )
