@@ -535,11 +535,11 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: ccCredentialsURL, encoding: .utf8), ccPayload)
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
 
-        // The daemon's Keychain should be updated with the valid credential
-        // so the primary path picks it up on the next catalog snapshot.
-        let refreshedKeychain = try keychainSecret(service: service, account: account)
-        let oauth = try XCTUnwrap(claudeOAuthPayload(from: refreshedKeychain))
-        XCTAssertEqual(oauth["accessToken"] as? String, "valid-cc-token")
+        // The daemon must not copy Claude Code's refresh token into its own
+        // Keychain; that would let two processes rotate the same OAuth session.
+        let daemonKeychain = try keychainSecret(service: service, account: account)
+        let oauth = try XCTUnwrap(claudeOAuthPayload(from: daemonKeychain))
+        XCTAssertEqual(oauth["accessToken"] as? String, "expired-daemon-token")
     }
 
     func testKeychainSecretStoreDoesNotUseGlobalClaudeCodeCredentialForSlots() async throws {

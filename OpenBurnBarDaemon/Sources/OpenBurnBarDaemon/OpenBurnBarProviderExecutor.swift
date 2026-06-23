@@ -1129,9 +1129,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     /// only consumes a still-valid access token and never refreshes or rewrites
     /// Claude Code's file.
     ///
-    /// On successful fallback, the valid credential is copied to the daemon's
-    /// Keychain so the primary path picks it up on the next catalog snapshot
-    /// without needing this fallback again.
+    /// The fallback is intentionally read-only: copying Claude Code's refresh
+    /// token into BurnBar's Keychain would let two processes rotate the same
+    /// OAuth session independently.
     private func claudeCodeCredentialSecret(for providerID: String) async throws -> String? {
         let trimmedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard trimmedProviderID == "anthropic",
@@ -1152,9 +1152,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             // rotation semantics.
             return nil
         }
-        // Copy only a still-valid Claude Code credential into BurnBar's
-        // Keychain so future daemon catalog snapshots use the primary path.
-        try? await setSecret(credential.encodedStorageSecret(), for: providerID)
         let token = credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
     }
@@ -1182,7 +1179,14 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard expiresAt <= Date().addingTimeInterval(refreshWindow) else { continue }
             // Token expires within the window, refresh it now.
             if let refreshed = await refreshClaudeOAuthCredential(credential) {
-                try? await setSecret(refreshed.encodedStorageSecret(), for: slotKey)
+                do {
+                    try await setSecret(refreshed.encodedStorageSecret(), for: slotKey)
+                } catch {
+                    Self.logger.error("provider_oauth_proactive_refresh_store_failed", metadata: [
+                        "provider": slotKey,
+                        "error": String(describing: error)
+                    ])
+                }
             }
             // If refresh failed, the next secret(for:) call will fall through
             // to the Claude Code credential fallback automatically.
