@@ -38,11 +38,10 @@ public final class MacActionDispatcher: Sendable {
         let elapsedMillis: Double
         switch action.kind {
         case .click:
-            if let x = action.displayX, let y = action.displayY {
-                elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
-            } else {
-                elapsedMillis = try inputController.clickCurrent(button: action.mouseButton)
+            guard let x = action.displayX, let y = action.displayY else {
+                throw DispatchError.missingCoordinates("click")
             }
+            elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
         case .type:
             guard let text = action.text else { throw DispatchError.missingText }
             elapsedMillis = try inputController.type(text: text)

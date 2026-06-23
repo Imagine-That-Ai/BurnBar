@@ -46,5 +46,13 @@ final class MacActionDispatcherKillSwitchTests: XCTestCase {
             }
         }
     }
+
+    func test_dispatchRefusesCoordinateLessClick() {
+        let dispatcher = MacActionDispatcher()
+
+        XCTAssertThrowsError(try dispatcher.dispatch(MacInputAction(kind: .click))) { error in
+            XCTAssertEqual(error as? MacActionDispatcher.DispatchError, .missingCoordinates("click"))
+        }
+    }
 }
 #endif

@@ -140,8 +140,22 @@ public final class PhoneControlReceiver: Sendable {
                 intent.authority.counter
             )
         case .pointerClick:
+            guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY, displayId: intent.displayId) else {
+                await emitDeniedFrame(
+                    reason: .unknown,
+                    detail: "malformed_coordinates",
+                    uid: frame.uid,
+                    connectionId: frame.connectionId
+                )
+                return
+            }
             await dispatchHandler(
-                .macInput(MacInputAction(kind: .click, mouseButton: intent.mouseButton ?? 0)),
+                .macInput(MacInputAction(
+                    kind: .click,
+                    displayX: displayX,
+                    displayY: displayY,
+                    mouseButton: intent.mouseButton ?? 0
+                )),
                 sessionId,
                 intent.authority.counter
             )

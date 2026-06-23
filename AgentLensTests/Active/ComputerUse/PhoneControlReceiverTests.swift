@@ -1244,6 +1244,52 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
     }
 
+    func testPointerClickWithoutCoordinatesEmitDeniedFrame() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerClick,
+            mouseButton: 0,
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            intent: intent,
+            peerNodeId: "phone-peer-pointer-click",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-pointer-click", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-pointer-click"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(intent))
+
+        let actions = await capture.actions()
+        XCTAssertTrue(actions.isEmpty)
+        let deniedFrames = await capture.deniedFrames()
+        let denied = try XCTUnwrap(deniedFrames.first)
+        XCTAssertEqual(denied.type, .controlDenied)
+        XCTAssertEqual(denied.control?.denied?.reason, .unknown)
+        XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
+    }
+
     func testSignedTypeIntentDispatchesMacTypeAction() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()
