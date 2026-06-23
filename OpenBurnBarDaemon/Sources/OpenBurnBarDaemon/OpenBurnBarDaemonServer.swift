@@ -50,6 +50,7 @@ public actor BurnBarDaemonServer {
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var oauthRefreshTask: Task<Void, Never>?
     var localAuthVerifiedComputerUseSessions: [String: Date] = [:]
 
     public init(
@@ -313,6 +314,10 @@ public actor BurnBarDaemonServer {
         heartbeatTask = BurnBarDaemonHeartbeat.startPeriodicWriter(
             daemonVersion: configuration.daemonVersion
         )
+        oauthRefreshTask = Self.startOAuthRefreshTimer(
+            configStore: configStore,
+            logger: logger
+        )
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
         } else {
@@ -340,6 +345,38 @@ public actor BurnBarDaemonServer {
         }
     }
 
+    /// Background timer that proactively refreshes Anthropic OAuth credentials
+    /// before they expire. Runs every 30 minutes. On each tick, it reads all
+    /// Anthropic credential slots, refreshes any token that will expire within
+    /// 1 hour, and updates the Keychain. When a refresh fails (revoked refresh
+    /// token), the next `secret(for:)` call will automatically fall through to
+    /// the Claude Code credential fallback.
+    private static func startOAuthRefreshTimer(
+        configStore: BurnBarConfigStore,
+        logger: BurnBarDaemonLogger
+    ) -> Task<Void, Never> {
+        Task.detached(priority: .background) {
+            let interval: UInt64 = 30 * 60 // 30 minutes
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: interval * 1_000_000_000)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                let slotKeys = await configStore.oAuthSlotKeysForProactiveRefresh()
+                guard !slotKeys.isEmpty else { continue }
+                logger.debug(
+                    "oauth_proactive_refresh_tick",
+                    metadata: ["slot_count": "\(slotKeys.count)"]
+                )
+                await configStore.proactivelyRefreshExpiringOAuthCredentials(
+                    slotKeys: slotKeys
+                )
+            }
+        }
+    }
+
     public func stop() async {
         guard let listenerFileDescriptor else {
             logger.debug(
@@ -357,6 +394,8 @@ public actor BurnBarDaemonServer {
         self.listenerFileDescriptor = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        oauthRefreshTask?.cancel()
+        oauthRefreshTask = nil
         let acceptTask = acceptLoopTask
         acceptLoopTask = nil
         acceptTask?.cancel()

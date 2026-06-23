@@ -305,6 +305,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let store = BurnBarKeychainSecretStore(
             service: "com.openburnbar.tests.missing.\(UUID().uuidString)",
             hermesCredentialPoolURL: authURL,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: nil
         )
 
@@ -326,6 +327,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let store = BurnBarKeychainSecretStore(
             service: service,
             hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: fallbackURL
         )
 
@@ -355,6 +357,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let store = BurnBarKeychainSecretStore(
             service: service,
             hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: fallbackURL
         )
         try await store.setSecret("new-oauth-token", for: providerSlotKey)
@@ -386,6 +389,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let store = BurnBarKeychainSecretStore(
             service: service,
             hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: fallbackURL
         )
 
@@ -430,6 +434,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let store = BurnBarKeychainSecretStore(
             service: service,
             hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: fallbackURL,
             claudeOAuthRefreshSession: session
         )
@@ -467,6 +472,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
             service: primaryService,
             legacyServices: [legacyService],
             hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
             fallbackSecretFileURL: fallbackURL
         )
         let legacySecret = try await legacyOnlyStore.secret(for: providerSlotKey)
@@ -475,6 +481,113 @@ final class BurnBarConfigStoreTests: XCTestCase {
         try await legacyOnlyStore.setSecret("daemon-secret", for: providerSlotKey)
         let daemonSecret = try await legacyOnlyStore.secret(for: providerSlotKey)
         XCTAssertEqual(daemonSecret, "daemon-secret")
+    }
+
+    func testKeychainSecretStoreFallsBackToClaudeCodeCredentialsWhenKeychainOAuthRefreshFails() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        // First call (Keychain token refresh) fails; second call (Claude Code
+        // token refresh) succeeds with a fresh token.
+        ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
+        ClaudeOAuthRefreshURLProtocol.enqueue(
+            status: 200,
+            body: #"{"access_token":"cc-refreshed-token","refresh_token":"cc-new-refresh","expires_in":28800}"#
+        )
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let service = "com.openburnbar.tests.keychain.cc-fallback.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.default"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        // Store an expired OAuth credential with an invalid refresh token in the Keychain.
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let expiredPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-daemon-token","refreshToken":"invalid-refresh","expiresAt":\(expiredAtMilliseconds),"subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}
+        """
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+        try await store.setSecret(expiredPayload, for: providerSlotKey)
+
+        // Write a Claude Code credentials file with a different, also-expired
+        // token but a VALID refresh token that the refresh endpoint will accept.
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-cc-token","refreshToken":"valid-cc-refresh","expiresAt":\(expiredAtMilliseconds),"scopes":["user:inference"]}}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        // secret(for:) should:
+        // 1. Read the Keychain -> expired -> refresh fails (400) -> routeSecret returns nil
+        // 2. Fall through to Claude Code credentials -> expired -> refresh succeeds (200)
+        // 3. Return the refreshed access token
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "cc-refreshed-token")
+
+        // The daemon's Keychain should be updated with the refreshed credential
+        // so the primary path picks it up on the next catalog snapshot.
+        let refreshedKeychain = try keychainSecret(service: service, account: account)
+        let oauth = try XCTUnwrap(claudeOAuthPayload(from: refreshedKeychain))
+        XCTAssertEqual(oauth["accessToken"] as? String, "cc-refreshed-token")
+    }
+
+    func testKeychainSecretStoreReturnsNilWhenAllOAuthRefreshPathsFail() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
+        ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let service = "com.openburnbar.tests.keychain.all-fail.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.default"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-fail-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let expiredPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-token","refreshToken":"dead-refresh","expiresAt":\(expiredAtMilliseconds)}}
+        """
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+        try await store.setSecret(expiredPayload, for: providerSlotKey)
+
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-cc","refreshToken":"dead-cc-refresh","expiresAt":\(expiredAtMilliseconds)}}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        // Both the Keychain and Claude Code refresh tokens are invalid.
+        // secret(for:) should return nil (fail-closed) instead of returning
+        // an expired token that would cause a 401 on the live model refresh.
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertNil(secret)
     }
     #endif
 

@@ -845,6 +845,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let service: String
     private let legacyServices: [String]
     private let hermesCredentialPoolURL: URL?
+    private let claudeCodeCredentialsURL: URL?
     private let claudeOAuthRefreshSession: URLSession
 
     public init(
@@ -852,6 +853,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         legacyServices: [String]? = nil,
         hermesCredentialPoolURL: URL? = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".hermes/auth.json", isDirectory: false),
+        claudeCodeCredentialsURL: URL? = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/.credentials.json", isDirectory: false),
         fallbackSecretFileURL: URL? = BurnBarDaemonPaths.defaultProviderSecretContinuityURL,
         claudeOAuthRefreshSession: URLSession = .shared
     ) {
@@ -860,6 +863,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             service == Self.defaultService ? [Self.legacyCursorConnectorService] : []
         )
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
+        self.claudeCodeCredentialsURL = claudeCodeCredentialsURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
         if let fallbackSecretFileURL {
             // Legacy continuity vaults were plaintext JSON. They are no longer
@@ -876,12 +880,29 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
         let account = "provider.\(providerID).apiKey"
         if let secret = try secret(forService: service, account: account) {
-            return try await routeSecret(from: secret, providerID: providerID)
+            if let routed = try await routeSecret(from: secret, providerID: providerID) {
+                return routed
+            }
+            // routeSecret returned nil: the stored OAuth token is expired and
+            // refresh failed. Fall through to alternative credential sources
+            // instead of returning an unusable expired token that would cause
+            // a 401 on the live model refresh and block all models for this
+            // provider until the next catalog rebuild.
         }
         for legacyService in legacyServices where legacyService != service {
             if let secret = try secret(forService: legacyService, account: account) {
-                return try await routeSecret(from: secret, providerID: providerID)
+                if let routed = try await routeSecret(from: secret, providerID: providerID) {
+                    return routed
+                }
             }
+        }
+        // Try Claude Code's own credential file as a fallback. Claude Code
+        // maintains its own OAuth session with a separate refresh token that
+        // may still be valid when the daemon's stored refresh token has been
+        // revoked or expired. This is the primary automatic recovery path for
+        // expired Anthropic OAuth credentials.
+        if let ccToken = try await claudeCodeCredentialSecret(for: providerID) {
+            return ccToken
         }
         return hermesCredentialPoolSecret(for: providerID)
     }
@@ -894,10 +915,19 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return trimmed
         }
 
-        if claudeCredential.isExpired(),
-           let refreshed = await refreshClaudeOAuthCredential(claudeCredential) {
-            claudeCredential = refreshed
-            try await setSecret(refreshed.encodedStorageSecret(), for: providerID)
+        if claudeCredential.isExpired() {
+            if let refreshed = await refreshClaudeOAuthCredential(claudeCredential) {
+                claudeCredential = refreshed
+                try await setSecret(refreshed.encodedStorageSecret(), for: providerID)
+            } else {
+                // Refresh failed: return nil so callers can fall back to
+                // alternative credential sources (Claude Code credentials,
+                // Hermes pool, other credential slots). Returning the expired
+                // access token would cause a 401 on the live model refresh,
+                // which sets blocksRouting=true and blocks ALL models for this
+                // provider until the next catalog rebuild.
+                return nil
+            }
         }
 
         return claudeCredential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1078,6 +1108,72 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             }
         }
         return nil
+    }
+
+    /// Read and refresh the Claude Code credential file (`~/.claude/.credentials.json`)
+    /// as a fallback when the daemon's own Keychain credential is expired and
+    /// refresh failed. Claude Code maintains its own OAuth session with a
+    /// separate refresh token that may still be valid.
+    ///
+    /// On successful refresh, the refreshed credential is written back to both
+    /// the Claude Code file and the daemon's Keychain so the primary path picks
+    /// it up on the next catalog snapshot without needing this fallback again.
+    private func claudeCodeCredentialSecret(for providerID: String) async throws -> String? {
+        guard Self.normalizedProviderID(providerID) == "anthropic",
+              let claudeCodeCredentialsURL,
+              FileManager.default.fileExists(atPath: claudeCodeCredentialsURL.path) else {
+            return nil
+        }
+        guard let data = try? Data(contentsOf: claudeCodeCredentialsURL),
+              let raw = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              var credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
+            return nil
+        }
+        if credential.isExpired() {
+            guard let refreshed = await refreshClaudeOAuthCredential(credential) else {
+                return nil
+            }
+            credential = refreshed
+            // Write back to Claude Code's file so its own session stays fresh.
+            try? Data(refreshed.encodedStorageSecret().utf8)
+                .write(to: claudeCodeCredentialsURL, options: .atomic)
+            // Also update the daemon's Keychain so the primary path picks up
+            // the fresh token on the next catalog snapshot.
+            try? await setSecret(refreshed.encodedStorageSecret(), for: providerID)
+        }
+        let token = credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    /// Proactively refresh Anthropic OAuth credentials that will expire within
+    /// `refreshWindow` seconds. Called by the daemon's background refresh timer
+    /// to prevent tokens from expiring between user requests.
+    ///
+    /// For each Anthropic credential slot, reads the stored OAuth credential,
+    /// checks if it expires within the window, and refreshes it if so. On
+    /// successful refresh, the Keychain is updated. On refresh failure, the
+    /// Claude Code credential fallback is tried as an automatic recovery path.
+    public func proactivelyRefreshExpiringOAuthCredentials(
+        for slotKeys: [String],
+        refreshWindow: TimeInterval = 3600
+    ) async {
+        for slotKey in slotKeys {
+            guard Self.normalizedProviderID(slotKey) == "anthropic" else { continue }
+            let account = "provider.\(slotKey).apiKey"
+            guard let secret = try? secret(forService: service, account: account) else { continue }
+            guard let credential = BurnBarClaudeOAuthRouteCredential.decode(secret) else { continue }
+            guard let expiresAtMs = credential.expiresAtMilliseconds else { continue }
+            let expiresAt = Date(timeIntervalSince1970: expiresAtMs / 1000)
+            guard expiresAt <= Date().addingTimeInterval(refreshWindow) else { continue }
+            // Token expires within the window, refresh it now.
+            if let refreshed = await refreshClaudeOAuthCredential(credential) {
+                try? await setSecret(refreshed.encodedStorageSecret(), for: slotKey)
+            }
+            // If refresh failed, the next secret(for:) call will fall through
+            // to the Claude Code credential fallback automatically.
+        }
     }
 }
 

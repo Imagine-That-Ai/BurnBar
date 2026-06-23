@@ -804,6 +804,29 @@ public actor BurnBarConfigStore {
         return configuration
     }
 
+    /// Returns the secret-store keys for all enabled credential slots belonging
+    /// to OAuth-capable providers (currently Anthropic). Used by the daemon's
+    /// proactive OAuth refresh timer to refresh tokens before they expire.
+    public func oAuthSlotKeysForProactiveRefresh() async -> [String] {
+        guard let snapshot = try? snapshot() else { return [] }
+        var keys: [String] = []
+        for provider in snapshot.providers where provider.isEnabled {
+            guard provider.providerID.lowercased() == "anthropic" else { continue }
+            for slot in provider.credentialSlots where slot.isEnabled {
+                keys.append(slotSecretStoreKey(providerID: provider.providerID, slotID: slot.slotID))
+            }
+        }
+        return keys
+    }
+
+    /// Proactively refresh OAuth credentials that will expire soon. Called by
+    /// the daemon's background refresh timer. Delegates to the secret store
+    /// which handles the actual OAuth token refresh and Keychain update.
+    public func proactivelyRefreshExpiringOAuthCredentials(slotKeys: [String]) async {
+        guard let keychainStore = secretStore as? BurnBarKeychainSecretStore else { return }
+        await keychainStore.proactivelyRefreshExpiringOAuthCredentials(for: slotKeys)
+    }
+
     private func slotSecretStoreKey(providerID: String, slotID: String) -> String {
         "\(providerID).slot.\(slotID)"
     }
