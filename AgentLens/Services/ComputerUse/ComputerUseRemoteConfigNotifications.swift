@@ -8,10 +8,22 @@ extension Notification.Name {
         "OpenBurnBarComputerUseRemoteConfigKillSwitchDidFire"
     )
 
+    /// Fired when Remote Config or local settings changes
+    /// `computer_use_phone_control_attestation_required`. Live Computer Use
+    /// coordinators observe this so already-running phone-control sessions do
+    /// not keep using the startup snapshot.
+    static let phoneControlAttestationDidChange = Notification.Name(
+        "OpenBurnBarComputerUsePhoneControlAttestationRequirementDidChange"
+    )
+
     /// Fired when Firebase Remote Config reports `memory_extraction_enabled =
     /// false` (or a fetch error fail-closes the gate). The memory extraction
     /// chokepoint observes this and halts extraction without owning Firebase.
     static let memoryRemoteConfigKillSwitchDidFire = Notification.Name(
         "OpenBurnBarMemoryRemoteConfigKillSwitchDidFire"
     )
+}
+
+enum ComputerUseRemoteConfigNotificationUserInfo {
+    static let phoneControlAttestationRequired = "phoneControlAttestationRequired"
 }
