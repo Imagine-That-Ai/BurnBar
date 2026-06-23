@@ -38,11 +38,10 @@ public final class MacActionDispatcher: Sendable {
         let elapsedMillis: Double
         switch action.kind {
         case .click:
-            if let x = action.displayX, let y = action.displayY {
-                elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
-            } else {
-                elapsedMillis = try inputController.clickCurrent(button: action.mouseButton)
+            guard let x = action.displayX, let y = action.displayY else {
+                throw DispatchError.missingCoordinates("click")
             }
+            elapsedMillis = try inputController.click(x: x, y: y, button: action.mouseButton)
         case .type:
             guard let text = action.text else { throw DispatchError.missingText }
             elapsedMillis = try inputController.type(text: text)
@@ -77,6 +76,8 @@ public final class MacActionDispatcher: Sendable {
                 deltaX: action.deltaX ?? 0,
                 deltaY: action.deltaY ?? 0
             )
+        case .pointerClick:
+            elapsedMillis = try inputController.clickCurrent(button: action.mouseButton)
         }
 
         return .object([
@@ -118,8 +119,12 @@ public final class MacActionDispatcher: Sendable {
     }
 
     public func accessibilityDenyReason(at action: MacInputAction) -> ComputerUseAccessibilityDenyReason? {
-        guard let x = action.displayX, let y = action.displayY else { return nil }
-        return inspector.denyReason(for: inspector.snapshotAtPoint(x: x, y: y))
+        if let x = action.displayX, let y = action.displayY {
+            return inspector.denyReason(for: inspector.snapshotAtPoint(x: x, y: y))
+        }
+        guard action.kind == .pointerClick else { return nil }
+        let point = inputController.currentPointerLocation()
+        return inspector.denyReason(for: inspector.snapshotAtPoint(x: Int(point.x), y: Int(point.y)))
     }
 }
 #endif
