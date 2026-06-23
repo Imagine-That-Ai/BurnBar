@@ -105,7 +105,7 @@ final class BehaviorTests: XCTestCase {
 
     func test_goldenVectors_matchWhenPresent() throws {
         guard let data = Self.loadGoldenVectorData() else {
-            throw XCTSkip("petcore golden behavior.json not present; determinism covered above")
+            throw XCTSkip("petcore golden behavior-swift.json not present; determinism covered above")
         }
         let vector = try JSONDecoder().decode(BehaviorGoldenVector.self, from: data)
         var interp = BehaviorInterpreter(graph: vector.graph, seed: vector.seed)
@@ -116,13 +116,23 @@ final class BehaviorTests: XCTestCase {
         }
     }
 
-    /// Look for the golden file alongside the source tree (the TS core writes it
-    /// to `packages/petcore/test/golden/behavior.json`). Probes a few known
-    /// repo-relative roots; returns `nil` when the export hasn't been produced.
+    /// Look for an opt-in Swift-compatible golden file. The shared TS petcore
+    /// export currently uses a different multi-seed shape, so this deliberately
+    /// avoids hard-coded machine-local paths and skips unless a converted fixture
+    /// is provided.
     private static func loadGoldenVectorData() -> Data? {
+        let environment = ProcessInfo.processInfo.environment
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
         let candidates = [
-            "/Users/dewclaw/Documents/Projects/imaginethat-llc/packages/petcore/test/golden/behavior.json"
-        ]
+            environment["OPENBURNBAR_PET_BEHAVIOR_GOLDEN_JSON"],
+            repoRoot
+                .appendingPathComponent("packages/petcore/test/golden/behavior-swift.json")
+                .path
+        ].compactMap { $0?.isEmpty == false ? $0 : nil }
         for path in candidates {
             if let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
                 return data

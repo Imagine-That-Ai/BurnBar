@@ -45,6 +45,55 @@ class PhoneControlSenderAttestationTest {
     )
 
     private fun tap() = PhoneControlIntent(kind = PhoneControlIntentKind.TAP, normalizedX = 0.5, normalizedY = 0.5)
+    private fun clipboardRequest() = PhoneControlClipboardRequest(
+        requestId = "req-clipboard",
+        action = PhoneControlClipboardAction.PASTE_TO_MAC,
+        contentType = "text/plain",
+        text = "hello",
+        maxBytes = 65_536,
+    )
+    private fun contextTarget() = PhoneControlAgentContextTarget(
+        requestId = "req-context",
+        sessionId = null,
+        runtime = "hermes",
+        threadId = null,
+        displayId = "display-1",
+        normalizedX = 0.5,
+        normalizedY = 0.5,
+        normalizedRect = null,
+        instruction = "look here",
+        focusContext = null,
+        clientIntentId = "intent-context",
+        requestedAt = 721_692_800.0,
+    )
+    private fun remoteUnlockCredential() = com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+        requestId = "remote-unlock-credential",
+        sessionId = "remote-unlock-session",
+        clientIntentId = "client-intent",
+        credentialKind = com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
+        recipientKeyId = "hpke-key",
+        algorithm = RemoteUnlockCredentialEnvelopeCrypto.ALGORITHM,
+        ciphertextBase64 = "Y2lwaGVy",
+        aadBase64 = "YWFk",
+        redactedByteCount = 6,
+        requestedAt = "2026-05-26T20:00:00.000Z",
+        expiresAt = "2026-05-26T20:00:30.000Z",
+        authority = com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId = "",
+            counter = 0,
+            timestamp = 0.0,
+            intentHashBlake3 = "",
+            signatureEd25519 = "",
+        ),
+    )
+    private fun systemPermissionRequest() = PhoneControlSystemPermissionRequest(
+        requestId = "req-system-permission",
+        kind = PhoneControlSystemPermissionKind.SCREEN_RECORDING,
+        action = PhoneControlSystemPermissionAction.PROMPT_AND_OPEN_SETTINGS,
+        bundleId = "com.apple.systempreferences",
+        clientIntentId = "intent-system-permission",
+        requestedAtMillis = 1_700_000_000_123L,
+    )
 
     @Test
     fun `the digest is attached to the authority envelope when the reader has one`() = runBlocking {
@@ -144,6 +193,22 @@ class PhoneControlSenderAttestationTest {
         assertEquals(digest, frames.single().control?.inputIntent?.authority?.attestationHashBlake3)
     }
 
+    @Test
+    fun `the enforcer attaches an enforceable digest to every non-input authority envelope`() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val phoneControlSender = enforcingSender(frames) { digest }
+
+        phoneControlSender.send(clipboardRequest())
+        phoneControlSender.send(remoteUnlockCredential())
+        phoneControlSender.send(contextTarget())
+        phoneControlSender.send(systemPermissionRequest())
+
+        assertEquals(digest, frames[0].control?.clipboardRequest?.authority?.attestationHashBlake3)
+        assertEquals(digest, frames[1].control?.remoteUnlockCredential?.authority?.attestationHashBlake3)
+        assertEquals(digest, frames[2].control?.agentContextTarget?.authority?.attestationHashBlake3)
+        assertEquals(digest, frames[3].control?.systemPermissionRequest?.authority?.attestationHashBlake3)
+    }
+
     // RR-7c — when strict mode is on and no digest can be produced, the enforcer throws and the
     // control action is NOT sent (fail-closed), mirroring iOS `SendError.attestationRequired`.
     @Test
@@ -153,6 +218,24 @@ class PhoneControlSenderAttestationTest {
             runBlocking { enforcingSender(frames) { throw AttestationRequiredException() }.send(tap()) }
         }
         assertTrue("no frame is emitted when attestation enforcement fails", frames.isEmpty())
+    }
+
+    @Test
+    fun `strict-mode non-input sends fail closed when no digest can be produced`() = runBlocking {
+        val cases: List<suspend (PhoneControlSender) -> Unit> = listOf(
+            { it.send(clipboardRequest()) },
+            { it.send(remoteUnlockCredential()) },
+            { it.send(contextTarget()) },
+            { it.send(systemPermissionRequest()) },
+        )
+
+        for (send in cases) {
+            val frames = mutableListOf<HermesRealtimeRelayFrame>()
+            assertThrows(AttestationRequiredException::class.java) {
+                runBlocking { send(enforcingSender(frames) { throw AttestationRequiredException() }) }
+            }
+            assertTrue("no frame is emitted when attestation enforcement fails", frames.isEmpty())
+        }
     }
 
     // RR-7c — a null enforcer (ramp off) leaves the best-effort provider in charge: the wire is

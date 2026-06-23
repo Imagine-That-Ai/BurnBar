@@ -36,6 +36,14 @@ assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
 assert.match(launchGateSource, /alertDeliverability/);
+assert.doesNotMatch(
+  launchGateSource,
+  /run\(\s*["']curl["']\s*,\s*\[[\s\S]{0,900}Authorization:\s*`?Bearer/u,
+);
+assert.doesNotMatch(
+  launchGateSource,
+  /["']-H["'][\s\S]{0,120}Authorization:\s*`?Bearer/u,
+);
 
 assert.equal(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,

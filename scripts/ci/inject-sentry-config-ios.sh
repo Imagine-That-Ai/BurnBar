@@ -29,51 +29,12 @@ if [[ -z "$DSN" ]]; then
     exit 0
 fi
 
-# Validate it looks like a Sentry DSN.
-if [[ "$DSN" != https://* ]]; then
-    echo "::error::OPENBURNBAR_SENTRY_DSN does not look like a valid Sentry DSN (expected https://)."
-    exit 1
-fi
-
-validate_plist() {
-    local plist="$1"
-    if [[ ! -f "$plist" ]]; then
-        return 0
-    fi
-    if ! plutil -lint "$plist" >/dev/null; then
-        echo "::error::Plist syntax validation failed for $plist"
-        exit 1
-    fi
-}
-
-inject_into_plist() {
-    local plist="$1"
-    if [[ ! -f "$plist" ]]; then
-        echo "::warning::Sentry target plist not found: $plist"
-        return 0
-    fi
-
-    # Reject pre-existing malformed plists before mutating them.
-    validate_plist "$plist"
-
-    /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist" >/dev/null 2>&1 || true
-    /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $DSN" "$plist"
-
-    # Ensure the mutation did not corrupt the file.
-    validate_plist "$plist"
-
-    echo "::notice::Sentry DSN injected into $plist"
-}
-
 MAC_INFO_PLIST="AgentLens/Resources/OpenBurnBar-Info.plist"
 IOS_INFO_PLIST="OpenBurnBarMobile/Info.plist"
 MAC_GOOGLE_PLIST="AgentLens/Resources/GoogleService-Info.plist"
 IOS_GOOGLE_PLIST="OpenBurnBarMobile/Resources/GoogleService-Info.plist"
-
-inject_into_plist "$MAC_INFO_PLIST"
-inject_into_plist "$IOS_INFO_PLIST"
+PLIST_PATHS="${MAC_INFO_PLIST}:${IOS_INFO_PLIST}:${MAC_GOOGLE_PLIST}:${IOS_GOOGLE_PLIST}"
 
 # Defense-in-depth fallback: keep GoogleService-Info.plist synchronized so any
 # code path that reads from there continues to work.
-inject_into_plist "$MAC_GOOGLE_PLIST"
-inject_into_plist "$IOS_GOOGLE_PLIST"
+python3 scripts/ci/sentry_dsn.py plist-env OPENBURNBAR_SENTRY_DSN "$PLIST_PATHS"

@@ -84,12 +84,12 @@ for plist_path in $plist_paths; do
     /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "$plist_path" >/dev/null 2>&1 || true
-    if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
-        /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist_path" >/dev/null 2>&1 || true
-        /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $OPENBURNBAR_SENTRY_DSN" "$plist_path"
-    fi
 done
 IFS="$old_ifs"
+
+if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
+    python3 "$repo_root/scripts/ci/sentry_dsn.py" plist-env OPENBURNBAR_SENTRY_DSN "$plist_paths"
+fi
 
 if [ "$OPENBURNBAR_USE_DEBUG_APP_CHECK" = "YES" ] && [ -n "${GITHUB_ENV:-}" ]; then
     {

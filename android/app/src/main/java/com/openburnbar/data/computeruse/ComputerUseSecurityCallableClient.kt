@@ -1,5 +1,6 @@
 package com.openburnbar.data.computeruse
 
+import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
@@ -50,6 +51,8 @@ data class EscrowDeviceTrustRevocationResult(
 class ComputerUseSecurityCallableClient(
     private val functions: FirebaseFunctions = Firebase.functions("us-central1"),
 ) {
+    private val relaySenderProofProtocolVersion = "3"
+
     suspend fun bindAppCheckAttestation() {
         requireAuthenticatedUser()
         functions.getHttpsCallable("bindAppCheckAttestation").call(emptyMap<String, Any>()).await()
@@ -235,25 +238,29 @@ class ComputerUseSecurityCallableClient(
     }
 
     suspend fun publishRelaySenderKey(request: RelaySenderKeyPublishRequest) {
-        requireAuthenticatedUser()
-        bindAppCheckAttestation()
-        val nonce = issueHighRiskActionNonce()
+        val subjectId = relaySenderKeyPublishProofSubjectId(request)
+        val payload =
+            linkedMapOf<String, Any>(
+                "deviceId" to request.deviceId,
+                "peerNodeId" to request.peerNodeId,
+                "keyId" to request.keyId,
+                "publicKeyBase64" to request.publicKeyBase64,
+                "relayKeyVersion" to request.relayKeyVersion,
+                "publishedAtMillis" to request.publishedAtMillis,
+                "signalIdentityKeyId" to request.signalIdentityKeyId,
+                "signalIdentityKeyVersion" to request.signalIdentityKeyVersion,
+                "signalIdentityPublicKeyFingerprint" to request.signalIdentityPublicKeyFingerprint,
+            )
+        payload.putAll(
+            highRiskOwnerActionEnvelope(
+                actionKind = "relay_sender_key_publish",
+                subjectId = subjectId,
+                deviceId = request.deviceId,
+            ),
+        )
         val result =
             functions.getHttpsCallable("publishRelaySenderKey")
-                .call(
-                    mapOf(
-                        "deviceId" to request.deviceId,
-                        "peerNodeId" to request.peerNodeId,
-                        "keyId" to request.keyId,
-                        "publicKeyBase64" to request.publicKeyBase64,
-                        "relayKeyVersion" to request.relayKeyVersion,
-                        "publishedAtMillis" to request.publishedAtMillis,
-                        "signalIdentityKeyId" to request.signalIdentityKeyId,
-                        "signalIdentityKeyVersion" to request.signalIdentityKeyVersion,
-                        "signalIdentityPublicKeyFingerprint" to request.signalIdentityPublicKeyFingerprint,
-                        "nonce" to nonce,
-                    ),
-                )
+                .call(payload)
                 .await()
         requireOk(result.getData(), "Relay sender-key publication failed.")
     }
@@ -347,6 +354,44 @@ class ComputerUseSecurityCallableClient(
             "trustedDeviceId" to resolvedDeviceId,
             "actionProof" to actionProof,
         )
+    }
+
+    private fun relaySenderKeyPublishProofSubjectId(request: RelaySenderKeyPublishRequest): String {
+        val publicKeySHA256Hex = CloudVaultCrypto.sha256Hex(Base64.decode(request.publicKeyBase64, Base64.NO_WRAP))
+        val segments =
+            listOf(
+                "version",
+                "1",
+                "deviceId",
+                request.deviceId,
+                "peerNodeId",
+                request.peerNodeId,
+                "keyId",
+                request.keyId,
+                "publicKeySHA256Hex",
+                publicKeySHA256Hex,
+                "relayKeyVersion",
+                relaySenderProofProtocolVersion,
+                "publishedAtMillis",
+                request.publishedAtMillis.toString(),
+                "signalIdentityKeyId",
+                request.signalIdentityKeyId,
+                "signalIdentityKeyVersion",
+                request.signalIdentityKeyVersion.toString(),
+                "signalIdentityPublicKeyFingerprint",
+                request.signalIdentityPublicKeyFingerprint,
+            )
+        val canonical =
+            buildString {
+                append("OpenBurnBar-RelaySenderKeyPublish-v1\n")
+                for (segment in segments) {
+                    append(segment.toByteArray(Charsets.UTF_8).size)
+                    append(':')
+                    append(segment)
+                    append('\n')
+                }
+            }
+        return CloudVaultCrypto.sha256Hex(canonical.toByteArray(Charsets.UTF_8))
     }
 
     suspend fun callHighRiskOwnerAction(

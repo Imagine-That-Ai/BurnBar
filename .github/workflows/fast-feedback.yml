@@ -283,6 +283,15 @@ jobs:
           fi
           echo "All shell scripts pass syntax validation."
 
+      - name: Release config injection safety tests
+        run: |
+          set -euo pipefail
+          bash scripts/ci/sentry_dsn.test.sh
+          bash scripts/ci/inject-sentry-config-ios.test.sh
+          bash scripts/ci/inject-sentry-config-android.test.sh
+          bash scripts/ci/inject-firebase-config.test.sh
+          bash scripts/ci/inject-sentry-config-extension.test.sh
+
       - name: Install ShellCheck
         env:
           SHELLCHECK_VERSION: "0.11.0"
@@ -298,6 +307,9 @@ jobs:
 
       - name: ShellCheck
         run: ./scripts/ci/run-shellcheck.sh
+
+      - name: Remote Config credential argv safety tests
+        run: bash scripts/cutover-n0-hosted-relay.test.sh
 
   # ── Python scripts: Ruff defect floor + formatter gate ───────────────────
   python-lint:

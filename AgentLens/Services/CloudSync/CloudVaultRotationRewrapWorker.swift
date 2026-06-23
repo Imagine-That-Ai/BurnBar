@@ -22,12 +22,27 @@ enum CloudVaultRotationRewrapWorkerError: LocalizedError {
     }
 }
 
+private struct CloudVaultNestedDocumentRewrapTarget {
+    let parentCollectionID: String
+    let childCollectionID: String
+    let logicalCollectionID: String
+    let checkpointID: String
+}
+
 struct CloudVaultRotationRewrapWorker {
     private static let logger = Logger(subsystem: "com.openburnbar.cloudsync", category: "CloudVaultRotationRewrapWorker")
 
     private static let cloudSearchChunkMaxBytes = 16_000
     private static let cloudSearchChunkTokenHashLimit = 1_024
     private static let cloudSearchIndexVersion = 5
+    private static let nestedDocumentRewrapTargets = [
+        CloudVaultNestedDocumentRewrapTarget(
+            parentCollectionID: "cli_agent_mission_requests",
+            childCollectionID: "events",
+            logicalCollectionID: "cli_agent_mission_requests/events",
+            checkpointID: "cli_agent_mission_requests_events"
+        )
+    ]
 
     var batchLimit: Int = 50
     var firestore: Firestore = .firestore()
@@ -85,6 +100,31 @@ struct CloudVaultRotationRewrapWorker {
             try await checkpoint(
                 jobRef: jobRef,
                 domainID: domain.id,
+                status: "documents_complete",
+                scanned: scanned,
+                rewrapped: rewrapped,
+                changedFields: changed
+            )
+        }
+
+        for target in Self.nestedDocumentRewrapTargets {
+            let result = try await rewrapNestedCollection(
+                userRef: userRef,
+                target: target,
+                uid: uid,
+                jobId: jobId,
+                oldKeyData: oldKeyData,
+                newKeyData: newKeyData,
+                newVaultKeyID: newVaultKeyID,
+                vaultGeneration: vaultGeneration
+            )
+            scanned += result.scannedDocuments
+            rewrapped += result.rewrappedDocuments
+            changed += result.changedFields
+
+            try await checkpoint(
+                jobRef: jobRef,
+                domainID: target.checkpointID,
                 status: "documents_complete",
                 scanned: scanned,
                 rewrapped: rewrapped,
@@ -402,6 +442,115 @@ struct CloudVaultRotationRewrapWorker {
                     uid: uid,
                     collection: collectionID,
                     docID: document.documentID,
+                    oldKeyData: oldKeyData,
+                    newKeyData: newKeyData,
+                    newVaultKeyID: newVaultKeyID,
+                    vaultGeneration: vaultGeneration,
+                    rotationJobId: jobId
+                )
+                guard result.changed else { continue }
+                try await document.reference.updateData(updatePayload(from: result, vaultGeneration: vaultGeneration, jobId: jobId))
+                rewrapped += 1
+                changed += result.changedFields.count
+            }
+
+            lastDocument = snapshot.documents.last
+        }
+
+        return CloudVaultRotationRewrapProgress(
+            scannedDocuments: scanned,
+            rewrappedDocuments: rewrapped,
+            changedFields: changed,
+            scannedStorageBlobs: 0,
+            rewrappedStorageBlobs: 0
+        )
+    }
+
+    private func rewrapNestedCollection(
+        userRef: DocumentReference,
+        target: CloudVaultNestedDocumentRewrapTarget,
+        uid: String,
+        jobId: String,
+        oldKeyData: Data,
+        newKeyData: Data,
+        newVaultKeyID: String,
+        vaultGeneration: Int
+    ) async throws -> CloudVaultRotationRewrapProgress {
+        var scanned = 0
+        var rewrapped = 0
+        var changed = 0
+        var lastParent: DocumentSnapshot?
+
+        while true {
+            var query: Query = userRef.collection(target.parentCollectionID)
+                .order(by: FieldPath.documentID())
+                .limit(to: batchLimit)
+            if let lastParent {
+                query = query.start(afterDocument: lastParent)
+            }
+            let snapshot = try await query.getDocuments()
+            if snapshot.documents.isEmpty { break }
+
+            for parent in snapshot.documents {
+                let progress = try await rewrapChildCollection(
+                    parentDocument: parent,
+                    target: target,
+                    uid: uid,
+                    jobId: jobId,
+                    oldKeyData: oldKeyData,
+                    newKeyData: newKeyData,
+                    newVaultKeyID: newVaultKeyID,
+                    vaultGeneration: vaultGeneration
+                )
+                scanned += progress.scannedDocuments
+                rewrapped += progress.rewrappedDocuments
+                changed += progress.changedFields
+            }
+
+            lastParent = snapshot.documents.last
+        }
+
+        return CloudVaultRotationRewrapProgress(
+            scannedDocuments: scanned,
+            rewrappedDocuments: rewrapped,
+            changedFields: changed,
+            scannedStorageBlobs: 0,
+            rewrappedStorageBlobs: 0
+        )
+    }
+
+    private func rewrapChildCollection(
+        parentDocument: DocumentSnapshot,
+        target: CloudVaultNestedDocumentRewrapTarget,
+        uid: String,
+        jobId: String,
+        oldKeyData: Data,
+        newKeyData: Data,
+        newVaultKeyID: String,
+        vaultGeneration: Int
+    ) async throws -> CloudVaultRotationRewrapProgress {
+        var scanned = 0
+        var rewrapped = 0
+        var changed = 0
+        var lastDocument: DocumentSnapshot?
+
+        while true {
+            var query: Query = parentDocument.reference.collection(target.childCollectionID)
+                .order(by: FieldPath.documentID())
+                .limit(to: batchLimit)
+            if let lastDocument {
+                query = query.start(afterDocument: lastDocument)
+            }
+            let snapshot = try await query.getDocuments()
+            if snapshot.documents.isEmpty { break }
+
+            for document in snapshot.documents {
+                scanned += 1
+                let result = try CloudVaultCrypto.rewrapCloudVaultDocument(
+                    document.data(),
+                    uid: uid,
+                    collection: target.logicalCollectionID,
+                    docID: "\(parentDocument.documentID)/\(document.documentID)",
                     oldKeyData: oldKeyData,
                     newKeyData: newKeyData,
                     newVaultKeyID: newVaultKeyID,

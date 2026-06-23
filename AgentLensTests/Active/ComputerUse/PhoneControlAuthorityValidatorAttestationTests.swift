@@ -137,6 +137,70 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         )
     }
 
+    func test_requireBoundPeerRejectsUnboundAuthorityRecord() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = makeValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "forged-digest")
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .requireBoundPeer
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.peerAttestationUnbound(let peerNodeId) = error else {
+                return XCTFail("Expected peerAttestationUnbound, got \(error)")
+            }
+            XCTAssertEqual(peerNodeId, "peer-1")
+        }
+    }
+
+    func test_requireBoundPeerRejectsForgedAttestationDigest() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = makeValidator()
+        validator.registerPeer(
+            nodeId: "peer-1",
+            publicKey: privateKey.publicKey,
+            requiredAttestationHashBlake3: "expected-digest"
+        )
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "forged-digest")
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .requireBoundPeer
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.attestationMismatch(let expected, let observed) = error else {
+                return XCTFail("Expected attestationMismatch, got \(error)")
+            }
+            XCTAssertEqual(expected, "expected-digest")
+            XCTAssertEqual(observed, "forged-digest")
+        }
+    }
+
+    func test_requireBoundPeerAcceptsRegisteredAttestationDigest() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = makeValidator()
+        validator.registerPeer(
+            nodeId: "peer-1",
+            publicKey: privateKey.publicKey,
+            requiredAttestationHashBlake3: "expected-digest"
+        )
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "expected-digest")
+
+        XCTAssertNoThrow(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .requireBoundPeer
+            )
+        )
+    }
+
     func test_clipboardValidationRequiresAttestationWhenPolicyRequiresIt() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let validator = makeValidator()

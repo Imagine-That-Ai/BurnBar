@@ -50,10 +50,16 @@ CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
 RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi(IOS|Mac)?\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
 
 # Owner-routed exceptions are narrow and explicit. The handoff Rule-0 demands
-# ("route through the legal/ownership owner") is expressed as an auditable,
-# path-scoped `Rule0-Ack: <scope> <reason>` trailer in a branch commit message.
-# The trailer is permanent history and is allowed only for paths whose normal
-# lifecycle can legitimately require owner-approved pointer/artifact changes:
+# ("route through the legal/ownership owner") can be expressed as an auditable,
+# path-scoped `Rule0-Ack: <scope> <reason>` trailer in a branch commit message,
+# but that trailer is NOT trusted by default. A branch author can write arbitrary
+# commit messages, so default PR CI ignores Rule0-Ack and fails closed. Trusted
+# automation may set OPENBURNBAR_RULE0_TRUSTED_OWNER_ACK=1 only after an external
+# approval gate has established the owner route.
+#
+# When that trusted opt-in is present, the trailer is allowed only for paths
+# whose normal lifecycle can legitimately require owner-approved pointer/artifact
+# changes:
 #
 # - third_party/hermes-agent/manifest.json: provenance PIN validated by C-5.
 # - Vendor/libsignal and generated Signal FFI XCFramework paths: AGPL/legal
@@ -68,9 +74,13 @@ ack_lines=""
 if [[ -n "${MERGE_BASE:-}" ]]; then
   ack_lines="$(git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Rule0-Ack: \S' || true)"
 fi
+if [[ -n "$ack_lines" && "${OPENBURNBAR_RULE0_TRUSTED_OWNER_ACK:-0}" != "1" ]]; then
+  echo "  RULE-0 NOTE: Rule0-Ack trailer(s) found but ignored; trusted owner-ack automation did not opt in."
+fi
 
 rule0_ack_scope_present() {
   local scope_regex="$1"
+  [[ "${OPENBURNBAR_RULE0_TRUSTED_OWNER_ACK:-0}" == "1" ]] || return 1
   [[ -n "$ack_lines" ]] || return 1
   printf '%s\n' "$ack_lines" | grep -Eiq "^Rule0-Ack:[[:space:]]+(${scope_regex})([[:space:]:,;-]|$)"
 }

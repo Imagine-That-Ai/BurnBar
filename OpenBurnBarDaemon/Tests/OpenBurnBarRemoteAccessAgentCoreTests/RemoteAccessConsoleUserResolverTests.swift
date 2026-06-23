@@ -131,6 +131,23 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
         )
     }
 
+    func testCredentialWorkerLaunchPlanNeverCarriesCredentialMaterialInArguments() {
+        let credential = "correct-horse-battery-staple"
+        let credentialFilePath = "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+        let arguments = RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
+            executablePath: "/agent",
+            consoleUserUID: 501,
+            loginWindowPID: 415,
+            credentialFilePath: credentialFilePath
+        )
+
+        XCTAssertFalse(arguments.contains(credential))
+        XCTAssertFalse(arguments.contains("--password"))
+        XCTAssertFalse(arguments.contains("--credential"))
+        XCTAssertEqual(arguments.filter { $0 == "--credential-file" }.count, 1)
+        XCTAssertEqual(arguments.filter { $0 == credentialFilePath }.count, 1)
+    }
+
     func testCredentialWorkerUsesSessionScopedKeyboardEventSource() {
         XCTAssertEqual(
             RemoteAccessCredentialEventSourcePolicy.keyboardEventSource,

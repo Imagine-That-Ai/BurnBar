@@ -216,7 +216,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedWire =
             HermesRealtimeRelayClipboardRequest(
                 requestId = request.requestId,
@@ -263,7 +263,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedWire = unsignedCredential.copy(authority = authority.toRelayAuthority())
         val frame =
             HermesRealtimeRelayFrame(
@@ -299,7 +299,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedWire =
             HermesRealtimeRelayAgentContextTarget(
                 requestId = target.requestId,
@@ -348,7 +348,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedWire =
             HermesRealtimeRelaySystemPermissionRequest(
                 requestId = request.requestId,

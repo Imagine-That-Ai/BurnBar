@@ -319,23 +319,46 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     }
 
     @discardableResult
-    public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
-        registerPhonePeer(nodeId: nodeId, verifyingKey: .ed25519(publicKey))
+    public func registerPhonePeer(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        requiredAttestationHashBlake3: String? = nil
+    ) -> Bool {
+        registerPhonePeer(
+            nodeId: nodeId,
+            verifyingKey: .ed25519(publicKey),
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
     }
 
     @discardableResult
-    public func registerPhonePeer(nodeId: String, verifyingKey: PhoneControlVerifyingKey) -> Bool {
+    public func registerPhonePeer(
+        nodeId: String,
+        verifyingKey: PhoneControlVerifyingKey,
+        requiredAttestationHashBlake3: String? = nil
+    ) -> Bool {
         // F1: scope the controller-key pin to this account so the Mac refuses a
         // relay/Firestore-swapped signing key for an already-paired controller.
-        phoneValidator.registerPeer(nodeId: nodeId, verifyingKey: verifyingKey, uid: configuration.userId)
+        phoneValidator.registerPeer(
+            nodeId: nodeId,
+            verifyingKey: verifyingKey,
+            uid: configuration.userId,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
     }
 
     func registerPhonePeerForControlClassify(
         nodeId: String,
         publicKey: PhoneControlVerifyingKey,
+        requiredAttestationHashBlake3: String?,
         connectionID: String
     ) async -> (admitted: Bool, denialDetail: String?) {
-        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
+        switch phoneValidator.registerPeerDetailed(
+            nodeId: nodeId,
+            verifyingKey: publicKey,
+            uid: configuration.userId,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        ) {
         case .admitted:
             return (true, nil)
         case .pendingConfirmation(let safetyCode):
@@ -357,7 +380,12 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             else {
                 return (false, "controller_confirmation_rejected")
             }
-            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
+            switch phoneValidator.registerPeerDetailed(
+                nodeId: nodeId,
+                verifyingKey: publicKey,
+                uid: configuration.userId,
+                requiredAttestationHashBlake3: requiredAttestationHashBlake3
+            ) {
             case .admitted:
                 return (true, nil)
             case .pendingConfirmation:
@@ -514,8 +542,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         )
 
         systemPermissionReceiver = SystemPermissionReceiver(
+            sessionId: sessionId,
             validator: phoneValidator,
             monitor: .shared,
+            authorizedPeerNodeProvider: { [weak self] in
+                guard let self else { return nil }
+                return self.phoneControlAuthorizedPeerNodeProvider?()?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    ?? self.state?.manifest.phoneViewerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            },
             denyFrameSink: { [weak self] frame in
                 try await self?.latestReplySender?(frame)
             },

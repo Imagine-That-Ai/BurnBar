@@ -25,6 +25,8 @@ public final class PhoneControlSender: Sendable {
     }
 
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    public typealias AttestationDigestProvider = @Sendable () async -> String?
+    public typealias AttestationBinder = @Sendable () async throws -> Void
 
     public let peerNodeId: String
     private let signer: ComputerUsePhoneControlSigner
@@ -39,6 +41,9 @@ public final class PhoneControlSender: Sendable {
     // serializes the read-modify-write under `counterLock`.
     private let userDefaultsBox: OSAllocatedUnfairLock<State>
     private let frameSink: FrameSink
+    private let phoneControlAttestationRequired: @Sendable () -> Bool
+    private let attestationDigestProvider: AttestationDigestProvider
+    private let bindAppCheckAttestation: AttestationBinder
     private let uid: String
     private let connectionId: String
     private let sendSequencer = PhoneControlSendSequencer()
@@ -55,6 +60,9 @@ public final class PhoneControlSender: Sendable {
         signingIdentityProvider: @escaping @Sendable () -> PhoneControlAuthoritySigningKey?,
         userDefaults: UserDefaults = .standard,
         signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner(),
+        phoneControlAttestationRequired: (@Sendable () -> Bool)? = nil,
+        attestationDigestProvider: AttestationDigestProvider? = nil,
+        bindAppCheckAttestation: AttestationBinder? = nil,
         frameSink: @escaping FrameSink
     ) {
         self.peerNodeId = peerNodeId
@@ -63,6 +71,15 @@ public final class PhoneControlSender: Sendable {
         self.signingIdentityProvider = signingIdentityProvider
         self.userDefaultsBox = OSAllocatedUnfairLock(uncheckedState: State(userDefaults: userDefaults))
         self.signer = signer
+        self.phoneControlAttestationRequired = phoneControlAttestationRequired ?? {
+            MobileComputerUseRemoteConfig.phoneControlAttestationRequired()
+        }
+        self.attestationDigestProvider = attestationDigestProvider ?? {
+            await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
+        }
+        self.bindAppCheckAttestation = bindAppCheckAttestation ?? {
+            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+        }
         self.frameSink = frameSink
     }
 
@@ -75,6 +92,9 @@ public final class PhoneControlSender: Sendable {
         signingKeyProvider: @escaping @Sendable () -> Curve25519SigningKey?,
         userDefaults: UserDefaults = .standard,
         signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner(),
+        phoneControlAttestationRequired: (@Sendable () -> Bool)? = nil,
+        attestationDigestProvider: AttestationDigestProvider? = nil,
+        bindAppCheckAttestation: AttestationBinder? = nil,
         frameSink: @escaping FrameSink
     ) {
         self.init(
@@ -84,6 +104,9 @@ public final class PhoneControlSender: Sendable {
             signingIdentityProvider: { signingKeyProvider().map { .ed25519($0.privateKey) } },
             userDefaults: userDefaults,
             signer: signer,
+            phoneControlAttestationRequired: phoneControlAttestationRequired,
+            attestationDigestProvider: attestationDigestProvider,
+            bindAppCheckAttestation: bindAppCheckAttestation,
             frameSink: frameSink
         )
     }
@@ -99,10 +122,10 @@ public final class PhoneControlSender: Sendable {
     }
 
     private func sendInputIntent(_ rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await ensureAttestationIfRequired()
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         var intent = rawIntent
         if intent.clientIntentId?.isEmpty ?? true {
             intent.clientIntentId = UUID().uuidString
@@ -122,7 +145,6 @@ public final class PhoneControlSender: Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -163,10 +185,10 @@ public final class PhoneControlSender: Sendable {
     }
 
     private func sendAgentGrant(_ request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await ensureAttestationIfRequired()
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
             counter: 0,
@@ -190,7 +212,6 @@ public final class PhoneControlSender: Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -242,10 +263,10 @@ public final class PhoneControlSender: Sendable {
         _ response: HermesRealtimeRelayApprovalResponse,
         approvalRequest request: HermesRealtimeRelayApprovalRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await ensureAttestationIfRequired()
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         var response = response
         response.requestHashBlake3 = try signer.canonicalApprovalRequestHashHex(request: request)
         let counter = nextCounter()
@@ -262,7 +283,6 @@ public final class PhoneControlSender: Sendable {
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
         }
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         response.authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -309,6 +329,7 @@ public final class PhoneControlSender: Sendable {
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
         let clientIntentId = rawRequest.clientIntentId.isEmpty ? UUID().uuidString : rawRequest.clientIntentId
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
@@ -338,7 +359,6 @@ public final class PhoneControlSender: Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -423,6 +443,7 @@ public final class PhoneControlSender: Sendable {
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
             counter: 0,
@@ -446,7 +467,6 @@ public final class PhoneControlSender: Sendable {
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
         }
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -493,6 +513,7 @@ public final class PhoneControlSender: Sendable {
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
         let clientIntentId = rawRequest.clientIntentId.isEmpty ? UUID().uuidString : rawRequest.clientIntentId
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
@@ -527,7 +548,6 @@ public final class PhoneControlSender: Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -567,6 +587,7 @@ public final class PhoneControlSender: Sendable {
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
+        let attestationDigest = try await attestationDigestForSignedSend()
         var target = rawTarget
         if target.clientIntentId.isEmpty {
             target.clientIntentId = UUID().uuidString
@@ -594,7 +615,6 @@ public final class PhoneControlSender: Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
-        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
@@ -623,19 +643,22 @@ public final class PhoneControlSender: Sendable {
         return authority
     }
 
-    private func ensureAttestationIfRequired() async throws {
-        guard MobileComputerUseRemoteConfig.phoneControlAttestationRequired() else { return }
-        if await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope() != nil {
-            return
+    private func attestationDigestForSignedSend() async throws -> String? {
+        if let digest = await attestationDigestProvider() {
+            return digest
+        }
+        guard phoneControlAttestationRequired() else {
+            return nil
         }
         do {
-            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+            try await bindAppCheckAttestation()
         } catch {
             throw SendError.attestationRequired
         }
-        if await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope() == nil {
+        guard let digest = await attestationDigestProvider() else {
             throw SendError.attestationRequired
         }
+        return digest
     }
 
     private func nextCounter() -> UInt64 {

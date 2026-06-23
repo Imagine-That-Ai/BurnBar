@@ -2101,6 +2101,32 @@ service cloud.firestore {
       allow delete: if false;
 
       match /events/{eventId} {
+        function validCliAgentMissionEventRewrapUpdate() {
+          return ownerWritableNonSecret(userId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "sealedPayload",
+              "vaultKeyID",
+              "vaultGeneration",
+              "rewrapJobId",
+              "updatedAt"
+            ])
+            && request.resource.data.contentSealed == true
+            && request.resource.data.sealedSchemaVersion == 2
+            && validPathBoundSealedPayloadForUser(
+              userId,
+              request.resource.data.vaultKeyID,
+              request.resource.data.sealedPayload,
+              "cli_agent_mission_requests/events",
+              requestId + "/" + eventId
+            )
+            && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
+            && request.resource.data.vaultGeneration is int
+            && request.resource.data.vaultGeneration >= 1
+            && request.resource.data.rewrapJobId is string
+            && request.resource.data.rewrapJobId.size() <= 160
+            && request.resource.data.updatedAt is timestamp;
+        }
+
         allow read: if ownsUserNamespace(userId);
         allow create: if ownerWritableNonSecret(userId)
           && request.resource.data.keys().hasOnly([
@@ -2161,7 +2187,8 @@ service cloud.firestore {
           && request.resource.data.isError is bool
           && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
           ;
-        allow update, delete: if false;
+        allow update: if validCliAgentMissionEventRewrapUpdate();
+        allow delete: if false;
       }
     }
 

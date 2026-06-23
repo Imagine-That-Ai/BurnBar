@@ -27,6 +27,13 @@ data class CloudVaultRotationRewrapProgress(
     val rewrappedStorageBlobs: Int = 0,
 )
 
+private data class CloudVaultNestedDocumentRewrapTarget(
+    val parentCollectionID: String,
+    val childCollectionID: String,
+    val logicalCollectionID: String,
+    val checkpointID: String,
+)
+
 private data class CloudVaultRotationUploadTicket(
     val storagePath: String,
     val uploadURL: String,
@@ -41,6 +48,15 @@ class CloudVaultRotationRewrapWorker(
     private val cloudSearchChunkMaxBytes = 16_000
     private val cloudSearchChunkTokenHashLimit = 1_024
     private val cloudSearchIndexVersion = 5
+    private val nestedDocumentRewrapTargets =
+        listOf(
+            CloudVaultNestedDocumentRewrapTarget(
+                parentCollectionID = "cli_agent_mission_requests",
+                childCollectionID = "events",
+                logicalCollectionID = "cli_agent_mission_requests/events",
+                checkpointID = "cli_agent_mission_requests_events",
+            ),
+        )
 
     suspend fun runDocumentRewrap(
         uid: String,
@@ -84,6 +100,30 @@ class CloudVaultRotationRewrapWorker(
                 changed += progress.changedFields
             }
             checkpoint(jobId = jobId, uid = uid, domainID = domain.id, scanned = scanned, rewrapped = rewrapped, changed = changed)
+        }
+
+        for (target in nestedDocumentRewrapTargets) {
+            val progress =
+                rewrapNestedCollection(
+                    uid = uid,
+                    target = target,
+                    jobId = jobId,
+                    oldKey = oldKey,
+                    newKey = newKey,
+                    newVaultKeyID = newVaultKeyID,
+                    vaultGeneration = vaultGeneration,
+                )
+            scanned += progress.scannedDocuments
+            rewrapped += progress.rewrappedDocuments
+            changed += progress.changedFields
+            checkpoint(
+                jobId = jobId,
+                uid = uid,
+                domainID = target.checkpointID,
+                scanned = scanned,
+                rewrapped = rewrapped,
+                changed = changed,
+            )
         }
 
         val storage =
@@ -314,6 +354,106 @@ class CloudVaultRotationRewrapWorker(
                         uid = uid,
                         collection = collectionID,
                         docID = document.id,
+                        oldKey = oldKey,
+                        newKey = newKey,
+                        newVaultKeyID = newVaultKeyID,
+                        vaultGeneration = vaultGeneration,
+                        rotationJobId = jobId,
+                    )
+                if (!result.changed) continue
+                document.reference.update(updatePayload(result, vaultGeneration, jobId)).await()
+                rewrapped += 1
+                changed += result.changedFields.size
+            }
+
+            lastDocument = snapshot.documents.lastOrNull()
+        }
+
+        return CloudVaultRotationRewrapProgress(
+            scannedDocuments = scanned,
+            rewrappedDocuments = rewrapped,
+            changedFields = changed,
+        )
+    }
+
+    private suspend fun rewrapNestedCollection(
+        uid: String,
+        target: CloudVaultNestedDocumentRewrapTarget,
+        jobId: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int,
+    ): CloudVaultRotationRewrapProgress {
+        val parentCollection = firestore.collection("users").document(uid).collection(target.parentCollectionID)
+        var scanned = 0
+        var rewrapped = 0
+        var changed = 0
+        var lastParent: DocumentSnapshot? = null
+
+        while (true) {
+            var query = parentCollection.orderBy(FieldPath.documentId()).limit(batchLimit)
+            lastParent?.let { query = query.startAfter(it) }
+            val snapshot = query.get().await()
+            if (snapshot.documents.isEmpty()) break
+
+            for (parent in snapshot.documents) {
+                val progress =
+                    rewrapChildCollection(
+                        uid = uid,
+                        parent = parent,
+                        target = target,
+                        jobId = jobId,
+                        oldKey = oldKey,
+                        newKey = newKey,
+                        newVaultKeyID = newVaultKeyID,
+                        vaultGeneration = vaultGeneration,
+                    )
+                scanned += progress.scannedDocuments
+                rewrapped += progress.rewrappedDocuments
+                changed += progress.changedFields
+            }
+
+            lastParent = snapshot.documents.lastOrNull()
+        }
+
+        return CloudVaultRotationRewrapProgress(
+            scannedDocuments = scanned,
+            rewrappedDocuments = rewrapped,
+            changedFields = changed,
+        )
+    }
+
+    private suspend fun rewrapChildCollection(
+        uid: String,
+        parent: DocumentSnapshot,
+        target: CloudVaultNestedDocumentRewrapTarget,
+        jobId: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int,
+    ): CloudVaultRotationRewrapProgress {
+        val collection = parent.reference.collection(target.childCollectionID)
+        var scanned = 0
+        var rewrapped = 0
+        var changed = 0
+        var lastDocument: DocumentSnapshot? = null
+
+        while (true) {
+            var query = collection.orderBy(FieldPath.documentId()).limit(batchLimit)
+            lastDocument?.let { query = query.startAfter(it) }
+            val snapshot = query.get().await()
+            if (snapshot.documents.isEmpty()) break
+
+            for (document in snapshot.documents) {
+                scanned += 1
+                val result =
+                    CloudVaultCrypto.rewrapCloudVaultDocument(
+                        data = document.data.orEmpty(),
+                        uid = uid,
+                        collection = target.logicalCollectionID,
+                        docID = "${parent.id}/${document.id}",
                         oldKey = oldKey,
                         newKey = newKey,
                         newVaultKeyID = newVaultKeyID,

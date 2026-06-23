@@ -7,7 +7,13 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
@@ -278,6 +284,8 @@ const REQUIRED_REMOTE_CONFIG_DEFAULTS = {
   cloud_pro_monthly_fusion_search_cap: "1000",
   cloud_ultra_monthly_fusion_search_cap: "2000",
 };
+const FIREBASE_APP_CHECK_API_BASE =
+  "https://firebaseappcheck.googleapis.com/v1beta";
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -293,6 +301,73 @@ function run(command, args, options = {}) {
     stderr: result.stderr || "",
     error: result.error?.message,
   };
+}
+
+function curlConfigValue(value, label) {
+  const source = String(value || "");
+  if (/[\r\n]/u.test(source)) {
+    throw new Error(`${label} must be a single line`);
+  }
+  return source.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+export function buildFirebaseAppCheckCurlConfig(
+  serviceName,
+  accessToken,
+  options = {},
+) {
+  const userProject = options.userProject || PROJECT;
+  const url = `${options.baseURL || FIREBASE_APP_CHECK_API_BASE}/${serviceName}`;
+  const authHeader = `Authorization: Bearer ${accessToken}`;
+  const projectHeader = `x-goog-user-project: ${userProject}`;
+  return [
+    "fail",
+    "show-error",
+    "silent",
+    "connect-timeout = 15",
+    "max-time = 45",
+    "retry = 2",
+    "retry-delay = 2",
+    "retry-all-errors",
+    `header = "${curlConfigValue(authHeader, "authorization header")}"`,
+    `header = "${curlConfigValue(projectHeader, "user project header")}"`,
+    `url = "${curlConfigValue(url, "request URL")}"`,
+    "",
+  ].join("\n");
+}
+
+export function firebaseAppCheckCurlArgs(configPath) {
+  return ["--config", configPath];
+}
+
+function fetchFirebaseAppCheckServiceConfig(serviceName, accessToken) {
+  const tempDir = mkdtempSync(join(tmpdir(), "openburnbar-appcheck-curl-"));
+  const configPath = join(tempDir, "curl.conf");
+  try {
+    writeFileSync(
+      configPath,
+      buildFirebaseAppCheckCurlConfig(serviceName, accessToken, {
+        userProject: PROJECT,
+      }),
+      { mode: 0o600 },
+    );
+    const result = run("curl", firebaseAppCheckCurlArgs(configPath), {
+      timeout: 180_000,
+    });
+    if (!result.ok) {
+      return { ok: false, error: result.stderr || result.stdout || result.error };
+    }
+    try {
+      return { ok: true, config: JSON.parse(result.stdout) };
+    } catch (error) {
+      return {
+        ok: false,
+        error: `invalid Firebase App Check service response: ${error.message}`,
+      };
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 function firstJSON(text) {
@@ -603,47 +678,20 @@ function checkFirebaseAppCheckEnforcement() {
   const configs = [];
   for (const serviceId of REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS) {
     const serviceName = `projects/${projectNumber.stdout.trim()}/services/${serviceId}`;
-    const result = run(
-      "curl",
-      [
-        "-fsS",
-        "--connect-timeout",
-        "15",
-        "--max-time",
-        "45",
-        "--retry",
-        "2",
-        "--retry-delay",
-        "2",
-        "--retry-all-errors",
-        "-H",
-        `Authorization: Bearer ${token.stdout.trim()}`,
-        "-H",
-        `x-goog-user-project: ${PROJECT}`,
-        `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
-      ],
-      { timeout: 180_000 },
+    const result = fetchFirebaseAppCheckServiceConfig(
+      serviceName,
+      token.stdout.trim(),
     );
     if (!result.ok) {
       return {
         ok: false,
         serviceId,
         serviceName,
-        error: result.stderr || result.stdout || result.error,
+        error: result.error,
       };
     }
 
-    let config;
-    try {
-      config = JSON.parse(result.stdout);
-    } catch (error) {
-      return {
-        ok: false,
-        serviceId,
-        serviceName,
-        error: `invalid Firebase App Check service response: ${error.message}`,
-      };
-    }
+    const config = result.config;
     configs.push({
       serviceId,
       serviceName,
