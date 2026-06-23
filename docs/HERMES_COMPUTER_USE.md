@@ -87,6 +87,12 @@ identity binding. Missing sender metadata, wrong sender keys, stale or
 unverified Signal identity, revoked devices, v1/v2 downgrade attempts, and
 unknown versions are denied before plaintext decode.
 
+`publishRelaySenderKey` also requires the native device to sign a trusted-device
+action proof. The proof subject is a server/client canonical hash over the
+device ID, peer node ID, derived key ID, relay public-key hash, relay key
+version, publication timestamp, and Signal identity key metadata, so the
+server-owned sender-key root cannot be advanced by metadata replay alone.
+
 The HPKE Auth key-wrap AAD and the payload AEAD AAD both bind `uid`,
 `connectionId`, `requestId`, `operation`, `senderDeviceId`,
 `senderPeerNodeId`, `senderCounter`, and `keyId`. The Mac persists a
