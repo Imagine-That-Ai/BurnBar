@@ -82,6 +82,29 @@ remote_config_access_token() {
   gcloud auth print-access-token
 }
 
+validate_remote_config_access_token() {
+  local token="${1}"
+  if [[ -z "${token}" ]]; then
+    echo "cutover-n0-hosted-relay: Remote Config access token is empty" >&2
+    exit 1
+  fi
+  case "${token}" in
+    *$'\n'*|*$'\r'*|*$'\t'*|*\"*|*\\*)
+      echo "cutover-n0-hosted-relay: Remote Config access token contains unsupported characters" >&2
+      exit 1
+      ;;
+  esac
+}
+
+curl_remote_config_with_bearer() {
+  local token="${1}"
+  shift
+  validate_remote_config_access_token "${token}"
+  curl --config - "$@" <<EOF
+header = "Authorization: Bearer ${token}"
+EOF
+}
+
 provision() {
   require_secret
   cat <<EOF
@@ -145,9 +168,9 @@ publish() {
   token="$(remote_config_access_token)"
   local remote_config_url="https://firebaseremoteconfig.googleapis.com/v1/projects/${PROJECT_ID}/remoteConfig"
 
-  curl --fail --silent --show-error --compressed \
+  curl_remote_config_with_bearer "${token}" \
+    --fail --silent --show-error --compressed \
     --dump-header "${headers_path}" \
-    --header "Authorization: Bearer ${token}" \
     --header "Accept: application/json" \
     --header "x-goog-user-project: ${PROJECT_ID}" \
     "${remote_config_url}" \
@@ -177,9 +200,9 @@ publish() {
     return
   fi
 
-  curl --fail --silent --show-error --compressed \
+  curl_remote_config_with_bearer "${token}" \
+    --fail --silent --show-error --compressed \
     --request PUT \
-    --header "Authorization: Bearer ${token}" \
     --header "Content-Type: application/json; UTF8" \
     --header "If-Match: ${etag}" \
     --header "x-goog-user-project: ${PROJECT_ID}" \

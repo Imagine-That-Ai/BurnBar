@@ -299,6 +299,9 @@ jobs:
       - name: ShellCheck
         run: ./scripts/ci/run-shellcheck.sh
 
+      - name: Remote Config credential argv safety tests
+        run: bash scripts/cutover-n0-hosted-relay.test.sh
+
   # ── Python scripts: Ruff defect floor + formatter gate ───────────────────
   python-lint:
     name: Python lint (ruff)
