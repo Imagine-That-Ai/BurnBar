@@ -604,7 +604,7 @@ extension MercuryRouter {
         )
         guard state.lockState == .unlocked else { return }
 
-        remoteUnlockReadiness.revokeRemoteUnlockSession(sessionId: remoteUnlockSessionID)
+        remoteUnlockReadiness.revokeAllRemoteUnlockSessions(revokePublishedTrust: false)
         Self.log.info("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason, privacy: .public)")
         Self.debugTrace("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason)")
         do {
