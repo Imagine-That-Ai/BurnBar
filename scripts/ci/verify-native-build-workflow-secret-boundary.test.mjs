@@ -23,6 +23,7 @@ const WORKFLOWS = [
   ".github/workflows/iroh-xcframework.yml",
   ".github/workflows/build-iroh-android-aar.yml",
   ".github/workflows/build-burnbar-remote-android-aar.yml",
+  ".github/workflows/burnbar-remote-xcframework.yml",
 ];
 const roots = [];
 
@@ -107,6 +108,54 @@ expect(
 );
 
 expect(
+  "bracket secret expression fails",
+  (root) =>
+    mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
+      text.replace(
+        "    steps:\n",
+        "    env:\n      NATIVE_BUILD_TOKEN: ${{ secrets['NATIVE_BUILD_TOKEN'] }}\n\n    steps:\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "function-wrapped secrets context fails",
+  (root) =>
+    mutate(root, ".github/workflows/build-iroh-android-aar.yml", (text) =>
+      text.replace(
+        "    steps:\n",
+        "    env:\n      NATIVE_BUILD_CONTEXT: ${{ toJSON(secrets) }}\n\n    steps:\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "explicit github token expression fails",
+  (root) =>
+    mutate(root, ".github/workflows/build-burnbar-remote-android-aar.yml", (text) =>
+      text.replace(
+        "    steps:\n",
+        "    env:\n      GH_TOKEN: ${{ github.token }}\n\n    steps:\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "bracket github token expression fails",
+  (root) =>
+    mutate(root, ".github/workflows/burnbar-remote-xcframework.yml", (text) =>
+      text.replace(
+        "    steps:\n",
+        "    env:\n      GH_TOKEN: ${{ github['token'] }}\n\n    steps:\n",
+      ),
+    ),
+  1,
+);
+
+expect(
   "checkout credentials persistence fails",
   (root) =>
     mutate(root, ".github/workflows/build-burnbar-remote-android-aar.yml", (text) =>
@@ -116,10 +165,49 @@ expect(
 );
 
 expect(
+  "checkout persist-credentials under env still fails",
+  (root) =>
+    mutate(root, ".github/workflows/burnbar-remote-xcframework.yml", (text) =>
+      text.replace(
+        "        with:\n          persist-credentials: false\n          submodules: recursive\n",
+        "        env:\n          persist-credentials: false\n        with:\n          submodules: recursive\n",
+      ),
+    ),
+  1,
+);
+
+expect(
   "contents write permission fails",
   (root) =>
     mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
       text.replace("  contents: read\n", "  contents: write\n"),
+    ),
+  1,
+);
+
+expect(
+  "arbitrary write permission fails",
+  (root) =>
+    mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
+      text.replace("  contents: read\n", "  contents: read\n  checks: write\n"),
+    ),
+  1,
+);
+
+expect(
+  "flow-map write permission fails",
+  (root) =>
+    mutate(root, ".github/workflows/build-iroh-android-aar.yml", (text) =>
+      text.replace("permissions:\n  contents: read\n", "permissions: { contents: write, packages: write }\n"),
+    ),
+  1,
+);
+
+expect(
+  "write-all permission fails",
+  (root) =>
+    mutate(root, ".github/workflows/build-burnbar-remote-android-aar.yml", (text) =>
+      text.replace("permissions:\n  contents: read\n", "permissions: write-all\n"),
     ),
   1,
 );
@@ -143,12 +231,33 @@ expect(
 );
 
 expect(
+  "quoted pull_request_target trigger fails",
+  (root) =>
+    mutate(root, ".github/workflows/burnbar-remote-xcframework.yml", (text) =>
+      text.replace("  pull_request:\n", '  "pull_request_target":\n'),
+    ),
+  1,
+);
+
+expect(
   "missing pull_request trigger fails",
   (root) =>
     mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
       text.replace(
         "  pull_request:\n    paths:\n      - \"crates/openburnbar-iroh/**\"\n      - \"scripts/build-iroh-xcframework.sh\"\n      - \".github/workflows/iroh-xcframework.yml\"\n      - \"OpenBurnBarCore/Package.swift\"\n",
         "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "narrowed native pull_request paths fail",
+  (root) =>
+    mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
+      text.replace(
+        '  pull_request:\n    paths:\n      - "crates/openburnbar-iroh/**"\n',
+        '  pull_request:\n    paths:\n      - "docs/**"\n',
       ),
     ),
   1,
