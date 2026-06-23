@@ -434,6 +434,7 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
     const rec = store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`);
     expect(rec?.signingKeyKind).toBe("se-p256");
     expect(rec?.schemaVersion).toBe(3);
+    expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.peerNodeId).toBe(key.peerNodeId);
   });
 
   it("rejects a peerNodeId that does not match the published key", async () => {
@@ -448,6 +449,28 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
         publishedAtMillis: Date.now(),
       }),
     ).rejects.toThrow(/peerNodeId does not match/);
+  });
+
+  it("rejects a controller publish that conflicts with the trusted device peer binding", async () => {
+    const key = seP256Key();
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, {
+      platform: "iOS",
+      trustState: "trusted",
+      keyVersion: 1,
+      peerNodeId: "ios-se-existingpeerbinding",
+    });
+
+    await expect(
+      invokeCallable(publishPhoneControlAuthority, {
+        deviceId: DEVICE,
+        connectionId: CONN,
+        peerNodeId: key.peerNodeId,
+        publicKeyBase64: key.base64,
+        keyKind: "se-p256",
+        publishedAtMillis: Date.now(),
+      }),
+    ).rejects.toThrow(/peer node/);
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
   });
 
   it("rejects an se-p256 publish carrying an Ed25519-length key", async () => {
@@ -480,6 +503,26 @@ describe("publishAgentGrantAuthority attestation binding", () => {
     expect(store.get(`users/${UID}/agent_grant_authorities/${DEVICE}`)?.appCheckAttestationHashBlake3).toBe(
       appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
     );
+    expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.peerNodeId).toBe(key.peerNodeId);
+  });
+
+  it("rejects agent-grant authority that conflicts with the trusted device peer binding", async () => {
+    const key = ed25519Key();
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, {
+      platform: "iOS",
+      trustState: "trusted",
+      keyVersion: 1,
+      peerNodeId: "ios-phone-existingpeerbinding",
+    });
+
+    await expect(
+      invokeCallable(publishAgentGrantAuthority, {
+        deviceId: DEVICE,
+        peerNodeId: key.peerNodeId,
+        publicKeyBase64: key.base64,
+      }),
+    ).rejects.toThrow(/peer node/);
+    expect(store.has(`users/${UID}/agent_grant_authorities/${DEVICE}`)).toBe(false);
   });
 });
 
