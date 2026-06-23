@@ -139,11 +139,7 @@ internal class MediaControlFrameDispatcher(
         }
     }
 
-    private fun openSealedFrame(
-        envelope: ByteArray,
-        media: com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload,
-        key: ByteArray?,
-    ): ByteArray? {
+    private fun openSealedFrame(envelope: ByteArray, media: com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload, key: ByteArray?): ByteArray? {
         if (key == null) return null
         val position = media.sealedFramePosition ?: return null
         return runCatching {
