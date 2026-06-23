@@ -3,6 +3,7 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+repo_root="$(pwd)"
 
 tmpdir="$(mktemp -d)"
 restore_paths=(
@@ -89,7 +90,7 @@ default_env="$tmpdir/github-env-default"
 FIREBASE_PLIST_BASE64="$encoded_plist" \
   OPENBURNBAR_SENTRY_DSN="$valid_sentry_dsn" \
   GITHUB_ENV="$default_env" \
-  bash scripts/ci/inject-firebase-config.sh >"$tmpdir/inject-firebase-config-default.out"
+  bash "$repo_root/scripts/ci/inject-firebase-config.sh" >"$tmpdir/inject-firebase-config-default.out"
 assert_clean_plists
 assert_sentry_plists
 if [[ -s "$default_env" ]]; then
@@ -98,13 +99,26 @@ if [[ -s "$default_env" ]]; then
   exit 1
 fi
 
+rm -f AgentLens/Resources/GoogleService-Info.plist OpenBurnBarMobile/Resources/GoogleService-Info.plist
+non_repo_env="$tmpdir/github-env-non-repo"
+: >"$non_repo_env"
+(
+  cd "$tmpdir"
+  FIREBASE_PLIST_BASE64="$encoded_plist" \
+    OPENBURNBAR_SENTRY_DSN="$valid_sentry_dsn" \
+    GITHUB_ENV="$non_repo_env" \
+    bash "$repo_root/scripts/ci/inject-firebase-config.sh"
+) >"$tmpdir/inject-firebase-config-non-repo.out"
+assert_clean_plists
+assert_sentry_plists
+
 internal_env="$tmpdir/github-env-internal"
 : >"$internal_env"
 FIREBASE_PLIST_BASE64="$encoded_plist" \
   FIREBASE_APP_CHECK_DEBUG_TOKEN="internal-debug-token" \
   OPENBURNBAR_USE_DEBUG_APP_CHECK=YES \
   GITHUB_ENV="$internal_env" \
-  bash scripts/ci/inject-firebase-config.sh >"$tmpdir/inject-firebase-config-internal.out"
+  bash "$repo_root/scripts/ci/inject-firebase-config.sh" >"$tmpdir/inject-firebase-config-internal.out"
 assert_clean_plists
 for expected in \
   "FirebaseAppCheckDebugToken=internal-debug-token" \

@@ -88,7 +88,7 @@ done
 IFS="$old_ifs"
 
 if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
-    python3 scripts/ci/sentry_dsn.py plist-env OPENBURNBAR_SENTRY_DSN "$plist_paths"
+    python3 "$repo_root/scripts/ci/sentry_dsn.py" plist-env OPENBURNBAR_SENTRY_DSN "$plist_paths"
 fi
 
 if [ "$OPENBURNBAR_USE_DEBUG_APP_CHECK" = "YES" ] && [ -n "${GITHUB_ENV:-}" ]; then
