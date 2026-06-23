@@ -38,12 +38,53 @@ import {
   requireP256X963PublicKey,
   requirePhoneControlAuthorityPublicKey,
 } from "./computerUseSecurityCodecs.js";
-import { requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+
+const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
+const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
 
 function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
   const claim = readAppCheckAttestationClaim(recordOrUndefined(request.auth?.token));
   if (!claim || !isAppCheckAttestationClaimFresh(claim)) return undefined;
   return appCheckAttestationDigestHex(claim.appId, claim.boundAtMillis);
+}
+
+function relaySenderKeyPublishProofSubjectId(args: {
+  deviceId: string;
+  peerNodeId: string;
+  keyId: string;
+  publicKeySHA256Hex: string;
+  publishedAtMillis: number;
+  signalIdentityKeyId: string;
+  signalIdentityKeyVersion: number;
+  signalIdentityPublicKeyFingerprint: string;
+}): string {
+  const segments = [
+    "version",
+    "1",
+    "deviceId",
+    args.deviceId,
+    "peerNodeId",
+    args.peerNodeId,
+    "keyId",
+    args.keyId,
+    "publicKeySHA256Hex",
+    args.publicKeySHA256Hex,
+    "relayKeyVersion",
+    RELAY_SENDER_PROOF_PROTOCOL_VERSION,
+    "publishedAtMillis",
+    String(args.publishedAtMillis),
+    "signalIdentityKeyId",
+    args.signalIdentityKeyId,
+    "signalIdentityKeyVersion",
+    String(args.signalIdentityKeyVersion),
+    "signalIdentityPublicKeyFingerprint",
+    args.signalIdentityPublicKeyFingerprint,
+  ];
+  const canonical = `OpenBurnBar-RelaySenderKeyPublish-v1\n${segments
+    .map((segment) => `${Buffer.byteLength(segment, "utf8")}:${segment}\n`)
+    .join("")}`;
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 export const publishIrohPairingPublicKey = onCallProduction(
@@ -312,12 +353,14 @@ export const publishRelaySenderKey = onCallProduction(
       signalIdentityKeyId?: unknown;
       signalIdentityKeyVersion?: unknown;
       signalIdentityPublicKeyFingerprint?: unknown;
+      actionProof?: unknown;
       nonce?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing a relay sender key.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
@@ -336,7 +379,8 @@ export const publishRelaySenderKey = onCallProduction(
         true,
       ) ?? RELAY_AUTH_KEY_VERSION;
     const relaySenderKey = requireP256X963PublicKey(request.data.publicKeyBase64, "publicKeyBase64");
-    const derivedKeyId = `relay-v3-${createHash("sha256").update(relaySenderKey.decoded).digest("hex").slice(0, 24)}`;
+    const publicKeySHA256Hex = createHash("sha256").update(relaySenderKey.decoded).digest("hex");
+    const derivedKeyId = `relay-v3-${publicKeySHA256Hex.slice(0, 24)}`;
     if (keyId !== derivedKeyId) {
       throw new HttpsError("invalid-argument", "keyId does not match the relay sender key.");
     }
@@ -379,6 +423,25 @@ export const publishRelaySenderKey = onCallProduction(
     if (device.exists && device.get("peerNodeId") && device.get("peerNodeId") !== peerNodeId) {
       throw new HttpsError("permission-denied", "Relay sender peer node does not match the trusted device binding.");
     }
+    await requireTrustedDeviceActionProof({
+      uid,
+      deviceId,
+      actionKind: RELAY_SENDER_KEY_PUBLISH_ACTION_KIND,
+      subjectId: relaySenderKeyPublishProofSubjectId({
+        deviceId,
+        peerNodeId,
+        keyId,
+        publicKeySHA256Hex,
+        publishedAtMillis,
+        signalIdentityKeyId,
+        signalIdentityKeyVersion,
+        signalIdentityPublicKeyFingerprint,
+      }),
+      approve: true,
+      nonce,
+      proofRaw: request.data.actionProof,
+      allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
+    });
 
     await db.doc(`users/${uid}/relay_sender_keys/${deviceId}`).set(
       {
