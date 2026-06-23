@@ -587,6 +587,51 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
     }
 
+    func testKeychainSecretStoreRejectsClaudeCodeFallbackWhenDaemonOrganizationIsMissing() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let service = "com.openburnbar.tests.keychain.cc-missing-org-boundary.\(UUID().uuidString)"
+        let providerKey = "anthropic"
+        let account = "provider.\(providerKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-missing-org-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let expiredPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-daemon-token","refreshToken":"invalid-refresh","expiresAt":\(expiredAtMilliseconds)}}
+        """
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+        try await store.setSecret(expiredPayload, for: providerKey)
+
+        let ccExpiresAtMilliseconds = Date().addingTimeInterval(3600).timeIntervalSince1970 * 1000
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"valid-cc-token","refreshToken":"cc-refresh","expiresAt":\(ccExpiresAtMilliseconds)},"organizationUuid":"org-cc"}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        let secret = try await store.secret(for: providerKey)
+        XCTAssertNil(secret)
+        XCTAssertEqual(try String(contentsOf: ccCredentialsURL, encoding: .utf8), ccPayload)
+        XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
+    }
+
     func testKeychainSecretStoreDoesNotUseGlobalClaudeCodeCredentialForSlots() async throws {
         ClaudeOAuthRefreshURLProtocol.reset()
         ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)

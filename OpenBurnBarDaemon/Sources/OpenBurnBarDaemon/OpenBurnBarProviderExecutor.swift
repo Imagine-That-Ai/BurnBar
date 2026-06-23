@@ -841,6 +841,7 @@ private enum BurnBarFakeProviderExecution {
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     public static let defaultService = "com.openburnbar.daemon.provider-secrets"
     public static let legacyCursorConnectorService = "com.openburnbar.cursor-connector"
+    private static let logger = BurnBarDaemonLogger(category: "provider-secret-store")
 
     private let service: String
     private let legacyServices: [String]
@@ -1162,8 +1163,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
               let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
             return nil
         }
-        if let expectedOrganizationUuid,
-           credential.organizationUuid != expectedOrganizationUuid {
+        guard let expectedOrganizationUuid,
+              credential.organizationUuid == expectedOrganizationUuid else {
             return nil
         }
         guard !credential.isExpired() else {
