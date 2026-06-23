@@ -309,6 +309,51 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertThrowsError(try CloudVaultCrypto.openPayload(envelope, keyData: newKey, aadContext: topLevelContext))
     }
 
+    func test_rewrapCloudVaultDocument_skipsMissionEventsAlreadyOnNewVaultKey() throws {
+        let oldKey = Data(repeating: 0x91, count: 32)
+        let newKey = Data(repeating: 0x92, count: 32)
+        let newVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: newKey)
+        let uid = "userA"
+        let collection = "cli_agent_mission_requests/events"
+        let docID = "requestA/000002"
+        let eventContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            field: "sealedPayload"
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            Data("{\"message\":\"new event\"}".utf8),
+            keyData: newKey,
+            vaultKeyID: newVaultKeyID,
+            aadContext: eventContext
+        )
+        let document: [String: Any] = [
+            "contentSealed": true,
+            "vaultKeyID": newVaultKeyID,
+            "sealedPayload": try CloudVaultCrypto.firestoreDictionary(sealed)
+        ]
+
+        let result = try CloudVaultCrypto.rewrapCloudVaultDocument(
+            document,
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: newVaultKeyID,
+            vaultGeneration: 8,
+            rotationJobId: "job-8"
+        )
+
+        XCTAssertTrue(result.changedFields.isEmpty)
+        XCTAssertNil(result.data["vaultGeneration"])
+        XCTAssertNil(result.data["rewrapJobId"])
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: result.data["sealedPayload"]))
+        XCTAssertEqual(envelope.vaultKeyID, newVaultKeyID)
+        XCTAssertEqual(try CloudVaultCrypto.openPayload(envelope, keyData: newKey, aadContext: eventContext), Data("{\"message\":\"new event\"}".utf8))
+    }
+
     func test_rewrapCloudVaultDocument_resealsBlobEnvelopes() throws {
         let oldKey = Data(repeating: 0x81, count: 32)
         let newKey = Data(repeating: 0x82, count: 32)
