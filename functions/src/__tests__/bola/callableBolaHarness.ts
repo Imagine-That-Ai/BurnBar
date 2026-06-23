@@ -201,6 +201,37 @@ function emptyQuery(): EmptyQuery {
   };
 }
 
+function isFirestoreDeleteSentinel(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as {
+    _methodName?: unknown;
+    methodName?: unknown;
+    constructor?: { name?: string };
+  };
+  return (
+    candidate._methodName === "FieldValue.delete" ||
+    candidate.methodName === "FieldValue.delete" ||
+    candidate.constructor?.name === "DeleteTransform" ||
+    candidate.constructor?.name === "DeleteFieldValueImpl" ||
+    candidate.constructor?.name === "DeleteSentinel"
+  );
+}
+
+function applyFirestoreWrite(
+  existing: Record<string, unknown> | undefined,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...(existing ?? {}) };
+  for (const [key, value] of Object.entries(data)) {
+    if (isFirestoreDeleteSentinel(value)) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) {
   return {
     doc: (path: string) => ({
@@ -213,10 +244,10 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         };
       },
       set: async (data: Record<string, unknown>) => {
-        store.set(path, { ...(store.get(path) ?? {}), ...data });
+        store.set(path, applyFirestoreWrite(store.get(path), data));
       },
       update: async (data: Record<string, unknown>) => {
-        store.set(path, { ...(store.get(path) ?? {}), ...data });
+        store.set(path, applyFirestoreWrite(store.get(path), data));
       },
       delete: async () => {
         store.delete(path);
@@ -243,11 +274,11 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         },
         set: (ref: { path?: string }, data: Record<string, unknown>) => {
           const { path } = ref;
-          if (path) ops.push(() => store.set(path, data));
+          if (path) ops.push(() => store.set(path, applyFirestoreWrite(store.get(path), data)));
         },
         update: (ref: { path?: string }, data: Record<string, unknown>) => {
           const { path } = ref;
-          if (path) ops.push(() => store.set(path, { ...(store.get(path) ?? {}), ...data }));
+          if (path) ops.push(() => store.set(path, applyFirestoreWrite(store.get(path), data)));
         },
         commit: async () => {
           for (const op of ops) op();
