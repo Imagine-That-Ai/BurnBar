@@ -4282,9 +4282,14 @@ service cloud.firestore {
           || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80));
       }
 
-      function signalIdentityMatchesKnownDevice() {
+      function signalIdentityMatchesPendingDevice() {
+        // Client-direct identity publication is only bootstrap for a pending
+        // device. After trust approval, the server-written escrow device pins
+        // the Signal identity metadata; Firestore rules cannot hash
+        // `publicKeyData`, so they must not accept a later self-asserted
+        // fingerprint/public-key pair for an already-trusted device.
         return exists(signalIdentityDevicePath())
-          && get(signalIdentityDevicePath()).data.trustState in ["pending", "trusted"]
+          && get(signalIdentityDevicePath()).data.trustState == "pending"
           && ("keyVersion" in get(signalIdentityDevicePath()).data)
           && request.resource.data.keyVersion == get(signalIdentityDevicePath()).data.keyVersion;
       }
@@ -4294,7 +4299,7 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validSignalIdentityPublicKeyDocument()
-        && signalIdentityMatchesKnownDevice();
+        && signalIdentityMatchesPendingDevice();
       allow update, delete: if false;
 
       match /signed_prekeys/{signedPreKeyId} {
