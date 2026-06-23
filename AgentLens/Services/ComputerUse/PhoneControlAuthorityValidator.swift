@@ -756,6 +756,37 @@ public final class PhoneControlAuthorityValidator: Sendable {
 
     public func validate(
         envelope: HermesRealtimeRelayAuthorityEnvelope,
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession,
+        attestation: PhoneControlAttestationRequirement? = nil,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey = try publicKeyForActivePeer(envelope)
+
+        try validateAuthorityEnvelope(envelope, now: now, attestation: attestation ?? .none)
+
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalRemoteUnlockSessionHashHex(session: remoteUnlockSession)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        try verifyEnvelopeSignature(envelope, key: pubKey)
+
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
         attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()

@@ -665,6 +665,11 @@ final class OpenBurnBarRuntimeContext {
             },
             applyFocusFollowMode: { [weak self] mode in
                 self?.computerUseRuntimeController?.setFocusFollowMode(mode)
+            },
+            phoneControlAuthorityValidatorProvider: { [weak self] in
+                guard let self else { return nil }
+                self.startComputerUseServices()
+                return self.computerUseRuntimeController?.coordinator.phoneValidator
             }
         )
         #else

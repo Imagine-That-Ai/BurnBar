@@ -896,8 +896,10 @@ extension MercuryRouter {
     func remoteUnlockMirrorDenialReason(
         request: HermesRealtimeRelayMirrorRequest,
         session: HermesRealtimeRelayRemoteUnlockSession,
-        remotePeerNodeID: String?
-    ) -> String? {
+        remotePeerNodeID: String?,
+        uid: String,
+        connectionID: String
+    ) async -> String? {
         guard Self.peerNodeIDsMatch(session.authority.peerNodeId, remotePeerNodeID) else {
             return "remote_unlock_transport_peer_mismatch"
         }
@@ -905,11 +907,68 @@ extension MercuryRouter {
            authorityPeerNodeID != session.authority.peerNodeId.canonicalMercuryPeerNodeID {
             return "remote_unlock_peer_mismatch"
         }
+        if let reason = await remoteUnlockAuthorityDenialReason(
+            session: session,
+            uid: uid,
+            connectionID: connectionID
+        ) {
+            return reason
+        }
         switch remoteUnlockReadiness.validateRemoteUnlockSession(session, now: clock()) {
         case .allowed:
             return nil
         case .denied(let reason):
             return reason
+        }
+    }
+
+    private func remoteUnlockAuthorityDenialReason(
+        session: HermesRealtimeRelayRemoteUnlockSession,
+        uid: String,
+        connectionID: String
+    ) async -> String? {
+        guard let validator = phoneControlAuthorityValidatorProvider() else {
+            return "signature_failure"
+        }
+        let peerNodeID = session.authority.peerNodeId
+        if !validator.hasPeer(nodeId: peerNodeID) {
+            guard let phoneControlAuthorityRegistrationProvider else {
+                return "signature_failure"
+            }
+            do {
+                let authority = try await phoneControlAuthorityRegistrationProvider(
+                    uid,
+                    connectionID,
+                    peerNodeID
+                )
+                switch validator.registerPeerDetailed(
+                    nodeId: peerNodeID,
+                    verifyingKey: authority.publicKey,
+                    uid: uid,
+                    requiredAttestationHashBlake3: authority.requiredAttestationHashBlake3
+                ) {
+                case .admitted:
+                    break
+                case .pendingConfirmation:
+                    return "controller_confirmation_required"
+                case .refused:
+                    return "signature_failure"
+                }
+            } catch {
+                return "signature_failure"
+            }
+        }
+        do {
+            _ = try validator.validate(
+                envelope: session.authority,
+                remoteUnlockSession: session,
+                now: clock()
+            )
+            return nil
+        } catch let error as PhoneControlAuthorityValidator.ValidationError {
+            return error.auditDetailToken
+        } catch {
+            return "signature_failure"
         }
     }
 
@@ -929,10 +988,12 @@ extension MercuryRouter {
 
         let remoteUnlockSession = remoteUnlockSessionForLockedMirror(req)
         if let remoteUnlockSession {
-            if let reason = remoteUnlockMirrorDenialReason(
+            if let reason = await remoteUnlockMirrorDenialReason(
                 request: req,
                 session: remoteUnlockSession,
-                remotePeerNodeID: remotePeerNodeID
+                remotePeerNodeID: remotePeerNodeID,
+                uid: frame.uid,
+                connectionID: frame.connectionId
             ) {
                 let state = remoteUnlockReadiness.currentState(
                     sessionId: remoteUnlockSession.sessionId,
@@ -1068,7 +1129,10 @@ extension MercuryRouter {
         if (hasMirrorAutoAcceptGrant || remoteUnlockSession != nil) && !pending.requestsAgentTerminal {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
-            await beginMirror(for: pending)
+            await beginMirror(
+                for: pending,
+                remoteUnlockAuthorityAlreadyValidated: remoteUnlockSession != nil
+            )
             return
         }
 
@@ -1249,7 +1313,10 @@ extension MercuryRouter {
         Self.debugTrace("router_call_invite_ringing requestID=\(invite.requestId)")
     }
 
-    func beginMirror(for request: PendingRequest) async {
+    func beginMirror(
+        for request: PendingRequest,
+        remoteUnlockAuthorityAlreadyValidated: Bool = false
+    ) async {
         let wasJoiningExistingSession = !activeMirrorViewers.isEmpty
         if !wasJoiningExistingSession {
             phase = .starting(requestID: request.id)
@@ -1268,10 +1335,13 @@ extension MercuryRouter {
         }
         let remoteUnlockSession = remoteUnlockSessionForLockedMirror(mirrorRequest)
         if let remoteUnlockSession,
-           let reason = remoteUnlockMirrorDenialReason(
+           !remoteUnlockAuthorityAlreadyValidated,
+           let reason = await remoteUnlockMirrorDenialReason(
                request: mirrorRequest,
                session: remoteUnlockSession,
-               remotePeerNodeID: request.remotePeerNodeID
+               remotePeerNodeID: request.remotePeerNodeID,
+               uid: request.frame.uid,
+               connectionID: request.frame.connectionId
            ) {
             let state = remoteUnlockReadiness.currentState(
                 sessionId: remoteUnlockSession.sessionId,
