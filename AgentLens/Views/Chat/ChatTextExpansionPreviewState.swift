@@ -30,6 +30,7 @@ struct ChatTextExpansionPreviewState: Identifiable, Equatable {
 
 enum TextExpansionRewriteError: LocalizedError {
     case unsupportedBackend(String)
+    case nonLocalGatewayURL(String)
     case invalidGatewayURL
     case missingModel
     case emptyResponse
@@ -38,6 +39,8 @@ enum TextExpansionRewriteError: LocalizedError {
         switch self {
         case .unsupportedBackend(let backend):
             return "LLM snippet previews require Hermes, OpenClaw, or Pi. Current backend: \(backend)."
+        case .nonLocalGatewayURL(let backend):
+            return "LLM snippet previews for \(backend) require a localhost gateway."
         case .invalidGatewayURL:
             return "The selected chat gateway URL is invalid."
         case .missingModel:
