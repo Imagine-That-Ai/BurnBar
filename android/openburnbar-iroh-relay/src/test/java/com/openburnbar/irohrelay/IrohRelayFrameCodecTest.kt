@@ -135,6 +135,7 @@ class IrohRelayFrameCodecTest {
                                 viewerCount = 2,
                                 maxViewers = 3,
                                 controlOwnerViewerId = "viewer-android-1",
+                                mediaFrameSealEstablished = true,
                             ),
                     ),
             )
@@ -149,6 +150,7 @@ class IrohRelayFrameCodecTest {
         assertEquals(2, decoded.media?.mirrorAck?.viewerCount)
         assertEquals(3, decoded.media?.mirrorAck?.maxViewers)
         assertEquals("viewer-android-1", decoded.media?.mirrorAck?.controlOwnerViewerId)
+        assertEquals(true, decoded.media?.mirrorAck?.mediaFrameSealEstablished)
     }
 
     @Test

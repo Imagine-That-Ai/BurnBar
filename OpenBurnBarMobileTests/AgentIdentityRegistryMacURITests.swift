@@ -1,3 +1,4 @@
+import CryptoKit
 import os
 import XCTest
 import FirebaseFirestore
@@ -783,6 +784,115 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testReadLoopKeepsLegacyPlaintextUntilFrameSealAckConfirms() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let key = SymmetricKey(data: Data(repeating: 0x0B, count: 32))
+        coordinator.mediaFrameSealKey = key
+        let expected = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 44,
+            frameIndex: 10,
+            presentationTimestampMillis: 1_780,
+            payload: Data([0x07, 0x08, 0x09])
+        )
+        let encoded = try MediaPacketCodec().encode(expected)
+
+        let received = expectation(description: "plaintext frame routed before seal confirmation")
+        coordinator.mirrorFrameHandler = { frame in
+            XCTAssertEqual(frame, expected)
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(screenVideoFrame(uid: "user-1", connectionID: "conn-1", encoded: encoded))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        await coordinator.stop()
+    }
+
+    func testReadLoopDropsPlaintextAfterFrameSealAckConfirms() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let key = SymmetricKey(data: Data(repeating: 0x0B, count: 32))
+        coordinator.mediaFrameSealKey = key
+        let plaintextFrame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 45,
+            frameIndex: 11,
+            presentationTimestampMillis: 1_781,
+            payload: Data([0x10, 0x11, 0x12])
+        )
+        let sealedFrame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 45,
+            frameIndex: 12,
+            presentationTimestampMillis: 1_782,
+            payload: Data([0x13, 0x14, 0x15])
+        )
+        let plaintextEncoded = try MediaPacketCodec().encode(plaintextFrame)
+        let sealedEncoded = try MediaFrameAEAD().seal(
+            plaintext: MediaPacketCodec().encode(sealedFrame),
+            key: key,
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            kind: sealedFrame.kind.rawValue,
+            gopID: sealedFrame.gopID,
+            frameIndex: sealedFrame.frameIndex
+        )
+
+        let plaintextDropped = expectation(description: "plaintext dropped after seal confirmation")
+        plaintextDropped.isInverted = true
+        let sealedReceived = expectation(description: "sealed frame routed after seal confirmation")
+        coordinator.mirrorFrameHandler = { frame in
+            if frame == plaintextFrame {
+                plaintextDropped.fulfill()
+            }
+            if frame == sealedFrame {
+                sealedReceived.fulfill()
+            }
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(mirrorAckFrame(
+            uid: "user-1",
+            connectionID: "conn-1",
+            requestID: "mirror-request-1",
+            mediaFrameSealEstablished: true
+        ))
+        await stream.pushInbound(screenVideoFrame(uid: "user-1", connectionID: "conn-1", encoded: plaintextEncoded))
+        await fulfillment(of: [plaintextDropped], timeout: 0.25)
+        await stream.pushInbound(screenVideoFrame(
+            uid: "user-1",
+            connectionID: "conn-1",
+            encoded: sealedEncoded,
+            sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition(
+                kind: sealedFrame.kind.rawValue,
+                gopId: sealedFrame.gopID,
+                frameIndex: sealedFrame.frameIndex
+            )
+        ))
+
+        await fulfillment(of: [sealedReceived], timeout: 1.0)
+        await coordinator.stop()
+    }
+
     func testReadLoopReassemblesLargeLegacyScreenFramesToV1Handler() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -1011,7 +1121,8 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         uid: String,
         connectionID: String,
         encoded: Data,
-        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
+        sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
     ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaStreamFrame,
@@ -1020,7 +1131,29 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             media: HermesRealtimeRelayMediaPayload(
                 streamClass: MediaStreamClass.screenVideo.rawValue,
                 encodedFrameBase64: encoded.base64EncodedString(),
-                frameChunk: frameChunk
+                frameChunk: frameChunk,
+                sealedFramePosition: sealedFramePosition
+            )
+        )
+    }
+
+    private func mirrorAckFrame(
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        mediaFrameSealEstablished: Bool?
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaMirrorAck,
+            uid: uid,
+            connectionId: connectionID,
+            requestId: requestID,
+            media: HermesRealtimeRelayMediaPayload(
+                mirrorAck: HermesRealtimeRelayMirrorAck(
+                    requestId: requestID,
+                    decision: .accepted,
+                    mediaFrameSealEstablished: mediaFrameSealEstablished
+                )
             )
         )
     }

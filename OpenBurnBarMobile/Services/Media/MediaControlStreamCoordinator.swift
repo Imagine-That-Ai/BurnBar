@@ -34,9 +34,13 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// reply on this control stream (empty until the first reply).
     private(set) var latestMacPresenceCapabilities: [String] = []
     /// F7 — the negotiated media-frame-AEAD session key for the active mirror,
-    /// set by the mirror requester after establishment. Sealed frames that
-    /// arrive without (or fail under) this key are DROPPED, never decoded.
-    var mediaFrameSealKey: SymmetricKey?
+    /// set by the mirror requester after local establishment. Plaintext is
+    /// still allowed until the Mac's accepted mirror ack confirms that it
+    /// opened this session key; once confirmed, plaintext frames are dropped.
+    var mediaFrameSealKey: SymmetricKey? {
+        didSet { mediaFrameSealEstablished = false }
+    }
+    private var mediaFrameSealEstablished = false
 
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
     private static func debugTrace(_ message: String) {
@@ -575,9 +579,13 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     // Phase 2 wires this into per-row UI state.
                     break
                 case .mediaMirrorAck:
-                    if let ack = frame.media?.mirrorAck,
-                       let handler = mirrorAckHandler {
-                        await handler(ack)
+                    if let ack = frame.media?.mirrorAck {
+                        mediaFrameSealEstablished = ack.decision == .accepted
+                            && ack.mediaFrameSealEstablished == true
+                            && mediaFrameSealKey != nil
+                        if let handler = mirrorAckHandler {
+                            await handler(ack)
+                        }
                     }
                 case .mediaStreamFrame:
                     if let focus = frame.media?.focusContext,
@@ -593,9 +601,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
                           ) else {
                         continue
                     }
-                    // F7: a sealed (OBMFA1) frame must open under the
-                    // negotiated session key with the cleartext position
-                    // rebuilt into the AAD — fail closed on any mismatch.
+                    // F7: after the Mac explicitly confirms a media-frame-AEAD
+                    // session, every stream frame must be OBMFA1 sealed and
+                    // must open under the session key with the cleartext
+                    // position rebuilt into the AAD. Plaintext legacy frames
+                    // remain valid until that accepted ack confirms sealing.
                     if MediaFrameAEAD.isSealedEnvelope(data) {
                         guard let sealKey = mediaFrameSealKey,
                               let position = frame.media?.sealedFramePosition,
@@ -610,6 +620,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
                             continue
                         }
                         data = opened
+                    } else if mediaFrameSealEstablished {
+                        continue
                     }
                     do {
                         if MediaFrameV2Codec.isEncodedEnvelope(data),

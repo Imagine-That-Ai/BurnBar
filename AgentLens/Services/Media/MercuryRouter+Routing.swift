@@ -704,15 +704,10 @@ extension MercuryRouter {
     ) async throws {
         let streamClass = MediaStreamClass(rawValue: mirrorRequest.streamClass)
         let remoteSupports = mirrorRequest.mediaSealKey != nil
-        let sessionKeyAvailable: Bool
-        if remoteSupports {
-            sessionKeyAvailable = await MacMediaSealKeyOpener.frameSealKey(
-                for: mirrorRequest,
-                frame: frame
-            ) != nil
-        } else {
-            sessionKeyAvailable = false
-        }
+        let sessionKeyAvailable = await mediaFrameSealEstablished(
+            for: mirrorRequest,
+            frame: frame
+        )
         let decision = MediaFrameAeadNegotiation.resolveSealingDecision(
             streamClass: streamClass,
             localSupports: true,
@@ -723,6 +718,17 @@ extension MercuryRouter {
         Self.log.error("router_lane_refused_sealing streamClass=\(streamClass.rawValue, privacy: .public) reason=\(reason.rawValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
         Self.debugTrace("router_lane_refused_sealing streamClass=\(streamClass.rawValue) reason=\(reason.rawValue)")
         throw MercuryLaneSealingError.refused(reason: reason)
+    }
+
+    func mediaFrameSealEstablished(
+        for mirrorRequest: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame
+    ) async -> Bool {
+        guard mirrorRequest.mediaSealKey != nil else { return false }
+        return await MacMediaSealKeyOpener.frameSealKey(
+            for: mirrorRequest,
+            frame: frame
+        ) != nil
     }
 
     static func effectiveFocusFollowMode(
@@ -1362,6 +1368,10 @@ extension MercuryRouter {
                 for: mirrorRequest,
                 requestedMode: requestedFocusMode
             )
+            let mediaFrameSealEstablished = await mediaFrameSealEstablished(
+                for: mirrorRequest,
+                frame: request.frame
+            )
             let viewer = ActiveMirrorViewer(
                 viewerID: viewerID,
                 requestID: request.id,
@@ -1375,7 +1385,8 @@ extension MercuryRouter {
                 controlAuthorityPeerNodeID: controlAuthorityPeerNodeID,
                 remotePeerNodeID: request.remotePeerNodeID,
                 remoteUnlockSessionID: remoteUnlockSession?.sessionId,
-                agentTerminalApproved: request.agentTerminalApproved
+                agentTerminalApproved: request.agentTerminalApproved,
+                mediaFrameSealEstablished: mediaFrameSealEstablished
             )
 
             addActiveMirrorViewer(viewer)
@@ -1405,6 +1416,7 @@ extension MercuryRouter {
                 controlOwnerViewerID: activeControlViewerID,
                 remoteUnlockState: remoteUnlockState,
                 remoteUnlockCapabilities: remoteUnlockState?.capabilities,
+                mediaFrameSealEstablished: viewer.mediaFrameSealEstablished ? true : nil,
                 frame: request.frame,
                 replySender: request.replySender
             )
@@ -1652,6 +1664,7 @@ extension MercuryRouter {
         controlOwnerViewerID: String? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
         remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
+        mediaFrameSealEstablished: Bool? = nil,
         frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
@@ -1677,7 +1690,8 @@ extension MercuryRouter {
             remoteUnlockCapabilities: capabilities,
             // F7: advertise the Mac's snapshot in the ack itself so the viewer
             // negotiates codec/wire-version/frame-AEAD without a second probe.
-            streamingCapabilities: localStreamingCapabilityProvider().wireValue
+            streamingCapabilities: localStreamingCapabilityProvider().wireValue,
+            mediaFrameSealEstablished: decision == .accepted ? mediaFrameSealEstablished : nil
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,

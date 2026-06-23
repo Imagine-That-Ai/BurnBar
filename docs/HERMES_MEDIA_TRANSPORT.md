@@ -212,7 +212,8 @@ The Mac's reply, emitted on every request path:
   "media": {
     "mirrorAck": {
       "requestId": "req_abc",
-      "decision": "accepted"
+      "decision": "accepted",
+      "mediaFrameSealEstablished": true
     }
   }
 }
@@ -222,6 +223,7 @@ Decision enum: `accepted`, `denied`, `cooling_down`, `unsupported`, `busy`.
 
 - `cooldownSecondsRemaining` (int, optional): populated only when `decision == "cooling_down"`. Omitted from the wire otherwise so older decoders stay byte-identical.
 - `detail` (string, optional): free-text surfaced in the iOS banner.
+- `mediaFrameSealEstablished` (bool, optional): true only when `decision == "accepted"` and the Mac opened the request's media-frame seal key. If absent, mobile clients keep accepting legacy plaintext screen frames; after true, plaintext is dropped and frames must open as OBMFA1.
 
 On `.accepted`, the iOS `mirrorAckHandler` pushes to `ScreenShareViewerView`. Other decisions surface a toast in `MercuryLiveSheet`.
 

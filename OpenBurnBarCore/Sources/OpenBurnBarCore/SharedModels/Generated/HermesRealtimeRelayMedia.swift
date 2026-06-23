@@ -374,6 +374,10 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     /// frame-AEAD support) so the viewer can negotiate without an extra round
     /// trip. Optional — pre-F7 hosts omit it and pre-F7 viewers ignore it.
     public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
+    /// True only when the Mac accepted this mirror request and opened the
+    /// request's media-frame seal key, so screen frames for this session will
+    /// be sealed. Absent means legacy plaintext remains possible.
+    public var mediaFrameSealEstablished: Bool?
     public enum Decision: String, Codable, Sendable, Equatable {
         case accepted
         case denied
@@ -396,7 +400,8 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         controlOwnerViewerId: String? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
         remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
-        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil,
+        mediaFrameSealEstablished: Bool? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
@@ -413,6 +418,7 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.remoteUnlockState = remoteUnlockState
         self.remoteUnlockCapabilities = remoteUnlockCapabilities
         self.streamingCapabilities = streamingCapabilities
+        self.mediaFrameSealEstablished = mediaFrameSealEstablished
     }
 }
 

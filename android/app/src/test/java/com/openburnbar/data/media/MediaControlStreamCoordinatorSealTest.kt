@@ -5,6 +5,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayControlSealKeyEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelaySealedMediaFramePosition
 import com.openburnbar.irohrelay.IrohRelayFrameCodec
 import com.openburnbar.irohrelay.IrohRelayStream
@@ -29,19 +30,21 @@ private const val SEAL_FRAME_INDEX = 3
  * F7 — the coordinator (live read loop) and the [MediaControlFrameDispatcher]
  * both open sealed (OBMFA1) screen frames after chunk reassembly and DROP, fail
  * closed, anything that does not open: tampered ciphertext, a wrong cleartext
- * position, a missing session key. Plaintext legacy frames flow unchanged, and
- * `requestMirror` stays byte-identical when no seal session negotiates.
+ * position, a missing session key, or post-confirmation plaintext. Plaintext
+ * legacy frames flow until the Mac's accepted mirror ack confirms this session
+ * was sealed, and `requestMirror` stays byte-identical when no seal session
+ * negotiates.
  */
 class MediaControlStreamCoordinatorSealTest {
     private val sessionKey = ByteArray(32) { index -> (index + 11).toByte() }
 
-    private fun sourceFrame() = MediaFrame(
+    private fun sourceFrame(payload: ByteArray = byteArrayOf(0x01, 0x02, 0x03)) = MediaFrame(
         kind = MediaFrame.Kind.VIDEO_NAL,
         flags = MediaFrame.Flags.KEYFRAME,
         gopID = SEAL_GOP.toUInt(),
         frameIndex = SEAL_FRAME_INDEX.toUInt(),
         presentationTimestampMillis = 123uL,
-        payload = byteArrayOf(0x01, 0x02, 0x03),
+        payload = payload,
     )
 
     private fun sealedEncodedFrame(): ByteArray = MediaFrameAead.seal(
@@ -71,6 +74,22 @@ class MediaControlStreamCoordinatorSealTest {
         ),
     )
 
+    private fun mirrorAckFrame(mediaFrameSealEstablished: Boolean?) = HermesRealtimeRelayFrame(
+        type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK,
+        uid = "uid-1",
+        connectionId = "conn-1",
+        requestId = "mirror-1",
+        media =
+        HermesRealtimeRelayMediaPayload(
+            mirrorAck =
+            HermesRealtimeRelayMirrorAck(
+                requestId = "mirror-1",
+                decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                mediaFrameSealEstablished = mediaFrameSealEstablished,
+            ),
+        ),
+    )
+
     // MARK: live coordinator read loop
 
     @Test
@@ -86,6 +105,7 @@ class MediaControlStreamCoordinatorSealTest {
         coordinator.mediaFrameSealKey = sessionKey
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        stream.incoming.send(mirrorAckFrame(mediaFrameSealEstablished = true))
 
         // 1. tampered sealed frame → dropped (never reaches the handler)
         val tampered = sealedEncodedFrame()
@@ -95,11 +115,33 @@ class MediaControlStreamCoordinatorSealTest {
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position(gopId = 99L)))
         // 3. missing position → dropped
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position = null))
-        // 4. valid sealed frame → opened and delivered
+        // 4. plaintext after negotiation → dropped
+        stream.incoming.send(streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x55))), position = null))
+        // 5. valid sealed frame → opened and delivered
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position()))
 
         val decoded = withTimeout(2_000) { received.await() }
         assertEquals(sourceFrame(), decoded)
+    }
+
+    @Test
+    fun `readLoop keeps plaintext fallback until the Mac confirms frame sealing`() = runTest {
+        val stream = RecordingStream()
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+            )
+        val received = CompletableDeferred<MediaFrame>()
+        coordinator.mirrorFrameHandler = { frame -> received.complete(frame) }
+        coordinator.mediaFrameSealKey = sessionKey
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        stream.incoming.send(streamFrame(MediaPacketCodec().encode(sourceFrame()), position = null))
+
+        val decoded = withTimeout(2_000) { received.await() }
+        assertEquals(sourceFrame(), decoded)
+        assertFalse(coordinator.mediaFrameSealEstablished)
     }
 
     @Test
@@ -213,7 +255,7 @@ class MediaControlStreamCoordinatorSealTest {
 
     // MARK: parallel dispatcher
 
-    private fun dispatcher(sealKey: ByteArray?, onFrame: (MediaFrame) -> Unit) = MediaControlFrameDispatcher(
+    private fun dispatcher(sealKey: ByteArray?, sealConfirmed: Boolean = false, onFrame: (MediaFrame) -> Unit) = MediaControlFrameDispatcher(
         handlers =
         MediaControlFrameDispatcherHandlers(
             receiverProvider = { null },
@@ -221,6 +263,7 @@ class MediaControlStreamCoordinatorSealTest {
             mirrorFrameV2Handler = { null },
             focusContextHandler = { null },
             mediaFrameSealKeyProvider = { sealKey },
+            mediaFrameSealConfirmedProvider = { sealConfirmed },
         ),
         callbacks =
         MediaControlFrameDispatcherCallbacks(
@@ -243,7 +286,7 @@ class MediaControlStreamCoordinatorSealTest {
     @Test
     fun `dispatcher opens sealed frames after reassembly and drops failures`() = runTest {
         val delivered = mutableListOf<MediaFrame>()
-        val withKey = dispatcher(sealKey = sessionKey) { delivered += it }
+        val withKey = dispatcher(sealKey = sessionKey, sealConfirmed = true) { delivered += it }
 
         // valid sealed frame → delivered
         withKey.dispatch(streamFrame(sealedEncodedFrame(), position()), noopAckSender)
@@ -269,6 +312,36 @@ class MediaControlStreamCoordinatorSealTest {
             noopAckSender,
         )
         assertEquals(listOf(sourceFrame()), deliveredWithoutKey)
+
+        // local key alone is not enough; plaintext remains valid until the Mac
+        // explicitly confirms that it opened the session key.
+        val deliveredBeforeConfirmation = mutableListOf<MediaFrame>()
+        val beforeConfirmation = dispatcher(sealKey = sessionKey) { deliveredBeforeConfirmation += it }
+        beforeConfirmation.dispatch(
+            streamFrame(MediaPacketCodec().encode(sourceFrame()), position = null),
+            noopAckSender,
+        )
+        assertEquals(listOf(sourceFrame()), deliveredBeforeConfirmation)
+
+        // confirmed key → plaintext is not an allowed fallback anymore
+        withKey.dispatch(
+            streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x55))), position = null),
+            noopAckSender,
+        )
+        assertEquals(1, delivered.size)
+    }
+
+    @Test
+    fun `dispatcher keeps plaintext fallback until peer advertises media frame aead`() = runTest {
+        val delivered = mutableListOf<MediaFrame>()
+        val withLocalKeyOnly = dispatcher(sealKey = sessionKey) { delivered += it }
+
+        withLocalKeyOnly.dispatch(
+            streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x44))), position = null),
+            noopAckSender,
+        )
+
+        assertEquals(listOf(sourceFrame(byteArrayOf(0x44))), delivered)
     }
 
     @Test
