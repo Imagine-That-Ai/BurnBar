@@ -489,12 +489,6 @@ export const verifyGooglePlayCloudProTopUp = onCall(
       const productID = boundedTrimmedString(request.data.productID, "productID", 256, true);
       const kind = googlePlayTopUpKind(productID);
       const tokenHash = sha256Hex(purchaseToken);
-      await claimGooglePlayPurchaseToken({
-        uid,
-        purchaseTokenHash: tokenHash,
-        productID,
-        kind: "topup",
-      });
 
       const { google } = await import("googleapis");
       const authClient = await google.auth.getClient({
@@ -524,6 +518,12 @@ export const verifyGooglePlayCloudProTopUp = onCall(
           purchaseState,
         });
       }
+      await claimGooglePlayPurchaseToken({
+        uid,
+        purchaseTokenHash: tokenHash,
+        productID,
+        kind: "topup",
+      });
 
       const credited = await creditCloudProTopUp({
         uid,
