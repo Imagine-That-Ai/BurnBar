@@ -25,11 +25,25 @@ if [[ -z "$DSN" ]]; then
   echo "::notice::ANDROID_SENTRY_DSN not set — Android Sentry will be disabled in this build."
   export OPENBURNBAR_ANDROID_SENTRY_DSN=""
 else
+  DSN="$(ANDROID_SENTRY_DSN="$DSN" python3 scripts/ci/sentry_dsn.py validate ANDROID_SENTRY_DSN)"
   echo "::notice::Sentry DSN configured for Android build."
   export OPENBURNBAR_ANDROID_SENTRY_DSN="$DSN"
 fi
 
 # Write to GITHUB_ENV so subsequent workflow steps inherit the variable.
 if [[ -n "${GITHUB_ENV:-}" ]]; then
-  echo "OPENBURNBAR_ANDROID_SENTRY_DSN=${OPENBURNBAR_ANDROID_SENTRY_DSN}" >> "$GITHUB_ENV"
+  if [[ -z "$OPENBURNBAR_ANDROID_SENTRY_DSN" ]]; then
+    printf 'OPENBURNBAR_ANDROID_SENTRY_DSN=\n' >> "$GITHUB_ENV"
+  else
+    delimiter="OPENBURNBAR_ANDROID_SENTRY_DSN_$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(16))
+PY
+)"
+    {
+      printf 'OPENBURNBAR_ANDROID_SENTRY_DSN<<%s\n' "$delimiter"
+      printf '%s\n' "$OPENBURNBAR_ANDROID_SENTRY_DSN"
+      printf '%s\n' "$delimiter"
+    } >> "$GITHUB_ENV"
+  fi
 fi
