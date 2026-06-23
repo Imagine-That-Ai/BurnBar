@@ -1144,7 +1144,7 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         let dueTimestamp = Int(dueAt.timeIntervalSince1970)
         let taskID = "scheduled-review-\(project.projectSlug)-\(project.preferredCadence.rawValue)-\(dueTimestamp)"
         let notificationIntentID = "intent-\(project.projectSlug)-\(project.preferredCadence.rawValue)-\(dueTimestamp)"
-        let config = try await store.notificationConfig()
+        let config = try await store.notificationRuntimeConfig()
         let channels = enabledNotificationChannels(from: config)
         let dueAtISO = dueAt.ISO8601Format()
         let dedupeKey = [

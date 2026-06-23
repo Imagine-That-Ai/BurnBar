@@ -52,7 +52,7 @@ enum MissionControlNotificationEvaluator {
 extension BurnBarMissionControlService {
     func deliverDueFollowups(_ followups: [BurnBarFollowupSnapshot]) async throws {
         guard followups.isEmpty == false else { return }
-        let config = try await store.notificationConfig()
+        let config = try await store.notificationRuntimeConfig()
 
         if config.local.isEnabled {
             do {
@@ -89,7 +89,7 @@ extension BurnBarMissionControlService {
     }
 
     func pollTelegramCommands() async throws {
-        let config = try await store.notificationConfig()
+        let config = try await store.notificationRuntimeConfig()
         guard config.telegram.isEnabled,
               let botToken = config.telegram.botToken?.nonEmpty,
               let configuredChatID = config.telegram.chatID?.nonEmpty else {

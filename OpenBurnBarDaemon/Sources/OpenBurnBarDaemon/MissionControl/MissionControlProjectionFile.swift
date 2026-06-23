@@ -13,6 +13,7 @@ struct BurnBarMissionControlProjectionFile: Codable, Sendable {
     var projectionStatus: [String: BurnBarProjectionStatusSnapshot]
     var telegramUpdateOffset: Int?
     var transportErrors: [String: String]
+    var notificationSecretMigrationVersion: Int?
     var rebuiltAt: Date
 
     static func empty(now: Date = Date()) -> BurnBarMissionControlProjectionFile {
@@ -32,6 +33,7 @@ struct BurnBarMissionControlProjectionFile: Codable, Sendable {
             projectionStatus: status,
             telegramUpdateOffset: nil,
             transportErrors: [:],
+            notificationSecretMigrationVersion: BurnBarMissionControlStore.currentNotificationSecretMigrationVersion,
             rebuiltAt: now
         )
     }

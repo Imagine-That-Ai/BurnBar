@@ -76,7 +76,7 @@ extension BurnBarMissionControlService {
         let tracker = question.tracker ?? BurnBarQuestionTrackerSnapshot(isUnread: true, surfacedAt: question.askedAt)
         guard tracker.notificationCount == 0 else { return }
 
-        let config = try await store.notificationConfig()
+        let config = try await store.notificationRuntimeConfig()
         let title = question.stageLabel?.nonEmpty.map { "\($0): \(question.title)" } ?? question.title
         let body = question.prompt
         var deliveredChannels: [BurnBarNotificationChannel] = []
