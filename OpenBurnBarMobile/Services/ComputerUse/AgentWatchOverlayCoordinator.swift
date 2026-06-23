@@ -182,6 +182,9 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                         controlSealKey: sealSession?.envelope
                     )
                 ))
+                if let sealSession {
+                    ControlSealSessionEstablisher.register(sealSession, connectionID: connectionID)
+                }
                 phase = .live
                 computerUseE2EProofLog("classified_live connection=\(connectionID)")
                 attempt = 0

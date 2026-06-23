@@ -449,6 +449,9 @@ final class InlineAgentMirrorController: ObservableObject {
                         controlSealKey: sealSession?.envelope
                     )
                 ))
+                if let sealSession {
+                    ControlSealSessionEstablisher.register(sealSession, connectionID: connectionID)
+                }
                 let baseSink: PhoneControlSender.FrameSink = { frame in try await coordinator.send(frame: frame) }
                 self.controlSender = PhoneControlSender(
                     peerNodeId: peerNodeId,

@@ -356,6 +356,66 @@ class ControlFrameSealSessionTest {
     }
 
     @Test
+    fun `unregistered fresh session does not replace active session before classify succeeds`() = runBlocking {
+        val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
+        val oldEstablished = establish(recipient, HermesRelayCryptoEc.generateEphemeralKeyPair())
+        val freshEstablished = establish(recipient, HermesRelayCryptoEc.generateEphemeralKeyPair())
+        val oldSession =
+            ControlSealSessionEstablisher.Session(
+                envelope = oldEstablished.envelope,
+                key = oldEstablished.key,
+                controllerPeerNodeId = "android-phone-1",
+            )
+        val freshSession =
+            ControlSealSessionEstablisher.Session(
+                envelope = freshEstablished.envelope,
+                key = freshEstablished.key,
+                controllerPeerNodeId = "android-phone-1",
+            )
+        ControlSealSessionEstablisher.register(oldSession, "conn-pending")
+
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frames += it }
+        val controlSender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-pending",
+                peerNodeId = "android-phone-1",
+                signingIdentityProvider = {
+                    PhoneControlSigningIdentity.Ed25519(ByteArray(32) { index -> (index + 1).toByte() })
+                },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_321L },
+                frameSink = ControlSealSessionEstablisher.sealingFrameSink(baseSink, freshSession),
+            )
+
+        controlSender.send(
+            PhoneControlIntent(kind = PhoneControlIntentKind.TAP, normalizedX = 0.25, normalizedY = 0.75),
+        )
+
+        val control = frames.single().control ?: error("expected control frame")
+        val opened =
+            ControlFrameSealSession.openPayload(
+                payload = control,
+                key = oldSession.key,
+                peerNodeId = "android-phone-1",
+                frameType = "control.input.intent",
+            )
+        assertEquals(HermesRealtimeRelayInputIntentKind.TAP, opened.inputIntent?.kind)
+        try {
+            ControlFrameSealSession.openPayload(
+                payload = control,
+                key = freshSession.key,
+                peerNodeId = "android-phone-1",
+                frameType = "control.input.intent",
+            )
+            fail("pending fresh session key must not open a frame before classify succeeds")
+        } catch (_: GeneralSecurityException) {
+            // expected: the sink kept using the active classified session
+        }
+    }
+
+    @Test
     fun `sealing frame sink uses latest registered session for connection`() = runBlocking {
         val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
         val oldEstablished = establish(recipient, HermesRelayCryptoEc.generateEphemeralKeyPair())

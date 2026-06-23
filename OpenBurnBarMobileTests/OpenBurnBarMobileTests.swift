@@ -4936,6 +4936,101 @@ final class ControlSealSealingSinkTests: XCTestCase {
         XCTAssertNil(frames.first?.control)
     }
 
+    func testUnregisteredFreshControlSealSessionDoesNotReplaceActiveSession() async throws {
+        let oldKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 6, count: 32),
+            salt: Data("conn-pending".utf8)
+        )
+        let freshKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 7, count: 32),
+            salt: Data("conn-pending".utf8)
+        )
+        let peerNodeId = "ios-phone-pending000000000000000000"
+        let oldSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-pending",
+                senderPeerNodeId: "iphone-pending",
+                senderKeyId: "relay-v3-pending-old",
+                senderCounter: 1,
+                relayKeyVersion: 3
+            ),
+            key: oldKey,
+            controllerPeerNodeId: peerNodeId
+        )
+        let freshSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-pending",
+                senderPeerNodeId: "iphone-pending",
+                senderKeyId: "relay-v3-pending-new",
+                senderCounter: 2,
+                relayKeyVersion: 3
+            ),
+            key: freshKey,
+            controllerPeerNodeId: peerNodeId
+        )
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-pending")
+        }
+
+        let captured = CapturedFrames()
+        let sink = ControlSealSessionEstablisher.sealingFrameSink(
+            { frame in await captured.append(frame) },
+            session: freshSession
+        )
+        try await sink(HermesRealtimeRelayFrame(
+            type: .controlInputIntent,
+            uid: "uid-pending",
+            connectionId: "conn-pending",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                inputIntent: HermesRealtimeRelayInputIntent(
+                    kind: .tap,
+                    displayId: nil,
+                    normalizedX: 0.3,
+                    normalizedY: 0.4,
+                    normalizedX2: nil,
+                    normalizedY2: nil,
+                    text: nil,
+                    key: nil,
+                    modifiers: nil,
+                    mouseButton: nil,
+                    clientIntentId: "intent-pending",
+                    authority: HermesRealtimeRelayAuthorityEnvelope(
+                        peerNodeId: peerNodeId,
+                        counter: 10,
+                        timestamp: Date(),
+                        intentHashBlake3: String(repeating: "ab", count: 32),
+                        signatureEd25519: Data(repeating: 4, count: 64).base64EncodedString()
+                    )
+                )
+            )
+        ))
+
+        let frames = await captured.frames
+        let control = try XCTUnwrap(frames.first?.control)
+        let opened = try ControlFrameSealSession.openPayload(
+            control,
+            key: oldKey,
+            peerNodeId: peerNodeId,
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        )
+        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-pending")
+        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
+            control,
+            key: freshKey,
+            peerNodeId: peerNodeId,
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        ))
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+        }
+    }
+
     func testSealingSinkUsesLatestRegisteredSessionForConnection() async throws {
         let oldKey = ControlFrameSeal().deriveSessionKey(
             hpkeSessionKey: Data(repeating: 4, count: 32),

@@ -36,7 +36,7 @@ object ControlSealSessionEstablisher {
 
     fun activeSession(connectionId: String): Session? = sessionsByConnection[connectionId]
 
-    /** Exposed for the establishment path + tests. */
+    /** Exposed for classify-success activation + tests. */
     fun register(session: Session, connectionId: String) {
         sessionsByConnection[connectionId] = session
     }
@@ -91,7 +91,7 @@ object ControlSealSessionEstablisher {
                 envelope = established.envelope,
                 key = established.key,
                 controllerPeerNodeId = controllerPeerNodeId,
-            ).also { register(it, connectionId) }
+            )
         }.getOrNull()
     }
 

@@ -27,7 +27,7 @@ enum ControlSealSessionEstablisher {
         sessionsByConnection[connectionID]
     }
 
-    /// Exposed for the establishment path + tests.
+    /// Exposed for classify-success activation + tests.
     static func register(_ session: Session, connectionID: String) {
         sessionsByConnection[connectionID] = session
     }
@@ -109,7 +109,6 @@ enum ControlSealSessionEstablisher {
                 senderPrivateKey: senderKeypair.privateKey
             )
             let session = Session(envelope: envelope, key: key, controllerPeerNodeId: controllerPeerNodeId)
-            register(session, connectionID: connectionID)
             return session
         } catch {
             return nil
