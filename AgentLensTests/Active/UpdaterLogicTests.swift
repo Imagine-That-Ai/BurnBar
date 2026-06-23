@@ -183,6 +183,14 @@ final class UpdaterLogicTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/hdiutil detach"))
         XCTAssertTrue(script.contains("com.apple.quarantine"))
         XCTAssertTrue(script.contains("/usr/bin/open"))
+        XCTAssertTrue(script.contains("/usr/bin/pkill -x \"$APP_EXECUTABLE\""))
+        XCTAssertTrue(script.contains("LSREGISTER="))
+        XCTAssertTrue(script.contains("kMDItemCFBundleIdentifier == '$BUNDLE_ID'"))
+        XCTAssertTrue(script.contains("\"$LSREGISTER\" -dump"))
+        XCTAssertTrue(script.contains("platform == \"native\""))
+        XCTAssertTrue(script.contains("path ~ /\\/OpenBurnBar\\.app$/"))
+        XCTAssertTrue(script.contains("-f -R -trusted \"$DEST\""))
+        XCTAssertTrue(script.contains("-u \"$CANDIDATE\""))
         // Paths with spaces are single-quoted safely.
         XCTAssertTrue(script.contains("SRC='/Volumes/OpenBurnBar 1.0.2/OpenBurnBar.app'"))
         XCTAssertTrue(script.contains("MOUNT='/Volumes/OpenBurnBar 1.0.2'"))
@@ -190,6 +198,15 @@ final class UpdaterLogicTests: XCTestCase {
         // Bounded wait so a vetoed terminate can't hang forever with the DMG mounted.
         XCTAssertTrue(script.contains("WAITED"))
         XCTAssertTrue(script.contains("aborting (terminate vetoed?)"))
+    }
+
+    func testSourceUpdateCommandRunsCanonicalInstallScriptFromQuotedCheckout() {
+        let sourceRoot = URL(fileURLWithPath: "/Users/alberto/dev path/BurnBar", isDirectory: true)
+        XCTAssertEqual(
+            SourceUpdateChannel.sourceUpdateCommand(in: sourceRoot),
+            "cd '/Users/alberto/dev path/BurnBar' && bash ./scripts/source-update-install.sh"
+        )
+        XCTAssertEqual(SourceUpdateChannel.manualUpdateCommand, "bash ./scripts/source-update-install.sh")
     }
 
     /// Behavioral (not string-containment) test of the swap core the trampoline

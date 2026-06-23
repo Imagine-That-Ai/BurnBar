@@ -154,43 +154,28 @@ find "$APP/Contents/Resources/Models" -type f # must list the .glb masters
 | **SceneKit** | C5 3D renderer | `- sdk: SceneKit.framework` (autolinked via `import SceneKit`) |
 | **Carbon** | C8 global hotkey (`RegisterEventHotKey`) | autolinked via `import Carbon.HIToolbox`; no extra entitlement (that's why Carbon was chosen over an NSEvent global monitor) |
 | **Security** | C10 Keychain | autolinked via `import Security` |
-| **GLTFKit2** (SPM) | **real** GLB decoding | optional — see 2c |
+| **GLTFKit2** (SPM) | **real** GLB decoding | `packages.GLTFKit2` + `targets.OpenBurnBar.dependencies` |
+| **DracoSwift** (SPM) | Draco mesh decompression for synced Imagine GLBs | `packages.DracoSwift` + `OpenBurnBarDracoDecompressor` |
 
 ModelIO/SceneKit do **not** need explicit linking beyond `import`; the SDK
-frameworks autolink. The only thing that needs a package is GLB decode.
+frameworks autolink. The only packages needed are GLB decode and Draco mesh
+decompression.
 
 ### 2c. GLTFKit2 — required for the 3D backend to render real models
 
 SceneKit/ModelIO on macOS **cannot decode binary glTF** (`.glb`):
 `MDLAsset.canImportFileExtension("glb")` is `false` and `SCNScene(url:)` reads
 only SceneKit/USD/COLLADA. `SceneKitPetRenderer` ships behind the
-`GLBSceneLoading` seam; `DefaultGLBSceneLoader` tries (1) a stubbed GLTFKit2 hook
-(returns `nil` today so the file compiles with **zero** external imports), then
-(2) native `SCNScene(url:)` (works for `.usdz`/`.scn` and for `.glb` once a
-system GLTF importer is registered), then (3) a teal `SCNCapsule` placeholder so
-the panel is never blank. **Until GLTFKit2 is wired, every `model3d` pet renders
-the capsule.**
+`GLBSceneLoading` seam; `DefaultGLBSceneLoader` tries (1) GLTFKit2 via
+`GLTFAsset(url:options:)` and `GLTFSCNSceneSource(asset:).defaultScene`, with
+`OpenBurnBarDracoDecompressor` registered for the synced Imagine pets'
+`KHR_draco_mesh_compression` payloads, then (2) native `SCNScene(url:)` (works
+for `.usdz`/`.scn` and for `.glb` once a system GLTF importer is registered),
+then (3) a teal `SCNCapsule` placeholder so the panel is never blank.
 
-To get real 3D:
-
-1. `project.yml` → `packages:` add
-   ```yaml
-     GLTFKit2:
-       url: https://github.com/warrenm/GLTFKit2
-       from: "0.5.0"
-   ```
-   and `targets.OpenBurnBar.dependencies:` add `- package: GLTFKit2`.
-2. In `Render/SceneKitPetRenderer.swift`, replace the body of
-   `DefaultGLBSceneLoader.loadViaGLTFKit2(url:)` (the doc comment carries the
-   exact snippet):
-   ```swift
-   import GLTFKit2
-   guard let asset = try? GLTFAsset(url: url) else { return nil }
-   return GLTFSCNSceneSource(asset: asset).defaultScene
-   ```
-   GLTFKit2 surfaces each glTF animation as an `SCNAnimationPlayer` keyed by clip
-   name — exactly what `harvestClipPlayers()` + `resolveClipName()` consume.
-3. `xcodegen generate` again.
+GLTFKit2 surfaces glTF animation data into SceneKit; `harvestClipPlayers()` +
+`resolveClipName()` consume the resulting `SCNAnimationPlayer`s by clip name when
+available. Run `xcodegen generate` after changing the package declaration.
 
 **GLB ground truth** (verified by parsing the glTF JSON chunk): every `*-walk.glb`
 holds exactly one clip `Armature|walking_man|baselayer`; the static GLBs
@@ -385,8 +370,8 @@ AppKit, SwiftUI, Security, Carbon.HIToolbox). Cross-file app symbols were
 - **Resource resolution at runtime** — depends entirely on §2a folder references.
 
 **Caveats / TODOs surfaced:**
-- **GLTFKit2 not yet wired** — `model3d` pets render the teal capsule until §2c is
-  done. 2D pets are fully real now.
+- If GLTFKit2 or native SceneKit cannot decode a specific GLB, that pet renders
+  the teal capsule fallback instead of a blank panel. 2D pets are fully real.
 - **SpriteKit sheet lookup has no `subdirectory:` arg** (pre-existing, not edited
   this wave): `SpriteKitPetRenderer.loadImage` uses
   `bundle.url(forResource:withExtension:)` without a subdirectory, so it relies on
