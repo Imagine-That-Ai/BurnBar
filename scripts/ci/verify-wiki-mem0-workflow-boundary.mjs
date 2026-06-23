@@ -233,10 +233,26 @@ if (!commit) fail("missing manifest commit job");
 
 if (reconcile) {
   const contents = effectiveContents(reconcile, topContents);
+  const reconcileIf = directJobValue(reconcile, "if");
   if (contents !== "read")
     fail("reconcile job must run with contents:read only");
   if (writePermissionEntries(reconcile).length > 0)
     fail("reconcile job must not request any write permission");
+  if (
+    !reconcileIf?.includes("github.event_name == 'schedule'") ||
+    !reconcileIf?.includes(
+      "github.ref_name == github.event.repository.default_branch",
+    )
+  ) {
+    fail("reconcile job must run only on schedule or default-branch dispatch");
+  }
+  if (
+    !reconcile.source.includes(
+      "ref: ${{ github.event.repository.default_branch }}",
+    )
+  ) {
+    fail("reconcile job checkout must be pinned to the repository default branch");
+  }
   if (!reconcile.source.includes(MEM0))
     fail("reconcile job must receive the mem0 key");
   if (hasWriteTokenUse(reconcile.source))

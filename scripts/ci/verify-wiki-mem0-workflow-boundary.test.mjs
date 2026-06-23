@@ -27,6 +27,7 @@ permissions:
   contents: read
 jobs:
   reconcile:
+    if: github.event_name == 'schedule' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
+          ref: \${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Capture reconcile base
         id: capture-base
@@ -163,6 +165,24 @@ expect(
   GOOD_WORKFLOW.replace(
     "    permissions:\n      contents: read",
     "    permissions: { contents: read, pull-requests: write }",
+  ),
+  1,
+);
+
+expect(
+  "reconcile job missing default-branch dispatch gate fails",
+  GOOD_WORKFLOW.replace(
+    "    if: github.event_name == 'schedule' || github.ref_name == github.event.repository.default_branch\n",
+    "",
+  ),
+  1,
+);
+
+expect(
+  "reconcile checkout missing default-branch ref fails",
+  GOOD_WORKFLOW.replace(
+    "          ref: ${{ github.event.repository.default_branch }}\n",
+    "",
   ),
   1,
 );
