@@ -248,6 +248,114 @@ class CloudVaultCryptoTest {
     }
 
     @Test
+    fun rewrapCloudVaultDocumentResealsNestedMissionEventWithPathBoundAad() {
+        val oldKey = ByteArray(SHA256_DIGEST_BYTES) { 0x91.toByte() }
+        val newKey = ByteArray(SHA256_DIGEST_BYTES) { 0x92.toByte() }
+        val oldVaultKeyID = CloudVaultCrypto.vaultKeyID(oldKey)
+        val newVaultKeyID = CloudVaultCrypto.vaultKeyID(newKey)
+        val uid = "userA"
+        val collection = "cli_agent_mission_requests/events"
+        val docID = "requestA/000001"
+        val eventContext =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                field = "sealedPayload",
+            )
+        val eventBody = """{"message":"build is running"}""".toByteArray()
+        val document =
+            mapOf<String, Any?>(
+                "contentSealed" to true,
+                "vaultKeyID" to oldVaultKeyID,
+                "sealedPayload" to
+                    CloudVaultCrypto.sealedPayloadMap(
+                        CloudVaultCrypto.sealPayload(eventBody, oldKey, oldVaultKeyID, eventContext),
+                    ),
+            )
+
+        val result =
+            CloudVaultCrypto.rewrapCloudVaultDocument(
+                data = document,
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                oldKey = oldKey,
+                newKey = newKey,
+                newVaultKeyID = newVaultKeyID,
+                vaultGeneration = 8,
+                rotationJobId = "job-8",
+            )
+
+        assertEquals(listOf("sealedPayload"), result.changedFields)
+        assertEquals(newVaultKeyID, result.data["vaultKeyID"])
+        assertEquals(8, result.data["vaultGeneration"])
+        assertEquals("job-8", result.data["rewrapJobId"])
+
+        val envelope = CloudVaultCrypto.sealedPayloadFromMap(result.data["sealedPayload"] as? Map<*, *>)
+        requireNotNull(envelope)
+        assertEquals(newVaultKeyID, envelope.vaultKeyID)
+        assertEquals(eventContext.stringValue, envelope.aad)
+        assertArrayEquals(eventBody, CloudVaultCrypto.openPayload(envelope, newKey, eventContext))
+        assertTrue(runCatching { CloudVaultCrypto.openPayload(envelope, oldKey, eventContext) }.isFailure)
+
+        val topLevelContext =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = "cli_agent_mission_requests",
+                docID = "requestA",
+                field = "sealedPayload",
+            )
+        assertTrue(runCatching { CloudVaultCrypto.openPayload(envelope, newKey, topLevelContext) }.isFailure)
+    }
+
+    @Test
+    fun rewrapCloudVaultDocumentSkipsMissionEventsAlreadyOnNewVaultKey() {
+        val oldKey = ByteArray(SHA256_DIGEST_BYTES) { 0x91.toByte() }
+        val newKey = ByteArray(SHA256_DIGEST_BYTES) { 0x92.toByte() }
+        val newVaultKeyID = CloudVaultCrypto.vaultKeyID(newKey)
+        val uid = "userA"
+        val collection = "cli_agent_mission_requests/events"
+        val docID = "requestA/000002"
+        val eventContext =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                field = "sealedPayload",
+            )
+        val eventBody = """{"message":"new event"}""".toByteArray()
+        val sealed = CloudVaultCrypto.sealPayload(eventBody, newKey, newVaultKeyID, eventContext)
+        val document =
+            mapOf<String, Any?>(
+                "contentSealed" to true,
+                "vaultKeyID" to newVaultKeyID,
+                "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealed),
+            )
+
+        val result =
+            CloudVaultCrypto.rewrapCloudVaultDocument(
+                data = document,
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                oldKey = oldKey,
+                newKey = newKey,
+                newVaultKeyID = newVaultKeyID,
+                vaultGeneration = 8,
+                rotationJobId = "job-8",
+            )
+
+        assertTrue(result.changedFields.isEmpty())
+        assertFalse(result.data.containsKey("vaultGeneration"))
+        assertFalse(result.data.containsKey("rewrapJobId"))
+        val envelope = CloudVaultCrypto.sealedPayloadFromMap(result.data["sealedPayload"] as? Map<*, *>)
+        requireNotNull(envelope)
+        assertEquals(newVaultKeyID, envelope.vaultKeyID)
+        assertArrayEquals(eventBody, CloudVaultCrypto.openPayload(envelope, newKey, eventContext))
+    }
+
+    @Test
     fun rewrapCloudVaultDocumentResealsBlobEnvelopes() {
         val oldKey = ByteArray(SHA256_DIGEST_BYTES) { 0x81.toByte() }
         val newKey = ByteArray(SHA256_DIGEST_BYTES) { 0x82.toByte() }

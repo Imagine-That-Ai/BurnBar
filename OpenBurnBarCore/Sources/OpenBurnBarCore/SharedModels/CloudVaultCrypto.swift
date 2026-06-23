@@ -739,6 +739,7 @@ public enum CloudVaultCrypto {
             let context = try CloudVaultAADContext(uid: uid, collection: collection, docID: docID, field: field)
 
             if let envelope = sealedPayload(from: rawMap) {
+                guard envelope.vaultKeyID != newVaultKeyID else { continue }
                 let plaintext = try openPayloadForRewrap(envelope, keyData: oldKeyData, aadContext: context)
                 let resealed = try sealPayload(
                     plaintext,
