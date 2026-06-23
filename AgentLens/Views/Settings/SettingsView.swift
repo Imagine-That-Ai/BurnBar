@@ -543,7 +543,7 @@ private struct PetCompanionSettingsView: View {
                         PetCompanionFeature.showCompanion()
                     }
                 }
-                .frame(minHeight: 190, maxHeight: 300)
+                .frame(minHeight: 420, maxHeight: 640)
                 .padding(DesignSystem.Spacing.md)
                 .background(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)

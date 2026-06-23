@@ -13,6 +13,7 @@ import com.openburnbar.irohrelay.IrohEndpointIdentity
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -261,7 +262,11 @@ class AndroidFileTransferService(
         val resolver: ContentResolver = appContext.contentResolver
         val displayName = queryDisplayName(resolver, uri) ?: "attachment_${System.currentTimeMillis()}"
         val cacheRoot = File(appContext.cacheDir, "mercury_outbox").also { it.mkdirs() }
-        val target = File(cacheRoot, displayName)
+        val target = AndroidFileTransferCachePath.targetFile(
+            cacheRoot,
+            displayName,
+            uniqueSuffix = UUID.randomUUID().toString(),
+        )
         try {
             resolver.openInputStream(uri).use { input ->
                 if (input == null) return@withContext null
@@ -285,5 +290,59 @@ class AndroidFileTransferService(
                 }
             }
         }.getOrNull()
+    }
+}
+
+internal object AndroidFileTransferCachePath {
+    private const val MAX_CACHE_NAME_LENGTH = 96
+    private val parentDirectoryMarker = Regex("\\.{2,}")
+
+    fun targetFile(cacheRoot: File, displayName: String, uniqueSuffix: String? = null): File {
+        val root = cacheRoot.canonicalFile
+        val target = File(root, safeDisplayName(displayName, uniqueSuffix)).canonicalFile
+        require(target.parentFile?.canonicalFile == root) {
+            "attachment cache target must remain inside the outbox directory"
+        }
+        return target
+    }
+
+    fun safeDisplayName(displayName: String, uniqueSuffix: String? = null): String {
+        val leafName =
+            displayName
+                .trim()
+                .replace('\\', '/')
+                .substringAfterLast('/')
+        val sanitized = leafName
+            .map { character -> if (isPortableFilenameCharacter(character)) character else '_' }
+            .joinToString(separator = "")
+            .replace(parentDirectoryMarker, "_")
+            .trim('.', '_', '-')
+            .ifBlank { "attachment" }
+        val safeSuffix = uniqueSuffix
+            ?.map { character -> if (isPortableFilenameCharacter(character)) character else '_' }
+            ?.joinToString(separator = "")
+            ?.replace(parentDirectoryMarker, "_")
+            ?.trim('.', '_', '-')
+            ?.take(32)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "-$it" }
+            .orEmpty()
+        val extensionStart = sanitized.lastIndexOf('.')
+        val extension = if (
+            extensionStart > 0 &&
+            extensionStart < sanitized.lastIndex &&
+            sanitized.length - extensionStart <= 16
+        ) {
+            sanitized.substring(extensionStart)
+        } else {
+            ""
+        }
+        val stem = if (extension.isEmpty()) sanitized else sanitized.substring(0, extensionStart).ifBlank { "attachment" }
+        val maxStemLength = (MAX_CACHE_NAME_LENGTH - extension.length - safeSuffix.length).coerceAtLeast(1)
+        return stem.take(maxStemLength) + safeSuffix + extension
+    }
+
+    private fun isPortableFilenameCharacter(character: Char): Boolean {
+        return character.isLetterOrDigit() || character == '.' || character == '_' || character == '-'
     }
 }
