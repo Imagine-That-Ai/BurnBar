@@ -217,7 +217,7 @@ lock-step. The checker resolves the install channel once at launch
 |---|---|---|
 | `dmg` | `/Applications/OpenBurnBar.app`, notarized, no Caskroom receipt | One-click download → verify → install → relaunch |
 | `homebrew` | Caskroom receipt present (`/opt/homebrew` or `/usr/local`) | "Update via Homebrew" (`brew upgrade --cask`) — never replaces the bundle |
-| `source` | `OpenBurnBarBuildChannel == source` stamp + a `.git` at the stamped source root | "N commits behind" + `git pull && ./scripts/build.sh` (read-only default; one-click rebuild is opt-in) |
+| `source` | `OpenBurnBarBuildChannel == source` stamp + a `.git` at the stamped source root | "N commits behind" + `bash ./scripts/source-update-install.sh` (one-click rebuild/install is opt-in) |
 | `unknown` | anything else | silent |
 
 **DMG install (the only auto-replace path).** After the existing SHA-256 + Ed25519
@@ -226,9 +226,20 @@ verification over the DMG bytes (against the pinned `SUPublicEDKey`),
 code signature, then spawns a detached relaunch trampoline via
 `posix_spawn` + `POSIX_SPAWN_SETSID` (session leader, survives app exit). The
 trampoline waits for the app PID, kills the bundled daemon by path (to free the
-gateway port), swaps `/Applications/OpenBurnBar.app` with an atomic
-ditto → rename and `.bak` rollback, strips quarantine, and relaunches. If
-`/Applications` isn't writable it falls back to opening the DMG.
+gateway port), terminates stale `OpenBurnBar` GUI processes by executable name,
+swaps `/Applications/OpenBurnBar.app` with an atomic ditto → rename and `.bak`
+rollback, strips quarantine, normalizes LaunchServices so Spotlight/Finder prefer
+the canonical bundle, and relaunches that exact path. If `/Applications` isn't
+writable it falls back to opening the DMG.
+
+**Source install/update parity.** `scripts/source-update-install.sh` is the
+source-channel counterpart to the DMG trampoline. It pulls the tracked branch,
+runs the signed Release build, quits and kills any older GUI process, atomically
+installs the built app at `/Applications/OpenBurnBar.app`, unregisters stale
+non-canonical LaunchServices records for `com.openburnbar.app`, re-registers the
+canonical app, and launches the canonical path. This keeps Command-Space, Finder,
+and in-app relaunch on the same newest bundle instead of leaving macOS to choose
+between duplicate app registrations.
 
 **Pre-release channel.** When enabled (Settings toggle), the checker queries the
 GitHub Releases API for the newest release including prereleases and uses that

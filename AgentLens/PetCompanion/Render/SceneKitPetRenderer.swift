@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import GLTFKit2
 import SceneKit
 import simd
 
@@ -16,10 +17,8 @@ import simd
 /// `scene.defaultScene`, which also surfaces each glTF animation as an
 /// `SCNAnimationPlayer` keyed by clip name.
 ///
-/// Keeping that behind ``GLBSceneLoading`` means this file `swiftc -parse`s with
-/// zero external imports today, the build-notes agent documents adding the
-/// GLTFKit2 SPM dependency, and the renderer swaps loaders without edits. Tests
-/// inject a fake loader; production registers ``DefaultGLBSceneLoader``.
+/// Keeping that behind ``GLBSceneLoading`` lets tests inject a fake loader while
+/// production routes through the bundled GLTFKit2 binary package.
 @MainActor
 protocol GLBSceneLoading: AnyObject {
     /// Load the scene graph for `url`. `clipNames` are the glTF animation names
@@ -31,8 +30,7 @@ protocol GLBSceneLoading: AnyObject {
 /// Production loader.
 ///
 /// Order of attempts, most-capable first:
-/// 1. **GLTFKit2** (when linked) — the canonical `.glb` path. Documented hook;
-///    see ``loadViaGLTFKit2(url:)`` for the exact call the integrator un-stubs.
+/// 1. **GLTFKit2** — the canonical `.glb` path.
 /// 2. **SceneKit native** (`SCNScene(url:)`) — succeeds for `.usdz`/`.scn`
 ///    siblings and any `.glb` once a GLTF importer is registered system-wide.
 ///
@@ -40,6 +38,8 @@ protocol GLBSceneLoading: AnyObject {
 /// so the panel still shows a creature rather than a blank rect.
 @MainActor
 final class DefaultGLBSceneLoader: GLBSceneLoading {
+    private static var didRegisterDracoDecompressor = false
+
     func loadScene(at url: URL, clipNames: [String]) -> SCNScene? {
         if let scene = loadViaGLTFKit2(url: url) { return scene }
         // Native SceneKit: handles USDZ/SCN and GLB-with-registered-importer.
@@ -49,18 +49,20 @@ final class DefaultGLBSceneLoader: GLBSceneLoading {
         return nil
     }
 
-    /// GLTFKit2 entry point. **Intentionally stubbed** so this compiles without
-    /// the dependency. The build-notes agent adds the SPM package and replaces
-    /// the body with:
-    ///
-    /// ```swift
-    /// import GLTFKit2
-    /// guard let asset = try? GLTFAsset(url: url) else { return nil }
-    /// let source = GLTFSCNSceneSource(asset: asset)
-    /// return source.defaultScene            // animations land as SCNAnimationPlayers
-    /// ```
     private func loadViaGLTFKit2(url: URL) -> SCNScene? {
-        nil
+        Self.registerDracoDecompressorIfNeeded()
+        guard let asset = try? GLTFAsset(url: url, options: [
+            GLTFAssetLoadingOption.createNormalsIfAbsentKey: true
+        ]) else {
+            return nil
+        }
+        return GLTFSCNSceneSource(asset: asset).defaultScene
+    }
+
+    private static func registerDracoDecompressorIfNeeded() {
+        guard !didRegisterDracoDecompressor else { return }
+        GLTFAsset.dracoDecompressorClassName = "OpenBurnBarDracoDecompressor"
+        didRegisterDracoDecompressor = true
     }
 }
 

@@ -18,7 +18,7 @@ enum SourceUpdateChannelError: LocalizedError {
 }
 
 struct SourceUpdateChannel {
-    static let manualUpdateCommand = "git pull --ff-only && ./scripts/build.sh"
+    static let manualUpdateCommand = "bash ./scripts/source-update-install.sh"
 
     func fetchStatus() async throws -> SourceUpdateStatus {
         let sourceRoot = try sourceRootURL()
@@ -79,7 +79,11 @@ struct SourceUpdateChannel {
     private func command(in sourceRoot: URL) -> String {
         // Single-quote the path: double quotes still expand $(), backticks, and
         // $VAR if the checkout path contains them.
-        "cd \(DirectDownloadUpdateInstaller.shellSingleQuoted(sourceRoot.path)) && \(Self.manualUpdateCommand)"
+        Self.sourceUpdateCommand(in: sourceRoot)
+    }
+
+    static func sourceUpdateCommand(in sourceRoot: URL) -> String {
+        "cd \(DirectDownloadUpdateInstaller.shellSingleQuoted(sourceRoot.path)) && \(manualUpdateCommand)"
     }
 
     private func sourceRootURL() throws -> URL {
