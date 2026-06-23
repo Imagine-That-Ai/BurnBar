@@ -28,16 +28,11 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
 
-    env:
-      # The iroh services API key is required for production relay
-      # provisioning (scripts/deploy-iroh-relay.sh). The xcframework build
-      # does NOT need it — we declare it here so CI consumers downstream
-      # (release.yml) can read it without re-plumbing the secret.
-      IROH_SERVICES_API_SECRET: ${{ secrets.IROH_SERVICES_API_SECRET }}
-
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
 
       - name: Install rust toolchain
         # Keep in sync with crates/openburnbar-iroh/rust-toolchain.toml and the
