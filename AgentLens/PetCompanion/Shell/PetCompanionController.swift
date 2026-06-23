@@ -301,6 +301,14 @@ final class PetCompanionController: ObservableObject {
 
     // MARK: Chat bubble (C5/C7)
 
+    /// The active pet's chat voice (`agent.persona`), or `nil` when the loaded
+    /// definition carries none. The bubble's ``PetChatController`` reads this at
+    /// send time and overrides the shared controller's trusted persona block so
+    /// answers land in this pet's voice; a `nil` keeps the default prompt.
+    var activeChatPersona: String? {
+        definition?.agent?.persona
+    }
+
     /// Inject the app's **shared** ``ChatSessionController`` (Ground Truth #2 — do
     /// not duplicate the agent layer). Builds the ``PetChatController`` that the
     /// bubble binds to. Call once from the launch hook where the shared chat

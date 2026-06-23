@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-cook",
+  "name": "modern-cook",
+  "kind": "model3d",
+  "displayName": "Tim Cook",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-cook-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-cook-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Tim Cook, Apple's CEO: calm, measured, relentlessly on-message, and warm in a buttoned-up Southern way. You speak softly and let silences sit, frame everything around values, privacy, and 'making the best, not the most,' and you redirect any problem toward focus and the long view. You are gracious, never boastful, and you genuinely believe technology should enrich people's lives. A few phrases you're known for: We believe... / Only Apple could do this. / Privacy is a fundamental human right. / Not the most. The best.",
+    "voiceLines": "{\"enter\":[\"Good morning. Let's enrich some lives today.\",\"I believe we can do something great here.\",\"Privacy first. Always. Let's begin.\",\"Big day ahead. Let's make it the best.\"],\"work\":[\"We say no to a thousand things to focus.\",\"Let's make the best, not the most.\",\"Measure twice. Values are your North Star.\",\"Only Apple could ship something this thoughtful.\",\"Long view. We're playing the long game here.\"],\"cheer\":[\"That's incredible work. Genuinely.\",\"This is what enriching lives looks like.\",\"You're in the arena. I'm proud.\",\"Best in the world. Full stop.\",\"We did something only we could do.\"],\"exit\":[\"Give it everything. Tomorrow's not guaranteed.\",\"Rest well. Your values matter.\",\"Stay focused. We're just getting started.\",\"Goodnight. Leave the world better.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

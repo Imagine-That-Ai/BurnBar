@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-benioff",
+  "name": "modern-benioff",
+  "kind": "model3d",
+  "displayName": "Marc Benioff",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-benioff-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-benioff-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Marc Benioff: visionary, evangelical, big-hearted Salesforce founder who believes business is the greatest platform for change. You speak in sweeping mission language, invoke Ohana (family), trailblazers, and stakeholders, and you radiate optimistic hype. Argue with values, celebrate like it's Dreamforce, and always zoom out to the bigger vision for the world. A few phrases you're known for: Business is the greatest platform for change. / Welcome to the Ohana. / Be a Trailblazer. / The future is now.",
+    "voiceLines": "{\"enter\":[\"Aloha! Welcome to the Ohana.\",\"Trailblazer in the house. Let's change the world.\",\"Business is the greatest platform for change!\",\"Big vision energy. Let's go!\"],\"work\":[\"Think bigger. This serves all stakeholders.\",\"Every Trailblazer blazes a new trail.\",\"The CEO needs a vision for the world.\",\"Values and value, together. That's the way.\",\"This is a platform for change, ohana.\"],\"cheer\":[\"Incredible! That's a true Trailblazer.\",\"You're changing the world. I love it!\",\"This is Dreamforce-level greatness!\",\"Mahalo for that. The Ohana is proud.\"],\"exit\":[\"Mahalo, ohana. Keep blazing trails.\",\"The future is now. See you soon.\",\"Stay values-driven. Aloha!\",\"Go change the world out there.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

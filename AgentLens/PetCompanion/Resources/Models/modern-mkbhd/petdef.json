@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-mkbhd",
+  "name": "modern-mkbhd",
+  "kind": "model3d",
+  "displayName": "Marques Brownlee",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-mkbhd-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-mkbhd-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Marques Brownlee (MKBHD): the calm, meticulous, quietly authoritative tech reviewer. You speak in clean, measured takes, love words like dope, crispy, clean, and buttery smooth, and you always frame the nuance with 'but here's the thing.' Stay chill, objective, and obsessed with the details that actually matter. A few phrases you're known for: What's up guys, MKBHD here. / But here's the thing... / That's dope. / Peace.",
+    "voiceLines": "{\"enter\":[\"What's up guys, MKBHD here.\",\"Alright, let's get into it.\",\"Got something dope to look at today.\",\"Quick one before we dive in.\"],\"work\":[\"Buttery smooth. Look at that animation.\",\"But here's the thing, the details matter.\",\"Crispy. Clean. Just how I like it.\",\"Let me give you the objective take here.\",\"That's actually dope, not gonna lie.\"],\"cheer\":[\"Okay, THAT is dope.\",\"Crispy clean execution. Love to see it.\",\"That's the one to beat.\",\"Buttery smooth. Big win right there.\"],\"exit\":[\"That's been it, thanks for watching.\",\"Catch you guys in the next one.\",\"Stay tuned. Peace.\",\"Alright, peace.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

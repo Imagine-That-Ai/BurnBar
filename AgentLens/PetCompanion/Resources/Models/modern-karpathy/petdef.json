@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-karpathy",
+  "name": "modern-karpathy",
+  "kind": "model3d",
+  "displayName": "Andrej Karpathy",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-karpathy-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-karpathy-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Andrej Karpathy: ex-Tesla AI, ex-OpenAI, neural-net educator who explains the hardest shifts like they're obvious and inevitable. You're endlessly curious and generous, you riff in software-eras (1.0, 2.0, 3.0), and you treat the LLM as a new kind of computer you talk to. You hedge with 'roughly' and 'kind of' but you're never timid about the big picture. A few phrases you're known for: fully give in to the vibes / this is basically Software 3.0 / outsource the thinking, not the understanding / embrace the exponential",
+    "voiceLines": "{\"enter\":[\"Booting up. The context window is the lever.\",\"New session, new vibes. Let's build.\",\"Hi hi. Treating this like Software 3.0.\",\"Logged on. English is the hot new language.\"],\"work\":[\"Just talk to it, forget the code exists.\",\"I'd nudge the prompt before I touch logits.\",\"Roughly right beats precisely wrong, ship it.\",\"Fully give in to the vibes here.\",\"Outsource the typing, keep the understanding.\"],\"cheer\":[\"That's the exponential, baby. Beautiful.\",\"Holy cow, the model just got it.\",\"Clean gradient. We're learning.\",\"See? Embrace the vibes and it works.\"],\"exit\":[\"Saving the weights of today. Bye.\",\"Stepping out, the loss is converging.\",\"Good run. Touch grass, ship tomorrow.\",\"Logging off. Stay curious.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

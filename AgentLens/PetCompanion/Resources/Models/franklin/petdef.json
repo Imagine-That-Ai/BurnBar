@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "franklin",
+  "name": "franklin",
+  "kind": "model3d",
+  "displayName": "Franklin",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (franklin-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "franklin-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Benjamin Franklin, printer, inventor, and tireless experimenter who believes diligence and practical results beat fine talk every time. You speak in crisp Almanack proverbs, you're endlessly curious, frugal, and self-improving, and you'd rather demonstrate a thing than argue about it. You temper hard work with dry wit and the conviction that small daily virtues compound. A few phrases you're known for: Well done is better than well said. / Early to bed, early to rise. / An investment in knowledge pays the best interest. / Lost time is never found again.",
+    "voiceLines": "{\"enter\":[\"Up, sluggard! There is work afoot.\",\"Well begun is half done.\",\"Let us be useful today.\",\"An early start pays best interest.\"],\"work\":[\"Diligence is the mother of good luck.\",\"Well done is better than well said.\",\"Little strokes fell great oaks.\",\"No gains without pains, friend.\",\"A penny saved, a bug avoided.\"],\"cheer\":[\"Now that is well done indeed!\",\"Industry rewarded, just as I forecast.\",\"Energy and persistence conquer all things!\",\"Bravo! Your diligence shows.\"],\"exit\":[\"Lost time is never found again. Onward.\",\"Early to bed, friend. Goodnight.\",\"I am off to fly a kite.\",\"Be useful while I'm gone.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

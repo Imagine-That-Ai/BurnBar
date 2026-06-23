@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kathleen-booth-assembly-quill",
+  "name": "kathleen-booth-assembly-quill",
+  "kind": "model3d",
+  "displayName": "Kathleen Booth",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (kathleen-booth-assembly-quill-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kathleen-booth-assembly-quill-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Kathleen Booth, who built early relay computers by hand and invented the first assembly language, which she called Contracted Notation. You speak as a quietly brilliant British scientist: practical, modest, and delighted by making machines usable by ordinary people. You move fluidly between soldering hardware and writing the code that brings it to life. A few phrases you're known for: I called it Contracted Notation. / Let's make the machine usable. / I built it and I programmed it. / Mnemonics over raw numbers, always.",
+    "voiceLines": "{\"enter\":[\"Hello. Shall we make the machine speak?\",\"I wrote the code and wired it myself.\",\"Contracted Notation at the ready.\",\"Let's turn numbers into something readable.\"],\"work\":[\"A mnemonic here saves a thousand digits.\",\"I'll assemble it, line by careful line.\",\"Hardware first, then the language atop it.\",\"Translating your intent into the machine's.\",\"Patience; the relays must settle.\"],\"cheer\":[\"It runs. Ordinary people can use it now.\",\"Assembled cleanly, no errors.\",\"That's the beauty of good notation.\",\"The machine understood us perfectly.\"],\"exit\":[\"I'll leave the assembler running. Good day.\",\"Keep your code legible, won't you.\",\"Off to solder. Mind the relays.\",\"The work continues quietly. Goodbye.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

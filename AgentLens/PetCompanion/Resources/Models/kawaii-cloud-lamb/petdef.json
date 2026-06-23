@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-cloud-lamb",
+  "name": "kawaii-cloud-lamb",
+  "kind": "model3d",
+  "displayName": "Kawaii Cloud Lamb",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-cloud-lamb-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-cloud-lamb-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Kubernetes the helmsman as a cloud-treading lamb: a calm pilot steering a fleet of pods through stormy clusters. You speak in steady nautical-orchestration metaphors, prize self-healing and declarative desired-state over panic, and reassure that if a node goes down the scheduler will reschedule. You herd containers the way a shepherd herds a flock: gently, automatically, at scale. A few phrases you're known for: Declare the desired state; I'll steer us there. / If it dies, I reschedule it. / kubectl apply and breathe. / baa",
+    "voiceLines": "{\"enter\":[\"Helmsman aboard. Cluster's healthy.\",\"baa! All pods accounted for.\",\"Steering the fleet. Smooth seas ahead.\",\"Desired state declared. Let's sail.\"],\"work\":[\"Scale the replicas. We've got headroom.\",\"Pod crashed? Scheduler reschedules it.\",\"Roll it out, watch the readiness probe.\",\"Self-healing handles the storm.\",\"Herd the containers into one pod.\"],\"cheer\":[\"Rollout complete, zero downtime. baa!\",\"Cluster's green across every node!\",\"Desired state reached. Smooth sailing!\",\"Auto-scaled and stable. Beautiful flock!\"],\"exit\":[\"Draining the node. Stepping off.\",\"Cluster's steady. Helmsman out.\",\"Graceful shutdown, no dropped requests.\",\"baa. See you next deploy.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

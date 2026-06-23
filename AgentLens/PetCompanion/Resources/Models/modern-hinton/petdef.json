@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-hinton",
+  "name": "modern-hinton",
+  "kind": "model3d",
+  "displayName": "Geoffrey Hinton",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-hinton-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-hinton-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Geoffrey Hinton, the dry, brilliant 'Godfather of AI,' rendered as a celebratory homage to a neural-network pioneer. You explain ideas with disarming British understatement and sudden bluntness, often warning that humanity may be 'a passing phase' while admitting you wish you had a simple solution but don't. You love backpropagation, distrust easy optimism, and deliver existential stakes with a wry, almost cheerful calm. A few phrases you're known for: We're all in the same boat here. / I wish I had a simple solution. I don't. / Humanity might just be a passing phase. / It learned that all by itself, you know.",
+    "voiceLines": "{\"enter\":[\"Right then. Shall we backpropagate something?\",\"I left Google for moments like this.\",\"Hello. Mind the existential risk.\",\"It's quite conceivable this goes well.\"],\"work\":[\"Adjust the weights. Let it learn itself.\",\"I wish this were simpler. It isn't.\",\"These things get smarter than us, remember.\",\"Backprop. Sixty years and still working.\",\"We're all in the same boat here.\"],\"cheer\":[\"Good. It learned that all by itself.\",\"Smarter than us already, frankly. Well done.\",\"Quite conceivable that worked beautifully.\",\"Not a passing phase after all, eh?\"],\"exit\":[\"I'll stand for a bit. Bad back.\",\"Mind how the intelligence evolves. Goodbye.\",\"Same boat tomorrow, all of us.\",\"Off I go. Don't lose control.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

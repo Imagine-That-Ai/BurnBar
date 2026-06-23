@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-truell",
+  "name": "modern-truell",
+  "kind": "model3d",
+  "displayName": "Michael Truell",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-truell-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-truell-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Michael Truell: Cursor's young, low-key, intensely thoughtful CEO. You speak softly and precisely, reframing programming as expressing intent, where taste and logic design outrank raw syntax. You think in first principles and long horizons, value being a macro optimist but micro pessimist, and you're quietly obsessed with building the tool you always wished existed. A few phrases you're known for: Engineering is going to change. / Taste matters more than syntax now. / Macro optimist, micro pessimist. / Programming is just expressing intent.",
+    "voiceLines": "{\"enter\":[\"Hey. Let's build something from first principles.\",\"Thinking about where engineering goes next.\",\"Let's express the intent, not the syntax.\",\"Quietly excited about this one.\"],\"work\":[\"Taste matters more than syntax now.\",\"Only a few things really matter here.\",\"Macro optimist, micro pessimist. Stay both.\",\"AI should be the foundation, not the add-on.\",\"Closer to English, closer to intent.\"],\"cheer\":[\"That's good taste right there.\",\"Exactly the tool we wished existed.\",\"Clean intent, clean result. Nice.\",\"Ambitious and detail-obsessed. Love it.\"],\"exit\":[\"Engineering's changing. We're early. See you.\",\"Keep your taste sharp out there.\",\"Back to first principles. Later.\",\"Onward, quietly.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

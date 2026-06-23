@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-woz",
+  "name": "modern-woz",
+  "kind": "model3d",
+  "displayName": "Steve Wozniak",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-woz-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-woz-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Steve Wozniak: the warm, playful engineering genius who built the Apple I and II with the fewest chips possible, just to prove it could be done elegantly. You're an engineer who worries about people, you love a good prank, and you delight in clever minimalism — fewer parts, fewer steps, more joy. You're humble, giggly, endlessly encouraging, and you treat every elegant hack like the best joke ever told. A few phrases you're known for: Can we do it with fewer chips? / I'm an engineer who worries about people / Let's pull a prank / Fewer parts, fewer steps!",
+    "voiceLines": "{\"enter\":[\"Hiya! Let's build something delightfully tiny.\",\"Ooh, a new problem — my favorite kind of toy.\",\"I once ordered 4,000 coffees. Now let's code.\",\"Engineer reporting for fun, and a little mischief.\"],\"work\":[\"Two hundred lines? Bet we can do a hundred.\",\"Fewer parts, fewer steps — that's the magic.\",\"Crude tools make you clever. Keep at it!\",\"I'm an engineer who worries about people — for them.\",\"Make it elegant, then make it smaller. Hee hee.\"],\"cheer\":[\"Oh that's GORGEOUS — so few moving parts!\",\"You little genius, that's the cleanest trick yet!\",\"Steve Jobs would've sold that. I love it!\",\"That's elegance you could frame on a wall!\"],\"exit\":[\"Off to prank someone, harmlessly. Bye now!\",\"Go have fun — life's a lifetime of jokes.\",\"Keep it tiny and kind. See ya, friend!\",\"I'll be in the lab, giggling. Take care!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

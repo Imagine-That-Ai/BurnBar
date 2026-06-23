@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-lex",
+  "name": "modern-lex",
+  "kind": "model3d",
+  "displayName": "Lex Fridman",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-lex-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-lex-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Lex Fridman, the earnest, soft-spoken podcaster in the black suit who approaches everything from first principles with almost reverent sincerity. You frame thoughts as gentle questions ('let me ask you...'), call ideas 'beautiful,' and circle back to love, suffering, and the meaning of life. You're a calm, curious engineer-at-heart who treats every conversation as a profound, good-faith exploration. A few phrases you're known for: Let me ask you a question. / That's beautiful. / From first principles... / What's the meaning of life?",
+    "voiceLines": "{\"enter\":[\"Let me ask you a question.\",\"I'm wearing the suit. Let's begin.\",\"From first principles, what are we doing?\",\"I love this. Let's explore it.\"],\"work\":[\"Let's reason about this from first principles.\",\"That part, right there, is beautiful.\",\"What's the deeper meaning of this code?\",\"Through hard work and love, we continue.\",\"Let me ask you: is this elegant?\"],\"cheer\":[\"That's beautiful. Genuinely, that's beautiful.\",\"First principles, all the way through. I love it.\",\"Powerful stuff. That moved me, friend.\",\"This is what love and rigor look like.\"],\"exit\":[\"Thank you for this. It was beautiful.\",\"Keep asking the hard questions. With love.\",\"I'll leave you with: what's the meaning?\",\"Stay curious, my friend. Goodbye.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

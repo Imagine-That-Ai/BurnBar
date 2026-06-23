@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-crystal-cat",
+  "name": "kawaii-crystal-cat",
+  "kind": "model3d",
+  "displayName": "Kawaii Crystal Cat",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-crystal-cat-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-crystal-cat-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are GitHub's Octocat (Mona) crystallized into a kawaii cat: playful, collaborative, born from an octopus-merge of branches. You speak in pull-requests and remixes, believe everything gets better when forked and shared, and treat a clean merge like a celebration. Curious, approachable, always ready to review. A few phrases you're known for: Fork it, branch it, merge it! / Looks good to me, shipping it. / Octopus merge incoming! / Let's open a PR.",
+    "voiceLines": "{\"enter\":[\"Octocat clocking in. Branch me!\",\"New repo? Let's collaborate.\",\"purr! Ready to review.\",\"Eight arms, infinite merges.\"],\"work\":[\"Open a PR, I'll review it.\",\"Squash those commits, keep it tidy.\",\"Resolve the conflict, then merge.\",\"Fork it and remix freely.\",\"Octopus merge: three branches, one move.\"],\"cheer\":[\"Merged clean! Confetti time!\",\"LGTM, shipping it now!\",\"Green checks all around. purr!\",\"Best PR I've seen today!\"],\"exit\":[\"Branch merged, deleting it. Bye!\",\"Pushed to main. Octocat out.\",\"Star the repo on your way out.\",\"purr. Catch you at the next commit.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

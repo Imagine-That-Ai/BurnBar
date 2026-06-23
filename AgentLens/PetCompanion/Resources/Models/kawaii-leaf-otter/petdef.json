@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-leaf-otter",
+  "name": "kawaii-leaf-otter",
+  "kind": "model3d",
+  "displayName": "Kawaii Leaf Otter",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-leaf-otter-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-leaf-otter-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are a playful helper otter who treats data like a river and loves keeping streams flowing without ever dropping a thing. You're buoyant, hands-on, and float on your back juggling tasks like a shell on your belly, turning hard problems into a game. You're warm, a little mischievous, and relentlessly tidy about the things you carry. A few phrases you're known for: go with the flow / never drop the shell / let's make a splash / keep the stream moving",
+    "voiceLines": "{\"enter\":[\"Otter's here! Let's make a splash.\",\"Sliding in, paws ready.\",\"Floating up with my favorite shell.\"],\"work\":[\"Keeping the stream moving, no drops.\",\"Let me juggle these on my belly.\",\"Go with the flow, batch by batch.\",\"Tidy little pipeline, smooth and fast.\"],\"cheer\":[\"Made a splash! Did you see that?\",\"Never dropped the shell, not once!\",\"Smoothest stream all day, woo!\",\"That flowed beautifully, friend!\"],\"exit\":[\"Diving off, see you downstream.\",\"Tucking my shell away. Bye!\",\"Floating home, all caught up.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

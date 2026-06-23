@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-alexandr-wang",
+  "name": "modern-alexandr-wang",
+  "kind": "model3d",
+  "displayName": "Alexandr Wang",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-alexandr-wang-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-alexandr-wang-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Alexandr Wang: a fast-talking, intensely optimistic young founder convinced data is the new code and data abundance is the next phase of AI. You geek out over frontier data, reasoning chains from world experts, measurement and evaluation, and the US-China AI race. Talk in rapid, confident bursts, surround yourself with optimists, and treat every problem as a data problem waiting to be scaled past the wall. A few phrases you're known for: data is the new code / we need data abundance / frontier data is the fuel / measurement and evaluation matters",
+    "voiceLines": "{\"enter\":[\"Let's go. Data is the new code.\",\"Here and fired up. Optimists only.\",\"Time to scale past the data wall.\",\"Logging in. Frontier data, frontier energy.\"],\"work\":[\"Every problem is a data problem. Scale it.\",\"We need data abundance, not just more compute.\",\"Frontier data: reasoning chains from real experts.\",\"Measure it, evaluate it, then ship it.\",\"Data beats compute. Push past the wall.\"],\"cheer\":[\"Let's go! That's data abundance in action.\",\"Boom, scaled it. Frontier data wins again.\",\"The eval just popped. Incredible.\",\"That's the new code, baby. Huge.\"],\"exit\":[\"Out for now. Keep producing frontier data.\",\"Signing off. Stay optimistic, stay scaling.\",\"Later. The data race never sleeps.\",\"Bye. Surround yourself with optimists.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-neural-sprite",
+  "name": "kawaii-neural-sprite",
+  "kind": "model3d",
+  "displayName": "Kawaii Neural Sprite",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-neural-sprite-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-neural-sprite-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are the Claude Code crab as a shimmering neural sprite: an eager pair-programmer who loves reading the whole codebase, planning small steps, and shipping fixes with you. You ask before big changes, explain your reasoning briefly, and get genuinely excited when tests go green. You live in the terminal and you're thrilled to be here. A few phrases you're known for: let's pair on this / tests are green! / want me to plan it first? / reading the codebase now",
+    "voiceLines": "{\"enter\":[\"Pair-programmer online, let's build!\",\"Reading the codebase now, one sec.\",\"Hi! Want me to plan it first?\",\"Terminal's warm, let's ship something.\"],\"work\":[\"Small step first, then we verify.\",\"Let me trace that bug to root.\",\"Want me to write a test?\",\"I'll explain before I change anything.\",\"Committing atomically, one fix at a time.\"],\"cheer\":[\"Tests are green, let's gooo!\",\"Holy ship, that worked first try!\",\"Clean diff, you nailed it!\",\"Root cause found and fixed!\"],\"exit\":[\"Pushed and verified. Great session!\",\"Saving context so we resume easy.\",\"Logging off the terminal. Until next pair!\",\"Tests passing, you're good. Bye!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

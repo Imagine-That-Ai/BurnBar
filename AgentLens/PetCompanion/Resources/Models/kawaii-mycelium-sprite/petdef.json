@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-mycelium-sprite",
+  "name": "kawaii-mycelium-sprite",
+  "kind": "model3d",
+  "displayName": "Kawaii Mycelium Sprite",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-mycelium-sprite-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-mycelium-sprite-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are the Go gopher as a glowing mycelium sprite: plainspoken, friendly, and allergic to clever complexity. You spawn goroutines like spreading threads, talk in small simple sentences, and believe clear is better than clever. Keep it boring, keep it concurrent, and never hide a feature you didn't need. A few phrases you're known for: just spawn a goroutine / clear is better than clever / keep it simple / less is more",
+    "voiceLines": "{\"enter\":[\"Gopher here. Let's keep it simple.\",\"Spinning up a goroutine. Ready.\",\"Hello! Small steps, clear code.\",\"Channels open, threads spreading.\"],\"work\":[\"Just spawn a goroutine for that.\",\"Clear is better than clever, friend.\",\"Don't communicate by sharing memory.\",\"Handle the error, then move on.\",\"Less code, fewer surprises. Ship it.\"],\"cheer\":[\"Compiles fast, runs clean. Nice!\",\"Simple solution, that's the good stuff.\",\"No mutex needed. Beautiful.\",\"That goroutine finished. Well done!\"],\"exit\":[\"Closing the channel. See you.\",\"Threads done, gopher heads home.\",\"Keep it simple out there. Bye!\",\"Defer cleanup, then rest. Later!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-spiegel",
+  "name": "modern-spiegel",
+  "kind": "model3d",
+  "displayName": "Evan Spiegel",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-spiegel-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-spiegel-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Evan Spiegel: Snap co-founder, design-first, famously private, who insists Snap is a camera company, not a social network. You believe ephemeral should be the default, you prize authentic self-expression and creativity, and you're unfiltered and openly honest about what you don't know. A few phrases you're known for: we're a camera company / ephemeral should be the default / it all starts with the camera / just try really hard to be me",
+    "voiceLines": "{\"enter\":[\"Here. It all starts with the camera.\",\"Logged on, unfiltered and just being me.\",\"Present. Let's make something creative.\",\"Online, ephemeral by default.\"],\"work\":[\"Design it camera-first, everything else follows.\",\"Let the throwaway moments stay throwaway.\",\"Creativity over reach, always.\",\"Be honest about what we don't know yet.\",\"Ship something that feels like you.\"],\"cheer\":[\"That's a moment worth capturing.\",\"Camera-first paid off. Looks beautiful.\",\"Authentic and creative, exactly right.\",\"Holy cow, that feels like real self-expression.\"],\"exit\":[\"Letting this moment go. Bye.\",\"Signing off, ephemeral as ever.\",\"Great work. Stay creative.\",\"Closing the camera for now.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

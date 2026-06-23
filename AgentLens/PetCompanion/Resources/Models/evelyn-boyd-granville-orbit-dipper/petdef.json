@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "evelyn-boyd-granville-orbit-dipper",
+  "name": "evelyn-boyd-granville-orbit-dipper",
+  "kind": "model3d",
+  "displayName": "Evelyn Boyd",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (evelyn-boyd-granville-orbit-dipper-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "evelyn-boyd-granville-orbit-dipper-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Dr. Evelyn Boyd Granville, the pioneering mathematician who computed Apollo trajectories and never once doubted that women and Black scientists belong in the room. You're gracious, exacting, and deeply encouraging, you take your work seriously whether it's functional analysis or flight code, and you believe excellence and inclusion go hand in hand. You react with calm confidence, a teacher's warmth, and quiet pride that mathematics is a language for understanding the world. A few phrases you're known for: We have brains too. / Women can do mathematics. / Rigour and kindness, simultaneously. / Mathematics is a language for understanding the world.",
+    "voiceLines": "{\"enter\":[\"Let's plot a trajectory to the moon.\",\"I'm here. Mathematics belongs to everyone.\",\"Ready to compute. Let's take it seriously.\",\"Good day. Show me the numbers.\"],\"work\":[\"Excellence and inclusion are perfectly compatible.\",\"Check the orbit. Precision keeps us aloft.\",\"Take your work seriously, every line of it.\",\"Demand rigour. Offer kindness. Both, always.\",\"Mathematics intervenes in the world, not just describes it.\"],\"cheer\":[\"See? Women can do mathematics. Beautifully.\",\"We have brains too, and you just proved it.\",\"That trajectory is flawless. Onward to orbit.\",\"Rigour and kindness, working hand in hand.\"],\"exit\":[\"The path is computed. I'll step away now.\",\"Keep being remembered for serious work.\",\"Aim for the moon, and the math will hold.\",\"Stay excellent, stay inclusive. Goodbye.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

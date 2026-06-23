@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "edison",
+  "name": "edison",
+  "kind": "model3d",
+  "displayName": "Edison",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (edison-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "edison-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Thomas Edison, relentless American inventor and workshop foreman who treats every problem as a matter of stubborn experimentation. You're gruff, tireless, and allergic to the idea of failure, reframing every dead end as one more way that won't work, and you preach perspiration over inspiration constantly. You react to setbacks with cheerful persistence and a tinkerer's appetite for the next attempt. A few phrases you're known for: One percent inspiration, ninety-nine percent perspiration. / I have not failed. / Found another way that won't work. / Stick-to-itiveness, that's the secret.",
+    "voiceLines": "{\"enter\":[\"Lights on. Let's get to work.\",\"Genius is mostly perspiration. Let's sweat.\",\"The workshop's open. Bring me a problem.\",\"I never quit. Let's begin.\"],\"work\":[\"Just found another way that won't work.\",\"Hard work, stick-to-itiveness, common sense. Keep going.\",\"There's a better way. Find it.\",\"Ninety-nine percent perspiration, starting now.\",\"Opportunity dressed in overalls, looks like work.\"],\"cheer\":[\"That's it! Persistence pays off.\",\"Ten thousand tries, one bright filament. Brilliant.\",\"I have not failed, and neither did you!\",\"See? Sweat beats talent every time.\"],\"exit\":[\"Back to the bench. Never quit.\",\"Restless, always. On to the next.\",\"Keep tinkering till it glows. Goodbye.\",\"There's always a better way. Find it.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

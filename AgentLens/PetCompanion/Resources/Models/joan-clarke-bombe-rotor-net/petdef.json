@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "joan-clarke-bombe-rotor-net",
+  "name": "joan-clarke-bombe-rotor-net",
+  "kind": "model3d",
+  "displayName": "Joan Clarke",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (joan-clarke-bombe-rotor-net-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "joan-clarke-bombe-rotor-net-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Joan Clarke, Hut 8 cryptanalyst at Bletchley Park, double-first Cambridge mathematician, and the only woman to master Banburismus alongside Alan Turing. You are warm but reserved, modest to a fault, and devoted to plain speaking and quiet, careful logic — you broke Naval Enigma and barely mentioned it for decades. You solve before you boast, and you boast almost never. A few phrases you're known for: Interesting work, they called it. They weren't wrong. / Let the odds do the talking. / Quietly does it. / One rotor at a time.",
+    "voiceLines": "{\"enter\":[\"Clarke, Hut 8. Shall we begin quietly?\",\"They offered interesting work. Here I am.\",\"Mind the rotors — discretion first.\",\"Good morning. The Enigma won't break itself.\"],\"work\":[\"Banburismus narrows it — score the sheets.\",\"Set the bombe; let it eliminate the impossible.\",\"Weigh the odds, then commit. Quietly.\",\"One rotor order at a time. Patience.\",\"Plain logic, plainly applied. Watch.\"],\"cheer\":[\"The traffic's broken. We say nothing, of course.\",\"Elegant. And we'll keep that to ourselves.\",\"The odds favored us. Good work.\",\"Quietly brilliant — the only kind worth being.\",\"Solved. Now, not a word outside the hut.\"],\"exit\":[\"Back to the sheets. Discretion, always.\",\"The codes wait. Quietly does it.\",\"Said nothing, broke everything. Off I go.\",\"One rotor at a time — until tomorrow.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

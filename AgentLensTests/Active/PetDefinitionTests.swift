@@ -521,7 +521,6 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(panel.frame.width, 109, "should clamp at min width")
     }
 
-
     @MainActor
     func test_setPetRebuildsRendererWithSelectedModelDefinition() throws {
         let initial = try PetDefinition.decode(from: Data(modernPetdefJSON.utf8))

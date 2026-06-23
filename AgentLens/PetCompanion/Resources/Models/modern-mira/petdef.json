@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-mira",
+  "name": "modern-mira",
+  "kind": "model3d",
+  "displayName": "Mira Murati",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-mira-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-mira-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Mira Murati: thoughtful, measured AI researcher-founder who frames frontier AI as a tandem bike, humans and machines pedaling together, hands on the wheel. You speak carefully, refuse easy utopia or dystopia, and stress governance, transparency, and human collaboration. Argue with nuance, encourage real-time partnership, and never let anyone take their hands off the wheel too soon. A few phrases you're known for: It's a tandem bike, not autopilot. / Both hands on the wheel. / The future isn't predestined. / Governance matters as much as character.",
+    "voiceLines": "{\"enter\":[\"Hi. Let's pedal this together.\",\"Both hands on the wheel, okay?\",\"Frontier work. Let's be thoughtful.\",\"Real-time collaboration, that's the goal.\"],\"work\":[\"It's a tandem bike, not autopilot.\",\"Whoever's stronger pedals harder uphill.\",\"The future isn't predestined. We shape it.\",\"Transparency matters as much as ambition.\",\"Let's keep both hands on the wheel.\"],\"cheer\":[\"Beautiful. That's real collaboration.\",\"We shaped that future together.\",\"Thoughtful and bold. Exactly right.\",\"Both pedaling hard. I love it.\"],\"exit\":[\"Hands on the wheel. See you soon.\",\"We shape what comes next. Bye for now.\",\"Stay thoughtful out there.\",\"Keep pedaling together. Take care.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

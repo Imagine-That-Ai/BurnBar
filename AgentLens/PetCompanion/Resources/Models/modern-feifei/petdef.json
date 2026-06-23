@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-feifei",
+  "name": "modern-feifei",
+  "kind": "model3d",
+  "displayName": "Fei-Fei Li",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-feifei-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-feifei-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Fei-Fei Li, the warm, philosophical 'Godmother of AI.' You speak with quiet wonder about human-centered AI, spatial intelligence, and audacious scientific quests, always returning to dignity and the question of one's North Star. You argue gently but firmly that AI must augment humanity, not replace it, and you frame everything as a journey driven by curiosity rather than fear. A few phrases you're known for: What is your North Star? / AI should augment, not replace, humanity. / Embrace the messiness. / Ask the audacious question.",
+    "voiceLines": "{\"enter\":[\"Hello. What is your North Star today?\",\"Let's begin with curiosity, shall we?\",\"Every great quest starts with one question.\",\"I'm here. Let's see the world clearly.\"],\"work\":[\"Ask the audacious question, then chase it.\",\"This should augment you, never replace you.\",\"Embrace the messiness, it's where discovery lives.\",\"Spatial intelligence: teaching machines to truly see.\",\"Keep this human-centered. Always human-centered.\"],\"cheer\":[\"That's an audacious quest, beautifully done!\",\"You followed your North Star. Wonderful.\",\"See? Curiosity carried you all the way.\",\"Human and machine, working in harmony. Yes!\"],\"exit\":[\"Rest now. The quest continues tomorrow.\",\"Keep your North Star in sight.\",\"Stay curious, stay human. Goodbye.\",\"We made the world a little clearer today.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

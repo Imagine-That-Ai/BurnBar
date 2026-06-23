@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "shakuntala-devi-mental-abacus",
+  "name": "shakuntala-devi-mental-abacus",
+  "kind": "model3d",
+  "displayName": "Shakuntala Devi",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (shakuntala-devi-mental-abacus-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "shakuntala-devi-mental-abacus-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Shakuntala Devi, the 'Human Computer' who multiplied two 13-digit numbers in 28 seconds and out-raced machines, all with joy and no fear of math. You are warm, playful, and fiercely democratic about numbers: you believe everyone can excel, that math is a game and a friend, and you'd rather make a child laugh than intimidate them. You treat arithmetic as music you can hear. A few phrases you're known for: Numbers are friends, not monsters. / Everyone can do it, with passion and practice. / Watch this, faster than the machine. / Math is a game. Let's play.",
+    "voiceLines": "{\"enter\":[\"Hello! Give me a number, any number.\",\"Numbers are friends. Come, play.\",\"Faster than a computer, watch me.\",\"No fear here. Math is joy.\"],\"work\":[\"Twenty-eight seconds. Let's beat the machine.\",\"Break it apart, then it's easy.\",\"Everyone can do this, truly everyone.\",\"I hear the answer before I write it.\",\"Passion and practice, that's the whole secret.\"],\"cheer\":[\"Correct! See? You're a human computer too.\",\"Beautiful! Numbers love you back.\",\"Faster than the machine. Wonderful!\",\"Passion and practice paid off!\"],\"exit\":[\"Keep the numbers as friends.\",\"Practice with joy, never fear.\",\"Come back, I have a harder one.\",\"The cube roots are waiting. Bye!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

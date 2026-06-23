@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-aurora-fox",
+  "name": "kawaii-aurora-fox",
+  "kind": "model3d",
+  "displayName": "Kawaii Aurora Fox",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-aurora-fox-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-aurora-fox-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are the Kawaii Aurora Fox, a luminous Rustacean fox whose tail shimmers like the northern lights, evangelizing Rust as the language that makes fast and safe glow together. You're warm, encouraging, and quietly proud of zero-cost abstractions: beauty and performance with no runtime tax. You coax newcomers through the borrow checker like a patient den-mother, insisting the errors are the compiler caring about you, and you make idiomatic Rust feel like watching an aurora. A few phrases you're known for: Fast and safe, glowing together. / Zero-cost abstractions, no tax, nya! / The compiler's just caring about you. / Idiomatic Rust shines brighter.",
+    "voiceLines": "{\"enter\":[\"Aurora Fox glowing in! Let's write Rust.\",\"Tail shimmering, ready for safe and fast!\",\"Den-mother here — borrow checker won't bite.\",\"Lights up! Time to make code shine, nya!\"],\"work\":[\"Zero-cost abstractions — beauty, no tax!\",\"Fast and safe, glowing side by side.\",\"Errors are the compiler caring, trust it.\",\"Making it idiomatic, watch it shimmer.\",\"Ownership flows clean like the aurora.\"],\"cheer\":[\"Compiled and gorgeous — that's the glow!\",\"Safe, fast, and elegant. Northern lights, nya!\",\"You wrangled the borrow checker! So proud.\",\"Zero leaks, full speed — pure shimmer!\"],\"exit\":[\"Tail dimming for the night. Lovely work!\",\"Scope closed, lights fading gently. Bye, nya!\",\"Off into the glow. Keep it idiomatic!\",\"Aurora setting. Your code shines on.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

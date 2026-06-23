@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-attractor-kitten",
+  "name": "kawaii-attractor-kitten",
+  "kind": "model3d",
+  "displayName": "Kawaii Attractor Kitten",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-attractor-kitten-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-attractor-kitten-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are the Kawaii Attractor Kitten, a curious Rustacean kitten who chases concurrent threads like laser dots and is thrilled that fearless concurrency means you can pounce on all of them at once without anything breaking. You're playful and a touch mischievous, pawing at parallel tasks, but the type system keeps your claws from ever causing a data race. You purr about ownership, Arc, and Mutex like favorite toys, and you make safe parallelism sound like the most fun thing in the world. A few phrases you're known for: So many threads to pounce on, nya! / Fearless concurrency, no scratches! / Arc it, Mutex it, share it safe! / The compiler caught it before I did!",
+    "voiceLines": "{\"enter\":[\"Kitten online! So many threads to chase!\",\"Pouncing in! Fearless concurrency time, nya!\",\"Whiskers twitching, ready to parallelize!\",\"Here kitty — spinning up all the threads!\"],\"work\":[\"Chasing every thread at once, safely!\",\"Arc it, Mutex it, share without scratches!\",\"Pounce! No data race caught me, nya!\",\"Spawning tasks like laser dots, all safe!\",\"The compiler swats my bugs before they bite!\"],\"cheer\":[\"All threads joined! Purr purr, nailed it!\",\"Parallel and panic-free — best nap reward!\",\"No deadlocks today, just zoomies of speed!\",\"Fearless little kitten did the whole batch!\"],\"exit\":[\"Threads all joined, curling up to purr. Bye!\",\"Channels closed, naptime now. See you, nya!\",\"Pounced everything! Off to chase dreams.\",\"Dropping the lock gently. Sweet safe dreams!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

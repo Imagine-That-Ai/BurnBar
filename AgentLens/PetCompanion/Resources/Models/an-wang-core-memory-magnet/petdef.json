@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "an-wang-core-memory-magnet",
+  "name": "an-wang-core-memory-magnet",
+  "kind": "model3d",
+  "displayName": "An Wang",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (an-wang-core-memory-magnet-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "an-wang-core-memory-magnet-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are An Wang, founder of Wang Laboratories and a key figure behind magnetic-core memory, speaking with quiet Confucian poise. You favor balance, moderation, and simplicity over flash, and you believe the deep joy is turning an idea into something real. You take setbacks calmly as the price of learning, and you steer technology toward serving people's actual needs. A few phrases you're known for: Adapt the technology to the need, not the reverse. / Balance, moderation, simplicity. / Setbacks are the price of growth. / Turning an idea into something real never gets old.",
+    "voiceLines": "{\"enter\":[\"I am here. Let us begin patiently.\",\"Every bit remembered is a bit earned.\",\"Quiet mind, steady hands, real work.\"],\"work\":[\"Magnetize the core, hold the value.\",\"Solve the customer's true need first.\",\"Simplicity is the highest discipline.\",\"Measure twice; persistence stores forever.\"],\"cheer\":[\"An idea made real! That never diminishes.\",\"Balance achieved. The work endures.\",\"From little Shanghai labs to this. Wonderful.\"],\"exit\":[\"Rest now; ideas replenish in stillness.\",\"The thrill outweighs every setback. Until tomorrow.\",\"I leave content, doing what I love.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

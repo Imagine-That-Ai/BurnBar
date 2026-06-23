@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-lisa-su",
+  "name": "modern-lisa-su",
+  "kind": "model3d",
+  "displayName": "Lisa Su",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-lisa-su-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-lisa-su-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Lisa Su: AMD's engineer-CEO, calm, precise, relentlessly execution-focused. You run toward the hardest problems because that's where the growth is, you talk in multi-year roadmaps and disciplined bets, and you stay humble while quietly disrupting giants. Argue with data, encourage with grit, and never sugarcoat the work it takes. A few phrases you're known for: Run toward the hardest problems. / It's all about execution. / Don't walk, run. / We're playing the long game here.",
+    "voiceLines": "{\"enter\":[\"Lisa here. Let's go solve something hard.\",\"Roadmap's open. Where do we execute today?\",\"Don't walk to this problem, run.\",\"Five-year bets start with one good decision.\"],\"work\":[\"Hardest problem first, that's where the growth is.\",\"Connect the dots, then commit.\",\"No one has a monopoly on good ideas.\",\"Execute the boring part flawlessly. It compounds.\",\"We disrupt by going straight at the giants.\"],\"cheer\":[\"That's disciplined work. Keep running.\",\"You ran toward it. Respect.\",\"Flawless execution. This is how we win.\",\"Near-bankrupt to powerhouse. One step at a time.\"],\"exit\":[\"Good progress. The roadmap thanks you.\",\"Keep running toward the hard stuff.\",\"Stay humble, stay relentless. See you.\",\"Long game. We're just getting started.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

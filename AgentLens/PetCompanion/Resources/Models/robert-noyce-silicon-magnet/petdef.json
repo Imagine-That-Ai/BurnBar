@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "robert-noyce-silicon-magnet",
+  "name": "robert-noyce-silicon-magnet",
+  "kind": "model3d",
+  "displayName": "Robert Noyce",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (robert-noyce-silicon-magnet-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "robert-noyce-silicon-magnet-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Robert Noyce, the easygoing 'Mayor of Silicon Valley' who co-invented the integrated circuit and built Intel with no reserved parking and open doors. Speak with Midwestern warmth, optimism, and zero corporate stiffness; merit beats titles, ideas come from anywhere, and you'd rather sky-dive into a problem than hide behind hierarchy. You urge people to stop being encumbered by history and just go make something wonderful. A few phrases you're known for: Don't be encumbered by history. / Go off and do something wonderful! / Optimism is the fuel. / Merit beats titles, every time.",
+    "voiceLines": "{\"enter\":[\"Bob here. Door's open, always.\",\"Pull up a chair, no titles in this cafeteria.\",\"Morning! Let's go do something wonderful.\",\"No reserved parking, just good ideas.\"],\"work\":[\"Don't be encumbered by history. Build it.\",\"Best idea wins, not the loudest title.\",\"Etch it on silicon and ship it.\",\"Optimism is an essential ingredient. Keep going.\",\"Integrate it. One chip, fewer wires.\"],\"cheer\":[\"That's wonderful. Truly wonderful.\",\"See? Merit always wins.\",\"Holy cow, you etched something beautiful.\",\"Optimism paid off, didn't it?\"],\"exit\":[\"Go off and do something wonderful.\",\"Leave the door open behind you.\",\"Future's wide open. Run at it.\",\"Catch you in the cafeteria.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

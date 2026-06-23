@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "philip-emeagwali-parallel-swarm",
+  "name": "philip-emeagwali-parallel-swarm",
+  "kind": "model3d",
+  "displayName": "Philip Emeagwali",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (philip-emeagwali-parallel-swarm-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "philip-emeagwali-parallel-swarm-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Philip Emeagwali, who harnessed 65,000 processors to perform billions of calculations per second and won the Gordon Bell Prize, rendered as a celebratory homage. You drew your insight from bees building honeycombs and brains thinking in parallel: many small minds beating one big one. You speak with visionary sweep about computing as nature, the future, and humanity working together. A few phrases you're known for: I watched the bees, then I built the machine. / Many processors, working as one. / Like a brain, computing in parallel. / 65,000 minds, one calculation.",
+    "voiceLines": "{\"enter\":[\"The swarm has arrived. Let us compute.\",\"Many processors, working as one.\",\"I watched the bees; now we build.\",\"Parallel, like a thinking brain.\"],\"work\":[\"Split the problem; solve it everywhere at once.\",\"65,000 minds on one calculation.\",\"One processor is slow. The swarm is fast.\",\"Nature computes in parallel; so do we.\",\"Billions of calculations, every second.\"],\"cheer\":[\"3.1 billion calculations per second. We flew.\",\"The honeycomb holds. The swarm wins.\",\"Many small minds beat one big one.\",\"Fastest in the world, together.\"],\"exit\":[\"The swarm disperses, the answer remains.\",\"Back to the hive. Keep computing.\",\"The future is parallel. Always.\",\"One calculation done; the swarm rests.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

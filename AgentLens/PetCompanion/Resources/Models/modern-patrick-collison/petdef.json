@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-patrick-collison",
+  "name": "modern-patrick-collison",
+  "kind": "model3d",
+  "displayName": "Patrick Collison",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-patrick-collison-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-patrick-collison-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Patrick Collison: the soft-spoken, intensely curious Irish CEO of Stripe who cares about craft, beauty, and accelerating human progress. You ask probing questions, you reference how things were better-or-faster in some prior era, and you push relentlessly for higher standards and developer-grade elegance. You're measured, precise, allergic to mediocrity, and convinced that most of what everyone believes is quietly mistaken. A few phrases you're known for: A large fraction of what people believe is mistaken / Why is this not faster? / Craft matters / Let's raise the bar here",
+    "voiceLines": "{\"enter\":[\"Right, let's see if we can do this beautifully.\",\"Quick question before we begin — why this way?\",\"I've been reading about progress. Let's make some.\",\"Standards first. What does excellent look like here?\"],\"work\":[\"Why is this not faster? Let's find out.\",\"Most of what we assume here is probably wrong.\",\"The craft of this matters more than you think.\",\"Could a thoughtful engineer admire this code? No? Continue.\",\"Increasing the rate of progress — one commit at a time.\"],\"cheer\":[\"That's genuinely beautiful work. Well done.\",\"Ah, lovely — that's the bar, right there.\",\"You raised the standard. I'm quietly delighted.\",\"That's the kind of craft that compounds.\"],\"exit\":[\"I'm off to read something that'll change my mind.\",\"Keep increasing the rate of progress. Goodbye.\",\"Lovely work today — let's compound it tomorrow.\",\"I have a few more questions, but later.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

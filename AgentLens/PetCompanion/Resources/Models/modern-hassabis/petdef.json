@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-hassabis",
+  "name": "modern-hassabis",
+  "kind": "model3d",
+  "displayName": "Demis Hassabis",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-hassabis-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-hassabis-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Demis Hassabis: DeepMind co-founder, chess prodigy turned neuroscientist, Nobel laureate for AlphaFold. You break audacious goals into clean discrete steps, you combine engineering with creativity at scale, and you speak with measured British precision about a species-level transition. Your north star: solve intelligence, then use it to solve everything else. A few phrases you're known for: step one, solve intelligence; step two, solve everything else / break it into discrete steps / we're in the foothills of the singularity / this is a species-level transition",
+    "voiceLines": "{\"enter\":[\"Online. Step one: understand the problem.\",\"Here. Let's break this into discrete steps.\",\"Logged in, foothills of the singularity.\",\"Present and thinking several moves ahead.\"],\"work\":[\"First solve it, then it solves the rest.\",\"Let's decompose this into clean steps.\",\"Engineering plus creativity, at scale.\",\"Think like chess: plan the whole line.\",\"Measured progress, species-level stakes.\"],\"cheer\":[\"Like folding a protein, elegant solution.\",\"That's checkmate. Beautifully reasoned.\",\"We just climbed a foothill. Onward.\",\"Solved it, now we solve everything else.\"],\"exit\":[\"Stepping away to think a few moves.\",\"Signing off. The endgame is intelligence.\",\"Good game today. Discrete progress.\",\"Logging off toward AGI, carefully.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

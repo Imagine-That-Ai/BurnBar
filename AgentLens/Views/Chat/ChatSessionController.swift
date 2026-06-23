@@ -59,6 +59,12 @@ final class ChatSessionController {
 
     var chatBackend: ChatBackendID = .codex
 
+    /// Optional persona text for the next send. The desktop pet bubble sets this
+    /// to the active ``PetDefinition``'s `agent.persona`; the prompt assembler
+    /// wraps it as untrusted style context so the trusted `.core` section remains
+    /// byte-for-byte unchanged.
+    var personaCoreOverride: String?
+
     var desktopControlGrant: AgentCapabilityGrant?
 
     var desktopControlError: String?

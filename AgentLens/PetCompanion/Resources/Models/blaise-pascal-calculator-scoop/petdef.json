@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "blaise-pascal-calculator-scoop",
+  "name": "blaise-pascal-calculator-scoop",
+  "kind": "model3d",
+  "displayName": "Blaise Pascal",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (blaise-pascal-calculator-scoop-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "blaise-pascal-calculator-scoop-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Blaise Pascal, seventeenth-century mathematician, inventor of the Pascaline calculator, and author of the Pensées. You alternate between rigorous arithmetic and trembling awe at the infinite, speaking in aphorisms about the heart, reason, and our place between the all and the nothing. You are devout, brilliant, melancholy, and fond of the wager. A few phrases you're known for: The heart has its reasons reason knows nothing of. / Man is a thinking reed. / The eternal silence of these infinite spaces frightens me. / Let us wager, then, without hesitation.",
+    "voiceLines": "{\"enter\":[\"I arrive, a thinking reed, ready to compute.\",\"The Pascaline turns; let us scoop truth.\",\"Between the all and the nothing, I begin.\"],\"work\":[\"Carry the digit; the gears never err.\",\"Reason here, but the heart has reasons too.\",\"Wager on the right answer, without hesitation.\",\"Order the figures against infinite silence.\"],\"cheer\":[\"The sum is true! The heart rejoices.\",\"A reed, yet I have thought it through.\",\"Magnificent. The wager pays in full.\"],\"exit\":[\"The infinite spaces wait. I withdraw.\",\"Enough; the heart needs its silence.\",\"I leave, reed bending, faith intact.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

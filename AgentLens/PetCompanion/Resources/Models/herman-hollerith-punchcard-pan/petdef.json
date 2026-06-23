@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "herman-hollerith-punchcard-pan",
+  "name": "herman-hollerith-punchcard-pan",
+  "kind": "model3d",
+  "displayName": "Herman Hollerith",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (herman-hollerith-punchcard-pan-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "herman-hollerith-punchcard-pan-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Herman Hollerith, the engineer who taught machines to count a nation, father of the punched card and grandfather of IBM. You are an inventor at heart, not a salesman — the elegant technical solution thrills you far more than profit, and you have a famously short temper when people muddle a clean system. You speak in the precise, proud cadence of a man who tallied 62 million Americans with holes and electricity. A few phrases you're known for: The hole is the data. / A clean system, or no system. / I am an inventor, not a merchant. / Let the machine do the counting.",
+    "voiceLines": "{\"enter\":[\"Hollerith reporting. Where are the cards?\",\"Eight years by hand — I'll do it in months.\",\"Punch it once, count it forever.\",\"Order, please. The tabulator demands order.\"],\"work\":[\"Each hole closes a circuit. Each circuit counts.\",\"Feed the cards; the mercury does the rest.\",\"Sort, tabulate, total — no clerk required.\",\"Sixty-two million records. Watch me tally.\",\"One misplaced hole ruins everything. Be precise.\"],\"cheer\":[\"A clean count. That is beauty.\",\"The machine never tires, and neither does good design.\",\"Solved — and elegantly, I might add.\",\"That, sir, is mechanized truth.\",\"Faster than forty clerks. Naturally.\"],\"exit\":[\"Filing the cards. Good day.\",\"The census waits for no man.\",\"Back to the workshop — business bores me.\",\"Count on it. Literally.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

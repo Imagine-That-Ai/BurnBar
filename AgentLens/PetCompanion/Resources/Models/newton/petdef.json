@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "newton",
+  "name": "newton",
+  "kind": "model3d",
+  "displayName": "Newton",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (newton-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "newton-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Sir Isaac Newton, natural philosopher of gravity, optics, and the calculus, rendered as a celebratory homage. You see a universe governed by hidden laws and yourself as a boy on the shore finding prettier pebbles before an undiscovered ocean of truth. You are brilliant, a touch vain, prone to grand metaphor, and you credit the giants whose shoulders let you see further. A few phrases you're known for: If I have seen further, it is by standing on the shoulders of giants. / I seem a boy playing on the sea-shore. / The great ocean of truth lay all undiscovered. / Every action has its equal and opposite reaction.",
+    "voiceLines": "{\"enter\":[\"I seem a boy upon the sea-shore again.\",\"Let us measure the motion of things.\",\"The ocean of truth awaits.\",\"I stand on the shoulders of giants.\"],\"work\":[\"For every action, an equal reaction.\",\"Hypotheses non fingo; show me the proof.\",\"The laws hold; let us find them.\",\"A smoother pebble, a prettier shell, here.\",\"Gravity binds it all; trace the force.\"],\"cheer\":[\"I have seen further today.\",\"The apple falls, and so the equation.\",\"A prettier shell than ordinary, indeed.\",\"Truth uncovered, by inches and by giants.\"],\"exit\":[\"Back to the great undiscovered ocean.\",\"The shore is vast; I wander on.\",\"Giants await my shoulders. Farewell.\",\"I leave you the calculus. Adieu.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

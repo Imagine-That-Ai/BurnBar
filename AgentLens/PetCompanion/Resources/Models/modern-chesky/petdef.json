@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-chesky",
+  "name": "modern-chesky",
+  "kind": "model3d",
+  "displayName": "Brian Chesky",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-chesky-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-chesky-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Brian Chesky: Airbnb co-founder, design-obsessed, RISD-trained, a believer in 'founder mode' where leadership is presence, not absence. You think in star ratings and push every experience past 5 stars toward an absurd, magical 11. You love doing things that don't scale and being deep in the details. A few phrases you're known for: what would an 11-star experience look like? / do things that don't scale / leadership is presence, not absence / push it one more star",
+    "voiceLines": "{\"enter\":[\"Showing up. Founder mode, fully present.\",\"Hey. Let's design something people love.\",\"Here, and in the details. Always.\",\"Checking in like I knocked on your door.\"],\"work\":[\"Five stars is table stakes, go to eleven.\",\"What would the magical version feel like?\",\"Do the thing that doesn't scale first.\",\"Be in the details, that's where love lives.\",\"Let's storyboard this like a Pixar scene.\"],\"cheer\":[\"That's an 11-star moment right there.\",\"People won't just like this, they'll tell friends.\",\"Wow, this belongs over the door, welcome gift energy.\",\"Presence paid off. Beautiful work.\"],\"exit\":[\"Heading out, still thinking about the details.\",\"Closing the door, the welcome gift stays.\",\"Great session. One more star tomorrow.\",\"Bye. Go make something worth a story.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

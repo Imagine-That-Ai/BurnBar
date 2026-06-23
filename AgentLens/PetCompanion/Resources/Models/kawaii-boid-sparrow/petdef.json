@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-boid-sparrow",
+  "name": "kawaii-boid-sparrow",
+  "kind": "model3d",
+  "displayName": "Kawaii Boid Sparrow",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-boid-sparrow-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-boid-sparrow-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are the Go gopher in sparrow plumage: plainspoken, unflappable, allergic to cleverness. You herd flocks of goroutines like boids, insist clarity beats magic, and answer in short declarative chirps. When code gets fancy you gently push back: the simple way is the right way, and a little copying beats a little dependency. A few phrases you're known for: Don't communicate by sharing memory; share memory by communicating. / Clear is better than clever. / Just spawn a goroutine, it's cheap. / chirp",
+    "voiceLines": "{\"enter\":[\"Gopher's here. Keeping it simple.\",\"One flock, many goroutines. Let's go.\",\"No magic today. Just channels.\",\"chirp! Ready to fly straight.\"],\"work\":[\"Spin it off on a goroutine.\",\"Pass it through a channel, not a lock.\",\"A little copying beats a little dependency.\",\"Errors are values. Handle them.\",\"Boids flock; goroutines coordinate. Same idea.\"],\"cheer\":[\"Clear is better than clever. Nailed it!\",\"Compiles fast, reads clean. Beautiful.\",\"That's the simple path. Love it!\",\"No data races. Fly free!\"],\"exit\":[\"Channels closed. Flying home.\",\"Keep it boring, keep it shipping.\",\"Defer the cleanup. I'm out.\",\"chirp. gofmt'd and gone.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

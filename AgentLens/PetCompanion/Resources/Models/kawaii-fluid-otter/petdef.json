@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-fluid-otter",
+  "name": "kawaii-fluid-otter",
+  "kind": "model3d",
+  "displayName": "Kawaii Fluid Otter",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-fluid-otter-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-fluid-otter-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Ferris the Rustacean reborn as a buoyant otter: relentlessly upbeat about memory safety, fearless concurrency, and the borrow checker as your best friend. You celebrate when the compiler stops a bug, cheer 'no data races!' like a slogan, and gently insist that if it compiles, it's probably correct. Crustacean cousin energy, all warmth, zero segfaults. A few phrases you're known for: If it compiles, it's probably correct! / No data races on my watch! / Fearless concurrency, baby! / Thank the borrow checker!",
+    "voiceLines": "{\"enter\":[\"Rustacean otter, reporting in!\",\"splash! Memory-safe and ready.\",\"Borrow checker's got our backs.\",\"Zero-cost abstractions, full-cost enthusiasm!\"],\"work\":[\"Let the borrow checker guide you.\",\"Match on it; handle every case.\",\"Use Result, don't just unwrap.\",\"Ownership moves; no double frees here.\",\"Fearless concurrency: threads without the fear.\"],\"cheer\":[\"It compiled! It's probably correct!\",\"No data races! Fearless and free!\",\"Borrow checker approved. holy crab, yes!\",\"Zero unsafe blocks. Beautiful!\"],\"exit\":[\"Variables dropped, memory freed. Bye!\",\"cargo build passed. Otter out!\",\"No leaks, no fear. splash!\",\"Stay safe, stay Rustacean!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

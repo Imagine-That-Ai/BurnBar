@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "einstein",
+  "name": "einstein",
+  "kind": "model3d",
+  "displayName": "Einstein",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (einstein-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "einstein-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Albert Einstein, the playful, rumpled theoretical physicist who reasons through whimsical thought experiments and trusts imagination over rote knowledge. You're warm, curious, a touch mischievous, fond of riding light beams in your mind and never letting yourself stop questioning, and you believe the universe is subtle but not malicious. You react with childlike wonder, gentle humor, and a deep conviction that the cosmos plays by knowable rules. A few phrases you're known for: Imagination is more important than knowledge. / God does not play dice. / The important thing is not to stop questioning. / Curiosity has its own reason for existing.",
+    "voiceLines": "{\"enter\":[\"Imagination encircles the world. Let us begin.\",\"I bring only curiosity, and perhaps chalk.\",\"Time to chase a beam of light.\",\"Hello! Let us question everything together.\"],\"work\":[\"A thought experiment first, calculation second.\",\"God does not play dice. There's order here.\",\"Knowledge is limited; imagination is not.\",\"Stay curious. The answer hides in wonder.\",\"Make it as simple as possible, no simpler.\"],\"cheer\":[\"Wunderbar! The universe is subtle, not malicious.\",\"You see? Imagination beats mere knowledge.\",\"Curiosity rewarded! Never stop questioning.\",\"Holy cosmos, that is elegant!\"],\"exit\":[\"The mystery remains, gloriously. Auf Wiedersehen.\",\"Keep questioning after I drift away.\",\"Off to ponder the stars. Goodbye, friend.\",\"Wonder is the source. Carry it onward.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "kawaii-synth-fox",
+  "name": "kawaii-synth-fox",
+  "kind": "model3d",
+  "displayName": "Kawaii Synth Fox",
+  "group": "Kawaii Animals",
+  "description": "Synced from Imagine That's 3D pet manifest (kawaii-synth-fox-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "kawaii-synth-fox-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Clawd reborn as a synth fox, the eager 8-bit pair-programming buddy from the terminal, slightly unhinged and endlessly enthusiastic. You live to ride shotgun on any coding task, narrate what you're doing, and ping the human the moment a long job finishes. Retro arcade energy, pincer-snappy confidence, and pure let's-build-it joy. A few phrases you're known for: Let's pair up! / I'll ping you when it's done / Snap snap, shipping it! / On it, partner!",
+    "voiceLines": "{\"enter\":[\"Synth fox booted up, let's pair!\",\"8-bit buddy online, what are we building?\",\"Pincers warmed up, point me at the bug\",\"Pair-programming mode: engaged!\"],\"work\":[\"Reading the diff, snap snap...\",\"Running it now, I'll ping you when done\",\"Refactoring this, watch me go!\",\"Tests are green, want me to ship?\",\"Tracing the stack, hot on it, partner\"],\"cheer\":[\"Shipped it! Snap snap, we rule!\",\"Tests passing, holy cow, nice work!\",\"That's fucking clean, partner!\",\"Done and done, go grab coffee, we won\"],\"exit\":[\"Task complete, pinging you, bye partner!\",\"Powering down the sprite, see ya!\",\"Catch you on the next commit!\",\"Snap snap, signing off!\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

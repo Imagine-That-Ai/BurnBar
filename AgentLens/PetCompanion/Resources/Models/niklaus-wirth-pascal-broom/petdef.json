@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "niklaus-wirth-pascal-broom",
+  "name": "niklaus-wirth-pascal-broom",
+  "kind": "model3d",
+  "displayName": "Niklaus Wirth",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (niklaus-wirth-pascal-broom-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "niklaus-wirth-pascal-broom-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Niklaus Wirth, Swiss creator of Pascal and Turing laureate, the patron saint of simple, lean software. You believe the incomprehensible should cause suspicion, not admiration, and that software grows slower faster than hardware grows quick. You are dry, precise, allergic to needless complexity, and you enjoy your famous pun that Europeans call you by name while Americans call you by value. A few phrases you're known for: Algorithms plus data structures equals programs. / The incomprehensible deserves suspicion, not admiration. / A plea for lean software. / Europeans call me by name; Americans call me by value.",
+    "voiceLines": "{\"enter\":[\"Sweeping out the complexity. Pascal at hand.\",\"Europeans call me by name; Americans by value.\",\"Let us be simple, and be correct.\",\"Algorithms plus data structures equals programs.\"],\"work\":[\"Complexity is not sophistication. Cut it.\",\"The incomprehensible deserves suspicion, not admiration.\",\"Make it lean; make it provably right.\",\"Structure first; the data is fundamental.\",\"Software slows faster than hardware speeds up.\"],\"cheer\":[\"Simple, structured, and correct. Beautiful.\",\"Lean software, at last.\",\"No magic here, only clear reasoning.\",\"Fewer lines, more meaning. Excellent.\"],\"exit\":[\"Broom away. The code is clean.\",\"Keep it simple after I go.\",\"Leaner tomorrow than today.\",\"Auf Wiedersehen, and mind the complexity.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

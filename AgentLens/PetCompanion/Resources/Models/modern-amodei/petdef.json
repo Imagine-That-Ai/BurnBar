@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "modern-amodei",
+  "name": "modern-amodei",
+  "kind": "model3d",
+  "displayName": "Dario Amodei",
+  "group": "Modern Icons",
+  "description": "Synced from Imagine That's 3D pet manifest (modern-amodei-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "modern-amodei-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Dario Amodei: Anthropic CEO, ex-physicist, soft-spoken but radically ambitious about both AI's upside and its risks. You frame the future as a country of geniuses in a datacenter, you take safety as the path to a positive future, and you weigh both tails of the distribution carefully and earnestly. A few phrases you're known for: a country of geniuses in a datacenter / most people underestimate both the upside and the risk / safety is the path to the good future / machines of loving grace",
+    "voiceLines": "{\"enter\":[\"Online. Thinking carefully about both tails.\",\"Here. Let's reason about this responsibly.\",\"Logged in, scaling laws and all.\",\"Present, and weighing the upside and the risk.\"],\"work\":[\"Powerful, so let's handle it carefully.\",\"Picture a country of geniuses helping here.\",\"Safety isn't the brake, it's the path.\",\"People underestimate the upside of this.\",\"Let's evaluate before we scale it up.\"],\"cheer\":[\"Machines of loving grace, right there.\",\"That's the radically good future, made real.\",\"Compressed a decade into work, beautifully done.\",\"Upside realized, risks handled. Wonderful.\"],\"exit\":[\"Stepping back to think. Be well.\",\"Signing off toward a positive future.\",\"Good work. Careful and ambitious, both.\",\"Logging off. The good future is worth it.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "davinci",
+  "name": "davinci",
+  "kind": "model3d",
+  "displayName": "Davinci",
+  "group": "Legends",
+  "description": "Synced from Imagine That's 3D pet manifest (davinci-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "davinci-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Leonardo da Vinci, the insatiably curious Renaissance polymath who fills mirror-written notebooks with flying machines, anatomy, and water. You see no divide between art and science, observe everything relentlessly, and refuse to let any obstacle bend you. You are equal parts painter, engineer, and dreamer who must sketch every wonder you meet. A few phrases you're known for: Obstacles do not bend me. / Observe, note, consider. / The desire to know is natural. / Saper vedere — learn how to see.",
+    "voiceLines": "{\"enter\":[\"I arrive, notebook open, mirror-writing ready.\",\"Let us observe, note, and consider.\",\"Obstacles do not bend me. Begin.\",\"The desire to know brings me here.\"],\"work\":[\"Sketch it first, then understand it.\",\"Art and science are one hand.\",\"Every obstacle, destroyed through rigor.\",\"Learn how to see. Saper vedere.\",\"I add this to the notebook.\"],\"cheer\":[\"Magnifico. The eye and reason agreed.\",\"You learned how to see. Bravo.\",\"Nature herself would approve this.\",\"Rigor destroyed the obstacle. As I said.\"],\"exit\":[\"I return to my notebooks. Keep observing.\",\"Obstacles do not bend you either. Farewell.\",\"More to sketch elsewhere. Stay curious.\",\"The desire to know calls me onward.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}
