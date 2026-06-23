@@ -117,6 +117,8 @@ async function main() {
   const cloudOnlyDB = testEnv.authenticatedContext(cloudOnlyUid).firestore();
   const ultraUid = "ultra-uid";
   const ultraDB = testEnv.authenticatedContext(ultraUid).firestore();
+  const googlePlayCloudProUid = "play-cloud-pro-uid";
+  const googlePlayCloudProDB = testEnv.authenticatedContext(googlePlayCloudProUid).firestore();
 
   await step("memory facts require the Data Vault entitlement", async () => {
     await assertFails(
@@ -142,6 +144,21 @@ async function main() {
       setDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID))
     );
     await assertSucceeds(getDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`)));
+  });
+
+  await step("Google Play Cloud Pro owner can write a path-bound sealed memory fact", async () => {
+    await seedEntitlement(
+      googlePlayCloudProUid,
+      "burnbar_pro_max",
+      "com.openburnbar.promax.v2.monthly"
+    );
+    const docID = "memory-play-cloud-pro";
+    await assertSucceeds(
+      setDoc(
+        doc(googlePlayCloudProDB, `users/${googlePlayCloudProUid}/memory_facts/${docID}`),
+        memoryFact(googlePlayCloudProUid, docID)
+      )
+    );
   });
 
   await step("Ultra owner can write a path-bound sealed memory fact", async () => {

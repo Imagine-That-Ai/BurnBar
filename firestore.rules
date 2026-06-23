@@ -450,7 +450,9 @@ service cloud.firestore {
         && entitlement.productID in [
           "com.openburnbar.proMax.bundle.monthly",
           "com.openburnbar.proMax.v2.monthly",
-          "com.openburnbar.proMax.annual"
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.promax.v2.monthly",
+          "com.openburnbar.promax.annual"
         ]
         // END GENERATED: entitlement-product-ids proMax
         && entitlement.expireAt is timestamp
