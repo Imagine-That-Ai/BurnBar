@@ -4396,7 +4396,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.results.count, 1)
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID)
     }
+}
 
+extension BurnBarMissionControlServiceTests {
     private func makeHarness(
         name: String,
         transport: BurnBarMissionControlTransport = .live(),
