@@ -142,14 +142,10 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
-    // The picker observes a *shared* singleton store (one render cache for the
-    // whole app), so it must NOT own it. `@StateObject` is for view-created
-    // objects; its `wrappedValue` is an `@escaping @autoclosure`, and capturing
-    // the `@MainActor` `.shared` global through it miscompiled the struct's
-    // value-witness copy — a `swift_retain` on garbage that SIGSEGV'd the moment
-    // the picker was constructed (build 45 / #769). `@ObservedObject` evaluates
-    // the singleton eagerly and copies cleanly.
-    @ObservedObject private var thumbnails = PetThumbnailStore.shared
+    // One cache per picker instance keeps thumbnail rendering stable without
+    // adding a process-wide singleton. SwiftUI preserves this object while the
+    // picker is mounted.
+    @StateObject private var thumbnails = PetThumbnailStore()
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @FocusState private var searchFocused: Bool
@@ -441,8 +437,6 @@ private struct ThumbnailPlaceholder: View {
 /// thumbnails fade in.
 @MainActor
 final class PetThumbnailStore: ObservableObject {
-    static let shared = PetThumbnailStore()
-
     @Published private(set) var images: [String: NSImage] = [:]
 
     private var inFlight: Set<String> = []
