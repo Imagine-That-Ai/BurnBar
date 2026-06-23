@@ -142,12 +142,8 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
-    @StateObject private var thumbnails = PetThumbnailStore()
     @State private var searchText = ""
     @State private var selectedCategory: String?
-    @FocusState private var searchFocused: Bool
-
-    private let columns = [GridItem(.adaptive(minimum: 132, maximum: 168), spacing: DesignSystem.Spacing.md)]
 
     private var results: [PetDefinition] {
         PetCatalog.filtered(definitions, search: searchText, category: selectedCategory)
@@ -155,16 +151,27 @@ struct PetFormPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            searchField
-            categoryRail
+            PetPickerSearchField(searchText: $searchText)
+            PetPickerCategoryRail(definitions: definitions, selectedCategory: $selectedCategory)
             Divider().overlay(DesignSystem.Colors.borderSubtle)
-            gallery
+            PetPickerGallery(
+                results: results,
+                selectedPetID: $selectedPetID,
+                searchText: $searchText,
+                selectedCategory: $selectedCategory,
+                onSelect: onSelect
+            )
         }
     }
+}
 
-    // MARK: Search
+// MARK: - PetPickerSearchField
 
-    private var searchField: some View {
+private struct PetPickerSearchField: View {
+    @Binding var searchText: String
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
@@ -193,19 +200,25 @@ struct PetFormPickerView: View {
                 .fill(DesignSystem.Colors.surfaceElevated)
                 .overlay(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .strokeBorder(
-                            searchFocused
-                                ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
-                                : AnyShapeStyle(DesignSystem.Colors.border.opacity(0.5)),
-                            lineWidth: searchFocused ? 1.5 : 1
-                        )
+                        .strokeBorder(borderStyle, lineWidth: searchFocused ? 1.5 : 1)
                 )
         )
     }
 
-    // MARK: Category rail
+    private var borderStyle: AnyShapeStyle {
+        searchFocused
+            ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+            : AnyShapeStyle(DesignSystem.Colors.border.opacity(0.5))
+    }
+}
 
-    private var categoryRail: some View {
+// MARK: - PetPickerCategoryRail
+
+private struct PetPickerCategoryRail: View {
+    let definitions: [PetDefinition]
+    @Binding var selectedCategory: String?
+
+    var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 categoryPill(title: "All", count: definitions.count, isSelected: selectedCategory == nil) {
@@ -240,9 +253,7 @@ struct PetFormPickerView: View {
             .padding(.vertical, DesignSystem.Spacing.xs + 2)
             .background(
                 Capsule(style: .continuous)
-                    .fill(isSelected
-                          ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
-                          : AnyShapeStyle(DesignSystem.Colors.surface.opacity(0.7)))
+                    .fill(pillFillStyle(isSelected: isSelected))
                     .overlay(
                         Capsule(style: .continuous)
                             .strokeBorder(DesignSystem.Colors.border.opacity(isSelected ? 0 : 0.4), lineWidth: 1)
@@ -255,12 +266,31 @@ struct PetFormPickerView: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
-    // MARK: Gallery
+    private func pillFillStyle(isSelected: Bool) -> AnyShapeStyle {
+        isSelected
+            ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+            : AnyShapeStyle(DesignSystem.Colors.surface.opacity(0.7))
+    }
+}
 
-    @ViewBuilder
-    private var gallery: some View {
+// MARK: - PetPickerGallery
+
+private struct PetPickerGallery: View {
+    let results: [PetDefinition]
+    @Binding var selectedPetID: String
+    @Binding var searchText: String
+    @Binding var selectedCategory: String?
+    let onSelect: (String, PetForm) -> Void
+
+    // One cache per picker instance keeps thumbnail rendering stable without
+    // adding a process-wide singleton. SwiftUI preserves this object for the
+    // gallery identity while the picker is mounted.
+    @StateObject private var thumbnails = PetThumbnailStore()
+    private let columns = [GridItem(.adaptive(minimum: 132, maximum: 168), spacing: DesignSystem.Spacing.md)]
+
+    var body: some View {
         if results.isEmpty {
-            emptyState
+            PetPickerEmptyState(searchText: $searchText, selectedCategory: $selectedCategory)
         } else {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.md) {
@@ -281,8 +311,15 @@ struct PetFormPickerView: View {
             }
         }
     }
+}
 
-    private var emptyState: some View {
+// MARK: - PetPickerEmptyState
+
+private struct PetPickerEmptyState: View {
+    @Binding var searchText: String
+    @Binding var selectedCategory: String?
+
+    var body: some View {
         VStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: "pawprint")
                 .font(.system(size: 30, weight: .light))

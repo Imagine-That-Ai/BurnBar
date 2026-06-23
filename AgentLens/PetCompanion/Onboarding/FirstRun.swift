@@ -141,15 +141,28 @@ struct PetFirstRunView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
+    private var content: AnyView {
         switch model.step {
         case .pickPet:
-            PetFormPickerView(definitions: model.petDefinitions, selectedPetID: $model.selectedPetID) { id, form in
-                model.selectedPetID = id
-                PetCompanionFeature.selectPet(id: id, form: form)
-            }
+            AnyView(petPickerStep)
         case .pickAgent:
+            AnyView(agentPickerStep)
+        case .permissions:
+            AnyView(permissionsStep)
+        case .land:
+            AnyView(landStep)
+        }
+    }
+
+    private var petPickerStep: some View {
+        PetFormPickerView(definitions: model.petDefinitions, selectedPetID: $model.selectedPetID) { id, form in
+            model.selectedPetID = id
+            PetCompanionFeature.selectPet(id: id, form: form)
+        }
+    }
+
+    private var agentPickerStep: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             PetAgentSwitcher(authStates: model.authStates) { backend in
                 PetCompanionFeature.runtime.controller.chat?.switchBackend(to: backend)
             }
@@ -158,10 +171,6 @@ struct PetFirstRunView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
-        case .permissions:
-            permissionsStep
-        case .land:
-            landStep
         }
     }
 
