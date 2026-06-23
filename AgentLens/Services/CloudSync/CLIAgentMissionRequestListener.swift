@@ -727,7 +727,7 @@ final class CLIAgentMissionRequestListener {
             )
             if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
                 lastStreamingEvent = Date()
-                let streamingMessage = deriveStreamingStatusMessage(
+                let streamingMessage = Self.deriveStreamingStatusMessage(
                     assistantMessage: assistantMessage,
                     backend: backend
                 )
@@ -1899,7 +1899,7 @@ final class CLIAgentMissionRequestListener {
         process.waitUntilExit()
     }
 
-    func deriveStreamingStatusMessage(
+    nonisolated static func deriveStreamingStatusMessage(
         assistantMessage: ChatMessageRecord?,
         backend: CLIAgentMissionBackend
     ) -> String {
@@ -1907,13 +1907,13 @@ final class CLIAgentMissionRequestListener {
             .content
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let preview = assistantPreview, !preview.isEmpty {
-            let clipped = preview.prefix(420).description
-            return clipped
+            return CLIAgentMissionEventFactory.mobileSafeText(preview, limit: 420)
         }
         let latestTool = assistantMessage?.displayTranscript.last(where: { $0.kind == .toolUse })
         if let tool = latestTool {
             let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            return detail.map { "\(tool.value): \($0)" } ?? tool.value
+            let message = detail.map { "\(tool.value): \($0)" } ?? tool.value
+            return CLIAgentMissionEventFactory.mobileSafeText(message, limit: 420)
         }
         return "\(backend.displayName) is composing a response…"
     }

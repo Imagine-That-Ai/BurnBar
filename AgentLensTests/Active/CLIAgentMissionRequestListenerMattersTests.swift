@@ -119,6 +119,54 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         }
     }
 
+    func testStreamingStatusRedactsAssistantPreviewSecrets() {
+        let providerToken = "sk-" + "1234567890abcdef"
+        let assistant = ChatMessageRecord(
+            id: "assistant-secret-preview",
+            role: .assistant,
+            content: "Final answer token=\(providerToken) bearer abcdefghijklmnopqrstuvwxyz012345",
+            timestamp: Date(timeIntervalSince1970: 1_730_000_000)
+        )
+
+        let message = CLIAgentMissionRequestListener.deriveStreamingStatusMessage(
+            assistantMessage: assistant,
+            backend: CLIAgentMissionBackend(rawValue: "codex", displayName: "Codex")
+        )
+
+        XCTAssertTrue(message.contains("[REDACTED]"))
+        XCTAssertFalse(message.contains(providerToken))
+        XCTAssertFalse(message.lowercased().contains("bearer abcdef"))
+        XCTAssertLessThanOrEqual(message.count, 420)
+    }
+
+    func testStreamingStatusRedactsToolDetailSecrets() {
+        let providerToken = "sk-" + "1234567890abcdef"
+        let assistant = ChatMessageRecord(
+            id: "assistant-tool-secret",
+            role: .assistant,
+            content: "",
+            timestamp: Date(timeIntervalSince1970: 1_730_000_000),
+            transcriptPieces: [
+                ChatTranscriptPiece(
+                    id: "tool-1",
+                    kind: .toolUse,
+                    value: "Shell",
+                    detail: "token=\(providerToken) bearer abcdefghijklmnopqrstuvwxyz012345"
+                )
+            ]
+        )
+
+        let message = CLIAgentMissionRequestListener.deriveStreamingStatusMessage(
+            assistantMessage: assistant,
+            backend: CLIAgentMissionBackend(rawValue: "codex", displayName: "Codex")
+        )
+
+        XCTAssertTrue(message.contains("[REDACTED]"))
+        XCTAssertFalse(message.contains(providerToken))
+        XCTAssertFalse(message.lowercased().contains("bearer abcdef"))
+        XCTAssertLessThanOrEqual(message.count, 420)
+    }
+
     @MainActor
     func testVisibleTerminalSessionPermissionsAndTeardown() async throws {
         let fileManager = FileManager.default
