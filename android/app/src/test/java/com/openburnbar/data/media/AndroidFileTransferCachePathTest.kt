@@ -54,5 +54,36 @@ class AndroidFileTransferCachePathTest {
         val safeName = AndroidFileTransferCachePath.safeDisplayName("a".repeat(200) + ".jpg")
 
         assertEquals(96, safeName.length)
+        assertTrue(safeName.endsWith(".jpg"))
+    }
+
+    @Test
+    fun targetFileCanDisambiguateProviderNamesThatSanitizeToTheSameLeaf() {
+        val first = AndroidFileTransferCachePath.targetFile(
+            cacheRoot = cacheRoot,
+            displayName = "a?b.png",
+            uniqueSuffix = "first",
+        )
+        val second = AndroidFileTransferCachePath.targetFile(
+            cacheRoot = cacheRoot,
+            displayName = "a*b.png",
+            uniqueSuffix = "second",
+        )
+
+        assertEquals(cacheRoot.canonicalFile, first.parentFile?.canonicalFile)
+        assertEquals(cacheRoot.canonicalFile, second.parentFile?.canonicalFile)
+        assertEquals("a_b-first.png", first.name)
+        assertEquals("a_b-second.png", second.name)
+    }
+
+    @Test
+    fun safeDisplayNamePlacesUniqueSuffixBeforePreservedExtension() {
+        val safeName = AndroidFileTransferCachePath.safeDisplayName(
+            displayName = "a".repeat(200) + ".jpg",
+            uniqueSuffix = "send-1",
+        )
+
+        assertEquals(96, safeName.length)
+        assertTrue(safeName.endsWith("-send-1.jpg"))
     }
 }
