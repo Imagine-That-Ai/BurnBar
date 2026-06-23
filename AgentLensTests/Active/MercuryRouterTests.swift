@@ -1267,6 +1267,86 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
     }
 
+    func testRemoteUnlockHostUnlockRevokesSiblingSessions() async throws {
+        let now = Date()
+        var lockState = HermesRealtimeRelayMacLockState.loginWindow
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        let (router, _) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-primary",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session-1",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            router: router
+        )
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-sibling",
+                viewerID: "viewer-2",
+                viewerDeviceID: "iphone-2",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session-2",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-2",
+                    issuedAt: now
+                )
+            ),
+            router: router
+        )
+
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-1",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-2",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-2",
+                now: now
+            )
+        )
+
+        lockState = .unlocked
+        await router.handleHostAuthGateOpenedForTesting(reason: "unit_unlock")
+
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-1",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-2",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-2",
+                now: now
+            )
+        )
+    }
+
     func testRemoteUnlockCredentialResultPollsUntilHostUnlocksAndResumesCapture() async throws {
         let now = Date()
         var lockState = HermesRealtimeRelayMacLockState.loginWindow
