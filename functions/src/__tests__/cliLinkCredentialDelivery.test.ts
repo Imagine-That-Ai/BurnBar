@@ -17,7 +17,10 @@ function cliLinkSessionQuery(filters: Array<[string, unknown]> = []) {
     get: async () => {
       const base = pathKeyedFirestore(cliLinkStore);
       const docs = Array.from(cliLinkStore.entries())
-        .filter(([path, data]) => path.startsWith("cli_link_sessions/") && filters.every(([field, value]) => data[field] === value))
+        .filter(
+          ([path, data]) =>
+            path.startsWith("cli_link_sessions/") && filters.every(([field, value]) => data[field] === value),
+        )
         .map(([path, data]) => ({
           ref: base.doc(path),
           data: () => data,
@@ -198,6 +201,9 @@ describe("CLI link credential delivery", () => {
     await runHttpHandler(startCliLink, req, res);
 
     expect(res.statusCode).toBe(200);
+    expect(res.getHeader("cache-control")).toBe("no-store, max-age=0");
+    expect(res.getHeader("pragma")).toBe("no-cache");
+    expect(res.getHeader("expires")).toBe("0");
     const response = res.body as { deviceCode: string };
     const stored = cliLinkStore.get(`cli_link_sessions/${response.deviceCode}`);
     expect(stored).toBeTruthy();
@@ -207,6 +213,48 @@ describe("CLI link credential delivery", () => {
       algorithm: DELIVERY_ALGORITHM,
       publicKeyBase64: delivery.getPublicKey("base64", "uncompressed"),
     });
+  });
+
+  it("marks approved polling responses non-cacheable before returning credential envelopes", async () => {
+    cliLinkStore.clear();
+    const deviceCode = "poll-device-code";
+    const deviceSecret = "device-secret-for-poll";
+
+    seedDoc(cliLinkStore, `cli_link_sessions/${deviceCode}`, {
+      userCode: "POLL-TEST",
+      deviceSecretVerifierHash: sha256Hex(sha256Hex(deviceSecret)),
+      status: "approved",
+      expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      credentialEnvelope: {
+        algorithm: DELIVERY_ALGORITHM,
+        ephemeralPublicKeyBase64: "ephemeral-key",
+        ivBase64: "iv",
+        ciphertextBase64: "ciphertext",
+        authTagBase64: "auth-tag",
+        aad: "openburnbar:cli-link:credential-delivery:v1",
+      },
+    });
+
+    const req = {
+      method: "POST",
+      body: { deviceCode, deviceSecret },
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" },
+    };
+    const res = new FakeRes();
+
+    const { pollCliLink } = await import("../callables/cliLink.js");
+    await runHttpHandler(pollCliLink, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.getHeader("cache-control")).toBe("no-store, max-age=0");
+    expect(res.getHeader("pragma")).toBe("no-cache");
+    expect(res.getHeader("expires")).toBe("0");
+    expect(res.body).toMatchObject({
+      status: "approved",
+      credentialEnvelope: { ciphertextBase64: "ciphertext" },
+    });
+    expect(cliLinkStore.has(`cli_link_sessions/${deviceCode}`)).toBe(false);
   });
 
   it("rejects malformed delivery sessions before issuing a remote grant", async () => {
@@ -260,9 +308,9 @@ describe("CLI link credential delivery", () => {
     const { completeCliLink } = await import("../callables/cliLink.js");
     const run = callableRunner(completeCliLink);
 
-    await expect(
-      run(callableRequest("alice-uid", { userCode, nonce: "nonce-2" })),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(run(callableRequest("alice-uid", { userCode, nonce: "nonce-2" }))).rejects.toMatchObject({
+      code: "permission-denied",
+    });
     expect(assertCloudFeatureNotSuspendedMock).toHaveBeenCalledWith(expect.anything(), "alice-uid", "remote_mcp");
     expect(issueGrantMock).not.toHaveBeenCalled();
   });

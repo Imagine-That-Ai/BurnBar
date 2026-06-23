@@ -17,3 +17,10 @@ export function setPublicJsonSecurityHeaders(res: HeaderWriter): void {
     res.setHeader(name, value);
   }
 }
+
+export function setPublicJsonNoStoreHeaders(res: HeaderWriter): void {
+  setPublicJsonSecurityHeaders(res);
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
