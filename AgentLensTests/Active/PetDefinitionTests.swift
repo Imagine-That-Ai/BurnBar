@@ -7,6 +7,7 @@ import XCTest
 /// plus the modern `petdef/1` superset) and proves the Swift frame-rect helper
 /// matches the shared TS math (192×208 cells, anchor 96/196).
 final class PetDefinitionTests: XCTestCase {
+    private let minimumSyncedModelPetCount = 80
     private let bundledFounderIDs = [
         "founder-altman",
         "founder-bezos",
@@ -38,6 +39,21 @@ final class PetDefinitionTests: XCTestCase {
         func setFacing(_ direction: CGFloat) {}
         func setPaused(_ paused: Bool) {}
         func setAmbientFrameRate(_ fps: Int) {}
+    }
+
+    private func bundledModelPetIDs(in bundle: Bundle = .main) -> [String] {
+        guard let modelsRoot = bundle.url(forResource: "Models", withExtension: nil),
+              let entries = try? FileManager.default.contentsOfDirectory(
+                    at: modelsRoot,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+              ) else { return [] }
+
+        return entries
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+            .filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("petdef.json").path) }
+            .map { $0.lastPathComponent }
+            .sorted()
     }
 
     // MARK: Fixtures
@@ -237,6 +253,27 @@ final class PetDefinitionTests: XCTestCase {
         }
     }
 
+    func test_bundledModelPetCatalogIncludesCurrentImagineCast() throws {
+        let ids = bundledModelPetIDs()
+
+        XCTAssertGreaterThanOrEqual(ids.count, minimumSyncedModelPetCount)
+        XCTAssertTrue(ids.contains("curie"))
+        XCTAssertTrue(ids.contains("einstein"))
+        XCTAssertTrue(ids.contains("founder-gates"))
+        XCTAssertTrue(ids.contains("kawaii-aurora-fox"))
+
+        var groupCounts: [String: Int] = [:]
+        for id in ids {
+            let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+            let group = try XCTUnwrap(def.group, id)
+            groupCounts[group, default: 0] += 1
+        }
+
+        XCTAssertEqual(groupCounts["Founders"], 9)
+        XCTAssertGreaterThanOrEqual(groupCounts["Legends"] ?? 0, 40)
+        XCTAssertGreaterThanOrEqual(groupCounts["Kawaii Animals"] ?? 0, 20)
+    }
+
     func test_model3DAvailableSemanticClipsIncludesCompatibilityAliases() throws {
         let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
         let model = try XCTUnwrap(def.model3d)
@@ -263,9 +300,25 @@ final class PetDefinitionTests: XCTestCase {
     }
 
     @MainActor
-    func test_defaultGLBSceneLoaderLoadsEveryBundledFounderModel() throws {
+    func test_defaultGLBSceneLoaderAttachesAnimationPlayers() throws {
+        // Fix: the loader must surface GLTFKit2's per-clip SCNAnimationPlayers
+        // (previously dropped), so the pet can actually animate. They are attached
+        // to the scene root keyed by clip name.
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let model = try XCTUnwrap(def.model3d)
+        let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id))
+        let scene = try XCTUnwrap(DefaultGLBSceneLoader().loadScene(at: url, clipNames: []))
+        XCTAssertFalse(scene.rootNode.animationKeys.isEmpty,
+                       "founder model should expose its glTF clips as attached animation players")
+    }
+
+    @MainActor
+    func test_defaultGLBSceneLoaderLoadsEveryBundledModel() throws {
         let loader = DefaultGLBSceneLoader()
-        for id in bundledFounderIDs {
+        let ids = bundledModelPetIDs()
+        XCTAssertGreaterThanOrEqual(ids.count, minimumSyncedModelPetCount)
+
+        for id in ids {
             let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
             let model = try XCTUnwrap(def.model3d, id)
             let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id), id)
@@ -299,6 +352,138 @@ final class PetDefinitionTests: XCTestCase {
 
         renderer.unmount()
     }
+
+    @MainActor
+    func test_sceneKitRendererFramesEveryBundledModelIntoVisiblePanel() throws {
+        let ids = bundledModelPetIDs()
+        XCTAssertGreaterThanOrEqual(ids.count, minimumSyncedModelPetCount)
+
+        for id in ids {
+            autoreleasepool {
+                guard let def = PetDefinition.loadBundled(id: id) else {
+                    XCTFail("missing petdef for \(id)")
+                    return
+                }
+                guard let form = def.defaultForm else {
+                    XCTFail("missing default form for \(id)")
+                    return
+                }
+
+                let renderer = SceneKitPetRenderer(definition: def, form: form)
+                let container = NSView(frame: CGRect(origin: .zero, size: PetPanel.defaultSize))
+                renderer.mount(in: container)
+                defer { renderer.unmount() }
+
+                guard let metrics = renderer.frameMetricsForTesting else {
+                    XCTFail("missing frame metrics for \(id)")
+                    return
+                }
+
+                XCTAssertGreaterThan(metrics.sourceMaxExtent, 0, id)
+                XCTAssertGreaterThan(metrics.baseScale, 0, id)
+                XCTAssertEqual(metrics.normalizedMaxExtent, 2.0, accuracy: 0.01, id)
+            }
+        }
+    }
+
+    /// Pixel-truth: a mounted founder model must actually rasterize visible
+    /// (non-transparent) pixels. The framing test proves the scene-graph math;
+    /// this proves SceneKit draws something, catching invisible-render bugs
+    /// (back-face culling, fully-transparent materials, mis-aimed camera) that
+    /// leave the panel blank even though loading + framing succeed.
+    @MainActor
+    func test_sceneKitRendererRasterizesVisiblePixelsForFounderModel() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let form = try XCTUnwrap(def.defaultForm)
+        let renderer = SceneKitPetRenderer(definition: def, form: form)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 256, height: 256),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 256, height: 256))
+        window.contentView = container
+        renderer.mount(in: container)
+        renderer.setPaused(false)
+        renderer.play(state: "idle")
+        defer { renderer.unmount() }
+
+        let scnView = try XCTUnwrap(renderer.view as? SCNView)
+        scnView.frame = container.bounds
+        container.layoutSubtreeIfNeeded()
+        // The model is framed against its post-skinning presentation bounds on the
+        // first render (see SceneKitPetRenderer.frameCameraToPresentation), so kick
+        // a render and let that reframe land before sampling.
+        _ = scnView.snapshot()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        let image = scnView.snapshot()
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let w = bitmap.pixelsWide
+        let h = bitmap.pixelsHigh
+        var opaquePixels = 0
+        for y in stride(from: 0, to: h, by: 4) {
+            for x in stride(from: 0, to: w, by: 4) {
+                if let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.05 {
+                    opaquePixels += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(
+            opaquePixels, 0,
+            "founder-gates rendered 0 visible pixels in a \(w)x\(h) snapshot — scene loads + frames but does not rasterize."
+        )
+    }
+
+    /// TEMP: save the live render of a founder in the real transparent PetPanel
+    /// so the result can be eyeballed. Removed after review.
+    /// TEMP: compare bind-pose vs presentation (skinned) bounds per model to
+    /// explain why skinned founders mis-frame while go-gopher frames fine.
+    /// TEMP: save the live render of each model in the real transparent PetPanel
+    /// AFTER the presentation-framing reframe lands, so the result can be eyeballed.
+    /// Guards the founder fix: a skinned founder rig deforms ~100x beyond its
+    /// bind-pose bounds once the skinner runs, so the camera must re-fit to the
+    /// presentation bounds (see `frameCameraToPresentation`). Before the fix the
+    /// founder rendered blank or as edge fragments; assert the pet is actually
+    /// visible AND centered after the reframe lands.
+    @MainActor
+    func test_skinnedFounderRendersCenteredAfterPresentationReframe() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-zuckerberg"))
+        let form = try XCTUnwrap(def.defaultForm)
+        let renderer = SceneKitPetRenderer(definition: def, form: form)
+        let panel = PetPanel()
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 192, height: 208))
+        panel.contentView = content
+        renderer.mount(in: content)
+        panel.orderFrontRegardless()
+        renderer.play(state: "idle")
+        defer { renderer.unmount(); panel.orderOut(nil) }
+
+        let scn = try XCTUnwrap(renderer.view as? SCNView)
+        scn.frame = content.bounds
+        content.layoutSubtreeIfNeeded()
+        _ = scn.snapshot() // first render → schedules the presentation reframe
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5)) // let the reframe land
+
+        let img = scn.snapshot()
+        let tiff = try XCTUnwrap(img.tiffRepresentation)
+        let bmp = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let w = bmp.pixelsWide, h = bmp.pixelsHigh
+        var total = 0, center = 0
+        for y in stride(from: 0, to: h, by: 4) {
+            for x in stride(from: 0, to: w, by: 4) {
+                guard let c = bmp.colorAt(x: x, y: y), c.alphaComponent > 0.5 else { continue }
+                total += 1
+                if x > w / 4, x < 3 * w / 4, y > h / 4, y < 3 * h / 4 { center += 1 }
+            }
+        }
+        XCTAssertGreaterThan(total, 200, "founder rendered no/too-few visible pixels")
+        XCTAssertGreaterThan(center, 50, "founder not framed in the centre (edge fragments / mis-framed)")
+    }
+
 
     @MainActor
     func test_setPetRebuildsRendererWithSelectedModelDefinition() throws {
