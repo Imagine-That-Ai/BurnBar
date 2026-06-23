@@ -606,6 +606,33 @@ test("L41 Signal prekey/session directory is server-only, owner-readable, and ro
     })
   );
 
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/signal-dir-owner/escrow_devices/trusted-missing-signal"), {
+      deviceId: "trusted-missing-signal",
+      deviceName: "Trusted Mac",
+      platform: "macOS",
+      trustState: "trusted",
+      publicKeyFingerprint: "T".repeat(44),
+      keyVersion: 1,
+      targetSignalIdentityKeyId: "trusted-missing-signal_1",
+      targetSignalIdentityPublicKeyFingerprint: "P".repeat(44),
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/trusted-missing-signal_1"), {
+      deviceId: "trusted-missing-signal",
+      platform: "macOS",
+      identityKeyId: "trusted-missing-signal_1",
+      publicKeyData: "Z".repeat(44),
+      publicKeyFingerprint: "P".repeat(44),
+      keyVersion: 1,
+      algorithm: "signal-hpke-identity-seal-v1",
+      createdAt: now,
+    })
+  );
+
   const baseChild = {
     identityKeyId: "device-1_1",
     deviceId: "device-1",
