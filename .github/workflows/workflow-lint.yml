@@ -27,6 +27,12 @@ on:
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/verify-signal-rule0.sh"
+      - "scripts/ci/verify-signal-rule0.test.sh"
+      - "scripts/ci/verify-vendored-agent-source.sh"
+      - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "third_party/hermes-agent/manifest.json"
+      - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
   push:
     branches:
@@ -52,6 +58,12 @@ on:
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/verify-signal-rule0.sh"
+      - "scripts/ci/verify-signal-rule0.test.sh"
+      - "scripts/ci/verify-vendored-agent-source.sh"
+      - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "third_party/hermes-agent/manifest.json"
+      - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
   merge_group:
     branches: [main]
@@ -86,6 +98,16 @@ jobs:
 
       - name: Check functional QA runner syntax
         run: bash -n tools/qa/run-functional-qa.sh
+
+      - name: Check vendored supply-chain guard syntax
+        run: |
+          bash -n scripts/ci/verify-signal-rule0.sh
+          bash -n scripts/ci/verify-signal-rule0.test.sh
+          bash -n scripts/ci/verify-vendored-agent-source.sh
+          bash -n scripts/ci/verify-libsignal-submodule-delta.sh
+
+      - name: Self-test Rule-0 guard
+        run: bash scripts/ci/verify-signal-rule0.test.sh
 
       - name: Verify agent repair loop prompts
         run: node scripts/ci/verify-agent-repair-loop-prompts.mjs
