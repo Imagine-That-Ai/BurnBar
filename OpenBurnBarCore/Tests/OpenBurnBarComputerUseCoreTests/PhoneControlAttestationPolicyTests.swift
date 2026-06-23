@@ -20,10 +20,10 @@ final class PhoneControlAttestationPolicyTests: XCTestCase {
         )
     }
 
-    func testStrictRequiresPhoneEnvelopeAttestationWhenMacBound() {
+    func testStrictRequiresBoundPhoneAttestationWhenMacBound() {
         XCTAssertEqual(
             PhoneControlAttestationPolicy.requirement(strictMode: true, macHostHasBoundClaim: true),
-            .requirePresent
+            .requireBoundPeer
         )
     }
 }

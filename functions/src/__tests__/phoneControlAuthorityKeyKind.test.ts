@@ -233,7 +233,7 @@ import {
   revokeEscrowDeviceTrust,
 } from "../callables/computerUseSecurity.js";
 import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
-import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
+import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
 
 // Cocoa reference epoch helpers (matching computerUseSecurity.ts)
 const COCOA_EPOCH_OFFSET = 978307200; // seconds between Unix epoch and Cocoa reference date
@@ -288,6 +288,7 @@ function queuedGrantData(opts: {
 }
 
 const APP_ID = "1:123:ios:abc";
+const APP_CHECK_BOUND_AT_MILLIS = Date.now();
 const UID = "uidF2";
 const DEVICE = "phone-1";
 const CONN = "conn-1";
@@ -296,7 +297,7 @@ function req(data: Record<string, unknown>) {
   return {
     auth: {
       uid: UID,
-      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } },
+      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: APP_CHECK_BOUND_AT_MILLIS } },
     },
     app: { appId: APP_ID },
     data,
@@ -371,6 +372,9 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
     expect(rec?.signingKeyKind).toBe("ed25519");
     expect(rec?.schemaVersion).toBe(2);
     expect(rec?.publicKeyBase64).toBe(key.base64);
+    expect(rec?.appCheckAttestationHashBlake3).toBe(
+      appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
+    );
   });
 
   it("publishes a Secure-Enclave P-256 controller", async () => {
@@ -415,6 +419,24 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
         publishedAtMillis: Date.now(),
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("publishAgentGrantAuthority attestation binding", () => {
+  beforeEach(seedTrustedDeviceAndPairing);
+
+  it("persists the server-derived App Check digest with the grant authority", async () => {
+    const key = ed25519Key();
+    const res = await invokeCallable<{ ok: boolean }>(publishAgentGrantAuthority, {
+      deviceId: DEVICE,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(store.get(`users/${UID}/agent_grant_authorities/${DEVICE}`)?.appCheckAttestationHashBlake3).toBe(
+      appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
+    );
   });
 });
 
