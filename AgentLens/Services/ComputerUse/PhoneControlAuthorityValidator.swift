@@ -758,7 +758,8 @@ public final class PhoneControlAuthorityValidator: Sendable {
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession,
         attestation: PhoneControlAttestationRequirement? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        consumeCounter: Bool = true
     ) throws -> ValidationResult {
         let pubKey = try publicKeyForActivePeer(envelope)
 
@@ -777,7 +778,9 @@ public final class PhoneControlAuthorityValidator: Sendable {
 
         try verifyEnvelopeSignature(envelope, key: pubKey)
 
-        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
+        if consumeCounter {
+            try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
+        }
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
