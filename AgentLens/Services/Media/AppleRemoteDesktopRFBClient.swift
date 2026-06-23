@@ -27,6 +27,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         case cryptographyFailed
         case authenticationRejected(String?)
         case unsupportedPasswordScalar
+        case untrustedLoopbackServer
     }
 
     struct Credentials: Sendable, Equatable {
@@ -41,25 +42,42 @@ final class AppleRemoteDesktopRFBClient: Sendable {
 
     static let log = Logger(subsystem: "com.openburnbar.app", category: "RemoteUnlock")
 
+    typealias LoopbackTrustValidator = @Sendable (_ host: String, _ port: UInt16) async -> Bool
+
     private let host: String
     private let port: UInt16
     private let timeoutSeconds: Int32
+    private let loopbackTrustValidator: LoopbackTrustValidator
 
     init(
         host: String = "127.0.0.1",
         port: UInt16 = 5900,
-        timeoutSeconds: Int32 = 8
+        timeoutSeconds: Int32 = 8,
+        loopbackTrustValidator: @escaping LoopbackTrustValidator = { host, port in
+            await AppleRemoteDesktopRFBServerTrustPolicy.validate(host: host, port: port)
+        }
     ) {
         self.host = host
         self.port = port
         self.timeoutSeconds = timeoutSeconds
+        self.loopbackTrustValidator = loopbackTrustValidator
     }
 
     /// Blocking RFB socket work runs off the main actor: this is a `nonisolated`
     /// `async` method (the type is `Sendable`, not actor-bound), so callers leave
     /// the main actor at the `await` (SE-0338).
     func typeCredential(_ credentials: Credentials) async throws {
-        var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
+        let targetHost = host
+        let targetPort = port
+        let targetTimeoutSeconds = timeoutSeconds
+        guard await loopbackTrustValidator(targetHost, targetPort) else {
+            Self.log.error(
+                "remote_unlock_ard_untrusted_loopback_server host=\(targetHost, privacy: .public) port=\(targetPort, privacy: .public)"
+            )
+            throw Failure.untrustedLoopbackServer
+        }
+
+        var stream = try RFBStream(host: targetHost, port: targetPort, timeoutSeconds: targetTimeoutSeconds)
         defer { stream.close() }
 
         try Self.performHandshake(stream: &stream, credentials: credentials)
@@ -280,6 +298,135 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         )
         guard length > 0, length < 4096 else { return "invalid_reason" }
         return String(data: try stream.readExact(byteCount: length), encoding: .utf8) ?? "unreadable_reason"
+    }
+}
+
+enum AppleRemoteDesktopRFBServerTrustPolicy {
+    struct LsofListenerRecord: Equatable {
+        var pid: Int32
+        var command: String?
+        var uid: String?
+        var name: String?
+    }
+
+    static func validate(host: String, port: UInt16) async -> Bool {
+        guard isLoopbackHost(host), port == 5900 else { return false }
+        guard let output = lsofOutput(host: host, port: port) else { return false }
+        return parseLsofListenerRecords(output).contains { record in
+            isTrustedListener(record, executablePath: executablePath(pid: record.pid))
+        }
+    }
+
+    static func parseLsofListenerRecords(_ output: String) -> [LsofListenerRecord] {
+        var records: [LsofListenerRecord] = []
+        var current: LsofListenerRecord?
+
+        for rawLine in output.split(whereSeparator: \.isNewline) {
+            guard let field = rawLine.first else { continue }
+            let value = String(rawLine.dropFirst())
+
+            switch field {
+            case "p":
+                if let current {
+                    records.append(current)
+                }
+                guard let pid = Int32(value) else {
+                    current = nil
+                    continue
+                }
+                current = LsofListenerRecord(pid: pid)
+            case "c":
+                current?.command = value
+            case "u":
+                current?.uid = value
+            case "n":
+                current?.name = value
+            default:
+                continue
+            }
+        }
+
+        if let current {
+            records.append(current)
+        }
+        return records
+    }
+
+    static func isTrustedListener(_ record: LsofListenerRecord, executablePath: String?) -> Bool {
+        guard isRootUID(record.uid), isTrustedCommand(record.command) else { return false }
+        guard let executablePath, !executablePath.isEmpty else { return false }
+        return isTrustedExecutablePath(executablePath)
+    }
+
+    private static func isLoopbackHost(_ host: String) -> Bool {
+        host == "127.0.0.1" || host == "localhost"
+    }
+
+    private static func isRootUID(_ uid: String?) -> Bool {
+        guard let uid = uid?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return false
+        }
+        return uid == "0" || uid == "root"
+    }
+
+    private static func isTrustedCommand(_ command: String?) -> Bool {
+        let normalized = command?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return normalized == "launchd"
+            || normalized == "ardagent"
+            || normalized == "screensharingd"
+            || normalized == "screenshar"
+    }
+
+    private static func isTrustedExecutablePath(_ path: String) -> Bool {
+        path == "/sbin/launchd"
+            || path == "/usr/libexec/screensharingd"
+            || path.hasPrefix("/System/Library/CoreServices/RemoteManagement/")
+            || path.hasPrefix("/System/Library/PrivateFrameworks/ScreenSharing")
+            || path.hasPrefix("/System/Library/PrivateFrameworks/Screensharing")
+    }
+
+    private static func lsofOutput(host: String, port: UInt16) -> String? {
+        let lsofPath = "/usr/sbin/lsof"
+        guard FileManager.default.isExecutableFile(atPath: lsofPath) else { return nil }
+
+        let process = Process()
+        let stdout = Pipe()
+        process.executableURL = URL(fileURLWithPath: lsofPath)
+        process.arguments = [
+            "-nP",
+            "-a",
+            "-iTCP@\(host):\(port)",
+            "-sTCP:LISTEN",
+            "-Fpcun"
+        ]
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard process.terminationStatus == 0 else { return nil }
+        return String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+    }
+
+    private static func executablePath(pid: Int32) -> String? {
+        #if canImport(Darwin)
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let byteCount = buffer.withUnsafeMutableBufferPointer { pointer in
+            guard let baseAddress = pointer.baseAddress else { return Int32(0) }
+            return proc_pidpath(pid, baseAddress, UInt32(pointer.count))
+        }
+        guard byteCount > 0 else { return nil }
+        return String(cString: buffer)
+        #else
+        return nil
+        #endif
     }
 }
 
