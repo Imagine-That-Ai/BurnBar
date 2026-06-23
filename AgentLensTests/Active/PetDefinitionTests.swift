@@ -526,7 +526,7 @@ final class PetDefinitionTests: XCTestCase {
 
         // Category chips are non-empty and counted.
         let categories = PetCatalog.categories(defs)
-        XCTAssertTrue(categories.contains { $0.name == "Founders" && $0.count > 0 })
+        XCTAssertTrue(categories.contains { $0.name == "Founders" && $0.count >= 1 })
     }
 
     /// Read a binary glTF's first-mesh POSITION accessor count (vertex count)

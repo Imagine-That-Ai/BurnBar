@@ -142,7 +142,7 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
-    @StateObject private var thumbnails = PetThumbnailStore.shared
+    @StateObject private var thumbnails = PetThumbnailStore()
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @FocusState private var searchFocused: Bool
@@ -434,8 +434,6 @@ private struct ThumbnailPlaceholder: View {
 /// thumbnails fade in.
 @MainActor
 final class PetThumbnailStore: ObservableObject {
-    static let shared = PetThumbnailStore()
-
     @Published private(set) var images: [String: NSImage] = [:]
 
     private var inFlight: Set<String> = []
@@ -443,7 +441,7 @@ final class PetThumbnailStore: ObservableObject {
     private var isRendering = false
     private let renderSize = CGSize(width: 264, height: 264)
 
-    private init() {}
+    init() {}
 
     /// Cached thumbnail, or `nil` while one is produced (enqueued on first miss).
     func thumbnail(for definition: PetDefinition) -> NSImage? {
