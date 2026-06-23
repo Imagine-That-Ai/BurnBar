@@ -259,11 +259,12 @@ extension PetDefinition {
         var usdz: String?
 
         var availableSemanticClips: Set<String> {
-            if let clipNames, !clipNames.isEmpty {
-                return Set(clipNames)
+            var names = Set(clipNames ?? [])
+            if let clips {
+                names.formUnion(clips.keys)
+                names.formUnion(clips.values)
             }
-            guard let clips else { return [] }
-            return Set(clips.values)
+            return names
         }
     }
 }

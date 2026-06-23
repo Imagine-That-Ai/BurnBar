@@ -1,4 +1,5 @@
 import AppKit
+import SceneKit
 import XCTest
 @testable import OpenBurnBar
 
@@ -6,6 +7,17 @@ import XCTest
 /// plus the modern `petdef/1` superset) and proves the Swift frame-rect helper
 /// matches the shared TS math (192×208 cells, anchor 96/196).
 final class PetDefinitionTests: XCTestCase {
+    private let bundledFounderIDs = [
+        "founder-altman",
+        "founder-bezos",
+        "founder-gates",
+        "founder-huang",
+        "founder-jobs",
+        "founder-musk",
+        "founder-nadella",
+        "founder-pichai",
+        "founder-zuckerberg",
+    ]
 
     @MainActor
     private final class StubRenderer: PetRenderer {
@@ -212,6 +224,29 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 
+    func test_bundledFounderModelPetsResolveDistinctGLBResources() throws {
+        var resolved = Set<URL>()
+        for id in bundledFounderIDs {
+            let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+            let model = try XCTUnwrap(def.model3d, id)
+            let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id), id)
+
+            XCTAssertEqual(url.lastPathComponent, "\(id)-actions.glb", id)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), id)
+            XCTAssertTrue(resolved.insert(url).inserted, "duplicate GLB URL for \(id)")
+        }
+    }
+
+    func test_model3DAvailableSemanticClipsIncludesCompatibilityAliases() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let model = try XCTUnwrap(def.model3d)
+
+        XCTAssertTrue(model.availableSemanticClips.contains("idle"))
+        XCTAssertTrue(model.availableSemanticClips.contains("think"))
+        XCTAssertTrue(model.availableSemanticClips.contains("success"))
+        XCTAssertTrue(model.availableSemanticClips.contains("clean"))
+    }
+
     @MainActor
     func test_defaultGLBSceneLoaderLoadsBundledFounderModel() throws {
         let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
@@ -225,6 +260,41 @@ final class PetDefinitionTests: XCTestCase {
 
         XCTAssertNotNil(scene)
         XCTAssertFalse(scene?.rootNode.childNodes.isEmpty ?? true)
+    }
+
+    @MainActor
+    func test_defaultGLBSceneLoaderLoadsEveryBundledFounderModel() throws {
+        let loader = DefaultGLBSceneLoader()
+        for id in bundledFounderIDs {
+            let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+            let model = try XCTUnwrap(def.model3d, id)
+            let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id), id)
+
+            let scene = loader.loadScene(at: url, clipNames: Array(model.availableSemanticClips))
+
+            XCTAssertNotNil(scene, id)
+            XCTAssertFalse(scene?.rootNode.childNodes.isEmpty ?? true, id)
+        }
+    }
+
+    @MainActor
+    func test_sceneKitRendererMountsFounderModelWithAppCameraAndInteractionState() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let form = try XCTUnwrap(def.defaultForm)
+        let renderer = SceneKitPetRenderer(definition: def, form: form)
+        let container = NSView(frame: CGRect(origin: .zero, size: PetPanel.defaultSize))
+
+        renderer.mount(in: container)
+        renderer.rotateModel(by: .pi / 4, persist: false)
+        renderer.resizeModel(by: 1.25, persist: false)
+
+        let sceneView = try XCTUnwrap(renderer.view as? SCNView)
+        XCTAssertEqual(sceneView.pointOfView?.name, "pet.camera")
+        XCTAssertNotNil(sceneView.scene)
+        XCTAssertGreaterThan(renderer.interactionState.scale, 1)
+        XCTAssertNotEqual(renderer.interactionState.yawRadians, 0)
+
+        renderer.unmount()
     }
 
     @MainActor

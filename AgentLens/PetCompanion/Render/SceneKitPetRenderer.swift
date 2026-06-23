@@ -5,6 +5,14 @@ import GLTFKit2
 import SceneKit
 import simd
 
+// MARK: - PetModel3DInteractionState
+
+/// User-controlled 3D view transform for model pets.
+struct PetModel3DInteractionState: Equatable, Sendable {
+    var yawRadians: CGFloat
+    var scale: CGFloat
+}
+
 // MARK: - GLBSceneLoading
 
 /// The seam that turns a bundled `.glb` master into an `SCNScene`.
@@ -80,6 +88,21 @@ final class DefaultGLBSceneLoader: GLBSceneLoading {
 /// gentle host-driven idle bob so the panel never looks frozen.
 @MainActor
 final class SceneKitPetRenderer: NSObject, PetRenderer {
+    private enum InteractionDefaults {
+        static let yawPrefix = "pet.model3d.yaw."
+        static let scalePrefix = "pet.model3d.scale."
+        static let minimumScale: CGFloat = 0.55
+        static let maximumScale: CGFloat = 2.4
+        static let rotationSensitivity: CGFloat = 0.012
+        static let scrollScaleSensitivity: CGFloat = 0.003
+    }
+
+    private struct ModelFraming {
+        var baseScale: CGFloat
+        var centerX: CGFloat
+        var centerZ: CGFloat
+        var minY: CGFloat
+    }
 
     // MARK: PetRenderer surface
 
@@ -89,7 +112,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
 
     // MARK: SceneKit state
 
-    private let scnView: SCNView
+    private let scnView: InteractivePetSceneView
     private let loader: GLBSceneLoading
 
     /// The mounted scene graph for the current form; `nil` until mounted /
@@ -110,8 +133,16 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     private var reducedMotion = false
     private var ambientFrameRate = 15
     private var paused = false
+    private var userYawRadians: CGFloat
+    private var userScale: CGFloat
+    private var modelFraming: ModelFraming?
 
     private static let idleBobActionKey = "pet.idleBob"
+    private static let targetModelHeight: CGFloat = 2.0
+
+    var interactionState: PetModel3DInteractionState {
+        PetModel3DInteractionState(yawRadians: userYawRadians, scale: userScale)
+    }
 
     // MARK: Init
 
@@ -125,7 +156,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.loader = loader
 
         let frame = CGRect(origin: .zero, size: PetPanel.defaultSize)
-        let view = SCNView(frame: frame)
+        let view = InteractivePetSceneView(frame: frame)
         view.backgroundColor = .clear
         // Transparent so the panel stays click-through where the model isn't.
         view.allowsCameraControl = false
@@ -137,8 +168,12 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.scnView = view
 
         self.currentStateKey = PetLogicalState.idle.rawValue
+        self.userYawRadians = Self.storedYaw(for: definition.id)
+        self.userScale = Self.storedScale(for: definition.id)
 
         super.init()
+
+        installInteractionRecognizers()
     }
 
     // MARK: Mount / unmount (on-demand bring-up, teardown to baseline)
@@ -180,6 +215,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         scnView.scene = nil
         scene = nil
         contentRoot = nil
+        modelFraming = nil
         clipPlayers.removeAll(keepingCapacity: true)
         activeClipKey = nil
         playbackGeneration += 1
@@ -230,12 +266,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         let sign: CGFloat = direction < 0 ? -1 : 1
         guard sign != (facing < 0 ? -1 : 1) else { facing = sign; return }
         facing = sign
-        // Yaw the model 180° to face the travel direction (mirror about Y).
-        // `eulerAngles` is `SCNVector3` whose components are `CGFloat` on macOS.
-        let yaw: CGFloat = sign < 0 ? .pi : 0
-        if let node = contentRoot {
-            node.eulerAngles = SCNVector3(node.eulerAngles.x, yaw, node.eulerAngles.z)
-        }
+        applyModelTransform()
     }
 
     // MARK: Energy gating (PLAN §4)
@@ -257,6 +288,30 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     func setAmbientFrameRate(_ fps: Int) {
         ambientFrameRate = max(fps, 1)
         scnView.preferredFramesPerSecond = ambientFrameRate
+    }
+
+    func rotateModel(by deltaRadians: CGFloat, persist: Bool = true) {
+        guard deltaRadians.isFinite else { return }
+        userYawRadians = Self.normalizedAngle(userYawRadians + deltaRadians)
+        applyModelTransform()
+        if persist { Self.storeYaw(userYawRadians, for: definition.id) }
+    }
+
+    func resizeModel(by factor: CGFloat, persist: Bool = true) {
+        guard factor.isFinite, factor > 0 else { return }
+        userScale = Self.clampedScale(userScale * factor)
+        applyModelTransform()
+        if persist { Self.storeScale(userScale, for: definition.id) }
+    }
+
+    func resetModelView(persist: Bool = true) {
+        userYawRadians = 0
+        userScale = 1
+        applyModelTransform()
+        if persist {
+            Self.storeYaw(userYawRadians, for: definition.id)
+            Self.storeScale(userScale, for: definition.id)
+        }
     }
 
     func setReducedMotion(_ reduced: Bool) {
@@ -346,6 +401,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.scene = scene
         scnView.scene = scene
         contentRoot = root
+        modelFraming = nil
         ensureCameraAndLights(in: scene)
         applyIdleBob()
     }
@@ -355,23 +411,46 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     private func normalizeFraming(root: SCNNode, in scene: SCNScene) {
         // `SCNVector3` components are `CGFloat` on macOS; keep all math in
         // `CGFloat` so this typechecks against the AppKit SceneKit overlay.
-        let (minB, maxB) = root.boundingBox
+        guard let bounds = subtreeBoundingBox(for: root) else { return }
+        let (minB, maxB) = bounds
         let extentX = CGFloat(maxB.x - minB.x)
         let extentY = CGFloat(maxB.y - minB.y)
         let extentZ = CGFloat(maxB.z - minB.z)
         let maxExtent = max(extentX, max(extentY, extentZ))
         guard maxExtent > 0 else { return }
-        let targetHeight: CGFloat = 2.0
-        let scale = targetHeight / maxExtent
-        root.scale = SCNVector3(scale, scale, scale)
-        // Recenter horizontally/depth, drop so feet sit near y = -1.
-        let centerX = (CGFloat(minB.x) + CGFloat(maxB.x)) / 2
-        let centerZ = (CGFloat(minB.z) + CGFloat(maxB.z)) / 2
-        root.position = SCNVector3(
-            -centerX * scale,
-            -CGFloat(minB.y) * scale - targetHeight / 2,
-            -centerZ * scale
+        modelFraming = ModelFraming(
+            baseScale: Self.targetModelHeight / maxExtent,
+            centerX: (CGFloat(minB.x) + CGFloat(maxB.x)) / 2,
+            centerZ: (CGFloat(minB.z) + CGFloat(maxB.z)) / 2,
+            minY: CGFloat(minB.y)
         )
+        applyModelTransform()
+    }
+
+    private func subtreeBoundingBox(for node: SCNNode) -> (SCNVector3, SCNVector3)? {
+        let (minB, maxB) = node.boundingBox
+        let extents = [
+            CGFloat(maxB.x - minB.x),
+            CGFloat(maxB.y - minB.y),
+            CGFloat(maxB.z - minB.z)
+        ]
+        guard extents.allSatisfy({ $0.isFinite }), extents.contains(where: { $0 > 0 }) else {
+            return nil
+        }
+        return (minB, maxB)
+    }
+
+    private func applyModelTransform() {
+        guard let node = contentRoot, let framing = modelFraming else { return }
+        let scale = framing.baseScale * userScale
+        node.scale = SCNVector3(scale, scale, scale)
+        node.position = SCNVector3(
+            -framing.centerX * scale,
+            -framing.minY * scale - Self.targetModelHeight / 2,
+            -framing.centerZ * scale
+        )
+        let facingYaw: CGFloat = facing < 0 ? .pi : 0
+        node.eulerAngles = SCNVector3(0, facingYaw + userYawRadians, 0)
     }
 
     /// Walk the graph and collect every `SCNAnimationPlayer`, keyed by its
@@ -442,13 +521,19 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     /// Add a camera and key light if the imported scene didn't ship one, so the
     /// model is actually visible. Idempotent.
     private func ensureCameraAndLights(in scene: SCNScene) {
-        if scene.rootNode.childNode(withName: "pet.camera", recursively: true) == nil {
-            let cameraNode = SCNNode()
-            cameraNode.name = "pet.camera"
-            cameraNode.camera = SCNCamera()
-            cameraNode.position = SCNVector3(0, 0, 4.2)
-            scene.rootNode.addChildNode(cameraNode)
-        }
+        let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) ?? {
+            let node = SCNNode()
+            node.name = "pet.camera"
+            node.camera = SCNCamera()
+            scene.rootNode.addChildNode(node)
+            return node
+        }()
+        cameraNode.camera?.usesOrthographicProjection = true
+        cameraNode.camera?.orthographicScale = 2.75
+        cameraNode.position = SCNVector3(0, 0.05, 4.2)
+        cameraNode.look(at: SCNVector3(0, 0, 0))
+        scnView.pointOfView = cameraNode
+
         if scene.rootNode.childNode(withName: "pet.key", recursively: true) == nil {
             let light = SCNNode()
             light.name = "pet.key"
@@ -488,6 +573,89 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
             "doze", "sip", "phone", "sitDown"
         ])
         return looping.contains(logical) || looping.contains(clipName)
+    }
+
+    private func installInteractionRecognizers() {
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handleRotationPan(_:)))
+        scnView.addGestureRecognizer(pan)
+
+        let magnify = NSMagnificationGestureRecognizer(target: self, action: #selector(handleMagnification(_:)))
+        scnView.addGestureRecognizer(magnify)
+
+        scnView.onScrollScale = { [weak self] deltaY in
+            guard let self else { return }
+            let factor = exp(deltaY * InteractionDefaults.scrollScaleSensitivity)
+            self.resizeModel(by: factor)
+        }
+    }
+
+    @objc private func handleRotationPan(_ recognizer: NSPanGestureRecognizer) {
+        let translation = recognizer.translation(in: scnView)
+        switch recognizer.state {
+        case .began, .changed:
+            rotateModel(by: translation.x * InteractionDefaults.rotationSensitivity)
+            recognizer.setTranslation(.zero, in: scnView)
+            if abs(translation.x) > 1 {
+                play(state: "lookAround")
+            }
+        default:
+            break
+        }
+    }
+
+    @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed:
+            resizeModel(by: max(0.1, 1 + recognizer.magnification))
+            recognizer.magnification = 0
+        default:
+            break
+        }
+    }
+
+    private static func storedYaw(for petID: String) -> CGFloat {
+        let value = UserDefaults.standard.double(forKey: InteractionDefaults.yawPrefix + petID)
+        return value.isFinite ? CGFloat(value) : 0
+    }
+
+    private static func storeYaw(_ yaw: CGFloat, for petID: String) {
+        UserDefaults.standard.set(Double(yaw), forKey: InteractionDefaults.yawPrefix + petID)
+    }
+
+    private static func storedScale(for petID: String) -> CGFloat {
+        let value = UserDefaults.standard.double(forKey: InteractionDefaults.scalePrefix + petID)
+        guard value.isFinite, value > 0 else { return 1 }
+        return clampedScale(CGFloat(value))
+    }
+
+    private static func storeScale(_ scale: CGFloat, for petID: String) {
+        UserDefaults.standard.set(Double(clampedScale(scale)), forKey: InteractionDefaults.scalePrefix + petID)
+    }
+
+    private static func clampedScale(_ scale: CGFloat) -> CGFloat {
+        min(InteractionDefaults.maximumScale, max(InteractionDefaults.minimumScale, scale))
+    }
+
+    private static func normalizedAngle(_ angle: CGFloat) -> CGFloat {
+        guard angle.isFinite else { return 0 }
+        let twoPi = CGFloat.pi * 2
+        var value = angle.truncatingRemainder(dividingBy: twoPi)
+        if value > .pi { value -= twoPi }
+        if value < -.pi { value += twoPi }
+        return value
+    }
+}
+
+private final class InteractivePetSceneView: SCNView {
+    var onScrollScale: ((CGFloat) -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY
+        if delta != 0 {
+            onScrollScale?(delta)
+        } else {
+            super.scrollWheel(with: event)
+        }
     }
 }
 
