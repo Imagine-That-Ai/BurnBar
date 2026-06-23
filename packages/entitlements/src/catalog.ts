@@ -111,11 +111,11 @@ const FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL = [
  *
  * Preserved shipped asymmetries (kept verbatim; widening a rules allowlist is
  * a security-reviewed change, not a refactor):
- * - The lowercase Google Play `com.openburnbar.promax.*` aliases have never
- *   been in the rules lists, and rules string comparison is case-sensitive.
- *   `functions/src/callables/stripe.ts` writes the Play product ID through to
- *   the entitlement doc verbatim, so a Play Cloud Pro receipt does NOT pass
- *   these rules predicates today. Shipped behavior, preserved as-is.
+ * - The lowercase Google Play `com.openburnbar.promax.*` aliases are accepted
+ *   by the strict proMax predicate because Play Cloud Pro writes the same
+ *   `burnbar_pro_max` entitlement doc that Data Vault and Wand gates read.
+ *   They remain absent from the broader premium/media/computer-use lists until
+ *   those legacy gates are intentionally widened.
  * - A `hosted_media_sync` receipt grants media but is absent from the premium
  *   floor list, exactly as shipped.
  */
@@ -137,6 +137,8 @@ export const FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS = {
     PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
     APPLE_PRODUCT_IDS.proMaxMonthly,
     APPLE_PRODUCT_IDS.proMaxAnnual,
+    GOOGLE_PLAY_PRODUCT_IDS.cloudProMonthly,
+    GOOGLE_PLAY_PRODUCT_IDS.cloudProAnnual,
   ],
   ultra: [
     APPLE_PRODUCT_IDS.ultraMonthly,

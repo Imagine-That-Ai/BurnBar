@@ -4856,6 +4856,15 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-ok`), memoryFact("fact-ok"))
   );
+  const googlePlayCloudProUid = "memory-play-cloud-pro-owner";
+  const googlePlayCloudProDb = authedDb(googlePlayCloudProUid);
+  await seedBurnBarProMaxEntitlement(googlePlayCloudProUid, "com.openburnbar.promax.v2.monthly");
+  await assertSucceeds(
+    setDoc(
+      doc(googlePlayCloudProDb, `users/${googlePlayCloudProUid}/memory_facts/fact-play-cloud-pro-ok`),
+      memoryFactFor(googlePlayCloudProUid, "fact-play-cloud-pro-ok")
+    )
+  );
   const ultraUid = "memory-ultra-owner";
   const ultraDb = authedDb(ultraUid);
   await seedBurnBarUltraEntitlement(ultraUid);
