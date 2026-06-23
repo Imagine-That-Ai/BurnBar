@@ -2,6 +2,120 @@ import XCTest
 @testable import OpenBurnBar
 
 final class AppleRemoteDesktopRFBClientTests: XCTestCase {
+    func testRemoteUnlockRFBRefusesUntrustedLoopbackBeforeConnecting() async {
+        let client = AppleRemoteDesktopRFBClient(
+            host: "127.0.0.1",
+            port: 1,
+            timeoutSeconds: 1,
+            loopbackTrustValidator: { _, _ in false }
+        )
+
+        do {
+            try await client.typeCredential(.init(username: "user", password: "secret"))
+            XCTFail("Untrusted loopback listeners must be denied before any credential socket is opened.")
+        } catch let failure as AppleRemoteDesktopRFBClient.Failure {
+            XCTAssertEqual(failure, .untrustedLoopbackServer)
+        } catch {
+            XCTFail("Expected untrustedLoopbackServer, got \(error)")
+        }
+    }
+
+    func testRemoteUnlockRFBTrustPolicyParsesLsofRecords() {
+        let output = """
+        p88
+        claunchd
+        u0
+        nTCP 127.0.0.1:5900 (LISTEN)
+        p901
+        cpython
+        u501
+        nTCP 127.0.0.1:5900 (LISTEN)
+        """
+
+        let records = AppleRemoteDesktopRFBServerTrustPolicy.parseLsofListenerRecords(output)
+
+        XCTAssertEqual(
+            records,
+            [
+                .init(pid: 88, command: "launchd", uid: "0", name: "TCP 127.0.0.1:5900 (LISTEN)"),
+                .init(pid: 901, command: "python", uid: "501", name: "TCP 127.0.0.1:5900 (LISTEN)")
+            ]
+        )
+    }
+
+    func testRemoteUnlockRFBTrustPolicyAcceptsRootOwnedAppleListener() {
+        let record = AppleRemoteDesktopRFBServerTrustPolicy.LsofListenerRecord(
+            pid: 88,
+            command: "ARDAgent",
+            uid: "root",
+            name: "TCP 127.0.0.1:5900 (LISTEN)"
+        )
+
+        XCTAssertTrue(
+            AppleRemoteDesktopRFBServerTrustPolicy.isTrustedListener(
+                record,
+                executablePath: "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent"
+            )
+        )
+    }
+
+    func testRemoteUnlockRFBTrustPolicyRejectsUserOwnedLookalikeListener() {
+        let record = AppleRemoteDesktopRFBServerTrustPolicy.LsofListenerRecord(
+            pid: 901,
+            command: "ARDAgent",
+            uid: "501",
+            name: "TCP 127.0.0.1:5900 (LISTEN)"
+        )
+
+        XCTAssertFalse(
+            AppleRemoteDesktopRFBServerTrustPolicy.isTrustedListener(
+                record,
+                executablePath: "/tmp/ARDAgent"
+            )
+        )
+    }
+
+    func testRemoteUnlockRFBTrustPolicyRejectsUnexpectedRootProcess() {
+        let record = AppleRemoteDesktopRFBServerTrustPolicy.LsofListenerRecord(
+            pid: 902,
+            command: "python",
+            uid: "0",
+            name: "TCP 127.0.0.1:5900 (LISTEN)"
+        )
+
+        XCTAssertFalse(
+            AppleRemoteDesktopRFBServerTrustPolicy.isTrustedListener(
+                record,
+                executablePath: "/usr/bin/python3"
+            )
+        )
+    }
+
+    func testRemoteUnlockRFBTrustPolicyRejectsMissingExecutablePath() {
+        let record = AppleRemoteDesktopRFBServerTrustPolicy.LsofListenerRecord(
+            pid: 88,
+            command: "ARDAgent",
+            uid: "0",
+            name: "TCP 127.0.0.1:5900 (LISTEN)"
+        )
+
+        XCTAssertFalse(
+            AppleRemoteDesktopRFBServerTrustPolicy.isTrustedListener(
+                record,
+                executablePath: nil
+            )
+        )
+    }
+
+    func testRemoteUnlockRFBTrustPolicyRejectsNonDefaultEndpointWithoutShellingOut() async {
+        let trusted = await AppleRemoteDesktopRFBServerTrustPolicy.validate(
+            host: "192.0.2.10",
+            port: 5900
+        )
+
+        XCTAssertFalse(trusted)
+    }
+
     func testRemoteUnlockBigUIntModularExponentMatchesKnownVectors() {
         XCTAssertEqual(
             RemoteUnlockBigUInt.powMod(
