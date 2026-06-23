@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mintAccessToken, verifyAccessTokenString, type AccessTokenClaims } from "./auth.js";
+import { assertRemoteMcpNotSuspended } from "./cloudFeatureSuspensions.js";
 import { MCP_RESOURCE } from "./config.js";
 import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitlements.js";
 import { HttpError } from "./errors.js";
@@ -108,6 +109,7 @@ export async function handleRefreshTokenGrant(
   const presented = verifyAccessTokenString(request.accessToken, { allowExpired: true });
   const uid = presented.sub;
   const clientId = presented.client_id;
+  await assertRemoteMcpNotSuspended(db, uid);
 
   const snap = await db
     .collection(`users/${uid}/remote_mcp_grants`)
