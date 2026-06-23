@@ -15,8 +15,35 @@
 // If the answer to any is "no" or "unknown", deprioritize Mission Control expansion
 // and invest in core tracking, search, and sync reliability instead.
 
-import OpenBurnBarCore
+import CryptoKit
 import Foundation
+import OpenBurnBarCore
+
+private struct EnterprisePacketApprovalFingerprintPayload: Encodable {
+    let schemaVersion: Int
+    let id: String
+    let missionID: String
+    let workerName: String
+    let objective: String
+    let status: String
+    let runID: String?
+    let dispatchedAt: String?
+    let completedAt: String?
+    let metadata: BurnBarMetadata
+
+    init(packet: BurnBarMissionPacketSnapshot) {
+        self.schemaVersion = 1
+        self.id = packet.id.rawValue
+        self.missionID = packet.missionID.rawValue
+        self.workerName = packet.workerName
+        self.objective = packet.objective
+        self.status = packet.status.rawValue
+        self.runID = packet.runID?.rawValue
+        self.dispatchedAt = packet.dispatchedAt?.ISO8601Format()
+        self.completedAt = packet.completedAt?.ISO8601Format()
+        self.metadata = packet.metadata
+    }
+}
 
 public actor BurnBarMissionControlService: BurnBarMissionControlServing {
     let store: BurnBarMissionControlStore
@@ -262,6 +289,7 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             try await persistEnterprisePolicyBlock(
                 enterprisePolicyBlock,
                 mission: mission,
+                packet: request.packet,
                 actor: request.actor
             )
             throw BurnBarMissionControlError.enterprisePolicyBlocked(
@@ -789,35 +817,75 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
         switch approvalMode {
         case .manualAll:
-            let hasExplicitApproval = packet.metadata["enterprise_explicit_approval_granted"]?.missionBoolValue() == true
-            if hasExplicitApproval == false {
+            if try !hasServerApprovedEnterprisePacket(mission: mission, packet: packet) {
                 return BurnBarEnterprisePolicyBlock(
                     reasonCode: .approvalRequiredByMode,
-                    detail: "\(approvalMode.rawValue) mode requires explicit operator approval metadata.",
+                    detail: "\(approvalMode.rawValue) mode requires daemon-stamped operator approval for this exact packet.",
                     approvalMode: approvalMode,
                     blockedAt: Date()
                 )
             }
         case .autoLowOnly:
-            let riskLevel = packet.metadata["risk_level"]?.missionStringValue()?.lowercased()
-            if riskLevel == "high" || riskLevel == "critical" {
+            let riskLevel = projectEnterprisePacketRiskLevel(metadata)
+            if riskLevel != "low",
+               try !hasServerApprovedEnterprisePacket(mission: mission, packet: packet) {
                 return BurnBarEnterprisePolicyBlock(
                     reasonCode: .approvalRequiredByMode,
-                    detail: "\(approvalMode.rawValue) mode blocks \(riskLevel ?? "high") risk packets without explicit approval metadata.",
+                    detail: "\(approvalMode.rawValue) mode requires daemon-stamped operator approval for \(riskLevel ?? "unclassified") risk packets.",
                     approvalMode: approvalMode,
                     blockedAt: Date()
                 )
             }
         case .autoLowMedium:
-            break
+            let riskLevel = projectEnterprisePacketRiskLevel(metadata)
+            if riskLevel != "low" && riskLevel != "medium",
+               try !hasServerApprovedEnterprisePacket(mission: mission, packet: packet) {
+                return BurnBarEnterprisePolicyBlock(
+                    reasonCode: .approvalRequiredByMode,
+                    detail: "\(approvalMode.rawValue) mode requires daemon-stamped operator approval for \(riskLevel ?? "unclassified") risk packets.",
+                    approvalMode: approvalMode,
+                    blockedAt: Date()
+                )
+            }
         }
 
         return nil
     }
 
+    private func hasServerApprovedEnterprisePacket(
+        mission: BurnBarMissionSnapshot,
+        packet: BurnBarMissionPacketSnapshot
+    ) throws -> Bool {
+        guard mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvalGranted]?.missionBoolValue() == true,
+              mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketID]?.missionStringValue() == packet.id.rawValue,
+              let approvedFingerprint = mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketFingerprint]?.missionStringValue()
+        else {
+            return false
+        }
+        let packetFingerprint = try enterprisePacketFingerprint(for: packet)
+        return approvedFingerprint == packetFingerprint
+    }
+
+    private func projectEnterprisePacketRiskLevel(_ metadata: BurnBarMetadata) -> String? {
+        metadata[BurnBarEnterprisePolicyMetadataKey.defaultPacketRiskLevel]?
+            .missionStringValue()?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .nonEmpty
+    }
+
+    private func enterprisePacketFingerprint(for packet: BurnBarMissionPacketSnapshot) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = EnterprisePacketApprovalFingerprintPayload(packet: packet)
+        let data = try encoder.encode(payload)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     private func persistEnterprisePolicyBlock(
         _ block: BurnBarEnterprisePolicyBlock,
         mission: BurnBarMissionSnapshot,
+        packet: BurnBarMissionPacketSnapshot,
         actor: String
     ) async throws {
         var snapshot = missionSnapshot(
@@ -835,6 +903,9 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             "detail": .string(block.detail),
             "blocked_at": .string(block.blockedAt.ISO8601Format())
         ]
+        let packetFingerprint = try enterprisePacketFingerprint(for: packet)
+        policyMetadata["packet_id"] = .string(packet.id.rawValue)
+        policyMetadata["packet_fingerprint"] = .string(packetFingerprint)
         if let approvalMode = block.approvalMode {
             policyMetadata["approval_mode"] = .string(approvalMode.rawValue)
         }
@@ -845,10 +916,12 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             policyMetadata["observed_spend_usd"] = .number(observedSpend)
         }
 
-        metadata["enterprise_policy_block"] = .object(policyMetadata)
-        metadata["enterprise_policy_block_reason_code"] = .string(block.reasonCode.rawValue)
-        metadata["enterprise_policy_blocked_at"] = .string(block.blockedAt.ISO8601Format())
-        metadata["enterprise_policy_blocked_by"] = .string(actor)
+        metadata[BurnBarEnterprisePolicyMetadataKey.block] = .object(policyMetadata)
+        metadata[BurnBarEnterprisePolicyMetadataKey.blockReasonCode] = .string(block.reasonCode.rawValue)
+        metadata[BurnBarEnterprisePolicyMetadataKey.blockedAt] = .string(block.blockedAt.ISO8601Format())
+        metadata[BurnBarEnterprisePolicyMetadataKey.blockedBy] = .string(actor)
+        metadata[BurnBarEnterprisePolicyMetadataKey.pendingPacketID] = .string(packet.id.rawValue)
+        metadata[BurnBarEnterprisePolicyMetadataKey.pendingPacketFingerprint] = .string(packetFingerprint)
 
         snapshot = BurnBarMissionSnapshot(
             id: snapshot.id,

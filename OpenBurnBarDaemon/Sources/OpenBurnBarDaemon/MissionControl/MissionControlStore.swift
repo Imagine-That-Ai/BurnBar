@@ -475,6 +475,15 @@ public actor BurnBarMissionControlStore {
         }
 
         let now = Date()
+        var metadata = existing.metadata
+        if let pendingPacketID = existing.metadata[BurnBarEnterprisePolicyMetadataKey.pendingPacketID]?.missionStringValue(),
+           let pendingPacketFingerprint = existing.metadata[BurnBarEnterprisePolicyMetadataKey.pendingPacketFingerprint]?.missionStringValue() {
+            metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketID] = .string(pendingPacketID)
+            metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketFingerprint] = .string(pendingPacketFingerprint)
+            metadata[BurnBarEnterprisePolicyMetadataKey.approvalGranted] = .bool(true)
+            metadata[BurnBarEnterprisePolicyMetadataKey.approvalGrantedAt] = .string(now.ISO8601Format())
+            metadata[BurnBarEnterprisePolicyMetadataKey.approvalGrantedBy] = .string(request.actor)
+        }
         let updated = BurnBarMissionSnapshot(
             id: existing.id,
             projectSlug: existing.projectSlug,
@@ -494,7 +503,7 @@ public actor BurnBarMissionControlStore {
             results: existing.results,
             burnRecords: existing.burnRecords,
             takeoverHistory: existing.takeoverHistory,
-            metadata: existing.metadata
+            metadata: metadata
         )
 
         let event = try appendEvent(
