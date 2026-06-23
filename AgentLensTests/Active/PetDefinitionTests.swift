@@ -484,6 +484,43 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertGreaterThan(center, 50, "founder not framed in the centre (edge fragments / mis-framed)")
     }
 
+    func test_petWindowState_roundTripsFrame() {
+        let id = "test-window-pet"
+        defer { UserDefaults.standard.removeObject(forKey: "pet.window.frame." + id) }
+        UserDefaults.standard.removeObject(forKey: "pet.window.frame." + id)
+        XCTAssertNil(PetWindowState.storedFrame(for: id))
+        PetWindowState.store(NSRect(x: 120, y: 340, width: 260, height: 281), for: id)
+        let restored = PetWindowState.storedFrame(for: id)
+        XCTAssertEqual(restored?.origin.x, 120)
+        XCTAssertEqual(restored?.origin.y, 340)
+        XCTAssertEqual(restored?.width, 260)
+        XCTAssertEqual(restored?.height, 281)
+    }
+
+    @MainActor
+    func test_resizePanel_growsClampedAndAspectLocked() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let form = try XCTUnwrap(def.defaultForm)
+        let renderer = SceneKitPetRenderer(definition: def, form: form)
+        let panel = PetPanel()
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 192, height: 208))
+        panel.contentView = content
+        renderer.mount(in: content)
+        panel.orderFrontRegardless()
+        defer { renderer.unmount(); panel.orderOut(nil) }
+
+        let startWidth = panel.frame.width
+        renderer.resizePanel(by: 1.5)
+        XCTAssertGreaterThan(panel.frame.width, startWidth, "panel should grow")
+        XCTAssertEqual(panel.frame.height / panel.frame.width, 208.0 / 192.0, accuracy: 0.01,
+                       "aspect ratio should stay locked")
+
+        for _ in 0..<20 { renderer.resizePanel(by: 2) }
+        XCTAssertLessThanOrEqual(panel.frame.width, 561, "should clamp at max width")
+        for _ in 0..<30 { renderer.resizePanel(by: 0.5) }
+        XCTAssertGreaterThanOrEqual(panel.frame.width, 109, "should clamp at min width")
+    }
+
 
     @MainActor
     func test_setPetRebuildsRendererWithSelectedModelDefinition() throws {

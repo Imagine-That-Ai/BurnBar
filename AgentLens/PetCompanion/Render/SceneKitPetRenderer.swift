@@ -114,7 +114,13 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         static let minimumScale: CGFloat = 0.55
         static let maximumScale: CGFloat = 2.4
         static let rotationSensitivity: CGFloat = 0.012
-        static let scrollScaleSensitivity: CGFloat = 0.003
+        static let scrollScaleSensitivity: CGFloat = 0.012
+        // Desktop-pet panel resize (the camera fills the view, so resizing the
+        // window resizes the visible pet). Aspect is locked to the default cell
+        // (PetPanel.defaultSize = 192x208).
+        static let panelAspect: CGFloat = 208.0 / 192.0
+        static let minPanelWidth: CGFloat = 110
+        static let maxPanelWidth: CGFloat = 560
     }
 
     private struct ModelFraming {
@@ -159,6 +165,10 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     /// Set when a freshly-loaded scene still needs the camera re-fit to its
     /// post-skinning presentation bounds on the next render (see install).
     private var needsPresentationFraming = false
+    /// Window origin + mouse location captured at the start of a drag-to-move,
+    /// so the panel tracks the cursor in absolute screen coordinates.
+    private var dragStartWindowOrigin: NSPoint?
+    private var dragStartMouse: NSPoint?
 
     private static let idleBobActionKey = "pet.idleBob"
     private static let targetModelHeight: CGFloat = 2.0
@@ -750,20 +760,43 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
 
         scnView.onScrollScale = { [weak self] deltaY in
             guard let self else { return }
-            let factor = exp(deltaY * InteractionDefaults.scrollScaleSensitivity)
-            self.resizeModel(by: factor)
+            // Scroll resizes the whole pet (its panel); the camera fills the view
+            // so the rendered pet scales with the window instead of clipping.
+            self.resizePanel(by: exp(deltaY * InteractionDefaults.scrollScaleSensitivity))
+            self.persistWindowFrame()
         }
     }
 
+    /// Plain drag repositions the floating pet; Option-drag rotates the model.
     @objc private func handleRotationPan(_ recognizer: NSPanGestureRecognizer) {
-        let translation = recognizer.translation(in: scnView)
+        let rotating = NSEvent.modifierFlags.contains(.option)
         switch recognizer.state {
-        case .began, .changed:
-            rotateModel(by: translation.x * InteractionDefaults.rotationSensitivity)
-            recognizer.setTranslation(.zero, in: scnView)
-            if abs(translation.x) > 1 {
-                play(state: "lookAround")
+        case .began:
+            if rotating {
+                let t = recognizer.translation(in: scnView)
+                rotateModel(by: t.x * InteractionDefaults.rotationSensitivity)
+                recognizer.setTranslation(.zero, in: scnView)
+            } else {
+                dragStartWindowOrigin = scnView.window?.frame.origin
+                dragStartMouse = NSEvent.mouseLocation
             }
+        case .changed:
+            if rotating {
+                let t = recognizer.translation(in: scnView)
+                rotateModel(by: t.x * InteractionDefaults.rotationSensitivity)
+                recognizer.setTranslation(.zero, in: scnView)
+                if abs(t.x) > 1 { play(state: "lookAround") }
+            } else if let window = scnView.window,
+                      let origin = dragStartWindowOrigin, let start = dragStartMouse {
+                // Absolute cursor tracking avoids feedback jitter as the window moves.
+                let now = NSEvent.mouseLocation
+                window.setFrameOrigin(NSPoint(x: origin.x + (now.x - start.x),
+                                              y: origin.y + (now.y - start.y)))
+            }
+        case .ended, .cancelled:
+            if !rotating { persistWindowFrame() }
+            dragStartWindowOrigin = nil
+            dragStartMouse = nil
         default:
             break
         }
@@ -772,11 +805,32 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
         switch recognizer.state {
         case .began, .changed:
-            resizeModel(by: max(0.1, 1 + recognizer.magnification))
+            resizePanel(by: max(0.5, 1 + recognizer.magnification))
             recognizer.magnification = 0
+        case .ended, .cancelled:
+            persistWindowFrame()
         default:
             break
         }
+    }
+
+    /// Resize the floating pet's panel (aspect-locked, clamped), anchored at the
+    /// bottom centre so the pet grows from where it sits. The SCNView autoresizes
+    /// and the camera fills the view, so the rendered pet scales with the panel.
+    func resizePanel(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0, let window = scnView.window else { return }
+        let frame = window.frame
+        let newWidth = min(InteractionDefaults.maxPanelWidth,
+                           max(InteractionDefaults.minPanelWidth, frame.width * factor))
+        let newHeight = newWidth * InteractionDefaults.panelAspect
+        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
+        window.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
+        (window as? PetPanel)?.clamp(to: (window as? PetPanel)?.bestScreen)
+    }
+
+    private func persistWindowFrame() {
+        guard let window = scnView.window else { return }
+        PetWindowState.store(window.frame, for: definition.id)
     }
 
     private static func storedYaw(for petID: String) -> CGFloat {
@@ -822,6 +876,27 @@ private final class InteractivePetSceneView: SCNView {
         } else {
             super.scrollWheel(with: event)
         }
+    }
+}
+
+// MARK: - Pet window frame persistence
+
+/// Persists the floating pet panel's frame (position + size) per pet id so a
+/// repositioned / resized companion stays put across relaunches.
+enum PetWindowState {
+    private static let prefix = "pet.window.frame."
+
+    static func store(_ frame: NSRect, for petID: String) {
+        let value = "\(frame.origin.x),\(frame.origin.y),\(frame.size.width),\(frame.size.height)"
+        UserDefaults.standard.set(value, forKey: prefix + petID)
+    }
+
+    static func storedFrame(for petID: String) -> NSRect? {
+        guard let raw = UserDefaults.standard.string(forKey: prefix + petID) else { return nil }
+        let parts = raw.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 4, parts[2] > 0, parts[3] > 0,
+              parts.allSatisfy({ $0.isFinite }) else { return nil }
+        return NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
     }
 }
 

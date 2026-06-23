@@ -122,7 +122,14 @@ final class PetCompanionController: ObservableObject {
     func show() {
         let panel = panel ?? makePanel()
         self.panel = panel
-        panel.moveToDefaultCorner(on: panel.bestScreen)
+        // Restore a user-positioned/resized frame if one was saved for this pet,
+        // clamped on-screen; otherwise park it in the default corner.
+        if let id = definition?.id, let frame = PetWindowState.storedFrame(for: id) {
+            panel.setFrame(frame, display: false)
+            panel.clamp(to: panel.bestScreen)
+        } else {
+            panel.moveToDefaultCorner(on: panel.bestScreen)
+        }
         panel.orderFrontRegardless()
         isVisible = true
         setPaused(false)
