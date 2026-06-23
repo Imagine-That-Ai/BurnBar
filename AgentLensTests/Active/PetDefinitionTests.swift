@@ -503,6 +503,32 @@ final class PetDefinitionTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func test_petCatalogFiltered_searchAndCategoryAndSort() throws {
+        let defs = PetCatalog.bundledDefinitions()
+        try XCTSkipIf(defs.count < 10, "needs the bundled pet catalog")
+
+        // Category scoping.
+        let founders = PetCatalog.filtered(defs, search: "", category: "Founders")
+        XCTAssertFalse(founders.isEmpty)
+        XCTAssertTrue(founders.allSatisfy { PetCatalog.groupName(for: $0) == "Founders" })
+
+        // Case-insensitive search by display name.
+        let gates = PetCatalog.filtered(defs, search: "GaTeS", category: nil)
+        XCTAssertTrue(gates.contains { PetCatalog.displayName(for: $0).lowercased().contains("gates") })
+
+        // No match → empty.
+        XCTAssertTrue(PetCatalog.filtered(defs, search: "zzz-not-a-pet", category: nil).isEmpty)
+
+        // Stable alphabetical sort.
+        let names = founders.map { PetCatalog.displayName(for: $0) }
+        XCTAssertEqual(names, names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
+
+        // Category chips are non-empty and counted.
+        let categories = PetCatalog.categories(defs)
+        XCTAssertTrue(categories.contains { $0.name == "Founders" && $0.count > 0 })
+    }
+
     /// Read a binary glTF's first-mesh POSITION accessor count (vertex count)
     /// straight from the JSON chunk — no decode needed.
     private static func glbPositionCount(at url: URL) throws -> Int {
