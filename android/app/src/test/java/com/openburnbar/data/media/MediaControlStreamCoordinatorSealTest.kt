@@ -218,11 +218,7 @@ class MediaControlStreamCoordinatorSealTest {
 
     // MARK: parallel dispatcher
 
-    private fun dispatcher(
-        sealKey: ByteArray?,
-        peerCapabilities: Set<String> = emptySet(),
-        onFrame: (MediaFrame) -> Unit,
-    ) = MediaControlFrameDispatcher(
+    private fun dispatcher(sealKey: ByteArray?, peerCapabilities: Set<String> = emptySet(), onFrame: (MediaFrame) -> Unit) = MediaControlFrameDispatcher(
         handlers =
         MediaControlFrameDispatcherHandlers(
             receiverProvider = { null },
