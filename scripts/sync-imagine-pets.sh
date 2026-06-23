@@ -176,6 +176,19 @@ function clipMap(clips) {
   return Object.fromEntries(Object.entries(mapped).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+// Persona sidecar (pet-personas.json), folded into petdef.agent so BurnBar's chat
+// answers in the pet's own voice. Populated once the manifest source resolves;
+// an absent sidecar simply leaves pets on BurnBar's default voice.
+let personas = {};
+function agentFor(id) {
+  const p = personas[id];
+  if (!p) return undefined;
+  return {
+    persona: `${p.voice} A few phrases you're known for: ${(p.signature || []).join(" / ")}`,
+    voiceLines: JSON.stringify(p.lines || {}),
+  };
+}
+
 function petDefinition(entry) {
   const glbName = bundledGlbName(entry);
   const clips = normalizedClips(entry);
@@ -210,6 +223,7 @@ function petDefinition(entry) {
         { from: "react", to: "idle", when: "idleElapsed", weight: 1 },
       ],
     },
+    agent: agentFor(entry.id),
     license: {
       ipStatus: "source-imaginethat-llc",
       licenseNote: "Synced one-way from imaginethat-llc public/pet-models.",
@@ -244,6 +258,13 @@ if (!manifest) process.exit(0);
 const { source, pets } = manifest;
 if (!Array.isArray(pets)) {
   throw new Error("pets-3d.json root must be an array");
+}
+
+// Best-effort persona sidecar — pets keep BurnBar's default voice when it is absent.
+try {
+  personas = JSON.parse((await readMaybeRemote(source, "pet-personas.json")).toString("utf8"));
+} catch {
+  /* no pet-personas.json → default voice */
 }
 
 await mkdir(modelsDir, { recursive: true });

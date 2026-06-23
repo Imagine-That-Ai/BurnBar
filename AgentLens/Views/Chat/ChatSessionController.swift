@@ -59,6 +59,15 @@ final class ChatSessionController {
 
     var chatBackend: ChatBackendID = .codex
 
+    /// Optional persona that replaces the trusted `.core` system-prompt section
+    /// for the next send. The desktop pet bubble sets this to the active
+    /// ``PetDefinition``'s `agent.persona` so the answer lands in that pet's
+    /// voice; the main chat UI leaves it `nil`, so its prompt is unchanged
+    /// (the database-analyst `core` is used verbatim). Only the trusted persona
+    /// block is swapped — tool definitions, evidence, memory, and rollups still
+    /// assemble under the same token arbiter.
+    var personaCoreOverride: String?
+
     var desktopControlGrant: AgentCapabilityGrant?
 
     var desktopControlError: String?

@@ -528,8 +528,12 @@ extension ChatSessionController {
         // share the evidence+memory pool under the arbiter (G9) and are wrapped via
         // LLMSafeContent.wrapUntrusted so they never enter the trusted `.core` persona.
         let memorySection = await recallMemorySection(query: trimmed, tokenBudget: promptArbiter.memoryBudget)
+        // The pet bubble may override the trusted persona block so the reply
+        // lands in the active pet's voice; the main chat leaves this nil and the
+        // database-analyst `core` is used verbatim (byte-for-byte unchanged).
+        let coreContent = personaCoreOverride ?? promptSections.core
         let assembledPrompt = promptArbiter.assemble([
-            PromptTokenSection(id: .core, content: promptSections.core),
+            PromptTokenSection(id: .core, content: coreContent),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
             PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),

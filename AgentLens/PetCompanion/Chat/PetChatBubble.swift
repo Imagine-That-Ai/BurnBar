@@ -176,7 +176,12 @@ final class PetChatController {
             return
         }
 
-        // Hand the draft to the shared controller exactly as the main chat does.
+        // Hand the draft to the shared controller exactly as the main chat does,
+        // but first override its trusted persona block with the active pet's
+        // `agent.persona` so the answer lands in this pet's voice. A pet without
+        // a persona leaves the default prompt untouched (PetChatProviders is the
+        // onboarding-only floor; the live bubble's default is the shared core).
+        chat.personaCoreOverride = pet?.activeChatPersona
         chat.inputText = trimmed
         draft = ""
         ownsSharedStream = true
@@ -189,6 +194,11 @@ final class PetChatController {
         pendingFallbackHistory = history
         beginMirroringStream(ignoringAssistantIDs: ignoredAssistantIDs)
         await chat.send()
+        // `send()` assembles + captures the system prompt synchronously before it
+        // returns, so the override is already baked into this turn. Clear it now
+        // so an unrelated main-chat send through the shared controller is not
+        // styled with the pet's persona.
+        chat.personaCoreOverride = nil
         sendAttemptCompleted = true
         if chat.inputText.isEmpty, !previousInput.isEmpty {
             chat.inputText = previousInput
