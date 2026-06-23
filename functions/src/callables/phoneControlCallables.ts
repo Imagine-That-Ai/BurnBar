@@ -8,7 +8,7 @@
 
 import { createHash } from "node:crypto";
 
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -42,11 +42,96 @@ import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./c
 
 const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
 const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
+const TRUSTED_DEVICE_PEER_NODE_ID_LIMIT = 16;
 
 function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
   const claim = readAppCheckAttestationClaim(recordOrUndefined(request.auth?.token));
   if (!claim || !isAppCheckAttestationClaimFresh(claim)) return undefined;
   return appCheckAttestationDigestHex(claim.appId, claim.boundAtMillis);
+}
+
+function normalizedTrustedDevicePeerNodeIds(rawPeerNodeId: unknown, rawPeerNodeIds: unknown): string[] {
+  const ids: string[] = [];
+  const append = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || ids.includes(trimmed)) return;
+    ids.push(trimmed);
+  };
+  append(rawPeerNodeId);
+  if (Array.isArray(rawPeerNodeIds)) {
+    for (const value of rawPeerNodeIds) append(value);
+  }
+  return ids.slice(-TRUSTED_DEVICE_PEER_NODE_ID_LIMIT);
+}
+
+async function stageTrustedEscrowDevicePeerNodeBinding(args: {
+  transaction: Transaction;
+  uid: string;
+  deviceId: string;
+  peerNodeId: string;
+  permittedPriorPeerRefs?: DocumentReference[];
+  permittedPriorPeerRefForPeerNodeId?: (peerNodeId: string) => DocumentReference;
+}): Promise<void> {
+  const {
+    transaction,
+    uid,
+    deviceId,
+    peerNodeId,
+    permittedPriorPeerRefs = [],
+    permittedPriorPeerRefForPeerNodeId,
+  } = args;
+  const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+  const device = await transaction.get(deviceRef);
+  if (!device.exists || device.get("trustState") !== "trusted") {
+    throw new HttpsError("permission-denied", "Phone-control peer binding requires a trusted device.");
+  }
+  const existingPeerNodeIds = normalizedTrustedDevicePeerNodeIds(device.get("peerNodeId"), device.get("peerNodeIds"));
+  const existingPeerNodeId = device.get("peerNodeId");
+  if (
+    !existingPeerNodeIds.includes(peerNodeId) &&
+    typeof existingPeerNodeId === "string" &&
+    existingPeerNodeId.length > 0
+  ) {
+    let priorPeerIsDurableForDevice = Array.isArray(device.get("peerNodeIds"));
+    const priorRefs = [...permittedPriorPeerRefs];
+    if (permittedPriorPeerRefForPeerNodeId) {
+      priorRefs.push(permittedPriorPeerRefForPeerNodeId(existingPeerNodeId));
+    }
+    for (const priorRef of priorRefs) {
+      const prior = await transaction.get(priorRef);
+      const priorDeviceId = prior.get("deviceId") ?? prior.get("sourceDeviceId");
+      if (prior.exists && priorDeviceId === deviceId && prior.get("peerNodeId") === existingPeerNodeId) {
+        priorPeerIsDurableForDevice = true;
+        break;
+      }
+    }
+    if (!priorPeerIsDurableForDevice) {
+      throw new HttpsError("permission-denied", "Phone-control peer node does not match the trusted device binding.");
+    }
+  }
+  const peerNodeIds = normalizedTrustedDevicePeerNodeIds(undefined, [...existingPeerNodeIds, peerNodeId]);
+  transaction.set(
+    deviceRef,
+    {
+      peerNodeId,
+      peerNodeIds,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+async function bindTrustedEscrowDevicePeerNodeId(args: {
+  uid: string;
+  deviceId: string;
+  peerNodeId: string;
+  permittedPriorPeerRefs?: DocumentReference[];
+  permittedPriorPeerRefForPeerNodeId?: (peerNodeId: string) => DocumentReference;
+}): Promise<void> {
+  await db.runTransaction(async (transaction) => {
+    await stageTrustedEscrowDevicePeerNodeBinding({ transaction, ...args });
+  });
 }
 
 function relaySenderKeyPublishProofSubjectId(args: {
@@ -294,6 +379,14 @@ export const publishPhoneControlAuthority = onCallProduction(
       } else if (allowlist.length !== 1 || allowlist[0] !== deviceId) {
         throw new HttpsError("permission-denied", "Phone-control authority is not authorized for this iroh pairing.");
       }
+      await stageTrustedEscrowDevicePeerNodeBinding({
+        transaction,
+        uid,
+        deviceId,
+        peerNodeId,
+        permittedPriorPeerRefForPeerNodeId: (priorPeerNodeId) =>
+          db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${priorPeerNodeId}`),
+      });
 
       transaction.set(
         pairingRef,
@@ -404,10 +497,7 @@ export const publishRelaySenderKey = onCallProduction(
       true,
     );
 
-    const [identity, device] = await Promise.all([
-      db.doc(`users/${uid}/signal_identity_public_keys/${signalIdentityKeyId}`).get(),
-      db.doc(`users/${uid}/escrow_devices/${deviceId}`).get(),
-    ]);
+    const identity = await db.doc(`users/${uid}/signal_identity_public_keys/${signalIdentityKeyId}`).get();
     if (
       !identity.exists ||
       identity.get("deviceId") !== deviceId ||
@@ -419,9 +509,6 @@ export const publishRelaySenderKey = onCallProduction(
         "permission-denied",
         "Relay sender key requires a published Signal identity for this trusted device.",
       );
-    }
-    if (device.exists && device.get("peerNodeId") && device.get("peerNodeId") !== peerNodeId) {
-      throw new HttpsError("permission-denied", "Relay sender peer node does not match the trusted device binding.");
     }
     await requireTrustedDeviceActionProof({
       uid,
@@ -441,6 +528,12 @@ export const publishRelaySenderKey = onCallProduction(
       nonce,
       proofRaw: request.data.actionProof,
       allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
+    });
+    await bindTrustedEscrowDevicePeerNodeId({
+      uid,
+      deviceId,
+      peerNodeId,
+      permittedPriorPeerRefs: [db.doc(`users/${uid}/relay_sender_keys/${deviceId}`)],
     });
 
     await db.doc(`users/${uid}/relay_sender_keys/${deviceId}`).set(
@@ -505,6 +598,12 @@ export const publishAgentGrantAuthority = onCallProduction(
       keyKind,
     );
     requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
+    await bindTrustedEscrowDevicePeerNodeId({
+      uid,
+      deviceId,
+      peerNodeId,
+      permittedPriorPeerRefs: [db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`)],
+    });
     const appCheckAttestationHashBlake3 = boundAppCheckAttestationDigest(request);
 
     await db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`).set(
