@@ -74,13 +74,13 @@ if [[ -x "$LSREGISTER" ]]; then
     END { flush() }
   ' | while IFS= read -r candidate; do
     [[ -n "$candidate" ]] && "$LSREGISTER" -u "$candidate" 2>/dev/null || true
-  done
+  done || true
   /usr/bin/mdfind "kMDItemCFBundleIdentifier == '$BUNDLE_ID'" 2>/dev/null | while IFS= read -r candidate; do
     [[ "$candidate" == "$CANONICAL_APP_PATH" ]] && continue
     case "$candidate" in
       */OpenBurnBar.app) "$LSREGISTER" -u "$candidate" 2>/dev/null || true ;;
     esac
-  done
+  done || true
   "$LSREGISTER" -f -R -trusted "$CANONICAL_APP_PATH" 2>/dev/null || true
 fi
 

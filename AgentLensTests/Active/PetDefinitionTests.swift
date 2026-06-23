@@ -16,7 +16,7 @@ final class PetDefinitionTests: XCTestCase {
         "founder-musk",
         "founder-nadella",
         "founder-pichai",
-        "founder-zuckerberg",
+        "founder-zuckerberg"
     ]
 
     @MainActor
@@ -279,6 +279,9 @@ final class PetDefinitionTests: XCTestCase {
 
     @MainActor
     func test_sceneKitRendererMountsFounderModelWithAppCameraAndInteractionState() throws {
+        UserDefaults.standard.removeObject(forKey: "pet.model3d.yaw.founder-gates")
+        UserDefaults.standard.removeObject(forKey: "pet.model3d.scale.founder-gates")
+
         let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
         let form = try XCTUnwrap(def.defaultForm)
         let renderer = SceneKitPetRenderer(definition: def, form: form)
