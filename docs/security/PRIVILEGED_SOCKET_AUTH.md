@@ -1,15 +1,11 @@
 # Privileged socket authentication (P0 + WS1)
 
-> **Transport status (post-P0-6 / M-9):** **XPC is the preferred and primary
-> privileged-input transport.** The privileged-input dispatch path runs over the
-> XPC Mach service `com.openburnbar.privileged-input-execution`
-> (`PrivilegedInputXPCClient` in `OpenBurnBarComputerUseCore`); the legacy `/tmp`
-> Unix-domain socket adapter is the compatibility shim being retired under P0-6.
-> The P0-6 rework removes any plaintext privileged input (including Remote Unlock
-> credential material) from the legacy socket lane and moves it onto the
-> authenticated XPC dispatch envelope. **P0-6 is still in flight on the current
-> tree** — until the socket adapter is fully removed, treat the Unix-socket lane
-> as the weaker, legacy path and prefer the XPC client for new callers. The
+> **Transport status (post-P0-6 / M-9):** the trusted per-user Unix-domain
+> socket is the primary privileged-input transport. `PrivilegedInputXPCClient`
+> tries that socket first and authenticates the server before writing any
+> credential-bearing dispatch envelope. The retained launchd Mach fallback is
+> limited to the privileged system service (`NSXPCConnection.Options.privileged`);
+> the client must not fall back to unauthenticated user-session Mach lookup. The
 > designated-requirement string below is the **M-9-fixed** form (the earlier
 > requirement was too permissive; see "Designated requirement").
 
@@ -17,14 +13,15 @@
 
 | Component | Role | Entitlements |
 |-----------|------|--------------|
-| `OpenBurnBarPrivilegedInputExecution` | HID leaf (XPC Mach service `com.openburnbar.privileged-input-execution`) — **preferred transport** | `hid.virtual.device` only |
-| `OpenBurnBarVirtualHIDBridge` | **Legacy** Unix socket adapter → forwards to execution over XPC (being retired under P0-6) | None (no HID/network/keychain) |
+| `OpenBurnBarPrivilegedInputExecution` | HID leaf behind the trusted per-user input socket | `hid.virtual.device` only |
+| `OpenBurnBarVirtualHIDBridge` | Root bridge socket adapter → forwards to the console user's execution socket; privileged system Mach is retained only as a legacy fallback | None (no HID/network/keychain) |
 | `OpenBurnBarRemoteAccessAgent` | Wake display, launch console-user workers, WS2 token stub | None (no HID/network/keychain) |
 
 Dispatch uses `PrivilegedInputDispatchRequest` / `PrivilegedInputDispatchEnvelope`
-(stable for WS2 capability tokens). Both the XPC service and the legacy socket
-adapter share the same peer-authentication gate (§"P0 peer authentication") and
-the same fail-closed input policy (§"Virtual HID `\"input\"` fail-closed policy").
+(stable for WS2 capability tokens). The socket server authenticates both sides
+of the privileged-input boundary before any credential-bearing envelope is
+written, and the handler enforces the same fail-closed input policy (§"Virtual
+HID `\"input\"` fail-closed policy").
 
 All three privileged helpers are built with **Hardened Runtime** enabled in `project.yml`.
 
@@ -82,7 +79,7 @@ Build `OpenBurnBarPrivilegedSocketRedTeamProbe` and run against a live socket. *
    xcodebuild -scheme OpenBurnBarVirtualHIDBridge -destination 'platform=macOS' build
    xcodebuild -scheme OpenBurnBarRemoteAccessAgent -destination 'platform=macOS' build
    ```
-   Restart the launchd Mach services / socket adapters so the running daemons match the new binaries.
+   Restart the launchd services / socket adapters so the running daemons match the new binaries.
 
 2. Run the opt-in integration probe against the live sockets:
    ```bash

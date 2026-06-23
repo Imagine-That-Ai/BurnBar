@@ -2,7 +2,13 @@ import Darwin
 import Foundation
 import os
 
-/// XPC client for the privileged input-execution Mach service (preferred over legacy Unix socket).
+/// Client for privileged input execution.
+///
+/// The per-user Unix socket is the preferred lane because it authenticates the
+/// server before writing credential-bearing envelopes. The launchd Mach lane is
+/// retained only for the privileged system helper; user-session Mach lookup is
+/// intentionally not attempted because a same-user process can impersonate that
+/// namespace before the client has a server audit token to validate.
 public final class PrivilegedInputXPCClient: NSObject, Sendable {
     public enum ClientError: Error, Sendable {
         case connectionUnavailable
@@ -18,6 +24,10 @@ public final class PrivilegedInputXPCClient: NSObject, Sendable {
     }
 
     private static let log = Logger(subsystem: "com.openburnbar.computeruse", category: "privileged-input")
+
+    static var machConnectionModeNamesForTesting: [String] {
+        ConnectionMode.preferredOrder.map(\.auditName)
+    }
 
     private let machServiceName: String
     private let requestTimeout: DispatchTimeInterval
@@ -163,17 +173,21 @@ public final class PrivilegedInputXPCClient: NSObject, Sendable {
     }
 
     private enum ConnectionMode: Hashable {
-        case userSession
         case privilegedSystem
 
-        static let preferredOrder: [ConnectionMode] = [.userSession, .privilegedSystem]
+        static let preferredOrder: [ConnectionMode] = [.privilegedSystem]
 
         var options: NSXPCConnection.Options {
             switch self {
-            case .userSession:
-                return []
             case .privilegedSystem:
                 return .privileged
+            }
+        }
+
+        var auditName: String {
+            switch self {
+            case .privilegedSystem:
+                return "privilegedSystem"
             }
         }
     }
