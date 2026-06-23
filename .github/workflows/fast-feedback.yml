@@ -548,9 +548,45 @@ jobs:
           fi
           echo "All AGENTS.md script references valid."
 
+  # ── Path filter: skip expensive legs when their surfaces are untouched ────
+  fast-feedback-path-filter:
+    name: Fast Feedback path filter
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      rust_changed: ${{ steps.changed.outputs.rust_changed }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Detect Rust-relevant changes
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          head="${HEAD_SHA:-HEAD}"
+          if [[ -z "$base" || "$base" == "null" ]]; then
+            git fetch --no-tags origin main
+            base="$(git merge-base FETCH_HEAD HEAD)"
+            head="HEAD"
+          fi
+          git diff --name-only "$base" "$head" > /tmp/fast-feedback-changed-paths.txt
+          cat /tmp/fast-feedback-changed-paths.txt
+          if grep -Eq '^(crates/(openburnbar-iroh|project-code-static-parser)/|\.github/workflows/fast-feedback\.yml$|\.cargo/config(\.toml)?$|\.?rustfmt\.toml$|clippy\.toml$|rust-toolchain(\.toml)?$|Cargo\.(toml|lock)$)' /tmp/fast-feedback-changed-paths.txt; then
+            echo "rust_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Rust: fmt + clippy + cargo-deny on iroh crate (WS5) ─────────────────
   rust-deny-fast:
     name: Rust (fmt + clippy + cargo-deny)
+    needs: fast-feedback-path-filter
+    if: needs.fast-feedback-path-filter.outputs.rust_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -882,6 +918,7 @@ jobs:
   fast-feedback-gate:
     name: Fast Feedback Gate
     needs:
+      - fast-feedback-path-filter
       - functions-fast
       - extension-fast
       - website-fast
