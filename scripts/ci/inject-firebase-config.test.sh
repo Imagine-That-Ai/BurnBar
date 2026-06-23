@@ -49,6 +49,7 @@ payload = {
 print(base64.b64encode(plistlib.dumps(payload)).decode())
 PY
 )"
+valid_sentry_dsn='https://public@example.ingest.sentry.io/12345?note=quote%27and%5Cnnewline&marker=$&replacement=%24%7Bnot_code%7D'
 
 assert_clean_plists() {
   python3 - <<'PY'
@@ -66,12 +67,31 @@ for rel in (
 PY
 }
 
+assert_sentry_plists() {
+  python3 - "$valid_sentry_dsn" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+expected = sys.argv[1]
+for rel in (
+    "AgentLens/Resources/GoogleService-Info.plist",
+    "OpenBurnBarMobile/Resources/GoogleService-Info.plist",
+):
+    payload = plistlib.loads(Path(rel).read_bytes())
+    if payload.get("sentry.dsn") != expected:
+        raise SystemExit(f"{rel} sentry.dsn mismatch: {payload.get('sentry.dsn')!r}")
+PY
+}
+
 default_env="$tmpdir/github-env-default"
 : >"$default_env"
 FIREBASE_PLIST_BASE64="$encoded_plist" \
+  OPENBURNBAR_SENTRY_DSN="$valid_sentry_dsn" \
   GITHUB_ENV="$default_env" \
   bash scripts/ci/inject-firebase-config.sh >"$tmpdir/inject-firebase-config-default.out"
 assert_clean_plists
+assert_sentry_plists
 if [[ -s "$default_env" ]]; then
   echo "FAIL: default injection wrote debug token exports to GITHUB_ENV" >&2
   cat "$default_env" >&2
