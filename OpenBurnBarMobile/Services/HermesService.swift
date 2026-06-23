@@ -149,6 +149,8 @@ final class FirestoreHermesConnectionRepository: HermesConnectionListing {
 
 // MARK: - Hermes Service
 
+typealias ElderWandEntitlementProvider = @MainActor () -> CloudTier
+
 @Observable
 @MainActor
 final class HermesService {
@@ -885,6 +887,23 @@ final class HermesService {
     @ObservationIgnored
     var elderWandSettings: ElderWandSettings = .shared
 
+    /// Authoritative entitlement gate for the send path. UI paywalls are only
+    /// convenience chrome; the request builder must also fail closed so a stale
+    /// saved preset cannot attach Fusion plugins or redirect relay/direct chat
+    /// traffic unless the resolved account tier still satisfies Cloud Pro.
+    @ObservationIgnored
+    var elderWandEntitlementProvider: ElderWandEntitlementProvider = { .none }
+
+    func bindElderWandEntitlement(to store: HostedQuotaSubscriptionStore?) {
+        elderWandEntitlementProvider = { [weak store] in
+            store?.cloudTier ?? .none
+        }
+    }
+
+    private var isElderWandEntitled: Bool {
+        elderWandEntitlementProvider().satisfies(.pro)
+    }
+
     /// OpenRouter "Fusion" (`The Elder Wand`) plugin block for the active
     /// preset, or `nil` when fusion is off. Satisfies
     /// `HermesStreamingCoordinating.activeElderWandPlugins`; the streaming
@@ -894,7 +913,8 @@ final class HermesService {
     /// `.chatCompletions` to the daemon gateway, so the body's `plugins` block
     /// is enough to reach `ElderWandFusionOrchestrator` (panel + judge).
     var activeElderWandPlugins: [[String: any Sendable]]? {
-        elderWandSettings.elderWandPluginsPayload()
+        guard isElderWandEntitled else { return nil }
+        return elderWandSettings.elderWandPluginsPayload()
     }
 
     /// Set to a fresh `UUID` the instant a fusion run finishes, so the chat
@@ -944,7 +964,7 @@ final class HermesService {
     /// (`IrohRelayRequestHandler.usesBurnBarGateway`), so the redirect is
     /// only applied to the direct (LAN/local) HTTP transport.
     private var isElderWandFusionActive: Bool {
-        elderWandSettings.isFusionActive
+        isElderWandEntitled && elderWandSettings.isFusionActive
     }
 
     /// Port the BurnBar daemon gateway binds (default). Mirrors

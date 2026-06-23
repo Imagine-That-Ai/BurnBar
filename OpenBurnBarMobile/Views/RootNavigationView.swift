@@ -87,6 +87,10 @@ struct RootNavigationView: View {
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .environment(\.mobileAuthStore, authStore)
+        .task {
+            hermesService.bindElderWandEntitlement(to: subscriptionStore)
+            pulseHermesService.bindElderWandEntitlement(to: subscriptionStore)
+        }
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
