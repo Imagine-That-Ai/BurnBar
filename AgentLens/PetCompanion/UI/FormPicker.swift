@@ -142,7 +142,14 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
-    @StateObject private var thumbnails = PetThumbnailStore.shared
+    // The picker observes a *shared* singleton store (one render cache for the
+    // whole app), so it must NOT own it. `@StateObject` is for view-created
+    // objects; its `wrappedValue` is an `@escaping @autoclosure`, and capturing
+    // the `@MainActor` `.shared` global through it miscompiled the struct's
+    // value-witness copy — a `swift_retain` on garbage that SIGSEGV'd the moment
+    // the picker was constructed (build 45 / #769). `@ObservedObject` evaluates
+    // the singleton eagerly and copies cleanly.
+    @ObservedObject private var thumbnails = PetThumbnailStore.shared
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @FocusState private var searchFocused: Bool

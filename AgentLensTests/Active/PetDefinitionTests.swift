@@ -1,5 +1,6 @@
 import AppKit
 import SceneKit
+import SwiftUI
 import XCTest
 @testable import OpenBurnBar
 
@@ -527,6 +528,47 @@ final class PetDefinitionTests: XCTestCase {
         // Category chips are non-empty and counted.
         let categories = PetCatalog.categories(defs)
         XCTAssertTrue(categories.contains { $0.name == "Founders" && $0.count > 0 })
+    }
+
+    /// Regression: build 45 (#769) shipped a `PetFormPickerView` that SIGSEGV'd
+    /// in `swift::RefCounts` ("outlined init with copy of PetFormPickerView")
+    /// the moment the Pets settings section rendered. Host the real view, pump
+    /// the run loop so SwiftUI's AttributeGraph evaluates the body + LazyVGrid,
+    /// and force a draw — the same path that crashed on the desktop. If the
+    /// picker constructs and renders without trapping, the regression is closed.
+    @MainActor
+    func test_petFormPickerView_hostsAndRendersWithoutCrash() throws {
+        let definitions = PetCatalog.bundledDefinitions()
+        XCTAssertFalse(definitions.isEmpty, "expected bundled pets for the picker")
+
+        var selected = definitions.first?.id ?? ""
+        let binding = Binding<String>(get: { selected }, set: { selected = $0 })
+        var lastSelected: (String, PetForm)?
+        let view = PetFormPickerView(definitions: definitions, selectedPetID: binding) { id, form in
+            lastSelected = (id, form)
+        }
+
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 540, height: 620)
+        let window = NSWindow(
+            contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+
+        // Pump so AttributeGraph evaluates the view tree and the lazy grid
+        // materializes its visible cells (where the copy/retain crash fired).
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+        }
+
+        XCTAssertNotNil(host.window, "picker should host without trapping")
+        _ = lastSelected
     }
 
     /// Read a binary glTF's first-mesh POSITION accessor count (vertex count)
