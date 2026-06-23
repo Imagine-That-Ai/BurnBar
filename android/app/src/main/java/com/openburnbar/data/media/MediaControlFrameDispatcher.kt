@@ -20,12 +20,12 @@ internal data class MediaControlFrameDispatcherHandlers(
     val focusContextHandler: () -> (suspend (HermesRealtimeRelayFocusContext) -> Unit)?,
     /**
      * F7 — the negotiated per-mirror MediaFrameAead session key, or null when
-     * the mirror was established on the legacy plaintext lane. Once present,
-     * every screen frame must be sealed (OBMFA1); sealed-open failures and
-     * plaintext frames are dropped fail-closed.
+     * the mirror was established on the legacy plaintext lane. Plaintext stays
+     * valid until [mediaFrameSealConfirmedProvider] says the Mac accepted and
+     * opened this session key; after that, plaintext drops fail-closed.
      */
     val mediaFrameSealKeyProvider: () -> ByteArray? = { null },
-    val peerCapabilitiesProvider: () -> Set<String> = { emptySet() },
+    val mediaFrameSealConfirmedProvider: () -> Boolean = { false },
 )
 
 internal data class MediaControlFrameDispatcherCallbacks(
@@ -120,18 +120,16 @@ internal class MediaControlFrameDispatcher(
                 null
             }
         if (assembled == null) return
-        // F7: after a media-frame-AEAD session is negotiated and the Mac has
-        // advertised support, every stream frame must be OBMFA1 sealed and must
-        // open under the session key with the cleartext position rebuilt into
-        // the AAD. Plaintext legacy frames remain valid until both sides confirm
-        // the sealed lane.
+        // F7: after the Mac explicitly confirms a media-frame-AEAD session,
+        // every stream frame must be OBMFA1 sealed and must open under the
+        // session key with the cleartext position rebuilt into the AAD.
+        // Plaintext legacy frames remain valid until that confirmation.
         val sealKey = handlers.mediaFrameSealKeyProvider()
-        val requiresSealedFrames =
-            sealKey != null && handlers.peerCapabilitiesProvider().contains(MediaFrameAeadNegotiation.CAPABILITY)
+        val sealConfirmed = handlers.mediaFrameSealConfirmedProvider()
         val data =
             when {
                 MediaFrameAead.isSealedEnvelope(assembled) -> openSealedFrame(assembled, media, sealKey) ?: return
-                requiresSealedFrames -> return
+                sealConfirmed -> return
                 else -> assembled
             }
         runCatching {

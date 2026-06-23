@@ -6,6 +6,7 @@ import com.openburnbar.data.computeruse.AgentCapabilityGrantState
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.time.Instant
@@ -41,7 +42,13 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
             inboundReceiver?.handleAdvertise(frame = frame, ackSender = ackSender)
         HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK -> Unit
         HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK ->
-            frame.media?.mirrorAck?.let { inboundLastMirrorAck.value = it }
+            frame.media?.mirrorAck?.let { ack ->
+                mediaFrameSealEstablished =
+                    ack.decision == HermesRealtimeRelayMirrorAck.Decision.ACCEPTED &&
+                    ack.mediaFrameSealEstablished == true &&
+                    mediaFrameSealKey != null
+                inboundLastMirrorAck.value = ack
+            }
         HermesRealtimeRelayFrameType.MEDIA_CALL_ACK ->
             frame.media?.callAck?.let { inboundLastCallAck.value = it }
         HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME ->
@@ -144,20 +151,18 @@ private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(fra
         return null
     }
     media.focusContext?.let { focus -> focusContextHandler?.invoke(focus) }
-    // F7: after a media-frame-AEAD session is negotiated and the Mac has
-    // advertised support, every stream frame must be OBMFA1 sealed and must open
-    // under the session key with the cleartext position rebuilt into the AAD.
-    // Plaintext legacy frames remain valid until both sides confirm the sealed
-    // lane. Mirrors the iOS coordinator read loop.
-    val requiresSealedFrames =
-        mediaFrameSealKey != null && inboundLastPeerCapabilities.value.contains(MediaFrameAeadNegotiation.CAPABILITY)
+    // F7: after the Mac explicitly confirms a media-frame-AEAD session, every
+    // stream frame must be OBMFA1 sealed and must open under the session key
+    // with the cleartext position rebuilt into the AAD. Plaintext legacy frames
+    // remain valid until that accepted ack confirms sealing. Mirrors the iOS
+    // coordinator read loop.
     val data =
         runCatching { Base64.getDecoder().decode(encoded) }.getOrNull()
             ?.let { chunkBytes -> inboundFrameChunkAssembler.accept(media.frameChunk, chunkBytes) }
             ?.let { assembled ->
                 when {
                     MediaFrameAead.isSealedEnvelope(assembled) -> openSealedMercuryMediaFrame(assembled, media)
-                    requiresSealedFrames -> null
+                    mediaFrameSealEstablished -> null
                     else -> assembled
                 }
             }

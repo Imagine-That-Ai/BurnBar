@@ -808,6 +808,7 @@ data class HermesRealtimeRelayMirrorAck(
     val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
     val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
     val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
+    val mediaFrameSealEstablished: Boolean? = null,
 ) {
     @Serializable
     enum class Decision {

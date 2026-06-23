@@ -246,6 +246,10 @@ final class MediaFrameProtocolTests: XCTestCase {
             acceptedJSON.contains("cooldownSecondsRemaining"),
             "nil cooldown must be omitted from the wire form to keep older decoders byte-identical"
         )
+        XCTAssertFalse(
+            acceptedJSON.contains("mediaFrameSealEstablished"),
+            "absent seal confirmation must keep legacy mirror acks byte-compatible"
+        )
         XCTAssertTrue(acceptedJSON.contains("\"decision\":\"accepted\""))
         let acceptedDecoded = try JSONDecoder().decode(
             HermesRealtimeRelayFrame.self,
@@ -278,6 +282,22 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(coolingDecoded.media?.mirrorAck?.decision, .coolingDown)
         XCTAssertEqual(coolingDecoded.media?.mirrorAck?.cooldownSecondsRemaining, 17)
         XCTAssertEqual(coolingDecoded.media?.mirrorAck?.detail, "Wait a sec")
+    }
+
+    func testMirrorAckRoundTripsFrameSealConfirmation() throws {
+        let ack = HermesRealtimeRelayMirrorAck(
+            requestId: "req_sealed",
+            decision: .accepted,
+            mediaFrameSealEstablished: true
+        )
+        let encoded = try JSONEncoder().encode(ack)
+        let json = String(data: encoded, encoding: .utf8) ?? ""
+        XCTAssertTrue(json.contains("\"mediaFrameSealEstablished\":true"))
+
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayMirrorAck.self, from: encoded)
+        if decoded.mediaFrameSealEstablished != true {
+            XCTFail("Expected mediaFrameSealEstablished to round-trip as true")
+        }
     }
 
     func testPresenceHeartbeatRoundTrips() throws {

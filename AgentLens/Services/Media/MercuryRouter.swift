@@ -168,6 +168,7 @@ final class MercuryRouter: ObservableObject {
         let remotePeerNodeID: String?
         let remoteUnlockSessionID: String?
         let agentTerminalApproved: Bool
+        let mediaFrameSealEstablished: Bool
         /// Phase 12 — set when this viewer requested an interactive single-window
         /// CLI; the launched Terminal session is terminated on viewer teardown.
         var interactiveTerminalSession: LaunchedAgentTerminalSession?

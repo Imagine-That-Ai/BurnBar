@@ -119,11 +119,19 @@ class MediaControlStreamCoordinator(
     /**
      * F7 — the negotiated per-mirror MediaFrameAead session key (the iOS
      * coordinator's `mediaFrameSealKey` twin). Set by [requestMirror] from
-     * the seal establishment result (null when not negotiated). The inbound
-     * read loop drops any sealed (OBMFA1) frame that fails to open under it.
+     * the seal establishment result (null when not negotiated). Plaintext is
+     * still allowed until the Mac's accepted mirror ack confirms that it
+     * opened this session key; once confirmed, plaintext frames are dropped.
      */
     @Volatile
     var mediaFrameSealKey: ByteArray? = null
+        set(value) {
+            field = value
+            mediaFrameSealEstablished = false
+        }
+
+    @Volatile
+    internal var mediaFrameSealEstablished: Boolean = false
 
     @Volatile
     var mirrorFrameHandler: (suspend (MediaFrame) -> Unit)? = null
@@ -301,8 +309,9 @@ class MediaControlStreamCoordinator(
         val viewerID = UUID.randomUUID().toString()
         // F7: wrap a per-mirror frame key when the default-off RC flag is on
         // and the Mac advertised media_frame_aead_v1; the read loop drops
-        // sealed frames that fail to open under this key. Mirrors the iOS
-        // MercuryLiveSheet / InlineAgentMirrorController mirror-request sites.
+        // sealed frames that fail to open under this key after the accepted
+        // mirror ack confirms the Mac opened it. Mirrors the iOS MercuryLiveSheet
+        // / InlineAgentMirrorController mirror-request sites.
         val mediaSealSession =
             mediaSealSessionFactory?.invoke(uid, connectionID, viewerID, _lastPeerCapabilities.value)
         mediaFrameSealKey = mediaSealSession?.key

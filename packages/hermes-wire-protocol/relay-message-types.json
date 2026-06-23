@@ -4979,6 +4979,18 @@
           "codable": {
             "key": "streamingCapabilities"
           }
+        },
+        {
+          "name": "mediaFrameSealEstablished",
+          "swiftType": "Bool?",
+          "doc": [
+            "    /// True only when the Mac accepted this mirror request and opened the",
+            "    /// request's media-frame seal key, so screen frames for this session will",
+            "    /// be sealed. Absent means legacy plaintext remains possible."
+          ],
+          "codable": {
+            "key": "mediaFrameSealEstablished"
+          }
         }
       ],
       "initDefaults": {
@@ -4994,7 +5006,8 @@
         "controlOwnerViewerId": "nil",
         "remoteUnlockState": "nil",
         "remoteUnlockCapabilities": "nil",
-        "streamingCapabilities": "nil"
+        "streamingCapabilities": "nil",
+        "mediaFrameSealEstablished": "nil"
       },
       "nested": [
         {
