@@ -19,6 +19,21 @@ func intValue(_ value: BurnBarJSONValue?) -> Int {
     }
 }
 
+enum BurnBarEnterprisePolicyMetadataKey {
+    static let block = "enterprise_policy_block"
+    static let blockReasonCode = "enterprise_policy_block_reason_code"
+    static let blockedAt = "enterprise_policy_blocked_at"
+    static let blockedBy = "enterprise_policy_blocked_by"
+    static let pendingPacketID = "enterprise_policy_pending_packet_id"
+    static let pendingPacketFingerprint = "enterprise_policy_pending_packet_fingerprint"
+    static let approvedPacketID = "enterprise_policy_approved_packet_id"
+    static let approvedPacketFingerprint = "enterprise_policy_approved_packet_fingerprint"
+    static let approvalGranted = "enterprise_policy_approval_granted"
+    static let approvalGrantedAt = "enterprise_policy_approval_granted_at"
+    static let approvalGrantedBy = "enterprise_policy_approval_granted_by"
+    static let defaultPacketRiskLevel = "enterprise_default_packet_risk_level"
+}
+
 extension BurnBarMissionControlService {
     func normalizedQuestion(
         _ question: BurnBarPendingQuestionSnapshot
