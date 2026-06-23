@@ -4827,14 +4827,14 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   const timestamp = Timestamp.fromDate(new Date("2026-06-04T00:00:00.000Z"));
   const sourceRefHmac = "a".repeat(64);
 
-  const memoryFact = (docID, overrides = {}) => ({
-    uid: ownerUid,
+  const memoryFactFor = (uid, docID, overrides = {}) => ({
+    uid,
     docID,
     schemaVersion: 1,
     sourceKind: "chat",
     kind: "fact",
     reviewStatus: "approved",
-    sealedMemory: sealedBlobAt(ownerUid, "memory_facts", docID, "sealedMemory"),
+    sealedMemory: sealedBlobAt(uid, "memory_facts", docID, "sealedMemory"),
     sourceRefHmacs: [sourceRefHmac],
     citationCount: 1,
     validFrom: timestamp,
@@ -4842,9 +4842,28 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
     replicatedAt: timestamp,
     ...overrides,
   });
+  const memoryFact = (docID, overrides = {}) => memoryFactFor(ownerUid, docID, overrides);
+
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-no-entitlement`), memoryFact("fact-no-entitlement"))
+  );
+  await seedHostedCloudEntitlement(ownerUid);
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-cloud-only`), memoryFact("fact-cloud-only"))
+  );
+  await seedBurnBarProMaxEntitlement(ownerUid);
 
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-ok`), memoryFact("fact-ok"))
+  );
+  const ultraUid = "memory-ultra-owner";
+  const ultraDb = authedDb(ultraUid);
+  await seedBurnBarUltraEntitlement(ultraUid);
+  await assertSucceeds(
+    setDoc(
+      doc(ultraDb, `users/${ultraUid}/memory_facts/fact-ultra-ok`),
+      memoryFactFor(ultraUid, "fact-ultra-ok")
+    )
   );
   await assertFails(
     setDoc(
