@@ -48,6 +48,12 @@ packages:
   AmplitudeSwift:
     url: https://github.com/amplitude/Amplitude-Swift
     from: "1.17.3"
+  GLTFKit2:
+    url: https://github.com/warrenm/GLTFKit2
+    from: "0.5.15"
+  DracoSwift:
+    url: https://github.com/warrenm/DracoSwift
+    exactVersion: 1.5.7
   ViewInspector:
     url: https://github.com/nalexn/ViewInspector
     from: "0.10.0"
@@ -401,6 +407,10 @@ targets:
         product: Sentry
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: GLTFKit2
+        product: GLTFKit2
+      - package: DracoSwift
+        product: DracoSwift
     scheme:
       testTargets:
         - OpenBurnBarTests

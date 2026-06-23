@@ -154,43 +154,28 @@ find "$APP/Contents/Resources/Models" -type f # must list the .glb masters
 | **SceneKit** | C5 3D renderer | `- sdk: SceneKit.framework` (autolinked via `import SceneKit`) |
 | **Carbon** | C8 global hotkey (`RegisterEventHotKey`) | autolinked via `import Carbon.HIToolbox`; no extra entitlement (that's why Carbon was chosen over an NSEvent global monitor) |
 | **Security** | C10 Keychain | autolinked via `import Security` |
-| **GLTFKit2** (SPM) | **real** GLB decoding | optional — see 2c |
+| **GLTFKit2** (SPM) | **real** GLB decoding | `packages.GLTFKit2` + `targets.OpenBurnBar.dependencies` |
+| **DracoSwift** (SPM) | Draco mesh decompression for synced Imagine GLBs | `packages.DracoSwift` + `OpenBurnBarDracoDecompressor` |
 
 ModelIO/SceneKit do **not** need explicit linking beyond `import`; the SDK
-frameworks autolink. The only thing that needs a package is GLB decode.
+frameworks autolink. The only packages needed are GLB decode and Draco mesh
+decompression.
 
 ### 2c. GLTFKit2 — required for the 3D backend to render real models
 
 SceneKit/ModelIO on macOS **cannot decode binary glTF** (`.glb`):
 `MDLAsset.canImportFileExtension("glb")` is `false` and `SCNScene(url:)` reads
 only SceneKit/USD/COLLADA. `SceneKitPetRenderer` ships behind the
-`GLBSceneLoading` seam; `DefaultGLBSceneLoader` tries (1) a stubbed GLTFKit2 hook
-(returns `nil` today so the file compiles with **zero** external imports), then
-(2) native `SCNScene(url:)` (works for `.usdz`/`.scn` and for `.glb` once a
-system GLTF importer is registered), then (3) a teal `SCNCapsule` placeholder so
-the panel is never blank. **Until GLTFKit2 is wired, every `model3d` pet renders
-the capsule.**
+`GLBSceneLoading` seam; `DefaultGLBSceneLoader` tries (1) GLTFKit2 via
+`GLTFAsset(url:options:)` and `GLTFSCNSceneSource(asset:).defaultScene`, with
+`OpenBurnBarDracoDecompressor` registered for the synced Imagine pets'
+`KHR_draco_mesh_compression` payloads, then (2) native `SCNScene(url:)` (works
+for `.usdz`/`.scn` and for `.glb` once a system GLTF importer is registered),
+then (3) a teal `SCNCapsule` placeholder so the panel is never blank.
 
-To get real 3D:
-
-1. `project.yml` → `packages:` add
-   ```yaml
-     GLTFKit2:
-       url: https://github.com/warrenm/GLTFKit2
-       from: "0.5.0"
-   ```
-   and `targets.OpenBurnBar.dependencies:` add `- package: GLTFKit2`.
-2. In `Render/SceneKitPetRenderer.swift`, replace the body of
-   `DefaultGLBSceneLoader.loadViaGLTFKit2(url:)` (the doc comment carries the
-   exact snippet):
-   ```swift
-   import GLTFKit2
-   guard let asset = try? GLTFAsset(url: url) else { return nil }
-   return GLTFSCNSceneSource(asset: asset).defaultScene
-   ```
-   GLTFKit2 surfaces each glTF animation as an `SCNAnimationPlayer` keyed by clip
-   name — exactly what `harvestClipPlayers()` + `resolveClipName()` consume.
-3. `xcodegen generate` again.
+GLTFKit2 surfaces glTF animation data into SceneKit; `harvestClipPlayers()` +
+`resolveClipName()` consume the resulting `SCNAnimationPlayer`s by clip name when
+available. Run `xcodegen generate` after changing the package declaration.
 
 **GLB ground truth** (verified by parsing the glTF JSON chunk): every `*-walk.glb`
 holds exactly one clip `Armature|walking_man|baselayer`; the static GLBs
@@ -372,29 +357,24 @@ AppKit, SwiftUI, Security, Carbon.HIToolbox). Cross-file app symbols were
 `cancelGeneration`); `ChatBackendID` cases; `DesignSystem` tokens incl.
 `Colors.error`.
 
-**Needs a full Xcode build to confirm (could NOT run here):**
-- **Full type-check** — no SDK module graph in the sandbox; `swiftc -typecheck`
-  stalled on module-cache lock contention building the cold SceneKit/SpriteKit
-  swiftmodules (timed out even unsandboxed). Two type errors a typecheck *would*
-  have caught were found by manual audit and **already fixed** in
-  `SceneKitPetRenderer.swift`: (1) removed a non-existent `SCNView.drawableQueue`
-  assignment; (2) rewrote `normalizeFraming`/`setFacing` to keep all math in
-  `CGFloat` (SCNVector3 components are `CGFloat` on the AppKit SceneKit overlay —
-  Float literals/casts wouldn't typecheck).
-- **Swift-6 strict-concurrency** diagnostics across the cross-file boundary.
-- **Resource resolution at runtime** — depends entirely on §2a folder references.
+**Audit verification:**
+- `make CONFIG=Debug build-signed` completes with GLTFKit2 and DracoSwift in the
+  app dependency graph.
+- `/Applications/OpenBurnBar.app` contains the GLB model set under
+  `Contents/Resources/Models`, embeds `GLTFKit2.framework`, and the app binary
+  links both GLTFKit2 and SceneKit.
+- If GLTFKit2 or native SceneKit cannot decode a specific GLB, that pet renders
+  the teal capsule fallback instead of a blank panel. 2D pets are fully real.
 
-**Caveats / TODOs surfaced:**
-- **GLTFKit2 not yet wired** — `model3d` pets render the teal capsule until §2c is
-  done. 2D pets are fully real now.
+**Caveats surfaced:**
 - **SpriteKit sheet lookup has no `subdirectory:` arg** (pre-existing, not edited
   this wave): `SpriteKitPetRenderer.loadImage` uses
   `bundle.url(forResource:withExtension:)` without a subdirectory, so it relies on
   the folder-ref flattening **or** needs `subdirectory:"Pets/<id>"` added. Worth a
   one-line follow-up when wiring resources so 2D pets load deterministically
   regardless of bundle layout.
-- **Golden-vector parity test will FAIL on decode** (not skip) — see §8. Fix
-  before relying on the cross-runtime conformance test.
+- **Golden-vector parity is opt-in** — see §8. The active Swift test skips unless
+  a Swift-compatible fixture is provided.
 - **DEVELOPMENT_TEAM** must be set for a signed Debug build (Keychain
   entitlement, App Sandbox already disabled).
 - **Naming, for docs:** `PetChatController` (singular) is the **live transport**
@@ -404,14 +384,13 @@ AppKit, SwiftUI, Security, Carbon.HIToolbox). Cross-file app symbols were
 
 ---
 
-## 8. ⚠ Golden-vector behavior-parity — SHAPE MISMATCH, FIX BEFORE RELYING ON IT
+## 8. Golden-vector behavior parity — opt-in until the fixture shape is converted
 
-The TS export exists at
-`/Users/dewclaw/Documents/Projects/imaginethat-llc/packages/petcore/test/golden/behavior.json`,
-but its shape does **not** match what
-`BehaviorTests.test_goldenVectors_matchWhenPresent` decodes. Because the file is
-present, the test does **not** `XCTSkip` — it will **throw and fail** on decode.
-Live bug, not a future nicety.
+The shared TS export shape does **not** match what
+`BehaviorTests.test_goldenVectors_matchWhenPresent` decodes, so the Swift test no
+longer probes machine-local absolute paths. It skips unless a Swift-compatible
+fixture is present at `packages/petcore/test/golden/behavior-swift.json` or
+`OPENBURNBAR_PET_BEHAVIOR_GOLDEN_JSON` points at one.
 
 - **Exported shape:** `{ "seeds": [1337,2024,7,99,524287], "graph": {...}, "vectors": [ { "seed": N, "states": ["wander","idle",…] }, … ] }`
   — multi-seed; each vector is a flat list of resulting states (no per-step
@@ -431,10 +410,12 @@ Live bug, not a future nicety.
    `{seed, graph, steps:[{trigger, expected}]}` shape into a sibling file the
    Swift test points at.
 
-Until reconciled, point `loadGoldenVectorData()` at a not-yet-existing
-trigger-paired file so it skips. Interpreter determinism itself is already covered
-by the other `BehaviorTests` cases (same-seed reproducibility, weighted selection,
-pinned Mulberry32 first value `2_693_262_067`), so parity is the only open item.
+Until reconciled, keep `loadGoldenVectorData()` pointed only at the converted
+trigger-paired fixture so local machines cannot accidentally fail or pass based on
+an unrelated checkout. Interpreter determinism itself is already covered by the
+other `BehaviorTests` cases (same-seed reproducibility, weighted selection,
+pinned Mulberry32 first value `2_693_262_067`), so cross-runtime fixture parity is
+the only open item.
 
 ---
 
