@@ -1271,7 +1271,7 @@ final class MercuryRouterTests: XCTestCase {
         let now = Date()
         var lockState = HermesRealtimeRelayMacLockState.loginWindow
         let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
-        let (router, _) = makeRouter(
+        let (router, sink) = makeRouter(
             consent: true,
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             remoteUnlockReadiness: readiness,
@@ -1291,7 +1291,8 @@ final class MercuryRouterTests: XCTestCase {
                     issuedAt: now
                 )
             ),
-            router: router
+            router: router,
+            sink: sink
         )
         await handleMirrorFrame(
             mirrorRequestFrame(
@@ -1306,7 +1307,8 @@ final class MercuryRouterTests: XCTestCase {
                     issuedAt: now
                 )
             ),
-            router: router
+            router: router,
+            sink: sink
         )
 
         XCTAssertTrue(
