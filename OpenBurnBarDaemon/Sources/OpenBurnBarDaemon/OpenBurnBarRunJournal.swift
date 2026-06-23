@@ -63,8 +63,7 @@ public actor BurnBarRunJournal {
             attributes: [.posixPermissions: 0o700]
         )
         let checkpointURL = checkpointFileURL(for: checkpoint.runID)
-        let persistedCheckpoint = try BurnBarRunJournalPrivacyRedactor.redacted(checkpoint)
-        let data = try encoder.encode(persistedCheckpoint)
+        let data = try encoder.encode(checkpoint)
         try data.write(to: checkpointURL, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: checkpointURL.path)
 
@@ -198,7 +197,7 @@ private enum BurnBarRunJournalPrivacyRedactor {
     ]
 
     private static let redactionExpressions: [(regex: NSRegularExpression, label: String)] = [
-        (#"(?i)\b(authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|bot[_-]?token|password|passwd|secret|cookie)\s*[:=]\s*[^,\s}]+"#, redactedMarker),
+        (#"(?i)["']?\b(authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|bot[_-]?token|client[_-]?secret|private[_-]?key|password|passwd|secret|cookie)\b["']?\s*[:=]\s*("[^"]*"|'[^']*'|[^,\s}\]]+)"#, redactedMarker),
         (#"(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}"#, redactedMarker),
         (#"\b\d{6,}:[A-Za-z0-9_\-]{16,}\b"#, redactedMarker)
     ].compactMap { pattern, label in
@@ -216,47 +215,10 @@ private enum BurnBarRunJournalPrivacyRedactor {
         )
     }
 
-    static func redacted(_ checkpoint: BurnBarRunJournalCheckpoint) throws -> BurnBarRunJournalCheckpoint {
-        try BurnBarRunJournalCheckpoint(
-            runID: checkpoint.runID,
-            clientID: checkpoint.clientID,
-            sessionID: checkpoint.sessionID,
-            phase: checkpoint.phase,
-            modelID: checkpoint.modelID,
-            originalPrompt: redactText(checkpoint.originalPrompt),
-            metadata: BurnBarRunCreateMetadata(sanitizeObject(checkpoint.metadata.storage)),
-            intent: redactedRequiredCodable(checkpoint.intent),
-            planOutline: redactedRequiredCodable(checkpoint.planOutline),
-            attempt: checkpoint.attempt,
-            errorMessage: checkpoint.errorMessage.map(redactText),
-            approvalRequest: redactedOptionalCodable(checkpoint.approvalRequest),
-            approvalResolvedForAttempt: checkpoint.approvalResolvedForAttempt,
-            activeApprovalID: checkpoint.activeApprovalID,
-            pendingApprovalToolInvocation: redactedOptionalCodable(checkpoint.pendingApprovalToolInvocation),
-            lastToolCall: redactedOptionalCodable(checkpoint.lastToolCall),
-            lastToolCallID: checkpoint.lastToolCallID,
-            workflowStep: checkpoint.workflowStep,
-            workflowReadContent: checkpoint.workflowReadContent.map(redactText),
-            companionToolCompleted: checkpoint.companionToolCompleted,
-            lastRecoveryDecision: redactedOptionalCodable(checkpoint.lastRecoveryDecision),
-            loopState: redactedRequiredCodable(checkpoint.loopState),
-            updatedAt: checkpoint.updatedAt
-        )
-    }
-
-    private static func redactedOptionalCodable<Value: Codable>(_ value: Value?) throws -> Value? {
-        guard let value else { return nil }
-        return try redactedRequiredCodable(value)
-    }
-
-    private static func redactedRequiredCodable<Value: Codable>(_ value: Value) throws -> Value {
-        try sanitize(BurnBarJSONValue.fromEncodable(value)).decode(Value.self)
-    }
-
     private static func sanitize(_ value: BurnBarJSONValue, key: String? = nil) -> BurnBarJSONValue {
         if let key, isSensitiveKey(key) {
             switch value {
-            case .bool, .number, .null:
+            case .bool, .null:
                 return value
             default:
                 return .string(redactedMarker)

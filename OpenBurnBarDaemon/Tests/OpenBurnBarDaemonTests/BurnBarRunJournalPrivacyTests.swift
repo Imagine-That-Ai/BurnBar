@@ -7,6 +7,8 @@ final class BurnBarRunJournalPrivacyTests: XCTestCase {
     func testAppendRedactsSensitiveEventPayloadBeforePersistence() async throws {
         let secret = "dummy-event-secret-value"
         let bearer = "Bearer dummy-event-token-1234567890"
+        let jsonSecret = "dummy-json-token-secret"
+        let numericSecret = "987654"
         let (journal, rootURL) = try makeJournal(name: "event-redaction")
         let runID = BurnBarRunID(rawValue: "run-event-redaction")
 
@@ -17,9 +19,11 @@ final class BurnBarRunJournalPrivacyTests: XCTestCase {
                 phase: .executingTool,
                 payload: .object([
                     "apiKey": .string(secret),
+                    "jsonSnippet": .string(#"{"access_token":"\#(jsonSecret)","password":"\#(numericSecret)"}"#),
                     "message": .string("Authorization: \(bearer)"),
                     "nested": .object([
                         "client_secret": .string(secret),
+                        "password": .number(Double(numericSecret)!),
                         "tokenUsage": .object([
                             "promptTokens": .number(3)
                         ])
@@ -36,22 +40,27 @@ final class BurnBarRunJournalPrivacyTests: XCTestCase {
         let journalURL = rootURL.appendingPathComponent("run-journal.jsonl")
         try assertFile(at: journalURL, doesNotContain: secret)
         try assertFile(at: journalURL, doesNotContain: bearer)
+        try assertFile(at: journalURL, doesNotContain: jsonSecret)
+        try assertFile(at: journalURL, doesNotContain: numericSecret)
 
         let events = try await journal.events(for: runID)
         let payload = try XCTUnwrap(events.first?.payload?.objectValue())
         XCTAssertEqual(payload["apiKey"], .string("[REDACTED]"))
         XCTAssertEqual(payload["nested"]?.objectValue()?["client_secret"], .string("[REDACTED]"))
+        XCTAssertEqual(payload["nested"]?.objectValue()?["password"], .string("[REDACTED]"))
         XCTAssertEqual(payload["nested"]?.objectValue()?["tokenUsage"]?.objectValue()?["promptTokens"], .number(3))
         XCTAssertEqual(payload["usage"]?.objectValue()?["input_tokens"], .number(42))
         XCTAssertEqual(payload["usage"]?.objectValue()?["output_tokens"], .number(7))
         XCTAssertFalse(payload["message"]?.stringValue()?.contains(bearer) ?? true)
+        XCTAssertFalse(payload["jsonSnippet"]?.stringValue()?.contains(jsonSecret) ?? true)
+        XCTAssertFalse(payload["jsonSnippet"]?.stringValue()?.contains(numericSecret) ?? true)
     }
 
-    func testCheckpointRedactsSensitivePromptMetadataAndToolStateBeforePersistence() async throws {
+    func testCheckpointPreservesExecutableToolStateForRestartResume() async throws {
         let promptSecret = "api_key=dummy-checkpoint-secret"
         let toolSecret = "dummy-tool-secret-value"
         let fileSecret = "password=dummy-file-secret"
-        let (journal, rootURL) = try makeJournal(name: "checkpoint-redaction")
+        let (journal, _) = try makeJournal(name: "checkpoint-redaction")
         let runID = BurnBarRunID(rawValue: "run-checkpoint-redaction")
         let requestedAt = Date(timeIntervalSince1970: 1_700_000_000)
         let intent = BurnBarAgentIntent(
@@ -135,25 +144,19 @@ final class BurnBarRunJournalPrivacyTests: XCTestCase {
             )
         )
 
-        let checkpointURL = rootURL
-            .appendingPathComponent("checkpoints", isDirectory: true)
-            .appendingPathComponent("\(runID.rawValue).json")
-        for secret in [promptSecret, toolSecret, fileSecret] {
-            try assertFile(at: checkpointURL, doesNotContain: secret)
-        }
-
         let loadedCheckpoint = try await journal.checkpoint(for: runID)
         let checkpoint = try XCTUnwrap(loadedCheckpoint)
-        XCTAssertEqual(checkpoint.metadata.storage["apiKey"], .string("[REDACTED]"))
-        XCTAssertEqual(checkpoint.metadata.storage["openAIAPIKey"], .string("[REDACTED]"))
+        XCTAssertEqual(checkpoint.metadata.storage["apiKey"], .string(toolSecret))
+        XCTAssertEqual(checkpoint.metadata.storage["openAIAPIKey"], .string(toolSecret))
         XCTAssertEqual(checkpoint.metadata.storage["inputTokens"], .number(42))
         XCTAssertEqual(checkpoint.metadata.storage["path"], .string("/tmp/openburnbar"))
-        XCTAssertFalse(checkpoint.originalPrompt.contains(promptSecret))
-        XCTAssertFalse(checkpoint.intent.objective.contains(promptSecret))
-        XCTAssertFalse(checkpoint.planOutline.objective.contains(promptSecret))
-        XCTAssertEqual(checkpoint.pendingApprovalToolInvocation?.arguments.objectValue()?["access_token"], .string("[REDACTED]"))
+        XCTAssertEqual(checkpoint.originalPrompt, "Please use \(promptSecret)")
+        XCTAssertTrue(checkpoint.intent.objective.contains(promptSecret))
+        XCTAssertTrue(checkpoint.planOutline.objective.contains(promptSecret))
+        XCTAssertEqual(checkpoint.pendingApprovalToolInvocation?.arguments.objectValue()?["access_token"], .string(toolSecret))
+        XCTAssertEqual(checkpoint.lastToolCall?.output?.objectValue()?["content"], .string(fileSecret))
         XCTAssertEqual(checkpoint.lastToolCall?.output?.objectValue()?["input_tokens"], .number(9))
-        XCTAssertFalse(checkpoint.workflowReadContent?.contains(fileSecret) ?? true)
+        XCTAssertEqual(checkpoint.workflowReadContent, "Read file with \(fileSecret)")
     }
 
     private func makeJournal(name: String) throws -> (journal: BurnBarRunJournal, rootURL: URL) {
