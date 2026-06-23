@@ -307,13 +307,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         }
 
         let clipNames = Array((definition.model3d?.clips ?? [:]).values)
-        let base = (glbName as NSString).deletingPathExtension
-        let ext = (glbName as NSString).pathExtension.isEmpty
-            ? "glb"
-            : (glbName as NSString).pathExtension
-
-        let url = Bundle.main.url(forResource: base, withExtension: ext, subdirectory: "Models")
-            ?? Bundle.main.url(forResource: base, withExtension: ext)
+        let url = PetModelResourceLocator.url(for: glbName, petID: definition.id)
 
         if let url, let loaded = loader.loadScene(at: url, clipNames: clipNames) {
             install(scene: loaded)

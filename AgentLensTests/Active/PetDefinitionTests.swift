@@ -13,9 +13,9 @@ final class PetDefinitionTests: XCTestCase {
         let form: PetForm
         let view: NSView
 
-        init(definition: PetDefinition) {
+        init(definition: PetDefinition, form: PetForm = .atlas2d(imageName: "sprite.png")) {
             self.definition = definition
-            self.form = .atlas2d(imageName: "sprite.png")
+            self.form = form
             self.view = NSView(frame: CGRect(x: 0, y: 0, width: 192, height: 208))
         }
 
@@ -200,6 +200,50 @@ final class PetDefinitionTests: XCTestCase {
     func test_defaultForm_prefersAtlas() throws {
         let def = try PetDefinition.decode(from: Data(modernPetdefJSON.utf8))
         XCTAssertEqual(def.defaultForm, .atlas2d(imageName: "sprite.png"))
+    }
+
+    func test_bundledModelPetResolvesItsGLBResource() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let model = try XCTUnwrap(def.model3d)
+
+        let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id))
+
+        XCTAssertEqual(url.lastPathComponent, "founder-gates-actions.glb")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @MainActor
+    func test_defaultGLBSceneLoaderLoadsBundledFounderModel() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let model = try XCTUnwrap(def.model3d)
+        let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: def.id))
+
+        let scene = DefaultGLBSceneLoader().loadScene(
+            at: url,
+            clipNames: Array(model.availableSemanticClips)
+        )
+
+        XCTAssertNotNil(scene)
+        XCTAssertFalse(scene?.rootNode.childNodes.isEmpty ?? true)
+    }
+
+    @MainActor
+    func test_setPetRebuildsRendererWithSelectedModelDefinition() throws {
+        let initial = try PetDefinition.decode(from: Data(modernPetdefJSON.utf8))
+        let model = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-gates"))
+        let modelForm = try XCTUnwrap(model.defaultForm)
+        let controller = PetCompanionController()
+        var factoryInputs: [(String, PetForm)] = []
+        controller.rendererFactory = { definition, form in
+            factoryInputs.append((definition.id, form))
+            return StubRenderer(definition: definition, form: form)
+        }
+
+        controller.start(with: initial)
+        controller.setPet(model, form: modelForm)
+
+        XCTAssertEqual(factoryInputs.last?.0, "founder-gates")
+        XCTAssertEqual(factoryInputs.last?.1, .model3d(glbName: "founder-gates-actions.glb"))
     }
 
     func test_roundTripEncodeDecode() throws {

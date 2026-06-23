@@ -354,3 +354,26 @@ extension PetDefinition {
         return nil
     }
 }
+
+// MARK: - 3D model resource lookup
+
+enum PetModelResourceLocator {
+    /// Resolve a bundled GLB for a pet. The current synced layout stores
+    /// definitions under `Models/<id>/petdef.json` and GLBs at `Models/<file>`,
+    /// while older/manual bundles may place the GLB beside the definition.
+    static func url(
+        for glbName: String,
+        petID: String,
+        in bundle: Bundle = .main
+    ) -> URL? {
+        let base = (glbName as NSString).deletingPathExtension
+        let ext = (glbName as NSString).pathExtension.isEmpty
+            ? "glb"
+            : (glbName as NSString).pathExtension
+
+        return bundle.url(forResource: base, withExtension: ext, subdirectory: "Models/\(petID)")
+            ?? bundle.url(forResource: base, withExtension: ext, subdirectory: "Models")
+            ?? bundle.url(forResource: "\(petID)/\(base)", withExtension: ext, subdirectory: "Models")
+            ?? bundle.url(forResource: base, withExtension: ext)
+    }
+}
