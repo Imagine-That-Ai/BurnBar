@@ -880,11 +880,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
         let account = "provider.\(providerID).apiKey"
         var storedAnthropicCredentialRefreshFailed = false
+        var failedAnthropicOrganizationUuid: String?
         if let secret = try secret(forService: service, account: account) {
             if let routed = try await routeSecret(from: secret, providerID: providerID) {
                 return routed
             }
             storedAnthropicCredentialRefreshFailed = Self.isExpiredClaudeOAuthSecret(secret, providerID: providerID)
+            failedAnthropicOrganizationUuid = Self.organizationUuid(fromClaudeOAuthSecret: secret, providerID: providerID)
             // routeSecret returned nil: the stored OAuth token is expired and
             // refresh failed. Fall through to alternative credential sources
             // instead of returning an unusable expired token that would cause
@@ -898,6 +900,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 }
                 storedAnthropicCredentialRefreshFailed = storedAnthropicCredentialRefreshFailed
                     || Self.isExpiredClaudeOAuthSecret(secret, providerID: providerID)
+                if failedAnthropicOrganizationUuid == nil {
+                    failedAnthropicOrganizationUuid = Self.organizationUuid(fromClaudeOAuthSecret: secret, providerID: providerID)
+                }
             }
         }
         // Try Claude Code's own credential file as a fallback. Claude Code
@@ -906,7 +911,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         // revoked or expired. This is the primary automatic recovery path for
         // expired Anthropic OAuth credentials.
         if storedAnthropicCredentialRefreshFailed,
-           let ccToken = try await claudeCodeCredentialSecret(for: providerID) {
+           let ccToken = try await claudeCodeCredentialSecret(
+            for: providerID,
+            expectedOrganizationUuid: failedAnthropicOrganizationUuid
+           ) {
             return ccToken
         }
         return hermesCredentialPoolSecret(for: providerID)
@@ -952,6 +960,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return false
         }
         return credential.isExpired()
+    }
+
+    private static func organizationUuid(fromClaudeOAuthSecret storedSecret: String, providerID: String) -> String? {
+        guard normalizedProviderID(providerID) == "anthropic" else { return nil }
+        return BurnBarClaudeOAuthRouteCredential.decode(storedSecret)?.organizationUuid
     }
 
     private func refreshClaudeOAuthCredential(
@@ -1132,7 +1145,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     /// The fallback is intentionally read-only: copying Claude Code's refresh
     /// token into BurnBar's Keychain would let two processes rotate the same
     /// OAuth session independently.
-    private func claudeCodeCredentialSecret(for providerID: String) async throws -> String? {
+    private func claudeCodeCredentialSecret(
+        for providerID: String,
+        expectedOrganizationUuid: String?
+    ) async throws -> String? {
         let trimmedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard trimmedProviderID == "anthropic",
               let claudeCodeCredentialsURL,
@@ -1143,7 +1159,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
               let raw = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty,
-              var credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
+              let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
+            return nil
+        }
+        if let expectedOrganizationUuid,
+           credential.organizationUuid != expectedOrganizationUuid {
             return nil
         }
         guard !credential.isExpired() else {

@@ -812,6 +812,7 @@ public actor BurnBarConfigStore {
         var keys: [String] = []
         for provider in snapshot.providers where provider.isEnabled {
             guard provider.providerID.lowercased() == "anthropic" else { continue }
+            keys.append(provider.providerID)
             for slot in provider.credentialSlots where slot.isEnabled {
                 keys.append(slotSecretStoreKey(providerID: provider.providerID, slotID: slot.slotID))
             }
