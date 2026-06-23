@@ -144,17 +144,20 @@ private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(fra
         return null
     }
     media.focusContext?.let { focus -> focusContextHandler?.invoke(focus) }
-    // F7: after a media-frame-AEAD session is negotiated, every stream frame
-    // must be OBMFA1 sealed and must open under the session key with the
-    // cleartext position rebuilt into the AAD. Plaintext legacy frames remain
-    // valid only when no session key exists. Mirrors the iOS coordinator read loop.
+    // F7: after a media-frame-AEAD session is negotiated and the Mac has
+    // advertised support, every stream frame must be OBMFA1 sealed and must open
+    // under the session key with the cleartext position rebuilt into the AAD.
+    // Plaintext legacy frames remain valid until both sides confirm the sealed
+    // lane. Mirrors the iOS coordinator read loop.
+    val requiresSealedFrames =
+        mediaFrameSealKey != null && inboundLastPeerCapabilities.value.contains(MediaFrameAeadNegotiation.CAPABILITY)
     val data =
         runCatching { Base64.getDecoder().decode(encoded) }.getOrNull()
             ?.let { chunkBytes -> inboundFrameChunkAssembler.accept(media.frameChunk, chunkBytes) }
             ?.let { assembled ->
                 when {
                     MediaFrameAead.isSealedEnvelope(assembled) -> openSealedMercuryMediaFrame(assembled, media)
-                    mediaFrameSealKey != null -> null
+                    requiresSealedFrames -> null
                     else -> assembled
                 }
             }

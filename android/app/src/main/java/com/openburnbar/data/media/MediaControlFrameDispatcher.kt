@@ -25,6 +25,7 @@ internal data class MediaControlFrameDispatcherHandlers(
      * plaintext frames are dropped fail-closed.
      */
     val mediaFrameSealKeyProvider: () -> ByteArray? = { null },
+    val peerCapabilitiesProvider: () -> Set<String> = { emptySet() },
 )
 
 internal data class MediaControlFrameDispatcherCallbacks(
@@ -119,15 +120,18 @@ internal class MediaControlFrameDispatcher(
                 null
             }
         if (assembled == null) return
-        // F7: after a media-frame-AEAD session is negotiated, every stream
-        // frame must be OBMFA1 sealed and must open under the session key with
-        // the cleartext position rebuilt into the AAD. Plaintext legacy frames
-        // remain valid only when no session key exists.
+        // F7: after a media-frame-AEAD session is negotiated and the Mac has
+        // advertised support, every stream frame must be OBMFA1 sealed and must
+        // open under the session key with the cleartext position rebuilt into
+        // the AAD. Plaintext legacy frames remain valid until both sides confirm
+        // the sealed lane.
         val sealKey = handlers.mediaFrameSealKeyProvider()
+        val requiresSealedFrames =
+            sealKey != null && handlers.peerCapabilitiesProvider().contains(MediaFrameAeadNegotiation.CAPABILITY)
         val data =
             when {
                 MediaFrameAead.isSealedEnvelope(assembled) -> openSealedFrame(assembled, media, sealKey) ?: return
-                sealKey != null -> return
+                requiresSealedFrames -> return
                 else -> assembled
             }
         runCatching {

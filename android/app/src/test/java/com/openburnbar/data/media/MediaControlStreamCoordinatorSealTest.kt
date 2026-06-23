@@ -29,9 +29,10 @@ private const val SEAL_FRAME_INDEX = 3
  * F7 — the coordinator (live read loop) and the [MediaControlFrameDispatcher]
  * both open sealed (OBMFA1) screen frames after chunk reassembly and DROP, fail
  * closed, anything that does not open: tampered ciphertext, a wrong cleartext
- * position, a missing session key, or post-negotiation plaintext. Plaintext
- * legacy frames flow only when no seal session negotiates, and `requestMirror`
- * stays byte-identical when no seal session negotiates.
+ * position, a missing session key, or confirmed post-negotiation plaintext.
+ * Plaintext legacy frames flow until the peer advertises media-frame-AEAD
+ * support, and `requestMirror` stays byte-identical when no seal session
+ * negotiates.
  */
 class MediaControlStreamCoordinatorSealTest {
     private val sessionKey = ByteArray(32) { index -> (index + 11).toByte() }
@@ -85,6 +86,7 @@ class MediaControlStreamCoordinatorSealTest {
         val received = CompletableDeferred<MediaFrame>()
         coordinator.mirrorFrameHandler = { frame -> received.complete(frame) }
         coordinator.mediaFrameSealKey = sessionKey
+        coordinator.inboundLastPeerCapabilities.value = setOf(MediaFrameAeadNegotiation.CAPABILITY)
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
 
@@ -216,7 +218,11 @@ class MediaControlStreamCoordinatorSealTest {
 
     // MARK: parallel dispatcher
 
-    private fun dispatcher(sealKey: ByteArray?, onFrame: (MediaFrame) -> Unit) = MediaControlFrameDispatcher(
+    private fun dispatcher(
+        sealKey: ByteArray?,
+        peerCapabilities: Set<String> = emptySet(),
+        onFrame: (MediaFrame) -> Unit,
+    ) = MediaControlFrameDispatcher(
         handlers =
         MediaControlFrameDispatcherHandlers(
             receiverProvider = { null },
@@ -224,6 +230,7 @@ class MediaControlStreamCoordinatorSealTest {
             mirrorFrameV2Handler = { null },
             focusContextHandler = { null },
             mediaFrameSealKeyProvider = { sealKey },
+            peerCapabilitiesProvider = { peerCapabilities },
         ),
         callbacks =
         MediaControlFrameDispatcherCallbacks(
@@ -246,7 +253,11 @@ class MediaControlStreamCoordinatorSealTest {
     @Test
     fun `dispatcher opens sealed frames after reassembly and drops failures`() = runTest {
         val delivered = mutableListOf<MediaFrame>()
-        val withKey = dispatcher(sealKey = sessionKey) { delivered += it }
+        val withKey =
+            dispatcher(
+                sealKey = sessionKey,
+                peerCapabilities = setOf(MediaFrameAeadNegotiation.CAPABILITY),
+            ) { delivered += it }
 
         // valid sealed frame → delivered
         withKey.dispatch(streamFrame(sealedEncodedFrame(), position()), noopAckSender)
@@ -279,6 +290,19 @@ class MediaControlStreamCoordinatorSealTest {
             noopAckSender,
         )
         assertEquals(1, delivered.size)
+    }
+
+    @Test
+    fun `dispatcher keeps plaintext fallback until peer advertises media frame aead`() = runTest {
+        val delivered = mutableListOf<MediaFrame>()
+        val withLocalKeyOnly = dispatcher(sealKey = sessionKey) { delivered += it }
+
+        withLocalKeyOnly.dispatch(
+            streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x44))), position = null),
+            noopAckSender,
+        )
+
+        assertEquals(listOf(sourceFrame(byteArrayOf(0x44))), delivered)
     }
 
     @Test
