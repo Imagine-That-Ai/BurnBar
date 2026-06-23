@@ -262,7 +262,8 @@ if (!Array.isArray(pets)) {
 
 // Best-effort persona sidecar — pets keep BurnBar's default voice when it is absent.
 try {
-  personas = JSON.parse((await readMaybeRemote(source, "pet-personas.json")).toString("utf8"));
+  const parsedPersonas = JSON.parse((await readMaybeRemote(source, "pet-personas.json")).toString("utf8"));
+  personas = parsedPersonas && typeof parsedPersonas === "object" && !Array.isArray(parsedPersonas) ? parsedPersonas : {};
 } catch {
   /* no pet-personas.json → default voice */
 }
