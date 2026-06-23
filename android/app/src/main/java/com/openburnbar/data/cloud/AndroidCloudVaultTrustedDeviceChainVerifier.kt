@@ -14,7 +14,9 @@ import kotlinx.coroutines.tasks.await
 private val trustedDeviceP256Parameters: ECParameterSpec by lazy {
     val generator = KeyPairGenerator.getInstance("EC")
     generator.initialize(ECGenParameterSpec("secp256r1"))
-    (generator.generateKeyPair().public as ECPublicKey).params
+    val publicKey = generator.generateKeyPair().public as? ECPublicKey
+        ?: error("Trusted-device escrow verifier requires a P-256 public key.")
+    publicKey.params
 }
 
 data class AndroidCloudVaultVerifiedTrustedDevice(
