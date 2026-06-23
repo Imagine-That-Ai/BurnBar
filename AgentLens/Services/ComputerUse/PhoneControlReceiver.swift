@@ -140,25 +140,36 @@ public final class PhoneControlReceiver: Sendable {
                 intent.authority.counter
             )
         case .pointerClick:
-            guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY, displayId: intent.displayId) else {
-                await emitDeniedFrame(
-                    reason: .unknown,
-                    detail: "malformed_coordinates",
-                    uid: frame.uid,
-                    connectionId: frame.connectionId
+            if intent.normalizedX != nil || intent.normalizedY != nil {
+                guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY, displayId: intent.displayId) else {
+                    await emitDeniedFrame(
+                        reason: .unknown,
+                        detail: "malformed_coordinates",
+                        uid: frame.uid,
+                        connectionId: frame.connectionId
+                    )
+                    return
+                }
+                await dispatchHandler(
+                    .macInput(MacInputAction(
+                        kind: .click,
+                        displayX: displayX,
+                        displayY: displayY,
+                        mouseButton: intent.mouseButton ?? 0
+                    )),
+                    sessionId,
+                    intent.authority.counter
                 )
-                return
+            } else {
+                await dispatchHandler(
+                    .macInput(MacInputAction(
+                        kind: .pointerClick,
+                        mouseButton: intent.mouseButton ?? 0
+                    )),
+                    sessionId,
+                    intent.authority.counter
+                )
             }
-            await dispatchHandler(
-                .macInput(MacInputAction(
-                    kind: .click,
-                    displayX: displayX,
-                    displayY: displayY,
-                    mouseButton: intent.mouseButton ?? 0
-                )),
-                sessionId,
-                intent.authority.counter
-            )
         case .tap, .scroll, .dragStart, .dragMove, .dragEnd:
             guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY, displayId: intent.displayId) else {
                 await emitDeniedFrame(
@@ -211,7 +222,7 @@ public final class PhoneControlReceiver: Sendable {
         case .shortcut: return .shortcut
         case .scroll: return .scroll
         case .pointerMove: return .pointerMove
-        case .pointerClick: return .click
+        case .pointerClick: return .pointerClick
         case .panic: return .click  // unreachable; panic short-circuits above
         }
     }

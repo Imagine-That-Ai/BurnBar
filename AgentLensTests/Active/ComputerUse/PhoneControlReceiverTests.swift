@@ -1244,7 +1244,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
     }
 
-    func testPointerClickWithoutCoordinatesEmitDeniedFrame() async throws {
+    func testPointerClickWithoutCoordinatesDispatchesCurrentPointerAction() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()
         let placeholder = emptyAuthority()
@@ -1267,6 +1267,58 @@ final class PhoneControlReceiverTests: XCTestCase {
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
             sessionId: ComputerUseSessionID("session-phone-pointer-click"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(intent))
+
+        let dispatched = try await capture.firstAction()
+        XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone-pointer-click"))
+        guard case let .macInput(action) = dispatched.action else {
+            XCTFail("expected macInput action")
+            return
+        }
+        XCTAssertEqual(action.kind, .pointerClick)
+        XCTAssertNil(action.displayX)
+        XCTAssertNil(action.displayY)
+        XCTAssertEqual(action.mouseButton, 0)
+        let deniedFrames = await capture.deniedFrames()
+        XCTAssertTrue(deniedFrames.isEmpty)
+    }
+
+    func testPointerClickWithPartialCoordinatesEmitDeniedFrame() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerClick,
+            normalizedX: 0.5,
+            mouseButton: 0,
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            intent: intent,
+            peerNodeId: "phone-peer-pointer-click-partial",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-pointer-click-partial", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-pointer-click-partial"),
             validator: validator,
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
