@@ -133,7 +133,7 @@ describe("buildConfig characterization (via getConfig)", () => {
     // App Store defaults.
     expect(cfg.appStore.bundleId).toBe("com.openburnbar.app");
     expect(cfg.appStore.appAppleId).toBeUndefined();
-    expect(cfg.appStore.environment).toBe("Sandbox");
+    expect(cfg.appStore.environment).toBe("Production");
     expect(cfg.appStore.enableOnlineChecks).toBe(true);
     expect(cfg.appStore.autoFallbackEnvironment).toBe(true);
     expect(cfg.appStore.asc).toEqual({ issuerId: "", keyId: "", privateKeyP8: "" });

@@ -813,7 +813,7 @@ test("reconcileEntitlement rejects when claimedUid disagrees with binding", asyn
   );
 });
 
-test("reconcileEntitlement allows first-time signed-out purchase restore when unclaimed", async () => {
+test("reconcileEntitlement rejects first-time client restore without appAccountToken", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
@@ -829,22 +829,22 @@ test("reconcileEntitlement allows first-time signed-out purchase restore when un
   const verifier = fakeVerifier({ seed });
   const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
 
-  const result = await reconcileEntitlement(
-    db,
-    cfg,
-    {
-      signedTransactionJWS: seed.raw,
-      claimedUid: "uid-signed-out",
-      source: "client_callable",
-      productID,
-    },
-    { verifier, fetchLive },
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-signed-out",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /binding_unknown/,
   );
 
-  assert.equal(result.uid, "uid-signed-out");
-  assert.equal(result.changed, true);
-  assert.equal(result.entitlement.originalTransactionID, "otx-signed-out");
-  assert.ok(writes.some((w) => w.path === "users/uid-signed-out/entitlements/hosted_quota_sync"));
+  assert.equal(writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length, 0);
 });
 
 test("reconcileEntitlement rejects no-token callable restore claimed by another user", async () => {
