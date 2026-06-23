@@ -20,21 +20,20 @@ struct MissionControlJournalRepository {
         }
 
         let content = try String(contentsOf: eventsFileURL, encoding: .utf8)
-        return content
-            .split(whereSeparator: \.isNewline)
-            .compactMap { line -> BurnBarControllerEvent? in
-                guard line.isEmpty == false else { return nil }
-                if Task.isCancelled { return nil }
-                do {
-                    return try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8))
-                } catch {
-                    logger.error(
-                        "controller_event_skipped",
-                        metadata: ["error": error.localizedDescription]
-                    )
-                    return nil
-                }
+        var events: [BurnBarControllerEvent] = []
+        for line in content.split(whereSeparator: \.isNewline) {
+            guard line.isEmpty == false else { continue }
+            try Task.checkCancellation()
+            do {
+                events.append(try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8)))
+            } catch {
+                logger.error(
+                    "controller_event_skipped",
+                    metadata: ["error": error.localizedDescription]
+                )
             }
+        }
+        return events
     }
 
     func readRecentEventsFromDisk(limit: Int, decoder: JSONDecoder) throws -> [BurnBarControllerEvent] {
@@ -97,6 +96,17 @@ struct MissionControlJournalRepository {
         } else {
             try data.write(to: eventsFileURL, options: .atomic)
         }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: eventsFileURL.path)
+    }
+
+    func writeEventsToDisk(_ events: [BurnBarControllerEvent], encoder: JSONEncoder) throws {
+        try Self.ensureParentDirectory(for: eventsFileURL)
+        var data = Data()
+        for event in events {
+            data.append(try encoder.encode(event))
+            data.append(Data([0x0A]))
+        }
+        try data.write(to: eventsFileURL, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: eventsFileURL.path)
     }
 

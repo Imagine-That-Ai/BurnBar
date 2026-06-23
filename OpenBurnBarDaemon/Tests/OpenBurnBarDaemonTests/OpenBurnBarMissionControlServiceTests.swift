@@ -687,7 +687,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let store = BurnBarMissionControlStore(
             eventsFileURL: eventsFileURL,
             projectionFileURL: projectionFileURL,
-            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
         )
 
         let loadedProject = try await store.project(slug: "persisted")
@@ -4263,7 +4264,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
         executionReadinessGate: BurnBarExecutionReadinessGate? = { _, _ in nil },
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
+        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -4278,7 +4280,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let store = BurnBarMissionControlStore(
             eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
             projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: notificationSecretStore
         )
         let service = BurnBarMissionControlService(
             store: store,
@@ -5399,7 +5402,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         name: String,
         transport: BurnBarMissionControlTransport = .live(),
         executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
+        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
     ) throws -> (service: BurnBarMissionControlService, store: BurnBarMissionControlStore, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -5408,7 +5412,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let store = BurnBarMissionControlStore(
             eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
             projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: notificationSecretStore
         )
         let service = BurnBarMissionControlService(
             store: store,
@@ -5429,7 +5434,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         events: [BurnBarControllerEvent],
         transport: BurnBarMissionControlTransport = .live(),
         executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
+        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -5441,7 +5447,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let store = BurnBarMissionControlStore(
             eventsFileURL: eventsFileURL,
             projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: notificationSecretStore
         )
         let service = BurnBarMissionControlService(
             store: store,

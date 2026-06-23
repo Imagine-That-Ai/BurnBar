@@ -2,10 +2,14 @@ import OpenBurnBarCore
 import Foundation
 
 public actor BurnBarMissionControlStore {
+    static let currentNotificationSecretMigrationVersion = 1
+    private static let missingTelegramBotTokenError = "Telegram is marked configured, but the daemon keychain token is unavailable. Re-enter the bot token to restore delivery."
+
     private let eventsFileURL: URL
     private let projectionFileURL: URL
     private let logger: BurnBarDaemonLogger
     private let journal: MissionControlJournalRepository
+    private let notificationSecretStore: any BurnBarNotificationSecretStoring
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -24,11 +28,13 @@ public actor BurnBarMissionControlStore {
     public init(
         eventsFileURL: URL = BurnBarDaemonPaths.defaultControllerEventJournalURL,
         projectionFileURL: URL = BurnBarDaemonPaths.defaultControllerProjectionURL,
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "mission-control-store")
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "mission-control-store"),
+        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarNotificationKeychainSecretStore()
     ) {
         self.eventsFileURL = eventsFileURL
         self.projectionFileURL = projectionFileURL
         self.logger = logger
+        self.notificationSecretStore = notificationSecretStore
         self.journal = MissionControlJournalRepository(
             eventsFileURL: eventsFileURL,
             projectionFileURL: projectionFileURL,
@@ -714,7 +720,23 @@ public actor BurnBarMissionControlStore {
 
     public func notificationConfig() throws -> BurnBarNotificationConfig {
         try ensureLoaded()
-        return projection?.notificationConfig ?? BurnBarMissionControlProjectionFile.defaultNotificationConfig()
+        return try publicNotificationConfigResolvingSecretState(
+            projection?.notificationConfig ?? BurnBarMissionControlProjectionFile.defaultNotificationConfig()
+        )
+    }
+
+    public func notificationRuntimeConfig() throws -> BurnBarNotificationConfig {
+        try ensureLoaded()
+        let config = publicNotificationConfig(
+            projection?.notificationConfig ?? BurnBarMissionControlProjectionFile.defaultNotificationConfig()
+        )
+        guard config.telegram.botTokenConfigured,
+              let token = try notificationSecretStore.telegramBotToken()?.nonEmpty else {
+            try noteMissingTelegramBotTokenIfNeeded()
+            return notificationConfig(config, botTokenConfigured: false, botTokenHint: nil)
+        }
+        try clearMissingTelegramBotTokenIfNeeded()
+        return notificationConfig(config, withTelegramToken: token)
     }
 
     public func telegramUpdateOffset() throws -> Int? {
@@ -761,13 +783,15 @@ public actor BurnBarMissionControlStore {
     }
 
     public func updateNotificationConfig(_ request: BurnBarNotificationConfigUpdateRequest) throws -> BurnBarNotificationConfigResponse {
+        try ensureLoaded()
+        let sanitizedConfig = try notificationConfigForPersistence(request.config)
         let event = try appendEvent(
             family: .notification,
             eventType: "notification_config_updated",
             projectSlug: "openburnbar",
             summary: "Notification configuration updated",
             detail: nil,
-            payload: try BurnBarJSONValue.fromEncodable(request.config)
+            payload: try BurnBarJSONValue.fromEncodable(sanitizedConfig)
         )
         _ = event
         return BurnBarNotificationConfigResponse(config: try notificationConfig())
@@ -775,7 +799,14 @@ public actor BurnBarMissionControlStore {
 
     public func notificationHealth() throws -> BurnBarNotificationHealthResponse {
         try ensureLoaded()
-        return BurnBarNotificationHealthResponse(health: summaryEnricher.makeNotificationHealth())
+        let resolvedConfig = try notificationConfig()
+        var healthProjection = projection
+        healthProjection?.notificationConfig = resolvedConfig
+        let enricher = MissionControlSummaryEnricher(
+            projection: healthProjection,
+            cachedEvents: cachedRecentEvents ?? cachedEvents
+        )
+        return BurnBarNotificationHealthResponse(health: enricher.makeNotificationHealth())
     }
 
     public func recordSimulatorRun(_ request: BurnBarSimulatorRunRequest) throws -> BurnBarSimulatorRunResponse {
@@ -955,6 +986,8 @@ public actor BurnBarMissionControlStore {
             return
         }
 
+        try migrateNotificationSecretPersistenceIfNeeded()
+
         if loadEventsForRecentActivity {
             _ = try loadRecentEventsForSummary()
         }
@@ -968,6 +1001,8 @@ public actor BurnBarMissionControlStore {
             try Task.checkCancellation()
             try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         }
+        try sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: false)
+        projection?.notificationSecretMigrationVersion = Self.currentNotificationSecretMigrationVersion
         try writeProjection()
     }
 
@@ -975,7 +1010,9 @@ public actor BurnBarMissionControlStore {
         if let cachedEvents {
             return cachedEvents
         }
-        let events = try journal.readEventsFromDisk(decoder: decoder)
+        let events = try sanitizedNotificationEvents(
+            journal.readEventsFromDisk(decoder: decoder)
+        )
         try Task.checkCancellation()
         cachedEvents = events
         cachedRecentEvents = nil
@@ -990,6 +1027,192 @@ public actor BurnBarMissionControlStore {
         let events = try journal.readRecentEventsFromDisk(limit: limit, decoder: decoder)
         cachedRecentEvents = events
         return events
+    }
+
+    private func migrateNotificationSecretPersistenceIfNeeded() throws {
+        guard projection?.notificationSecretMigrationVersion != Self.currentNotificationSecretMigrationVersion else {
+            return
+        }
+        try Task.checkCancellation()
+        _ = try loadEvents()
+        try Task.checkCancellation()
+        try sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: false)
+        projection?.notificationSecretMigrationVersion = Self.currentNotificationSecretMigrationVersion
+        try writeProjection()
+    }
+
+    private func sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: Bool = true) throws {
+        guard let currentConfig = projection?.notificationConfig else { return }
+        let sanitizedConfig = try notificationConfigForPersistence(
+            currentConfig,
+            existingHint: currentConfig.telegram.botTokenHint
+        )
+        guard sanitizedConfig != currentConfig else { return }
+        projection?.notificationConfig = sanitizedConfig
+        if writeImmediately {
+            try writeProjection()
+        }
+    }
+
+    private func sanitizedNotificationEvents(
+        _ events: [BurnBarControllerEvent]
+    ) throws -> [BurnBarControllerEvent] {
+        var sanitizedEvents: [BurnBarControllerEvent] = []
+        sanitizedEvents.reserveCapacity(events.count)
+        var didChange = false
+        var latestHint: String?
+
+        for event in events {
+            guard event.family == .notification,
+                  event.eventType == "notification_config_updated" else {
+                sanitizedEvents.append(event)
+                continue
+            }
+
+            let config = try MissionControlProjectionReducer.decodePayload(
+                BurnBarNotificationConfig.self,
+                from: event
+            )
+            let sanitizedConfig = try notificationConfigForPersistence(config, existingHint: latestHint)
+            latestHint = sanitizedConfig.telegram.botTokenHint
+            if sanitizedConfig == config {
+                sanitizedEvents.append(event)
+                continue
+            }
+
+            var metadata = event.metadata
+            metadata["payload"] = try BurnBarJSONValue.fromEncodable(sanitizedConfig)
+            sanitizedEvents.append(
+                BurnBarControllerEvent(
+                    id: event.id,
+                    family: event.family,
+                    eventType: event.eventType,
+                    projectSlug: event.projectSlug,
+                    recordedAt: event.recordedAt,
+                    sequence: event.sequence,
+                    summary: event.summary,
+                    detail: event.detail,
+                    metadata: metadata,
+                    isReplay: event.isReplay
+                )
+            )
+            didChange = true
+        }
+
+        if didChange {
+            try Task.checkCancellation()
+            try journal.writeEventsToDisk(sanitizedEvents, encoder: encoder)
+        }
+        return sanitizedEvents
+    }
+
+    private func notificationConfigForPersistence(
+        _ config: BurnBarNotificationConfig,
+        existingHint: String? = nil
+    ) throws -> BurnBarNotificationConfig {
+        if let rawToken = config.telegram.botToken?.nonEmpty {
+            try notificationSecretStore.setTelegramBotToken(rawToken)
+            return notificationConfig(
+                config,
+                botTokenConfigured: true,
+                botTokenHint: config.telegram.botTokenHint?.nonEmpty ?? existingHint?.nonEmpty ?? "configured"
+            )
+        }
+
+        if config.telegram.botTokenConfigured {
+            return notificationConfig(
+                config,
+                botTokenConfigured: true,
+                botTokenHint: config.telegram.botTokenHint?.nonEmpty ?? existingHint?.nonEmpty ?? "configured"
+            )
+        }
+
+        try notificationSecretStore.setTelegramBotToken(nil)
+        return notificationConfig(config, botTokenConfigured: false, botTokenHint: nil)
+    }
+
+    private func publicNotificationConfig(_ config: BurnBarNotificationConfig) -> BurnBarNotificationConfig {
+        let tokenConfigured = config.telegram.botTokenConfigured || config.telegram.botToken?.nonEmpty != nil
+        return notificationConfig(
+            config,
+            botTokenConfigured: tokenConfigured,
+            botTokenHint: tokenConfigured ? config.telegram.botTokenHint?.nonEmpty : nil
+        )
+    }
+
+    private func publicNotificationConfigResolvingSecretState(
+        _ config: BurnBarNotificationConfig
+    ) throws -> BurnBarNotificationConfig {
+        let publicConfig = publicNotificationConfig(config)
+        guard publicConfig.telegram.botTokenConfigured else {
+            try clearMissingTelegramBotTokenIfNeeded()
+            return publicConfig
+        }
+        guard try notificationSecretStore.telegramBotToken()?.nonEmpty != nil else {
+            try noteMissingTelegramBotTokenIfNeeded()
+            return notificationConfig(publicConfig, botTokenConfigured: false, botTokenHint: nil)
+        }
+        try clearMissingTelegramBotTokenIfNeeded()
+        return publicConfig
+    }
+
+    private func noteMissingTelegramBotTokenIfNeeded() throws {
+        let channel = BurnBarNotificationChannel.telegram.rawValue
+        guard projection?.transportErrors[channel] != Self.missingTelegramBotTokenError else {
+            return
+        }
+        projection?.transportErrors[channel] = Self.missingTelegramBotTokenError
+        try writeProjection()
+    }
+
+    private func clearMissingTelegramBotTokenIfNeeded() throws {
+        let channel = BurnBarNotificationChannel.telegram.rawValue
+        guard projection?.transportErrors[channel] == Self.missingTelegramBotTokenError else {
+            return
+        }
+        projection?.transportErrors.removeValue(forKey: channel)
+        try writeProjection()
+    }
+
+    private func notificationConfig(
+        _ config: BurnBarNotificationConfig,
+        botTokenConfigured: Bool,
+        botTokenHint: String?
+    ) -> BurnBarNotificationConfig {
+        BurnBarNotificationConfig(
+            defaultSnoozeMinutes: config.defaultSnoozeMinutes,
+            nudgeHoursLocal: config.nudgeHoursLocal,
+            local: config.local,
+            telegram: BurnBarTelegramNotificationConfig(
+                isEnabled: config.telegram.isEnabled,
+                botTokenConfigured: botTokenConfigured,
+                botToken: nil,
+                botTokenHint: botTokenHint,
+                chatID: config.telegram.chatID,
+                supportedCommands: config.telegram.supportedCommands
+            ),
+            calendar: config.calendar
+        )
+    }
+
+    private func notificationConfig(
+        _ config: BurnBarNotificationConfig,
+        withTelegramToken token: String
+    ) -> BurnBarNotificationConfig {
+        BurnBarNotificationConfig(
+            defaultSnoozeMinutes: config.defaultSnoozeMinutes,
+            nudgeHoursLocal: config.nudgeHoursLocal,
+            local: config.local,
+            telegram: BurnBarTelegramNotificationConfig(
+                isEnabled: config.telegram.isEnabled,
+                botTokenConfigured: true,
+                botToken: token,
+                botTokenHint: config.telegram.botTokenHint,
+                chatID: config.telegram.chatID,
+                supportedCommands: config.telegram.supportedCommands
+            ),
+            calendar: config.calendar
+        )
     }
 
     private func projectValue(_ slug: String) throws -> BurnBarReviewProjectSnapshot {
