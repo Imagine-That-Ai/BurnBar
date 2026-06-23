@@ -515,6 +515,11 @@ service cloud.firestore {
         && activeProMaxEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data);
     }
 
+    function hasActiveDataVaultEntitlement(userId) {
+      return hasActiveProMaxEntitlement(userId)
+        || hasActiveUltraEntitlement(userId);
+    }
+
     function wandFanOutCap(userId) {
       // BEGIN GENERATED: wand-parallel-caps — do not hand-edit.
       // Source: packages/entitlements/src/catalog.ts (WAND_PARALLEL_CAPS).
@@ -2619,8 +2624,9 @@ service cloud.firestore {
     }
 
     // Approved chat semantic memories. The client may write only sealed fact
-    // envelopes and opaque source HMACs; no plaintext bodies, citations, or raw
-    // vectors are valid fields.
+    // envelopes and opaque source HMACs after the server-reconciled Data Vault
+    // entitlement is active; no plaintext bodies, citations, or raw vectors are
+    // valid fields.
     match /users/{userId}/memory_facts/{memoryDocId} {
       function validMemoryFactKeys() {
         return request.resource.data.keys().hasOnly([
@@ -2641,6 +2647,7 @@ service cloud.firestore {
 
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
+        && hasActiveDataVaultEntitlement(userId)
         && validMemoryFactKeys()
         && request.resource.data.uid == userId
         && request.resource.data.docID == memoryDocId
