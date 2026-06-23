@@ -106,12 +106,17 @@ private suspend fun loadEscrowPublicKeyData(userRef: DocumentReference, deviceId
     val escrowPublicKeyB64 =
         escrowPublicKeyDoc.getString("publicKeyData")
             ?: error("Trusted device ${deviceId}_$keyVersion has no escrow public key.")
+    val escrowPublicKeyData =
+        runCatching { CloudVaultCryptoSupport.decodeBase64(escrowPublicKeyB64) }
+            .getOrElse { error("Trusted device ${deviceId}_$keyVersion escrow public key is invalid.") }
+    val derivedEscrowFingerprint = CloudVaultCrypto.sha256Base64(escrowPublicKeyData)
     check(
         escrowPublicKeyDoc.getString("deviceId") == deviceId &&
             escrowPublicKeyDoc.getLong("keyVersion")?.toInt() == keyVersion &&
-            escrowPublicKeyDoc.getString("publicKeyFingerprint") == escrowFingerprint,
+            escrowPublicKeyDoc.getString("publicKeyFingerprint") == escrowFingerprint &&
+            derivedEscrowFingerprint == escrowFingerprint,
     ) { "Trusted device ${deviceId}_$keyVersion escrow public key is invalid." }
-    return CloudVaultCryptoSupport.decodeBase64(escrowPublicKeyB64)
+    return escrowPublicKeyData
 }
 
 private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, deviceId: String, keyVersion: Int): TrustedSignalIdentityMaterial {
@@ -124,16 +129,21 @@ private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, devic
     val signalFingerprint =
         signalDoc.getString("publicKeyFingerprint")
             ?: error("Trusted device $signalIdentityKeyId has no Signal identity fingerprint.")
+    val signalPublicKeyData =
+        runCatching { CloudVaultCryptoSupport.decodeBase64(signalPublicKeyB64) }
+            .getOrElse { error("Trusted device $signalIdentityKeyId has an invalid Signal identity.") }
+    val derivedSignalFingerprint = CloudVaultCrypto.sha256Base64(signalPublicKeyData)
     check(
         signalDoc.getString("deviceId") == deviceId &&
             signalDoc.getString("identityKeyId") == signalIdentityKeyId &&
             signalDoc.getLong("keyVersion")?.toInt() == keyVersion &&
-            signalDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
+            signalDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION &&
+            derivedSignalFingerprint == signalFingerprint,
     ) { "Trusted device $signalIdentityKeyId has an invalid Signal identity." }
     return TrustedSignalIdentityMaterial(
         identityKeyId = signalIdentityKeyId,
         fingerprint = signalFingerprint,
-        publicKeyData = CloudVaultCryptoSupport.decodeBase64(signalPublicKeyB64),
+        publicKeyData = signalPublicKeyData,
     )
 }
 
