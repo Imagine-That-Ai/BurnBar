@@ -39,6 +39,54 @@ final class BurnBarDaemonServerPeerAuthEnforcementTests: XCTestCase {
         await server.stop()
     }
 
+    func test_enforcedServer_scopesSignedCLIToSupportMethods_evenWithValidToken() async throws {
+        let socketPath = makeSocketPath(name: "peer-auth-cli-scoped")
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            peerAuthenticator: BurnBarDaemonPeerAuthenticator(enforced: true) { _ in
+                .cli
+            }
+        )
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        let allowedBytes = try roundTripRawBytes(
+            request: BurnBarRPCRequestEnvelope(id: "cli-health", method: .health, authToken: "test-token"),
+            socketPath: socketPath
+        )
+        let allowedResponse = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<BurnBarHealthResponse>.self,
+            from: allowedBytes
+        )
+        XCTAssertNil(allowedResponse.error)
+        XCTAssertNotNil(allowedResponse.result)
+
+        let deniedBytes = try roundTripRawBytes(
+            request: BurnBarRPCRequestEnvelope(
+                id: "cli-credential-write",
+                method: .providerCredentialSlotUpsert,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+        let deniedResponse = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<BurnBarEmptyResult>.self,
+            from: deniedBytes
+        )
+        XCTAssertNil(deniedResponse.result)
+        XCTAssertEqual(deniedResponse.error?.code, BurnBarRPCErrorCode.unauthorized)
+        XCTAssertEqual(
+            deniedResponse.error?.message,
+            "OpenBurnBar RPC method '\(BurnBarRPCMethod.providerCredentialSlotUpsert.rawValue)' is outside this peer's capability scope."
+        )
+
+        await server.stop()
+    }
+
     func test_disabledServer_answersHealth() async throws {
         let socketPath = makeSocketPath(name: "peer-auth-disabled")
         let server = BurnBarDaemonServer(
