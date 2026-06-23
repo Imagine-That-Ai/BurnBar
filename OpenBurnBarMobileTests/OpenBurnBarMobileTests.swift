@@ -3347,6 +3347,181 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: "openburnbar.phoneControl.counter.ios-phone-cancelled-trackpad-test") as? Int, 1)
     }
 
+    func testPhoneControlSenderRequiresAttestationBeforeEveryNonInputSend() async throws {
+        let suiteName = "PhoneControlSenderStrictAttestation-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let recorder = PhoneControlFrameRecorder()
+        let sender = PhoneControlSender(
+            peerNodeId: "ios-phone-strict-attestation-test",
+            uid: "user-strict-attestation-test",
+            connectionId: "relay-strict-attestation-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            phoneControlAttestationRequired: { true },
+            attestationDigestProvider: { nil },
+            bindAppCheckAttestation: { throw PhoneControlSender.SendError.attestationRequired },
+            frameSink: { frame in await recorder.append(frame) }
+        )
+
+        let operations: [@Sendable () async throws -> Void] = [
+            { _ = try await sender.send(clipboardRequest: Self.phoneControlClipboardRequest()) },
+            { _ = try await sender.send(remoteUnlockCredential: Self.phoneControlRemoteUnlockCredential()) },
+            { _ = try await sender.send(systemPermissionRequest: Self.phoneControlSystemPermissionRequest()) },
+            { _ = try await sender.send(contextTarget: Self.phoneControlContextTarget()) }
+        ]
+
+        for operation in operations {
+            do {
+                try await operation()
+                XCTFail("Expected strict phone-control send to require App Check attestation.")
+            } catch let error as PhoneControlSender.SendError {
+                XCTAssertEqual(error, .attestationRequired)
+            } catch {
+                XCTFail("Expected attestationRequired, got \(error)")
+            }
+        }
+
+        let recordedFrameCount = await recorder.count()
+        XCTAssertEqual(recordedFrameCount, 0)
+    }
+
+    func testPhoneControlSenderAttachesStrictAttestationToEveryNonInputSend() async throws {
+        let suiteName = "PhoneControlSenderStrictAttestationDigest-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let digest = String(repeating: "ab", count: 32)
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let recorder = PhoneControlFrameRecorder()
+        let sender = PhoneControlSender(
+            peerNodeId: "ios-phone-strict-attestation-digest-test",
+            uid: "user-strict-attestation-digest-test",
+            connectionId: "relay-strict-attestation-digest-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            phoneControlAttestationRequired: { true },
+            attestationDigestProvider: { digest },
+            bindAppCheckAttestation: { XCTFail("Existing digest should skip bind.") },
+            frameSink: { frame in await recorder.append(frame) }
+        )
+
+        _ = try await sender.send(clipboardRequest: Self.phoneControlClipboardRequest())
+        _ = try await sender.send(remoteUnlockCredential: Self.phoneControlRemoteUnlockCredential())
+        _ = try await sender.send(systemPermissionRequest: Self.phoneControlSystemPermissionRequest())
+        _ = try await sender.send(contextTarget: Self.phoneControlContextTarget())
+
+        let frames = await recorder.frames()
+        XCTAssertEqual(frames.count, 4)
+        XCTAssertEqual(frames[0].control?.clipboardRequest?.authority.attestationHashBlake3, digest)
+        XCTAssertEqual(frames[1].control?.remoteUnlockCredential?.authority.attestationHashBlake3, digest)
+        XCTAssertEqual(frames[2].control?.systemPermissionRequest?.authority.attestationHashBlake3, digest)
+        XCTAssertEqual(frames[3].control?.agentContextTarget?.authority.attestationHashBlake3, digest)
+    }
+
+    func testPhoneControlSenderBindsAndAttachesStrictAttestationDigest() async throws {
+        let suiteName = "PhoneControlSenderStrictAttestationBind-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let digest = String(repeating: "cd", count: 32)
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let attestation = PhoneControlAttestationProbe()
+        let recorder = PhoneControlFrameRecorder()
+        let sender = PhoneControlSender(
+            peerNodeId: "ios-phone-strict-attestation-bind-test",
+            uid: "user-strict-attestation-bind-test",
+            connectionId: "relay-strict-attestation-bind-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            phoneControlAttestationRequired: { true },
+            attestationDigestProvider: { await attestation.currentDigest() },
+            bindAppCheckAttestation: { await attestation.bind(digest: digest) },
+            frameSink: { frame in await recorder.append(frame) }
+        )
+
+        _ = try await sender.send(clipboardRequest: Self.phoneControlClipboardRequest())
+
+        let frames = await recorder.frames()
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames.first?.control?.clipboardRequest?.authority.attestationHashBlake3, digest)
+        let bindCount = await attestation.bindCount()
+        XCTAssertEqual(bindCount, 1)
+    }
+
+    private static func phoneControlPlaceholderAuthority() -> HermesRealtimeRelayAuthorityEnvelope {
+        HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "",
+            counter: 0,
+            timestamp: Date(timeIntervalSince1970: 0),
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        )
+    }
+
+    private static func phoneControlClipboardRequest() -> HermesRealtimeRelayClipboardRequest {
+        HermesRealtimeRelayClipboardRequest(
+            requestId: "clipboard-attestation-test",
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "hello",
+            maxBytes: 65_536,
+            clientIntentId: "clipboard-intent",
+            authority: phoneControlPlaceholderAuthority()
+        )
+    }
+
+    private static func phoneControlRemoteUnlockCredential() -> HermesRealtimeRelayRemoteUnlockCredentialEnvelope {
+        HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId: "remote-unlock-attestation-test",
+            sessionId: "remote-unlock-session",
+            clientIntentId: "remote-unlock-intent",
+            credentialKind: .savedPassword,
+            recipientKeyId: "hpke-key",
+            algorithm: "X25519-HKDF-SHA256-CHACHA20-POLY1305",
+            ciphertextBase64: "Y2lwaGVy",
+            aadBase64: "YWFk",
+            redactedByteCount: 6,
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            expiresAt: Date(timeIntervalSince1970: 1_700_000_030),
+            authority: phoneControlPlaceholderAuthority()
+        )
+    }
+
+    private static func phoneControlSystemPermissionRequest() -> HermesRealtimeRelaySystemPermissionRequest {
+        HermesRealtimeRelaySystemPermissionRequest(
+            requestId: "system-permission-attestation-test",
+            clientIntentId: "system-permission-intent",
+            kind: .screenRecording,
+            bundleId: "com.apple.systempreferences",
+            originatingToolCallId: nil,
+            originatingToolName: nil,
+            action: .promptAndOpenSettings,
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            authority: phoneControlPlaceholderAuthority()
+        )
+    }
+
+    private static func phoneControlContextTarget() -> HermesRealtimeRelayAgentContextTarget {
+        HermesRealtimeRelayAgentContextTarget(
+            requestId: "context-attestation-test",
+            sessionId: "context-session",
+            runtime: "hermes",
+            threadId: "thread-1",
+            displayId: "main",
+            normalizedX: 0.25,
+            normalizedY: 0.75,
+            normalizedRect: nil,
+            instruction: "Look here",
+            focusContext: nil,
+            clientIntentId: "context-intent",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            authority: phoneControlPlaceholderAuthority()
+        )
+    }
+
     func testPhoneControlCounterAllocationIsProcessWideAcrossConcurrentCallers() async throws {
         let suiteName = "PhoneControlCounterGlobal-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -4272,6 +4447,40 @@ private actor PhoneControlFrameOrderRecorder {
 
     func startedCounterValues() -> [UInt64] {
         startedCounters.sorted()
+    }
+}
+
+private actor PhoneControlFrameRecorder {
+    private var recordedFrames: [HermesRealtimeRelayFrame] = []
+
+    func append(_ frame: HermesRealtimeRelayFrame) {
+        recordedFrames.append(frame)
+    }
+
+    func count() -> Int {
+        recordedFrames.count
+    }
+
+    func frames() -> [HermesRealtimeRelayFrame] {
+        recordedFrames
+    }
+}
+
+private actor PhoneControlAttestationProbe {
+    private var digest: String?
+    private var binds = 0
+
+    func currentDigest() -> String? {
+        digest
+    }
+
+    func bind(digest: String) {
+        binds += 1
+        self.digest = digest
+    }
+
+    func bindCount() -> Int {
+        binds
     }
 }
 
