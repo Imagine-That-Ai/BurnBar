@@ -593,9 +593,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
                           ) else {
                         continue
                     }
-                    // F7: a sealed (OBMFA1) frame must open under the
-                    // negotiated session key with the cleartext position
-                    // rebuilt into the AAD — fail closed on any mismatch.
+                    // F7: after a media-frame-AEAD session is negotiated,
+                    // every stream frame must be OBMFA1 sealed and must open
+                    // under the session key with the cleartext position rebuilt
+                    // into the AAD. Plaintext legacy frames remain valid only
+                    // when no session key exists.
                     if MediaFrameAEAD.isSealedEnvelope(data) {
                         guard let sealKey = mediaFrameSealKey,
                               let position = frame.media?.sealedFramePosition,
@@ -610,6 +612,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
                             continue
                         }
                         data = opened
+                    } else if mediaFrameSealKey != nil {
+                        continue
                     }
                     do {
                         if MediaFrameV2Codec.isEncodedEnvelope(data),

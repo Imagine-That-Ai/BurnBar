@@ -20,8 +20,9 @@ internal data class MediaControlFrameDispatcherHandlers(
     val focusContextHandler: () -> (suspend (HermesRealtimeRelayFocusContext) -> Unit)?,
     /**
      * F7 — the negotiated per-mirror MediaFrameAead session key, or null when
-     * the mirror was established on the legacy plaintext lane. Sealed (OBMFA1)
-     * frames are dropped (fail closed) when this is null or the open fails.
+     * the mirror was established on the legacy plaintext lane. Once present,
+     * every screen frame must be sealed (OBMFA1); sealed-open failures and
+     * plaintext frames are dropped fail-closed.
      */
     val mediaFrameSealKeyProvider: () -> ByteArray? = { null },
 )
@@ -118,15 +119,16 @@ internal class MediaControlFrameDispatcher(
                 null
             }
         if (assembled == null) return
-        // F7: a sealed (OBMFA1) frame must open under the negotiated session
-        // key with the cleartext position rebuilt into the AAD — fail closed
-        // (DROP) on a missing key/position or any tag mismatch. Plaintext
-        // legacy frames flow unchanged.
+        // F7: after a media-frame-AEAD session is negotiated, every stream
+        // frame must be OBMFA1 sealed and must open under the session key with
+        // the cleartext position rebuilt into the AAD. Plaintext legacy frames
+        // remain valid only when no session key exists.
+        val sealKey = handlers.mediaFrameSealKeyProvider()
         val data =
-            if (MediaFrameAead.isSealedEnvelope(assembled)) {
-                openSealedFrame(assembled, media) ?: return
-            } else {
-                assembled
+            when {
+                MediaFrameAead.isSealedEnvelope(assembled) -> openSealedFrame(assembled, media, sealKey) ?: return
+                sealKey != null -> return
+                else -> assembled
             }
         runCatching {
             if (MediaFrameV2Codec.isEncodedEnvelope(data)) {
@@ -137,8 +139,12 @@ internal class MediaControlFrameDispatcher(
         }
     }
 
-    private fun openSealedFrame(envelope: ByteArray, media: com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload): ByteArray? {
-        val key = handlers.mediaFrameSealKeyProvider() ?: return null
+    private fun openSealedFrame(
+        envelope: ByteArray,
+        media: com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload,
+        key: ByteArray?,
+    ): ByteArray? {
+        if (key == null) return null
         val position = media.sealedFramePosition ?: return null
         return runCatching {
             MediaFrameAead.open(

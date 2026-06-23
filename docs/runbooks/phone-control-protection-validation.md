@@ -111,6 +111,10 @@ protocol.
 2. Confirm the mirror renders normally (sealed frames open on the phone after
    chunk reassembly). A wrong/forged frame is dropped, so a *broken* image with
    the seal "working" would itself be a failure — **PASS is a clean live image.**
+3. Once `media_seal_established` is logged, the phone treats the session as
+   sealed-only: OBMFA1 frames must open under the negotiated key and plaintext
+   screen frames are dropped. Plaintext compatibility is only valid when the
+   media seal session was not negotiated.
 
 ## 4. Kill-switch validation (must work on BOTH platforms)
 

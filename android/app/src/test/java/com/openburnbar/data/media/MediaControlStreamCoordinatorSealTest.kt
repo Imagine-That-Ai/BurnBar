@@ -29,19 +29,20 @@ private const val SEAL_FRAME_INDEX = 3
  * F7 — the coordinator (live read loop) and the [MediaControlFrameDispatcher]
  * both open sealed (OBMFA1) screen frames after chunk reassembly and DROP, fail
  * closed, anything that does not open: tampered ciphertext, a wrong cleartext
- * position, a missing session key. Plaintext legacy frames flow unchanged, and
- * `requestMirror` stays byte-identical when no seal session negotiates.
+ * position, a missing session key, or post-negotiation plaintext. Plaintext
+ * legacy frames flow only when no seal session negotiates, and `requestMirror`
+ * stays byte-identical when no seal session negotiates.
  */
 class MediaControlStreamCoordinatorSealTest {
     private val sessionKey = ByteArray(32) { index -> (index + 11).toByte() }
 
-    private fun sourceFrame() = MediaFrame(
+    private fun sourceFrame(payload: ByteArray = byteArrayOf(0x01, 0x02, 0x03)) = MediaFrame(
         kind = MediaFrame.Kind.VIDEO_NAL,
         flags = MediaFrame.Flags.KEYFRAME,
         gopID = SEAL_GOP.toUInt(),
         frameIndex = SEAL_FRAME_INDEX.toUInt(),
         presentationTimestampMillis = 123uL,
-        payload = byteArrayOf(0x01, 0x02, 0x03),
+        payload = payload,
     )
 
     private fun sealedEncodedFrame(): ByteArray = MediaFrameAead.seal(
@@ -95,7 +96,9 @@ class MediaControlStreamCoordinatorSealTest {
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position(gopId = 99L)))
         // 3. missing position → dropped
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position = null))
-        // 4. valid sealed frame → opened and delivered
+        // 4. plaintext after negotiation → dropped
+        stream.incoming.send(streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x55))), position = null))
+        // 5. valid sealed frame → opened and delivered
         stream.incoming.send(streamFrame(sealedEncodedFrame(), position()))
 
         val decoded = withTimeout(2_000) { received.await() }
@@ -269,6 +272,13 @@ class MediaControlStreamCoordinatorSealTest {
             noopAckSender,
         )
         assertEquals(listOf(sourceFrame()), deliveredWithoutKey)
+
+        // negotiated key → plaintext is not an allowed fallback anymore
+        withKey.dispatch(
+            streamFrame(MediaPacketCodec().encode(sourceFrame(byteArrayOf(0x55))), position = null),
+            noopAckSender,
+        )
+        assertEquals(1, delivered.size)
     }
 
     @Test
