@@ -25,7 +25,7 @@ public final class SystemPermissionReceiver {
     public typealias FrameSink = @MainActor @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     public typealias AuthorizedPeerNodeProvider = @MainActor @Sendable () -> String?
 
-    private let sessionId: ComputerUseSessionID?
+    private let sessionId: ComputerUseSessionID
     private let validator: PhoneControlAuthorityValidator
     private let monitor: SystemPermissionMonitor
     private let denyFrameSink: FrameSink
@@ -34,7 +34,7 @@ public final class SystemPermissionReceiver {
     private var seenClientIntentIds: Set<String> = []
 
     public init(
-        sessionId: ComputerUseSessionID? = nil,
+        sessionId: ComputerUseSessionID,
         validator: PhoneControlAuthorityValidator,
         monitor: SystemPermissionMonitor = .shared,
         authorizedPeerNodeProvider: AuthorizedPeerNodeProvider? = nil,
@@ -54,9 +54,7 @@ public final class SystemPermissionReceiver {
               let payload = frame.control,
               let request = payload.systemPermissionRequest else { return }
 
-        if let sessionId,
-           let payloadSessionId = nonEmptyTrimmed(payload.sessionId),
-           payloadSessionId != sessionId.rawValue {
+        guard nonEmptyTrimmed(payload.sessionId) == sessionId.rawValue else {
             await emitDeniedFrame(
                 uid: frame.uid,
                 connectionId: frame.connectionId,
