@@ -175,9 +175,10 @@ import {
   publishPhoneControlAuthority,
   revokeEscrowDeviceTrust,
 } from "../callables/computerUseSecurity.js";
-import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
+import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
 
 const APP_ID = "1:123:ios:abc";
+const APP_CHECK_BOUND_AT_MILLIS = Date.now();
 const UID = "uidM037";
 const CONN = "conn-1";
 const MAC = "mac-1";
@@ -186,7 +187,7 @@ function req(data: Record<string, unknown>) {
   return {
     auth: {
       uid: UID,
-      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } },
+      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: APP_CHECK_BOUND_AT_MILLIS } },
     },
     app: { appId: APP_ID },
     data,
@@ -257,7 +258,11 @@ describe("M-037 phone-control authority binds to the pairing's own phone", () =>
 
     expect(res.ok).toBe(true);
     expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)?.deviceId).toBe("phone-a");
+    const controller = store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`);
+    expect(controller?.deviceId).toBe("phone-a");
+    expect(controller?.appCheckAttestationHashBlake3).toBe(
+      appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
+    );
   });
 
   it("trusted phone B CANNOT publish controller authority for phone A's pairing", async () => {

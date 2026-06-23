@@ -141,12 +141,18 @@ final class AgentCapabilityGrantQueueListener {
         // phone-control intents. A refused registration (unpinned-under-enforcement
         // or a key that differs from the operator-pinned key) must short-circuit
         // to a denied receipt — never validate a grant signed by an unverified key.
-        guard validator.registerPeer(nodeId: authority.peerNodeId, verifyingKey: authority.publicKey, uid: uid) else {
+        guard validator.registerPeer(
+            nodeId: authority.peerNodeId,
+            verifyingKey: authority.publicKey,
+            uid: uid,
+            requiredAttestationHashBlake3: authority.requiredAttestationHashBlake3
+        ) else {
             throw QueueError.untrustedControllerKey
         }
         _ = try validator.validate(
             envelope: wireRequest.authority,
             grantRequest: wireRequest,
+            attestation: authority.requiredAttestationHashBlake3.map { .required(digest: $0) },
             now: Date()
         )
         try await daemonPinProvisioner(
@@ -163,7 +169,7 @@ final class AgentCapabilityGrantQueueListener {
     private func authorityPublicKey(
         uid: String,
         sourceDeviceID: String
-    ) async throws -> (peerNodeId: String, publicKey: PhoneControlVerifyingKey) {
+    ) async throws -> (peerNodeId: String, publicKey: PhoneControlVerifyingKey, requiredAttestationHashBlake3: String?) {
         let snapshot = try await firestoreProvider()
             .collection("users")
             .document(uid)
@@ -177,7 +183,11 @@ final class AgentCapabilityGrantQueueListener {
             throw QueueError.missingAuthority
         }
         let keyKind = try Self.signingKeyKind(fromRecordValue: data["signingKeyKind"] as? String)
-        return (peerNodeId, try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw))
+        return (
+            peerNodeId,
+            try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw),
+            Self.normalizedAttestationDigest(data["appCheckAttestationHashBlake3"] as? String)
+        )
     }
 
     /// F2: `signingKeyKind` mirrors the controller record. Absent ⇒ legacy
@@ -188,6 +198,13 @@ final class AgentCapabilityGrantQueueListener {
             throw QueueError.missingAuthority
         }
         return parsed
+    }
+
+    nonisolated static func normalizedAttestationDigest(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value.lowercased()
     }
 
     private func decodeWireRequest(from data: [String: Any]) throws -> HermesRealtimeRelayAgentGrantRequest {

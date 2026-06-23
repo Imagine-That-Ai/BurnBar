@@ -34,6 +34,7 @@ public final class PhoneControlAuthorityValidator: Sendable {
         case attestationMismatch(expected: String?, observed: String?)
         case missingAttestation
         case macAttestationUnbound
+        case peerAttestationUnbound(peerNodeId: String)
         case intentHashMismatch(expected: String, observed: String)
         case localAuthProofRequired
         case localAuthProofInvalid(reason: String)
@@ -85,6 +86,7 @@ public final class PhoneControlAuthorityValidator: Sendable {
         /// Ed25519 or Secure-Enclave P-256) so one validator accepts both custody
         /// classes during the migration.
         var peerPublicKeys: [String: PhoneControlVerifyingKey] = [:]
+        var peerAttestationDigestByNodeId: [String: String] = [:]
         var revokedPeerNodeIds: Set<String> = []
         var revokedEscrowDeviceIds: Set<String> = []
     }
@@ -176,34 +178,53 @@ public final class PhoneControlAuthorityValidator: Sendable {
     public func registerPeer(
         nodeId: String,
         publicKey: Curve25519.Signing.PublicKey,
-        uid: String? = nil
+        uid: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
     ) -> Bool {
-        registerPeerDetailed(nodeId: nodeId, verifyingKey: .ed25519(publicKey), uid: uid).isAdmitted
+        registerPeerDetailed(
+            nodeId: nodeId,
+            verifyingKey: .ed25519(publicKey),
+            uid: uid,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        ).isAdmitted
     }
 
     @discardableResult
     public func registerPeer(
         nodeId: String,
         verifyingKey: PhoneControlVerifyingKey,
-        uid: String? = nil
+        uid: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
     ) -> Bool {
-        registerPeerDetailed(nodeId: nodeId, verifyingKey: verifyingKey, uid: uid).isAdmitted
+        registerPeerDetailed(
+            nodeId: nodeId,
+            verifyingKey: verifyingKey,
+            uid: uid,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        ).isAdmitted
     }
 
     @discardableResult
     public func registerPeerDetailed(
         nodeId: String,
         publicKey: Curve25519.Signing.PublicKey,
-        uid: String? = nil
+        uid: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
     ) -> RegistrationResult {
-        registerPeerDetailed(nodeId: nodeId, verifyingKey: .ed25519(publicKey), uid: uid)
+        registerPeerDetailed(
+            nodeId: nodeId,
+            verifyingKey: .ed25519(publicKey),
+            uid: uid,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
     }
 
     @discardableResult
     public func registerPeerDetailed(
         nodeId: String,
         verifyingKey: PhoneControlVerifyingKey,
-        uid: String? = nil
+        uid: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
     ) -> RegistrationResult {
         if stateBox.withLock({ $0.revokedPeerNodeIds.contains(nodeId) }) {
             return .refused(.revokedPeer(peerNodeId: nodeId))
@@ -238,6 +259,11 @@ public final class PhoneControlAuthorityValidator: Sendable {
                 return .refused(.revokedPeer(peerNodeId: nodeId))
             }
             state.peerPublicKeys[nodeId] = verifyingKey
+            if let digest = Self.normalizedAttestationDigest(requiredAttestationHashBlake3) {
+                state.peerAttestationDigestByNodeId[nodeId] = digest
+            } else {
+                state.peerAttestationDigestByNodeId.removeValue(forKey: nodeId)
+            }
             return .admitted
         }
     }
@@ -277,6 +303,7 @@ public final class PhoneControlAuthorityValidator: Sendable {
     public func deregisterPeer(nodeId: String) {
         stateBox.withLock {
             $0.peerPublicKeys.removeValue(forKey: nodeId)
+            $0.peerAttestationDigestByNodeId.removeValue(forKey: nodeId)
         }
     }
 
@@ -287,6 +314,7 @@ public final class PhoneControlAuthorityValidator: Sendable {
     public func deregisterAllPeers() {
         stateBox.withLock {
             $0.peerPublicKeys.removeAll()
+            $0.peerAttestationDigestByNodeId.removeAll()
         }
     }
 
@@ -294,6 +322,7 @@ public final class PhoneControlAuthorityValidator: Sendable {
         stateBox.withLock {
             $0.revokedPeerNodeIds.insert(nodeId)
             $0.peerPublicKeys.removeValue(forKey: nodeId)
+            $0.peerAttestationDigestByNodeId.removeValue(forKey: nodeId)
         }
     }
 
@@ -336,17 +365,40 @@ public final class PhoneControlAuthorityValidator: Sendable {
             break
         case .rejectUnboundHost:
             throw ValidationError.macAttestationUnbound
+        case .requireBoundPeer:
+            let digest = stateBox.withLock { state in
+                state.peerAttestationDigestByNodeId[envelope.peerNodeId]
+            }
+            guard let expected = Self.normalizedAttestationDigest(digest) else {
+                throw ValidationError.peerAttestationUnbound(peerNodeId: envelope.peerNodeId)
+            }
+            try validateEnvelopeAttestation(envelope, expectedDigest: expected)
         case .requirePresent:
             guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
                 throw ValidationError.missingAttestation
             }
         case .required(let digest):
-            guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
-                throw ValidationError.missingAttestation
-            }
-            guard observed == digest else {
-                throw ValidationError.attestationMismatch(expected: digest, observed: observed)
-            }
+            try validateEnvelopeAttestation(envelope, expectedDigest: digest)
+        }
+    }
+
+    private static func normalizedAttestationDigest(_ digest: String?) -> String? {
+        guard let digest = digest?.trimmingCharacters(in: .whitespacesAndNewlines), !digest.isEmpty else {
+            return nil
+        }
+        return digest.lowercased()
+    }
+
+    private func validateEnvelopeAttestation(
+        _ envelope: HermesRealtimeRelayAuthorityEnvelope,
+        expectedDigest: String
+    ) throws {
+        guard let observed = Self.normalizedAttestationDigest(envelope.attestationHashBlake3) else {
+            throw ValidationError.missingAttestation
+        }
+        let expected = Self.normalizedAttestationDigest(expectedDigest) ?? expectedDigest
+        guard observed == expected else {
+            throw ValidationError.attestationMismatch(expected: expected, observed: observed)
         }
     }
 
@@ -750,7 +802,7 @@ extension PhoneControlAuthorityValidator.ValidationError {
     var relayControlDeniedReason: HermesRealtimeRelayControlDenied.Reason {
         switch self {
         case .signatureFailed, .missingPeerPubKey, .intentHashMismatch,
-             .attestationMismatch, .missingAttestation, .macAttestationUnbound,
+             .attestationMismatch, .missingAttestation, .macAttestationUnbound, .peerAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
              .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
              .replayCounterPersistenceFailed, .replayStoreUnavailable:
@@ -771,7 +823,7 @@ extension PhoneControlAuthorityValidator.ValidationError {
         case .expiredAuthority:
             return .expired
         case .missingPeerPubKey, .signatureFailed, .intentHashMismatch,
-             .attestationMismatch, .missingAttestation, .macAttestationUnbound,
+             .attestationMismatch, .missingAttestation, .macAttestationUnbound, .peerAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
              .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
              .replayCounterPersistenceFailed, .replayStoreUnavailable:
@@ -795,6 +847,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "attestation_required"
         case .macAttestationUnbound:
             return "mac_attestation_unbound"
+        case .peerAttestationUnbound:
+            return "peer_attestation_unbound"
         case .peerRevoked:
             return "peer_revoked"
         case .escrowDeviceRevoked:
@@ -820,6 +874,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "attestation_required"
         case .macAttestationUnbound:
             return "mac_attestation_unbound"
+        case .peerAttestationUnbound:
+            return "peer_attestation_unbound"
         default:
             return auditDetailToken
         }

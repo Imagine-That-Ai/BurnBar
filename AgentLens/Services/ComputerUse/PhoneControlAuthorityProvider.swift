@@ -11,6 +11,31 @@ public protocol PhoneControlAuthorityPublicKeyProviding: Sendable {
     func fetchPublicKey(uid: String, connectionId: String, peerNodeId: String) async throws -> PhoneControlVerifyingKey
 }
 
+public struct PhoneControlAuthorityRegistration: Sendable {
+    public let publicKey: PhoneControlVerifyingKey
+    public let requiredAttestationHashBlake3: String?
+
+    public init(
+        publicKey: PhoneControlVerifyingKey,
+        requiredAttestationHashBlake3: String? = nil
+    ) {
+        self.publicKey = publicKey
+        self.requiredAttestationHashBlake3 = requiredAttestationHashBlake3
+    }
+}
+
+extension PhoneControlAuthorityPublicKeyProviding {
+    func fetchAuthorityRegistration(
+        uid: String,
+        connectionId: String,
+        peerNodeId: String
+    ) async throws -> PhoneControlAuthorityRegistration {
+        PhoneControlAuthorityRegistration(
+            publicKey: try await fetchPublicKey(uid: uid, connectionId: connectionId, peerNodeId: peerNodeId)
+        )
+    }
+}
+
 public enum PhoneControlAuthorityProviderError: Error, Sendable, Equatable {
     case notFound
     case untrustedDevice
@@ -76,6 +101,18 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
         connectionId: String,
         peerNodeId: String
     ) async throws -> PhoneControlVerifyingKey {
+        try await fetchAuthorityRegistration(
+            uid: uid,
+            connectionId: connectionId,
+            peerNodeId: peerNodeId
+        ).publicKey
+    }
+
+    public func fetchAuthorityRegistration(
+        uid: String,
+        connectionId: String,
+        peerNodeId: String
+    ) async throws -> PhoneControlAuthorityRegistration {
         let db = firestoreProvider()
         let snapshot = try await db
             .collection("users")
@@ -124,10 +161,20 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
             throw PhoneControlAuthorityProviderError.unsupportedPlatform(platform)
         }
         do {
-            return try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw)
+            return PhoneControlAuthorityRegistration(
+                publicKey: try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw),
+                requiredAttestationHashBlake3: Self.normalizedDigest(data["appCheckAttestationHashBlake3"] as? String)
+            )
         } catch {
             throw PhoneControlAuthorityProviderError.malformed
         }
+    }
+
+    private static func normalizedDigest(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value.lowercased()
     }
 }
 #endif

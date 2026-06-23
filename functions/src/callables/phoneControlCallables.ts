@@ -12,10 +12,16 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
-import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
+import {
+  appCheckAttestationDigestHex,
+  enforceHighRiskComputerUseCallableWithNonce,
+  isAppCheckAttestationClaimFresh,
+  readAppCheckAttestationClaim,
+} from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, onCallProduction } from "../logging.js";
 import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
+import { recordOrUndefined } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   MAC_ESCROW_PLATFORMS,
@@ -33,6 +39,12 @@ import {
   requirePhoneControlAuthorityPublicKey,
 } from "./computerUseSecurityCodecs.js";
 import { requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+
+function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
+  const claim = readAppCheckAttestationClaim(recordOrUndefined(request.auth?.token));
+  if (!claim || !isAppCheckAttestationClaimFresh(claim)) return undefined;
+  return appCheckAttestationDigestHex(claim.appId, claim.boundAtMillis);
+}
 
 export const publishIrohPairingPublicKey = onCallProduction(
   "publishIrohPairingPublicKey",
@@ -225,6 +237,7 @@ export const publishPhoneControlAuthority = onCallProduction(
     requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
     const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
     const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
+    const appCheckAttestationHashBlake3 = boundAppCheckAttestationDigest(request);
 
     const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
     const controllerRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`);
@@ -262,6 +275,7 @@ export const publishPhoneControlAuthority = onCallProduction(
           publishedAtMillis,
           protocolVersion,
           publishedByDeviceId: deviceId,
+          ...(appCheckAttestationHashBlake3 ? { appCheckAttestationHashBlake3 } : {}),
           schemaVersion: keyKind === "se-p256" ? 3 : 2,
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -428,6 +442,7 @@ export const publishAgentGrantAuthority = onCallProduction(
       keyKind,
     );
     requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
+    const appCheckAttestationHashBlake3 = boundAppCheckAttestationDigest(request);
 
     await db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`).set(
       {
@@ -436,6 +451,7 @@ export const publishAgentGrantAuthority = onCallProduction(
         publicKeyBase64,
         signingKeyKind: keyKind,
         publishedAtMillis: Date.now(),
+        ...(appCheckAttestationHashBlake3 ? { appCheckAttestationHashBlake3 } : {}),
         schemaVersion: keyKind === "se-p256" ? 3 : 2,
         updatedAt: FieldValue.serverTimestamp(),
       },

@@ -195,14 +195,15 @@ extension ComputerUseSessionCoordinator {
                 return
             }
             do {
-                let publicKey = try await authorityProvider.fetchPublicKey(
+                let authority = try await authorityProvider.fetchAuthorityRegistration(
                     uid: frame.uid,
                     connectionId: frame.connectionId,
                     peerNodeId: peerNodeId
                 )
                 let registration = await registerPhonePeerForControlClassify(
                     nodeId: peerNodeId,
-                    publicKey: publicKey,
+                    publicKey: authority.publicKey,
+                    requiredAttestationHashBlake3: authority.requiredAttestationHashBlake3,
                     connectionID: frame.connectionId
                 )
                 guard registration.admitted else {
@@ -473,12 +474,16 @@ extension ComputerUseSessionCoordinator {
             }
             if !phoneValidator.hasPeer(nodeId: credentialPeerNodeId) {
                 do {
-                    let publicKey = try await authorityProvider.fetchPublicKey(
+                    let authority = try await authorityProvider.fetchAuthorityRegistration(
                         uid: frame.uid,
                         connectionId: frame.connectionId,
                         peerNodeId: credentialPeerNodeId
                     )
-                    registerPhonePeer(nodeId: credentialPeerNodeId, verifyingKey: publicKey)
+                    registerPhonePeer(
+                        nodeId: credentialPeerNodeId,
+                        verifyingKey: authority.publicKey,
+                        requiredAttestationHashBlake3: authority.requiredAttestationHashBlake3
+                    )
                     recordE2EProofEvent([
                         "event": "remote_unlock_peer_registered",
                         "peerNodeId": credentialPeerNodeId,
