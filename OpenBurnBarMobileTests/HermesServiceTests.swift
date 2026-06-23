@@ -81,6 +81,34 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.isReachable)
     }
 
+    func testElderWandPluginsRequireProEntitlementAtSendPath() throws {
+        let service = HermesService(secretStore: FakeHermesSecretStore())
+        service.elderWandSettings = makeElderWandSettingsWithActivePreset()
+
+        XCTAssertNil(service.activeElderWandPlugins)
+
+        service.elderWandEntitlementProvider = { .pro }
+
+        let plugin = try XCTUnwrap(service.activeElderWandPlugins?.first)
+        XCTAssertEqual(plugin["id"] as? String, "fusion")
+    }
+
+    func testElderWandDirectGatewayRedirectRequiresProEntitlement() throws {
+        let service = HermesService(
+            baseURL: URL(string: "http://192.0.2.10:8642")!,
+            secretStore: FakeHermesSecretStore()
+        )
+        service.elderWandSettings = makeElderWandSettingsWithActivePreset()
+
+        let lockedRequest = try service.makeRequest(path: "/v1/chat/completions", timeout: 1)
+        XCTAssertEqual(lockedRequest.url?.port, 8642)
+
+        service.elderWandEntitlementProvider = { .pro }
+
+        let unlockedRequest = try service.makeRequest(path: "/v1/chat/completions", timeout: 1)
+        XCTAssertEqual(unlockedRequest.url?.port, 8317)
+    }
+
     func testSendMessageAppendsUserMessage() {
         let service = HermesService()
         service.sendMessage("Hello Hermes")
@@ -3068,6 +3096,23 @@ final class HermesServiceTests: XCTestCase {
             "control-plane unary must still fall back to Firestore (no selected model is bound)"
         )
         XCTAssertFalse(data.isEmpty, "fallback must return the Firestore control-plane response")
+    }
+
+    private func makeElderWandSettingsWithActivePreset() -> ElderWandSettings {
+        let suiteName = "HermesServiceTests.ElderWand.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = ElderWandSettings(defaults: defaults)
+        settings.replacePresets([
+            ElderWandPreset(
+                name: "Entitled Fusion",
+                analysisModelIDs: ["gpt-4o", "claude-opus-4"],
+                judgeModelID: "gpt-4o-mini",
+                maxToolCalls: 6,
+                isDefault: true
+            )
+        ])
+        return settings
     }
 }
 
