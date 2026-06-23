@@ -342,6 +342,7 @@ describe("verifyGooglePlayCloudProTopUp", () => {
     await expect(
       invokeCallable(verifyGooglePlayCloudProTopUp, { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" }),
     ).rejects.toThrow(/not in the purchased state/);
+    expect(state.claimMock).not.toHaveBeenCalled();
     expect(state.creditMock).not.toHaveBeenCalled();
     expect(state.productsConsume).not.toHaveBeenCalled();
   });
