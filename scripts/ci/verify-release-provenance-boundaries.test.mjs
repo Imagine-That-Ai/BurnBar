@@ -68,6 +68,8 @@ jobs:
           set -euo pipefail
           git checkout --detach "$RELEASE_COMMIT"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+      - name: BurnBar product release preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py
       - name: Sigstore blob attestations (SBOM + VEX + checksums + binaries)
         env:
           RELEASE_REF: \${{ steps.version.outputs.tag_ref }}
@@ -96,6 +98,29 @@ jobs:
             echo "::error::Release provenance bundles missing after artifact download."
             exit 1
           fi
+`;
+
+const GOOD_DEPLOY_PRODUCTION = fixture`
+name: Deploy Production (Cloud Functions)
+permissions:
+  contents: read
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: false
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+jobs:
+  deploy-functions:
+    steps:
+      - name: BurnBar product release preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py
 `;
 
 const GOOD_SUPPLY_CHAIN = fixture`
@@ -160,12 +185,17 @@ jobs:
 function buildTree(
   releaseWorkflow = GOOD_RELEASE,
   provenanceWorkflow = GOOD_SUPPLY_CHAIN,
+  deployProductionWorkflow = GOOD_DEPLOY_PRODUCTION,
 ) {
   const root = mkdtempSync(join(tmpdir(), "release-provenance-boundary-"));
   roots.push(root);
   const workflowDir = join(root, ".github", "workflows");
   mkdirSync(workflowDir, { recursive: true });
   writeFileSync(join(workflowDir, "release.yml"), releaseWorkflow);
+  writeFileSync(
+    join(workflowDir, "deploy-production.yml"),
+    deployProductionWorkflow,
+  );
   writeFileSync(
     join(workflowDir, "supply-chain-provenance.yml"),
     provenanceWorkflow,
@@ -191,8 +221,16 @@ function runGate(root) {
 
 let passed = 0;
 let failed = 0;
-function expect(label, releaseWorkflow, provenanceWorkflow, wantExit) {
-  const got = runGate(buildTree(releaseWorkflow, provenanceWorkflow));
+function expect(
+  label,
+  releaseWorkflow,
+  provenanceWorkflow,
+  wantExit,
+  deployProductionWorkflow = GOOD_DEPLOY_PRODUCTION,
+) {
+  const got = runGate(
+    buildTree(releaseWorkflow, provenanceWorkflow, deployProductionWorkflow),
+  );
   if (got.status === wantExit) {
     console.log(`  PASS ${label} (exit ${got.status})`);
     passed += 1;
@@ -212,6 +250,48 @@ expect(
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN,
   0,
+);
+
+expect(
+  "release workflow hold bypass input fails",
+  GOOD_RELEASE.replace(
+    "      tag:\n        required: true\n        type: string",
+    "      tag:\n        required: true\n        type: string\n      release_hold_bypass_reason:\n        required: false\n        type: string",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow conditional product preflight fails",
+  GOOD_RELEASE.replace(
+    "      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
+    "      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == '' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "production deploy hold bypass input fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  1,
+  GOOD_DEPLOY_PRODUCTION.replace(
+    "      dry_run:\n        required: false\n        type: boolean",
+    "      dry_run:\n        required: false\n        type: boolean\n      release_hold_bypass_reason:\n        required: false\n        type: string",
+  ),
+);
+
+expect(
+  "production deploy conditional product preflight fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  1,
+  GOOD_DEPLOY_PRODUCTION.replace(
+    "      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
+    "      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == '' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
+  ),
 );
 
 expect(

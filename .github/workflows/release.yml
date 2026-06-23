@@ -25,11 +25,6 @@ on:
         required: false
         type: boolean
         default: false
-      release_hold_bypass_reason:
-        description: "Explicit owner-approved reason to bypass runtime/legal release holds for this manual run."
-        required: false
-        type: string
-        default: ""
       run_mobile_unit_tests:
         description: "Run iOS simulator mobile unit tests before publishing release artifacts. Disable only for an owner-approved manual release with independent mobile validation evidence."
         required: false
@@ -167,36 +162,8 @@ jobs:
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
-      - name: Validate release hold bypass reason
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
-        env:
-          RELEASE_HOLD_BYPASS_REASON: ${{ inputs.release_hold_bypass_reason }}
-        run: |
-          compact="${RELEASE_HOLD_BYPASS_REASON//[[:space:]]/}"
-          if [[ -z "$compact" ]]; then
-            echo "::error::release_hold_bypass_reason must contain non-whitespace text."
-            exit 1
-          fi
-
       - name: BurnBar product release preflight
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '') }}
         run: python3 scripts/ci/check_burnbar_release_preflight.py
-
-      - name: Record owner-approved release hold bypass
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
-        env:
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_HOLD_BYPASS_REASON: ${{ inputs.release_hold_bypass_reason }}
-        run: |
-          echo "::warning::Bypassing BurnBar product release preflight for manual release ${TAG_NAME}: ${RELEASE_HOLD_BYPASS_REASON}"
-          {
-            echo "## Owner-approved release hold bypass"
-            echo "- Tag: ${TAG_NAME}"
-            echo "- Version: ${VERSION}"
-            echo "- Reason: ${RELEASE_HOLD_BYPASS_REASON}"
-            echo "- Scope: runtime-readiness and legal-release-review holds only; all signing, notarization, secret scanning, and artifact verification still run."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate mobile unit test bypass reason
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}

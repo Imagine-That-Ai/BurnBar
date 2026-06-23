@@ -156,7 +156,12 @@ function workflowStepBlocks(source, stepName) {
 function shellRunBlockFromStep(stepBlock) {
   const lines = stepBlock.split("\n");
   const runIndex = lines.findIndex((line) => /^\s{8}run:\s*\|/u.test(line));
-  if (runIndex === -1) return "";
+  if (runIndex === -1) {
+    const inlineRun = lines.find((line) => /^\s{8}run:\s*\S/u.test(line));
+    if (!inlineRun) return "";
+    const match = /^\s{8}run:\s*(?<command>.+?)\s*$/u.exec(inlineRun);
+    return match?.groups?.command ?? "";
+  }
   const body = [];
   for (const line of lines.slice(runIndex + 1)) {
     if (/^\s{10}/u.test(line) || /^\s*$/u.test(line)) {
@@ -240,6 +245,42 @@ function requireNoContinueOnError(file, source, message) {
     .filter((line) => /^continue-on-error\s*:/u.test(line))
     .filter((line) => !/^continue-on-error\s*:\s*false\s*$/u.test(line));
   if (offenders.length > 0) fail(file, `${message}: ${offenders.join("; ")}`);
+}
+
+function requireProductReleasePreflight(file, source, message) {
+  requireNoPattern(
+    file,
+    source,
+    /\brelease_hold_bypass_reason\b/u,
+    `${message}: release hold bypass inputs are not allowed`,
+  );
+
+  const stepBlock = namedStepBlock(
+    file,
+    source,
+    "BurnBar product release preflight",
+    message,
+  );
+  const runBlock = shellRunBlockFromStep(stepBlock);
+  if (!runBlock) {
+    fail(file, `${message}: missing run block`);
+    return;
+  }
+
+  const executableLines = stripShellHeredocBodies(runBlock)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (
+    !executableLines.includes(
+      "python3 scripts/ci/check_burnbar_release_preflight.py",
+    )
+  ) {
+    fail(file, `${message}: must run the full product release preflight`);
+  }
+  if (/\b--source-provenance-only\b/u.test(runBlock)) {
+    fail(file, `${message}: product preflight must not be source-only`);
+  }
 }
 
 function permissionValue(block, name) {
@@ -448,6 +489,11 @@ function verifyReleaseWorkflow() {
     source,
     "release provenance guard steps must not continue on error",
   );
+  requireProductReleasePreflight(
+    file,
+    source,
+    "release product preflight must be mandatory",
+  );
   requireStepFailClosedMode(
     file,
     source,
@@ -614,6 +660,23 @@ function verifyReleaseWorkflow() {
     releasePublishRun,
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     "publish missing provenance bundle guard",
+  );
+}
+
+function verifyProductionDeployWorkflow() {
+  const file = "deploy-production.yml";
+  const source = workflowSource(file);
+
+  requireIncludes(
+    file,
+    source,
+    "workflow_dispatch:",
+    "production deploy workflow must support explicit manual dispatch",
+  );
+  requireProductReleasePreflight(
+    file,
+    source,
+    "production deploy product preflight must be mandatory",
   );
 }
 
@@ -829,6 +892,7 @@ function verifySupplyChainWorkflow() {
 }
 
 verifyReleaseWorkflow();
+verifyProductionDeployWorkflow();
 verifySupplyChainWorkflow();
 
 if (failures.length > 0) {

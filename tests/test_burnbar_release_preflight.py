@@ -91,10 +91,10 @@ def test_product_release_workflows_invoke_release_preflight():
         body = (ROOT / workflow).read_text(encoding="utf-8")
         assert "python3 scripts/ci/check_burnbar_release_preflight.py" in body, workflow
         assert "--source-provenance-only" in body, workflow
-        assert "release_hold_bypass_reason" in body, workflow
-        assert "Validate release hold bypass reason" in body, workflow
-        assert "release_hold_bypass_reason must contain non-whitespace text" in body, workflow
-        assert "Record owner-approved release hold bypass" in body, workflow
+        assert "release_hold_bypass_reason" not in body, workflow
+        assert "Validate release hold bypass reason" not in body, workflow
+        assert "release_hold_bypass_reason must contain non-whitespace text" not in body, workflow
+        assert "Record owner-approved release hold bypass" not in body, workflow
         assert "trim(inputs.release_hold_bypass_reason)" not in body, workflow
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
