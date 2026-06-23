@@ -315,8 +315,7 @@ If the DMG is notarized, users should usually just double-click and launch.
 ```bash
 git clone https://github.com/Ajnunezg/BurnBar.git
 cd BurnBar
-make install    # builds Release .app → /Applications
-open -a OpenBurnBar
+bash ./scripts/source-update-install.sh    # builds signed Release .app → /Applications and launches it
 ```
 
 ### 3. Xcode (contributor/dev path)

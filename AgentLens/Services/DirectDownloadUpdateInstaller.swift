@@ -44,7 +44,10 @@ enum DirectDownloadUpdateInstallError: LocalizedError, Equatable {
 }
 
 enum DirectDownloadUpdateInstaller {
+    private static let bundleIdentifier = "com.openburnbar.app"
+    private static let executableName = "OpenBurnBar"
     private static let daemonRelativePath = "Contents/Helpers/OpenBurnBarDaemon"
+    private static let launchServicesRegisterPath = "/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 
     /// Mounts the verified DMG, validates the bundle, then spawns a detached
     /// trampoline that swaps it over the *running* app bundle and relaunches
@@ -248,6 +251,9 @@ enum DirectDownloadUpdateInstaller {
         MOUNT=\(mount)
         DEST=\(dest)
         DAEMON=\(daemon)
+        BUNDLE_ID=\(shellSingleQuoted(bundleIdentifier))
+        APP_EXECUTABLE=\(shellSingleQuoted(executableName))
+        LSREGISTER=\(shellSingleQuoted(launchServicesRegisterPath))
         LOG="$(/usr/bin/dirname "$0")/relaunch.log"
         exec >>"$LOG" 2>&1
         echo "[updater] waiting for PID $APP_PID to exit"
@@ -262,6 +268,7 @@ enum DirectDownloadUpdateInstaller {
             exit 1
           fi
         done
+        /usr/bin/pkill -x "$APP_EXECUTABLE" 2>/dev/null || true
         /usr/bin/pkill -f "$DAEMON" 2>/dev/null
         /bin/sleep 0.5
         STAGE="$DEST.new-$$"
@@ -295,6 +302,42 @@ enum DirectDownloadUpdateInstaller {
         fi
         /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+        if [ -x "$LSREGISTER" ]; then
+          [ -e "$BACKUP" ] && "$LSREGISTER" -u "$BACKUP" 2>/dev/null || true
+          "$LSREGISTER" -f -R -trusted "$DEST" 2>/dev/null || true
+          "$LSREGISTER" -dump 2>/dev/null | /usr/bin/awk -v bundle="$BUNDLE_ID" -v dest="$DEST" '
+            function flush() {
+              if (identifier == bundle && platform == "native" && path != dest && path ~ /\\/OpenBurnBar\\.app$/) {
+                print path
+              }
+              path=""; identifier=""; platform=""
+            }
+            /^path:[[:space:]]/ {
+              path=$0
+              sub(/^path:[[:space:]]*/, "", path)
+              sub(/[[:space:]]*\\(0x[0-9a-fA-F]+\\).*$/, "", path)
+            }
+            /^identifier:[[:space:]]/ {
+              identifier=$0
+              sub(/^identifier:[[:space:]]*/, "", identifier)
+            }
+            /^platform:[[:space:]]/ {
+              platform=$0
+              sub(/^platform:[[:space:]]*/, "", platform)
+            }
+            /^-+$/ { flush() }
+            END { flush() }
+          ' | while IFS= read -r CANDIDATE; do
+            [ -n "$CANDIDATE" ] && "$LSREGISTER" -u "$CANDIDATE" 2>/dev/null || true
+          done
+          /usr/bin/mdfind "kMDItemCFBundleIdentifier == '$BUNDLE_ID'" 2>/dev/null | while IFS= read -r CANDIDATE; do
+            [ "$CANDIDATE" = "$DEST" ] && continue
+            case "$CANDIDATE" in
+              */OpenBurnBar.app) "$LSREGISTER" -u "$CANDIDATE" 2>/dev/null || true ;;
+            esac
+          done
+          "$LSREGISTER" -f -R -trusted "$DEST" 2>/dev/null || true
+        fi
         echo "[updater] relaunching"
         /usr/bin/open "$DEST"
         /bin/rm -f "$0"

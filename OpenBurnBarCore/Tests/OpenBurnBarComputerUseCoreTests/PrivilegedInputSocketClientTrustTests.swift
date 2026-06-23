@@ -201,6 +201,14 @@ final class PrivilegedInputXPCClientWrapperTests: XCTestCase {
         return directory + "/input.sock"
     }
 
+    func test_defaultMachFallbackModesExcludeUserSessionLookup() {
+        XCTAssertEqual(
+            PrivilegedInputXPCClient.machConnectionModeNamesForTesting,
+            ["privilegedSystem"],
+            "credential-bearing envelopes must never fall back to an unauthenticated user-session Mach service"
+        )
+    }
+
     func test_perform_treatsRealServerValidationFailureAsTerminal() throws {
         // The wrapper's socket client uses the PRODUCTION validator. The test
         // process listening at the path is not first-party signed, so trust

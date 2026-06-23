@@ -16,7 +16,7 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { doc, setDoc, writeBatch, Timestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
 
 const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
 const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
@@ -332,6 +332,44 @@ async function main() {
           sourceSurface: "mac-wand",
         })
       )
+    );
+  });
+
+  await step("CloudVault rotation can rewrap an existing mission event", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const requestID = "rewrap-event-allow";
+    const eventID = "000001";
+    const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
+    const eventRef = doc(aliceDB, `${requestPath}/events/${eventID}`);
+    await assertSucceeds(setDoc(doc(aliceDB, requestPath), singleMission(aliceUid, requestID)));
+    await assertSucceeds(setDoc(eventRef, missionEvent(aliceUid, requestID, eventID)));
+    await assertSucceeds(
+      updateDoc(eventRef, {
+        sealedPayload: sealedPayload(missionEventAad(aliceUid, requestID, eventID)),
+        vaultKeyID,
+        vaultGeneration: 2,
+        rewrapJobId: "rewrap-job-1",
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      })
+    );
+  });
+
+  await step("CloudVault mission event rewrap requires timestamp updatedAt", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const requestID = "rewrap-event-deny-updated-at";
+    const eventID = "000001";
+    const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
+    const eventRef = doc(aliceDB, `${requestPath}/events/${eventID}`);
+    await assertSucceeds(setDoc(doc(aliceDB, requestPath), singleMission(aliceUid, requestID)));
+    await assertSucceeds(setDoc(eventRef, missionEvent(aliceUid, requestID, eventID)));
+    await assertFails(
+      updateDoc(eventRef, {
+        sealedPayload: sealedPayload(missionEventAad(aliceUid, requestID, eventID)),
+        vaultKeyID,
+        vaultGeneration: 2,
+        rewrapJobId: "rewrap-job-1",
+        updatedAt: "2026-06-23T00:00:00.000Z",
+      })
     );
   });
 

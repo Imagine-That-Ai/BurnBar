@@ -1,3 +1,4 @@
+import CryptoKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -9,6 +10,8 @@ import UIKit
 
 /// WS4 iOS client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
+    private static let relaySenderProofProtocolVersion = "3"
+
     struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
         let revokedCloudVaultWrappers: Int
         let cloudVaultRotationRequired: Bool
@@ -354,10 +357,17 @@ enum ComputerUseSecurityCallableClient {
         signalIdentityKeyVersion: Int,
         signalIdentityPublicKeyFingerprint: String
     ) async throws {
-        _ = try requireSignedInUser()
-        try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
-        let result = try await functions.httpsCallable("publishRelaySenderKey").call([
+        let subjectId = try relaySenderKeyPublishProofSubjectId(
+            deviceId: deviceId,
+            peerNodeId: peerNodeId,
+            keyId: keyId,
+            publicKeyBase64: publicKeyBase64,
+            publishedAtMillis: publishedAtMillis,
+            signalIdentityKeyId: signalIdentityKeyId,
+            signalIdentityKeyVersion: signalIdentityKeyVersion,
+            signalIdentityPublicKeyFingerprint: signalIdentityPublicKeyFingerprint
+        )
+        var payload: [String: any Sendable] = [
             "deviceId": deviceId,
             "peerNodeId": peerNodeId,
             "keyId": keyId,
@@ -366,9 +376,17 @@ enum ComputerUseSecurityCallableClient {
             "publishedAtMillis": publishedAtMillis,
             "signalIdentityKeyId": signalIdentityKeyId,
             "signalIdentityKeyVersion": signalIdentityKeyVersion,
-            "signalIdentityPublicKeyFingerprint": signalIdentityPublicKeyFingerprint,
-            "nonce": nonce
-        ])
+            "signalIdentityPublicKeyFingerprint": signalIdentityPublicKeyFingerprint
+        ]
+        let envelope = try await highRiskOwnerActionEnvelope(
+            actionKind: "relay_sender_key_publish",
+            subjectId: subjectId,
+            deviceId: deviceId
+        )
+        for (key, value) in envelope {
+            payload[key] = value
+        }
+        let result = try await functions.httpsCallable("publishRelaySenderKey").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Relay sender-key publication failed.")
         }
@@ -441,6 +459,53 @@ enum ComputerUseSecurityCallableClient {
             collapsed.append(fragment)
         }
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private static func relaySenderKeyPublishProofSubjectId(
+        deviceId: String,
+        peerNodeId: String,
+        keyId: String,
+        publicKeyBase64: String,
+        publishedAtMillis: Int64,
+        signalIdentityKeyId: String,
+        signalIdentityKeyVersion: Int,
+        signalIdentityPublicKeyFingerprint: String
+    ) throws -> String {
+        guard let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
+            throw ClientError.invalidResponse("Relay sender public key is not valid base64.")
+        }
+        let publicKeySHA256Hex = SHA256.hash(data: publicKeyData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let segments = [
+            "version",
+            "1",
+            "deviceId",
+            deviceId,
+            "peerNodeId",
+            peerNodeId,
+            "keyId",
+            keyId,
+            "publicKeySHA256Hex",
+            publicKeySHA256Hex,
+            "relayKeyVersion",
+            relaySenderProofProtocolVersion,
+            "publishedAtMillis",
+            "\(publishedAtMillis)",
+            "signalIdentityKeyId",
+            signalIdentityKeyId,
+            "signalIdentityKeyVersion",
+            "\(signalIdentityKeyVersion)",
+            "signalIdentityPublicKeyFingerprint",
+            signalIdentityPublicKeyFingerprint
+        ]
+        var canonical = "OpenBurnBar-RelaySenderKeyPublish-v1\n"
+        for segment in segments {
+            canonical += "\(Data(segment.utf8).count):\(segment)\n"
+        }
+        return SHA256.hash(data: Data(canonical.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     static func highRiskOwnerActionEnvelope(
