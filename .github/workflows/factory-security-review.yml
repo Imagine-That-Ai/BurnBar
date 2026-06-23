@@ -67,16 +67,57 @@ jobs:
             exit 1
           fi
 
+          trusted_system_path="/usr/bin:/bin:/usr/sbin:/sbin"
+          npm_global_bin="$(npm prefix --global)/bin"
+          droid_bin="${npm_global_bin}/droid"
+          if [[ ! -x "${droid_bin}" ]]; then
+            droid_bin="$(command -v droid || true)"
+          fi
+          node_bin="$(command -v node || true)"
+          if [[ -z "${droid_bin}" || ! -x "${droid_bin}" || -z "${node_bin}" || ! -x "${node_bin}" ]]; then
+            echo "::error::Droid CLI or Node runtime was not found after the pinned npm install"
+            exit 1
+          fi
+          droid_bin="$(realpath "${droid_bin}")"
+          node_bin="$(realpath "${node_bin}")"
+          droid_dir="$(dirname "${droid_bin}")"
+          node_dir="$(dirname "${node_bin}")"
+
+          mission_user="factory-mission"
+          if ! id -u "${mission_user}" >/dev/null 2>&1; then
+            sudo useradd --create-home --shell /usr/sbin/nologin "${mission_user}"
+          fi
+
+          mission_root="${RUNNER_TEMP}/factory-security-review-mission"
+          mission_home="${mission_root}/home"
+          mission_tmp="${mission_root}/tmp"
+          rm -rf "${mission_root}"
+          mkdir -p "${mission_home}" "${mission_tmp}"
+          sudo chown -R "${mission_user}:${mission_user}" "${mission_root}"
+
           review_output="${RUNNER_TEMP}/factory-security-review-output.log"
-          if ! droid exec --mission --auto high \
-            --model "${FACTORY_SECURITY_MODEL}" \
-            --reasoning-effort "${FACTORY_REASONING_EFFORT}" \
-            --worker-model "${FACTORY_SECURITY_MODEL}" \
-            --worker-reasoning-effort "${FACTORY_REASONING_EFFORT}" \
-            --validator-model "${FACTORY_SECURITY_MODEL}" \
-            --validator-reasoning-effort "${FACTORY_REASONING_EFFORT}" \
-            "/security-review across the entire repository" \
-            >"${review_output}" 2>&1; then
+          if ! {
+            sudo -H -u "${mission_user}" env -i \
+              HOME="${mission_home}" \
+              PATH="${droid_dir}:${node_dir}:${trusted_system_path}" \
+              LANG="${LANG:-C.UTF-8}" \
+              LC_ALL="${LC_ALL:-C.UTF-8}" \
+              CI="true" \
+              GITHUB_ACTIONS="true" \
+              RUNNER_TEMP="${mission_tmp}" \
+              TMPDIR="${mission_tmp}" \
+              FACTORY_API_KEY="${FACTORY_API_KEY}" \
+              FACTORY_SECURITY_MODEL="${FACTORY_SECURITY_MODEL}" \
+              FACTORY_REASONING_EFFORT="${FACTORY_REASONING_EFFORT}" \
+              "${droid_bin}" exec --mission --auto high \
+              --model "${FACTORY_SECURITY_MODEL}" \
+              --reasoning-effort "${FACTORY_REASONING_EFFORT}" \
+              --worker-model "${FACTORY_SECURITY_MODEL}" \
+              --worker-reasoning-effort "${FACTORY_REASONING_EFFORT}" \
+              --validator-model "${FACTORY_SECURITY_MODEL}" \
+              --validator-reasoning-effort "${FACTORY_REASONING_EFFORT}" \
+              "/security-review across the entire repository"
+          } >"${review_output}" 2>&1; then
             echo "::error::Droid security review failed. Raw mission output was kept on the runner and was not printed to CI logs."
             rm -f "${review_output}"
             exit 1
@@ -88,7 +129,7 @@ jobs:
       - name: Verify security review output
         run: |
           set -euo pipefail
-          audit_dir="$HOME/security-audits"
+          audit_dir="${RUNNER_TEMP}/factory-security-review-mission/home/security-audits"
           if [[ ! -d "${audit_dir}" ]]; then
             echo "::error::Droid completed without creating ${audit_dir}"
             exit 1
@@ -102,7 +143,21 @@ jobs:
       - name: Route critical findings to private security advisory
         run: |
           set -euo pipefail
-          audit_dir="$HOME/security-audits"
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+          unset BASH_ENV ENV CDPATH
+
+          gh_bin="/usr/bin/gh"
+          jq_bin="/usr/bin/jq"
+          curl_bin="/usr/bin/curl"
+          for tool in gh jq curl; do
+            bin_var="${tool}_bin"
+            if [[ ! -x "${!bin_var}" ]]; then
+              echo "::error::Required routing tool ${tool} was not found at the expected system path"
+              exit 1
+            fi
+          done
+
+          audit_dir="${RUNNER_TEMP}/factory-security-review-mission/home/security-audits"
           tmp_files=()
           cleanup() {
             for f in "${tmp_files[@]}"; do
@@ -152,25 +207,25 @@ jobs:
             } >> "${description_tmp}"
           fi
 
-          jq -n \
+          "${jq_bin}" -n \
             --arg summary "Weekly security review — ${today}" \
             --rawfile description "${description_tmp}" \
-            '{
-              summary: $summary,
-              description: $description,
-              severity: "critical",
+            "{
+              summary: \$summary,
+              description: \$description,
+              severity: \"critical\",
               confidential: true,
               private_vulnerability_reporting: true,
               vulnerabilities: [
                 {
                   package: {
-                    ecosystem: "other",
-                    name: "repository-codebase"
+                    ecosystem: \"other\",
+                    name: \"repository-codebase\"
                   },
-                  vulnerable_version_range: ">= 0.0.0"
+                  vulnerable_version_range: \">= 0.0.0\"
                 }
               ]
-            }' > "${payload_tmp}"
+            }" > "${payload_tmp}"
 
           # Post a single private security advisory per run. The GitHub
           # Security Advisory API requires a vulnerabilities array; we provide
@@ -180,7 +235,7 @@ jobs:
           if [[ -z "${GH_TOKEN:-}" ]]; then
             echo "::warning::SECURITY_ADVISORY_TOKEN is not configured; workflow will fail closed after alert routing."
           else
-            if gh api --silent --method POST "/repos/${GITHUB_REPOSITORY}/security-advisories" \
+            if "${gh_bin}" api --silent --method POST "/repos/${GITHUB_REPOSITORY}/security-advisories" \
               --input "${payload_tmp}" \
               2>/dev/null; then
               advisory_created=true
@@ -201,11 +256,11 @@ jobs:
             else
               slack_text="🚨 *${GITHUB_REPOSITORY}* — ${critical_count} critical finding(s) from weekly security review. Advisory creation failed; workflow failed closed without printing the report. Run: ${run_url}"
             fi
-            payload="$(jq -nc \
+            payload="$("${jq_bin}" -nc \
               --arg text "${slack_text}" \
-              '{text: $text, blocks: [{type:"section", text:{type:"mrkdwn", text: $text}}]}' 2>/dev/null || echo "")"
+              "{text: \$text, blocks: [{type:\"section\", text:{type:\"mrkdwn\", text: \$text}}]}" 2>/dev/null || echo "")"
             if [[ -n "${payload}" ]]; then
-              if curl -fsS -X POST -H 'Content-Type: application/json' \
+              if "${curl_bin}" -fsS -X POST -H 'Content-Type: application/json' \
                 --data "${payload}" \
                 "${SLACK_SECURITY_WEBHOOK}" 2>/dev/null; then
                 echo "Slack security notification sent."

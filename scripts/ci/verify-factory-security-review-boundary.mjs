@@ -4,7 +4,8 @@
  *
  * The workflow may generate raw security findings, but those findings must not
  * be printed to CI logs, passed through long-lived shell argv, uploaded as
- * artifacts, or routed to Slack as a substitute for a private advisory.
+ * artifacts, routed to Slack as a substitute for a private advisory, or allowed
+ * to poison later secret-bearing steps through GitHub Actions state files.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -67,16 +68,52 @@ if (!/review_output="\$\{RUNNER_TEMP\}\/factory-security-review-output\.log"/u.t
   fail("Droid mission output must be captured to a runner-temp file");
 }
 
-if (!/if ! droid exec --mission --auto high/u.test(source)) {
+if (!/if ! \{\s+sudo -H -u "\$\{mission_user\}" env -i[\s\S]*"\$\{droid_bin\}" exec --mission --auto high/u.test(source)) {
   fail("Droid mission must run behind an explicit fail-closed wrapper");
+}
+
+const missionBlock =
+  source.match(
+    /if ! \{\s+sudo -H -u "\$\{mission_user\}" env -i[\s\S]*?"\$\{droid_bin\}" exec --mission --auto high[\s\S]*?\/security-review[\s\S]*?2>&1/u,
+  )?.[0] ?? "";
+if (!missionBlock) {
+  fail("Droid mission must execute through a sanitized child environment");
+} else {
+  for (const marker of [
+    'FACTORY_API_KEY="${FACTORY_API_KEY}"',
+    'FACTORY_SECURITY_MODEL="${FACTORY_SECURITY_MODEL}"',
+    'FACTORY_REASONING_EFFORT="${FACTORY_REASONING_EFFORT}"',
+    'HOME="${mission_home}"',
+    'RUNNER_TEMP="${mission_tmp}"',
+    'TMPDIR="${mission_tmp}"',
+  ]) {
+    if (!missionBlock.includes(marker)) {
+      fail(`Droid mission sanitized environment is missing ${marker}`);
+    }
+  }
+  for (const forbidden of [
+    "GITHUB_ENV",
+    "GITHUB_PATH",
+    "GITHUB_OUTPUT",
+    "GITHUB_STEP_SUMMARY",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "SLACK_SECURITY_WEBHOOK",
+    "BASH_ENV",
+    "ENV=",
+    'RUNNER_TEMP="${RUNNER_TEMP}"',
+  ]) {
+    if (missionBlock.includes(forbidden)) {
+      fail(`Droid mission sanitized environment must not pass ${forbidden}`);
+    }
+  }
 }
 
 if (!/>"\$\{review_output\}" 2>&1/u.test(source)) {
   fail("Droid mission stdout/stderr must not stream to CI logs");
 }
 
-if (/droid exec --mission[\s\S]*?\/security-review[\s\S]*?(?<!>)\n/u.test(source)) {
-  const missionBlock = source.match(/if ! droid exec --mission[\s\S]*?\/security-review[\s\S]*?2>&1/u)?.[0] ?? "";
+if (/exec --mission[\s\S]*?\/security-review[\s\S]*?(?<!>)\n/u.test(source)) {
   if (!missionBlock.includes('>"${review_output}" 2>&1')) {
     fail("Droid mission command appears without the required output redirection");
   }
@@ -110,8 +147,48 @@ if (!/--input "\$\{payload_tmp\}"/u.test(source)) {
   fail("GitHub advisory API call must read the JSON payload from a file");
 }
 
-if (!/gh api --silent --method POST/u.test(source)) {
+if (!/mission_user="factory-mission"/u.test(source) || !/sudo useradd --create-home --shell \/usr\/sbin\/nologin "\$\{mission_user\}"/u.test(source)) {
+  fail("Droid mission must run as a dedicated unprivileged user");
+}
+
+if (!/mission_home="\$\{mission_root\}\/home"/u.test(source) || !/mission_tmp="\$\{mission_root\}\/tmp"/u.test(source)) {
+  fail("Droid mission must receive isolated home and temp directories");
+}
+
+if (!/npm_global_bin="\$\(npm prefix --global\)\/bin"/u.test(source) || !/droid_bin="\$\{npm_global_bin\}\/droid"/u.test(source)) {
+  fail("Droid mission must resolve the pinned npm-installed CLI before narrowing PATH");
+}
+
+if (!/export PATH="\/usr\/bin:\/bin:\/usr\/sbin:\/sbin"/u.test(source)) {
+  fail("secret-bearing routing step must reset PATH to trusted system directories");
+}
+
+if (!/unset BASH_ENV ENV CDPATH/u.test(source)) {
+  fail("secret-bearing routing step must clear shell environment hooks");
+}
+
+if (!/gh_bin="\/usr\/bin\/gh"/u.test(source)) {
+  fail("secret-bearing routing step must use the fixed system gh binary");
+}
+
+if (!/jq_bin="\/usr\/bin\/jq"/u.test(source)) {
+  fail("secret-bearing routing step must use the fixed system jq binary");
+}
+
+if (!/curl_bin="\/usr\/bin\/curl"/u.test(source)) {
+  fail("secret-bearing routing step must use the fixed system curl binary");
+}
+
+if (!/"\$\{gh_bin\}" api --silent --method POST/u.test(source)) {
   fail("GitHub advisory API call must suppress the response body");
+}
+
+if (!/"\$\{jq_bin\}" -n\s/u.test(source) || !/"\$\{jq_bin\}" -nc\s/u.test(source)) {
+  fail("secret-bearing routing step must invoke jq through the trusted resolved path");
+}
+
+if (!/"\$\{curl_bin\}" -fsS -X POST/u.test(source)) {
+  fail("secret-bearing routing step must invoke curl through the trusted resolved path");
 }
 
 if (!/GH_TOKEN:\s*\$\{\{\s*secrets\.SECURITY_ADVISORY_TOKEN\s*\}\}/u.test(source)) {
@@ -122,11 +199,11 @@ if (!/confidential: true/u.test(source)) {
   fail("advisory payload must mark reports confidential");
 }
 
-if (!/ecosystem: "other"/u.test(source)) {
+if (!/ecosystem:\s*\\?"other\\?"/u.test(source)) {
   fail("advisory payload must use GitHub's lowercase advisory ecosystem value");
 }
 
-if (/ecosystem: "OTHER"/u.test(source)) {
+if (/ecosystem:\s*\\?"OTHER\\?"/u.test(source)) {
   fail("advisory payload must not use uppercase advisory ecosystem values");
 }
 
