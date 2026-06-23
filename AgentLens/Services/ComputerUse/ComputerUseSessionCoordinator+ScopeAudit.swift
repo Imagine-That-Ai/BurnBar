@@ -92,6 +92,7 @@ extension ComputerUseSessionCoordinator {
             case .dragDrop: tool = .macInputDragDrop
             case .scroll: tool = .macInputScroll
             case .pointerMove: tool = .macInputPointerMove
+            case .pointerClick: tool = .macInputClick
             }
             args = macInputArguments(mac)
         default:
@@ -176,8 +177,18 @@ extension ComputerUseSessionCoordinator {
         guard case let .object(arguments) = invocation.arguments else {
             return MacInputAction(kind: kind)
         }
+        let decodedKind: MacInputAction.Kind
+        if kind == .click,
+           invocation.requestedBy.rawValue == "phone-control",
+           case let .object(arguments) = invocation.arguments,
+           arguments.stringValue(forKey: "kind") == MacInputAction.Kind.pointerClick.rawValue {
+            decodedKind = .pointerClick
+        } else {
+            decodedKind = kind
+        }
+
         return MacInputAction(
-            kind: kind,
+            kind: decodedKind,
             displayX: arguments.intValue(forKey: "displayX"),
             displayY: arguments.intValue(forKey: "displayY"),
             dragEndX: arguments.intValue(forKey: "dragEndX"),
@@ -301,6 +312,7 @@ extension ComputerUseSessionCoordinator {
         if let dragEndY = action.dragEndY { object["dragEndY"] = .number(Double(dragEndY)) }
         if let deltaX = action.deltaX { object["deltaX"] = .number(Double(deltaX)) }
         if let deltaY = action.deltaY { object["deltaY"] = .number(Double(deltaY)) }
+        if action.kind == .pointerClick { object["kind"] = .string(action.kind.rawValue) }
         object["mouseButton"] = .number(Double(action.mouseButton))
         if let text = action.text { object["text"] = .string(text) }
         if let key = action.key { object["key"] = .string(key) }

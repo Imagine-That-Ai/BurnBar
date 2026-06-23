@@ -131,6 +131,7 @@ public struct MacInputAction: Codable, Hashable, Sendable {
         case dragDrop = "drag_drop"
         case scroll
         case pointerMove = "pointer_move"
+        case pointerClick = "pointer_click"
     }
 
     public let kind: Kind
@@ -197,6 +198,8 @@ public struct MacInputAction: Codable, Hashable, Sendable {
             return "Scroll in \(app)"
         case .pointerMove:
             return "Move pointer in \(app)"
+        case .pointerClick:
+            return "Click current pointer in \(app)"
         }
     }
 }

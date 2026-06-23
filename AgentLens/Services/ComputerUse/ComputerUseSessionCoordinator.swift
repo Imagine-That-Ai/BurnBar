@@ -638,7 +638,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         switch input.kind {
         case .type, .key, .shortcut:
             return true
-        case .click, .dragDrop, .scroll, .pointerMove:
+        case .click, .dragDrop, .scroll, .pointerMove, .pointerClick:
             return false
         }
     }

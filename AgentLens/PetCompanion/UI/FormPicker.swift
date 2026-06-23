@@ -142,6 +142,9 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
+    // One cache per picker instance keeps thumbnail rendering stable without
+    // adding a process-wide singleton. SwiftUI preserves this object while the
+    // picker is mounted.
     @StateObject private var thumbnails = PetThumbnailStore()
     @State private var searchText = ""
     @State private var selectedCategory: String?
