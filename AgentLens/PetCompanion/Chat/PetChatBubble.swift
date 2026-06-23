@@ -177,9 +177,8 @@ final class PetChatController {
         }
 
         // Hand the draft to the shared controller exactly as the main chat does,
-        // but first override its trusted persona block with the active pet's
-        // `agent.persona` so the answer lands in this pet's voice. A pet without
-        // a persona leaves the default prompt untouched (PetChatProviders is the
+        // adding the active pet's `agent.persona` as wrapped style context. A pet
+        // without a persona leaves the prompt untouched (PetChatProviders is the
         // onboarding-only floor; the live bubble's default is the shared core).
         chat.personaCoreOverride = pet?.activeChatPersona
         chat.inputText = trimmed
