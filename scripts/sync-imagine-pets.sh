@@ -252,6 +252,24 @@ async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
   return pruned;
 }
 
+// Sync is OPT-IN. The committed PetCompanion model resources are the build's
+// source of truth, so no automatic build (local, CI, or release) can silently
+// regress model quality — e.g. overwriting the high-poly founder avatars with
+// low-poly placeholders from a stale Imagine manifest. Refresh deliberately with
+// IMAGINE_PETS_SYNC=1 (or the existing _REMOTE/_STRICT flags), then review the
+// diff (including model quality) before committing.
+const syncEnabled =
+  /^(1|true|yes)$/i.test(process.env.IMAGINE_PETS_SYNC || "") ||
+  allowRemoteSync ||
+  strictSync;
+if (!syncEnabled) {
+  console.warn(
+    "Imagine pet sync skipped (opt-in): using committed PetCompanion models. " +
+    "Set IMAGINE_PETS_SYNC=1 to refresh from the Imagine manifest, then commit the reviewed diff."
+  );
+  process.exit(0);
+}
+
 const manifest = await readManifest();
 if (!manifest) process.exit(0);
 

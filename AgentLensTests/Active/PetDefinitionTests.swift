@@ -484,6 +484,44 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertGreaterThan(center, 50, "founder not framed in the centre (edge fragments / mis-framed)")
     }
 
+    /// Guard against the Imagine sync (or a bad commit) regressing the founder
+    /// avatars to low-poly placeholders (~1.3k verts) instead of the real
+    /// high-poly models (~100k verts), which render as faceted, blank-faced blobs.
+    /// The sync is opt-in (committed models are the source of truth); this fails
+    /// CI if a low-poly founder ever lands.
+    func test_founderModelsAreHighPolyNotPlaceholders() throws {
+        let minVertices = 20_000
+        for id in bundledFounderIDs {
+            let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+            let model = try XCTUnwrap(def.model3d, id)
+            let url = try XCTUnwrap(PetModelResourceLocator.url(for: model.glb, petID: id), id)
+            let verts = try Self.glbPositionCount(at: url)
+            XCTAssertGreaterThan(
+                verts, minVertices,
+                "\(id) is low-poly (\(verts) verts) — likely a synced placeholder. Founders must ship the high-poly models."
+            )
+        }
+    }
+
+    /// Read a binary glTF's first-mesh POSITION accessor count (vertex count)
+    /// straight from the JSON chunk — no decode needed.
+    private static func glbPositionCount(at url: URL) throws -> Int {
+        let data = try Data(contentsOf: url)
+        guard data.count > 20 else { return 0 }
+        let b = [UInt8](data[12..<16])
+        let jsonLength = Int(UInt32(b[0]) | (UInt32(b[1]) << 8) | (UInt32(b[2]) << 16) | (UInt32(b[3]) << 24))
+        guard data.count >= 20 + jsonLength else { return 0 }
+        let json = try JSONSerialization.jsonObject(with: data.subdata(in: 20..<(20 + jsonLength))) as? [String: Any]
+        let accessors = json?["accessors"] as? [[String: Any]] ?? []
+        let meshes = json?["meshes"] as? [[String: Any]] ?? []
+        guard let primitive = (meshes.first?["primitives"] as? [[String: Any]])?.first,
+              let attributes = primitive["attributes"] as? [String: Any],
+              let positionIndex = attributes["POSITION"] as? Int,
+              positionIndex < accessors.count,
+              let count = accessors[positionIndex]["count"] as? Int else { return 0 }
+        return count
+    }
+
     func test_petWindowState_roundTripsFrame() {
         let id = "test-window-pet"
         defer { UserDefaults.standard.removeObject(forKey: "pet.window.frame." + id) }
