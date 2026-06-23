@@ -185,7 +185,7 @@ struct PetFormPickerView: View {
     }
 
     /// A 2D atlas preview (first frame of the default state) when an atlas image
-    /// is bundled, else a glyph placeholder.
+    /// is bundled; model-only pets render a paused SceneKit preview.
     @ViewBuilder
     private func preview(for def: PetDefinition) -> some View {
         if let name = PetCatalog.atlasPreviewName(for: def),
@@ -194,8 +194,11 @@ struct PetFormPickerView: View {
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
+        } else if def.model3d != nil {
+            ModelPetPreviewView(definition: def)
+                .allowsHitTesting(false)
         } else {
-            Image(systemName: def.model3d != nil ? "cube.transparent" : "pawprint.fill")
+            Image(systemName: "pawprint.fill")
                 .font(.system(size: 32, weight: .light))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
@@ -218,5 +221,67 @@ struct PetFormPickerView: View {
         guard let url = Bundle.main.url(forResource: stem, withExtension: ext, subdirectory: "Pets/\(petID)")
             ?? Bundle.main.url(forResource: stem, withExtension: ext) else { return nil }
         return NSImage(contentsOf: url)
+    }
+}
+
+// MARK: - 3D picker preview
+
+private struct ModelPetPreviewView: NSViewRepresentable {
+    let definition: PetDefinition
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView(frame: CGRect(origin: .zero, size: CGSize(width: 84, height: 84)))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        context.coordinator.render(definition: definition, in: container)
+        return container
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.render(definition: definition, in: nsView)
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.unmount()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private var renderedID: String?
+        private var renderedForm: PetForm?
+        private var renderer: SceneKitPetRenderer?
+
+        func render(definition: PetDefinition, in container: NSView) {
+            guard let form = definition.defaultForm, form.isModel else {
+                unmount()
+                return
+            }
+
+            if renderedID != definition.id || renderedForm != form {
+                unmount()
+                let next = SceneKitPetRenderer(definition: definition, form: form)
+                renderer = next
+                renderedID = definition.id
+                renderedForm = form
+                next.setAmbientFrameRate(8)
+                next.mount(in: container)
+                next.setReducedMotion(true)
+                next.setPaused(true)
+            } else if renderer?.view.superview !== container {
+                renderer?.mount(in: container)
+                renderer?.setPaused(true)
+            }
+        }
+
+        func unmount() {
+            renderer?.unmount()
+            renderer = nil
+            renderedID = nil
+            renderedForm = nil
+        }
     }
 }
