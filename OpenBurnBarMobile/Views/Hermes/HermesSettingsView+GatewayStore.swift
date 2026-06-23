@@ -7,6 +7,19 @@ import OpenBurnBarCore
 // Hermes gateway settings store (pairing/connection state machine).
 // Extracted from HermesSettingsView.swift (god-file decomposition) — same module, verbatim.
 
+enum HermesGatewayApprovalDetailIndex {
+    static func keyedByActionId(from messages: [HermesGatewayMessageRecord]) -> [String: String] {
+        messages.reduce(into: [:]) { acc, record in
+            if record.resolvedKind == "approval",
+               let actionId = record.resolvedActionId,
+               let detail = record.resolvedText,
+               !detail.isEmpty {
+                acc[actionId] = detail
+            }
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class HermesGatewaySettingsStore {
@@ -824,15 +837,7 @@ final class HermesGatewaySettingsStore {
             return record.decodedText(using: keypair, uid: uid, targetClient: targetClient, pinStore: agentKeyPinStore)
         }
 
-        // MP-6: index the decrypted approval-detail cards by their sealed actionId so
-        // the approval gate can show the right end-to-end-encrypted detail and only
-        // enable Approve once a matching sealed detail has been opened on this device.
-        let approvalDetails: [String: String] = messages.reduce(into: [:]) { acc, record in
-            if record.resolvedKind == "approval", let actionId = record.resolvedActionId,
-               let detail = record.resolvedText, !detail.isEmpty {
-                acc[actionId] = detail
-            }
-        }
+        let approvalDetails = HermesGatewayApprovalDetailIndex.keyedByActionId(from: messages)
         // handleMessagesSnapshot already runs on the MainActor, so write the keyed
         // map inline (no redundant Task hop); keyed by the sealed payload's actionId.
         for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
