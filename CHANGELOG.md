@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Made macOS updates converge on one canonical app launch. The direct-download
+  updater now terminates stale OpenBurnBar GUI processes, normalizes
+  LaunchServices registrations, and relaunches `/Applications/OpenBurnBar.app`
+  by exact path; source-channel updates use the same one-click install/cleanup
+  flow through `scripts/source-update-install.sh`.
+
 ### Security
 
 - Hardened Android credential transfer to v2 split tokens: Android now generates

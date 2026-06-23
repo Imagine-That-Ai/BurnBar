@@ -221,9 +221,10 @@ struct BehaviorInterpreter: Sendable {
 
 // MARK: - Golden vector fixture shape
 
-/// Decodes the `packages/petcore/test/golden/behavior.json` fixture the TS core
-/// exports for the Swift port (PLAN A4 / C3). Shape: a seed, the graph, and the
-/// ordered trigger → expected-state pairs the TS interpreter produced.
+/// Decodes the optional Swift-compatible behavior golden vector fixture
+/// (`packages/petcore/test/golden/behavior-swift.json`). Shape: a seed, the
+/// graph, and the ordered trigger → expected-state pairs the TS interpreter
+/// produced after conversion from the shared petcore export.
 struct BehaviorGoldenVector: Codable, Sendable {
     var seed: UInt32
     var graph: PetBehaviorGraph

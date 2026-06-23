@@ -538,8 +538,7 @@ private struct PetCompanionSettingsView: View {
                 )
             } else {
                 PetFormPickerView(definitions: bundledPets, selectedPetID: $activePetID) { id, form in
-                    activePetID = id
-                    PetCompanionFeature.runtime.controller.setForm(form)
+                    PetCompanionFeature.selectPet(id: id, form: form)
                     if petEnabled {
                         PetCompanionFeature.showCompanion()
                     }

@@ -1,8 +1,24 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import GLTFKit2
 import SceneKit
 import simd
+
+// MARK: - PetModel3DInteractionState
+
+/// User-controlled 3D view transform for model pets.
+struct PetModel3DInteractionState: Equatable, Sendable {
+    var yawRadians: CGFloat
+    var scale: CGFloat
+}
+
+/// Debug/test-only framing metrics for a mounted 3D pet.
+struct PetModel3DFrameMetrics: Equatable, Sendable {
+    var sourceMaxExtent: CGFloat
+    var normalizedMaxExtent: CGFloat
+    var baseScale: CGFloat
+}
 
 // MARK: - GLBSceneLoading
 
@@ -16,10 +32,8 @@ import simd
 /// `scene.defaultScene`, which also surfaces each glTF animation as an
 /// `SCNAnimationPlayer` keyed by clip name.
 ///
-/// Keeping that behind ``GLBSceneLoading`` means this file `swiftc -parse`s with
-/// zero external imports today, the build-notes agent documents adding the
-/// GLTFKit2 SPM dependency, and the renderer swaps loaders without edits. Tests
-/// inject a fake loader; production registers ``DefaultGLBSceneLoader``.
+/// Keeping that behind ``GLBSceneLoading`` lets tests inject a fake loader while
+/// production routes through the bundled GLTFKit2 binary package.
 @MainActor
 protocol GLBSceneLoading: AnyObject {
     /// Load the scene graph for `url`. `clipNames` are the glTF animation names
@@ -31,8 +45,7 @@ protocol GLBSceneLoading: AnyObject {
 /// Production loader.
 ///
 /// Order of attempts, most-capable first:
-/// 1. **GLTFKit2** (when linked) — the canonical `.glb` path. Documented hook;
-///    see ``loadViaGLTFKit2(url:)`` for the exact call the integrator un-stubs.
+/// 1. **GLTFKit2** — the canonical `.glb` path.
 /// 2. **SceneKit native** (`SCNScene(url:)`) — succeeds for `.usdz`/`.scn`
 ///    siblings and any `.glb` once a GLTF importer is registered system-wide.
 ///
@@ -40,6 +53,8 @@ protocol GLBSceneLoading: AnyObject {
 /// so the panel still shows a creature rather than a blank rect.
 @MainActor
 final class DefaultGLBSceneLoader: GLBSceneLoading {
+    private static var didRegisterDracoDecompressor = false
+
     func loadScene(at url: URL, clipNames: [String]) -> SCNScene? {
         if let scene = loadViaGLTFKit2(url: url) { return scene }
         // Native SceneKit: handles USDZ/SCN and GLB-with-registered-importer.
@@ -49,18 +64,33 @@ final class DefaultGLBSceneLoader: GLBSceneLoading {
         return nil
     }
 
-    /// GLTFKit2 entry point. **Intentionally stubbed** so this compiles without
-    /// the dependency. The build-notes agent adds the SPM package and replaces
-    /// the body with:
-    ///
-    /// ```swift
-    /// import GLTFKit2
-    /// guard let asset = try? GLTFAsset(url: url) else { return nil }
-    /// let source = GLTFSCNSceneSource(asset: asset)
-    /// return source.defaultScene            // animations land as SCNAnimationPlayers
-    /// ```
     private func loadViaGLTFKit2(url: URL) -> SCNScene? {
-        nil
+        Self.registerDracoDecompressorIfNeeded()
+        guard let asset = try? GLTFAsset(url: url, options: [
+            GLTFAssetLoadingOption.createNormalsIfAbsentKey: true
+        ]) else {
+            return nil
+        }
+        let source = GLTFSCNSceneSource(asset: asset)
+        guard let scene = source.defaultScene else { return nil }
+        // GLTFKit2 builds an `SCNAnimationPlayer` per glTF clip into
+        // `source.animations` but never attaches them to the scene graph, so the
+        // renderer would never find them and the pet would stay frozen. Attach
+        // each to the scene root keyed by its clip name (the channels target nodes
+        // by name, so the attach point is irrelevant) and leave them paused — the
+        // renderer drives playback via `play(state:)`.
+        for animation in source.animations {
+            let player = animation.animationPlayer
+            scene.rootNode.addAnimationPlayer(player, forKey: animation.name)
+            player.stop()
+        }
+        return scene
+    }
+
+    private static func registerDracoDecompressorIfNeeded() {
+        guard !didRegisterDracoDecompressor else { return }
+        GLTFAsset.dracoDecompressorClassName = "OpenBurnBarDracoDecompressor"
+        didRegisterDracoDecompressor = true
     }
 }
 
@@ -77,7 +107,28 @@ final class DefaultGLBSceneLoader: GLBSceneLoading {
 /// CPU and resumes instantly. Static models (no clips, e.g. `go-gopher`) get a
 /// gentle host-driven idle bob so the panel never looks frozen.
 @MainActor
-final class SceneKitPetRenderer: NSObject, PetRenderer {
+final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate {
+    private enum InteractionDefaults {
+        static let yawPrefix = "pet.model3d.yaw."
+        static let scalePrefix = "pet.model3d.scale."
+        static let minimumScale: CGFloat = 0.55
+        static let maximumScale: CGFloat = 2.4
+        static let rotationSensitivity: CGFloat = 0.012
+        static let scrollScaleSensitivity: CGFloat = 0.012
+        // Desktop-pet panel resize (the camera fills the view, so resizing the
+        // window resizes the visible pet). Aspect is locked to the default cell
+        // (PetPanel.defaultSize = 192x208).
+        static let panelAspect: CGFloat = 208.0 / 192.0
+        static let minPanelWidth: CGFloat = 110
+        static let maxPanelWidth: CGFloat = 560
+    }
+
+    private struct ModelFraming {
+        var baseScale: CGFloat
+        var centerX: CGFloat
+        var centerZ: CGFloat
+        var minY: CGFloat
+    }
 
     // MARK: PetRenderer surface
 
@@ -87,7 +138,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
 
     // MARK: SceneKit state
 
-    private let scnView: SCNView
+    private let scnView: InteractivePetSceneView
     private let loader: GLBSceneLoading
 
     /// The mounted scene graph for the current form; `nil` until mounted /
@@ -108,8 +159,38 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     private var reducedMotion = false
     private var ambientFrameRate = 15
     private var paused = false
+    private var userYawRadians: CGFloat
+    private var userScale: CGFloat
+    private var modelFraming: ModelFraming?
+    /// Set when a freshly-loaded scene still needs the camera re-fit to its
+    /// post-skinning presentation bounds on the next render (see install).
+    private var needsPresentationFraming = false
+    /// Window origin + mouse location captured at the start of a drag-to-move,
+    /// so the panel tracks the cursor in absolute screen coordinates.
+    private var dragStartWindowOrigin: NSPoint?
+    private var dragStartMouse: NSPoint?
 
     private static let idleBobActionKey = "pet.idleBob"
+    private static let targetModelHeight: CGFloat = 2.0
+
+    var interactionState: PetModel3DInteractionState {
+        PetModel3DInteractionState(yawRadians: userYawRadians, scale: userScale)
+    }
+
+    var frameMetricsForTesting: PetModel3DFrameMetrics? {
+        guard let contentRoot,
+              let framing = modelFraming,
+              let bounds = subtreeBoundingBox(for: contentRoot) else { return nil }
+        let (minB, maxB) = bounds
+        let maxExtent = Self.maxExtent(min: minB, max: maxB)
+        guard maxExtent > 0 else { return nil }
+        let scale = framing.baseScale * userScale
+        return PetModel3DFrameMetrics(
+            sourceMaxExtent: maxExtent,
+            normalizedMaxExtent: maxExtent * scale,
+            baseScale: framing.baseScale
+        )
+    }
 
     // MARK: Init
 
@@ -123,7 +204,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.loader = loader
 
         let frame = CGRect(origin: .zero, size: PetPanel.defaultSize)
-        let view = SCNView(frame: frame)
+        let view = InteractivePetSceneView(frame: frame)
         view.backgroundColor = .clear
         // Transparent so the panel stays click-through where the model isn't.
         view.allowsCameraControl = false
@@ -135,8 +216,12 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.scnView = view
 
         self.currentStateKey = PetLogicalState.idle.rawValue
+        self.userYawRadians = Self.storedYaw(for: definition.id)
+        self.userScale = Self.storedScale(for: definition.id)
 
         super.init()
+
+        installInteractionRecognizers()
     }
 
     // MARK: Mount / unmount (on-demand bring-up, teardown to baseline)
@@ -178,6 +263,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         scnView.scene = nil
         scene = nil
         contentRoot = nil
+        modelFraming = nil
         clipPlayers.removeAll(keepingCapacity: true)
         activeClipKey = nil
         playbackGeneration += 1
@@ -228,12 +314,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         let sign: CGFloat = direction < 0 ? -1 : 1
         guard sign != (facing < 0 ? -1 : 1) else { facing = sign; return }
         facing = sign
-        // Yaw the model 180° to face the travel direction (mirror about Y).
-        // `eulerAngles` is `SCNVector3` whose components are `CGFloat` on macOS.
-        let yaw: CGFloat = sign < 0 ? .pi : 0
-        if let node = contentRoot {
-            node.eulerAngles = SCNVector3(node.eulerAngles.x, yaw, node.eulerAngles.z)
-        }
+        applyModelTransform()
     }
 
     // MARK: Energy gating (PLAN §4)
@@ -255,6 +336,30 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     func setAmbientFrameRate(_ fps: Int) {
         ambientFrameRate = max(fps, 1)
         scnView.preferredFramesPerSecond = ambientFrameRate
+    }
+
+    func rotateModel(by deltaRadians: CGFloat, persist: Bool = true) {
+        guard deltaRadians.isFinite else { return }
+        userYawRadians = Self.normalizedAngle(userYawRadians + deltaRadians)
+        applyModelTransform()
+        if persist { Self.storeYaw(userYawRadians, for: definition.id) }
+    }
+
+    func resizeModel(by factor: CGFloat, persist: Bool = true) {
+        guard factor.isFinite, factor > 0 else { return }
+        userScale = Self.clampedScale(userScale * factor)
+        applyModelTransform()
+        if persist { Self.storeScale(userScale, for: definition.id) }
+    }
+
+    func resetModelView(persist: Bool = true) {
+        userYawRadians = 0
+        userScale = 1
+        applyModelTransform()
+        if persist {
+            Self.storeYaw(userYawRadians, for: definition.id)
+            Self.storeScale(userScale, for: definition.id)
+        }
     }
 
     func setReducedMotion(_ reduced: Bool) {
@@ -305,13 +410,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         }
 
         let clipNames = Array((definition.model3d?.clips ?? [:]).values)
-        let base = (glbName as NSString).deletingPathExtension
-        let ext = (glbName as NSString).pathExtension.isEmpty
-            ? "glb"
-            : (glbName as NSString).pathExtension
-
-        let url = Bundle.main.url(forResource: base, withExtension: ext, subdirectory: "Models")
-            ?? Bundle.main.url(forResource: base, withExtension: ext)
+        let url = PetModelResourceLocator.url(for: glbName, petID: definition.id)
 
         if let url, let loaded = loader.loadScene(at: url, clipNames: clipNames) {
             install(scene: loaded)
@@ -335,6 +434,48 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         normalizeFraming(root: root, in: loaded)
         harvestClipPlayers(from: loaded.rootNode)
         ensureCameraAndLights(in: loaded)
+
+        // Skinned rigs (the founders) deform far beyond their bind-pose bounding
+        // sphere once the skinner runs at first render, so the bind-pose camera
+        // framing above misses them entirely. Re-fit the camera to the actual
+        // PRESENTATION bounds after the first render lands.
+        needsPresentationFraming = true
+        scnView.delegate = self
+    }
+
+    /// Re-fit the camera to the model's PRESENTATION (post-skinning) bounds. The
+    /// presentation node reflects the actual rendered pose; for skinned founder
+    /// rigs that is ~100x larger and offset high on +Y versus the static
+    /// bind-pose bounds used at install time. Unskinned models (presentation ==
+    /// bind pose, e.g. go-gopher) are unaffected.
+    private func frameCameraToPresentation() {
+        guard let scene = scnView.scene,
+              let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) else { return }
+        let sphere = scene.rootNode.presentation.boundingSphere
+        let center = sphere.center
+        let radius = CGFloat(sphere.radius)
+        guard radius.isFinite, radius > 0 else { return }
+        let camera = cameraNode.camera ?? SCNCamera()
+        cameraNode.camera = camera
+        camera.usesOrthographicProjection = false
+        camera.fieldOfView = 60
+        let distance = radius * 3
+        camera.zNear = Double(max(0.01, distance - radius * 2))
+        camera.zFar = Double(distance + radius * 10)
+        cameraNode.position = SCNVector3(center.x, center.y, center.z + distance)
+        cameraNode.look(at: center)
+        scnView.pointOfView = cameraNode
+        // Paused previews (the Settings picker cells) won't re-render on their own
+        // after the camera moves, so request one redraw to show the reframed pet.
+        scnView.needsDisplay = true
+    }
+
+    nonisolated func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
+        Task { @MainActor [weak self] in
+            guard let self, self.needsPresentationFraming else { return }
+            self.needsPresentationFraming = false
+            self.frameCameraToPresentation()
+        }
     }
 
     /// Build a minimal placeholder scene (a capsule) so a model-only pet whose
@@ -350,6 +491,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
         self.scene = scene
         scnView.scene = scene
         contentRoot = root
+        modelFraming = nil
         ensureCameraAndLights(in: scene)
         applyIdleBob()
     }
@@ -359,23 +501,108 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     private func normalizeFraming(root: SCNNode, in scene: SCNScene) {
         // `SCNVector3` components are `CGFloat` on macOS; keep all math in
         // `CGFloat` so this typechecks against the AppKit SceneKit overlay.
-        let (minB, maxB) = root.boundingBox
+        guard let bounds = subtreeBoundingBox(for: root) else { return }
+        let (minB, maxB) = bounds
+        let maxExtent = Self.maxExtent(min: minB, max: maxB)
+        guard maxExtent > 0 else { return }
+        modelFraming = ModelFraming(
+            baseScale: Self.targetModelHeight / maxExtent,
+            centerX: (CGFloat(minB.x) + CGFloat(maxB.x)) / 2,
+            centerZ: (CGFloat(minB.z) + CGFloat(maxB.z)) / 2,
+            minY: CGFloat(minB.y)
+        )
+        applyModelTransform()
+    }
+
+    private func subtreeBoundingBox(for root: SCNNode) -> (SCNVector3, SCNVector3)? {
+        var minPoint: SCNVector3?
+        var maxPoint: SCNVector3?
+
+        func include(_ point: SCNVector3) {
+            guard CGFloat(point.x).isFinite,
+                  CGFloat(point.y).isFinite,
+                  CGFloat(point.z).isFinite else { return }
+
+            if let current = minPoint {
+                minPoint = SCNVector3(
+                    Swift.min(current.x, point.x),
+                    Swift.min(current.y, point.y),
+                    Swift.min(current.z, point.z)
+                )
+            } else {
+                minPoint = point
+            }
+
+            if let current = maxPoint {
+                maxPoint = SCNVector3(
+                    Swift.max(current.x, point.x),
+                    Swift.max(current.y, point.y),
+                    Swift.max(current.z, point.z)
+                )
+            } else {
+                maxPoint = point
+            }
+        }
+
+        func includeBounds(of node: SCNNode) {
+            let (minB, maxB) = node.boundingBox
+            guard Self.hasFinitePositiveExtent(min: minB, max: maxB) else { return }
+            for corner in Self.boundingBoxCorners(min: minB, max: maxB) {
+                include(root.convertPosition(corner, from: node))
+            }
+        }
+
+        includeBounds(of: root)
+        root.enumerateChildNodes { node, _ in
+            includeBounds(of: node)
+        }
+
+        guard let minPoint,
+              let maxPoint,
+              Self.hasFinitePositiveExtent(min: minPoint, max: maxPoint) else { return nil }
+        return (minPoint, maxPoint)
+    }
+
+    private static func boundingBoxCorners(min minB: SCNVector3, max maxB: SCNVector3) -> [SCNVector3] {
+        [
+            SCNVector3(minB.x, minB.y, minB.z),
+            SCNVector3(minB.x, minB.y, maxB.z),
+            SCNVector3(minB.x, maxB.y, minB.z),
+            SCNVector3(minB.x, maxB.y, maxB.z),
+            SCNVector3(maxB.x, minB.y, minB.z),
+            SCNVector3(maxB.x, minB.y, maxB.z),
+            SCNVector3(maxB.x, maxB.y, minB.z),
+            SCNVector3(maxB.x, maxB.y, maxB.z)
+        ]
+    }
+
+    private static func hasFinitePositiveExtent(min minB: SCNVector3, max maxB: SCNVector3) -> Bool {
+        let extents = [
+            CGFloat(maxB.x - minB.x),
+            CGFloat(maxB.y - minB.y),
+            CGFloat(maxB.z - minB.z)
+        ]
+        return extents.allSatisfy { $0.isFinite } && extents.contains { $0 > 0 }
+    }
+
+    private static func maxExtent(min minB: SCNVector3, max maxB: SCNVector3) -> CGFloat {
         let extentX = CGFloat(maxB.x - minB.x)
         let extentY = CGFloat(maxB.y - minB.y)
         let extentZ = CGFloat(maxB.z - minB.z)
-        let maxExtent = max(extentX, max(extentY, extentZ))
-        guard maxExtent > 0 else { return }
-        let targetHeight: CGFloat = 2.0
-        let scale = targetHeight / maxExtent
-        root.scale = SCNVector3(scale, scale, scale)
-        // Recenter horizontally/depth, drop so feet sit near y = -1.
-        let centerX = (CGFloat(minB.x) + CGFloat(maxB.x)) / 2
-        let centerZ = (CGFloat(minB.z) + CGFloat(maxB.z)) / 2
-        root.position = SCNVector3(
-            -centerX * scale,
-            -CGFloat(minB.y) * scale - targetHeight / 2,
-            -centerZ * scale
+        return max(extentX, max(extentY, extentZ))
+    }
+
+    private func applyModelTransform() {
+        guard let node = contentRoot, let framing = modelFraming else { return }
+        let scale = framing.baseScale * userScale
+        node.scale = SCNVector3(scale, scale, scale)
+        node.position = SCNVector3(
+            -framing.centerX * scale,
+            -framing.minY * scale - Self.targetModelHeight / 2,
+            -framing.centerZ * scale
         )
+        let facingYaw: CGFloat = facing < 0 ? .pi : 0
+        node.eulerAngles = SCNVector3(0, facingYaw + userYawRadians, 0)
     }
 
     /// Walk the graph and collect every `SCNAnimationPlayer`, keyed by its
@@ -446,13 +673,43 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
     /// Add a camera and key light if the imported scene didn't ship one, so the
     /// model is actually visible. Idempotent.
     private func ensureCameraAndLights(in scene: SCNScene) {
-        if scene.rootNode.childNode(withName: "pet.camera", recursively: true) == nil {
-            let cameraNode = SCNNode()
-            cameraNode.name = "pet.camera"
-            cameraNode.camera = SCNCamera()
-            cameraNode.position = SCNVector3(0, 0, 4.2)
-            scene.rootNode.addChildNode(cameraNode)
-        }
+        // Frame with a PERSPECTIVE camera fit to the model's actual bounding
+        // sphere (SceneKit-computed, skin-aware) so a model of any native scale
+        // is centered and fully in frame. The previous fixed *orthographic*
+        // camera (orthographicScale 2.75 at z=4.2) assumed a perfectly
+        // pre-normalized ~2-unit model centered at the origin; real founder rigs
+        // (sub-centimeter native scale, skinned) ended up mis-framed and the
+        // panel rendered nothing even though the geometry decoded and rasterized.
+        let sphere = scene.rootNode.boundingSphere
+        let center = sphere.center
+        let radius = CGFloat(sphere.radius)
+        let safeRadius = (radius.isFinite && radius > 0) ? radius : 1
+
+        let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) ?? {
+            let node = SCNNode()
+            node.name = "pet.camera"
+            node.camera = SCNCamera()
+            scene.rootNode.addChildNode(node)
+            return node
+        }()
+        let camera = cameraNode.camera ?? SCNCamera()
+        cameraNode.camera = camera
+        camera.usesOrthographicProjection = false
+        camera.fieldOfView = 60
+        // Pull back ~3 sphere-radii: frames the model at a comfortable size in the
+        // panel without clipping, and tolerates the model sitting slightly off the
+        // bounding-sphere centre once skinned.
+        let distance = safeRadius * 3
+        // Keep the near/far planes GENEROUS. A skinned mesh can deform well beyond
+        // its bind-pose bounding sphere, so a tight frustum (distance ± a couple
+        // radii) clips the entire model and the panel renders nothing. A small
+        // near plane and a far plane far past the model avoid clipping.
+        camera.zNear = 0.01
+        camera.zFar = Double(distance + safeRadius * 200)
+        cameraNode.position = SCNVector3(center.x, center.y, center.z + distance)
+        cameraNode.look(at: center)
+        scnView.pointOfView = cameraNode
+
         if scene.rootNode.childNode(withName: "pet.key", recursively: true) == nil {
             let light = SCNNode()
             light.name = "pet.key"
@@ -492,6 +749,154 @@ final class SceneKitPetRenderer: NSObject, PetRenderer {
             "doze", "sip", "phone", "sitDown"
         ])
         return looping.contains(logical) || looping.contains(clipName)
+    }
+
+    private func installInteractionRecognizers() {
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handleRotationPan(_:)))
+        scnView.addGestureRecognizer(pan)
+
+        let magnify = NSMagnificationGestureRecognizer(target: self, action: #selector(handleMagnification(_:)))
+        scnView.addGestureRecognizer(magnify)
+
+        scnView.onScrollScale = { [weak self] deltaY in
+            guard let self else { return }
+            // Scroll resizes the whole pet (its panel); the camera fills the view
+            // so the rendered pet scales with the window instead of clipping.
+            self.resizePanel(by: exp(deltaY * InteractionDefaults.scrollScaleSensitivity))
+            self.persistWindowFrame()
+        }
+    }
+
+    /// Plain drag repositions the floating pet; Option-drag rotates the model.
+    @objc private func handleRotationPan(_ recognizer: NSPanGestureRecognizer) {
+        let rotating = NSEvent.modifierFlags.contains(.option)
+        switch recognizer.state {
+        case .began:
+            if rotating {
+                let t = recognizer.translation(in: scnView)
+                rotateModel(by: t.x * InteractionDefaults.rotationSensitivity)
+                recognizer.setTranslation(.zero, in: scnView)
+            } else {
+                dragStartWindowOrigin = scnView.window?.frame.origin
+                dragStartMouse = NSEvent.mouseLocation
+            }
+        case .changed:
+            if rotating {
+                let t = recognizer.translation(in: scnView)
+                rotateModel(by: t.x * InteractionDefaults.rotationSensitivity)
+                recognizer.setTranslation(.zero, in: scnView)
+                if abs(t.x) > 1 { play(state: "lookAround") }
+            } else if let window = scnView.window,
+                      let origin = dragStartWindowOrigin, let start = dragStartMouse {
+                // Absolute cursor tracking avoids feedback jitter as the window moves.
+                let now = NSEvent.mouseLocation
+                window.setFrameOrigin(NSPoint(x: origin.x + (now.x - start.x),
+                                              y: origin.y + (now.y - start.y)))
+            }
+        case .ended, .cancelled:
+            if !rotating { persistWindowFrame() }
+            dragStartWindowOrigin = nil
+            dragStartMouse = nil
+        default:
+            break
+        }
+    }
+
+    @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed:
+            resizePanel(by: max(0.5, 1 + recognizer.magnification))
+            recognizer.magnification = 0
+        case .ended, .cancelled:
+            persistWindowFrame()
+        default:
+            break
+        }
+    }
+
+    /// Resize the floating pet's panel (aspect-locked, clamped), anchored at the
+    /// bottom centre so the pet grows from where it sits. The SCNView autoresizes
+    /// and the camera fills the view, so the rendered pet scales with the panel.
+    func resizePanel(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0, let window = scnView.window else { return }
+        let frame = window.frame
+        let newWidth = min(InteractionDefaults.maxPanelWidth,
+                           max(InteractionDefaults.minPanelWidth, frame.width * factor))
+        let newHeight = newWidth * InteractionDefaults.panelAspect
+        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
+        window.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
+        (window as? PetPanel)?.clamp(to: (window as? PetPanel)?.bestScreen)
+    }
+
+    private func persistWindowFrame() {
+        guard let window = scnView.window else { return }
+        PetWindowState.store(window.frame, for: definition.id)
+    }
+
+    private static func storedYaw(for petID: String) -> CGFloat {
+        let value = UserDefaults.standard.double(forKey: InteractionDefaults.yawPrefix + petID)
+        return value.isFinite ? CGFloat(value) : 0
+    }
+
+    private static func storeYaw(_ yaw: CGFloat, for petID: String) {
+        UserDefaults.standard.set(Double(yaw), forKey: InteractionDefaults.yawPrefix + petID)
+    }
+
+    private static func storedScale(for petID: String) -> CGFloat {
+        let value = UserDefaults.standard.double(forKey: InteractionDefaults.scalePrefix + petID)
+        guard value.isFinite, value > 0 else { return 1 }
+        return clampedScale(CGFloat(value))
+    }
+
+    private static func storeScale(_ scale: CGFloat, for petID: String) {
+        UserDefaults.standard.set(Double(clampedScale(scale)), forKey: InteractionDefaults.scalePrefix + petID)
+    }
+
+    private static func clampedScale(_ scale: CGFloat) -> CGFloat {
+        min(InteractionDefaults.maximumScale, max(InteractionDefaults.minimumScale, scale))
+    }
+
+    private static func normalizedAngle(_ angle: CGFloat) -> CGFloat {
+        guard angle.isFinite else { return 0 }
+        let twoPi = CGFloat.pi * 2
+        var value = angle.truncatingRemainder(dividingBy: twoPi)
+        if value > .pi { value -= twoPi }
+        if value < -.pi { value += twoPi }
+        return value
+    }
+}
+
+private final class InteractivePetSceneView: SCNView {
+    var onScrollScale: ((CGFloat) -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY
+        if delta != 0 {
+            onScrollScale?(delta)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+}
+
+// MARK: - Pet window frame persistence
+
+/// Persists the floating pet panel's frame (position + size) per pet id so a
+/// repositioned / resized companion stays put across relaunches.
+enum PetWindowState {
+    private static let prefix = "pet.window.frame."
+
+    static func store(_ frame: NSRect, for petID: String) {
+        let value = "\(frame.origin.x),\(frame.origin.y),\(frame.size.width),\(frame.size.height)"
+        UserDefaults.standard.set(value, forKey: prefix + petID)
+    }
+
+    static func storedFrame(for petID: String) -> NSRect? {
+        guard let raw = UserDefaults.standard.string(forKey: prefix + petID) else { return nil }
+        let parts = raw.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 4, parts[2] > 0, parts[3] > 0,
+              parts.allSatisfy({ $0.isFinite }) else { return nil }
+        return NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
     }
 }
 

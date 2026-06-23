@@ -671,6 +671,7 @@ object CloudVaultCrypto {
             val context = CloudVaultAADContext(uid = uid, collection = collection, docID = docID, field = field)
 
             sealedPayloadFromMap(raw)?.let { envelope ->
+                if (envelope.vaultKeyID == newVaultKeyID) return@let
                 val plaintext = openPayloadForRewrap(envelope, oldKey, context)
                 val resealed = sealPayload(plaintext, newKey, newVaultKeyID, context)
                 updated[field] = sealedPayloadMap(resealed)
