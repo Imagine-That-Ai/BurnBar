@@ -261,7 +261,7 @@ class AndroidFileTransferService(
         val resolver: ContentResolver = appContext.contentResolver
         val displayName = queryDisplayName(resolver, uri) ?: "attachment_${System.currentTimeMillis()}"
         val cacheRoot = File(appContext.cacheDir, "mercury_outbox").also { it.mkdirs() }
-        val target = File(cacheRoot, displayName)
+        val target = AndroidFileTransferCachePath.targetFile(cacheRoot, displayName)
         try {
             resolver.openInputStream(uri).use { input ->
                 if (input == null) return@withContext null
@@ -285,5 +285,38 @@ class AndroidFileTransferService(
                 }
             }
         }.getOrNull()
+    }
+}
+
+internal object AndroidFileTransferCachePath {
+    private const val MAX_CACHE_NAME_LENGTH = 96
+    private val parentDirectoryMarker = Regex("\\.{2,}")
+
+    fun targetFile(cacheRoot: File, displayName: String): File {
+        val root = cacheRoot.canonicalFile
+        val target = File(root, safeDisplayName(displayName)).canonicalFile
+        require(target.parentFile?.canonicalFile == root) {
+            "attachment cache target must remain inside the outbox directory"
+        }
+        return target
+    }
+
+    fun safeDisplayName(displayName: String): String {
+        val leafName =
+            displayName
+                .trim()
+                .replace('\\', '/')
+                .substringAfterLast('/')
+        return leafName
+            .map { character -> if (isPortableFilenameCharacter(character)) character else '_' }
+            .joinToString(separator = "")
+            .replace(parentDirectoryMarker, "_")
+            .trim('.', '_', '-')
+            .take(MAX_CACHE_NAME_LENGTH)
+            .ifBlank { "attachment" }
+    }
+
+    private fun isPortableFilenameCharacter(character: Char): Boolean {
+        return character.isLetterOrDigit() || character == '.' || character == '_' || character == '-'
     }
 }
