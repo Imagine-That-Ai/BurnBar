@@ -7,6 +7,7 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { createCipheriv, createECDH, createHash, randomBytes } from "node:crypto";
 import { db } from "../adminRuntime.js";
+import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import {
@@ -379,6 +380,7 @@ export const completeCliLink = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before completing CLI link.");
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertCallableApprovalNotLocked(uid, "cli_link_approve_fail");
+    await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
     await assertActiveBurnBarProEntitlement(uid);
 
     const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();

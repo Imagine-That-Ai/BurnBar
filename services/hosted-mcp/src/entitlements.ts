@@ -3,6 +3,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
+import { assertRemoteMcpNotSuspended } from "./cloudFeatureSuspensions.js";
 import { HttpError } from "./errors.js";
 import type { RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
@@ -141,6 +142,7 @@ export async function requireActiveRemoteMcpAccess(
   tokenScopes: readonly string[],
   db: RemoteMcpClientFirestore = firestore()
 ): Promise<RemoteMcpClientState> {
+  await assertRemoteMcpNotSuspended(db, uid);
   const client = await requireActiveRemoteMcpClient(uid, clientId, db);
   assertTokenScopesAllowedByClient(tokenScopes, client);
   return client;

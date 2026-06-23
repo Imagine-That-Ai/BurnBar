@@ -578,6 +578,78 @@ test("MCP metadata methods require active client, Pro entitlement, and current c
   );
 });
 
+test("MCP metadata methods fail closed while remote MCP is suspended", async () => {
+  const claims = {
+    sub: "metadata-suspended",
+    aud: MCP_RESOURCE,
+    client_id: "active-client",
+    scopes: ["search:read", "conversation:read", "usage:read", "index:status"],
+    entitlement_family: "burnbar_pro" as const,
+    grant_mode: "local_decrypt_shim" as const,
+    exp: Math.floor(Date.now() / 1000) + 60,
+    jti: "metadata-suspended-jti",
+  };
+  const writes: unknown[] = [];
+  const db: HostedMcpFirestore = {
+    doc(path: string) {
+      return {
+        async get() {
+          if (path.endsWith("/ops/suspensions/cloudFeatures/current")) {
+            return {
+              exists: true,
+              data: () => ({ active: true, deniedSurfaces: ["remote_mcp"] }),
+            };
+          }
+          if (path.endsWith("/remote_mcp_clients/active-client")) {
+            return {
+              exists: true,
+              data: () => ({ displayName: "Active", allowedScopes: claims.scopes }),
+            };
+          }
+          if (path.endsWith("/entitlements/burnbar_pro")) {
+            return {
+              exists: true,
+              data: () => ({
+                active: true,
+                expiresAt: new Date(Date.now() + 60_000).toISOString(),
+              }),
+            };
+          }
+          return { exists: false, data: () => undefined };
+        },
+        async set(value: unknown) {
+          writes.push(value);
+        },
+      };
+    },
+    collection() {
+      throw new Error("collection should not be called");
+    },
+    async runTransaction<T>(
+      fn: (tx: McpTransaction) => Promise<T>,
+    ): Promise<T> {
+      return fn({
+        async get() {
+          return { get: () => 0 };
+        },
+        set() {},
+      });
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      handleMcpRequest(db, claims, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {},
+      }),
+    /suspended/,
+  );
+  assert.equal(writes.length, 0);
+});
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

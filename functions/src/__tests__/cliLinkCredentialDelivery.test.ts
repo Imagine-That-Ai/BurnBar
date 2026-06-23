@@ -1,12 +1,13 @@
 import { createDecipheriv, createECDH, createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Timestamp } from "firebase-admin/firestore";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { callableRequest, callableRunner, pathKeyedFirestore, seedDoc } from "./bola/callableBolaHarness.js";
 
 const cliLinkStore = vi.hoisted(() => new Map());
 const issueGrantMock = vi.hoisted(() => vi.fn());
+const assertCloudFeatureNotSuspendedMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 function cliLinkSessionQuery(filters: Array<[string, unknown]> = []) {
   return {
@@ -56,6 +57,9 @@ vi.mock("../appCheckAttestation.js", async () => {
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
+vi.mock("../cloudFeatureSuspensions.js", () => ({
+  assertCloudFeatureNotSuspended: assertCloudFeatureNotSuspendedMock,
+}));
 vi.mock("../callables/shared.js", () => ({
   assertActiveBurnBarProEntitlement: vi.fn(async () => undefined),
   REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64: { value: () => "" },
@@ -118,6 +122,12 @@ function deliveryKey(secret: Buffer): Buffer {
 }
 
 describe("CLI link credential delivery", () => {
+  beforeEach(() => {
+    issueGrantMock.mockReset();
+    assertCloudFeatureNotSuspendedMock.mockReset();
+    assertCloudFeatureNotSuspendedMock.mockResolvedValue(undefined);
+  });
+
   it("seals credentials to the polling client's delivery key", async () => {
     const delivery = createECDH("prime256v1");
     delivery.generateKeys();
@@ -201,7 +211,6 @@ describe("CLI link credential delivery", () => {
 
   it("rejects malformed delivery sessions before issuing a remote grant", async () => {
     cliLinkStore.clear();
-    issueGrantMock.mockReset();
     const deviceSecretHash = sha256Hex("legacy-device-secret");
 
     seedDoc(cliLinkStore, "cli_link_sessions/legacy-session", {
@@ -223,6 +232,38 @@ describe("CLI link credential delivery", () => {
     await expect(
       run(callableRequest("alice-uid", { userCode: "ABCDEFGHJKMN", nonce: "nonce-1" })),
     ).rejects.toMatchObject({ code: "invalid-argument" });
+    expect(issueGrantMock).not.toHaveBeenCalled();
+  });
+
+  it("does not issue CLI-link remote MCP credentials while the feature is suspended", async () => {
+    cliLinkStore.clear();
+    assertCloudFeatureNotSuspendedMock.mockRejectedValue(
+      Object.assign(new Error("Cloud features are suspended for this account."), { code: "permission-denied" }),
+    );
+    const delivery = createECDH("prime256v1");
+    delivery.generateKeys();
+    const userCode = "SUSP-TEST";
+
+    seedDoc(cliLinkStore, "cli_link_sessions/suspended-session", {
+      userCode,
+      deviceSecretVerifierHash: sha256Hex(sha256Hex("device-secret")),
+      status: "pending",
+      expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      clientType: "cli",
+      displayName: "suspended-cli",
+      credentialDelivery: {
+        algorithm: DELIVERY_ALGORITHM,
+        publicKeyBase64: delivery.getPublicKey("base64", "uncompressed"),
+      },
+    });
+
+    const { completeCliLink } = await import("../callables/cliLink.js");
+    const run = callableRunner(completeCliLink);
+
+    await expect(
+      run(callableRequest("alice-uid", { userCode, nonce: "nonce-2" })),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(assertCloudFeatureNotSuspendedMock).toHaveBeenCalledWith(expect.anything(), "alice-uid", "remote_mcp");
     expect(issueGrantMock).not.toHaveBeenCalled();
   });
 });

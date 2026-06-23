@@ -43,6 +43,7 @@ function makeDb(opts: {
   entitled?: boolean;
   grantRevoked?: boolean;
   grantExpiresAtMs?: number;
+  suspended?: boolean;
 }): { db: RefreshFirestore; grantState: { refreshTokenHash: string; sets: unknown[] } } {
   const grantState: { refreshTokenHash: string; sets: unknown[] } = {
     refreshTokenHash: opts.refreshTokenHash,
@@ -56,6 +57,11 @@ function makeDb(opts: {
             return opts.clientRevoked
               ? { exists: true, data: () => ({ revokedAt: new Date().toISOString(), allowedScopes: ["search:read"] }) }
               : { exists: true, data: () => ({ allowedScopes: SCOPES }) };
+          }
+          if (path.endsWith("/ops/suspensions/cloudFeatures/current")) {
+            return opts.suspended
+              ? { exists: true, data: () => ({ active: true, deniedSurfaces: ["remote_mcp"] }) }
+              : { exists: false, data: () => undefined };
           }
           if (path.endsWith("/entitlements/burnbar_pro")) {
             return opts.entitled === false
@@ -223,6 +229,14 @@ test("refresh fails closed on client revocation, lost entitlement, and revoked/e
       grantType: "refresh_token", refreshToken, accessToken: mintAccessToken(grantExpired, "obbc_ge", { exp: Math.floor(Date.now() / 1000) - 60 }),
     }),
     /expired/,
+  );
+
+  const suspended = "user-gate-suspended";
+  await assert.rejects(
+    () => handleRefreshTokenGrant(makeDb({ uid: suspended, clientId: "obbc_susp", refreshTokenHash: hash, suspended: true }).db, {
+      grantType: "refresh_token", refreshToken, accessToken: mintAccessToken(suspended, "obbc_susp", { exp: Math.floor(Date.now() / 1000) - 60 }),
+    }),
+    /suspended/,
   );
 });
 
