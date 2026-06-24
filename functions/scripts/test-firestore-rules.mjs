@@ -369,6 +369,44 @@ test("credential transfers are server-only for legacy and v2 ids", async () => {
   }
 });
 
+test("account erasure retention records are server-only", async () => {
+  const ownerDb = authedDb("erasure-owner");
+  const otherDb = authedDb("erasure-attacker");
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const uidHash = "a".repeat(64);
+  const recordPath = `account_erasure_audit/${uidHash}`;
+  const retentionRecord = {
+    schemaVersion: 1,
+    uidHash,
+    status: "intent_recorded",
+    intentAudit: {
+      action: "account.delete.request",
+      auditLogPath: "users/erasure-owner/unified_audit_log/audit-event-1",
+      auditHash: "b".repeat(64),
+      previousHash: "0".repeat(64),
+      sequence: 1,
+    },
+    startedAt: Timestamp.fromMillis(Date.now()),
+    updatedAt: Timestamp.fromMillis(Date.now()),
+  };
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), recordPath), retentionRecord);
+  });
+
+  async function assertAllErasureRetentionClientOpsFail(db) {
+    await assertFails(setDoc(doc(db, recordPath), retentionRecord));
+    await assertFails(getDoc(doc(db, recordPath)));
+    await assertFails(updateDoc(doc(db, recordPath), { status: "account_deleted" }));
+    await assertFails(deleteDoc(doc(db, recordPath)));
+    await assertFails(getDocs(collection(db, "account_erasure_audit")));
+  }
+
+  for (const db of [ownerDb, otherDb, unauthDb]) {
+    await assertAllErasureRetentionClientOpsFail(db);
+  }
+});
+
 test("provider accounts reject plaintext, unknown credential containers, and client-authored refresh sweep entries", async () => {
   const ownerDb = authedDb("provider-owner");
   const basePath = "users/provider-owner/provider_accounts/account-1";

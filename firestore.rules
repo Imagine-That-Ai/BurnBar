@@ -4598,6 +4598,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- Account erasure retention records (server-only) ---
+    match /account_erasure_audit/{recordId} {
+      allow read, write: if false;
+    }
+
     // --- High-risk action nonces (server-only, single-use replay defense) ---
     match /users/{userId}/high_risk_action_nonces/{nonceId} {
       allow read, write: if false;
