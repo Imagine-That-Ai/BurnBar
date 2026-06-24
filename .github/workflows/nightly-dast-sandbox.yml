@@ -6,8 +6,8 @@ permissions:
 
 on:
   schedule:
-    # Advisory security sandbox. Runs after the core nightly starts so hosted
-    # runner contention here cannot mask the paged E2E signal.
+    # Security sandbox. Runs after the core nightly starts so hosted runner
+    # contention here cannot mask the paged E2E signal.
     - cron: "13 10 * * *"
   workflow_dispatch:
 
@@ -16,14 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Hosted-runner advisory lane. These jobs are intentionally isolated from
+  # Hosted-runner security lane. These jobs are intentionally isolated from
   # nightly-e2e because public DAST, local Functions-emulator DAST, and live
   # privileged-socket red-team checks have environment prerequisites that should
-  # not keep the paged nightly lane red on GitHub-hosted runners.
+  # not keep the paged nightly lane red on GitHub-hosted runners. Failures still
+  # make this sandbox workflow red and open a per-lane tracking issue.
   privileged-socket-redteam:
     runs-on: macos-26
     timeout-minutes: 30
-    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -33,16 +33,15 @@ jobs:
 
       - name: Run privileged-socket red-team gate
         id: redteam
-        continue-on-error: true
         run: bash ./scripts/ci/privileged-socket-redteam-ci.sh
 
-      - name: Record advisory outcome
+      - name: Record sandbox outcome
         id: outcome
         if: always()
         run: |
           if [[ "${{ steps.redteam.outcome }}" == "failure" ]]; then
             echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Privileged socket red-team advisory failed::Live privileged-socket proof failed in the sandbox lane. PR peer-auth unit tests remain the blocking control until a self-hosted privileged macOS runner is armed."
+            echo "::error title=Privileged socket red-team failed::Live privileged-socket proof failed in the sandbox lane. PR peer-auth unit tests remain the blocking control until a self-hosted privileged macOS runner is armed."
           else
             echo "failed=false" >> "$GITHUB_OUTPUT"
           fi
@@ -51,7 +50,6 @@ jobs:
     name: DAST - Website (OWASP ZAP baseline)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -59,7 +57,6 @@ jobs:
 
       - name: Run OWASP ZAP baseline scan against burnbar.ai
         id: zap
-        continue-on-error: true
         uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
         with:
           target: "https://burnbar.ai"
@@ -68,13 +65,13 @@ jobs:
           fail_action: true
           artifact_name: "zap-website-report"
 
-      - name: Record advisory outcome
+      - name: Record sandbox outcome
         id: outcome
         if: always()
         run: |
           if [[ "${{ steps.zap.outcome }}" == "failure" ]]; then
             echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Website DAST advisory failed::The sandbox ZAP baseline failed. The issue lane records this without keeping nightly-e2e red."
+            echo "::error title=Website DAST failed::The sandbox ZAP baseline failed. The issue lane records this without keeping nightly-e2e red."
           else
             echo "failed=false" >> "$GITHUB_OUTPUT"
           fi
@@ -83,7 +80,6 @@ jobs:
     name: DAST - Functions health endpoints (OWASP ZAP API scan)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -95,20 +91,18 @@ jobs:
 
       - name: Start Firebase Functions Emulator
         id: emulator
-        continue-on-error: true
         run: |
           set -euo pipefail
           npm ci --prefix functions
           npm run build --prefix functions
           npm --prefix functions exec -- firebase emulators:start --project openburnbar-dev --only functions &
-          # Readiness must be explicit. A dead emulator is an advisory failure,
+          # Readiness must be explicit. A dead emulator is a sandbox failure,
           # not a blind ZAP pass.
           timeout 60 bash -c 'until curl -sf http://localhost:5001 >/dev/null; do sleep 2; done'
 
       - name: Run OWASP ZAP API scan against health endpoints
         id: zap
         if: always() && steps.emulator.outcome == 'success'
-        continue-on-error: true
         uses: zaproxy/action-api-scan@77dfa9a647bb0f583e39d4df8531634d6ddd8df4 # v0.9.0
         with:
           target: "functions/openapi.yaml"
@@ -118,13 +112,13 @@ jobs:
           fail_action: true
           artifact_name: "zap-functions-report"
 
-      - name: Record advisory outcome
+      - name: Record sandbox outcome
         id: outcome
         if: always()
         run: |
           if [[ "${{ steps.emulator.outcome }}" == "failure" || "${{ steps.zap.outcome }}" == "failure" ]]; then
             echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Functions DAST advisory failed::The functions sandbox failed emulator readiness or ZAP scanning. The issue lane records this without keeping nightly-e2e red."
+            echo "::error title=Functions DAST failed::The functions sandbox failed emulator readiness or ZAP scanning. The issue lane records this without keeping nightly-e2e red."
           else
             echo "failed=false" >> "$GITHUB_OUTPUT"
           fi
@@ -138,6 +132,7 @@ jobs:
         needs['privileged-socket-redteam'].outputs.failed == 'true' ||
         needs['dast-website'].outputs.failed == 'true' ||
         needs['dast-functions'].outputs.failed == 'true' ||
+        contains(needs.*.result, 'failure') ||
         contains(needs.*.result, 'cancelled')
       )
     steps:
@@ -147,8 +142,8 @@ jobs:
         with:
           mode: open
           lane: nightly-sandbox
-          title-prefix: Nightly DAST sandbox advisory failed
-          summary: The scheduled advisory DAST/red-team sandbox failed.
+          title-prefix: Nightly DAST sandbox failed
+          summary: The scheduled DAST/red-team sandbox failed.
           details: |
             Job results:
             ```json
@@ -163,6 +158,7 @@ jobs:
       needs['privileged-socket-redteam'].outputs.failed != 'true' &&
       needs['dast-website'].outputs.failed != 'true' &&
       needs['dast-functions'].outputs.failed != 'true' &&
+      !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -171,4 +167,4 @@ jobs:
         with:
           mode: close
           lane: nightly-sandbox
-          title-prefix: Nightly DAST sandbox advisory failed
+          title-prefix: Nightly DAST sandbox failed
