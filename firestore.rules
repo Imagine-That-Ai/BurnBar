@@ -2795,50 +2795,15 @@ service cloud.firestore {
     }
 
     // Connected GitHub repo registry (the dirty-signal source registration). The
-    // repo identity is project-class private text: rows are written by the
-    // connectKnowledgeRepo callable (Admin SDK, which bypasses these rules) and
-    // hold only an opaque server-keyed `repoMatchToken` (for webhook routing),
-    // an opaque server-keyed `sourceManifestId` (the manifest doc-id key —
-    // replaces the transitional `sourceSlugToken` and formerly-stored cleartext
-    // `sourceSlug`), and a vault-`sealedRepoFullName`
-    // (for owner-only display). A direct client write is now constrained to that
-    // opaque shape by a STRICT allowlist: no arbitrary smuggled fields, opaque
-    // 64-hex `repoMatchToken`/`sourceManifestId`, an owner-only `sealedRepoFullName`,
-    // and an explicit ban on every deprecated or cleartext repo identity
-    // (`repoFullName`/`sourcePath`/`sourceSlug`/`sourceSlugToken`) so a future/buggy client can never reintroduce
-    // reversible path/name text (F5). The cleartext name + cleartext slug are
-    // observed server-side only transiently (webhook routing / token derivation),
-    // never stored.
+    // repo identity is project-class private text: rows are written only by
+    // connectKnowledgeRepo/disconnectKnowledgeRepo (Admin SDK, which bypasses
+    // these rules). Client writes are denied entirely so clients cannot mint
+    // arbitrary opaque repo/source-manifest tokens and then ask the resync
+    // callable to dirty server-owned manifests. Owner reads remain allowed for
+    // UI display of the vault-sealed repo name.
     match /users/{userId}/knowledge_repos/{repoId} {
-      function validKnowledgeRepoKeys() {
-        return request.resource.data.keys().hasOnly([
-          "uid",
-          "repoId",
-          "repoMatchToken",
-          "sourceManifestId",
-          "sealedRepoFullName",
-          "installId",
-          "connectedAt",
-          "schemaVersion"
-        ]);
-      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && validKnowledgeRepoKeys()
-        && !("repoFullName" in request.resource.data)
-        && !("sourcePath" in request.resource.data)
-        && !("sourceSlug" in request.resource.data)
-        && !("sourceSlugToken" in request.resource.data)
-        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
-        && (!("repoMatchToken" in request.resource.data)
-            || (request.resource.data.repoMatchToken is string
-                && request.resource.data.repoMatchToken.matches("^[a-f0-9]{64}$")))
-        && (!("sourceManifestId" in request.resource.data)
-            || (request.resource.data.sourceManifestId is string
-                && request.resource.data.sourceManifestId.matches("^[a-f0-9]{64}$")))
-        && (!("sealedRepoFullName" in request.resource.data)
-            || validCloudSealedTextAt(userId, "knowledge_repos", repoId, "sealedRepoFullName", request.resource.data.sealedRepoFullName));
-      allow delete: if ownsUserNamespace(userId);
+      allow write: if false;
     }
 
     // Tamper-evident unified access-audit log (server-only writer). Per-user
