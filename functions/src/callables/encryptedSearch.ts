@@ -23,11 +23,12 @@ import {
   requireBoundedStringArray,
   cloudVaultAADContext,
   assertUserStoragePath,
+  encryptedSessionBlobDocumentIDFromStoragePath,
   assertEncryptedSessionBlobObject,
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { randomBytes } from "node:crypto";
-import type { QuerySnapshot, WriteBatch, Query } from "firebase-admin/firestore";
+import type { DocumentSnapshot, QuerySnapshot, WriteBatch, Query } from "firebase-admin/firestore";
 import { stripUndefinedObject } from "../guards.js";
 import { wrapCallableHandler } from "../logging.js";
 import {
@@ -134,6 +135,11 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
       await assertActiveBurnBarProEntitlement(uid);
       const storagePath = boundedTrimmedString(request.data.storagePath, "storagePath", 1024, true);
       assertUserStoragePath(uid, storagePath);
+      const documentID = encryptedSessionBlobDocumentIDFromStoragePath(uid, storagePath);
+      const manifestSnap = await db.doc(`users/${uid}/session_logs/${documentID}`).get();
+      if (!manifestSnap.exists || !sessionLogManifestIsVisible(manifestSnap.data() ?? {})) {
+        throw new HttpsError("not-found", "The encrypted session log is no longer stored in the cloud.");
+      }
       // Verify the body object is actually present before minting a signed URL. A v4 read URL is
       // generated without checking existence, so a deleted/never-uploaded blob would otherwise hand
       // the client a link that 404s on GET — an opaque "download failed". Surfacing `not-found` here
@@ -411,18 +417,83 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
 type ConversationAggregates = { count: number; totalCostUSD: number; totalTokens: number };
 
-function lifecycleFilteredSessionLogAggregates(_includeAggregates: boolean): ConversationAggregates | null {
-  return null;
+const CONVERSATION_VISIBLE_SCAN_BATCH_LIMIT = 500;
+
+function rethrowConversationQueryError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/index/iu.test(message)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This conversation filter needs a Firestore index that is still building. Try again shortly or narrow the filters.",
+    );
+  }
+  throw error;
+}
+
+async function readConversationQuerySnapshot(query: Query): Promise<QuerySnapshot> {
+  try {
+    return await query.get();
+  } catch (error) {
+    rethrowConversationQueryError(error);
+  }
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+async function readVisibleConversationPage(
+  baseQuery: Query,
+  limit: number,
+  initialCursor?: DocumentSnapshot,
+): Promise<{ rows: Array<Record<string, unknown>>; nextCursor: string | null }> {
+  let cursor = initialCursor;
+  const rows: Array<Record<string, unknown>> = [];
+  while (rows.length < limit) {
+    const pageQuery = cursor == null ? baseQuery : baseQuery.startAfter(cursor);
+    const snap = await readConversationQuerySnapshot(pageQuery.limit(CONVERSATION_VISIBLE_SCAN_BATCH_LIMIT));
+    if (snap.empty) return { rows, nextCursor: null };
+    for (const doc of snap.docs) {
+      cursor = doc;
+      const docData = doc.data();
+      if (!sessionLogManifestIsVisible(docData)) continue;
+      rows.push(mapSessionLogManifestRow(doc.id, docData));
+      if (rows.length >= limit) return { rows, nextCursor: doc.id };
+    }
+    if (snap.size < CONVERSATION_VISIBLE_SCAN_BATCH_LIMIT) return { rows, nextCursor: null };
+  }
+  return { rows, nextCursor: cursor?.id ?? null };
+}
+
+async function lifecycleFilteredSessionLogAggregates(
+  includeAggregates: boolean,
+  baseQuery: Query,
+): Promise<ConversationAggregates | null> {
+  if (!includeAggregates) return null;
+  let cursor: DocumentSnapshot | undefined;
+  const aggregates: ConversationAggregates = { count: 0, totalCostUSD: 0, totalTokens: 0 };
+  while (true) {
+    const aggregateQuery = cursor == null ? baseQuery : baseQuery.startAfter(cursor);
+    const snap = await readConversationQuerySnapshot(aggregateQuery.limit(CONVERSATION_VISIBLE_SCAN_BATCH_LIMIT));
+    if (snap.empty) return aggregates;
+    for (const doc of snap.docs) {
+      cursor = doc;
+      const docData = doc.data();
+      if (!sessionLogManifestIsVisible(docData)) continue;
+      aggregates.count += 1;
+      aggregates.totalCostUSD += finiteNumber(docData.costUSD);
+      aggregates.totalTokens += finiteNumber(docData.totalTokens);
+    }
+    if (snap.size < CONVERSATION_VISIBLE_SCAN_BATCH_LIMIT) return aggregates;
+  }
 }
 
 /**
  * Faceted, paginated query over a paid user's encrypted session-log manifests. Filters and sorts
  * run only on operational cockpit facets (provider, model, device, source, token/cost totals,
  * timing); project/path/title/body search uses `searchEncryptedConversationIndex` so the client
- * sends keyed hashes and decrypts result labels locally. Aggregate rollups intentionally remain
- * `null` because lifecycle visibility is applied in process: legacy live manifests may not have a
- * `deletedAt` field, while tombstones do. A Firestore aggregate over the raw filtered query cannot
- * express that mixed predicate without counting deleted manifests.
+ * sends keyed hashes and decrypts result labels locally. Lifecycle visibility is applied in process
+ * so legacy live manifests that lack `deletedAt` stay visible while tombstoned manifests disappear.
  */
 export const queryConversations = onCall(
   {
@@ -487,40 +558,19 @@ export const queryConversations = onCall(
       });
 
       // Page query: stable order with a document-id tiebreaker so the cursor never skips or repeats.
-      let pageQuery: Query = buildConversationPageQuery(filtered, sort);
+      const pageQuery: Query = buildConversationPageQuery(filtered, sort);
+      let cursorSnap: DocumentSnapshot | undefined;
 
       if (data.cursorDocId != null) {
         const cursorDocId = safeCloudDocumentID(data.cursorDocId, "cursorDocId");
-        const cursorSnap = await logsRef.doc(cursorDocId).get();
-        if (cursorSnap.exists) {
-          pageQuery = pageQuery.startAfter(cursorSnap);
-        }
+        const requestedCursorSnap = await logsRef.doc(cursorDocId).get();
+        if (requestedCursorSnap.exists) cursorSnap = requestedCursorSnap;
       }
 
-      let pageSnap: QuerySnapshot;
-      try {
-        pageSnap = await pageQuery.limit(limit).get();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (/index/iu.test(message)) {
-          throw new HttpsError(
-            "failed-precondition",
-            "This conversation filter needs a Firestore index that is still building. Try again shortly or narrow the filters.",
-          );
-        }
-        throw error;
-      }
-
-      const rows = pageSnap.docs
-        .filter((doc) => sessionLogManifestIsVisible(doc.data()))
-        .map((doc) => mapSessionLogManifestRow(doc.id, doc.data()));
-
-      const nextCursor = pageSnap.size === limit ? (pageSnap.docs[pageSnap.docs.length - 1]?.id ?? null) : null;
-
-      // Keep the request flag consumed for API compatibility, but do not compute rollups over the
-      // raw Firestore query. Tombstones are filtered after the page read so old live manifests that
-      // lack `deletedAt` stay visible; a server aggregate cannot mirror that predicate exactly.
-      const aggregates = lifecycleFilteredSessionLogAggregates(includeAggregates);
+      const [{ rows, nextCursor }, aggregates] = await Promise.all([
+        readVisibleConversationPage(pageQuery, limit, cursorSnap),
+        lifecycleFilteredSessionLogAggregates(includeAggregates, pageQuery),
+      ]);
 
       return {
         rows,

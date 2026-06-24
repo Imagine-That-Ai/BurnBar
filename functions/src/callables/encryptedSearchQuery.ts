@@ -11,7 +11,13 @@
  */
 
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import type { CollectionReference, DocumentData, DocumentSnapshot, QuerySnapshot } from "firebase-admin/firestore";
+import type {
+  CollectionReference,
+  DocumentData,
+  DocumentSnapshot,
+  Query,
+  QuerySnapshot,
+} from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -42,19 +48,37 @@ type SearchContext = {
   scoredById: Map<string, ScoredChunk>;
   chunkCache: Map<string, DocumentSnapshot>;
   countedMatches: Set<string>;
+  manifestVisibilityCache: Map<string, boolean>;
+  visibleDocumentIDs: Set<string>;
 };
+
+const SEARCH_POSTING_SCAN_BATCH_LIMIT = 500;
+const SEARCH_FALLBACK_SCAN_BATCH_LIMIT = 250;
+
+async function searchManifestIsVisible(context: SearchContext, documentID: string): Promise<boolean> {
+  const cached = context.manifestVisibilityCache.get(documentID);
+  if (cached !== undefined) return cached;
+  if (!documentID || documentID.includes("/")) {
+    context.manifestVisibilityCache.set(documentID, false);
+    return false;
+  }
+  const manifestSnap = await db.doc(`users/${context.uid}/session_logs/${documentID}`).get();
+  const visible = manifestSnap.exists && sessionLogManifestIsVisible(manifestSnap.data() ?? {});
+  context.manifestVisibilityCache.set(documentID, visible);
+  return visible;
+}
 
 /**
  * Merge a single chunk doc's hash matches into the running score. Returns whether the doc matched
  * at least one requested hash (preserving the prior `mergeChunkDoc` boolean contract).
  */
-function mergeChunkDoc(
+async function mergeChunkDoc(
   context: SearchContext,
   doc: DocumentSnapshot,
   requested: Set<string>,
   fieldName: HashFieldName,
   scoreName: ScoreName,
-): boolean {
+): Promise<boolean> {
   if (!doc.exists) return false;
   const data = doc.data() ?? {};
   if (context.provider && data.provider !== context.provider) return false;
@@ -70,6 +94,8 @@ function mergeChunkDoc(
     matches += 1;
   }
   if (matches <= 0) return false;
+  const documentID = typeof data.documentID === "string" ? data.documentID : "";
+  if (!(await searchManifestIsVisible(context, documentID))) return false;
   const existing = context.scoredById.get(doc.id) ?? {
     id: doc.id,
     data,
@@ -78,44 +104,43 @@ function mergeChunkDoc(
   };
   existing[scoreName] += matches;
   context.scoredById.set(doc.id, existing);
+  context.visibleDocumentIDs.add(documentID);
   return true;
 }
 
 /** Cache then score every chunk in a fallback array-contains-any snapshot. */
-function mergeSnapshot(
+async function mergeSnapshot(
   context: SearchContext,
   snap: QuerySnapshot,
   requested: Set<string>,
   fieldName: HashFieldName,
   scoreName: ScoreName,
-): void {
+): Promise<void> {
   for (const doc of snap.docs) {
     context.chunkCache.set(doc.id, doc);
-    mergeChunkDoc(context, doc, requested, fieldName, scoreName);
+    await mergeChunkDoc(context, doc, requested, fieldName, scoreName);
   }
 }
 
-/** Resolve the chunk ids referenced by a posting query into the shared chunk cache. */
-async function loadPostingChunkIDs(
+/** Resolve and score the chunk ids referenced by one posting-query page. */
+async function mergePostingSnapshot(
   context: SearchContext,
-  hashes: string[],
+  postingSnaps: QuerySnapshot,
+  requested: Set<string>,
   kind: "token" | "semantic",
-): Promise<Set<string>> {
-  const postingKeys = hashes.map((hash) => `${kind}_${hash}`);
-  let postingQuery = db.collection(`users/${context.uid}/cloud_search_postings`).where("postingKey", "in", postingKeys);
-  if (context.provider) postingQuery = postingQuery.where("provider", "==", context.provider);
-  const postingSnaps = await postingQuery.limit(500).get();
+  fieldName: HashFieldName,
+  scoreName: ScoreName,
+): Promise<void> {
   const chunkIDs = new Set<string>();
-  const requested = new Set(hashes);
   for (const postingSnap of postingSnaps.docs) {
     const data = postingSnap.data();
     if (!data || data.kind !== kind || typeof data.hash !== "string") continue;
     if (!requested.has(data.hash)) continue;
-    if (typeof data.chunkID === "string" && chunkIDs.size < 500) {
+    if (typeof data.chunkID === "string") {
       chunkIDs.add(data.chunkID);
     }
   }
-  if (chunkIDs.size === 0) return chunkIDs;
+  if (chunkIDs.size === 0) return;
   const missingRefs = Array.from(chunkIDs)
     .filter((chunkID) => !context.chunkCache.has(chunkID))
     .map((chunkID) => db.doc(`users/${context.uid}/cloud_search_chunks/${chunkID}`));
@@ -125,7 +150,11 @@ async function loadPostingChunkIDs(
       context.chunkCache.set(chunkSnap.id, chunkSnap);
     }
   }
-  return chunkIDs;
+  for (const chunkID of chunkIDs) {
+    const chunkSnap = context.chunkCache.get(chunkID);
+    if (!chunkSnap) continue;
+    await mergeChunkDoc(context, chunkSnap, requested, fieldName, scoreName);
+  }
 }
 
 /** Score posting-resolved chunks. */
@@ -135,34 +164,71 @@ async function mergePostingHits(
   kind: "token" | "semantic",
   fieldName: HashFieldName,
   scoreName: ScoreName,
+  targetVisibleDocuments: number,
 ): Promise<void> {
   if (hashes.length === 0) return;
-  const chunkIDs = await loadPostingChunkIDs(context, hashes, kind);
-  if (chunkIDs.size === 0) return;
+  const postingKeys = hashes.map((hash) => `${kind}_${hash}`);
   const requested = new Set(hashes);
-  for (const chunkID of chunkIDs) {
-    const chunkSnap = context.chunkCache.get(chunkID);
-    if (!chunkSnap) continue;
-    mergeChunkDoc(context, chunkSnap, requested, fieldName, scoreName);
-  }
+  let baseQuery: Query = db
+    .collection(`users/${context.uid}/cloud_search_postings`)
+    .where("postingKey", "in", postingKeys);
+  if (context.provider) baseQuery = baseQuery.where("provider", "==", context.provider);
+  let cursor: DocumentSnapshot | undefined;
+  do {
+    const query = cursor == null ? baseQuery : baseQuery.startAfter(cursor);
+    const postingSnaps = await query.limit(SEARCH_POSTING_SCAN_BATCH_LIMIT).get();
+    if (postingSnaps.empty) return;
+    await mergePostingSnapshot(context, postingSnaps, requested, kind, fieldName, scoreName);
+    if (postingSnaps.size < SEARCH_POSTING_SCAN_BATCH_LIMIT) return;
+    cursor = postingSnaps.docs[postingSnaps.docs.length - 1];
+  } while (context.visibleDocumentIDs.size < targetVisibleDocuments);
 }
 
-/** Run fallback queries per requested hash so common hashes cannot starve capped-only hits. */
+function fallbackQuery(
+  context: SearchContext,
+  chunksRef: CollectionReference,
+  fieldName: HashFieldName,
+  hash: string,
+): Query {
+  let query: Query = chunksRef.where(fieldName, "array-contains-any", [hash]);
+  if (context.provider) query = query.where("provider", "==", context.provider);
+  return query;
+}
+
+async function mergeFallbackHash(
+  context: SearchContext,
+  chunksRef: CollectionReference,
+  hash: string,
+  fieldName: HashFieldName,
+  scoreName: ScoreName,
+  targetVisibleDocuments: number,
+): Promise<void> {
+  const requested = new Set([hash]);
+  const baseQuery = fallbackQuery(context, chunksRef, fieldName, hash);
+  let cursor: DocumentSnapshot | undefined;
+  do {
+    const query = cursor == null ? baseQuery : baseQuery.startAfter(cursor);
+    const snap = await query.limit(SEARCH_FALLBACK_SCAN_BATCH_LIMIT).get();
+    if (snap.empty) return;
+    await mergeSnapshot(context, snap, requested, fieldName, scoreName);
+    if (snap.size < SEARCH_FALLBACK_SCAN_BATCH_LIMIT) return;
+    cursor = snap.docs[snap.docs.length - 1];
+  } while (context.visibleDocumentIDs.size < targetVisibleDocuments);
+}
+
+/** Run fallback queries per requested hash and keep paging past tombstoned-only batches. */
 async function mergeFallbackHits(
   context: SearchContext,
   chunksRef: CollectionReference,
   hashes: string[],
   fieldName: HashFieldName,
   scoreName: ScoreName,
+  targetVisibleDocuments: number,
 ): Promise<void> {
   const fallbackHashes = cloudSearchCompleteFallbackHashes(hashes);
   if (fallbackHashes.length === 0) return;
-  const perHashLimit = Math.max(1, Math.floor(250 / fallbackHashes.length));
   for (const hash of fallbackHashes) {
-    let query = chunksRef.where(fieldName, "array-contains-any", [hash]);
-    if (context.provider) query = query.where("provider", "==", context.provider);
-    const snap = await query.limit(perHashLimit).get();
-    mergeSnapshot(context, snap, new Set([hash]), fieldName, scoreName);
+    await mergeFallbackHash(context, chunksRef, hash, fieldName, scoreName, targetVisibleDocuments);
   }
 }
 
@@ -213,7 +279,7 @@ function buildSearchHit(
 
 /** Walk scored chunks newest-first, dedupe by document, and emit at most `limit` verified hits. */
 async function buildSearchHits(
-  uid: string,
+  context: SearchContext,
   scored: ScoredChunk[],
   tokenCount: number,
   semanticCount: number,
@@ -223,15 +289,14 @@ async function buildSearchHits(
   const seenDocuments = new Set<string>();
   for (const item of scored) {
     const documentID = typeof item.data.documentID === "string" ? item.data.documentID : "";
-    if (!documentID || seenDocuments.has(documentID)) continue;
-    const docSnap = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
+    if (!documentID || documentID.includes("/") || seenDocuments.has(documentID)) continue;
+    const docSnap = await db.doc(`users/${context.uid}/cloud_search_documents/${documentID}`).get();
     if (!docSnap.exists) continue;
     const docData = docSnap.data() ?? {};
     if (docData.bodyHash !== item.data.bodyHash || docData.storagePath !== item.data.storagePath) continue;
-    const manifestSnap = await db.doc(`users/${uid}/session_logs/${documentID}`).get();
-    if (!manifestSnap.exists || !sessionLogManifestIsVisible(manifestSnap.data() ?? {})) continue;
+    if (!(await searchManifestIsVisible(context, documentID))) continue;
     seenDocuments.add(documentID);
-    hits.push(buildSearchHit(uid, item, docData, documentID, tokenCount, semanticCount));
+    hits.push(buildSearchHit(context.uid, item, docData, documentID, tokenCount, semanticCount));
     if (hits.length >= limit) break;
   }
   return hits;
@@ -271,19 +336,34 @@ export const searchEncryptedConversationIndex = onCall(
         scoredById: new Map<string, ScoredChunk>(),
         chunkCache: new Map<string, DocumentSnapshot>(),
         countedMatches: new Set<string>(),
+        manifestVisibilityCache: new Map<string, boolean>(),
+        visibleDocumentIDs: new Set<string>(),
       };
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
+      const targetVisibleDocuments = Math.max(limit, Math.min(200, limit * 4));
 
-      await Promise.all([
-        mergePostingHits(context, tokenHashes, "token", "tokenHashes", "tokenMatches"),
-        mergePostingHits(context, semanticHashes, "semantic", "semanticHashes", "semanticMatches"),
-      ]);
+      await mergePostingHits(context, tokenHashes, "token", "tokenHashes", "tokenMatches", targetVisibleDocuments);
+      await mergePostingHits(
+        context,
+        semanticHashes,
+        "semantic",
+        "semanticHashes",
+        "semanticMatches",
+        targetVisibleDocuments,
+      );
 
-      await mergeFallbackHits(context, chunksRef, tokenHashes, "tokenHashes", "tokenMatches");
-      await mergeFallbackHits(context, chunksRef, semanticHashes, "semanticHashes", "semanticMatches");
+      await mergeFallbackHits(context, chunksRef, tokenHashes, "tokenHashes", "tokenMatches", targetVisibleDocuments);
+      await mergeFallbackHits(
+        context,
+        chunksRef,
+        semanticHashes,
+        "semanticHashes",
+        "semanticMatches",
+        targetVisibleDocuments,
+      );
 
       const scored = sortScoredChunks(context.scoredById);
-      const hits = await buildSearchHits(uid, scored, tokenHashes.length, semanticHashes.length, limit);
+      const hits = await buildSearchHits(context, scored, tokenHashes.length, semanticHashes.length, limit);
       return { hits };
     },
   ),

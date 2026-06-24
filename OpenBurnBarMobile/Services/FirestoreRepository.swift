@@ -827,6 +827,7 @@ final class FirestoreRepository {
         let vaultKey = Self.cachedVaultKey()
         return snapshot.documents.compactMap { doc -> HermesCloudLibraryManifest? in
             let data = doc.data()
+            if let deletedAt = data["deletedAt"], !(deletedAt is NSNull) { return nil }
             let title = data["inferredTaskTitle"] as? String
                 ?? data["title"] as? String
                 ?? data["sessionId"] as? String

@@ -539,7 +539,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     }
 
     private static func sessionLogTombstoneFields(for record: ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
-        [
+        var fields: [String: Any] = [
             "id": record.id,
             "deviceId": deviceId,
             "provider": record.provider.rawValue,
@@ -549,6 +549,8 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
             "version": record.version,
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        fields.merge(legacyPlaintextFieldDeletes()) { _, new in new }
+        return fields
     }
 
     private func recordSyncError(_ error: Error) async {
@@ -1071,6 +1073,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
         return snapshot.documents.compactMap { doc -> ConversationRecord? in
             let data = doc.data()
+            if let deletedAt = data["deletedAt"], !(deletedAt is NSNull) { return nil }
             guard let rawProvider = data["provider"] as? String,
                   let provider = AgentProvider(rawValue: rawProvider) else { return nil }
 

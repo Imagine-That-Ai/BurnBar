@@ -167,6 +167,23 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
         XCTAssertNil(fakeGateway.documentData(at: manifestPath)?["deletedAt"])
+        var legacyManifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        let legacyPlaintextKeys = [
+            "body",
+            "payloadCiphertext",
+            "ciphertext",
+            "data",
+            "text",
+            "title",
+            "snippet",
+            "terms",
+            "projectName",
+            "workingDirectory"
+        ]
+        for key in legacyPlaintextKeys {
+            legacyManifest[key] = "legacy plaintext value"
+        }
+        fakeGateway.setDocumentData(legacyManifest, at: manifestPath)
 
         let deletedAt = Date(timeIntervalSince1970: 1_700_010_000)
         try await dataStore.softDeleteConversation(id: record.id, at: deletedAt)
@@ -181,6 +198,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(manifest["version"] as? Int, 2)
         XCTAssertEqual(manifest["id"] as? String, record.id)
         XCTAssertEqual(manifest["provider"] as? String, AgentProvider.codex.rawValue)
+        for key in legacyPlaintextKeys {
+            XCTAssertNil(manifest[key], "Tombstone propagation must scrub legacy plaintext manifest field \(key).")
+        }
         XCTAssertEqual(fakeEncryptedCloudClient.uploadRequests.count, 1, "Delete propagation must not upload a second body.")
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1, "Delete propagation must not rewrite encrypted storage bytes.")
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1, "Delete propagation must not add fresh search chunks.")
