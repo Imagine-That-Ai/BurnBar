@@ -34,6 +34,7 @@ function buildTree(mutator = () => {}) {
   for (const path of [
     ".github/workflows/qa.yml",
     ".github/workflows/code-quality.yml",
+    ".github/workflows/openburnbar-pr-harness.yml",
     ".github/workflows/workflow-lint.yml",
     "tools/qa/run-functional-qa.sh",
   ]) {
@@ -251,6 +252,83 @@ expect(
           "      - name: Use Android Firebase template for untrusted PRs",
           "",
         ].join("\n"),
+      ),
+    ),
+  1,
+);
+
+expect(
+  "full harness Android secret gate allowing manual dispatch fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replaceAll(
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')",
+        "github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "full harness Android real Firebase injection without gate fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replace(
+        "        if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "full harness Android non-secret fallback removal fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replace(
+        [
+          "      - name: Use Android Firebase template when secret run is not allowed",
+          "        if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'",
+          "        run: cp android/app/google-services.json.template android/app/google-services.json",
+          "",
+        ].join("\n"),
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "full harness Android APK upload from real-config build fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replace(
+        "        if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'\n        uses: actions/upload-artifact@",
+        "        uses: actions/upload-artifact@",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "Android Hermes smoke Firebase injection without gate fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replace(
+        "      - name: Inject Android Firebase config\n        if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'\n        env:\n          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}\n        run: bash ./scripts/ci/inject-firebase-config-android.sh\n      - name: Android Hermes instrumented smoke",
+        "      - name: Inject Android Firebase config\n        env:\n          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}\n        run: bash ./scripts/ci/inject-firebase-config-android.sh\n      - name: Android Hermes instrumented smoke",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "Mercury iOS Firebase injection without main gate fails",
+  (root) =>
+    mutate(root, ".github/workflows/openburnbar-pr-harness.yml", (text) =>
+      text.replace(
+        "        if: env.ALLOW_FIREBASE_SECRET_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'\n",
+        "        if: env.HAS_FIREBASE_SECRETS == 'true'\n",
       ),
     ),
   1,
