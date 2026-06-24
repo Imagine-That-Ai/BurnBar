@@ -48,6 +48,39 @@ final class CLIAgentSessionActionDaemonDispatcherTests: XCTestCase {
         XCTAssertEqual(response.errorCode, "mac_approval_required")
     }
 
+    func testRejectAndHaltMacApprovalRunsHaltHandlerAndDoesNotRunDaemonResume() async throws {
+        let approvalSpy = SessionActionApprovalSpy(decision: .rejectAndHalt)
+        let haltSpy = SessionActionHaltSpy()
+        let dispatcher = CLIAgentSessionActionDaemonDispatcher(
+            resumeRunner: { _, _, _, _ in
+                XCTFail("Resume runner must not execute after rejected halt approval.")
+                return BurnBarRunResumeResponse(kind: "spawned")
+            },
+            approvalPresenter: { request in
+                await approvalSpy.present(request)
+            },
+            haltHandler: {
+                await haltSpy.halt()
+            }
+        )
+
+        let response = try await dispatcher.perform(
+            CLIAgentSessionActionRequest(
+                sessionID: "session-reject-and-halt",
+                action: .resume,
+                targetRuntime: "codex"
+            )
+        )
+
+        let approvals = await approvalSpy.requests()
+        let haltCount = await haltSpy.haltCount()
+        XCTAssertEqual(approvals.count, 1)
+        XCTAssertEqual(haltCount, 1)
+        XCTAssertEqual(response.status, .error)
+        XCTAssertEqual(response.errorCode, "mac_approval_rejected_and_halted")
+        XCTAssertEqual(response.errorRecovery, "The Mac halt request was applied. Start a new trusted session before retrying.")
+    }
+
     func testApprovedResumeRunsDaemonResumeInSpawnMode() async throws {
         let approvalSpy = SessionActionApprovalSpy(decision: .approve)
         let runnerSpy = SessionActionResumeRunnerSpy(
@@ -188,6 +221,18 @@ private actor SessionActionApprovalSpy {
 
     func requests() -> [HermesRealtimeRelayApprovalRequest] {
         capturedRequests
+    }
+}
+
+private actor SessionActionHaltSpy {
+    private var count = 0
+
+    func halt() {
+        count += 1
+    }
+
+    func haltCount() -> Int {
+        count
     }
 }
 

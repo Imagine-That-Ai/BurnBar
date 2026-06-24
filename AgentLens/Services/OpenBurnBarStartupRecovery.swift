@@ -304,6 +304,9 @@ final class OpenBurnBarRuntimeContext {
                 daemonManager: daemonManager,
                 approvalPresenter: { request in
                     await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
+                },
+                haltHandler: { [weak self] in
+                    await self?.computerUseRuntimeController?.coordinator.panicHalt(source: .phoneGesture)
                 }
             )
             let cliSessionActionRelayDispatcher: CLIAgentSessionActionDispatcher? = { request, requestStillActive in

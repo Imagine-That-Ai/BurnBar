@@ -28,14 +28,24 @@ typealias CLIAgentSessionActionResumeRunner = @MainActor @Sendable (
     _ mode: BurnBarResumeMode
 ) async throws -> BurnBarRunResumeResponse
 
+typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Void
+
+private enum CLIAgentSessionActionApprovalDecision {
+    case approve
+    case reject
+    case rejectAndHalt
+}
+
 @MainActor
 struct CLIAgentSessionActionDaemonDispatcher {
     private let resumeRunner: CLIAgentSessionActionResumeRunner
     private let approvalPresenter: CLIAgentSessionActionApprovalPresenter?
+    private let haltHandler: CLIAgentSessionActionHaltHandler?
 
     init(
         daemonManager: OpenBurnBarDaemonManager = .shared,
-        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
     ) {
         self.init(
             resumeRunner: { sessionID, targetHarness, targetModel, mode in
@@ -46,16 +56,19 @@ struct CLIAgentSessionActionDaemonDispatcher {
                     mode: mode
                 )
             },
-            approvalPresenter: approvalPresenter
+            approvalPresenter: approvalPresenter,
+            haltHandler: haltHandler
         )
     }
 
     init(
         resumeRunner: @escaping CLIAgentSessionActionResumeRunner,
-        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
     ) {
         self.resumeRunner = resumeRunner
         self.approvalPresenter = approvalPresenter
+        self.haltHandler = haltHandler
     }
 
     func perform(
@@ -67,12 +80,23 @@ struct CLIAgentSessionActionDaemonDispatcher {
         case .packageOnly:
             mode = .open
         case .resume, .handoff:
-            guard await approvalAllowsExecution(for: request) else {
+            switch await approvalDecision(for: request) {
+            case .approve:
+                break
+            case .reject:
                 return CLIAgentSessionActionResponse(
                     status: .error,
                     note: "Mac approval is required before this session action can run.",
                     errorCode: "mac_approval_required",
                     errorRecovery: "Approve the session action on the Mac, then try again."
+                )
+            case .rejectAndHalt:
+                await haltHandler?()
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "Mac approval was rejected and halt was requested.",
+                    errorCode: "mac_approval_rejected_and_halted",
+                    errorRecovery: "The Mac halt request was applied. Start a new trusted session before retrying."
                 )
             }
             if let requestStillActive, await requestStillActive() == false {
@@ -119,10 +143,17 @@ struct CLIAgentSessionActionDaemonDispatcher {
         )
     }
 
-    private func approvalAllowsExecution(for request: CLIAgentSessionActionRequest) async -> Bool {
-        guard let approvalPresenter else { return false }
+    private func approvalDecision(for request: CLIAgentSessionActionRequest) async -> CLIAgentSessionActionApprovalDecision {
+        guard let approvalPresenter else { return .reject }
         let approval = await approvalPresenter(approvalRequest(for: request))
-        return approval.decision == .approve
+        switch approval.decision {
+        case .approve:
+            return .approve
+        case .reject:
+            return .reject
+        case .rejectAndHalt:
+            return .rejectAndHalt
+        }
     }
 
     private func approvalRequest(for request: CLIAgentSessionActionRequest) -> HermesRealtimeRelayApprovalRequest {
