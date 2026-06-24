@@ -1,14 +1,12 @@
 ---
-// Faithful re-render of the OpenBurnBar menu-bar popover. Layout, colors,
-// typography and copy all match the real macOS UI; data values were captured
-// live from the installed app on 2026-05-12 (11,377 sessions, real quota
-// windows for Anthropic + Codex, an active mission row). Rendered in CSS so
-// the popover reads cleanly without translucent desktop bleed.
+// Synthetic demo render of the OpenBurnBar menu-bar popover. Layout, colors,
+// typography, and states mirror the real macOS UI, but every telemetry value
+// is fictional and safe for the public website.
 ---
 
 <figure
   class="bar-mockup"
-  aria-label="OpenBurnBar menu-bar popover showing live quota windows for Anthropic and Codex plus the LaHormigaDormida mission with $2,662.51 burned across 15.12 billion tokens"
+  aria-label="OpenBurnBar menu-bar popover showing synthetic demo quota windows for Anthropic and Codex plus a Demo Workspace mission with sample burn and token totals"
 >
   <div class="bar-mockup__chrome" aria-hidden="true">
     <div class="bar-mockup__menubar">
@@ -23,7 +21,7 @@
         class="bar-mockup__menubar-logo"
       />
       <span class="bar-mockup__menubar-label">OpenBurnBar</span>
-      <span class="bar-mockup__menubar-cap mono">Today · 2.17B</span>
+      <span class="bar-mockup__menubar-cap mono">Today · demo</span>
     </div>
     <div class="bar-mockup__menubar-arrow" aria-hidden="true"></div>
   </div>
@@ -39,7 +37,7 @@
     <div class="popover__meta">
       <span class="popover__updated">Updated 4m ago</span>
       <span class="popover__sessions mono"
-        ><span class="popover__sessions-dot" aria-hidden="true"></span>11,377 sessions</span
+        ><span class="popover__sessions-dot" aria-hidden="true"></span>48 demo sessions</span
       >
     </div>
 
@@ -116,20 +114,20 @@
 
     <div class="popover__mission">
       <header>
-        <span class="popover__mission-name">LaHormigaDormida</span>
-        <span class="popover__mission-status mono">Not enough signal</span>
+        <span class="popover__mission-name">Demo Workspace</span>
+        <span class="popover__mission-status mono">Awaiting approval</span>
       </header>
       <p class="popover__mission-sub">
-        LaHormigaDormida · <span class="muted">not en…</span>
+        Demo Workspace · <span class="muted">sample run</span>
       </p>
       <div class="popover__mission-meta mono">
         <span class="dot popover__mission-dot" aria-hidden="true"></span>
-        Provisional · In Os
+        Synthetic · Local
       </div>
       <div class="popover__mission-grid mono">
         <div><span class="lbl">Mission</span><span class="val">Needs approval</span></div>
-        <div><span class="lbl">Burn</span><span class="val">$2,662.51</span></div>
-        <div><span class="lbl">Tokens</span><span class="val">15.12B</span></div>
+        <div><span class="lbl">Burn</span><span class="val">$42.18</span></div>
+        <div><span class="lbl">Tokens</span><span class="val">128K</span></div>
       </div>
       <div class="popover__mission-grid popover__mission-grid--two mono">
         <div><span class="lbl">Questions</span><span class="val">0</span></div>
@@ -153,7 +151,7 @@
   </div>
 
   <figcaption class="bar-mockup__cap mono">
-    Faithful re-render · live data captured from OpenBurnBar.app on 2026-05-12
+    Synthetic demo data · representative menu-bar render
   </figcaption>
 </figure>
 
