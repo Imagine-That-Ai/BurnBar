@@ -32,6 +32,10 @@ enum ControlSealSessionEstablisher {
         sessionsByConnection[connectionID] = session
     }
 
+    static func unregister(connectionID: String) {
+        sessionsByConnection.removeValue(forKey: connectionID)
+    }
+
     #if DEBUG
     static func clearForTests() {
         sessionsByConnection.removeAll()

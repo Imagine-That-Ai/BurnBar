@@ -496,6 +496,9 @@ final class InlineAgentMirrorController: ObservableObject {
     private func teardownControlInput() {
         controlSetupTask?.cancel()
         controlSetupTask = nil
+        if let activeConnectionID {
+            ControlSealSessionEstablisher.unregister(connectionID: activeConnectionID)
+        }
         controlSender = nil
         controlInputReady = false
     }

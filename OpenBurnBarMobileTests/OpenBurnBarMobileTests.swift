@@ -5127,4 +5127,100 @@ final class ControlSealSealingSinkTests: XCTestCase {
             ControlSealSessionEstablisher.clearForTests()
         }
     }
+
+    func testUnregisterClearsStaleControlSealSessionBeforeReconnect() async throws {
+        let oldKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 10, count: 32),
+            salt: Data("conn-reconnect".utf8)
+        )
+        let freshKey = ControlFrameSeal().deriveSessionKey(
+            hpkeSessionKey: Data(repeating: 11, count: 32),
+            salt: Data("conn-reconnect".utf8)
+        )
+        let peerNodeId = "ios-phone-reconnect00000000000000000"
+        let oldSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-reconnect",
+                senderPeerNodeId: "iphone-reconnect",
+                senderKeyId: "relay-v3-reconnect-old",
+                senderCounter: 1,
+                relayKeyVersion: 3
+            ),
+            key: oldKey,
+            controllerPeerNodeId: peerNodeId
+        )
+        let freshSession = ControlSealSessionEstablisher.Session(
+            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
+                encBase64: "",
+                wrappedKeyBase64: "",
+                senderDeviceId: "iphone-reconnect",
+                senderPeerNodeId: "iphone-reconnect",
+                senderKeyId: "relay-v3-reconnect-new",
+                senderCounter: 2,
+                relayKeyVersion: 3
+            ),
+            key: freshKey,
+            controllerPeerNodeId: peerNodeId
+        )
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-reconnect")
+            ControlSealSessionEstablisher.unregister(connectionID: "conn-reconnect")
+        }
+
+        let captured = CapturedFrames()
+        let sink = ControlSealSessionEstablisher.sealingFrameSink(
+            { frame in await captured.append(frame) },
+            session: freshSession
+        )
+        try await sink(HermesRealtimeRelayFrame(
+            type: .controlInputIntent,
+            uid: "uid-reconnect",
+            connectionId: "conn-reconnect",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                inputIntent: HermesRealtimeRelayInputIntent(
+                    kind: .tap,
+                    displayId: nil,
+                    normalizedX: 0.6,
+                    normalizedY: 0.7,
+                    normalizedX2: nil,
+                    normalizedY2: nil,
+                    text: nil,
+                    key: nil,
+                    modifiers: nil,
+                    mouseButton: nil,
+                    clientIntentId: "intent-reconnect",
+                    authority: HermesRealtimeRelayAuthorityEnvelope(
+                        peerNodeId: peerNodeId,
+                        counter: 12,
+                        timestamp: Date(),
+                        intentHashBlake3: String(repeating: "12", count: 32),
+                        signatureEd25519: Data(repeating: 5, count: 64).base64EncodedString()
+                    )
+                )
+            )
+        ))
+
+        let frames = await captured.frames
+        let control = try XCTUnwrap(frames.first?.control)
+        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
+            control,
+            key: oldKey,
+            peerNodeId: peerNodeId,
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        ))
+        let opened = try ControlFrameSealSession.openPayload(
+            control,
+            key: freshKey,
+            peerNodeId: peerNodeId,
+            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
+        )
+        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-reconnect")
+        await MainActor.run {
+            ControlSealSessionEstablisher.clearForTests()
+        }
+    }
 }
