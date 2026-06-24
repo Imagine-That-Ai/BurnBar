@@ -27,8 +27,9 @@ import Foundation
 /// 1. Query parameter `?beta=true` on `/v1/messages`.
 /// 2. `anthropic-beta: claude-code-20250219,oauth-2025-04-20` header (proves
 ///    "this is Claude Code talking to its OAuth gateway").
-/// 3. Standard CLI identity headers (`User-Agent: claude-cli/…`,
-///    `x-app: cli`, `anthropic-dangerous-direct-browser-access: true`).
+/// 3. Standard Claude Code identity headers (`User-Agent: claude-code/…`,
+///    `x-anthropic-billing-header`, `x-app: cli`,
+///    `anthropic-dangerous-direct-browser-access: true`).
 /// 4. A `system` field whose first text block starts with the canonical
 ///    Claude Code system guard (`"You are Claude Code, Anthropic's official
 ///    CLI for Claude."`).
@@ -50,10 +51,15 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// strip (`context-management-…` is intentionally absent).
     public static let claudeCodeBetaHeader = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,effort-2025-11-24,extended-cache-ttl-2025-04-11"
 
-    /// User-Agent BurnBar sends on Claude Code OAuth routes. Pinned to a
-    /// known Claude Code release so the identity is stable regardless of
-    /// what version of the CLI happens to be installed on the host.
-    public static let claudeCodeUserAgent = "claude-cli/2.1.143 (external, sdk-cli)"
+    /// User-Agent BurnBar sends on Claude Code OAuth routes. Pinned to the
+    /// current Claude Code native client shape; Anthropic's OAuth edge treats
+    /// the older `claude-cli/...` value differently from real Claude Code.
+    public static let claudeCodeUserAgent = "claude-code/2.1.187 (sdk-cli)"
+
+    /// Billing/identity header emitted by Claude Code's first-party SDK path.
+    /// Keep this on OAuth routes only; Console API keys bill through the
+    /// public API-key path and must not be dressed as Claude Code.
+    public static let claudeCodeBillingHeader = "cc_version=2.1.187; cc_entrypoint=sdk-cli; cch=00000;"
 
     /// The canonical Claude Code system prompt prefix that the public
     /// Messages API uses to gate Opus on OAuth bearer tokens. The exact
@@ -137,6 +143,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             // present the same identity Claude Code itself uses locally.
             request.setValue(Self.claudeCodeBetaHeader, forHTTPHeaderField: "anthropic-beta")
             request.setValue(Self.claudeCodeUserAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue(Self.claudeCodeBillingHeader, forHTTPHeaderField: "x-anthropic-billing-header")
             request.setValue("cli", forHTTPHeaderField: "x-app")
             request.setValue("true", forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
         }
@@ -200,6 +207,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         if usesClaudeCode {
             request.setValue(Self.claudeCodeBetaHeader, forHTTPHeaderField: "anthropic-beta")
             request.setValue(Self.claudeCodeUserAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue(Self.claudeCodeBillingHeader, forHTTPHeaderField: "x-anthropic-billing-header")
             request.setValue("cli", forHTTPHeaderField: "x-app")
             request.setValue("true", forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
         }
