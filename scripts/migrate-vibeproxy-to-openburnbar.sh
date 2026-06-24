@@ -711,8 +711,22 @@ DROID_MODELS=$(python3 -c "
 import json, os
 with open(os.path.expanduser('~/.factory/settings.json')) as f:
     data = json.load(f)
-obb = [m for m in data.get('customModels',[]) if 'openburnbar' in m.get('id','').lower() or 'OBB' in m.get('displayName','')]
-vibe = [m for m in data.get('customModels',[]) if 'vibeproxy' in m.get('id','').lower() or 'VibeProxy' in m.get('displayName','')]
+models = data.get('customModels', [])
+obb = [
+    m for m in models
+    if 'openburnbar' in m.get('id', '').lower()
+    or 'openburnbar' in m.get('displayName', '').lower()
+    or 'obb' in m.get('displayName', '').lower()
+]
+vibe = [
+    m for m in models
+    if (
+        'vibeproxy' in m.get('id', '').lower()
+        or 'vibeproxy' in m.get('displayName', '').lower()
+    )
+    and 'openburnbar' not in m.get('id', '').lower()
+    and 'openburnbar' not in m.get('displayName', '').lower()
+]
 print(f'OBB models: {len(obb)}, VibeProxy remnants: {len(vibe)}')
 " 2>/dev/null || echo "?")
 ok "Droid config: $DROID_MODELS"
