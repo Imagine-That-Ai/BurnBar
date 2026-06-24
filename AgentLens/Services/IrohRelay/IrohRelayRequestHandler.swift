@@ -535,7 +535,7 @@ final class IrohRelayRequestHandler: Sendable {
                 "action": request.action.rawValue
             ]
         )
-        let response = try await cliSessionActionDispatcher(request)
+        let response = try await cliSessionActionDispatcher(request, nil)
         let data = try JSONEncoder().encode(response)
         try await sendChunk(
             data: String(data: data, encoding: .utf8) ?? "{}",

@@ -657,7 +657,9 @@ final class HermesRelayHostService {
             throw HermesRelayHostError.missingBody
         }
         let request = try JSONDecoder().decode(CLIAgentSessionActionRequest.self, from: bodyData)
-        let response = try await cliSessionActionDispatcher(request)
+        let response = try await cliSessionActionDispatcher(request) {
+            (try? await self.relayRequestCanReceiveOutput(reference: reference)) ?? false
+        }
         let responseData = try JSONEncoder().encode(response)
         let bodyText = String(data: responseData, encoding: .utf8) ?? "{}"
         let chunkCount = try await writeRelayChunk(

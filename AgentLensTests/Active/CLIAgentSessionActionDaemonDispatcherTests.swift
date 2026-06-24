@@ -95,6 +95,33 @@ final class CLIAgentSessionActionDaemonDispatcherTests: XCTestCase {
         XCTAssertEqual(response.pid, 123)
     }
 
+    func testApprovedResumeRechecksRequestFreshnessBeforeDaemonResume() async throws {
+        let approvalSpy = SessionActionApprovalSpy(decision: .approve)
+        let dispatcher = CLIAgentSessionActionDaemonDispatcher(
+            resumeRunner: { _, _, _, _ in
+                XCTFail("Resume runner must not execute after the relay request expires.")
+                return BurnBarRunResumeResponse(kind: "spawned")
+            },
+            approvalPresenter: { request in
+                await approvalSpy.present(request)
+            }
+        )
+
+        let response = try await dispatcher.perform(
+            CLIAgentSessionActionRequest(
+                sessionID: "session-expired-after-approval",
+                action: .resume,
+                targetRuntime: "codex"
+            ),
+            requestStillActive: { false }
+        )
+
+        let approvals = await approvalSpy.requests()
+        XCTAssertEqual(approvals.count, 1)
+        XCTAssertEqual(response.status, .error)
+        XCTAssertEqual(response.errorCode, "relay_request_not_active")
+    }
+
     func testPackageOnlyDoesNotRequireApprovalAndUsesOpenMode() async throws {
         let runnerSpy = SessionActionResumeRunnerSpy(
             response: BurnBarRunResumeResponse(

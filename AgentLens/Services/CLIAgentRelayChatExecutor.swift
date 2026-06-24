@@ -10,8 +10,11 @@ typealias CLIRuntimeModelCatalogDispatcher = @Sendable (
     _ request: CLIRuntimeModelCatalogRequest
 ) async throws -> CLIRuntimeModelCatalogResponse
 
+typealias CLIAgentSessionActionFreshnessProbe = @MainActor @Sendable () async -> Bool
+
 typealias CLIAgentSessionActionDispatcher = @MainActor @Sendable (
-    _ request: CLIAgentSessionActionRequest
+    _ request: CLIAgentSessionActionRequest,
+    _ requestStillActive: CLIAgentSessionActionFreshnessProbe?
 ) async throws -> CLIAgentSessionActionResponse
 
 typealias CLIAgentSessionActionApprovalPresenter = @MainActor @Sendable (
@@ -55,7 +58,10 @@ struct CLIAgentSessionActionDaemonDispatcher {
         self.approvalPresenter = approvalPresenter
     }
 
-    func perform(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
+    func perform(
+        _ request: CLIAgentSessionActionRequest,
+        requestStillActive: CLIAgentSessionActionFreshnessProbe? = nil
+    ) async throws -> CLIAgentSessionActionResponse {
         let mode: BurnBarResumeMode
         switch request.action {
         case .packageOnly:
@@ -67,6 +73,14 @@ struct CLIAgentSessionActionDaemonDispatcher {
                     note: "Mac approval is required before this session action can run.",
                     errorCode: "mac_approval_required",
                     errorRecovery: "Approve the session action on the Mac, then try again."
+                )
+            }
+            if let requestStillActive, await requestStillActive() == false {
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "The relay request expired before the approved session action could run.",
+                    errorCode: "relay_request_not_active",
+                    errorRecovery: "Send a fresh session action request from the phone."
                 )
             }
             mode = .spawn

@@ -299,22 +299,20 @@ final class OpenBurnBarRuntimeContext {
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
             let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery(settingsManager: settingsManager)
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
             let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(
                 daemonManager: daemonManager,
                 approvalPresenter: { request in
-                    #if canImport(AppKit) && !DISTRIBUTION_MAS
                     await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
-                    #else
-                    HermesRealtimeRelayApprovalResponse(
-                        approvalId: request.approvalId,
-                        decision: .reject,
-                        respondedBy: "mac",
-                        respondedAt: Date(),
-                        note: "Mac approval UI is unavailable in this build."
-                    )
-                    #endif
                 }
             )
+            let cliSessionActionRelayDispatcher: CLIAgentSessionActionDispatcher? = { request, requestStillActive in
+                try await cliSessionActionDispatcher.perform(request, requestStillActive: requestStillActive)
+            }
+            #else
+            let cliSessionActionRelayDispatcher: CLIAgentSessionActionDispatcher?
+            cliSessionActionRelayDispatcher = nil
+            #endif
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
@@ -324,9 +322,7 @@ final class OpenBurnBarRuntimeContext {
                 cliModelCatalogDispatcher: { request in
                     try await cliModelCatalogDiscovery.modelCatalog(for: request)
                 },
-                cliSessionActionDispatcher: { request in
-                    try await cliSessionActionDispatcher.perform(request)
-                }
+                cliSessionActionDispatcher: cliSessionActionRelayDispatcher
             )
             hermesRelayHostService = hermesRelayHost
         }
