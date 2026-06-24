@@ -160,3 +160,15 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      - name: Self-test gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.test.mjs
+
+      - name: Verify gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
+
+      - name: Self-test gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.test.mjs
+
+      - name: Verify gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs

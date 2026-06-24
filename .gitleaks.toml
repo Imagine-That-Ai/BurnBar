@@ -5,6 +5,7 @@ useDefault = true
 
 [[allowlists]]
 description = "Synthetic Project Code Memory high-entropy fixtures; runtime tests now construct these from short fragments"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''Az9qLm8Pr2Vx7Ns4Tu6Wy1Za3Qb5Cd7Ef9Gh2Jk4Mn6''',
@@ -25,6 +26,7 @@ regexes = [
 
 [[allowlists]]
 description = "Swift redaction sentinel assertions that intentionally compare against the literal placeholder"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''creds\.rateLimitTier,\s*"REDACTED"''',
@@ -36,6 +38,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic Hermes relay wire-vector keys used only in checked-in test fixtures"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''symmetricKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
@@ -57,6 +60,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic media-frame/control-frame AEAD KAT keys used only in checked-in cross-language test fixtures"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''derivedKeyHex"\s*:\s*"[A-Fa-f0-9]{64}"''',
@@ -72,6 +76,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic Hermes ratchet golden-vector state outputs used only in Swift crypto tests"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''rootKeyBase64,\s*"[A-Za-z0-9+/_=-]+"''',
@@ -83,6 +88,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic Signal at-rest KAT private keys used only in checked-in cross-language test fixtures"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''recipientPrivateKeyB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
@@ -96,6 +102,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic libsignal XEd25519 public-key KATs used only in server-side trust-chain signature tests"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''keyHex:\s*"[A-Fa-f0-9]{66}"''',
@@ -106,6 +113,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic Signal envelope placeholder wraps used only in first-party contract tests"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''recipientIdentityKeyB64"?\s*:\s*"[A-Za-z0-9+/_=-]+"''',
@@ -121,6 +129,7 @@ paths = [
 
 [[allowlists]]
 description = "Escrow fingerprint parity tests use public P-256 keys, not private key material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''key\s*=\s*"[A-Za-z0-9+/_=-]{80,}"''',
@@ -132,6 +141,7 @@ paths = [
 
 [[allowlists]]
 description = "Gateway size-limit constants reference imported protocol caps, not credential values"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64\s*=\s*SIGNAL_MAX_KEY_WRAP_B64''',
@@ -142,6 +152,7 @@ paths = [
 
 [[allowlists]]
 description = "Vendored libsignal cryptographic KATs and registration fixtures are deterministic public test vectors"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''"key"\s*:\s*"[A-Fa-f0-9]{32,128}"''',
@@ -156,6 +167,7 @@ paths = [
 
 [[allowlists]]
 description = "Swift UserDefaults key constants and test lookup keys, not credential material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''userDefaultsKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
@@ -172,6 +184,7 @@ paths = [
 
 [[allowlists]]
 description = "ElderWand preset UserDefaults key constants ('elderWand.presets.v1') are local-storage identifiers, not credential material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''presets(Storage|Defaults)(Key|Name)\s*=\s*"[A-Za-z0-9_.:-]+"''',
@@ -183,6 +196,7 @@ paths = [
 
 [[allowlists]]
 description = "Console escrow documentation and interoperability vectors contain public wrapped-key fixtures only"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''Wrapped vault key\s*=\s*ephemeral ECDH public key''',
@@ -198,6 +212,7 @@ paths = [
 
 [[allowlists]]
 description = "Console Firebase web config contains public client identifiers, not server credentials"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''AIza[0-9A-Za-z_-]{35}''',
@@ -208,6 +223,7 @@ paths = [
 
 [[allowlists]]
 description = "Data export tests use synthetic relay-envelope wrapped-key fixtures"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''wrappedKey:\s*"[A-Za-z0-9+/=]+"''',
@@ -218,6 +234,7 @@ paths = [
 
 [[allowlists]]
 description = "Launch evidence stores SHA-256 purchase token hashes, not raw purchase tokens"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''"purchaseTokenHash"\s*:\s*"[a-f0-9]{64}"''',
@@ -229,6 +246,7 @@ paths = [
 
 [[allowlists]]
 description = "Signal prekey directory algorithm identifiers are public protocol labels, not credentials"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''signal-pqxdh-(signed|kyber|one-time)-prekey-v1''',
@@ -239,6 +257,7 @@ paths = [
 
 [[allowlists]]
 description = "Sparkle EdDSA public update key is bundle metadata, not signing secret material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''SUPublicEDKey:\s*613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=''',
@@ -252,6 +271,7 @@ paths = [
 
 [[allowlists]]
 description = "Signal prekey directory tests and denylist literals intentionally name forbidden secret fields"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''privateKeyData''',
@@ -269,6 +289,7 @@ paths = [
 
 [[allowlists]]
 description = "Deterministic libsignal prekey record KATs used only in checked-in cross-language test fixtures"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''"bob(Signed)?PreKeyRecordB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
@@ -281,6 +302,7 @@ paths = [
 
 [[allowlists]]
 description = "Firestore rules negative tests intentionally use forbidden credential field names with non-secret sentinel values"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''encryptedPayload:\s*\["not",\s*"allowed"\]''',
@@ -291,6 +313,7 @@ paths = [
 
 [[allowlists]]
 description = "Elder Wand UserDefaults storage keys are local preference names, not credential material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''static let presets(Storage|Defaults)Name\s*=\s*"elderWand\.presets\.v1"''',
@@ -302,6 +325,7 @@ paths = [
 
 [[allowlists]]
 description = "Hermes wire-protocol schema: `\"key\": \"…\"` entries are JSON codable field names in the type definitions, not credential material"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''"key"\s*:\s*"[A-Za-z0-9_]+"''',
@@ -312,6 +336,7 @@ paths = [
 
 [[allowlists]]
 description = "Synthetic Amplitude API keys used only in the VS Code extension analytics unit tests — placeholders, never real credentials"
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''env-injected-key-[0-9]+''',
