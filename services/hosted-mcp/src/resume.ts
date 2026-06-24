@@ -48,6 +48,13 @@ interface ResumeConversationArgs {
   max_tokens?: unknown;
 }
 
+type ResumeCandidate = {
+  documentID: string;
+  score: number;
+  tokenMatchedHashes: Set<string>;
+  semanticMatchedHashes: Set<string>;
+};
+
 const NATIVE_HOSTED_PROVIDERS = new Set(["Claude Code", "Codex"]);
 const HEX_32_128 = /^[a-f0-9]{32,128}$/u;
 
@@ -197,9 +204,11 @@ async function findConversationByOpaqueQuery(db: ResumeFirestore, uid: string, a
 
   const provider = stringField(args.provider);
   const projectName = stringField(args.projectName);
-  const candidates = new Map<string, { documentID: string; score: number }>();
+  const candidates = new Map<string, ResumeCandidate>();
   await collectPostingMatches(db, uid, tokenHashes, "token", provider, projectName, candidates);
   await collectPostingMatches(db, uid, semanticHashes, "semantic", provider, projectName, candidates);
+  await collectFallbackMatches(db, uid, tokenHashes, "token", provider, projectName, candidates);
+  await collectFallbackMatches(db, uid, semanticHashes, "semantic", provider, projectName, candidates);
 
   const ranked = Array.from(candidates.values()).sort((a, b) => b.score - a.score || a.documentID.localeCompare(b.documentID));
   if (ranked.length === 0) {return { kind: "none" };}
@@ -219,7 +228,7 @@ async function collectPostingMatches(
   kind: "token" | "semantic",
   provider: string,
   projectName: string,
-  candidates: Map<string, { documentID: string; score: number }>
+  candidates: Map<string, ResumeCandidate>
 ) {
   if (inputHashes.length === 0) {return;}
   const requested = new Set(inputHashes);
@@ -235,10 +244,60 @@ async function collectPostingMatches(
       continue;
     }
     if (projectName && posting.get("projectName") !== projectName) {continue;}
-    const current = candidates.get(documentID) ?? { documentID, score: 0 };
-    current.score += kind === "token" ? 2 : 1;
-    candidates.set(documentID, current);
+    scoreCandidate(candidates, documentID, hash, kind);
   }
+}
+
+async function collectFallbackMatches(
+  db: ResumeFirestore,
+  uid: string,
+  inputHashes: string[],
+  kind: "token" | "semantic",
+  provider: string,
+  projectName: string,
+  candidates: Map<string, ResumeCandidate>
+) {
+  if (inputHashes.length === 0) {return;}
+  const requested = new Set(inputHashes);
+  const field = kind === "token" ? "tokenHashes" : "semanticHashes";
+  let query = db
+    .collection(`users/${uid}/cloud_search_chunks`)
+    .where(field, "array-contains-any", Array.from(requested));
+  if (provider) {query = query.where("provider", "==", provider);}
+  const snap = await query.limit(50).get();
+  for (const chunk of snap.docs) {
+    const documentID = chunk.get("documentID");
+    if (typeof documentID !== "string") {continue;}
+    if (projectName && chunk.get("projectName") !== projectName) {continue;}
+    const rawValues = chunk.get(field);
+    const values = Array.isArray(rawValues)
+      ? rawValues.filter((hash: unknown): hash is string => typeof hash === "string")
+      : [];
+    for (const hash of values) {
+      if (requested.has(hash)) {
+        scoreCandidate(candidates, documentID, hash, kind);
+      }
+    }
+  }
+}
+
+function scoreCandidate(
+  candidates: Map<string, ResumeCandidate>,
+  documentID: string,
+  hash: string,
+  kind: "token" | "semantic"
+) {
+  const current = candidates.get(documentID) ?? {
+    documentID,
+    score: 0,
+    tokenMatchedHashes: new Set<string>(),
+    semanticMatchedHashes: new Set<string>()
+  };
+  const matched = kind === "token" ? current.tokenMatchedHashes : current.semanticMatchedHashes;
+  if (matched.has(hash)) {return;}
+  matched.add(hash);
+  current.score += kind === "token" ? 2 : 1;
+  candidates.set(documentID, current);
 }
 
 function snapshotAsDoc(id: string, snap: { data(): Record<string, unknown> | undefined; get?(field: string): unknown }): ResumeDoc {

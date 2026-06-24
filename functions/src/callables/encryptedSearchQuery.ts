@@ -17,7 +17,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { boundedTrimmedString, requireOptionalSearchHashes, assertActiveBurnBarProEntitlement } from "./shared.js";
-import { cloudSearchFallbackHashes } from "./encryptedSearchIndex.js";
+import { cloudSearchCompleteFallbackHashes } from "./encryptedSearchIndex.js";
 import { wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -40,6 +40,7 @@ type SearchContext = {
   provider: string | undefined;
   scoredById: Map<string, ScoredChunk>;
   chunkCache: Map<string, DocumentSnapshot>;
+  countedMatches: Set<string>;
 };
 
 /**
@@ -59,7 +60,14 @@ function mergeChunkDoc(
   const hashes = Array.isArray(data[fieldName])
     ? data[fieldName].filter((hash): hash is string => typeof hash === "string")
     : [];
-  const matches = hashes.reduce((sum, hash) => sum + (requested.has(hash) ? 1 : 0), 0);
+  let matches = 0;
+  for (const hash of hashes) {
+    if (!requested.has(hash)) continue;
+    const matchKey = `${scoreName}:${doc.id}:${hash}`;
+    if (context.countedMatches.has(matchKey)) continue;
+    context.countedMatches.add(matchKey);
+    matches += 1;
+  }
   if (matches <= 0) return false;
   const existing = context.scoredById.get(doc.id) ?? {
     id: doc.id,
@@ -149,16 +157,15 @@ async function mergePostingHits(
   return matchedHashes;
 }
 
-/** Run the array-contains-any fallback for whichever requested hashes the postings missed. */
+/** Run the array-contains-any fallback for all requested hashes; scoring dedupes posting hits. */
 async function mergeFallbackHits(
   context: SearchContext,
   chunksRef: CollectionReference,
   hashes: string[],
-  postingMatched: Set<string>,
   fieldName: HashFieldName,
   scoreName: ScoreName,
 ): Promise<void> {
-  const fallbackHashes = cloudSearchFallbackHashes(hashes, postingMatched);
+  const fallbackHashes = cloudSearchCompleteFallbackHashes(hashes);
   if (fallbackHashes.length === 0) return;
   let query = chunksRef.where(fieldName, "array-contains-any", fallbackHashes);
   if (context.provider) query = query.where("provider", "==", context.provider);
@@ -268,10 +275,11 @@ export const searchEncryptedConversationIndex = onCall(
         provider,
         scoredById: new Map<string, ScoredChunk>(),
         chunkCache: new Map<string, DocumentSnapshot>(),
+        countedMatches: new Set<string>(),
       };
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
 
-      const [tokenPostingMatchedHashes, semanticPostingMatchedHashes] = await Promise.all([
+      await Promise.all([
         mergePostingHits(context, tokenHashes, "token", "tokenHashes", "tokenMatches"),
         mergePostingHits(context, semanticHashes, "semantic", "semanticHashes", "semanticMatches"),
       ]);
@@ -280,7 +288,6 @@ export const searchEncryptedConversationIndex = onCall(
         context,
         chunksRef,
         tokenHashes,
-        tokenPostingMatchedHashes,
         "tokenHashes",
         "tokenMatches",
       );
@@ -288,7 +295,6 @@ export const searchEncryptedConversationIndex = onCall(
         context,
         chunksRef,
         semanticHashes,
-        semanticPostingMatchedHashes,
         "semanticHashes",
         "semanticMatches",
       );

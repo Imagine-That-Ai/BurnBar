@@ -5,6 +5,7 @@ import type { Firestore } from "firebase-admin/firestore";
 
 const HASH_OLD = "a".repeat(32);
 const HASH_NEW = "b".repeat(32);
+const HASH_CAPPED = "c".repeat(32);
 const OLD_COMMIT = "1".repeat(32);
 const NEW_COMMIT = "2".repeat(32);
 const sealedSnippet = {
@@ -53,10 +54,26 @@ function makeSearchFirestore(): Firestore {
     sealedSnippet,
     ordinal: 0
   });
+  const cappedChunk = snapshot("doc-capped_0", {
+    documentID: "doc-capped",
+    sourceKind: "conversation",
+    sourceID: "session-capped",
+    provider: "Codex",
+    projectName: "BurnBar",
+    commitID: NEW_COMMIT,
+    bodyHash: "e".repeat(64),
+    storagePath: "users/user-1/session_logs/doc-capped/body.enc",
+    tokenHashes: [HASH_CAPPED],
+    semanticHashes: [],
+    sealedSnippet,
+    ordinal: 0
+  });
   const chunksByPath = new Map([
     ["users/user-1/cloud_search_chunks/doc-old_0", oldChunk],
     ["users/user-1/cloud_search_chunks/doc-new_0", newChunk],
+    ["users/user-1/cloud_search_chunks/doc-capped_0", cappedChunk],
   ]);
+  const chunks = [oldChunk, newChunk, cappedChunk];
   const postings = [
     snapshot(`token_${HASH_OLD}_doc-old_0`, {
       postingKey: `token_${HASH_OLD}`,
@@ -93,6 +110,8 @@ function makeSearchFirestore(): Firestore {
     collection(path: string) {
       const docs = path.endsWith("/cloud_search_postings")
         ? postings
+        : path.endsWith("/cloud_search_chunks")
+          ? chunks
         : path.endsWith("/cloud_search_index_state")
           ? [activeState]
           : [];
@@ -113,8 +132,12 @@ function makeSearchFirestore(): Firestore {
           return {
             docs: docs.filter((doc) => filters.every((filter) => {
               const actual = doc.get(filter.field);
-              if (filter.op === "in" && Array.isArray(filter.value)) {return filter.value.includes(actual);}
-              return actual === filter.value;
+              const filterValue = filter.value;
+              if (filter.op === "in" && Array.isArray(filterValue)) {return filterValue.includes(actual);}
+              if (filter.op === "array-contains-any" && Array.isArray(filterValue) && Array.isArray(actual)) {
+                return actual.some((item) => filterValue.includes(item));
+              }
+              return actual === filterValue;
             })).slice(0, limitCount)
           };
         }
@@ -136,5 +159,17 @@ test("hosted search can find older per-document commits from posting indexes", a
   assert.equal(result.hits[0].documentID, "doc-old");
   assert.equal(result.hits[0].matchKind, "token");
   assert.equal(result.storageReads, 0);
+  assert.equal(result.readBudget.withinSearchReadBudget, true);
+});
+
+test("hosted search falls back to chunk hash arrays when posting fanout is capped", async () => {
+  const result = await searchConversations(makeSearchFirestore(), "user-1", {
+    tokenHashes: [HASH_CAPPED],
+    limit: 10
+  });
+
+  assert.equal(result.hits.length, 1);
+  assert.equal(result.hits[0].documentID, "doc-capped");
+  assert.equal(result.hits[0].matchKind, "token");
   assert.equal(result.readBudget.withinSearchReadBudget, true);
 });

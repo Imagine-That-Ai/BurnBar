@@ -37,7 +37,11 @@ import {
   mapSessionLogManifestRow,
   resolveConversationSort,
 } from "./conversationQuery.js";
-import { assertCloudSearchIndexWriteBudget, buildCloudSearchPostingEdges } from "./encryptedSearchIndex.js";
+import {
+  assertCloudSearchIndexCleanupWriteBudget,
+  assertCloudSearchIndexWriteBudget,
+  buildCloudSearchPostingEdges,
+} from "./encryptedSearchIndex.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // Re-export relocated callables so existing `import ... from "./callables/encryptedSearch.js"`
@@ -178,6 +182,8 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const commitID = randomBytes(16).toString("hex");
 
       let writeCount = 0;
+      let cleanupWriteCount = 0;
+      let postingWriteCount = 0;
       const writes: Array<(batch: WriteBatch) => void> = [];
       const documentsRef = db.collection(`users/${uid}/cloud_search_documents`);
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
@@ -190,6 +196,15 @@ export const commitEncryptedSearchIndexBatch = onCall(
           assertCloudSearchIndexWriteBudget(writeCount + 1);
         } catch (error) {
           const message = error instanceof Error ? error.message : "cloud search index commit exceeds write budget.";
+          throw new HttpsError("resource-exhausted", message);
+        }
+      };
+      const assertCleanupWriteBudget = () => {
+        try {
+          assertCloudSearchIndexCleanupWriteBudget(cleanupWriteCount + 1);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "cloud search index cleanup exceeds write budget.";
           throw new HttpsError("resource-exhausted", message);
         }
       };
@@ -333,6 +348,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
           writes.push((batch) => batch.set(postingRef, stripUndefinedObject(edge.data), { merge: true }));
           writePaths.add(postingRef.path);
           writeCount += 1;
+          postingWriteCount += 1;
         }
         assertPlannedWriteBudget();
       }
@@ -344,15 +360,15 @@ export const commitEncryptedSearchIndexBatch = onCall(
         ]);
         for (const old of oldChunks.docs) {
           if (writePaths.has(old.ref.path)) continue;
+          assertCleanupWriteBudget();
           writes.push((batch) => batch.delete(old.ref));
-          writeCount += 1;
-          assertPlannedWriteBudget();
+          cleanupWriteCount += 1;
         }
         for (const old of oldPostings.docs) {
           if (writePaths.has(old.ref.path)) continue;
+          assertCleanupWriteBudget();
           writes.push((batch) => batch.delete(old.ref));
-          writeCount += 1;
-          assertPlannedWriteBudget();
+          cleanupWriteCount += 1;
         }
       }
 
@@ -368,7 +384,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
             lastCommittedAt: now,
             documentCount: documents.length,
             chunkCount: chunks.length,
-            postingCount: writeCount - documents.length - chunks.length,
+            postingCount: postingWriteCount,
             schemaVersion: 1,
           }),
           { merge: true },
@@ -377,7 +393,14 @@ export const commitEncryptedSearchIndexBatch = onCall(
       writeCount += 1;
 
       await commitBatchedWrites(writes);
-      return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };
+      return {
+        ok: true,
+        writeCount: writeCount + cleanupWriteCount,
+        cleanupWriteCount,
+        documentCount: documents.length,
+        chunkCount: chunks.length,
+        commitID,
+      };
     },
   ),
 );

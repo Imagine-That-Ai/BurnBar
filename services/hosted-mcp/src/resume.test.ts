@@ -13,7 +13,8 @@ const envelope = {
 
 function makeFirestore(
   extraDocuments: Array<{ id: string; data: Record<string, unknown> }> = [],
-  extraPostings: Array<{ id: string; data: Record<string, unknown> }> = []
+  extraPostings: Array<{ id: string; data: Record<string, unknown> }> = [],
+  extraChunks: Array<{ id: string; data: Record<string, unknown> }> = []
 ): ResumeFirestore {
   const document = {
     id: "doc-1",
@@ -38,7 +39,12 @@ function makeFirestore(
   };
   const chunks = [
     { id: "chunk-1", data(): Record<string, unknown> { return { documentID: "doc-1", ordinal: 1, sealedSnippet: envelope }; }, get(field: string) { const data = this.data(); return data ? data[field] : undefined; } },
-    { id: "chunk-0", data(): Record<string, unknown> { return { documentID: "doc-1", ordinal: 0, sealedSnippet: envelope }; }, get(field: string) { const data = this.data(); return data ? data[field] : undefined; } }
+    { id: "chunk-0", data(): Record<string, unknown> { return { documentID: "doc-1", ordinal: 0, sealedSnippet: envelope }; }, get(field: string) { const data = this.data(); return data ? data[field] : undefined; } },
+    ...extraChunks.map((item) => ({
+      id: item.id,
+      data(): Record<string, unknown> { return item.data; },
+      get(field: string) { return item.data[field]; }
+    }))
   ];
   const documents = [
     document,
@@ -98,9 +104,12 @@ function makeFirestore(
           return {
             docs: docs.filter((doc) => filters.every((filter) => {
               const actual = doc.get(filter.field);
-              return filter.op === "in" && Array.isArray(filter.value)
-                ? filter.value.includes(actual)
-                : actual === filter.value;
+              const filterValue = filter.value;
+              if (filter.op === "in" && Array.isArray(filterValue)) {return filterValue.includes(actual);}
+              if (filter.op === "array-contains-any" && Array.isArray(filterValue) && Array.isArray(actual)) {
+                return actual.some((item) => filterValue.includes(item));
+              }
+              return actual === filterValue;
             }))
           };
         }
@@ -183,6 +192,47 @@ test("hosted resume refuses ambiguous opaque query hash matches", async () => {
 
   assert.equal(result.kind, "error");
   assert.equal(result.code, "ambiguous_session");
+});
+
+test("hosted resume resolves capped hashes through chunk-array fallback", async () => {
+  const cappedHash = "b".repeat(32);
+  const result = await resumeConversation(
+    makeFirestore([
+      {
+        id: "doc-3",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-capped",
+          sourceID: "Codex:codex-capped",
+          projectName: "FixtureApp",
+          model: "gpt-5.1",
+          sealedTitle: envelope,
+          sealedBodyPreview: envelope
+        }
+      }
+    ], [], [
+      {
+        id: "chunk-capped",
+        data: {
+          documentID: "doc-3",
+          provider: "Codex",
+          projectName: "FixtureApp",
+          tokenHashes: [cappedHash],
+          semanticHashes: [],
+          ordinal: 0,
+          sealedSnippet: envelope
+        }
+      }
+    ]),
+    "user-1",
+    { tokenHashes: [cappedHash], provider: "Codex", projectName: "FixtureApp" }
+  );
+
+  assert.equal(result.kind, "ported_sealed");
+  if (result.kind !== "ported_sealed") {
+    throw new Error("expected ported_sealed");
+  }
+  assert.equal(result.header_plain.provider, "Codex");
 });
 
 test("hosted resume reports missing sessions without exposing plaintext", async () => {
