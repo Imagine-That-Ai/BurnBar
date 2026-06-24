@@ -13,6 +13,8 @@
  *   - Idempotent + incremental. A committed manifest (droid-wiki/.mem0-manifest.json)
  *     maps "<source_path>#<chunk_index>" -> { memory_id, content_hash }. Re-running
  *     with no wiki change makes zero API writes.
+ *   - Commit-scoped content. Sync reads markdown blobs from the requested git
+ *     tree, not dirty working-tree files, so local drafts are never mirrored.
  *   - Fail open. With no API key the script logs a skip and exits 0 so commits,
  *     forks, and CI without secrets never break.
  *
@@ -43,7 +45,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deleteManifestMemory } from "../lib/mem0-delete-boundary.mjs";
-import { buildDesired, planActions, runPool } from "../lib/verbatim-chunker.mjs";
+import { buildDesiredFromGitTree, planActions, runPool } from "../lib/verbatim-chunker.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MEM0_BASE = "https://api.mem0.ai";
@@ -184,7 +186,8 @@ async function main() {
     log(`incremental: ${wikiChanged.length} changed wiki file(s)`);
   }
 
-  const desired = buildDesired(wikiRootAbs, fileFilter);
+  const sourceTreeish = args.changedFromCommit || "HEAD";
+  const desired = buildDesiredFromGitTree(REPO_ROOT, sourceTreeish, args.wikiRoot, fileFilter);
   const manifest = loadManifest(manifestAbs, args.userId, args.appId);
   const { creates, updates, deletes } = planActions(desired, manifest, fileFilter);
 
