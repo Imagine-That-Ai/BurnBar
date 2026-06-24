@@ -153,7 +153,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String)]>([])
+        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -174,9 +174,9 @@ final class SwitcherCLILaunchTests: XCTestCase {
                     cliType == .claude ? "/tmp/test-claude-auth" : nil
                 },
                 executableHealthChecker: { _, _ in .healthy },
-                persistProfileCredentialAfterLogin: { cliType, configDirectory in
+                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
                     var values = capturedPersists.value
-                    values.append((cliType, configDirectory))
+                    values.append((cliType, configDirectory, accountDescription))
                     capturedPersists.value = values
                 }
             )
@@ -203,6 +203,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(persists.count, 1)
         XCTAssertEqual(persists.first?.0, .claude)
         XCTAssertEqual(persists.first?.1, configDirectory.path)
+        XCTAssertEqual(persists.first?.2, "claude-reserve@example.com")
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "claude-reserve@example.com")
     }
 
@@ -231,7 +232,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
                     cliType == .claude ? "/tmp/test-claude-auth" : nil
                 },
                 executableHealthChecker: { _, _ in .healthy },
-                persistProfileCredentialAfterLogin: { _, _ in
+                persistProfileCredentialAfterLogin: { _, _, _ in
                     throw NSError(
                         domain: "OpenBurnBarTests",
                         code: 1,
@@ -349,7 +350,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: nil
                     )
-                }
+                },
+                persistProfileCredentialAfterLogin: { _, _, _ in }
             )
         )
 
@@ -476,6 +478,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
+        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -491,6 +494,11 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: "new@example.com"
                     )
+                },
+                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
+                    var values = capturedPersists.value
+                    values.append((cliType, configDirectory, accountDescription))
+                    capturedPersists.value = values
                 }
             )
         )
@@ -534,6 +542,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustedAt)
         XCTAssertNil(updatedProfile.cliMetadata?.exhaustedUntil)
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustionDetail)
+        XCTAssertEqual(capturedPersists.value.count, 0)
     }
 
     func test_cliAuthCoordinator_usesFreshConfigDirectoryWhenPreservingExistingAccount() async throws {
