@@ -61,7 +61,7 @@ enum OllamaCloudModelRoutingPolicy {
                 ?? normalizedCanonical
                 ?? configuredCloudModel.id
         } else {
-            canonicalModelID = normalizedCanonical ?? directCloudModelID
+            canonicalModelID = normalizedBase
         }
         let capabilityClassID = configuredCloudModel.capabilityClassID ?? configuredCloudModel.id
 
