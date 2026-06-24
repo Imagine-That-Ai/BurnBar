@@ -241,7 +241,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let glmRoute = try await harness.router.route(modelName: "glm-5.2:cloud", preferredProviderID: "ollama")
         XCTAssertEqual(glmRoute.providerID, "ollama")
         XCTAssertEqual(glmRoute.resolvedModelID, "glm-5.2")
-        XCTAssertEqual(glmRoute.canonicalModelID, "glm-5.2:cloud")
+        XCTAssertEqual(glmRoute.canonicalModelID, "glm-5.2")
         XCTAssertEqual(glmRoute.modelCapabilityClassID, "glm-5.2")
 
         let documentedAliasRoute = try await harness.router.route(
