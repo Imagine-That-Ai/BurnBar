@@ -317,6 +317,11 @@ jobs:
       - name: macOS appcast rollback safety tests
         run: bash scripts/ops/rollback-macos-appcast.test.sh
 
+      - name: Local agent config symlink guard
+        run: |
+          bash scripts/ci/verify-no-local-agent-config-symlinks.test.sh
+          bash scripts/ci/verify-no-local-agent-config-symlinks.sh
+
   # ── Python scripts: Ruff defect floor + formatter gate ───────────────────
   python-lint:
     name: Python lint (ruff)
