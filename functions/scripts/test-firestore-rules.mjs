@@ -2146,7 +2146,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
   await assertSucceeds(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
       ...facetBase,
-      facetSchemaVersion: 2,
+      facetSchemaVersion: 3,
       model: "gpt-5-codex",
       messageCount: 12,
       userWordCount: 340,
