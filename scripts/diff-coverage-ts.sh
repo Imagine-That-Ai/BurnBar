@@ -12,7 +12,10 @@ cd "$repo_root"
 base_ref="${1:-origin/main}"
 threshold="${COVERAGE_THRESHOLD:-80}"
 
-changed="$(git diff --name-only "$base_ref" HEAD -- 'functions/src/**/*.ts' 'extensions/openburnbar/src/**/*.ts' 2>/dev/null || true)"
+changed="$(git diff --name-only "$base_ref" HEAD -- \
+    'functions/src/*.ts' 'functions/src/**/*.ts' \
+    'extensions/openburnbar/src/*.ts' 'extensions/openburnbar/src/**/*.ts' \
+    2>/dev/null || true)"
 if [[ -z "$changed" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"surface":"typescript","method":"no_ts_changes"}}'
     exit 0
@@ -22,18 +25,26 @@ fi
 # Deps are installed here when absent: this gate runs in lanes (e.g. the
 # macOS App XCTest job) that never npm ci these packages themselves, and a
 # silent vitest no-op would fail closed as missing evidence.
-# (|| true on the runs: the functions package sets global coverage
-# thresholds that exit non-zero — this gate consumes the per-line JSON,
-# not the global verdict.)
+# The coverage directory is removed first so this gate cannot accidentally
+# consume a stale or pre-seeded coverage-final.json from an earlier run.
+# Non-zero coverage commands are tolerated only when they still produce fresh
+# per-line evidence; the Python verifier below fails closed if evidence is
+# missing for changed runtime files.
 if echo "$changed" | grep -q '^extensions/openburnbar/'; then
     [[ -d "$repo_root/extensions/openburnbar/node_modules" ]] || npm ci --prefix "$repo_root/extensions/openburnbar"
-    npm --prefix "$repo_root/extensions/openburnbar" run test:unit -- --coverage 2>/dev/null || true
+    rm -rf "$repo_root/extensions/openburnbar/coverage"
+    if ! npm --prefix "$repo_root/extensions/openburnbar" run test:unit -- --coverage 2>/dev/null; then
+        echo "::warning::Extension coverage command exited non-zero; requiring fresh coverage evidence." >&2
+    fi
 fi
 if echo "$changed" | grep -q '^functions/'; then
     [[ -d "$repo_root/functions/node_modules" ]] || npm ci --prefix "$repo_root/functions"
     bash "$repo_root/scripts/build-signal-envelope-contracts.sh"
     bash "$repo_root/scripts/build-entitlements.sh"
-    npm --prefix "$repo_root/functions" run test:unit:coverage >/dev/null 2>&1 || true
+    rm -rf "$repo_root/functions/coverage"
+    if ! npm --prefix "$repo_root/functions" run test:unit:coverage >/dev/null 2>&1; then
+        echo "::warning::Functions coverage command exited non-zero; requiring fresh coverage evidence." >&2
+    fi
 fi
 
 export BASE_REF="$base_ref"
@@ -51,7 +62,12 @@ repo_root = os.environ["REPO_ROOT"]
 repo_root_real = os.path.realpath(repo_root)
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
 
-patterns = ["functions/src/**/*.ts", "extensions/openburnbar/src/**/*.ts"]
+patterns = [
+    "functions/src/*.ts",
+    "functions/src/**/*.ts",
+    "extensions/openburnbar/src/*.ts",
+    "extensions/openburnbar/src/**/*.ts",
+]
 changed = []
 for pattern in patterns:
     changed.extend(subprocess.check_output(

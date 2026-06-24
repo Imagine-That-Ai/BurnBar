@@ -29,6 +29,7 @@ const NATIVE_BUILD_WORKFLOWS = [
   },
   {
     file: "build-iroh-android-aar.yml",
+    artifactParityStepName: "Verify committed AAR parity",
     pullRequestPaths: [
       "crates/openburnbar-iroh/**",
       "scripts/build-iroh-android-aar.sh",
@@ -39,6 +40,7 @@ const NATIVE_BUILD_WORKFLOWS = [
   },
   {
     file: "build-burnbar-remote-android-aar.yml",
+    artifactParityStepName: "Verify committed AAR and Kotlin binding parity",
     pullRequestPaths: [
       "crates/burnbar-remote/**",
       "scripts/build-burnbar-remote-android-aar.sh",
@@ -341,6 +343,51 @@ function requireCheckoutCredentialIsolation(file, source) {
   }
 }
 
+function stepBlocks(source) {
+  const lines = source.split("\n");
+  const blocks = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^\s*-\s+name:\s*(?<name>.+?)\s*$/u.exec(lines[index]);
+    if (!match?.groups) continue;
+
+    const stepIndent = lineIndent(lines[index]);
+    let end = index + 1;
+    while (end < lines.length) {
+      const line = lines[end];
+      if (line.trim() && lineIndent(line) === stepIndent && /^\s*-\s/u.test(line)) {
+        break;
+      }
+      if (line.trim() && lineIndent(line) < stepIndent) break;
+      end += 1;
+    }
+
+    blocks.push({
+      start: index,
+      name: unquoteYamlScalar(match.groups.name),
+      source: lines.slice(index, end).join("\n"),
+    });
+  }
+  return blocks;
+}
+
+function requireArtifactUploadsAfterParity(file, source, parityStepName) {
+  if (!parityStepName) return;
+
+  const steps = stepBlocks(source);
+  const parityStep = steps.find((step) => step.name === parityStepName);
+  if (!parityStep) {
+    fail(file, `missing parity step before artifact upload: ${parityStepName}`);
+    return;
+  }
+
+  for (const step of steps) {
+    if (!/uses:\s*actions\/upload-artifact@/u.test(step.source)) continue;
+    if (step.start < parityStep.start) {
+      fail(file, `artifact upload step '${step.name}' must run after ${parityStepName}`);
+    }
+  }
+}
+
 function workflowOnValue(source) {
   const lines = source.split("\n");
   const index = topLevelKeyLine(lines, "on");
@@ -427,12 +474,13 @@ function requireSecretFree(file, source) {
   }
 }
 
-for (const { file, pullRequestPaths } of NATIVE_BUILD_WORKFLOWS) {
+for (const { file, pullRequestPaths, artifactParityStepName } of NATIVE_BUILD_WORKFLOWS) {
   const source = workflowSource(file);
   requirePullRequestSafeTriggers(file, source, pullRequestPaths);
   requireReadOnlyPermissions(file, source);
   requireSecretFree(file, source);
   requireCheckoutCredentialIsolation(file, source);
+  requireArtifactUploadsAfterParity(file, source, artifactParityStepName);
 }
 
 if (failures.length > 0) {
@@ -442,5 +490,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "PASS: native build workflows keep PR builds secret-free and checkout credentials isolated.",
+  "PASS: native build workflows keep PR builds secret-free, checkout credentials isolated, and artifacts post-parity.",
 );

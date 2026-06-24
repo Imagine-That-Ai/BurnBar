@@ -470,11 +470,10 @@ public enum MemorySecretPIIGate {
                 }
                 guard let decoded = Data(base64Encoded: raw, options: []),
                       decoded.isEmpty == false,
-                      decoded.count <= maxDecodedBytes,
-                      let view = String(data: decoded, encoding: .utf8) else {
+                      decoded.count <= maxDecodedBytes else {
                     continue
                 }
-                views.append(view)
+                views.append(String(decoding: decoded, as: UTF8.self))
             }
         }
 
@@ -484,11 +483,10 @@ public enum MemorySecretPIIGate {
                 let evenMatch = candidate.count.isMultiple(of: 2) ? candidate : String(candidate.dropLast())
                 guard let decoded = Data(memoryGateHexEncoded: evenMatch),
                       decoded.isEmpty == false,
-                      decoded.count <= maxDecodedBytes,
-                      let view = String(data: decoded, encoding: .utf8) else {
+                      decoded.count <= maxDecodedBytes else {
                     continue
                 }
-                views.append(view)
+                views.append(String(decoding: decoded, as: UTF8.self))
             }
         }
 

@@ -51,6 +51,11 @@ export function assertUserStoragePath(
   }
 }
 
+export function encryptedSessionBlobDocumentIDFromStoragePath(uid: string, storagePath: string): string {
+  assertUserStoragePath(uid, storagePath);
+  return storagePath.split("/")[3] ?? "";
+}
+
 export async function assertEncryptedSessionBlobObject(args: {
   uid: string;
   storagePath: string;

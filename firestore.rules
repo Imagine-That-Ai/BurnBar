@@ -735,6 +735,15 @@ service cloud.firestore {
         && validSessionLogFacets(request.resource.data);
     }
 
+    function validSessionLogLifecycleFields(data) {
+      return (!("deletedAt" in data) || data.deletedAt is timestamp)
+        && (!("version" in data) || (data.version is int && data.version >= 1));
+    }
+
+    function sessionLogTombstoneIsSticky() {
+      return !("deletedAt" in resource.data) || ("deletedAt" in request.resource.data);
+    }
+
     function ownerWritableSessionLogManifestCreate(userId, logId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogManifestCore(userId, logId);
@@ -764,6 +773,8 @@ service cloud.firestore {
         "totalTokens",
         "costUSD",
         "durationSeconds",
+        "deletedAt",
+        "version",
         "toolTags",
         "updatedAt"
       ]);
@@ -773,6 +784,8 @@ service cloud.firestore {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogRefreshKeys()
         && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
+        && validSessionLogLifecycleFields(request.resource.data)
+        && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);
     }
 
@@ -784,11 +797,34 @@ service cloud.firestore {
       return !(field in data) || (data[field] is int && data[field] >= 0);
     }
 
+    function validSessionLogToolTags(data) {
+      return !("toolTags" in data) || (
+        data.toolTags is list
+        && data.toolTags.size() <= 12
+        && data.toolTags.hasOnly([
+          "apply_patch",
+          "bash",
+          "edit",
+          "exec_command",
+          "find",
+          "grep_search",
+          "multi_edit",
+          "other",
+          "read",
+          "rg",
+          "search",
+          "sed",
+          "shell",
+          "write"
+        ])
+      );
+    }
+
     function validSessionLogFacets(data) {
       return (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32))
+        && validSessionLogToolTags(data)
         && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
         && validOptionalInt(data, "inputTokens")
         && validOptionalInt(data, "outputTokens")
@@ -1207,6 +1243,16 @@ service cloud.firestore {
           || hasActiveHostedQuotaEntitlement(userId));
     }
 
+    function validRealtimeRelayURL(value) {
+      return value is string
+        && value.size() <= 2048
+        && value.matches("^wss://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?(/[A-Za-z0-9._~%!$&()*+,;=:@/-]{0,512})?$")
+        && !value.matches("^wss://localhost(\\.|:|/|$).*")
+        && !value.matches("^wss://metadata\\.google\\.internal(\\.|:|/|$).*")
+        && !value.matches("^wss://[0-9]+(:|/|$).*")
+        && !value.matches("^wss://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+(:|/|$).*");
+    }
+
     function relayConnectionWrite(userId, connectionId) {
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
@@ -1236,7 +1282,7 @@ service cloud.firestore {
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
-        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
         && (!("realtimeRelayLastSeenAt" in request.resource.data) || (request.resource.data.realtimeRelayLastSeenAt is string && request.resource.data.realtimeRelayLastSeenAt.size() <= 64))
         && (!("realtimeRelayProtocolVersion" in request.resource.data) || request.resource.data.realtimeRelayProtocolVersion is int)
@@ -1384,7 +1430,7 @@ service cloud.firestore {
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
-        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"]);
     }
 
@@ -3153,6 +3199,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/provider_accounts/{accountId} {
+      function providerAccountRefreshSweepCandidate(data) {
+        return data.status in ["connected", "stale", "error"]
+          && data.storageScope in ["cloud_refreshable", "server_private"];
+      }
+
       function validProviderAccountDocument() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -3202,6 +3253,7 @@ service cloud.firestore {
         && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
         && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
         && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && !providerAccountRefreshSweepCandidate(request.resource.data)
         && request.resource.data.redactedLabel is string
         && request.resource.data.redactedLabel.size() <= 160
         && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))

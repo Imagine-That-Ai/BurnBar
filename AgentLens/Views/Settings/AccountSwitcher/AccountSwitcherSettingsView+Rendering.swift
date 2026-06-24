@@ -229,13 +229,16 @@ extension AccountSwitcherSettingsView {
             }
             if let pendingUpdate = pendingCLIAccountUpdate, pendingUpdate.canSaveAsNew {
                 Button("Save as New") {
-                    persistNewCLIProfile(pendingUpdate)
+                    persistNewCLIProfile(pendingUpdate, persistCredentialAfterLogin: true)
                     pendingCLIAccountUpdate = nil
                 }
             }
             Button("Replace Existing") {
                 if let pendingCLIAccountUpdate {
-                    persistCLIProfileUpdate(pendingCLIAccountUpdate.updatedProfile)
+                    persistCLIProfileUpdate(
+                        pendingCLIAccountUpdate.updatedProfile,
+                        persistCredentialAfterLogin: true
+                    )
                 }
                 pendingCLIAccountUpdate = nil
             }

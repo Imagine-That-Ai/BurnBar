@@ -669,7 +669,7 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
     model,
     totalTokens: Number(row.userWordCount || 0) + Number(row.assistantWordCount || 0),
     costUSD: 0,
-    facetSchemaVersion: 2,
+    facetSchemaVersion: 3,
   };
   const startTime = dateOrNull(row.startTime);
   const endTime = dateOrNull(row.endTime);

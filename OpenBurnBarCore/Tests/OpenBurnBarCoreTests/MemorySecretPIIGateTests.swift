@@ -140,6 +140,50 @@ final class MemorySecretPIIGateTests: XCTestCase {
         )
     }
 
+    func testPrivateKeyMarkerFragmentIsRejected() {
+        let marker = ["-----BEGIN", "OPENSSH", "PRIVATE", "KEY-----"].joined(separator: " ")
+        let body = """
+        setup note
+        \(marker)
+        """
+        let verdict = MemorySecretPIIGate.evaluate(body, policy: .reject)
+        guard case .reject(let findings) = verdict else {
+            XCTFail("Expected reject for private-key marker fragment, got \(verdict)")
+            return
+        }
+        XCTAssertEqual(findings.map(\.id), ["private-key-marker"])
+        XCTAssertEqual(findings.first?.kind, .secret)
+    }
+
+    func testDecodedOpenSSHPrivateKeyPayloadIsRejected() {
+        let magic = "openssh-key-v1"
+        let payload = Data(Array(magic.utf8) + [0x00, 0xFF, 0xFE, 0x80] + Array(repeating: 0x41, count: 32))
+        let encoded = payload.base64EncodedString()
+        let verdict = MemorySecretPIIGate.evaluate("payload \(encoded)", policy: .reject)
+        guard case .reject(let findings) = verdict else {
+            XCTFail("Expected reject for decoded private-key payload marker, got \(verdict)")
+            return
+        }
+        XCTAssertEqual(findings.map(\.id), ["openssh-private-key-payload"])
+        XCTAssertEqual(findings.first?.kind, .secret)
+    }
+
+    func testOpenSSHFormatStringWithoutDecodedNulIsAllowed() {
+        let formatMarker = ["openssh", "key", "v1"].joined(separator: "-")
+        XCTAssertEqual(
+            MemorySecretPIIGate.evaluate("parser handles \(formatMarker) payloads", policy: .reject),
+            .allow
+        )
+    }
+
+    func testPublicKeyMarkerIsAllowed() {
+        let marker = ["-----BEGIN", "PUBLIC", "KEY-----"].joined(separator: " ")
+        XCTAssertEqual(
+            MemorySecretPIIGate.evaluate(marker, policy: .reject),
+            .allow
+        )
+    }
+
     // MARK: - Redaction (must-fix #4): bounded, fail-closed downgrade
 
     func testRedactRemovesLocatableSecretSpan() {

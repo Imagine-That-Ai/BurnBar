@@ -3,6 +3,74 @@ import OpenBurnBarCore
 
 // MARK: - AWTRIX HTTP Client
 
+enum PixelClockTargetPolicy {
+    static func sanitizedHost(_ rawHost: String) -> String? {
+        let host = rawHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, host.count <= 255 else { return nil }
+        guard host.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines) == nil else { return nil }
+        guard !host.contains("/") && !host.contains("\\") && !host.contains("@") && !host.contains("%") else {
+            return nil
+        }
+        guard !host.contains(":") else { return nil }
+
+        let normalized = host.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        let allowedHostScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.-")
+        guard normalized.unicodeScalars.allSatisfy({ allowedHostScalars.contains($0) }) else { return nil }
+        guard normalized != "localhost" && !normalized.hasSuffix(".localhost") else { return nil }
+
+        let labels = normalized.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.allSatisfy({
+            !$0.isEmpty && $0.count <= 63 && !$0.hasPrefix("-") && !$0.hasSuffix("-")
+        }) else {
+            return nil
+        }
+
+        if labels.allSatisfy({ $0.allSatisfy(\.isNumber) }) {
+            guard labels.count == 4, let octets = ipv4Octets(normalized), isAllowedIPv4(octets) else {
+                return nil
+            }
+        }
+
+        return normalized
+    }
+
+    static func allowsHost(_ rawHost: String) -> Bool {
+        sanitizedHost(rawHost) != nil
+    }
+
+    private static func ipv4Octets(_ host: String) -> [UInt8]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+        var octets: [UInt8] = []
+        for part in parts {
+            guard part.count == 1 || !part.hasPrefix("0") else { return nil }
+            guard !part.isEmpty, part.allSatisfy(\.isNumber), let value = UInt8(String(part)) else {
+                return nil
+            }
+            octets.append(value)
+        }
+        return octets
+    }
+
+    private static func isAllowedIPv4(_ octets: [UInt8]) -> Bool {
+        guard octets.count == 4 else { return false }
+        let first = octets[0]
+        let second = octets[1]
+
+        if first == 0 || first == 127 { return false }
+        if first == 169 && second == 254 { return false }
+        if first >= 224 { return false }
+
+        // AWS/GCP/Azure metadata aliases reachable from many runtimes. They are
+        // link-local by address, but keep this explicit so the intent is stable
+        // if the broader range list is edited later.
+        if octets == [169, 254, 169, 254] { return false }
+
+        return true
+    }
+}
+
 struct AWTRIXClient: Sendable {
     private static let minimumCustomAppLifetimeSeconds = 900
     private static let sentinelPublishOrder: [SentinelApp] = [.right, .select, .left]
@@ -598,9 +666,10 @@ struct AWTRIXClient: Sendable {
     }
 
     private func endpoint(config: PixelClockConfig, path: String, query: String? = nil) -> URL? {
+        guard let host = PixelClockTargetPolicy.sanitizedHost(config.host) else { return nil }
         var components = URLComponents()
         components.scheme = "http"
-        components.host = config.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        components.host = host
         components.port = config.clampedPort == 80 ? nil : config.clampedPort
         components.path = path
         components.percentEncodedQuery = query

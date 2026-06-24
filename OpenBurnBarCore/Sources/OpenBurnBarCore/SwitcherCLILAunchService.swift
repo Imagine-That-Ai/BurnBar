@@ -172,19 +172,8 @@ public enum CLILaunchAdapter {
 
         if let path = firstExecutable(
             named: cliType.executableName,
-            in: userManagedExecutableSearchDirectories(
-                homeDirectory: homeDirectory,
-                fileManager: fileManager
-            ),
-            fileManager: fileManager
-        ) {
-            executableResolutionCache.withLock { $0[cacheKey] = path }
-            return URL(fileURLWithPath: path)
-        }
-
-        if let path = firstExecutable(
-            named: cliType.executableName,
-            in: ideManagedExecutableSearchDirectories(
+            in: ambientFallbackExecutableSearchDirectories(
+                for: cliType,
                 homeDirectory: homeDirectory,
                 fileManager: fileManager
             ),
@@ -195,6 +184,35 @@ public enum CLILaunchAdapter {
         }
 
         return nil
+    }
+
+    public static func resolvePinnedExecutable(for cliType: SwitcherCLIProfileType) -> URL? {
+        // Use injected resolver if available (for deterministic testing).
+        if let resolver = executableResolver {
+            return resolver(cliType)
+        }
+
+        let fileManager = FileManager.default
+        let homeDirectory = homeDirectoryProvider()
+        guard let path = firstExecutable(
+            named: cliType.executableName,
+            in: fastExecutableSearchDirectories(
+                for: cliType,
+                homeDirectory: homeDirectory
+            ),
+            fileManager: fileManager
+        ) else {
+            return nil
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    public static func trustedExecutableEnvironmentPath(homeDirectory: String? = nil) -> String {
+        deduplicatedDirectories(
+            standardExecutableSearchDirectories(
+                homeDirectory: homeDirectory ?? homeDirectoryProvider()
+            )
+        ).joined(separator: ":")
     }
 
     private static func fastExecutableSearchDirectories(
@@ -270,14 +288,16 @@ public enum CLILaunchAdapter {
         return deduplicatedDirectories(
             explicitDirectories
             + standardExecutableSearchDirectories(homeDirectory: homeDirectory)
-            + userManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
-            + ideManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+            + ambientFallbackExecutableSearchDirectories(
+                for: cliType,
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            )
         )
     }
 
     private static func standardExecutableSearchDirectories(homeDirectory: String) -> [String] {
         [
-            "\(homeDirectory)/.local/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
@@ -285,11 +305,28 @@ public enum CLILaunchAdapter {
         ]
     }
 
+    static func allowsAmbientUserManagedExecutableFallback(for cliType: SwitcherCLIProfileType) -> Bool {
+        cliType != .codex
+    }
+
+    static func ambientFallbackExecutableSearchDirectories(
+        for cliType: SwitcherCLIProfileType,
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        guard allowsAmbientUserManagedExecutableFallback(for: cliType) else {
+            return []
+        }
+        return userManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+            + ideManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+    }
+
     private static func userManagedExecutableSearchDirectories(
         homeDirectory: String,
         fileManager: FileManager = .default
     ) -> [String] {
         var directories = [
+            "\(homeDirectory)/.local/bin",
             "\(homeDirectory)/.codex/bin",
             "\(homeDirectory)/.claude/bin",
             "\(homeDirectory)/.opencode/bin",

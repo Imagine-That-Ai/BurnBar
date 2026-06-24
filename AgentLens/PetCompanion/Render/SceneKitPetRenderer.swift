@@ -293,6 +293,13 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // drove the pet `idle → listen`. Every clip keeps the rig upright (the Hips
         // bone never tips past a lean), so one fixed frame holds every pose.
 
+        // Re-fit the camera to the NEW pose. The framing was one-shot (idle only),
+        // so when chat drove the pet to `listen`/`think` the camera kept the idle
+        // framing and the differently-posed model drifted out of frame — reading as
+        // a bird's-eye / top-of-head view. Re-framing on each state change keeps the
+        // current pose centered and face-on. (The clips themselves are upright.)
+        needsPresentationFraming = true
+
         guard let model = definition.model3d else { return }
 
         // Resolve the logical state → glTF clip name via the petdef clip map

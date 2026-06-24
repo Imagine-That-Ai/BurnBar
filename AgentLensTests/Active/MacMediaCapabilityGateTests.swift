@@ -1,9 +1,11 @@
 import CryptoKit
 import XCTest
 import FirebaseCore
+import LocalAuthentication
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
+import Security
 @testable import OpenBurnBar
 
 /// Locks in the admission decisions made by `MacMediaCapabilityGate`.
@@ -483,6 +485,31 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertFalse(snapshot.lastUnlockProbeSucceeded)
     }
 
+    func testRemoteUnlockCredentialKeyStoreDisablesSystemPromptsForBackgroundReads() throws {
+        let security = RecordingRemoteUnlockKeychainOperations()
+        let store = RemoteUnlockCredentialKeyStore(
+            service: "com.openburnbar.remote-unlock.hpke.tests.\(UUID().uuidString)",
+            security: security
+        )
+
+        _ = try store.copyOrCreateKeyMaterial(allowUserInteraction: false)
+
+        let events = security.events
+        XCTAssertEqual(events.map(\.operation), [.copyMatching, .add])
+        XCTAssertTrue(
+            events.allSatisfy { $0.interactionDisabled },
+            "background Remote Unlock readiness must never allow Security.framework to raise Keychain UI"
+        )
+
+        let copyQuery = try XCTUnwrap(events.first?.query)
+        XCTAssertEqual(copyQuery[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
+        let context = try XCTUnwrap(copyQuery[kSecUseAuthenticationContext as String] as? LAContext)
+        XCTAssertTrue(context.interactionNotAllowed)
+
+        let addQuery = try XCTUnwrap(events.last?.query)
+        XCTAssertEqual(addQuery[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
+    }
+
     /// A corrupt / unreadable certification report must be treated as no-report
     /// (fail closed), never silently mistaken for an absent-but-healthy host.
     func testCorruptCertificationReportIsTreatedAsNoReport() throws {
@@ -729,6 +756,76 @@ final class MacMediaCapabilityGateTests: XCTestCase {
                 timestamp: requestedAt,
                 intentHashBlake3: "hash",
                 signatureEd25519: "signature"
+            )
+        )
+    }
+}
+
+private final class RecordingRemoteUnlockKeychainOperations: SecurityKeychainOperations, @unchecked Sendable {
+    enum Operation: Equatable {
+        case update
+        case add
+        case copyMatching
+        case delete
+    }
+
+    struct Event {
+        var operation: Operation
+        var interactionDisabled: Bool
+        var query: [String: Any]
+    }
+
+    private let lock = NSLock()
+    private var disabledDepth = 0
+    private var recordedEvents: [Event] = []
+
+    var events: [Event] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedEvents
+    }
+
+    func runWithDisabledInteraction(_ operation: () -> OSStatus) -> OSStatus {
+        lock.lock()
+        disabledDepth += 1
+        lock.unlock()
+        defer {
+            lock.lock()
+            disabledDepth -= 1
+            lock.unlock()
+        }
+        return operation()
+    }
+
+    func update(query: CFDictionary, attributes: CFDictionary) -> OSStatus {
+        record(.update, query: query)
+        return errSecSuccess
+    }
+
+    func add(query: CFDictionary) -> OSStatus {
+        record(.add, query: query)
+        return errSecSuccess
+    }
+
+    func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
+        record(.copyMatching, query: query)
+        return errSecItemNotFound
+    }
+
+    func delete(query: CFDictionary) -> OSStatus {
+        record(.delete, query: query)
+        return errSecSuccess
+    }
+
+    private func record(_ operation: Operation, query: CFDictionary) {
+        lock.lock()
+        defer { lock.unlock() }
+        let dictionary = (query as NSDictionary) as? [String: Any] ?? [:]
+        recordedEvents.append(
+            Event(
+                operation: operation,
+                interactionDisabled: disabledDepth > 0,
+                query: dictionary
             )
         )
     }

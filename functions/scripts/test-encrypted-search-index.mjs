@@ -8,6 +8,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT,
+  MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK,
+  MAX_TOKEN_POSTING_EDGES_PER_CHUNK,
+  assertCloudSearchIndexWriteBudget,
   buildCloudSearchPostingEdges,
   cloudSearchFallbackHashes,
 } from "../lib/callables/encryptedSearchIndex.js";
@@ -49,12 +53,14 @@ test("cloud search posting planner emits exact token and semantic edges", () => 
     semanticHashes: [HASH_C],
   });
 
-  assert.deepEqual(edges.map((edge) => edge.edgeID), [
-    `token_${HASH_A}_doc-1_0`,
-    `token_${HASH_B}_doc-1_0`,
-    `semantic_${HASH_C}_doc-1_0`,
-  ]);
-  assert.deepEqual(edges.map((edge) => edge.data.kind), ["token", "token", "semantic"]);
+  assert.deepEqual(
+    edges.map((edge) => edge.edgeID),
+    [`token_${HASH_A}_doc-1_0`, `token_${HASH_B}_doc-1_0`, `semantic_${HASH_C}_doc-1_0`],
+  );
+  assert.deepEqual(
+    edges.map((edge) => edge.data.kind),
+    ["token", "token", "semantic"],
+  );
   assert.equal(edges[0].data.postingKey, `token_${HASH_A}`);
   assert.equal(edges[0].data.hash, HASH_A);
   assert.equal(edges[0].data.chunkID, "doc-1_0");
@@ -77,22 +83,28 @@ test("cloud search posting planner handles legacy chunks without semantic hashes
 
 test("cloud search posting planner caps token posting edges", () => {
   const tokenHashes = Array.from({ length: 140 }, (_, index) => index.toString(16).padStart(32, "0"));
+  const semanticHashes = Array.from({ length: 40 }, (_, index) => (index + 500).toString(16).padStart(32, "0"));
   const edges = buildCloudSearchPostingEdges({
     source: source(),
     tokenHashes,
-    semanticHashes: [HASH_C],
+    semanticHashes,
   });
 
   const tokenEdges = edges.filter((edge) => edge.data.kind === "token");
   const semanticEdges = edges.filter((edge) => edge.data.kind === "semantic");
-  assert.equal(tokenEdges.length, 96);
-  assert.equal(semanticEdges.length, 1);
+  assert.equal(tokenEdges.length, MAX_TOKEN_POSTING_EDGES_PER_CHUNK);
+  assert.equal(semanticEdges.length, MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK);
 });
 
 test("cloud search fallback keeps hashes not covered by capped postings", () => {
-  assert.deepEqual(
-    cloudSearchFallbackHashes([HASH_A, HASH_B, HASH_A, HASH_C], new Set([HASH_B])),
-    [HASH_A, HASH_C]
-  );
+  assert.deepEqual(cloudSearchFallbackHashes([HASH_A, HASH_B, HASH_A, HASH_C], new Set([HASH_B])), [HASH_A, HASH_C]);
   assert.deepEqual(cloudSearchFallbackHashes([HASH_A], new Set([HASH_A])), []);
+});
+
+test("cloud search index write budget rejects excessive planned commits", () => {
+  assert.doesNotThrow(() => assertCloudSearchIndexWriteBudget(MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT));
+  assert.throws(
+    () => assertCloudSearchIndexWriteBudget(MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT + 1),
+    /cloud search index commit would write/,
+  );
 });

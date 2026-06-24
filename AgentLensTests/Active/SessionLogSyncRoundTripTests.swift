@@ -138,7 +138,117 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertLessThanOrEqual(upload.documentID.count, 512)
     }
 
-    func test_sessionLogUpload_writesCheapSearchMetadataOnExistingChunks() async throws {
+    func test_sessionLogSyncPublishesTombstoneWithoutReuploadingBody() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-delete-marker"),
+            provider: .codex,
+            sessionId: "session-delete-marker",
+            projectName: "PrivacyCleanup",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 8,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Deletion marker",
+            lastAssistantMessage: "Cloud should stop surfacing this session.",
+            fullText: "Private transcript body that should not be re-uploaded during delete propagation.",
+            fileModifiedAt: nil,
+            summaryTitle: "Delete Marker"
+        )
+        try await dataStore.upsertConversation(record)
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+
+        await sessionLogSync.sync()
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadRequests.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+        XCTAssertNil(fakeGateway.documentData(at: manifestPath)?["deletedAt"])
+        var legacyManifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        let legacyPlaintextKeys = [
+            "body",
+            "payloadCiphertext",
+            "ciphertext",
+            "data",
+            "text",
+            "title",
+            "snippet",
+            "terms",
+            "projectName",
+            "workingDirectory"
+        ]
+        for key in legacyPlaintextKeys {
+            legacyManifest[key] = "legacy plaintext value"
+        }
+        fakeGateway.setDocumentData(legacyManifest, at: manifestPath)
+
+        let deletedAt = Date(timeIntervalSince1970: 1_700_010_000)
+        try await dataStore.softDeleteConversation(id: record.id, at: deletedAt)
+        let pendingTombstones = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertEqual(pendingTombstones.map(\.id), [record.id])
+        XCTAssertNotNil(pendingTombstones.first?.deletedAt)
+
+        await sessionLogSync.sync()
+
+        let manifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        XCTAssertEqual((manifest["deletedAt"] as? Timestamp)?.dateValue(), deletedAt)
+        XCTAssertEqual(manifest["version"] as? Int, 2)
+        XCTAssertEqual(manifest["id"] as? String, record.id)
+        XCTAssertEqual(manifest["provider"] as? String, AgentProvider.codex.rawValue)
+        for key in legacyPlaintextKeys {
+            XCTAssertNil(manifest[key], "Tombstone propagation must scrub legacy plaintext manifest field \(key).")
+        }
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadRequests.count, 1, "Delete propagation must not upload a second body.")
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1, "Delete propagation must not rewrite encrypted storage bytes.")
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1, "Delete propagation must not add fresh search chunks.")
+        let remainingSessionLogs = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertTrue(remainingSessionLogs.isEmpty)
+    }
+
+    func test_sessionLogSyncDrainsLocalOnlyTombstoneWithoutCreatingCloudManifest() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-delete-before-upload"),
+            provider: .codex,
+            sessionId: "session-delete-before-upload",
+            projectName: "PrivacyCleanup",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 1,
+            userWordCount: 2,
+            assistantWordCount: 3,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Local-only delete marker",
+            lastAssistantMessage: "This log was deleted before upload.",
+            fullText: "Private transcript body that should never leave the device.",
+            fileModifiedAt: nil,
+            summaryTitle: "Local Only Delete"
+        )
+        try await dataStore.upsertConversation(record)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_010_000)
+        try await dataStore.softDeleteConversation(id: record.id, at: deletedAt)
+
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let pendingTombstones = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertEqual(pendingTombstones.map(\.id), [record.id])
+        XCTAssertNotNil(pendingTombstones.first?.deletedAt)
+
+        await sessionLogSync.sync()
+
+        XCTAssertNil(fakeGateway.documentData(at: manifestPath))
+        XCTAssertTrue(fakeEncryptedCloudClient.uploadRequests.isEmpty)
+        XCTAssertTrue(fakeEncryptedCloudClient.uploadedBodies.isEmpty)
+        XCTAssertTrue(fakeEncryptedCloudClient.searchIndexCommits.isEmpty)
+        let remainingSessionLogs = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertTrue(remainingSessionLogs.isEmpty)
+    }
+
+    func test_sessionLogUpload_deletesLegacyChunksAfterEncryptedReindex() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .kimi, sessionId: "session-kimi-1"),
             provider: .kimi,
@@ -194,22 +304,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["uid"] as? String, "test-uid-1")
-        XCTAssertEqual(chunk["sessionId"] as? String, "session-kimi-1")
-        XCTAssertEqual(chunk["deviceId"] as? String, "test-device-1")
-        XCTAssertEqual(chunk["docId"] as? String, docId)
-        XCTAssertEqual(chunk["schemaVersion"] as? Int, 1)
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["title"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNil(chunk["projectName"] as? String)
-        XCTAssertNil(chunk["workingDirectory"] as? String)
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
-        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
-        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
     }
 
     func test_sessionLogUploadIndexesExactNameBeyondFirstTokenWindow() async throws {
@@ -325,7 +420,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(remainingLogs.isEmpty)
     }
 
-    func test_sessionLogUpload_skipPathScrubsLegacyChunkPlaintext() async throws {
+    func test_sessionLogUpload_skipPathDeletesLegacyChunkPlaintext() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .factory, sessionId: "unchanged-legacy-chunk-session"),
             provider: .factory,
@@ -339,7 +434,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             keyFiles: [],
             keyCommands: [],
             keyTools: [],
-            inferredTaskTitle: "Scrub legacy chunks",
+            inferredTaskTitle: "Delete legacy chunks",
             lastAssistantMessage: "Done.",
             fullText: "Stable transcript body with enough content to produce a search chunk.",
             fileModifiedAt: nil
@@ -383,29 +478,11 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let remainingLogs = try await dataStore.fetchUnsyncedSessionLogs()
         XCTAssertTrue(remainingLogs.isEmpty)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(chunk["docId"] as? String, docId)
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["title"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
-        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
-        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
-
-        let orphan = try XCTUnwrap(fakeGateway.documentData(at: orphanChunkPath))
-        XCTAssertEqual(orphan["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(orphan["docId"] as? String, docId)
-        XCTAssertEqual(orphan["orphanedByEncryptedReindex"] as? Bool, true)
-        XCTAssertNil(orphan["body"] as? String)
-        XCTAssertNil(orphan["snippet"] as? String)
-        XCTAssertNil(orphan["terms"] as? [String])
-        XCTAssertTrue((orphan["tokenHashes"] as? [String] ?? ["not-empty"]).isEmpty)
-        XCTAssertTrue((orphan["semanticHashes"] as? [String] ?? ["not-empty"]).isEmpty)
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
+        XCTAssertNil(fakeGateway.documentData(at: orphanChunkPath))
     }
 
-    func test_sessionLogUpload_incompleteEncryptedManifestReuploadsBeforeScrubbingLegacyChunks() async throws {
+    func test_sessionLogUpload_incompleteEncryptedManifestReuploadsBeforeDeletingLegacyChunks() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .factory, sessionId: "incomplete-manifest-session"),
             provider: .factory,
@@ -459,13 +536,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(manifest["storagePath"] as? String, "session-logs/\(docId).json")
         XCTAssertNil(manifest["body"] as? String)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(chunk["storagePath"] as? String, "session-logs/\(docId).json")
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
     }
 
     func test_countUnsyncedSessionLogs_tracksDirtyFlags() async throws {
@@ -784,6 +855,49 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertLessThanOrEqual(clamped.utf16.count, SessionLogSyncService.cloudFacetMaxLength)
         XCTAssertTrue(clamped.allSatisfy { $0 == "😀" })
         XCTAssertEqual(clamped.count, 256)
+    }
+
+    func test_publicToolTags_collapsesPrivateOrUnknownToolNames() {
+        let tags = SessionLogSyncService.publicToolTags(from: [
+            "Read",
+            "exec_command",
+            "Bash",
+            "bash",
+            "/home/example/redacted-session.md",
+            "paste full prompt here",
+            "",
+            String(repeating: "x", count: 300)
+        ])
+
+        XCTAssertEqual(tags, ["bash", "exec_command", "other", "read"])
+        XCTAssertFalse(tags.contains { $0.contains("redacted") || $0.contains("example") || $0.count > 32 })
+    }
+
+    func test_facetFields_usesOnlyPublicToolTagSlugs() {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "facet-tags"),
+            provider: .codex,
+            sessionId: "facet-tags",
+            projectName: "PrivateProjectName",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_030),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 8,
+            keyFiles: ["/home/example/redacted.swift"],
+            keyCommands: ["cat ~/secret.txt"],
+            keyTools: ["Read", "exec_command", "cat ~/secret.txt"],
+            inferredTaskTitle: "Private task",
+            lastAssistantMessage: "done",
+            fullText: "private transcript",
+            fileModifiedAt: nil
+        )
+
+        let fields = SessionLogSyncService.facetFields(for: record, facets: nil, model: "gpt-5-codex")
+        let tags = fields["toolTags"] as? [String]
+
+        XCTAssertEqual(fields["facetSchemaVersion"] as? Int, 3)
+        XCTAssertEqual(tags, ["exec_command", "other", "read"])
     }
 }
 

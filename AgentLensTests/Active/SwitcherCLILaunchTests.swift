@@ -148,6 +148,121 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "reserve@example.com")
     }
 
+    func test_cliAuthCoordinator_persistsClaudeCredentialAfterIsolatedLogin() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: "/tmp/test-claude-auth",
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "claude-reserve@example.com"
+                    )
+                },
+                executablePathResolver: { cliType in
+                    cliType == .claude ? "/tmp/test-claude-auth" : nil
+                },
+                executableHealthChecker: { _, _ in .healthy },
+                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
+                    var values = capturedPersists.value
+                    values.append((cliType, configDirectory, accountDescription))
+                    capturedPersists.value = values
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "claude-reserve",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Claude Reserve",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .readyToPersist(let updatedProfile) = result else {
+            XCTFail("Expected readyToPersist result")
+            return
+        }
+
+        let persists = capturedPersists.value
+        XCTAssertEqual(persists.count, 1)
+        XCTAssertEqual(persists.first?.0, .claude)
+        XCTAssertEqual(persists.first?.1, configDirectory.path)
+        XCTAssertEqual(persists.first?.2, "claude-reserve@example.com")
+        XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "claude-reserve@example.com")
+    }
+
+    func test_cliAuthCoordinator_failsClaudeReconnectWhenCredentialPersistenceFails() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: "/tmp/test-claude-auth",
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "claude-reserve@example.com"
+                    )
+                },
+                executablePathResolver: { cliType in
+                    cliType == .claude ? "/tmp/test-claude-auth" : nil
+                },
+                executableHealthChecker: { _, _ in .healthy },
+                persistProfileCredentialAfterLogin: { _, _, _ in
+                    throw NSError(
+                        domain: "OpenBurnBarTests",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "profile keychain write failed"]
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "claude-reserve",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Claude Reserve",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .failed(let message) = result else {
+            XCTFail("Expected failed result")
+            return
+        }
+
+        XCTAssertTrue(message.contains("could not persist the profile credential"))
+        XCTAssertTrue(message.contains("profile keychain write failed"))
+    }
+
     func test_cliAuthCoordinator_exportsCodexHomeForReconnect() async throws {
         let executableURL = URL(fileURLWithPath: "/tmp/test-codex-auth-env")
         let cleanup = makeTempExecutable(at: executableURL.path)
@@ -235,7 +350,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: nil
                     )
-                }
+                },
+                persistProfileCredentialAfterLogin: { _, _, _ in }
             )
         )
 
@@ -362,6 +478,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
+        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -377,6 +494,11 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: "new@example.com"
                     )
+                },
+                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
+                    var values = capturedPersists.value
+                    values.append((cliType, configDirectory, accountDescription))
+                    capturedPersists.value = values
                 }
             )
         )
@@ -420,6 +542,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustedAt)
         XCTAssertNil(updatedProfile.cliMetadata?.exhaustedUntil)
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustionDetail)
+        XCTAssertEqual(capturedPersists.value.count, 0)
     }
 
     func test_cliAuthCoordinator_usesFreshConfigDirectoryWhenPreservingExistingAccount() async throws {
@@ -602,7 +725,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         )
     }
 
-    func test_resolveExecutable_findsCursorManagedCodexBinary() throws {
+    func test_resolveExecutable_rejectsCursorManagedCodexBinary() throws {
         let tempHome = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true, attributes: nil)
@@ -630,10 +753,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             ]
         }
 
-        XCTAssertEqual(
-            CLILaunchAdapter.resolveExecutable(for: .codex)?.path,
-            executablePath
-        )
+        XCTAssertNotEqual(CLILaunchAdapter.resolveExecutable(for: .codex)?.path, executablePath)
     }
 
     // MARK: - Working Directory Validation

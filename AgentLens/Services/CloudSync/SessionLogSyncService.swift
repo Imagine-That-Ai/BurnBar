@@ -31,6 +31,10 @@ private final class SessionLogSyncProcessGate: Sendable {
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
 final class SessionLogSyncService: CloudSyncDomain, Sendable {
     private typealias FirestoreWrite = (data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)
+    private enum FirestoreBatchOperation {
+        case set(FirestoreWrite)
+        case delete(CloudSyncDocumentGateway)
+    }
 
     private static let processGate = SessionLogSyncProcessGate()
 
@@ -159,12 +163,35 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         operation: "Reading local session log"
                     )
 
+                    let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
+                    let manifestRef = logsRef.document(docId)
+                    if let deletedAt = record.deletedAt {
+                        let existingManifest = try await manifestRef.getData()
+                        let operation = existingManifest == nil ? "Skipping absent session tombstone" : "Publishing session tombstone"
+                        progress?.setCurrentRecord(label: label, operation: operation)
+                        var firestoreWrites = 0
+                        if existingManifest != nil {
+                            let tombstone = Self.sessionLogTombstoneFields(for: record, deviceId: deviceId, deletedAt: deletedAt)
+                            try await manifestRef.setData(tombstone, merge: true)
+                            firestoreWrites = 1
+                        }
+                        try await context.dataStore.markSessionLogsSynced(ids: [record.id])
+                        progress?.recordSessionLogOutcome(
+                            label: label,
+                            uploaded: false,
+                            facetRefreshOnly: false,
+                            plaintextBytes: 0,
+                            encryptedBytes: 0,
+                            storageUploads: 0,
+                            firestoreWrites: firestoreWrites,
+                            searchIndexCommits: 0
+                        )
+                        continue
+                    }
                     let markdown = SessionLogMarkdownFormatter.markdown(for: record)
                     // Project/path text is private. It is fed into keyed local
                     // search hashes, then stripped from every cloud document.
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
-                    let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
-                    let manifestRef = logsRef.document(docId)
                     let resolvedVaultKey = try await writableVaultKey(uid: uid)
                     let vaultKey = resolvedVaultKey.keyData
                     let vaultKeyID = resolvedVaultKey.vaultKeyID
@@ -177,6 +204,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                     let facetFields = Self.facetFields(for: record, facets: facets, model: model)
                     let existingManifest = try await manifestRef.getData()
                     if let existing = existingManifest,
+                       existing["deletedAt"] == nil,
                        existing["bodyHash"] as? String == bodyHash,
                        existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                        existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
@@ -185,6 +213,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                        !existingStoragePath.isEmpty {
                         let facetRefreshOnly = existing["facetSchemaVersion"] as? Int != Self.facetSchemaVersion
                         var writes: [FirestoreWrite] = []
+                        var deletes: [CloudSyncDocumentGateway] = []
                         if facetRefreshOnly {
                             progress?.setCurrentRecord(
                                 label: label,
@@ -199,27 +228,17 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         if !legacyChunkDocuments.isEmpty {
                             progress?.setCurrentRecord(
                                 label: label,
-                                operation: "Scrubbing legacy search chunks"
+                                operation: "Deleting legacy search chunks"
                             )
-                            let chunks = Self.chunkUTF8String(markdown, maxBytes: Self.cloudSearchChunkMaxBytes)
-                            try Self.appendLegacySessionLogChunkScrubWrites(
-                                to: &writes,
+                            Self.appendLegacySessionLogChunkDeletes(
+                                to: &deletes,
                                 legacyChunkDocuments: legacyChunkDocuments,
-                                manifestRef: manifestRef,
-                                uid: uid,
-                                deviceId: deviceId,
-                                docId: docId,
-                                record: record,
-                                model: model,
-                                privateProjectSearchText: privateProjectSearchText,
-                                chunks: chunks,
-                                bodyHash: bodyHash,
-                                storagePath: existingStoragePath,
-                                keyData: vaultKey
+                                manifestRef: manifestRef
                             )
                         }
                         let firestoreBatchCommits = try await commitFirestoreWrites(
                             writes,
+                            deletes: deletes,
                             retryDomain: "sessionLog.legacyChunkScrub",
                             progress: progress,
                             label: label,
@@ -348,7 +367,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                     if let start = record.startTime { manifest["startTime"] = Timestamp(date: start) }
                     if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
 
-                    var writes: [FirestoreWrite] = [
+                    let writes: [FirestoreWrite] = [
                         (manifest, manifestRef, false)
                     ]
 
@@ -423,25 +442,17 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                     )
 
                     let legacyChunkDocuments = (try await manifestRef.collection("chunks").getDocuments()).documents
+                    var deletes: [CloudSyncDocumentGateway] = []
                     if !legacyChunkDocuments.isEmpty {
-                        try Self.appendLegacySessionLogChunkScrubWrites(
-                            to: &writes,
+                        Self.appendLegacySessionLogChunkDeletes(
+                            to: &deletes,
                             legacyChunkDocuments: legacyChunkDocuments,
-                            manifestRef: manifestRef,
-                            uid: uid,
-                            deviceId: deviceId,
-                            docId: docId,
-                            record: record,
-                            model: model,
-                            privateProjectSearchText: privateProjectSearchText,
-                            chunks: chunks,
-                            bodyHash: bodyHash,
-                            storagePath: uploadTicket.storagePath,
-                            keyData: vaultKey
+                            manifestRef: manifestRef
                         )
                     }
                     let firestoreBatchCommits = try await commitFirestoreWrites(
                         writes,
+                        deletes: deletes,
                         retryDomain: "sessionLog.batch",
                         progress: progress,
                         label: label,
@@ -514,6 +525,21 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
+    private static func sessionLogTombstoneFields(for record: ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
+        var fields: [String: Any] = [
+            "id": record.id,
+            "deviceId": deviceId,
+            "provider": record.provider.rawValue,
+            "sessionId": record.sessionId,
+            "sourceType": record.sourceType.rawValue,
+            "deletedAt": Timestamp(date: deletedAt),
+            "version": record.version,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        fields.merge(legacyPlaintextFieldDeletes()) { _, new in new }
+        return fields
+    }
+
     private func recordSyncError(_ error: Error) async {
         state.withLock { $0.lastSyncError = error.localizedDescription }
 
@@ -542,6 +568,51 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
             clamped.append(character)
         }
         return clamped
+    }
+
+    private static let cloudPublicToolTagLimit = 12
+
+    private static let cloudPublicToolTags: Set<String> = [
+        "apply_patch",
+        "bash",
+        "edit",
+        "exec_command",
+        "find",
+        "grep_search",
+        "multi_edit",
+        "other",
+        "read",
+        "rg",
+        "search",
+        "sed",
+        "shell",
+        "write"
+    ]
+
+    private static func normalizedPublicToolTag(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        let slug = String(
+            trimmed.map { character in
+                if character.isLetter || character.isNumber || character == "_" || character == "-" {
+                    return character
+                }
+                return "_"
+            }
+        )
+        .split(separator: "_")
+        .joined(separator: "_")
+        .trimmingCharacters(in: CharacterSet(charactersIn: "_-"))
+
+        guard !slug.isEmpty else { return nil }
+        return cloudPublicToolTags.contains(slug) ? slug : "other"
+    }
+
+    static func publicToolTags(from values: [String]) -> [String] {
+        let tags = Set(values.compactMap(normalizedPublicToolTag(_:)))
+        let sortedTags = Array(tags).sorted()
+        return Array(sortedTags[..<min(Self.cloudPublicToolTagLimit, sortedTags.count)])
     }
 
     static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
@@ -573,7 +644,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// triggers a one-time backfill (`markAllSessionLogsUnsynced`) so existing manifests get the
     /// new facets. Facets are metadata only — token totals, cost, timing, model/provider, and
     /// generic tool tags. Project names and working directories are device-only.
-    static let facetSchemaVersion = 2
+    static let facetSchemaVersion = 3
 
     private static let legacyPlaintextFields = [
         "body",
@@ -594,22 +665,30 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
     private func commitFirestoreWrites(
         _ writes: [FirestoreWrite],
+        deletes: [CloudSyncDocumentGateway] = [],
         retryDomain: String,
         progress: CloudBackupProgressTracker?,
         label: String,
         operation: (Int) -> String
     ) async throws -> Int {
-        guard !writes.isEmpty else { return 0 }
+        let operations: [FirestoreBatchOperation] = writes.map(FirestoreBatchOperation.set)
+            + deletes.map(FirestoreBatchOperation.delete)
+        guard !operations.isEmpty else { return 0 }
 
         var firestoreBatchCommits = 0
-        for start in stride(from: 0, to: writes.count, by: 450) {
+        for start in stride(from: 0, to: operations.count, by: 450) {
             progress?.setCurrentRecord(
                 label: label,
                 operation: operation(firestoreBatchCommits + 1)
             )
             let batch = context.firestoreGateway.batch()
-            for write in writes[start..<min(start + 450, writes.count)] {
-                batch.setData(write.data, forDocument: write.document, merge: write.merge)
+            for batchOperation in operations[start..<min(start + 450, operations.count)] {
+                switch batchOperation {
+                case .set(let write):
+                    batch.setData(write.data, forDocument: write.document, merge: write.merge)
+                case .delete(let document):
+                    batch.deleteDocument(document)
+                }
             }
             try await withCloudSyncRetry(
                 policy: context.retryPolicy,
@@ -623,169 +702,17 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         return firestoreBatchCommits
     }
 
-    private static func appendLegacySessionLogChunkScrubWrites(
-        to writes: inout [FirestoreWrite],
+    private static func appendLegacySessionLogChunkDeletes(
+        to deletes: inout [CloudSyncDocumentGateway],
         legacyChunkDocuments: [CloudSyncDocumentSnapshotGateway],
-        manifestRef: CloudSyncDocumentGateway,
-        uid: String,
-        deviceId: String,
-        docId: String,
-        record: ConversationRecord,
-        model: String,
-        privateProjectSearchText: String,
-        chunks: [String],
-        bodyHash: String,
-        storagePath: String,
-        keyData: Data
-    ) throws {
+        manifestRef: CloudSyncDocumentGateway
+    ) {
         guard !legacyChunkDocuments.isEmpty else { return }
 
         let chunksRef = manifestRef.collection("chunks")
-        var repairedDocumentIDs = Set<String>()
-        for (idx, chunk) in chunks.enumerated() {
-            let matchingLegacyIDs = legacyChunkDocuments.compactMap { legacyDocument -> String? in
-                if legacyDocument.documentID == "\(idx)" || legacyDocument.documentID == "\(docId)_\(idx)" {
-                    return legacyDocument.documentID
-                }
-                let data = legacyDocument.data()
-                let storedOrdinal = firestoreInt(data["ordinal"]) ?? firestoreInt(data["index"])
-                return storedOrdinal == idx ? legacyDocument.documentID : nil
-            }
-            guard !matchingLegacyIDs.isEmpty else { continue }
-
-            let snippet = chunk
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let sealedSnippet = try CloudVaultCrypto.sealText(
-                String(snippet.prefix(500)),
-                keyData: keyData,
-                aadContext: CloudVaultAADContext(
-                    uid: uid,
-                    collection: "session_log_chunks",
-                    docID: "\(docId)_\(idx)",
-                    field: "sealedSnippet"
-                )
-            )
-            let tokenHashes = try CloudVaultCrypto.searchIndexTokenHashes(
-                for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
-                keyData: keyData,
-                limit: cloudSearchChunkTokenHashLimit
-            )
-            let semanticHashes = try CloudVaultCrypto.semanticHashes(
-                for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
-                keyData: keyData
-            )
-            var data = try encryptedLegacyChunkData(
-                uid: uid,
-                deviceId: deviceId,
-                docId: docId,
-                record: record,
-                ordinal: idx,
-                chunk: chunk,
-                bodyHash: bodyHash,
-                storagePath: storagePath,
-                sealedSnippet: try dictionary(sealedSnippet),
-                tokenHashes: tokenHashes,
-                semanticHashes: semanticHashes,
-                keyData: keyData
-            )
-            data.merge(legacyPlaintextFieldDeletes()) { _, new in new }
-
-            for documentID in matchingLegacyIDs {
-                writes.append((data, chunksRef.document(documentID), true))
-                repairedDocumentIDs.insert(documentID)
-            }
+        for legacyDocument in legacyChunkDocuments {
+            deletes.append(chunksRef.document(legacyDocument.documentID))
         }
-
-        for legacyDocument in legacyChunkDocuments where !repairedDocumentIDs.contains(legacyDocument.documentID) {
-            var scrubData = orphanedLegacyChunkScrubData(
-                uid: uid,
-                deviceId: deviceId,
-                docId: docId,
-                record: record,
-                legacyDocumentID: legacyDocument.documentID
-            )
-            scrubData.merge(legacyPlaintextFieldDeletes()) { _, new in new }
-            writes.append((scrubData, chunksRef.document(legacyDocument.documentID), true))
-        }
-    }
-
-    private static func encryptedLegacyChunkData(
-        uid: String,
-        deviceId: String,
-        docId: String,
-        record: ConversationRecord,
-        ordinal: Int,
-        chunk: String,
-        bodyHash: String,
-        storagePath: String,
-        sealedSnippet: [String: Any],
-        tokenHashes: [String],
-        semanticHashes: [String],
-        keyData: Data
-    ) throws -> [String: Any] {
-        [
-            "uid": uid,
-            "sessionId": record.sessionId,
-            "deviceId": deviceId,
-            "docId": docId,
-            "documentID": docId,
-            "chunkID": "\(docId)_\(ordinal)",
-            "sourceKind": "conversation",
-            "sourceID": record.id,
-            "provider": record.provider.rawValue,
-            "ordinal": ordinal,
-            "index": ordinal,
-            "startOffset": 0,
-            "endOffset": chunk.utf8.count,
-            "contentHash": try CloudVaultCrypto.sessionChunkHash(chunk, keyData: keyData),
-            "contentHashVersion": CloudVaultCrypto.sessionChunkHashVersion,
-            "bodyHash": bodyHash,
-            "bodyHashVersion": CloudVaultCrypto.sessionBodyHashVersion,
-            "bodyStorage": "firebase_storage_encrypted",
-            "storagePath": storagePath,
-            "sealedSnippet": sealedSnippet,
-            "tokenHashes": tokenHashes,
-            "semanticHashes": semanticHashes,
-            "tokenHashVersion": CloudVaultCrypto.tokenHashVersion,
-            "semanticHashVersion": CloudVaultCrypto.semanticHashVersion,
-            "indexVersion": cloudSearchIndexVersion,
-            "schemaVersion": chunkMetadataVersion,
-            "updatedAt": FieldValue.serverTimestamp()
-        ]
-    }
-
-    private static func orphanedLegacyChunkScrubData(
-        uid: String,
-        deviceId: String,
-        docId: String,
-        record: ConversationRecord,
-        legacyDocumentID: String
-    ) -> [String: Any] {
-        [
-            "uid": uid,
-            "sessionId": record.sessionId,
-            "deviceId": deviceId,
-            "docId": docId,
-            "documentID": docId,
-            "chunkID": "\(docId)_\(legacyDocumentID)",
-            "sourceKind": "conversation",
-            "sourceID": record.id,
-            "provider": record.provider.rawValue,
-            "bodyStorage": "firebase_storage_encrypted",
-            "tokenHashes": [],
-            "semanticHashes": [],
-            "indexVersion": cloudSearchIndexVersion,
-            "schemaVersion": chunkMetadataVersion,
-            "orphanedByEncryptedReindex": true,
-            "updatedAt": FieldValue.serverTimestamp()
-        ]
-    }
-
-    private static func firestoreInt(_ value: Any?) -> Int? {
-        if let int = value as? Int { return int }
-        if let number = value as? NSNumber { return number.intValue }
-        return nil
     }
 
     private static func progressLabel(for record: ConversationRecord) -> String {
@@ -829,14 +756,11 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
             "totalTokens": facets?.totalTokens ?? 0,
             "costUSD": facets?.costUSD ?? 0
         ]
-        // Generic tool names (e.g. "bash", "edit") are non-identifying, unlike key files/commands
-        // which can reveal content, so only tools become queryable cockpit tags.
-        let toolTags = Array(Set(record.keyTools.map { $0.lowercased() }))
-            .filter { !$0.isEmpty }
-            .sorted()
-            .prefix(24)
+        // Only coarse, allowlisted tool slugs are public cockpit facets. Unknown or noisy
+        // tool names collapse to "other" so parser artifacts cannot become content sidecars.
+        let toolTags = publicToolTags(from: record.keyTools)
         if !toolTags.isEmpty {
-            fields["toolTags"] = Array(toolTags)
+            fields["toolTags"] = toolTags
         }
         let start = facets?.startTime ?? record.startTime
         let end = facets?.endTime ?? record.endTime
@@ -992,6 +916,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
         return snapshot.documents.compactMap { doc -> ConversationRecord? in
             let data = doc.data()
+            if let deletedAt = data["deletedAt"], !(deletedAt is NSNull) { return nil }
             guard let rawProvider = data["provider"] as? String,
                   let provider = AgentProvider(rawValue: rawProvider) else { return nil }
 
