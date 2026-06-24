@@ -7,9 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Redesigned the Prepare Hermes wizard with a state-driven "Make Gateway
+  Reachable" action and the editorial Observatory design language. The wizard
+  no longer loops "not reachable yet" with no remediation: a new
+  `HermesSetupWizardController` derives a single `GatewayReachabilityState`
+  (cliMissing / apiServerDisabled / dashboardOnly / gatewayRunning /
+  unreachable / unknown) and the Connect step renders one editorial hero per
+  state, each with its own copy and the single primary action that resolves it.
+  The "Make Gateway Reachable" button drives `openHermesAndGateway` (ensure
+  `.env`, install + launch gateway, launch dashboard, re-probe) instead of
+  just re-probing. The wizard's mutable state is extracted behind a
+  dependency-injected, `@MainActor @Observable` controller so the reachability
+  logic, step gating, and remediation are unit-testable. Window size grew to
+  560×620 to fit the editorial hero.
+
 ### Fixed
 
-- Made macOS updates converge on one canonical app launch. The direct-download
+- Stopped the 3D pet/avatar from flashing a bird's-eye (top-of-head) view the
+  instant you click it to chat. The SceneKit camera was re-fitting itself to the
+  model's presentation bounds on *every* pose change (`idle → listen` on chat
+  open). Re-running that fit against an unsettled, mid-blend skinned pose — whose
+  bounding sphere is momentarily degenerate/NaN — snapped the camera for a frame
+  and read as a top-down look. The camera now frames the pet exactly once per
+  mount/form-swap (upright, face-on, after the skinner settles) and then stays
+  put until the user drags it; the one-shot fit also guards against a non-finite
+  bounding sphere so a degenerate first frame retries instead of latching a bad
+  (bird's-eye) framing. Regression test asserts the camera stays level and its
+  world transform is unchanged across an `idle → listen` pose change.
   updater now terminates stale OpenBurnBar GUI processes, normalizes
   LaunchServices registrations, and relaunches `/Applications/OpenBurnBar.app`
   by exact path; source-channel updates use the same one-click install/cleanup

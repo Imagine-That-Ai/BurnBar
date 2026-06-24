@@ -1,6 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Xcode build phases run with a sanitized PATH that excludes Homebrew, nvm,
+# fnm, volta, and ~/.local/bin, so `node` may be missing even when installed.
+# Augment PATH with the common macOS Node locations before invoking node.
+for _node_dir in \
+  "/opt/homebrew/bin" \
+  "$HOME/.homebrew/bin" \
+  "$HOME/.local/bin" \
+  "$HOME/.nvm/current/bin" \
+  "$HOME/.fnm/current/bin" \
+  "$HOME/.volta/bin" \
+  "/usr/local/bin"; do
+  case ":${PATH:-}:" in
+    *":${_node_dir}:"*) ;;
+    *) [ -x "${_node_dir}/node" ] && PATH="${_node_dir}:${PATH:-}" ;;
+  esac
+done
+export PATH
+
+# Pet model sync is OPT-IN (requires IMAGINE_PETS_SYNC=1). The committed
+# PetCompanion resources are the build's source of truth, so a missing node
+# should never break the build for someone who just wants to compile the app.
+# If node isn't available — common for end users who install from source
+# without a JS toolchain — skip the sync gracefully.
+if ! command -v node >/dev/null 2>&1; then
+  echo "Imagine pet sync skipped: node not found on PATH. PetCompanion will use committed model resources."
+  echo "  Install Node 18+ (brew install node) and set IMAGINE_PETS_SYNC=1 to refresh from the Imagine manifest."
+  exit 0
+fi
+
 cd "$(dirname "$0")/.."
 
 node --input-type=module <<'NODE'

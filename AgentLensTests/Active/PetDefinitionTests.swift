@@ -485,6 +485,68 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertGreaterThan(center, 50, "founder not framed in the centre (edge fragments / mis-framed)")
     }
 
+    /// Regression (bird's-eye-on-chat): the pet camera must frame the model ONCE
+    /// (after the skinner settles) and then stay PUT — it must not re-aim itself on
+    /// every pose change. Clicking a pet to chat drives it `idle → listen`; the old
+    /// per-pose reframe re-ran presentation framing against an unsettled skinned
+    /// pose, snapping the camera for a frame and reading as a top-of-head / bird's-
+    /// eye view. The camera is always built level (position at the bounding-sphere
+    /// centre, `look(at:)` the same centre → worldFront ≈ (0,0,-1)); the only way it
+    /// can lurch is by re-aiming. So: assert the camera is level after idle, then
+    /// assert a pose change leaves its world transform (and levelness) UNCHANGED.
+    @MainActor
+    func test_petCameraDoesNotReaimOnPoseChange() throws {
+        let def = try XCTUnwrap(PetDefinition.loadBundled(id: "founder-zuckerberg"))
+        let form = try XCTUnwrap(def.defaultForm)
+        let renderer = SceneKitPetRenderer(definition: def, form: form)
+        let panel = PetPanel()
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 192, height: 208))
+        panel.contentView = content
+        renderer.mount(in: content)
+        panel.orderFrontRegardless()
+        renderer.play(state: "idle")
+        defer { renderer.unmount(); panel.orderOut(nil) }
+
+        let scn = try XCTUnwrap(renderer.view as? SCNView)
+        scn.frame = content.bounds
+        content.layoutSubtreeIfNeeded()
+
+        func settle() {
+            _ = scn.snapshot() // kick a render so the async one-shot reframe Task can land
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        func camera() throws -> SCNNode {
+            try XCTUnwrap(scn.scene?.rootNode.childNode(withName: "pet.camera", recursively: true))
+        }
+
+        // 1. Idle settles → camera framed and LEVEL (never looking down).
+        settle()
+        let idleCam = try camera()
+        let idleTransform = idleCam.simdWorldTransform
+        let idleFront = idleCam.simdWorldFront
+        XCTAssertEqual(Double(idleFront.y), 0, accuracy: 0.05,
+                       "idle camera is not level (looking up/down) — front.y=\(idleFront.y)")
+
+        // 2. Chat opens → pet is driven to `listen`. The camera must NOT re-aim.
+        renderer.play(state: "listen")
+        settle()
+        let listenCam = try camera()
+        let listenFront = listenCam.simdWorldFront
+        XCTAssertEqual(Double(listenFront.y), 0, accuracy: 0.05,
+                       "listen camera is not level (bird's-eye) — front.y=\(listenFront.y)")
+
+        // World transform unchanged: the camera framed once and stayed put.
+        let a = idleTransform, b = listenCam.simdWorldTransform
+        for col in 0..<4 {
+            for row in 0..<4 {
+                XCTAssertEqual(
+                    Double(a[col][row]), Double(b[col][row]), accuracy: 0.001,
+                    "camera re-aimed on idle→listen (col \(col), row \(row)) — it must frame once and stay put"
+                )
+            }
+        }
+    }
+
     /// Guard against the Imagine sync (or a bad commit) regressing the founder
     /// avatars to low-poly placeholders (~1.3k verts) instead of the real
     /// high-poly models (~100k verts), which render as faceted, blank-faced blobs.

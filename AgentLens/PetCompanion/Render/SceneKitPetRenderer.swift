@@ -276,12 +276,15 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     func play(state: String) {
         currentStateKey = state
 
-        // Re-fit the camera to the NEW pose. The framing was one-shot (idle only),
-        // so when chat drove the pet to `listen`/`think` the camera kept the idle
-        // framing and the differently-posed model drifted out of frame — reading as
-        // a bird's-eye / top-of-head view. Re-framing on each state change keeps the
-        // current pose centered and face-on. (The clips themselves are upright.)
-        needsPresentationFraming = true
+        // Do NOT re-frame the camera on a pose change. The camera is framed ONCE —
+        // upright and face-on, after the skinner settles (see `install` +
+        // `frameCameraToPresentation`) — and then stays put until the user drags it.
+        // Re-fitting on every pose change re-ran presentation framing against an
+        // *unsettled* skinned pose; a skinned rig's bounding sphere is momentarily
+        // degenerate mid-blend, and aiming `look(at:)` at that snapped the camera
+        // for a frame and read as a top-of-head / bird's-eye view the instant chat
+        // drove the pet `idle → listen`. Every clip keeps the rig upright (the Hips
+        // bone never tips past a lean), so one fixed frame holds every pose.
 
         guard let model = definition.model3d else { return }
 
@@ -458,7 +461,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // Skinned rigs (the founders) deform far beyond their bind-pose bounding
         // sphere once the skinner runs at first render, so the bind-pose camera
         // framing above misses them entirely. Re-fit the camera to the actual
-        // PRESENTATION bounds after the first render lands.
+        // PRESENTATION bounds after the first render lands. This is the SOLE camera
+        // framing pass — one-shot per mount/form-swap, never re-armed on a pose
+        // change — so the view holds still while the pet animates (see `play`).
         needsPresentationFraming = true
         scnView.delegate = self
     }
@@ -468,13 +473,21 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     /// rigs that is ~100x larger and offset high on +Y versus the static
     /// bind-pose bounds used at install time. Unskinned models (presentation ==
     /// bind pose, e.g. go-gopher) are unaffected.
-    private func frameCameraToPresentation() {
+    /// Returns `true` only when a finite, sane presentation sphere was available and
+    /// the camera was actually re-aimed; `false` asks the caller to retry on a later
+    /// render. A skinned rig's first post-mount frame can momentarily report a
+    /// degenerate / NaN bounding-sphere centre while the skinner blends in — aiming
+    /// `look(at:)` at a NaN centre is the one way this otherwise-level camera tilts,
+    /// flashing a bird's-eye view — so never apply a non-finite frame.
+    @discardableResult
+    private func frameCameraToPresentation() -> Bool {
         guard let scene = scnView.scene,
-              let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) else { return }
+              let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) else { return false }
         let sphere = scene.rootNode.presentation.boundingSphere
         let center = sphere.center
         let radius = CGFloat(sphere.radius)
-        guard radius.isFinite, radius > 0 else { return }
+        guard radius.isFinite, radius > 0,
+              CGFloat(center.x).isFinite, CGFloat(center.y).isFinite, CGFloat(center.z).isFinite else { return false }
         let camera = cameraNode.camera ?? SCNCamera()
         cameraNode.camera = camera
         camera.usesOrthographicProjection = false
@@ -488,13 +501,18 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // Paused previews (the Settings picker cells) won't re-render on their own
         // after the camera moves, so request one redraw to show the reframed pet.
         scnView.needsDisplay = true
+        return true
     }
 
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
         Task { @MainActor [weak self] in
             guard let self, self.needsPresentationFraming else { return }
-            self.needsPresentationFraming = false
-            self.frameCameraToPresentation()
+            // Consume the one-shot ONLY once a sane sphere was actually applied, so a
+            // degenerate first frame retries on the next render instead of leaving a
+            // bad (or bird's-eye) framing latched in.
+            if self.frameCameraToPresentation() {
+                self.needsPresentationFraming = false
+            }
         }
     }
 

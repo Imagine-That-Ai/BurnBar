@@ -1607,6 +1607,7 @@
 		C7FB03432478C9327A33DF72 /* MercuryConsentStoreMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46B365968FFB6D6CCB1D921 /* MercuryConsentStoreMattersTests.swift */; };
 		C7FBE06AEBD69ACA8F852291 /* MissionFABResurrectionControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E9209606A331829CC7CC54 /* MissionFABResurrectionControllerTests.swift */; };
 		C80406AA9A25F588A863A081 /* HermesSetupWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C44003B0BAD4E095933048 /* HermesSetupWizardView.swift */; };
+		C80406AA9A25F588A863A0A0C /* HermesSetupWizardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C44003B0BAD4E0959330A0C /* HermesSetupWizardController.swift */; };
 		C80D3F3E819787CC354CDB3C /* ReplayGoldenSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558DCCC6961E2517A96B75F3 /* ReplayGoldenSupport.swift */; };
 		C811AC29E830038860470EE9 /* OpenBurnBarHTTPGatewayServer+UsageLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86607D9B7E2D7C5BBFC9234 /* OpenBurnBarHTTPGatewayServer+UsageLogging.swift */; };
 		C82D9CAB8C37524336215C0F /* CursorQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EBC599E8011C2D19D44A3F /* CursorQuotaAdapter.swift */; };
@@ -2608,6 +2609,7 @@
 		353A7E4FC3803EAADCD50330 /* test_miniSparkline_rising.miniSparkline-rising-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_miniSparkline_rising.miniSparkline-rising-light.png"; sourceTree = "<group>"; };
 		35C260D6B63EAB9AAD2C7B39 /* test_chatMessageView_user.chatMessage-user-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_chatMessageView_user.chatMessage-user-dark.png"; sourceTree = "<group>"; };
 		35C44003B0BAD4E095933048 /* HermesSetupWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSetupWizardView.swift; sourceTree = "<group>"; };
+		35C44003B0BAD4E0959330A0C /* HermesSetupWizardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSetupWizardController.swift; sourceTree = "<group>"; };
 		35DA3657CEC3B6A3CBB12D2D /* AgentWatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchView.swift; sourceTree = "<group>"; };
 		35E188A15FEDEC88CFCB0E0E /* KiloCodeQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiloCodeQuotaAdapter.swift; sourceTree = "<group>"; };
 		36427609FF2F7D2A03B20522 /* MobileAssistantChatReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAssistantChatReader.swift; sourceTree = "<group>"; };
@@ -4693,6 +4695,7 @@
 				50E7AC543AA1A8E80693B44F /* AnalyticsConsentPromptView.swift */,
 				2BC86D724DE7A6A00780421C /* FlowLayout.swift */,
 				35C44003B0BAD4E095933048 /* HermesSetupWizardView.swift */,
+				35C44003B0BAD4E0959330A0C /* HermesSetupWizardController.swift */,
 				AFEACED63B2425D334B5FAC4 /* OnboardingChatEngineView.swift */,
 				6CAA8C48E3FC49F536418B68 /* OnboardingCompleteView.swift */,
 				0FC8315913C35BC77E9F49F1 /* OnboardingConnectView.swift */,
@@ -10373,6 +10376,7 @@
 				5273A45BE58E6F23FCDBB9FA /* HermesRuntimeGate.swift in Sources */,
 				1EC035DF0F22D2BE46740AC4 /* HermesRuntimeLauncher.swift in Sources */,
 				C80406AA9A25F588A863A081 /* HermesSetupWizardView.swift in Sources */,
+				C80406AA9A25F588A863A0A0C /* HermesSetupWizardController.swift in Sources */,
 				63C4461CC288512FF3734D38 /* HermesThinkingView.swift in Sources */,
 				858556D97AD3117131DA07D9 /* HermesToolCard.swift in Sources */,
 				CE0A7CC576189EFE7981DF22 /* HomeAssistantBlueprintInstaller.swift in Sources */,
