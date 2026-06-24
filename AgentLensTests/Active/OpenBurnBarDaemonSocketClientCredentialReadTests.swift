@@ -69,6 +69,41 @@ final class OpenBurnBarDaemonSocketClientCredentialReadTests: XCTestCase {
 
         XCTAssertNil(OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(from: store))
     }
+
+    func test_readDaemonSocketAuthToken_readsPrivateTokenFileWhenKeychainFaults() throws {
+        let backend = FaultInjectingKeychainBackend()
+        backend.readError = KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore(backend: backend)
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BurnBarSocketTokenFallback-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let tokenFileURL = rootURL.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
+        try "  file-token  ".write(to: tokenFileURL, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(
+            OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(
+                from: store,
+                tokenFileURL: tokenFileURL
+            ),
+            "file-token"
+        )
+        XCTAssertEqual(backend.readAttempts, 1)
+    }
+
+    func test_readDaemonSocketAuthToken_returnsNilWhenKeychainAndTokenFileAreAbsent() {
+        let backend = FaultInjectingKeychainBackend()
+        let store = makeStore(backend: backend)
+        let missingFileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-daemon-socket-auth-token-\(UUID().uuidString)", isDirectory: false)
+
+        XCTAssertNil(
+            OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(
+                from: store,
+                tokenFileURL: missingFileURL
+            )
+        )
+    }
 }
 
 // MARK: - Fault-injecting Keychain backend

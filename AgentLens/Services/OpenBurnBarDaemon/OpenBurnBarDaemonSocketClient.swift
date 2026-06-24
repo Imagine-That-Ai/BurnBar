@@ -1189,7 +1189,10 @@ enum OpenBurnBarDaemonSocketClient {
         if let cached {
             return cached
         }
-        let nonEmptyToken = readDaemonSocketAuthToken(from: controllerRuntimeSecrets)
+        let nonEmptyToken = readDaemonSocketAuthToken(
+            from: controllerRuntimeSecrets,
+            tokenFileURL: OpenBurnBarDaemonRuntimePaths.live().socketAuthTokenFileURL
+        )
         cacheDaemonSocketAuthToken(nonEmptyToken)
         return nonEmptyToken
     }
@@ -1207,16 +1210,37 @@ enum OpenBurnBarDaemonSocketClient {
     ///
     /// Exposed at file-internal visibility so the fault path is exercisable
     /// with an injected `KeychainStore` backend in tests.
-    static func readDaemonSocketAuthToken(from secrets: KeychainStore) -> String? {
-        guard let storedToken = secrets.credentialIfPresent(
+    static func readDaemonSocketAuthToken(from secrets: KeychainStore, tokenFileURL: URL? = nil) -> String? {
+        if let storedToken = secrets.credentialIfPresent(
             for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
             allowUserInteraction: false,
             event: "daemon_socket_token_read_failed"
-        ) else {
+        ) {
+            let token = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                return token
+            }
+        }
+        guard let tokenFileURL else { return nil }
+        return readDaemonSocketAuthTokenFile(at: tokenFileURL)
+    }
+
+    static func readDaemonSocketAuthTokenFile(at url: URL) -> String? {
+        do {
+            let token = try String(contentsOf: url, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return token.isEmpty ? nil : token
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError {
+                return nil
+            }
+            AppLogger.daemon.error(
+                "daemon_socket_token_file_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
             return nil
         }
-        let token = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
     }
 
     private static func mapConnectFailure() -> OpenBurnBarDaemonManagerError {

@@ -122,13 +122,18 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
 
 enum ProxyModelCatalogState: Equatable {
     case idle
+    case startingGateway
     case loading
     case loaded(lastRefresh: Date)
     case error(message: String, lastAttempt: Date)
 
     var isLoading: Bool {
-        if case .loading = self { return true }
-        return false
+        switch self {
+        case .startingGateway, .loading:
+            return true
+        case .idle, .loaded, .error:
+            return false
+        }
     }
 }
 
@@ -468,8 +473,9 @@ final class ConnectionsViewModel {
 
     // MARK: - Proxy catalog
 
-    func refreshProxyModelCatalog(settings: SettingsManager) async {
-        guard !proxyModelCatalogState.isLoading else { return }
+    func refreshProxyModelCatalog(settings: SettingsManager, allowStartingRefresh: Bool = false) async {
+        let canRefreshFromStarting = allowStartingRefresh && proxyModelCatalogState == .startingGateway
+        guard canRefreshFromStarting || !proxyModelCatalogState.isLoading else { return }
         proxyModelCatalogState = .loading
         let gateway = makeGateway(from: settings)
         do {
@@ -513,6 +519,25 @@ final class ConnectionsViewModel {
 
     func enableLocalGateway(settings: SettingsManager) {
         ensureLocalGateway(settings: settings)
+    }
+
+    func startProxyGateway(
+        settings: SettingsManager,
+        restartGateway: () async -> String?
+    ) async {
+        guard !proxyModelCatalogState.isLoading else { return }
+        proxyModels = []
+        proxyModelCatalogState = .startingGateway
+        ensureLocalGateway(settings: settings)
+
+        let startError = await restartGateway()
+        if let message = startError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            proxyModelCatalogState = .error(message: message, lastAttempt: Date())
+            return
+        }
+
+        await refreshProxyModelCatalog(settings: settings, allowStartingRefresh: true)
     }
 
     // MARK: - VibeProxy migration

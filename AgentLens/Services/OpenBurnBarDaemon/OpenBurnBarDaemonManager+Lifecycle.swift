@@ -28,27 +28,72 @@ extension OpenBurnBarDaemonManager {
 
     func installAndStart() async {
         await performBusyWork {
-            try installFilesIfNeeded()
-            try writeLaunchAgentPlist()
-            try revalidateInstalledBinaryBeforeLaunch()
-            try await bootoutIfNeeded()
-            try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
-            try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
-            supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
-            try await awaitHealthy()
+            try await runInstallStartLifecycle()
         }
     }
 
     func repair() async {
         await performBusyWork {
+            try await runInstallStartLifecycle()
+        }
+    }
+
+    private func runInstallStartLifecycle() async throws {
+        try daemonLifecycleStep("install files") {
             try installFilesIfNeeded()
+        }
+        try daemonLifecycleStep("write LaunchAgent plist") {
             try writeLaunchAgentPlist()
+        }
+        try daemonLifecycleStep("validate installed daemon") {
             try revalidateInstalledBinaryBeforeLaunch()
+        }
+        try await daemonLifecycleStep("bootout existing daemon") {
             try await bootoutIfNeeded()
+        }
+        try await daemonLifecycleStep("bootstrap LaunchAgent") {
             try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
+        }
+        try await daemonLifecycleStep("kickstart LaunchAgent") {
             try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
-            supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
+        }
+        supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
+        try await daemonLifecycleStep("health check") {
             try await awaitHealthy()
+        }
+    }
+
+    private func daemonLifecycleStep(_ step: String, _ operation: () throws -> Void) throws {
+        AppLogger.daemon.info("daemon_lifecycle_step_started", metadata: ["step": step])
+        do {
+            try operation()
+            AppLogger.daemon.info("daemon_lifecycle_step_finished", metadata: ["step": step])
+        } catch {
+            AppLogger.daemon.error(
+                "daemon_lifecycle_step_failed",
+                metadata: ["step": step, "error": error.localizedDescription]
+            )
+            throw OpenBurnBarDaemonManagerError.lifecycleStepFailed(
+                step: step,
+                underlying: error.localizedDescription
+            )
+        }
+    }
+
+    private func daemonLifecycleStep(_ step: String, _ operation: () async throws -> Void) async throws {
+        AppLogger.daemon.info("daemon_lifecycle_step_started", metadata: ["step": step])
+        do {
+            try await operation()
+            AppLogger.daemon.info("daemon_lifecycle_step_finished", metadata: ["step": step])
+        } catch {
+            AppLogger.daemon.error(
+                "daemon_lifecycle_step_failed",
+                metadata: ["step": step, "error": error.localizedDescription]
+            )
+            throw OpenBurnBarDaemonManagerError.lifecycleStepFailed(
+                step: step,
+                underlying: error.localizedDescription
+            )
         }
     }
 
@@ -74,11 +119,15 @@ extension OpenBurnBarDaemonManager {
         paths: OpenBurnBarDaemonRuntimePaths,
         dependencies: OpenBurnBarDaemonDependencies
     ) -> Bool {
-        guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else { return false }
+        guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else {
+            return dependencies.fileManager.isExecutableFile(atPath: paths.installedBinaryURL.path)
+                && !dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path)
+        }
         let sourceURL = sourceBinaryURL.standardizedFileURL
         let installedURL = paths.installedBinaryURL.standardizedFileURL
-        guard sourceURL != installedURL else { return false }
         guard dependencies.fileManager.isExecutableFile(atPath: sourceURL.path) else { return false }
+        guard dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path) else { return true }
+        guard sourceURL != installedURL else { return false }
         guard dependencies.fileManager.fileExists(atPath: installedURL.path) else { return true }
 
         // Security/correctness: a same-user attacker can swap the user-writable
@@ -316,23 +365,25 @@ extension OpenBurnBarDaemonManager {
     }
 
     func writeLaunchAgentPlist() throws {
-        try validateDaemonBinary(at: paths.installedBinaryURL)
+        try launchAgentPlistStep("validate_installed_binary") {
+            try validateDaemonBinary(at: paths.installedBinaryURL)
+        }
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
-        let daemonSocketAuthToken = try rotateDaemonSocketAuthToken()
+        _ = try launchAgentPlistStep("rotate_socket_token") {
+            try rotateDaemonSocketAuthToken()
+        }
 
-        // SECURITY: Pass secrets via EnvironmentVariables, not ProgramArguments.
-        // CLI arguments are visible to any local user via `ps aux`, so the auth
-        // token and gateway auth token must be passed as environment variables
-        // which are only visible to processes in the same Mach bootstrap context.
+        // SECURITY: pass the daemon socket token through an owner-only file path,
+        // never argv. CLI arguments are visible to any local user via `ps aux`;
+        // the gateway bearer remains in environment variables for the same reason.
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
-            "--index-database-path", indexDbPath
+            "--index-database-path", indexDbPath,
+            "--socket-auth-token-file", paths.socketAuthTokenFileURL.path
         ]
 
-        var environmentVariables: [String: String] = [
-            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": daemonSocketAuthToken
-        ]
+        var environmentVariables: [String: String] = [:]
 
         // Propagate Sentry DSN to the daemon so crash reports are captured.
         // Uses the same resolution helper as the app: Info.plist first, then
@@ -382,16 +433,34 @@ extension OpenBurnBarDaemonManager {
             "StandardErrorPath": paths.logURL.path
         ]
 
-        let data = try PropertyListSerialization.data(
-            fromPropertyList: plist,
-            format: .xml,
-            options: 0
-        )
-        try data.write(to: paths.launchAgentPlistURL, options: .atomic)
-        try dependencies.fileManager.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: paths.launchAgentPlistURL.path
-        )
+        let data = try launchAgentPlistStep("serialize") {
+            try PropertyListSerialization.data(
+                fromPropertyList: plist,
+                format: .xml,
+                options: 0
+            )
+        }
+        try launchAgentPlistStep("write_file") {
+            try data.write(to: paths.launchAgentPlistURL, options: .atomic)
+        }
+        try launchAgentPlistStep("set_file_permissions") {
+            try dependencies.fileManager.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: paths.launchAgentPlistURL.path
+            )
+        }
+    }
+
+    private func launchAgentPlistStep<T>(_ name: String, _ operation: () throws -> T) throws -> T {
+        AppLogger.daemon.info("daemon_launch_agent_\(name)_started")
+        do {
+            let result = try operation()
+            AppLogger.daemon.info("daemon_launch_agent_\(name)_finished")
+            return result
+        } catch {
+            AppLogger.daemon.error("daemon_launch_agent_\(name)_failed")
+            throw error
+        }
     }
 
     private func validateDaemonBinary(at url: URL) throws {
@@ -418,13 +487,61 @@ extension OpenBurnBarDaemonManager {
         } catch {
             throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable
         }
+
         do {
-            try Self.controllerRuntimeSecrets.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
-            OpenBurnBarDaemonSocketClient.cacheDaemonSocketAuthToken(generatedToken)
-            return generatedToken
+            try writeDaemonSocketAuthTokenFile(generatedToken)
         } catch {
+            AppLogger.daemon.error(
+                "daemon_socket_auth_token_file_write_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
             throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable
         }
+
+        if !writeDaemonSocketAuthTokenToKeychain(generatedToken) {
+            AppLogger.daemon.error("daemon_socket_auth_token_keychain_write_failed_using_file_fallback")
+        }
+        OpenBurnBarDaemonSocketClient.cacheDaemonSocketAuthToken(generatedToken)
+        return generatedToken
+    }
+
+    private func writeDaemonSocketAuthTokenToKeychain(_ generatedToken: String) -> Bool {
+        do {
+            try daemonSocketAuthTokenStore.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
+            return true
+        } catch {
+            AppLogger.daemon.silentFailure(
+                "OpenBurnBarDaemonManager.rotateDaemonSocketAuthToken.initialWrite",
+                error: error
+            )
+            do {
+                // This token is per-launch runtime glue, not a user secret. If
+                // an older app/helper signature owns the existing Keychain item,
+                // replacing it is safer than leaving stale socket auth around.
+                try daemonSocketAuthTokenStore.delete(account: Self.daemonSocketAuthTokenAccount)
+                try daemonSocketAuthTokenStore.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
+                return true
+            } catch {
+                AppLogger.daemon.silentFailure(
+                    "OpenBurnBarDaemonManager.rotateDaemonSocketAuthToken.rewrite",
+                    error: error
+                )
+                return false
+            }
+        }
+    }
+
+    private func writeDaemonSocketAuthTokenFile(_ generatedToken: String) throws {
+        try dependencies.fileManager.createDirectory(
+            at: paths.supportDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try Data(generatedToken.utf8).write(to: paths.socketAuthTokenFileURL, options: .atomic)
+        try dependencies.fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: paths.socketAuthTokenFileURL.path
+        )
     }
 
     func bootoutIfNeeded() async throws {

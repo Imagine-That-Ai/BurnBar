@@ -196,6 +196,7 @@ struct AgentsSettingsView: View {
     struct ModelsSnapshot {
         enum Phase {
             case idle
+            case starting
             case loading
             case loaded
             case error
@@ -210,7 +211,7 @@ struct AgentsSettingsView: View {
 
         var statusTint: Color {
             switch phase {
-            case .idle, .loading:
+            case .idle, .starting, .loading:
                 return DesignSystem.Colors.textMuted
             case .error:
                 return DesignSystem.Colors.error
@@ -248,6 +249,7 @@ struct AgentsSettingsView: View {
     fileprivate static func phase(from state: ProxyModelCatalogState) -> ModelsSnapshot.Phase {
         switch state {
         case .idle: return .idle
+        case .startingGateway: return .starting
         case .loading: return .loading
         case .loaded: return .loaded
         case .error: return .error
@@ -373,6 +375,8 @@ enum AgentsSummaries {
         switch state {
         case .idle:
             return "Tap to see every model BurnBar advertises through the local gateway"
+        case .starting:
+            return "Starting local gateway so /v1/models can answer"
         case .loading:
             return "Reading live /v1/models from the local gateway…"
         case .error:

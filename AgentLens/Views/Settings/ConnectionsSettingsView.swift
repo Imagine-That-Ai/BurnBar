@@ -323,9 +323,10 @@ struct ConnectionsSettingsView: View {
                 },
                 onStartGateway: {
                     Task {
-                        viewModel.enableLocalGateway(settings: settingsManager)
-                        await restartLocalGateway()
-                        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+                        await viewModel.startProxyGateway(settings: settingsManager) {
+                            await restartLocalGateway()
+                            return localGatewayStartError()
+                        }
                         await viewModel.refreshWiringState(settings: settingsManager)
                     }
                 },
@@ -868,6 +869,13 @@ struct ConnectionsSettingsView: View {
     private func restartLocalGateway() async {
         await daemonManager.installAndStart()
         await daemonManager.refreshHealth()
+    }
+
+    private func localGatewayStartError() -> String? {
+        if case .healthy = daemonManager.status {
+            return nil
+        }
+        return daemonManager.lastError ?? daemonManager.detailText
     }
 
     private func syncRoutedProxyModels(_ target: RoutingClientWiringTarget = .droid) {
