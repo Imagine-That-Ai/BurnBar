@@ -264,7 +264,9 @@ jobs:
         run: ./scripts/test-openburnbar-replay-evals.sh
 
       - name: Run OpenBurnBar extension-host tests
-        run: ./scripts/test-openburnbar-extension-host.sh
+        run: |
+          ./scripts/test-openburnbar-extension-host-self-test.sh
+          ./scripts/test-openburnbar-extension-host.sh
 
   supply-chain:
     name: Supply Chain
