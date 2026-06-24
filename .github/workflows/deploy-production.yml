@@ -254,8 +254,7 @@ jobs:
             --only functions \
             --project burnbar \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
-            --non-interactive \
-            --force
+            --non-interactive
 
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
