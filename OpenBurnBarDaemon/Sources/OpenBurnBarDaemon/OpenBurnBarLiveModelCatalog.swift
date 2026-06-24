@@ -931,7 +931,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         guard !trimmed.isEmpty else { return false }
         guard trimmed.unicodeScalars.allSatisfy(\.isASCII) else { return false }
 
-        let pattern = #"^[A-Za-z0-9][A-Za-z0-9._-]*(?::cloud)?$"#
+        let pattern = #"^[A-Za-z0-9][A-Za-z0-9._-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)*$"#
         return trimmed.range(of: pattern, options: .regularExpression) != nil
     }
 
