@@ -24,6 +24,10 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
       <body>
         <a href="/library/kimi-k2.7-code">Kimi K2.7 Code</a>
         <a href="/library/glm-5.2%3Acloud">GLM-5.2</a>
+        <a href="/library/qwen3-coder%3A480b">Qwen3 Coder 480B</a>
+        <a href="/library/deepseek-v4-flash%2Fshadow">Injected slash</a>
+        <a href="/library/qwen%0Aevil">Injected newline</a>
+        <a href="/library/minimax-m2.7%3Ftoken%3D1">Injected query</a>
       </body>
     </html>
     """.utf8)
@@ -118,7 +122,7 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         let configSnapshot = try await harness.configStore.snapshot()
         var ollama = try XCTUnwrap(configSnapshot.providers.first { $0.providerID == "ollama" })
         ollama.isEnabled = true
-        ollama.preferredModelIDs = ["kimi-k2.7-code", "glm-5.2"]
+        ollama.preferredModelIDs = ["kimi-k2.7-code", "glm-5.2", "qwen3-coder:480b"]
         _ = try await harness.configStore.upsertProvider(ollama)
         try await harness.configStore.setSecret("ollama-cloud-token", for: "ollama")
 
@@ -154,8 +158,13 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         let cloudIDs = Set(cloudRows.map(\.id))
         XCTAssertTrue(cloudIDs.contains("kimi-k2.7-code:cloud"))
         XCTAssertTrue(cloudIDs.contains("glm-5.2:cloud"))
+        XCTAssertTrue(cloudIDs.contains("qwen3-coder:480b:cloud"))
+        XCTAssertFalse(cloudIDs.contains { $0.contains("/") })
+        XCTAssertFalse(cloudIDs.contains { $0.contains("\n") })
+        XCTAssertFalse(cloudIDs.contains { $0.contains("?") })
         XCTAssertEqual(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.routeEligible, true)
         XCTAssertEqual(cloudRows.first { $0.id == "glm-5.2:cloud" }?.routeEligible, true)
+        XCTAssertEqual(cloudRows.first { $0.id == "qwen3-coder:480b:cloud" }?.routeEligible, true)
         XCTAssertEqual(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.modelCapabilities?.supportsImageInput, true)
         XCTAssertEqual(
             cloudRows.first { $0.id == "glm-5.2:cloud" }?.modelCapabilities?.contextWindowTokens,

@@ -917,13 +917,22 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 .removingPercentEncoding?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 ?? ""
-            guard !slug.isEmpty else { continue }
+            guard isSafeOllamaCloudCatalogSlug(slug) else { continue }
             let id = ollamaCloudRouteModelID(slug)
             let normalized = id.lowercased()
             guard seen.insert(normalized).inserted else { continue }
             models.append(DiscoveredModel(id: id, displayName: slug))
         }
         return models
+    }
+
+    private static func isSafeOllamaCloudCatalogSlug(_ rawID: String) -> Bool {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard trimmed.unicodeScalars.allSatisfy(\.isASCII) else { return false }
+
+        let pattern = #"^[A-Za-z0-9][A-Za-z0-9._-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)*$"#
+        return trimmed.range(of: pattern, options: .regularExpression) != nil
     }
 
     private static func ollamaCloudRouteModelID(_ rawID: String) -> String {
