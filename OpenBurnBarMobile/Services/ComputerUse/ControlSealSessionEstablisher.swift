@@ -27,9 +27,23 @@ enum ControlSealSessionEstablisher {
         sessionsByConnection[connectionID]
     }
 
-    /// Exposed for the establishment path + tests.
+    /// Exposed for classify-success activation + tests.
     static func register(_ session: Session, connectionID: String) {
         sessionsByConnection[connectionID] = session
+    }
+
+    static func unregister(connectionID: String) {
+        sessionsByConnection.removeValue(forKey: connectionID)
+    }
+
+    #if DEBUG
+    static func clearForTests() {
+        sessionsByConnection.removeAll()
+    }
+    #endif
+
+    private static func sessionForSealing(connectionID: String, fallback: Session) -> Session {
+        sessionsByConnection[connectionID] ?? fallback
     }
 
     /// Establish when (and only when) the default-off RC flag is on AND the
@@ -99,7 +113,6 @@ enum ControlSealSessionEstablisher {
                 senderPrivateKey: senderKeypair.privateKey
             )
             let session = Session(envelope: envelope, key: key, controllerPeerNodeId: controllerPeerNodeId)
-            register(session, connectionID: connectionID)
             return session
         } catch {
             return nil
@@ -116,10 +129,11 @@ enum ControlSealSessionEstablisher {
         { frame in
             var frame = frame
             if let control = frame.control {
+                let sealSession = await sessionForSealing(connectionID: frame.connectionId, fallback: session)
                 frame.control = try ControlFrameSealSession.sealPayload(
                     control,
-                    key: session.key,
-                    peerNodeId: session.controllerPeerNodeId,
+                    key: sealSession.key,
+                    peerNodeId: sealSession.controllerPeerNodeId,
                     frameType: frame.type.rawValue
                 )
             }

@@ -253,6 +253,9 @@ extension MercuryLiveSheet {
                 peerNodeId: peerNodeId,
                 sealKey: sealSession?.envelope
             )
+            if let sealSession {
+                ControlSealSessionEstablisher.register(sealSession, connectionID: connectionID)
+            }
             let basePhoneControlSink: PhoneControlSender.FrameSink = { frame in
                 try await controlStreamCoordinator.send(frame: frame)
             }

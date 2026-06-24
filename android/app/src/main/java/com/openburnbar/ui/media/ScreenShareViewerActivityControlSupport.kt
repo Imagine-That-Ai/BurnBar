@@ -427,6 +427,7 @@ private suspend fun ScreenShareViewerActivity.establishControlSealAndClassify(
             macCapabilities = coordinator.lastPeerCapabilities.value,
         )
     sendPhoneControlClassify(coordinator, pair, peerNodeId, sealSession?.envelope)
+    sealSession?.let { ControlSealSessionEstablisher.register(it, pair.connectionID) }
     return sealSession
 }
 
