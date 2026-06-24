@@ -29,6 +29,8 @@ on:
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/app-check-smoke.sh"
+      - "scripts/ci/app-check-smoke.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -62,6 +64,8 @@ on:
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/app-check-smoke.sh"
+      - "scripts/ci/app-check-smoke.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -99,6 +103,9 @@ jobs:
 
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
+
+      - name: Self-test App Check smoke fail-closed gate
+        run: bash scripts/ci/app-check-smoke.test.sh
 
       - name: Check functional QA runner syntax
         run: bash -n tools/qa/run-functional-qa.sh
