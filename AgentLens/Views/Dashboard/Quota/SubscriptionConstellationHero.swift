@@ -116,6 +116,8 @@ struct SubscriptionConstellationHero: View {
             Text(headlineText)
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentTransition(.numericText())
                 .animation(DesignSystem.Animation.gentle, value: headlineText)

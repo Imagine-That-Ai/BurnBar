@@ -79,6 +79,7 @@ struct ChatInputRow: View {
                     .font(DesignSystem.Typography.body)
                     .lineLimit(1...5)
                     .submitLabel(.send)
+                    .frame(minWidth: 80)
                     .onSubmit { submitOrRequestPermission() }
                     .padding(DesignSystem.Spacing.sm)
                     .background {

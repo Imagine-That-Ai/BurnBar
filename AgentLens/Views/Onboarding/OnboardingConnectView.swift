@@ -80,6 +80,8 @@ struct OnboardingConnectView: View {
                         Text(provider.displayName)
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Spacer()
 
@@ -88,6 +90,7 @@ struct OnboardingConnectView: View {
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .layoutPriority(1)
                     }
                     .padding(.vertical, DesignSystem.Spacing.xs)
                     .padding(.horizontal, DesignSystem.Spacing.sm)

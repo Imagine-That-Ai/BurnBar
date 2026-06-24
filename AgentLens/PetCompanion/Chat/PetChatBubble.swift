@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - PetChatController
 
@@ -143,6 +144,48 @@ final class PetChatController {
             requestClose()
         } else {
             open()
+        }
+    }
+
+    // MARK: Attachments (file drag-and-drop onto the pet)
+
+    /// Passthrough to the shared controller's staged attachments so the bubble's
+    /// attachment tray can observe the single source of truth (a drop at the pet
+    /// and a drop at any chat composer both stage here).
+    var pendingAttachments: [HermesAttachment] { chat.pendingAttachments }
+    /// Passthrough to the shared controller's import error so the tray surfaces
+    /// the same "too large" / "unreadable" message the composer does.
+    var attachmentError: String? { chat.attachmentError }
+
+    /// Stage a dropped file URL onto the shared chat controller. Reuses the
+    /// existing ``ChatSessionController/addAttachment(from:)`` seam (which routes
+    /// through ``HermesAttachmentLoader``, enforces per-kind size caps, copies
+    /// into the per-thread workspace, and makes a thumbnail) so a drop at the
+    /// pet is byte-identical to a drop at the chat composer.
+    func stageAttachment(from url: URL) {
+        chat.addAttachment(from: url)
+    }
+
+    /// Stage a dropped in-memory image onto the shared chat controller. Reuses
+    /// ``ChatSessionController/addAttachment(image:suggestedName:)`` (which
+    /// writes a PNG into the workspace + sizes it).
+    func stageAttachment(image: NSImage, suggestedName: String?) {
+        chat.addAttachment(image: image, suggestedName: suggestedName)
+    }
+
+    /// Remove a staged attachment by id (the bubble tray's remove button).
+    func removeAttachment(_ id: String) {
+        chat.removeAttachment(id)
+    }
+
+    /// Reveal a staged attachment's workspace file in Finder (the bubble tray's
+    /// "Reveal in Finder" context action). Mirrors ``ChatInputRow``'s reveal.
+    func revealAttachment(_ attachment: HermesAttachment) {
+        let url = chat.chatWorkspaceURL.appendingPathComponent(attachment.workspaceRelativePath)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([chat.chatWorkspaceURL])
         }
     }
 
@@ -486,6 +529,7 @@ struct PetChatBubbleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
+            attachmentTray
             transcript
             inputRow
         }
@@ -503,8 +547,30 @@ struct PetChatBubbleView: View {
         .onChange(of: controller.isAnswering) { _, _ in onContentSizeChange() }
         .onChange(of: controller.isAnsweringLocally) { _, _ in onContentSizeChange() }
         .onChange(of: controller.lastErrorNote) { _, _ in onContentSizeChange() }
+        .onChange(of: controller.pendingAttachments.count) { _, _ in onContentSizeChange() }
         .animation(DesignSystem.Animation.gentle, value: controller.isAnswering)
         .animation(DesignSystem.Animation.gentle, value: controller.replyText)
+        .animation(DesignSystem.Animation.gentle, value: controller.pendingAttachments.count)
+    }
+
+    // MARK: Attachment tray (file drag-and-drop onto the pet)
+
+    /// Mercury-styled chip strip for staged attachments. Reuses the shared
+    /// ``ChatAttachmentTray`` (the same component the chat composer renders) with
+    /// `isHermes: true` so the chips get the mercury gradient stroke per the
+    /// DESIGN.md chat-surface identity. Renders nothing when no attachments are
+    /// staged and no error is present, so the bubble stays clean.
+    @ViewBuilder
+    private var attachmentTray: some View {
+        if !controller.pendingAttachments.isEmpty || controller.attachmentError != nil {
+            ChatAttachmentTray(
+                attachments: controller.pendingAttachments,
+                isHermes: true,
+                attachmentError: controller.attachmentError,
+                onRemove: { controller.removeAttachment($0) },
+                onReveal: { controller.revealAttachment($0) }
+            )
+        }
     }
 
     // MARK: Header — brain switcher + close
@@ -551,13 +617,19 @@ struct PetChatBubbleView: View {
                 Text(controller.activeBackend.shortLabel)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        // Let the picker label truncate (it never does with today's short
+        // labels) rather than .fixedSize() forcing it to push the localBadge /
+        // close button off the fixed-width header. Lowest layout priority so the
+        // close button and "answering locally" badge keep their room first.
+        .layoutPriority(0)
         .accessibilityLabel("Answering brain")
         .accessibilityValue(controller.activeBackend.displayName)
     }
@@ -568,7 +640,9 @@ struct PetChatBubbleView: View {
                 .font(.system(size: 8, weight: .bold))
             Text("answering locally")
                 .font(DesignSystem.Typography.tiny)
+                .lineLimit(1)
         }
+        .fixedSize()
         .foregroundStyle(DesignSystem.Colors.warning)
         .padding(.horizontal, DesignSystem.Spacing.xs)
         .padding(.vertical, 2)
@@ -583,12 +657,21 @@ struct PetChatBubbleView: View {
         if controller.replyText.isEmpty && controller.isAnswering {
             thinkingDots
         } else if !controller.replyText.isEmpty {
-            Text(controller.replyText)
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                Text(controller.replyText)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Cap the transcript so a long multi-paragraph cloud reply scrolls
+            // inside the bubble instead of growing the NSPanel past the screen.
+            // The cap lets NSHostingView.fittingSize settle so the panel stays
+            // on-screen; .bottom anchor keeps freshly streamed tokens visible.
+            .frame(maxHeight: 280)
+            .defaultScrollAnchor(.bottom)
+            .scrollBounceBehavior(.basedOnSize)
         } else if let note = controller.lastErrorNote {
             Text(note)
                 .font(DesignSystem.Typography.caption)

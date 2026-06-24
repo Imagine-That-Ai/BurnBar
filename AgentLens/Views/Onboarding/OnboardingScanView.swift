@@ -45,10 +45,14 @@ struct OnboardingScanView: View {
                             Text(provider.displayName)
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
 
-                            Spacer()
+                            Spacer(minLength: DesignSystem.Spacing.xs)
 
                             parserHealthDetail(for: provider)
+                                .lineLimit(1)
+                                .fixedSize()
                         }
                         .padding(.vertical, DesignSystem.Spacing.xs)
                         .padding(.horizontal, DesignSystem.Spacing.sm)

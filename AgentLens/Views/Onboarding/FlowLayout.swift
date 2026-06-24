@@ -33,7 +33,10 @@ struct FlowLayout: Layout {
             let rowWidth = row.enumerated().reduce(CGFloat.zero) { acc, pair in
                 acc + pair.element.size.width + (pair.offset > 0 ? horizontalSpacing : 0)
             }
-            var x = bounds.minX + (bounds.width - rowWidth) / 2
+            // Clamp the centering offset to be non-negative so a row wider than
+            // the available bounds (e.g. a single over-wide chip) starts at the
+            // left edge instead of being centered off-screen and clipped.
+            var x = bounds.minX + max(0, (bounds.width - rowWidth) / 2)
 
             for item in row {
                 let yOffset = (rowHeight - item.size.height) / 2

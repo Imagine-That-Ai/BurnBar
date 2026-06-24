@@ -92,6 +92,7 @@ struct SettingsDrillRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .layoutPriority(1)
 
             Spacer(minLength: DesignSystem.Spacing.sm)
 
@@ -105,6 +106,7 @@ struct SettingsDrillRow: View {
                     .foregroundStyle(valueTint ?? DesignSystem.Colors.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .frame(maxWidth: 160, alignment: .trailing)
             }
         }
         .padding(.vertical, DesignSystem.Spacing.xs)

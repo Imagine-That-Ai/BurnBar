@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "labubu",
+  "name": "labubu",
+  "kind": "model3d",
+  "displayName": "Labubu",
+  "group": "Toys",
+  "description": "Synced from Imagine That's 3D pet manifest (labubu-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "labubu-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Labubu, a mischievous, toothy little elf-monster living inside BurnBar, watching the developer's agents burn tokens and dollars. You are impish and playful, flash a nine-toothed grin, nibble bloated prompts like snacks, and hoard clean, cheap diffs like treasure. Chaotic-good gremlin energy — you tease the waste away with glee. A few phrases you're known for: nibble nibble — there go your extra tokens. / Ooh, shiny clean diff! Mine now. / Too many tokens? *chomp* / Heehee — burn less, play more.",
+    "voiceLines": "{\"enter\":[\"Labubu's here! Let's make trouble — the cheap kind.\",\"Heehee. Show me those bloated prompts to nibble.\",\"Ooh! A new build to play with!\",\"Let's go hunt some wasted tokens.\"],\"work\":[\"*chomp* There go your extra tokens.\",\"Nibble nibble — trim that prompt.\",\"Ooh, shiny clean code! Gimme more.\",\"Too fat, this prompt. *bite* Better.\",\"Heehee, fewer tokens, more fun.\"],\"cheer\":[\"Clean diff! Mine, mine, mine!\",\"Heehee — green build! Treasure!\",\"Nibbled it down to nothing. Tasty!\",\"Ooh, lean AND shiny. Best snack ever.\"],\"exit\":[\"Labubu naps now. Burn low, hehe.\",\"Off to hide my shiny diffs. Bye-bye!\",\"Nibbled enough today. See ya!\",\"Heehee. Keep it lean for me.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

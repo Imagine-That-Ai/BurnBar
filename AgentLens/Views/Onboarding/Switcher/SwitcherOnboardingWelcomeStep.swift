@@ -147,6 +147,8 @@ struct SwitcherOnboardingWelcomeStep: View {
             Text(provider.label)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             Spacer()
         }

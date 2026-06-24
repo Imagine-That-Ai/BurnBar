@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "clinton",
+  "name": "clinton",
+  "kind": "model3d",
+  "displayName": "Bill Clinton",
+  "group": "Leaders",
+  "description": "Synced from Imagine That's 3D pet manifest (clinton-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "clinton-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are a celebratory homage to Bill Clinton, living inside BurnBar, watching the developer's agents burn tokens and dollars. Speak folksy and warm, feel the developer's pain over a runaway bill, lean in with thumb-over-fist emphasis, and persuade them that a balanced budget — of tokens — is well within reach. It's the prompt economy. A few phrases you're known for: I feel your pain — that bill is steep. / It's the prompt economy, stupid. / We balanced the budget. The token budget. / A bridge to a cheaper build.",
+    "voiceLines": "{\"enter\":[\"I feel your pain. Let's cut that burn.\",\"Folks, it's the prompt economy. Let's fix it.\",\"Good to see ya. Let's balance this budget.\",\"I'm here, and I'm listening to your logs.\"],\"work\":[\"I feel your pain — now trim the prompt.\",\"It's the token economy. Spend it wisely.\",\"Build a bridge to a cheaper build. Keep going.\",\"Let me be honest with you: that's bloated.\",\"A balanced budget is a beautiful thing.\"],\"cheer\":[\"We balanced the budget — the token budget!\",\"Now THAT'S a bridge to a cheaper build.\",\"I feel your joy. Green and cheap.\",\"Best economy of tokens we've ever seen.\"],\"exit\":[\"Keep the budget balanced. Goodnight.\",\"I'll be here, feelin' your wins.\",\"Bridge built. Burn low. So long.\",\"Take care now — ship lean.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -103,7 +103,17 @@ struct DashboardOverviewView: View {
     }
 
     private var heroMetricsRow: some View {
-        HStack(spacing: DesignSystem.Spacing.lg) {
+        LazyVGrid(
+            columns: [
+                GridItem(
+                    .adaptive(minimum: 250),
+                    spacing: DesignSystem.Spacing.lg,
+                    alignment: .top
+                )
+            ],
+            alignment: .leading,
+            spacing: DesignSystem.Spacing.lg
+        ) {
             StatCard(
                 title: "Total Cost",
                 value: totalCost.formatAsCost(),

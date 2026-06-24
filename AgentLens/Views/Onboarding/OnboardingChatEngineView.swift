@@ -46,6 +46,8 @@ struct OnboardingChatEngineView: View {
                                 Text(backend.displayName)
                                     .font(DesignSystem.Typography.body)
                                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
 
                             if backend == .hermes {
@@ -77,29 +79,50 @@ struct OnboardingChatEngineView: View {
             }
 
             // Gateway health
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                Button("Check gateway health") {
-                    Task {
-                        await chatController?.probeHermesAvailability()
-                        await chatController?.probeOpenClawAvailability()
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: DesignSystem.Spacing.lg) {
+                    gatewayHealthButton
+                    gatewayHealthChips
                 }
-                .buttonStyle(.bordered)
-                .font(DesignSystem.Typography.caption)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    gatewayHealthButton
+                    gatewayHealthChips
+                }
+            }
+        }
+    }
 
-                if let ctrl = chatController {
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        gatewayDot(ok: ctrl.hermesAvailable)
-                        Text("Hermes")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        gatewayDot(ok: ctrl.openClawAvailable)
-                        Text("OpenClaw")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
+    private var gatewayHealthButton: some View {
+        Button("Check gateway health") {
+            Task {
+                await chatController?.probeHermesAvailability()
+                await chatController?.probeOpenClawAvailability()
+            }
+        }
+        .buttonStyle(.bordered)
+        .font(DesignSystem.Typography.caption)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var gatewayHealthChips: some View {
+        if let ctrl = chatController {
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    gatewayDot(ok: ctrl.hermesAvailable)
+                    Text("Hermes")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    gatewayDot(ok: ctrl.openClawAvailable)
+                    Text("OpenClaw")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
         }

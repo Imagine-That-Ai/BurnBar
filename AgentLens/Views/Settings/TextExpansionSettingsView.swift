@@ -472,6 +472,9 @@ struct TextExpansionSettingsView: View {
                         Text(trigger.hasPrefix("&&") ? trigger : "&&\(trigger)")
                             .font(DesignSystem.Typography.mono)
                             .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: 240, alignment: .leading)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(
@@ -578,27 +581,22 @@ struct TextExpansionSettingsView: View {
                     }
 
                     // Mode Picker Row
-                    HStack(spacing: DesignSystem.Spacing.lg) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Expansion Mode")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .fontWeight(.medium)
-                            Text(mode == .llmRewrite
-                                 ? "Rewrites text dynamically using LLM thread context."
-                                 : "Inserts exact matching text immediately.")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: DesignSystem.Spacing.lg) {
+                            modeDescriptionColumn
+
+                            Spacer()
+
+                            modePicker
+                                .frame(width: 220)
                         }
 
-                        Spacer()
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            modeDescriptionColumn
 
-                        Picker("", selection: $mode) {
-                            Text("Static").tag(TextExpansionMode.staticText)
-                            Text("LLM Preview").tag(TextExpansionMode.llmRewrite)
+                            modePicker
+                                .frame(maxWidth: .infinity)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 220)
                     }
                     .padding(.vertical, 4)
                 }
@@ -755,6 +753,31 @@ struct TextExpansionSettingsView: View {
             )
         }
         .settingsAnchor(SettingsAnchor.textExpansionSnippets)
+    }
+
+    // MARK: - Mode Picker Row Components
+
+    private var modeDescriptionColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Expansion Mode")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fontWeight(.medium)
+            Text(mode == .llmRewrite
+                 ? "Rewrites text dynamically using LLM thread context."
+                 : "Inserts exact matching text immediately.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var modePicker: some View {
+        Picker("", selection: $mode) {
+            Text("Static").tag(TextExpansionMode.staticText)
+            Text("LLM Preview").tag(TextExpansionMode.llmRewrite)
+        }
+        .pickerStyle(.segmented)
     }
 
     // MARK: - Mode Badge

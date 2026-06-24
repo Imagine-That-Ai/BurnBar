@@ -27,110 +27,109 @@ struct SwitcherOnboardingDoneStep: View {
     }
 
     var body: some View {
-        VStack(spacing: DesignSystem.Spacing.xl) {
-            Spacer()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: DesignSystem.Spacing.xl) {
+                // Animated success
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(DesignSystem.Colors.success)
+                    .scaleEffect(checkmarkScale)
+                    .opacity(checkmarkOpacity)
+                    .accessibilityHidden(true)
 
-            // Animated success
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(DesignSystem.Colors.success)
-                .scaleEffect(checkmarkScale)
-                .opacity(checkmarkOpacity)
-                .accessibilityHidden(true)
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    Text("You\u{2019}re switched in")
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                Text("You\u{2019}re switched in")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s"). BurnBar can now keep provider reserves ready instead of making you reconnect from scratch.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
 
-                Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s"). BurnBar can now keep provider reserves ready instead of making you reconnect from scratch.")
+                // Provider-by-provider summary
+                if !providerSummaries.isEmpty {
+                    GlassCard {
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            ForEach(providerSummaries, id: \.label) { summary in
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    Image(systemName: summary.icon)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(summary.color)
+                                        .frame(width: 16)
+
+                                    Text(summary.label)
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                                    Spacer()
+
+                                    Text("\(summary.count) account\(summary.count == 1 ? "" : "s")")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                    }
+                }
+
+                // Verification results
+                if verifiedCount > 0 {
+                    GlassCard {
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            ForEach(identities.filter { $0.isVerified }) { identity in
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(DesignSystem.Colors.success)
+                                    Text(identity.displayTitle)
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Spacer()
+                                    Text("Verified")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.success)
+                                }
+                            }
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                    }
+                }
+
+                // Tips
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    tipRow(text: "Use Settings to reorder primary and reserve accounts within each provider")
+                    tipRow(text: "Keep extra Codex or Claude accounts connected before you need them")
+                    tipRow(text: "Review or reconnect accounts anytime in Settings → Account Switcher")
+                }
+                .padding(.vertical, DesignSystem.Spacing.md)
+
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    Button {
+                        onOpenSettings()
+                    } label: {
+                        Text("Open Settings Review")
+                            .font(DesignSystem.Typography.body)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, DesignSystem.Spacing.sm)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.amber)
+
+                    Button("Stay in menu bar") {
+                        onDismiss()
+                    }
+                    .buttonStyle(.plain)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            // Provider-by-provider summary
-            if !providerSummaries.isEmpty {
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.xs) {
-                        ForEach(providerSummaries, id: \.label) { summary in
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                Image(systemName: summary.icon)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(summary.color)
-                                    .frame(width: 16)
-
-                                Text(summary.label)
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                                Spacer()
-
-                                Text("\(summary.count) account\(summary.count == 1 ? "" : "s")")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            }
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.md)
                 }
             }
-
-            // Verification results
-            if verifiedCount > 0 {
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.xs) {
-                        ForEach(identities.filter { $0.isVerified }) { identity in
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(DesignSystem.Colors.success)
-                                Text(identity.displayTitle)
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Spacer()
-                                Text("Verified")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.success)
-                            }
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.md)
-                }
-            }
-
-            // Tips
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                tipRow(text: "Use Settings to reorder primary and reserve accounts within each provider")
-                tipRow(text: "Keep extra Codex or Claude accounts connected before you need them")
-                tipRow(text: "Review or reconnect accounts anytime in Settings → Account Switcher")
-            }
-            .padding(.vertical, DesignSystem.Spacing.md)
-
-            Spacer()
-
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                Button {
-                    onOpenSettings()
-                } label: {
-                    Text("Open Settings Review")
-                        .font(DesignSystem.Typography.body)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, DesignSystem.Spacing.sm)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(DesignSystem.Colors.amber)
-
-                Button("Stay in menu bar") {
-                    onDismiss()
-                }
-                .buttonStyle(.plain)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignSystem.Spacing.lg)
         }
-        .frame(maxWidth: .infinity)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.6).delay(0.15)) {
                 checkmarkScale = 1.0

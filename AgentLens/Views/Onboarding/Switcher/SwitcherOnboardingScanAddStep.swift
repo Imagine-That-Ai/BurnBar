@@ -504,9 +504,14 @@ struct SwitcherOnboardingScanAddStep: View {
                     Text(title)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Text(subtitle)
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -973,7 +978,7 @@ private struct IdentityCard: View {
     // MARK: - Quota
 
     private func quotaSummaryView(_ summary: IdentityQuotaSummary) -> some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
+        FlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xxs) {
             quotaPill(label: "5h left", value: summary.fiveHourRemaining ?? "--", reset: summary.fiveHourReset)
             quotaPill(label: "7d left", value: summary.weeklyRemaining ?? "--", reset: summary.weeklyReset)
         }
@@ -986,9 +991,11 @@ private struct IdentityCard: View {
                 .font(DesignSystem.Typography.monoTiny)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .lineLimit(1)
             Text(value)
                 .font(DesignSystem.Typography.monoTiny)
                 .foregroundStyle(DesignSystem.Colors.success)
+                .lineLimit(1)
             if let reset {
                 Text("· \(reset)")
                     .font(DesignSystem.Typography.monoTiny)
@@ -996,6 +1003,7 @@ private struct IdentityCard: View {
                     .lineLimit(1)
             }
         }
+        .fixedSize()
         .padding(.horizontal, DesignSystem.Spacing.xs)
         .padding(.vertical, 4)
         .background(

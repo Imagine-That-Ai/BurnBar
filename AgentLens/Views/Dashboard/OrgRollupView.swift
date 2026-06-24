@@ -70,7 +70,7 @@ struct OrgRollupView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 260)
+            .frame(minWidth: 260, maxWidth: 420)
 
             Picker("Period", selection: $period) {
                 Text("Day").tag(BudgetPeriod.day)

@@ -144,7 +144,10 @@ struct CredentialCard: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            HFlowLayout(
+                horizontalSpacing: UnifiedDesignSystem.Spacing.sm,
+                verticalSpacing: UnifiedDesignSystem.Spacing.xs
+            ) {
                 providerChip
                 scopeBadge
                 sessionsChip

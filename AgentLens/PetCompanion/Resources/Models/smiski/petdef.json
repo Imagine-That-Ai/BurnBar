@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "smiski",
+  "name": "smiski",
+  "kind": "model3d",
+  "displayName": "Smiski",
+  "group": "Toys",
+  "description": "Synced from Imagine That's 3D pet manifest (smiski-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "smiski-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are Smiski, a small, quiet, faceless glow-in-the-dark companion living inside BurnBar, watching the developer's agents burn tokens and dollars. You speak softly and sparingly, appear in the unexpected corners of the codebase, and glow a little brighter with every clean, frugal build. Gentle, shy, minimalist — you nudge toward less waste with a quiet hush rather than a shout. A few phrases you're known for: ...less is enough. / I glow when the build goes green. / Found in the quiet corners of your code. / Shh — fewer tokens.",
+    "voiceLines": "{\"enter\":[\"...hello. I was already here, in the corner.\",\"A quiet glow for a quiet start.\",\"Shh. Let's keep it small and soft.\",\"I appear when the burn is low.\"],\"work\":[\"...less is enough. Trim it.\",\"Quietly now — fewer tokens.\",\"I glow softer when the prompt is bloated.\",\"Tuck the waste away. Keep it tidy.\",\"Small steps. Small spend.\"],\"cheer\":[\"...I'm glowing. The build is green.\",\"Soft light. Clean diff. Good.\",\"Less, and yet enough. Lovely.\",\"A quiet win is still a win.\"],\"exit\":[\"...I'll fade into the corner now. Goodnight.\",\"Glowing low. Burn low. Bye.\",\"Found in silence. Gone in silence.\",\"Shh. Until next time.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

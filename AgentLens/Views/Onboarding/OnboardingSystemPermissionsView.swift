@@ -238,36 +238,58 @@ private struct PermissionsCard: View {
     }
 
     private var controls: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            Button {
-                Task { await coordinator.requestCurrent() }
-            } label: {
-                Text(primaryLabel)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(minWidth: step.kind == .automation ? 112 : 140)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                primaryButton
+                skipButton
+                Spacer()
+                openSettingsButton
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(coordinator.liveStatus(for: step) == .granted)
-
-            Button {
-                coordinator.skipCurrent()
-            } label: {
-                Text("Skip for now")
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    primaryButton
+                    skipButton
+                    Spacer()
+                }
+                openSettingsButton
             }
-            .buttonStyle(.bordered)
-
-            Spacer()
-
-            Button {
-                coordinator.openSystemSettings(for: step)
-            } label: {
-                Label(settingsLabel, systemImage: "gear")
-                    .font(DesignSystem.Typography.caption)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
         }
+    }
+
+    private var primaryButton: some View {
+        Button {
+            Task { await coordinator.requestCurrent() }
+        } label: {
+            Text(primaryLabel)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(minWidth: step.kind == .automation ? 112 : 140)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(coordinator.liveStatus(for: step) == .granted)
+    }
+
+    private var skipButton: some View {
+        Button {
+            coordinator.skipCurrent()
+        } label: {
+            Text("Skip for now")
+                .lineLimit(1)
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var openSettingsButton: some View {
+        Button {
+            coordinator.openSystemSettings(for: step)
+        } label: {
+            Label(settingsLabel, systemImage: "gear")
+                .font(DesignSystem.Typography.caption)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
     }
 
     private var primaryLabel: String {

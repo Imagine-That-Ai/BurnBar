@@ -149,11 +149,15 @@ struct BudgetSettingsView: View {
 
     private var reconciliationSection: some View {
         Section {
-            HStack {
-                Label("Billing API reconciliation compares local-pricing spend against Anthropic / OpenAI / OpenRouter billing APIs. Drift > 5% is flagged in the audit log above.", systemImage: "arrow.triangle.2.circlepath")
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                Spacer()
+                Text("Billing API reconciliation compares local-pricing spend against Anthropic / OpenAI / OpenRouter billing APIs. Drift > 5% is flagged in the audit log above.")
+                    .font(.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         } header: {
             Text("Reconciliation")
@@ -196,7 +200,10 @@ struct BudgetRuleRow: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
+            .layoutPriority(1)
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text("$\(rule.amountUSD, specifier: "%.2f")")

@@ -102,49 +102,58 @@ struct ProfileRowView: View {
 
                 // Profile identity
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: DesignSystem.Spacing.xs) {
+                    HStack(alignment: .center, spacing: DesignSystem.Spacing.xs) {
                         Text(profile.displayName)
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                        if profile.isDisabled {
-                            Text("Paused")
-                                .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignSystem.Colors.textMuted.opacity(0.14))
-                                .clipShape(Capsule())
-                        }
+                        // Status badges wrap to a second line instead of forcing the
+                        // name to truncate too early on a narrow pane.
+                        FlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xxs) {
+                            if profile.isDisabled {
+                                Text("Paused")
+                                    .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.textMuted.opacity(0.14))
+                                    .clipShape(Capsule())
+                            }
 
-                        if isConnected {
-                            Text("Logged in")
-                                .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignSystem.Colors.success)
-                                .clipShape(Capsule())
-                        }
+                            if isConnected {
+                                Text("Logged in")
+                                    .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.success)
+                                    .clipShape(Capsule())
+                            }
 
-                        if let idx = fallbackIndex {
-                            Text(idx == 1 ? "primary" : "reserve \(idx - 1)")
-                                .font(DesignSystem.Typography.monoTiny)
-                                .foregroundStyle(providerColor.opacity(0.7))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(providerColor.opacity(0.10))
-                                .clipShape(Capsule())
+                            if let idx = fallbackIndex {
+                                Text(idx == 1 ? "primary" : "reserve \(idx - 1)")
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(providerColor.opacity(0.7))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(providerColor.opacity(0.10))
+                                    .clipShape(Capsule())
+                            }
                         }
+                        .layoutPriority(1)
                     }
 
                     // Account identity line — the most important info
                     Text(accountIdentityText)
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(accountIdentityColor)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
 
                     if !cliQuotaWindows.isEmpty {
-                        HStack(spacing: DesignSystem.Spacing.xs) {
+                        FlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xxs) {
                             ForEach(cliQuotaWindows) { window in
                                 quotaWindowPill(window)
                             }
@@ -244,6 +253,7 @@ struct ProfileRowView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Delete \(profile.displayName)")
                 }
+                .layoutPriority(1)
                 .opacity(isHovered || isConnected || profile.isDisabled ? 1 : 0.55)
                 .animation(DesignSystem.Animation.hover, value: isHovered)
             }

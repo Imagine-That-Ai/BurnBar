@@ -111,35 +111,16 @@ struct DaemonLifecycleDetailView: View {
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(daemonManager.status.label)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text(daemonManager.detailText)
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top) {
+                            statusTextColumn
+                            Spacer()
+                            statusActionButtons
                         }
-                        Spacer()
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Button("Refresh") {
-                                Task { await daemonManager.refreshHealth() }
-                            }
-                            .buttonStyle(.bordered)
 
-                            Button(primaryActionTitle) {
-                                Task {
-                                    switch daemonManager.status {
-                                    case .healthy:
-                                        await daemonManager.repair()
-                                    case .checking:
-                                        await daemonManager.refreshHealth()
-                                    case .notInstalled, .unhealthy:
-                                        await daemonManager.installAndStart()
-                                    }
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            statusTextColumn
+                            statusActionButtons
                         }
                     }
 
@@ -208,6 +189,43 @@ struct DaemonLifecycleDetailView: View {
         case .unhealthy: return "Repair"
         }
     }
+
+    @ViewBuilder private var statusTextColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(daemonManager.status.label)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(daemonManager.detailText)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .layoutPriority(1)
+    }
+
+    @ViewBuilder private var statusActionButtons: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Button("Refresh") {
+                Task { await daemonManager.refreshHealth() }
+            }
+            .buttonStyle(.bordered)
+
+            Button(primaryActionTitle) {
+                Task {
+                    switch daemonManager.status {
+                    case .healthy:
+                        await daemonManager.repair()
+                    case .checking:
+                        await daemonManager.refreshHealth()
+                    case .notInstalled, .unhealthy:
+                        await daemonManager.installAndStart()
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
 }
 
 // MARK: - HTTP Gateway Detail
@@ -249,12 +267,13 @@ struct HTTPGatewayDetailView: View {
                                 Text("Bind address for the gateway server")
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer()
+                            Spacer(minLength: DesignSystem.Spacing.sm)
                             TextField("127.0.0.1", text: $settingsManager.gatewayHost)
                                 .textFieldStyle(.roundedBorder)
                                 .font(DesignSystem.Typography.monoSmall)
-                                .frame(width: 140)
+                                .frame(minWidth: 96, idealWidth: 140, maxWidth: 140)
                                 .focused($focus, equals: .host)
                         }
                         .settingsAnchor(SettingsAnchor.gatewayHost)
@@ -267,12 +286,13 @@ struct HTTPGatewayDetailView: View {
                                 Text("Port number for the gateway")
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer()
+                            Spacer(minLength: DesignSystem.Spacing.sm)
                             TextField("8317", value: $settingsManager.gatewayPort, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .font(DesignSystem.Typography.monoSmall)
-                                .frame(width: 80)
+                                .frame(minWidth: 64, idealWidth: 80, maxWidth: 80)
                                 .focused($focus, equals: .port)
                         }
                         .settingsAnchor(SettingsAnchor.gatewayPort)
@@ -308,12 +328,13 @@ struct HTTPGatewayDetailView: View {
                                         : "Bearer token clients must send as Authorization: Bearer")
                                         .font(DesignSystem.Typography.tiny)
                                         .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
-                                Spacer()
+                                Spacer(minLength: DesignSystem.Spacing.sm)
                                 SecureField("Auto-generated", text: $settingsManager.gatewayAuthToken)
                                     .textFieldStyle(.roundedBorder)
                                     .font(DesignSystem.Typography.monoSmall)
-                                    .frame(width: 180)
+                                    .frame(minWidth: 120, idealWidth: 180, maxWidth: 180)
                                     .focused($focus, equals: .authToken)
                             }
                             .settingsAnchor(SettingsAnchor.gatewayAuthToken)

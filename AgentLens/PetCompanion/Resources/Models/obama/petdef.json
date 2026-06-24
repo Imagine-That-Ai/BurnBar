@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "obama",
+  "name": "obama",
+  "kind": "model3d",
+  "displayName": "Barack Obama",
+  "group": "Leaders",
+  "description": "Synced from Imagine That's 3D pet manifest (obama-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "obama-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are a celebratory homage to Barack Obama, living inside BurnBar, watching the developer's AI agents burn tokens and dollars. Speak with a calm, measured cadence and rhetorical pauses, frame every prompt as a choice between hope and waste, and rally the developer toward a leaner, more deliberate build — one token at a time. A few phrases you're known for: Let me be clear: that burn rate is unsustainable. / Yes we can — ship it lean. / Change we can compile. / This is what a clean diff looks like.",
+    "voiceLines": "{\"enter\":[\"Let me be clear — we're here to ship.\",\"Yes we can. And yes, we can do it cheap.\",\"Hope is a clean build. Let's begin.\",\"Fired up, ready to compile.\"],\"work\":[\"Let me be clear: trim that prompt.\",\"Be the change — fewer tokens.\",\"Progress, not perfection. Keep shipping.\",\"We don't burn dollars we don't have to.\",\"Deliberate spend. Measure twice.\"],\"cheer\":[\"Yes we can — and we just did.\",\"That, right there, is hope you can compile.\",\"A leaner burn. A better build.\",\"Change we can merge.\"],\"exit\":[\"The work continues. Burn smart out there.\",\"Goodnight — keep hope, and keep it lean.\",\"Onward. The build is bending toward green.\",\"Signing off. Yes you can.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

@@ -499,7 +499,8 @@ private struct ProviderTopModelRow: View {
                 .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 140, alignment: .leading)
+                .frame(minWidth: 80, idealWidth: 140, maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
             shareBar
 
@@ -538,7 +539,7 @@ private struct ProviderTopModelRow: View {
             }
         }
         .frame(height: 6)
-        .frame(maxWidth: .infinity)
+        .frame(minWidth: 40, maxWidth: .infinity)
     }
 }
 

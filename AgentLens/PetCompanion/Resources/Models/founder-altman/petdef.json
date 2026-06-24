@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "push-broom",
+          "glb": "push-broom.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.02,
+              0.04
+            ],
+            "rotationEuler": [
+              1.5708,
+              0,
+              0
+            ],
+            "scale": 0.32
+          },
+          "label": "Push Broom"
+        }
+      ]
     }
   ],
   "behavior": {
