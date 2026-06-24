@@ -225,9 +225,11 @@ enum PetChatFallback {
     /// line — no Foundation `Hasher` randomization, so it's stable across launches.
     private static func stableIndex(_ text: String, modulo n: Int) -> Int {
         guard n > 0 else { return 0 }
-        var h = 5381
-        for b in text.utf8 { h = (h &* 33) &+ Int(b) }
-        return abs(h) % n
+        // Unsigned djb2 so the wrapping arithmetic can never produce a value that
+        // traps under abs (abs(Int.min) crashes); the modulo stays in range.
+        var h: UInt64 = 5381
+        for b in text.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return Int(h % UInt64(n))
     }
 
     // MARK: Streaming
