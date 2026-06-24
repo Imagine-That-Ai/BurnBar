@@ -147,11 +147,81 @@ runs:
             .filter(Boolean);
           // The lane label is the dedupe key — always present. Severity/area
           // labels are additive context, never the matcher.
+          const COUNT_PREFIX = 'failures:';
           const allLabels = Array.from(new Set([laneLabel, ...extraLabels]));
+          const labelDescriptions = new Map([
+            [laneLabel, `OpenBurnBar ops failure lane: ${lane}`],
+            ['P0 - Critical', 'Blocker: production down or data loss risk. Fix immediately.'],
+            ['P1 - High', 'Major impact. Fix within 24 hours.'],
+            ['P2 - Medium', 'Significant issue. Fix within this sprint.'],
+            ['P3 - Low', 'Nice to have. Fix when capacity allows.'],
+            ['area: infra', 'CI/CD, build, deployment infrastructure.'],
+          ]);
+          const labelColor = (name) => {
+            if (name.startsWith('lane:')) return 'd0e0ff';
+            if (name.startsWith(COUNT_PREFIX)) return 'fbca04';
+            if (name === 'P0 - Critical') return 'd73a4a';
+            if (name === 'P1 - High') return 'e4503f';
+            if (name === 'P2 - Medium') return 'f4c430';
+            if (name === 'P3 - Low') return '0075ca';
+            if (name.startsWith('area:')) return 'd0e0ff';
+            return 'ededed';
+          };
+          const labelDescription = (name) => {
+            if (labelDescriptions.has(name)) return labelDescriptions.get(name);
+            if (name.startsWith(COUNT_PREFIX)) return 'Number of recurring failures recorded on this standing ops issue.';
+            if (name.startsWith('lane:')) return `OpenBurnBar ops failure lane: ${name.slice('lane:'.length)}`;
+            return `OpenBurnBar ops failure context: ${name}`;
+          };
+          const ensureIssueLabel = async (name) => {
+            const safeName = labelText(name);
+            if (!safeName) return;
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: safeName,
+              });
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: safeName,
+                color: labelColor(safeName),
+                description: labelDescription(safeName).slice(0, 100),
+              });
+            } catch (error) {
+              if (error.status === 422) {
+                try {
+                  await github.rest.issues.getLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: safeName,
+                  });
+                  return;
+                } catch {
+                  // Fall through to the original create failure when the 422 was
+                  // not a concurrent label creation.
+                }
+              }
+              throw error;
+            }
+          };
+          const ensureIssueLabels = async (labels) => {
+            for (const label of labels) {
+              await ensureIssueLabel(label);
+            }
+          };
 
           const runUrl =
             `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
             `/actions/runs/${context.runId}`;
+
+          await ensureIssueLabels([laneLabel]);
 
           // Find this lane's open issue by the per-lane label ONLY, paginating
           // fully so a backlog of other-lane issues can never hide it.
@@ -163,7 +233,6 @@ runs:
             per_page: 100,
           });
 
-          const COUNT_PREFIX = 'failures:';
           const bumpCountLabel = (issue) => {
             const current = (issue.labels || [])
               .map((l) => (typeof l === 'string' ? l : l.name))
@@ -173,11 +242,13 @@ runs:
           };
 
           if (mode === 'open') {
+            await ensureIssueLabels([...allLabels, `${COUNT_PREFIX}1`]);
             if (matches.length > 0) {
               // Standing red: COMMENT + bump the counter label. Never silently
               // skip — a new occurrence must always leave a trace.
               const issue = matches[0];
               const { previous, next } = bumpCountLabel(issue);
+              await ensureIssueLabels([next]);
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

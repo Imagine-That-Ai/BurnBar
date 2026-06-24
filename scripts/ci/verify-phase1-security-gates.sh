@@ -43,6 +43,12 @@ require_pattern "extension npm ci in test matrix" \
 require_pattern "per-lane ops failure dedupe" \
   'lane:\$\{lane\}' \
   .github/actions/ops-failure-issue/action.yml
+require_pattern "ops failure action creates missing labels" \
+  'github\.rest\.issues\.createLabel' \
+  .github/actions/ops-failure-issue/action.yml
+require_pattern "ops failure action ensures labels before use" \
+  'ensureIssueLabels\(\[\.{3}allLabels, `\$\{COUNT_PREFIX\}1`\]\)' \
+  .github/actions/ops-failure-issue/action.yml
 reject_pattern "nightly core excludes privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
   .github/workflows/nightly-e2e.yml
