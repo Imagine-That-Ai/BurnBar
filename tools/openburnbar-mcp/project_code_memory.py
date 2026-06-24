@@ -111,13 +111,19 @@ def _load_secret_corpus() -> dict[str, Any] | None:
         return json.load(handle)
 
 
-def _compile_secret_patterns() -> tuple[list[tuple[str, re.Pattern[str]]], dict[str, Any], dict[str, Any], bool]:
+def _compile_secret_patterns() -> tuple[
+    list[tuple[str, re.Pattern[str]]],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    bool,
+]:
     try:
         corpus = _load_secret_corpus()
     except (OSError, json.JSONDecodeError, re.error):
         corpus = None
     if not corpus:
-        return [], {}, {}, False
+        return [], {}, {}, {}, False
 
     compiled: list[tuple[str, re.Pattern[str]]] = []
     try:
@@ -131,11 +137,23 @@ def _compile_secret_patterns() -> tuple[list[tuple[str, re.Pattern[str]]], dict[
                 flags |= re.MULTILINE
             compiled.append((str(spec["label"]), re.compile(str(spec["regex"]), flags)))
     except (KeyError, TypeError, re.error):
-        return [], {}, {}, False
-    return compiled, dict(corpus.get("entropy") or {}), dict(corpus.get("decoding") or {}), True
+        return [], {}, {}, {}, False
+    return (
+        compiled,
+        dict(corpus.get("entropy") or {}),
+        dict(corpus.get("hexEntropy") or {}),
+        dict(corpus.get("decoding") or {}),
+        True,
+    )
 
 
-SECRET_PATTERNS, SECRET_ENTROPY_CONFIG, SECRET_DECODING_CONFIG, SECRET_CORPUS_AVAILABLE = _compile_secret_patterns()
+(
+    SECRET_PATTERNS,
+    SECRET_ENTROPY_CONFIG,
+    SECRET_HEX_ENTROPY_CONFIG,
+    SECRET_DECODING_CONFIG,
+    SECRET_CORPUS_AVAILABLE,
+) = _compile_secret_patterns()
 
 
 def wrap_untrusted_snippet(
@@ -207,10 +225,7 @@ def _decoded_secret_views(text: str) -> list[str]:
         except binascii.Error:
             continue
         if 0 < len(decoded) <= max_decoded_bytes:
-            try:
-                views.append(decoded.decode("utf-8"))
-            except UnicodeDecodeError:
-                continue
+            views.append(decoded.decode("utf-8", errors="replace"))
 
     for match in HEX_SECRET_CANDIDATE_RE.finditer(text):
         if len(views) >= max_candidates:
@@ -223,10 +238,7 @@ def _decoded_secret_views(text: str) -> list[str]:
         except ValueError:
             continue
         if 0 < len(decoded) <= max_decoded_bytes:
-            try:
-                views.append(decoded.decode("utf-8"))
-            except UnicodeDecodeError:
-                continue
+            views.append(decoded.decode("utf-8", errors="replace"))
 
     return views
 
@@ -252,23 +264,35 @@ def _shannon_entropy(value: str) -> float:
 
 
 def _entropy_labels(text: str) -> list[str]:
-    if not SECRET_ENTROPY_CONFIG.get("enabled", False):
-        return []
-    label = str(SECRET_ENTROPY_CONFIG.get("label") or "High entropy secret-like token detected")
-    min_length = int(SECRET_ENTROPY_CONFIG.get("minLength") or 32)
-    max_length = int(SECRET_ENTROPY_CONFIG.get("maxLength") or 4096)
-    min_entropy = float(SECRET_ENTROPY_CONFIG.get("minShannonEntropy") or 4.2)
-    for match in SECRET_LIKE_TOKEN_RE.finditer(text):
-        token = match.group(0)
-        if not (min_length <= len(token) <= max_length):
-            continue
-        if len(set(token)) < 10:
-            continue
-        if not (any(char.isalpha() for char in token) and any(char.isdigit() for char in token)):
-            continue
-        if _shannon_entropy(token) >= min_entropy:
-            return [label]
-    return []
+    labels: list[str] = []
+    if SECRET_ENTROPY_CONFIG.get("enabled", False):
+        label = str(SECRET_ENTROPY_CONFIG.get("label") or "High entropy secret-like token detected")
+        min_length = int(SECRET_ENTROPY_CONFIG.get("minLength") or 32)
+        max_length = int(SECRET_ENTROPY_CONFIG.get("maxLength") or 4096)
+        min_entropy = float(SECRET_ENTROPY_CONFIG.get("minShannonEntropy") or 4.2)
+        for match in SECRET_LIKE_TOKEN_RE.finditer(text):
+            token = match.group(0)
+            if not (min_length <= len(token) <= max_length):
+                continue
+            if len(set(token)) < 10:
+                continue
+            if not (any(char.isalpha() for char in token) and any(char.isdigit() for char in token)):
+                continue
+            if _shannon_entropy(token) >= min_entropy:
+                labels.append(label)
+                break
+
+    if SECRET_HEX_ENTROPY_CONFIG.get("enabled", False):
+        label = str(SECRET_HEX_ENTROPY_CONFIG.get("label") or "High-entropy hex secret-like token detected")
+        min_length = int(SECRET_HEX_ENTROPY_CONFIG.get("minLength") or 32)
+        max_length = int(SECRET_HEX_ENTROPY_CONFIG.get("maxLength") or 4096)
+        min_entropy = float(SECRET_HEX_ENTROPY_CONFIG.get("minShannonEntropy") or 3.0)
+        for match in HEX_SECRET_CANDIDATE_RE.finditer(text):
+            token = match.group(0)
+            if min_length <= len(token) <= max_length and _shannon_entropy(token) >= min_entropy:
+                labels.append(label)
+                break
+    return labels
 
 
 def project_root(project_path: str | None = None) -> Path:
