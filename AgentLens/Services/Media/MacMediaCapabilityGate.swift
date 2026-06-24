@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import LocalAuthentication
 import CryptoKit
 import CoreGraphics
 import FirebaseAuth
@@ -494,7 +495,7 @@ final class MacRemoteUnlockReadinessService {
         snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)? = nil,
         revokesPublishedTrustOnClearAll: Bool = true,
         credentialKeyMaterialProvider: @escaping CredentialKeyMaterialProvider = {
-            try RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial()
+            try RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial(allowUserInteraction: false)
         },
         issuerTrustPublisher: @escaping IssuerTrustPublisher = MacRemoteUnlockReadinessService.defaultIssuerTrustPublisher,
         publishedTrustRevoker: @escaping PublishedTrustRevoker = MacRemoteUnlockReadinessService.defaultPublishedTrustRevoker,
@@ -1000,18 +1001,33 @@ struct RemoteUnlockCredentialKeyMaterial: Sendable {
 final class RemoteUnlockCredentialKeyStore: Sendable {
     static let shared = RemoteUnlockCredentialKeyStore()
 
-    private let service = "com.openburnbar.remote-unlock.hpke"
-    private let account = "default"
+    private let service: String
+    private let account: String
+    private let security: any SecurityKeychainOperations
     private let queue = DispatchQueue(label: "com.openburnbar.remote-unlock.hpke-key")
 
+    init(
+        service: String = "com.openburnbar.remote-unlock.hpke",
+        account: String = "default",
+        security: any SecurityKeychainOperations = LiveSecurityKeychainOperations()
+    ) {
+        self.service = service
+        self.account = account
+        self.security = security
+    }
+
     func copyOrCreateKeyMaterial() throws -> RemoteUnlockCredentialKeyMaterial {
+        try copyOrCreateKeyMaterial(allowUserInteraction: true)
+    }
+
+    func copyOrCreateKeyMaterial(allowUserInteraction: Bool) throws -> RemoteUnlockCredentialKeyMaterial {
         try queue.sync {
-            if let data = try copyPrivateKeyData() {
+            if let data = try copyPrivateKeyData(allowUserInteraction: allowUserInteraction) {
                 return try material(fromPrivateKeyData: data)
             }
             let privateKey = Curve25519.KeyAgreement.PrivateKey()
             let data = privateKey.rawRepresentation
-            try savePrivateKeyData(data)
+            try savePrivateKeyData(data, allowUserInteraction: allowUserInteraction)
             return try material(fromPrivateKeyData: data)
         }
     }
@@ -1034,22 +1050,39 @@ final class RemoteUnlockCredentialKeyStore: Sendable {
         )
     }
 
-    private func copyPrivateKeyData() throws -> Data? {
+    private func copyPrivateKeyData(allowUserInteraction: Bool) throws -> Data? {
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !allowUserInteraction {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = allowUserInteraction
+            ? security.copyMatching(query: query as CFDictionary, item: &item)
+            : security.runWithDisabledInteraction {
+                security.copyMatching(query: query as CFDictionary, item: &item)
+            }
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else { throw KeychainError(status: status) }
         return item as? Data
     }
 
-    private func savePrivateKeyData(_ data: Data) throws {
+    private func savePrivateKeyData(_ data: Data, allowUserInteraction: Bool) throws {
         var item = baseQuery()
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(item as CFDictionary, nil)
+        if !allowUserInteraction {
+            item[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
+        let status = allowUserInteraction
+            ? security.add(query: item as CFDictionary)
+            : security.runWithDisabledInteraction {
+                security.add(query: item as CFDictionary)
+            }
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
