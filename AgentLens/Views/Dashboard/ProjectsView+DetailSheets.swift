@@ -1079,7 +1079,7 @@ struct ProjectMemoryVisualDetailSheet: View {
                             .font(DesignSystem.Typography.monoTiny)
                             .tracking(1.4)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .frame(width: 140, alignment: .trailing)
+                            .frame(minWidth: 90, maxWidth: 140, alignment: .trailing)
                     }
                 }
                 .padding(.vertical, DesignSystem.Spacing.sm)
@@ -1092,6 +1092,8 @@ struct ProjectMemoryVisualDetailSheet: View {
                         Text(point.label)
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(valueLabel(point))
                             .font(DesignSystem.Typography.monoSmall)
@@ -1102,9 +1104,11 @@ struct ProjectMemoryVisualDetailSheet: View {
                                 Text(subtitle)
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    .frame(width: 140, alignment: .trailing)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(minWidth: 90, maxWidth: 140, alignment: .trailing)
                             } else {
-                                Color.clear.frame(width: 140)
+                                Color.clear.frame(minWidth: 90, maxWidth: 140)
                             }
                         }
                     }

@@ -282,6 +282,10 @@ struct PetFormPickerView: View {
                 .padding(.horizontal, 2)
                 .padding(.vertical, DesignSystem.Spacing.xs)
             }
+            // Keep the gallery usable even when a short window starves the pane:
+            // the fixed chrome (search + category rail + divider) must not be able
+            // to collapse the only scrolling region to a few pixels.
+            .frame(minHeight: 320)
         }
     }
 

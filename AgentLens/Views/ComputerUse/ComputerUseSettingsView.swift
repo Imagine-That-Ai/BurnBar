@@ -314,7 +314,7 @@ struct ComputerUseSettingsView: View {
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .truncationMode(.tail)
                 }
 
                 Spacer(minLength: 12)
@@ -638,29 +638,20 @@ struct ComputerUseSettingsView: View {
 
                 sessionIdField
 
-                HStack(spacing: 8) {
-                    SettingsGlassButton(
-                        title: "Validate Chain",
-                        icon: "checkmark.seal",
-                        isEnabled: !trimmedAuditSessionId.isEmpty && auditStatus.kind != .running
-                    ) {
-                        validateAuditChain()
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        forensicsActionButtons
+                        Spacer(minLength: 12)
+                        forensicsScreenshotToggle
                     }
 
-                    SettingsGlassButton(
-                        title: "Export Archive",
-                        icon: "archivebox",
-                        isEnabled: !trimmedAuditSessionId.isEmpty && auditStatus.kind != .running
-                    ) {
-                        exportAuditArchive()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            forensicsActionButtons
+                            Spacer(minLength: 0)
+                        }
+                        forensicsScreenshotToggle
                     }
-
-                    Spacer(minLength: 12)
-
-                    Toggle("Include screenshots", isOn: $auditIncludeScreenshots)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .font(DesignSystem.Typography.caption)
                 }
 
                 advancedNotarizationDisclosure
@@ -675,6 +666,33 @@ struct ComputerUseSettingsView: View {
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private var forensicsActionButtons: some View {
+        SettingsGlassButton(
+            title: "Validate Chain",
+            icon: "checkmark.seal",
+            isEnabled: !trimmedAuditSessionId.isEmpty && auditStatus.kind != .running
+        ) {
+            validateAuditChain()
+        }
+
+        SettingsGlassButton(
+            title: "Export Archive",
+            icon: "archivebox",
+            isEnabled: !trimmedAuditSessionId.isEmpty && auditStatus.kind != .running
+        ) {
+            exportAuditArchive()
+        }
+    }
+
+    private var forensicsScreenshotToggle: some View {
+        Toggle("Include screenshots", isOn: $auditIncludeScreenshots)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(DesignSystem.Typography.caption)
+            .fixedSize()
     }
 
     private var sessionIdField: some View {

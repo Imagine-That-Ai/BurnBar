@@ -365,6 +365,8 @@ struct TrustedDevicesDetailView: View {
                     Text(device.displayName)
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     HStack(spacing: 4) {
                         Circle()
                             .fill(deviceStatusColor(device))
@@ -372,10 +374,13 @@ struct TrustedDevicesDetailView: View {
                         Text(deviceStatusText(device))
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(deviceStatusColor(device))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
+                Spacer(minLength: DesignSystem.Spacing.sm)
 
                 if device.trustState != .trusted {
                     Button(device.isCurrentDevice ? "Approve This Mac" : MacCopy.approveDevice) {
@@ -469,6 +474,9 @@ struct DeviceTrustSafetyCompareSheet: View {
                         Text(code)
                             .font(.system(.title3, design: .monospaced))
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .allowsTightening(true)
                             .textSelection(.enabled)
                             .accessibilityLabel("Safety code: \(EscrowDeviceSafetyCode.spelledOut(code))")
                     } else {

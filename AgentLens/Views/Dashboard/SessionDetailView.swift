@@ -389,6 +389,9 @@ private struct StatTile: View {
                 Text(value)
                     .font(DesignSystem.Typography.mono)
                     .foregroundStyle(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
                     .contentTransition(.numericText())
                     .animation(DesignSystem.Animation.gentle, value: transitionValue)
             }

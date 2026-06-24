@@ -160,6 +160,8 @@ struct ProxyModelCatalogPanel: View {
                         .font(DesignSystem.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     statusPill
                 }
                 Text(endpoint)
@@ -176,57 +178,15 @@ struct ProxyModelCatalogPanel: View {
 
             Spacer(minLength: DesignSystem.Spacing.md)
 
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                if let onRefreshRouteLog {
-                    Button {
-                        isRouteLogPresented = true
-                        onRefreshRouteLog()
-                    } label: {
-                        Label("Route log", systemImage: "list.bullet.rectangle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Show recent OpenBurnBar proxy routes with requested and proxy-sent model slugs.")
-                }
-
-                if let onSyncDroid {
-                    Button(action: onSyncDroid) {
-                        Label(droidSyncButtonTitle, systemImage: "arrow.down.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!canSyncDroid)
-                    .help("Writes every advertised route-ready BurnBar proxy model into Droid's Factory config files.")
-                    .accessibilityHint("Writes advertised route-ready BurnBar proxy models into Droid.")
-                }
-
-                if onAddCustomModel != nil {
-                    Button {
-                        isAddModelPresented = true
-                    } label: {
-                        Label("Add model", systemImage: "plus.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(addableProviders.isEmpty)
-                    .help("Advertise a provider model the bundled catalog doesn't know about (e.g. a brand-new model id).")
-                    .accessibilityHint("Add a custom model id to the proxy's advertised list.")
-                }
-
-                Button(action: copyEndpoint) {
-                    Label(copiedEndpoint ? "Copied" : "Copy URL", systemImage: copiedEndpoint ? "checkmark" : "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button(action: onRefresh) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(state.isLoading)
+            // Progressive degradation so the action row never crushes the
+            // identity column: full labels → icon-only → overflow menu + Refresh.
+            // (Replaces a `.fixedSize()` row that pinned all five buttons at
+            // full width and squeezed the endpoint/status text into a stack.)
+            ViewThatFits(in: .horizontal) {
+                headerActionButtons.labelStyle(.titleAndIcon)
+                headerActionButtons.labelStyle(.iconOnly)
+                headerActionsCompact
             }
-            .fixedSize()
         }
         .padding(DesignSystem.Spacing.md)
         .sheet(isPresented: $isRouteLogPresented) {
@@ -248,6 +208,113 @@ struct ProxyModelCatalogPanel: View {
                     onRemoveCustomModel?(providerID, modelID)
                 }
             )
+        }
+    }
+
+    /// The five trailing actions as one reusable row (no `.fixedSize()`, no
+    /// label style) so the `ViewThatFits` tiers share a single source of truth
+    /// and only differ by `.labelStyle`.
+    @ViewBuilder
+    private var headerActionButtons: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            if let onRefreshRouteLog {
+                Button {
+                    isRouteLogPresented = true
+                    onRefreshRouteLog()
+                } label: {
+                    Label("Route log", systemImage: "list.bullet.rectangle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Show recent OpenBurnBar proxy routes with requested and proxy-sent model slugs.")
+            }
+
+            if let onSyncDroid {
+                Button(action: onSyncDroid) {
+                    Label(droidSyncButtonTitle, systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!canSyncDroid)
+                .help("Writes every advertised route-ready BurnBar proxy model into Droid's Factory config files.")
+                .accessibilityHint("Writes advertised route-ready BurnBar proxy models into Droid.")
+            }
+
+            if onAddCustomModel != nil {
+                Button {
+                    isAddModelPresented = true
+                } label: {
+                    Label("Add model", systemImage: "plus.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(addableProviders.isEmpty)
+                .help("Advertise a provider model the bundled catalog doesn't know about (e.g. a brand-new model id).")
+                .accessibilityHint("Add a custom model id to the proxy's advertised list.")
+            }
+
+            Button(action: copyEndpoint) {
+                Label(copiedEndpoint ? "Copied" : "Copy URL", systemImage: copiedEndpoint ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button(action: onRefresh) {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(state.isLoading)
+        }
+    }
+
+    /// Narrowest tier: secondary actions fold into an overflow menu and only the
+    /// primary Refresh stays visible, so the row fits any pane width.
+    private var headerActionsCompact: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Menu {
+                if let onRefreshRouteLog {
+                    Button {
+                        isRouteLogPresented = true
+                        onRefreshRouteLog()
+                    } label: {
+                        Label("Route log", systemImage: "list.bullet.rectangle")
+                    }
+                }
+                if let onSyncDroid {
+                    Button(action: onSyncDroid) {
+                        Label(droidSyncButtonTitle, systemImage: "arrow.down.circle")
+                    }
+                    .disabled(!canSyncDroid)
+                }
+                if onAddCustomModel != nil {
+                    Button {
+                        isAddModelPresented = true
+                    } label: {
+                        Label("Add model", systemImage: "plus.circle")
+                    }
+                    .disabled(addableProviders.isEmpty)
+                }
+                Button(action: copyEndpoint) {
+                    Label(copiedEndpoint ? "Copied" : "Copy URL", systemImage: copiedEndpoint ? "checkmark" : "doc.on.doc")
+                }
+            } label: {
+                Label("More actions", systemImage: "ellipsis.circle")
+                    .labelStyle(.iconOnly)
+            }
+            .menuStyle(.borderlessButton)
+            .controlSize(.small)
+            .fixedSize()
+            .help("Route log, Sync to Droid, Add model, Copy URL")
+
+            Button(action: onRefresh) {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .labelStyle(.iconOnly)
+            .disabled(state.isLoading)
+            .help("Refresh the advertised model catalog")
         }
     }
 

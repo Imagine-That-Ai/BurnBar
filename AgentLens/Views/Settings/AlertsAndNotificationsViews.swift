@@ -117,6 +117,7 @@ struct SpendAlertDetailView: View {
                                 Text("Warn when estimated daily burn crosses this amount.")
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                             HStack(spacing: DesignSystem.Spacing.xs) {
@@ -177,6 +178,7 @@ struct DailyDigestDetailView: View {
                                 Text("Local time on this Mac.")
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                             Picker("", selection: $settingsManager.dailyDigestHour) {
@@ -373,6 +375,7 @@ struct CalendarIntegrationDetailView: View {
                                 Text("Used for new followup calendar events.")
                                     .font(DesignSystem.Typography.tiny)
                                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                             Picker("", selection: $settingsManager.controllerCalendarDefaultMinutes) {
@@ -410,6 +413,7 @@ struct SnoozeDefaultsDetailView: View {
                         Text("Applied when OpenBurnBar creates or defers followups.")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     Picker("", selection: $settingsManager.controllerDefaultSnoozeMinutes) {

@@ -57,6 +57,9 @@ struct SpeedOptionsSheet: View {
                     }
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .minimumScaleFactor(0.8)
                 }
                 Spacer()
                 Button { dismiss() } label: {
@@ -203,6 +206,8 @@ struct SpeedOptionsSheet: View {
                         .font(DesignSystem.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     if isOnDisk {
                         Text("on disk")
                             .font(DesignSystem.Typography.tiny)
@@ -210,16 +215,22 @@ struct SpeedOptionsSheet: View {
                             .background(DesignSystem.Colors.success.opacity(0.15))
                             .foregroundStyle(DesignSystem.Colors.success)
                             .clipShape(Capsule())
+                            .fixedSize()
                     }
                 }
                 HStack(spacing: 4) {
                     Text(option.description)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Text("·")
+                        .fixedSize()
                     Text(option.size)
+                        .fixedSize()
                 }
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+            .layoutPriority(1)
 
             Spacer()
 
@@ -243,10 +254,15 @@ struct SpeedOptionsSheet: View {
                     .font(DesignSystem.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(subtitle)
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
+            .layoutPriority(1)
             Spacer()
             Button("Use") { onSelectMLX(modelId) }
                 .buttonStyle(.bordered)
@@ -265,10 +281,15 @@ struct SpeedOptionsSheet: View {
                     .font(DesignSystem.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(description)
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
+            .layoutPriority(1)
 
             Spacer()
 

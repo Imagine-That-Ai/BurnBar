@@ -149,7 +149,10 @@ struct ProjectSpendCard: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            HFlowLayout(
+                horizontalSpacing: UnifiedDesignSystem.Spacing.sm,
+                verticalSpacing: UnifiedDesignSystem.Spacing.sm
+            ) {
                 ForEach(summary.providerBreakdown.prefix(3), id: \.id) { entry in
                     providerChip(for: entry)
                 }

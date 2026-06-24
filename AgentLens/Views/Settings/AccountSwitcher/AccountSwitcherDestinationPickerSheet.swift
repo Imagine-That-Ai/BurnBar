@@ -37,14 +37,18 @@ struct AccountDestinationPickerSheet: View {
             .padding(.bottom, DesignSystem.Spacing.lg)
 
             // Destination cards
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                ForEach(destinations, id: \.self) { destination in
-                    destinationCard(destination)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(destinations, id: \.self) { destination in
+                        destinationCard(destination)
+                    }
                 }
+                .padding(.horizontal, DesignSystem.Spacing.lg)
             }
-            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .frame(maxHeight: 420)
+            .scrollBounceBehavior(.basedOnSize)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             // Cancel
             Button("Cancel") {
@@ -55,16 +59,9 @@ struct AccountDestinationPickerSheet: View {
             .foregroundStyle(DesignSystem.Colors.textMuted)
             .padding(.bottom, DesignSystem.Spacing.lg)
         }
-        .frame(width: 340, height: destinationSheetHeight)
+        .frame(width: 340)
+        .fixedSize(horizontal: false, vertical: true)
         .background(DesignSystem.Colors.background)
-    }
-
-    private var destinationSheetHeight: CGFloat {
-        let headerHeight: CGFloat = 120
-        let cardHeight: CGFloat = 72
-        let cardSpacing: CGFloat = 8
-        let bottomPadding: CGFloat = 50
-        return headerHeight + CGFloat(destinations.count) * cardHeight + CGFloat(max(0, destinations.count - 1)) * cardSpacing + bottomPadding
     }
 
     @ViewBuilder

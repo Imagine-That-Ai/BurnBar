@@ -201,13 +201,15 @@ struct PrivacyIndexingSettingsView: View {
                         Text("Index provider")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Spacer()
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Spacer(minLength: DesignSystem.Spacing.sm)
                         Picker("", selection: $settingsManager.indexEmbeddingProvider) {
                             Text("OpenBurnBar Local").tag(IndexEmbeddingProviderID.deterministic)
                             Text("OpenAI").tag(IndexEmbeddingProviderID.openai)
                         }
                         .pickerStyle(.menu)
-                        .frame(maxWidth: 220)
+                        .frame(minWidth: 140, maxWidth: 220)
                     }
 
                     if settingsManager.indexEmbeddingProvider == .openai {
@@ -215,14 +217,16 @@ struct PrivacyIndexingSettingsView: View {
                             Text("OpenAI model")
                                 .font(DesignSystem.Typography.body)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Spacer()
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                            Spacer(minLength: DesignSystem.Spacing.sm)
                             Picker("", selection: $settingsManager.indexOpenAIModel) {
                                 ForEach(OpenAIEmbeddingProvider.supportedModels, id: \.self) { model in
                                     Text(model).tag(model)
                                 }
                             }
                             .pickerStyle(.menu)
-                            .frame(maxWidth: 260)
+                            .frame(minWidth: 140, maxWidth: 260)
                         }
 
                         HStack(spacing: DesignSystem.Spacing.sm) {
@@ -249,15 +253,20 @@ struct PrivacyIndexingSettingsView: View {
                         Text("Index version")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Spacer()
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Spacer(minLength: DesignSystem.Spacing.sm)
                         Picker("", selection: $settingsManager.preferredIndexEmbeddingVersionID) {
                             Text("Automatic").tag("")
                             ForEach(embeddingVersions) { version in
-                                Text(embeddingVersionMenuLabel(version)).tag(version.id)
+                                Text(embeddingVersionMenuLabel(version))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .tag(version.id)
                             }
                         }
                         .pickerStyle(.menu)
-                        .frame(maxWidth: 320)
+                        .frame(minWidth: 140, maxWidth: 320)
                     }
 
                     HStack(spacing: DesignSystem.Spacing.xxl) {

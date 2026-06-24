@@ -402,15 +402,93 @@ struct ChatPanel: View {
     @State private var showChatMenu = false
 
     private var header: some View {
+        // The header packs a long control cluster (drag handle, backend +
+        // model strips, view-mode picker, model menu, Elder Wand, quota chip,
+        // folder, new-chat, overflow menu, pop-out, maximize, minimize,
+        // close). The panel is resizable down to 260pt and can be restored
+        // from a persisted 260pt width, so the row must render cleanly at the
+        // narrow end instead of overflowing. `ViewThatFits` picks the richest
+        // tier that fits the current width and degrades gracefully: secondary
+        // controls fold into the always-present overflow menu, while the
+        // identity strip and window controls stay visible at every width.
+        ViewThatFits(in: .horizontal) {
+            headerFull
+            headerMedium
+            headerCompact
+        }
+        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(Color.white.opacity(0.02))
+        .onAppear { cloudEntitlement.start() }
+        .sheet(isPresented: $showElderWand) {
+            ElderWandConfiguratorView(controller: controller, settingsManager: settingsManager)
+        }
+    }
+
+    // MARK: - Header tiers (progressive degradation)
+
+    /// Widest tier: every control inline, matching the original layout.
+    private var headerFull: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            // Drag handle
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-                .frame(width: 20)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-                .help("Drag to move")
+            dragHandle
+            backendStrips
+            ChatViewModePicker(controller: controller)
+            ChatEngineModelMenu(controller: controller)
+            elderWandControl
+            quotaChipControl
+            folderButton
+            Spacer(minLength: 0)
+            newChatButton
+            overflowMenuButton
+            popOutButton
+            maximizeButton
+            minimizeButton
+            closeButton
+        }
+    }
+
+    /// Mid tier: the view-mode picker, model menu and folder reveal fold into
+    /// the overflow menu; the backend identity strip, Elder Wand, quota chip,
+    /// new-chat, and window controls stay inline.
+    private var headerMedium: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            dragHandle
+            backendStrips
+            elderWandControl
+            quotaChipControl
+            Spacer(minLength: 0)
+            newChatButton
+            overflowMenuButton
+            minimizeButton
+            closeButton
+        }
+    }
+
+    /// Narrowest tier (guaranteed fit at the 260pt floor): drag handle,
+    /// backend identity strip, the overflow menu (which carries every folded
+    /// secondary action), and the close button.
+    private var headerCompact: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            dragHandle
+            backendStrips
+            Spacer(minLength: 0)
+            overflowMenuButton
+            minimizeButton
+            closeButton
+        }
+    }
+
+    // MARK: - Header control builders
+
+    private var dragHandle: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .frame(width: 20)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .help("Drag to move")
             .highPriorityGesture(
                 DragGesture(minimumDistance: 4)
                     .onChanged { g in
@@ -428,135 +506,145 @@ struct ChatPanel: View {
                         controller.persistPanelGeometry()
                     }
             )
+    }
 
-            // Mode toggle
-            VStack(spacing: 4) {
-                ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
-                HermesModelStrip(controller: controller, settingsManager: settingsManager)
+    // Mode toggle
+    private var backendStrips: some View {
+        VStack(spacing: 4) {
+            ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+            HermesModelStrip(controller: controller, settingsManager: settingsManager)
+        }
+    }
+
+    // The Elder Wand — multi-model fusion configurator. Gated to Cloud
+    // Pro; the gate modifier presents the unlock sheet when locked and
+    // opens the configurator when entitled.
+    private var elderWandControl: some View {
+        Image(systemName: "wand.and.stars")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(panelIconTint)
+            .frame(width: 20, height: 20)
+            .contentShape(Rectangle())
+            .help("The Elder Wand — answer with a panel of models and a judge")
+            .accessibilityLabel("The Elder Wand")
+            .accessibilityAddTraits(.isButton)
+            .gatedFeature(.elderWand, tier: cloudEntitlement.cloudTier) {
+                showElderWand = true
             }
+    }
 
-            ChatViewModePicker(controller: controller)
+    @ViewBuilder
+    private var quotaChipControl: some View {
+        if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+            quotaChip
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+        }
+    }
 
-            ChatEngineModelMenu(controller: controller)
-
-            // The Elder Wand — multi-model fusion configurator. Gated to Cloud
-            // Pro; the gate modifier presents the unlock sheet when locked and
-            // opens the configurator when entitled.
-            Image(systemName: "wand.and.stars")
+    private var folderButton: some View {
+        Button {
+            controller.revealChatWorkspaceInFinder()
+        } label: {
+            Image(systemName: "folder")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(panelIconTint)
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-                .help("The Elder Wand — answer with a panel of models and a judge")
-                .accessibilityLabel("The Elder Wand")
-                .accessibilityAddTraits(.isButton)
-                .gatedFeature(.elderWand, tier: cloudEntitlement.cloudTier) {
-                    showElderWand = true
-                }
+        }
+        .buttonStyle(.plain)
+        .help("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
+    }
 
-            if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
-                quotaChip
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-            }
+    // New Chat — always visible (inline in the full/medium tiers, and also
+    // reachable from the overflow menu so the compact tier keeps it).
+    private var newChatButton: some View {
+        Button {
+            controller.clearChat()
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(panelIconTint)
+        }
+        .buttonStyle(.plain)
+        .help("New chat")
+    }
 
+    // Consolidated menu — search, history, clear, plus any actions the
+    // current tier folded away (folder, new-chat, pop-out, maximize).
+    private var overflowMenuButton: some View {
+        Button {
+            showChatMenu.toggle()
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+        .buttonStyle(.plain)
+        .help("Chat options")
+        .popover(isPresented: $showChatMenu, arrowEdge: .top) {
+            chatMenuPopover
+        }
+    }
+
+    // Pop out to its own window
+    @ViewBuilder
+    private var popOutButton: some View {
+        if let onPopOut {
             Button {
-                controller.revealChatWorkspaceInFinder()
+                Analytics.shared.track(.chatPanelAction, ["action": "popped_out"])
+                onPopOut()
             } label: {
-                Image(systemName: "folder")
+                Image(systemName: "rectangle.on.rectangle")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
-            .help("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
+            .help("Pop out chat into its own window")
+        }
+    }
 
-            Spacer(minLength: 0)
-
-            // New Chat — always visible
+    // Maximize into the dashboard chat workspace
+    @ViewBuilder
+    private var maximizeButton: some View {
+        if let onMaximize {
             Button {
-                controller.clearChat()
+                Analytics.shared.track(.chatPanelAction, ["action": "maximized"])
+                onMaximize()
             } label: {
-                Image(systemName: "square.and.pencil")
+                Image(systemName: "arrow.up.left.and.arrow.down.right.square")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
-            .help("New chat")
-
-            // Consolidated menu — search, history, clear, close
-            Button {
-                showChatMenu.toggle()
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-            }
-            .buttonStyle(.plain)
-            .help("Chat options")
-            .popover(isPresented: $showChatMenu, arrowEdge: .top) {
-                chatMenuPopover
-            }
-
-            // Pop out to its own window
-            if let onPopOut {
-                Button {
-                    Analytics.shared.track(.chatPanelAction, ["action": "popped_out"])
-                    onPopOut()
-                } label: {
-                    Image(systemName: "rectangle.on.rectangle")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(panelIconTint)
-                }
-                .buttonStyle(.plain)
-                .help("Pop out chat into its own window")
-            }
-
-            // Maximize into the dashboard chat workspace
-            if let onMaximize {
-                Button {
-                    Analytics.shared.track(.chatPanelAction, ["action": "maximized"])
-                    onMaximize()
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right.square")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(panelIconTint)
-                }
-                .buttonStyle(.plain)
-                .help("Maximize chat into the dashboard workspace")
-            }
-
-            // Minimize
-            Button {
-                Analytics.shared.track(.chatPanelAction, ["action": "minimized"])
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    controller.isMinimized = true
-                }
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
-            }
-            .buttonStyle(.plain)
-            .help("Minimize to pill")
-
-            // Close
-            Button {
-                Analytics.shared.track(.chatPanelAction, ["action": "closed"])
-                onClose()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
-            }
-            .buttonStyle(.plain)
+            .help("Maximize chat into the dashboard workspace")
         }
-        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(Color.white.opacity(0.02))
-        .onAppear { cloudEntitlement.start() }
-        .sheet(isPresented: $showElderWand) {
-            ElderWandConfiguratorView(controller: controller, settingsManager: settingsManager)
+    }
+
+    // Minimize
+    private var minimizeButton: some View {
+        Button {
+            Analytics.shared.track(.chatPanelAction, ["action": "minimized"])
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                controller.isMinimized = true
+            }
+        } label: {
+            Image(systemName: "minus.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
         }
+        .buttonStyle(.plain)
+        .help("Minimize to pill")
+    }
+
+    // Close
+    private var closeButton: some View {
+        Button {
+            Analytics.shared.track(.chatPanelAction, ["action": "closed"])
+            onClose()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Consolidated Chat Menu
@@ -618,8 +706,32 @@ struct ChatPanel: View {
 
             Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
 
-            // Actions
+            // Actions. The secondary controls (new chat, reveal in Finder,
+            // pop out, maximize) live here too so they stay reachable when a
+            // narrow panel width folds them out of the header row.
             VStack(spacing: 2) {
+                chatMenuAction(icon: "square.and.pencil", label: "New chat") {
+                    showChatMenu = false
+                    controller.clearChat()
+                }
+                chatMenuAction(icon: "folder", label: "Show workspace in Finder") {
+                    showChatMenu = false
+                    controller.revealChatWorkspaceInFinder()
+                }
+                if let onPopOut {
+                    chatMenuAction(icon: "rectangle.on.rectangle", label: "Pop out into its own window") {
+                        showChatMenu = false
+                        Analytics.shared.track(.chatPanelAction, ["action": "popped_out"])
+                        onPopOut()
+                    }
+                }
+                if let onMaximize {
+                    chatMenuAction(icon: "arrow.up.left.and.arrow.down.right.square", label: "Maximize into dashboard") {
+                        showChatMenu = false
+                        Analytics.shared.track(.chatPanelAction, ["action": "maximized"])
+                        onMaximize()
+                    }
+                }
                 chatMenuAction(icon: "trash", label: "Clear current chat", color: DesignSystem.Colors.error.opacity(0.8)) {
                     showChatMenu = false
                     showClearChatPrompt = true

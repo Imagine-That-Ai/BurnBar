@@ -1002,27 +1002,38 @@ private struct CLIReserveAddSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            header
-            existingAccountsPanel
-            instructionCallout
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                header
+                existingAccountsPanel
+                instructionCallout
 
-            if let resultMessage {
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-                    Image(systemName: resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
-                    Text(resultMessage)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+                if let resultMessage {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                            .foregroundStyle(resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
+                        Text(resultMessage)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                    .background(DesignSystem.Colors.surface.opacity(0.8))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
                 }
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.surface.opacity(0.8))
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             }
-
-            Spacer()
-
+            .padding(DesignSystem.Spacing.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // Grow with content up to a bounded height, then scroll — so the sheet
+        // never clips its rows (overflowed once N existing accounts ≥ 4 against
+        // the old rigid `height: 520`).
+        .frame(width: 520)
+        .frame(minHeight: 360, idealHeight: 520, maxHeight: 640)
+        .background(DesignSystem.Colors.background)
+        // Pin the action bar outside the scroll region so Launch/Cancel are
+        // always reachable regardless of how tall the account list grows.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 Button("Cancel") {
                     onCancel()
@@ -1045,6 +1056,8 @@ private struct CLIReserveAddSheet: View {
                             Image(systemName: "terminal")
                         }
                         Text("Launch \(request.providerLabel) login for \(request.nextSlotLabel)")
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -1052,10 +1065,10 @@ private struct CLIReserveAddSheet: View {
                 .font(DesignSystem.Typography.caption)
                 .disabled(isLaunching)
             }
+            .padding(.horizontal, DesignSystem.Spacing.xl)
+            .padding(.vertical, DesignSystem.Spacing.md)
+            .background(.bar)
         }
-        .padding(DesignSystem.Spacing.xl)
-        .frame(width: 520, height: 520)
-        .background(DesignSystem.Colors.background)
     }
 
     private var header: some View {

@@ -210,24 +210,15 @@ struct CloudStoreSettingsView: View {
                     Capsule().stroke(DesignSystem.Colors.success.opacity(0.45), lineWidth: 0.5)
                 )
 
-                HStack(spacing: 10) {
-                    Button {
-                        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    } label: {
-                        Label("Manage", systemImage: "creditcard.fill")
-                            .font(.system(size: 13, weight: .semibold))
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        auroraManageButton
+                        auroraChangeBadgeButton
                     }
-                    .buttonStyle(AuroraPrimaryButtonStyle())
-
-                    Button {
-                        showBadgePicker = true
-                    } label: {
-                        Label("Change badge", systemImage: "rosette")
-                            .font(.system(size: 13, weight: .semibold))
+                    VStack(spacing: 10) {
+                        auroraManageButton
+                        auroraChangeBadgeButton
                     }
-                    .buttonStyle(AuroraSecondaryButtonStyle())
                 }
                 .padding(.bottom, 22)
             }
@@ -252,6 +243,28 @@ struct CloudStoreSettingsView: View {
         )
         .shadow(color: DesignSystem.Colors.ember.opacity(0.40), radius: 28, y: 14)
         .shadow(color: DesignSystem.Colors.amber.opacity(0.22), radius: 40, y: 0)
+    }
+
+    private var auroraManageButton: some View {
+        Button {
+            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            Label("Manage", systemImage: "creditcard.fill")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .buttonStyle(AuroraPrimaryButtonStyle())
+    }
+
+    private var auroraChangeBadgeButton: some View {
+        Button {
+            showBadgePicker = true
+        } label: {
+            Label("Change badge", systemImage: "rosette")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .buttonStyle(AuroraSecondaryButtonStyle())
     }
 
     // MARK: - Backup & Sync (the one actionable card)
@@ -877,17 +890,19 @@ struct CloudStoreSettingsView: View {
 
     private var tierLineup: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("CHOOSE YOUR PLAN")
-                    .font(.system(size: 11, weight: .heavy))
-                    .tracking(2.4)
-                    .foregroundStyle(DesignSystem.Colors.ember)
-                Spacer()
-                Text("Free where it should be · paid where it costs us money")
-                    .font(.system(size: 11))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    tierLineupEyebrow
+                    Spacer()
+                    tierLineupTagline
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    tierLineupEyebrow
+                    tierLineupTagline
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             VStack(spacing: 16) {
@@ -904,6 +919,19 @@ struct CloudStoreSettingsView: View {
                     .accessibilityIdentifier("macCloudStore.purchaseError")
             }
         }
+    }
+
+    private var tierLineupEyebrow: some View {
+        Text("CHOOSE YOUR PLAN")
+            .font(.system(size: 11, weight: .heavy))
+            .tracking(2.4)
+            .foregroundStyle(DesignSystem.Colors.ember)
+    }
+
+    private var tierLineupTagline: some View {
+        Text("Free where it should be · paid where it costs us money")
+            .font(.system(size: 11))
+            .foregroundStyle(DesignSystem.Colors.textMuted)
     }
 
     @ViewBuilder
@@ -1149,18 +1177,19 @@ struct CloudStoreSettingsView: View {
     private var purchaseSupportRow: some View {
         AuroraGlassCardMac(cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await purchaseStore.restorePurchases() }
-                    } label: {
-                        Label("Restore Purchases", systemImage: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        restorePurchasesButton
+                        MacCloudStoreLegalLinks()
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(AuroraSecondaryButtonStyle())
-                    .disabled(purchaseStore.isLoading || purchaseStore.isPurchasing)
-
-                    MacCloudStoreLegalLinks()
-                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            restorePurchasesButton
+                            Spacer(minLength: 0)
+                        }
+                        MacCloudStoreLegalLinks()
+                    }
                 }
 
                 subscriptionDetails
@@ -1168,6 +1197,17 @@ struct CloudStoreSettingsView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var restorePurchasesButton: some View {
+        Button {
+            Task { await purchaseStore.restorePurchases() }
+        } label: {
+            Label("Restore Purchases", systemImage: "arrow.clockwise")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .buttonStyle(AuroraSecondaryButtonStyle())
+        .disabled(purchaseStore.isLoading || purchaseStore.isPurchasing)
     }
 
     private var subscriptionDetails: some View {

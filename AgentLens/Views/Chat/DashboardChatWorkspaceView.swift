@@ -62,7 +62,7 @@ struct DashboardChatWorkspaceView: View {
                     }
 
                 conversationColumn
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -332,7 +332,7 @@ struct DashboardChatWorkspaceView: View {
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .textCase(.uppercase)
                 LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: DesignSystem.Spacing.md), GridItem(.flexible(), spacing: DesignSystem.Spacing.md)],
+                    columns: [GridItem(.adaptive(minimum: 240), spacing: DesignSystem.Spacing.md)],
                     alignment: .leading,
                     spacing: DesignSystem.Spacing.md
                 ) {

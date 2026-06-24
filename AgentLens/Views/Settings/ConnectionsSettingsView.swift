@@ -504,38 +504,56 @@ struct ConnectionsSettingsView: View {
         )
     }
 
+    private var routingStrategyHeading: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: daemonManager.routerMode.usesExactSameModelInvariant ? "equal.circle" : "rectangle.2.swap")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.blaze)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Routing strategy")
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("How OpenBurnBar picks an account for each request.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var routingStrategyPicker: some View {
+        Picker("Routing strategy", selection: Binding(
+            get: { daemonManager.routerMode },
+            set: { mode in
+                Task { @MainActor in
+                    await daemonManager.setRouterMode(mode)
+                    await daemonManager.refreshHealth()
+                }
+            }
+        )) {
+            Text("Exact model failover").tag(ProviderRouterMode.sameModelFailover)
+            Text("Stay inside one provider").tag(ProviderRouterMode.providerFamilyFailover)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .disabled(daemonManager.isBusy)
+    }
+
     private var routingStrategyCard: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: daemonManager.routerMode.usesExactSameModelInvariant ? "equal.circle" : "rectangle.2.swap")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.blaze)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Routing strategy")
-                        .font(DesignSystem.Typography.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("How OpenBurnBar picks an account for each request.")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    routingStrategyHeading
+                    Spacer(minLength: DesignSystem.Spacing.md)
+                    routingStrategyPicker
+                        .frame(maxWidth: 320)
                 }
-                Spacer(minLength: DesignSystem.Spacing.md)
-                Picker("Routing strategy", selection: Binding(
-                    get: { daemonManager.routerMode },
-                    set: { mode in
-                        Task { @MainActor in
-                            await daemonManager.setRouterMode(mode)
-                            await daemonManager.refreshHealth()
-                        }
-                    }
-                )) {
-                    Text("Exact model failover").tag(ProviderRouterMode.sameModelFailover)
-                    Text("Stay inside one provider").tag(ProviderRouterMode.providerFamilyFailover)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    routingStrategyHeading
+                    routingStrategyPicker
+                        .frame(maxWidth: .infinity)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 320)
-                .disabled(daemonManager.isBusy)
             }
             Text(daemonManager.routerMode.usesExactSameModelInvariant
                 ? "BurnBar may switch provider or account after exhaustion, but only when the next route proves it serves the exact same model."
@@ -573,45 +591,22 @@ struct ConnectionsSettingsView: View {
             }
 
             if settingsManager.gatewayEnabled {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Host")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        TextField("127.0.0.1", text: $settingsManager.gatewayHost)
-                            .textFieldStyle(.roundedBorder)
-                            .font(DesignSystem.Typography.monoSmall)
-                            .frame(width: 160)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DesignSystem.Spacing.md) {
+                        gatewayEndpointFields
+                        Spacer()
+                        gatewayResetButton
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Port")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        TextField("8317", value: $settingsManager.gatewayPort, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .font(DesignSystem.Typography.monoSmall)
-                            .frame(width: 90)
-                    }
-                    let isLoopback = isGatewayLoopback(settingsManager.gatewayHost)
-                    if !isLoopback {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Token (required for non-loopback)")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.warning)
-                            SecureField("Bearer token", text: $settingsManager.gatewayAuthToken)
-                                .textFieldStyle(.roundedBorder)
-                                .font(DesignSystem.Typography.monoSmall)
-                                .frame(width: 200)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            gatewayEndpointFields
+                            Spacer(minLength: 0)
+                        }
+                        HStack {
+                            Spacer()
+                            gatewayResetButton
                         }
                     }
-                    Spacer()
-                    Button {
-                        resetLocalDefaults()
-                    } label: {
-                        Label("Reset to local defaults", systemImage: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
             }
         }
@@ -621,6 +616,49 @@ struct ConnectionsSettingsView: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.5))
         )
+    }
+
+    @ViewBuilder
+    private var gatewayEndpointFields: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Host")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            TextField("127.0.0.1", text: $settingsManager.gatewayHost)
+                .textFieldStyle(.roundedBorder)
+                .font(DesignSystem.Typography.monoSmall)
+                .frame(width: 160)
+        }
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Port")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            TextField("8317", value: $settingsManager.gatewayPort, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .font(DesignSystem.Typography.monoSmall)
+                .frame(width: 90)
+        }
+        if !isGatewayLoopback(settingsManager.gatewayHost) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Token (required for non-loopback)")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                SecureField("Bearer token", text: $settingsManager.gatewayAuthToken)
+                    .textFieldStyle(.roundedBorder)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .frame(width: 200)
+            }
+        }
+    }
+
+    private var gatewayResetButton: some View {
+        Button {
+            resetLocalDefaults()
+        } label: {
+            Label("Reset to local defaults", systemImage: "arrow.uturn.backward")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 
     /// Off-by-default, gray-area routing opt-ins for Anthropic's post-June-15

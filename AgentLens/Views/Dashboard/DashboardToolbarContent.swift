@@ -46,7 +46,8 @@ extension DashboardView {
                 stateCaption: workspaceContext.stateCaption,
                 helpText: workspaceContext.helpText
             )
-            .frame(minWidth: 220, idealWidth: 320, maxWidth: 420)
+            .frame(minWidth: 160, idealWidth: 320, maxWidth: 420)
+            .layoutPriority(-1)
         }
 
         // MARK: Filters · Telemetry · Actions

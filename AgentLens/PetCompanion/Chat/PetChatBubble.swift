@@ -551,13 +551,19 @@ struct PetChatBubbleView: View {
                 Text(controller.activeBackend.shortLabel)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        // Let the picker label truncate (it never does with today's short
+        // labels) rather than .fixedSize() forcing it to push the localBadge /
+        // close button off the fixed-width header. Lowest layout priority so the
+        // close button and "answering locally" badge keep their room first.
+        .layoutPriority(0)
         .accessibilityLabel("Answering brain")
         .accessibilityValue(controller.activeBackend.displayName)
     }
@@ -568,7 +574,9 @@ struct PetChatBubbleView: View {
                 .font(.system(size: 8, weight: .bold))
             Text("answering locally")
                 .font(DesignSystem.Typography.tiny)
+                .lineLimit(1)
         }
+        .fixedSize()
         .foregroundStyle(DesignSystem.Colors.warning)
         .padding(.horizontal, DesignSystem.Spacing.xs)
         .padding(.vertical, 2)
@@ -583,12 +591,21 @@ struct PetChatBubbleView: View {
         if controller.replyText.isEmpty && controller.isAnswering {
             thinkingDots
         } else if !controller.replyText.isEmpty {
-            Text(controller.replyText)
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                Text(controller.replyText)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Cap the transcript so a long multi-paragraph cloud reply scrolls
+            // inside the bubble instead of growing the NSPanel past the screen.
+            // The cap lets NSHostingView.fittingSize settle so the panel stays
+            // on-screen; .bottom anchor keeps freshly streamed tokens visible.
+            .frame(maxHeight: 280)
+            .defaultScrollAnchor(.bottom)
+            .scrollBounceBehavior(.basedOnSize)
         } else if let note = controller.lastErrorNote {
             Text(note)
                 .font(DesignSystem.Typography.caption)

@@ -347,7 +347,7 @@ private struct FusionComparisonChartCard: View {
             BarMark(
                 x: .value("Category", bar.category),
                 y: .value("Cost", bar.cost),
-                width: .fixed(46)
+                width: .ratio(0.4)
             )
             .foregroundStyle(by: .value("Category", bar.category))
             .cornerRadius(8)
@@ -356,6 +356,8 @@ private struct FusionComparisonChartCard: View {
                     .font(DesignSystem.Typography.monoSmall)
                     .fontWeight(.semibold)
                     .foregroundStyle(bar.category == "Fusion" ? Color(hex: "FF8A3D") : DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .accessibilityLabel("\(bar.category) spend")
             .accessibilityValue(CurrencyFormatting.usd(bar.cost))
@@ -429,26 +431,48 @@ private struct FusionComparisonBarFallback: View {
 private struct FusionRunStatsCard: View {
     let totals: FusionVsNormalTotals
 
+    /// Adaptive columns for the narrow-width fallback: tiles reflow to 2-up / 1-up
+    /// instead of crushing the title-size values and multi-word captions onto one
+    /// non-wrapping row.
+    private let tileColumns = [GridItem(.adaptive(minimum: 150), spacing: DesignSystem.Spacing.md)]
+
+    @ViewBuilder
+    private var runsTile: some View {
+        FusionStatTile(
+            label: "Fusion runs",
+            value: "\(totals.fusionRuns)",
+            caption: "panel + judge + final"
+        )
+    }
+
+    @ViewBuilder
+    private var avgTile: some View {
+        FusionStatTile(
+            label: "Avg / run",
+            value: totals.averageCostPerFusionRun.map { CurrencyFormatting.usd($0) } ?? "—",
+            caption: "across the period"
+        )
+    }
+
+    @ViewBuilder
+    private var certaintyTile: some View {
+        FusionStatTile(
+            label: "Cost of certainty",
+            value: Self.multiplierText(totals),
+            caption: "vs a single answer"
+        )
+    }
+
     var body: some View {
         GlassCard {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                FusionStatTile(
-                    label: "Fusion runs",
-                    value: "\(totals.fusionRuns)",
-                    caption: "panel + judge + final"
-                )
-                Divider()
-                FusionStatTile(
-                    label: "Avg / run",
-                    value: totals.averageCostPerFusionRun.map { CurrencyFormatting.usd($0) } ?? "—",
-                    caption: "across the period"
-                )
-                Divider()
-                FusionStatTile(
-                    label: "Cost of certainty",
-                    value: Self.multiplierText(totals),
-                    caption: "vs a single answer"
-                )
+            // An adaptive grid renders three-up when the card is wide and reflows
+            // to 2-up / 1-up when the Settings detail pane narrows, so the
+            // title-size values and multi-word captions keep their height instead
+            // of stacking mid-word on a starved single row.
+            LazyVGrid(columns: tileColumns, alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                runsTile
+                avgTile
+                certaintyTile
             }
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -498,9 +522,14 @@ private struct FusionStatTile: View {
                 .font(DesignSystem.Typography.title)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
             Text(caption)
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
