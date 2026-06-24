@@ -3,6 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# shellcheck source=scripts/lib/curl-bearer.sh
+source scripts/lib/curl-bearer.sh
+
 PROJECT="${GCLOUD_PROJECT:-${GOOGLE_CLOUD_PROJECT:-burnbar}}"
 DATABASE_ID="${FIRESTORE_DATABASE_ID:-(default)}"
 export PROJECT DATABASE_ID
@@ -27,8 +30,8 @@ PY
 )"
 BASE_URL="https://firestore.googleapis.com/v1/${DATABASE_PATH}"
 
-DB_JSON="$(curl -fsS -H "Authorization: Bearer ${TOKEN}" "${BASE_URL}")"
-SCHEDULES_JSON="$(curl -fsS -H "Authorization: Bearer ${TOKEN}" "${BASE_URL}/backupSchedules")"
+DB_JSON="$(obb_curl_with_bearer "${TOKEN}" -fsS "${BASE_URL}")"
+SCHEDULES_JSON="$(obb_curl_with_bearer "${TOKEN}" -fsS "${BASE_URL}/backupSchedules")"
 
 export DB_JSON SCHEDULES_JSON PROJECT DATABASE_ID
 python3 <<'PY'

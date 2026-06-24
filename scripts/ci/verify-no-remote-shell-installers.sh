@@ -9,12 +9,18 @@ import shlex
 import subprocess
 
 files = subprocess.check_output(
-    ["git", "ls-files", ".github", "scripts"], text=True
+    ["git", "ls-files", ".github", "scripts", ".agents"], text=True
 ).splitlines()
 
 pipe_to_shell = re.compile(
     r"(curl|wget)[^|;&]*\|[ \t]*(sudo[ \t]+)?(?:(?:/usr/bin/env[ \t]+)?|(?:/[^ \t;&|]+/)?)"
     r"(bash|sh)|[ \t](bash|sh)[ \t]+<\(",
+    re.IGNORECASE,
+)
+process_substitution_to_shell = re.compile(
+    r"(^|[;&|][ \t]*|[ \t]+)(sudo[ \t]+)?"
+    r"(?:(?:/usr/bin/env[ \t]+)?|(?:/[^ \t;&|]+/)?)"
+    r"(bash|sh|source|\.)[ \t]+<[ \t]*(<[ \t]*)?\([ \t]*(curl|wget)\b",
     re.IGNORECASE,
 )
 redirect_to_file = re.compile(r">[ \t]*(?P<target>[^ \t;&|]+)")
@@ -158,9 +164,6 @@ def script_download_target(tokens):
 
 failures = []
 for file_path in files:
-    if file_path == "scripts/ci/verify-no-remote-shell-installers.test.sh":
-        continue
-
     try:
         lines = open(file_path, encoding="utf-8").read().splitlines()
     except UnicodeDecodeError:
@@ -173,6 +176,8 @@ for file_path in files:
 
         if pipe_to_shell.search(line):
             failures.append(f"{file_path}:{index}: remote pipe-to-shell installer")
+        if process_substitution_to_shell.search(line):
+            failures.append(f"{file_path}:{index}: remote process-substitution shell installer")
 
         try:
             tokens = shlex.split(line)
@@ -200,4 +205,4 @@ if [[ -n "$violations" ]]; then
   exit 1
 fi
 
-echo "OK: no remote shell installer patterns in workflows or scripts."
+echo "OK: no remote shell installer patterns in workflows, scripts, or agent skills."

@@ -17,6 +17,10 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-curl-bearer-token-boundary.sh"
+      - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
+      - "scripts/lib/curl-bearer.sh"
+      - "scripts/lib/curl-bearer.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/generate-macos-appcast.mjs"
@@ -58,6 +62,10 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-curl-bearer-token-boundary.sh"
+      - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
+      - "scripts/lib/curl-bearer.sh"
+      - "scripts/lib/curl-bearer.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/generate-macos-appcast.mjs"
@@ -155,6 +163,15 @@ jobs:
 
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
+
+      - name: Self-test curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh
+
+      - name: Verify curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.sh
+
+      - name: Self-test curl bearer helper
+        run: bash scripts/lib/curl-bearer.test.sh
 
       - name: Self-test release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.test.mjs
