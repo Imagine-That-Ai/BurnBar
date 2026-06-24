@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 function readArgs(argv) {
@@ -45,15 +45,63 @@ function joinUrl(baseUrl, name) {
   return `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(name)}`;
 }
 
+function safeReleaseFileName(value, optionName) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u.test(value)) {
+    throw new Error(`${optionName} must be a plain artifact file name`);
+  }
+  if (
+    value.includes("/") ||
+    value.includes("\\") ||
+    value.includes("\0") ||
+    value === "." ||
+    value === ".." ||
+    path.basename(value) !== value
+  ) {
+    throw new Error(`${optionName} must not contain path separators or traversal`);
+  }
+  return value;
+}
+
+function resolveReleaseFile(releaseRoot, fileName, optionName) {
+  const safeName = safeReleaseFileName(fileName, optionName);
+  const candidate = path.resolve(releaseRoot, safeName);
+  if (path.dirname(candidate) !== releaseRoot) {
+    throw new Error(`${optionName} resolved outside --release-dir`);
+  }
+  const fileStat = lstatSync(candidate);
+  if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+    throw new Error(`${optionName} must reference a regular file inside --release-dir`);
+  }
+  return candidate;
+}
+
+function resolveOutputFile(releaseRoot, fileName, optionName) {
+  const safeName = safeReleaseFileName(fileName, optionName);
+  const candidate = path.resolve(releaseRoot, safeName);
+  if (path.dirname(candidate) !== releaseRoot) {
+    throw new Error(`${optionName} resolved outside --release-dir`);
+  }
+  if (existsSync(candidate)) {
+    const fileStat = lstatSync(candidate);
+    if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+      throw new Error(`${optionName} output path must be a regular file inside --release-dir`);
+    }
+  }
+  return candidate;
+}
+
 try {
   const args = readArgs(process.argv);
   const version = required(args, "version");
   const build = required(args, "build");
   const bundleId = required(args, "bundle-id");
-  const releaseDir = required(args, "release-dir");
-  const dmgName = required(args, "dmg-name");
-  const zipName = required(args, "zip-name");
-  const sourceArchiveName = required(args, "source-archive-name");
+  const releaseDir = realpathSync(required(args, "release-dir"));
+  const dmgName = safeReleaseFileName(required(args, "dmg-name"), "--dmg-name");
+  const zipName = safeReleaseFileName(required(args, "zip-name"), "--zip-name");
+  const sourceArchiveName = safeReleaseFileName(
+    required(args, "source-archive-name"),
+    "--source-archive-name",
+  );
   const baseUrl = required(args, "base-url").replace(/\/+$/, "");
   const commit = required(args, "commit");
   const minimumSystemVersion = args.get("minimum-system-version") ?? "14.0";
@@ -64,11 +112,15 @@ try {
   const critical = criticalRaw === "1" || criticalRaw === "true" || criticalRaw === "yes";
   const createdAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const pubDate = new Date().toUTCString();
-  const dmgPath = path.join(releaseDir, dmgName);
+  const dmgPath = resolveReleaseFile(releaseDir, dmgName, "--dmg-name");
+  resolveReleaseFile(releaseDir, zipName, "--zip-name");
+  resolveReleaseFile(releaseDir, sourceArchiveName, "--source-archive-name");
   const dmgSize = statSync(dmgPath).size;
   const dmgSha256 = sha256(dmgPath);
-  const appcastName = args.get("appcast-name") ?? "appcast.xml";
-  const latestName = args.get("latest-name") ?? "latest-macos.json";
+  const appcastName = safeReleaseFileName(args.get("appcast-name") ?? "appcast.xml", "--appcast-name");
+  const latestName = safeReleaseFileName(args.get("latest-name") ?? "latest-macos.json", "--latest-name");
+  const appcastPath = resolveOutputFile(releaseDir, appcastName, "--appcast-name");
+  const latestPath = resolveOutputFile(releaseDir, latestName, "--latest-name");
   const releaseNotesUrl = joinUrl(baseUrl, "release-metadata.json");
   const downloadUrl = joinUrl(baseUrl, dmgName);
   const appcastUrl = joinUrl(baseUrl, appcastName);
@@ -129,8 +181,8 @@ try {
     zip: zipName,
   };
 
-  writeFileSync(path.join(releaseDir, appcastName), appcast);
-  writeFileSync(path.join(releaseDir, latestName), `${JSON.stringify(latest, null, 2)}\n`);
+  writeFileSync(appcastPath, appcast);
+  writeFileSync(latestPath, `${JSON.stringify(latest, null, 2)}\n`);
 } catch (error) {
   console.error(`generate-macos-appcast: ${error.message}`);
   process.exit(1);

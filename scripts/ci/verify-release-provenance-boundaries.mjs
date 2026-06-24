@@ -437,6 +437,18 @@ function verifyReleaseWorkflow() {
     "Sigstore blob attestations (SBOM + VEX + checksums + binaries)",
     "release Sigstore attestation step",
   );
+  const sparkleSignerRun = namedStepRunBlock(
+    file,
+    source,
+    "Install Sparkle signing tools",
+    "Sparkle signer installation step",
+  );
+  const releaseFeedRun = namedStepRunBlock(
+    file,
+    source,
+    "Generate direct-download update feeds",
+    "release update-feed generation step",
+  );
   const releasePublishRun = namedStepRunBlock(
     file,
     source,
@@ -505,6 +517,66 @@ function verifyReleaseWorkflow() {
     source,
     "Check out release tag",
     "release checkout step",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Install Sparkle signing tools",
+    "Sparkle signer installation step",
+  );
+  requireIncludes(
+    file,
+    sparkleSignerRun,
+    'find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit',
+    "Sparkle signer must be resolved as a regular file inside the Homebrew Sparkle cask",
+  );
+  requireNoPattern(
+    file,
+    sparkleSignerRun,
+    /find\s+"\$SPARKLE_CASKROOM"\s+\/Applications/u,
+    "Sparkle signer discovery must not search globally writable or pre-existing application paths",
+  );
+  requireNoPattern(
+    file,
+    sparkleSignerRun,
+    /-type\s+l/u,
+    "Sparkle signer discovery must not accept symlinked tools",
+  );
+  requireNoPattern(
+    file,
+    sparkleSignerRun,
+    /chmod\s+\+x\s+"\$SPARKLE_SIGN_UPDATE"/u,
+    "Sparkle signer discovery must not mutate tool executability after discovery",
+  );
+  requireIncludes(
+    file,
+    sparkleSignerRun,
+    'SPARKLE_CASKROOM_REAL="$(python3 -c',
+    "Sparkle signer boundary must canonicalize the cask root",
+  );
+  requireIncludes(
+    file,
+    sparkleSignerRun,
+    'SPARKLE_SIGN_UPDATE_REAL="$(python3 -c',
+    "Sparkle signer boundary must canonicalize the selected signer",
+  );
+  requireIncludes(
+    file,
+    sparkleSignerRun,
+    'if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then',
+    "Sparkle signer boundary must fail closed on symlinked signer tools",
+  );
+  requireShellIfExits(
+    file,
+    sparkleSignerRun,
+    'if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then',
+    "Sparkle signer symlink guard",
+  );
+  requireIncludes(
+    file,
+    sparkleSignerRun,
+    'case "$SPARKLE_SIGN_UPDATE_REAL" in',
+    "Sparkle signer boundary must enforce canonical signer path containment",
   );
   requireIncludes(
     file,
@@ -604,6 +676,42 @@ function verifyReleaseWorkflow() {
     'git checkout --detach "$RELEASE_COMMIT"',
     "cosign attest-blob --yes",
     "release artifacts must be built from the resolved tag commit before Sigstore attestation",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    'DMG_NAME="$(basename "$DMG_PATH")"',
+    "release feed generation must pass only the DMG basename to the appcast generator",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    'ZIP_NAME="$(basename "$ZIP_PATH")"',
+    "release feed generation must pass only the ZIP basename to the appcast generator",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    'SOURCE_NAME="$(basename "$SOURCE_PATH")"',
+    "release feed generation must pass only the source archive basename to the appcast generator",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    '--release-dir "$RUNNER_TEMP"',
+    "release feed generation must scope appcast inputs to the runner temp release directory",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    '--appcast-name "$(basename "$APPCAST_PATH")"',
+    "release feed generation must pass only the appcast output basename",
+  );
+  requireIncludes(
+    file,
+    releaseFeedRun,
+    '--latest-name "$(basename "$LATEST_PATH")"',
+    "release feed generation must pass only the latest-metadata output basename",
   );
 
   requireIncludes(
