@@ -49,8 +49,14 @@ reject_pattern "nightly core excludes privileged-socket red-team" \
 require_pattern "sandbox privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
   .github/workflows/nightly-dast-sandbox.yml
-require_pattern "sandbox red-team advisory" \
+reject_pattern "sandbox security checks fail closed" \
   'continue-on-error: true' \
+  .github/workflows/nightly-dast-sandbox.yml
+require_pattern "sandbox hard failures open failure issue" \
+  "contains\\(needs\\.\\*\\.result, 'failure'\\)" \
+  .github/workflows/nightly-dast-sandbox.yml
+require_pattern "sandbox DAST actions fail closed" \
+  'fail_action: true' \
   .github/workflows/nightly-dast-sandbox.yml
 require_pattern "uptime check definitions" \
   'OPS_UPTIME_CHECKS' \
