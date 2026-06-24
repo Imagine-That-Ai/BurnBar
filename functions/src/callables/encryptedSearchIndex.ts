@@ -22,10 +22,25 @@ interface CloudSearchPostingEdge {
   data: Record<string, unknown>;
 }
 
-const MAX_TOKEN_POSTING_EDGES_PER_CHUNK = 96;
+export const MAX_TOKEN_POSTING_EDGES_PER_CHUNK = 24;
+export const MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK = 12;
+export const MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT = 30_000;
 
 function uniqueHashes(hashes: string[]): string[] {
   return Array.from(new Set(hashes));
+}
+
+function boundedCloudSearchPostingHashes(kind: CloudSearchPostingKind, hashes: string[]): string[] {
+  const maxEdges = kind === "token" ? MAX_TOKEN_POSTING_EDGES_PER_CHUNK : MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK;
+  return uniqueHashes(hashes).slice(0, maxEdges);
+}
+
+export function assertCloudSearchIndexWriteBudget(writeCount: number): void {
+  if (!Number.isSafeInteger(writeCount) || writeCount < 0 || writeCount > MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT) {
+    throw new Error(
+      `cloud search index commit would write ${writeCount} documents; maximum is ${MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT}.`,
+    );
+  }
 }
 
 export function buildCloudSearchPostingEdges(params: {
@@ -36,9 +51,7 @@ export function buildCloudSearchPostingEdges(params: {
   const edges: CloudSearchPostingEdge[] = [];
 
   const emit = (kind: CloudSearchPostingKind, hashes: string[]) => {
-    const boundedHashes =
-      kind === "token" ? uniqueHashes(hashes).slice(0, MAX_TOKEN_POSTING_EDGES_PER_CHUNK) : uniqueHashes(hashes);
-    for (const hash of boundedHashes) {
+    for (const hash of boundedCloudSearchPostingHashes(kind, hashes)) {
       const postingKey = `${kind}_${hash}`;
       const edgeID = `${postingKey}_${params.source.chunkID}`;
       edges.push({
