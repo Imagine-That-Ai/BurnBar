@@ -261,32 +261,63 @@ enum HermesEnvironmentFile {
     /// Blocking file I/O runs off the main actor: this is a `nonisolated`
     /// `async` function, so main-actor callers leave it at the `await` (SE-0338).
     static func ensureAPIServerEnabled() async throws {
+        try ensureAPIServerEnabled(at: envURL)
+    }
+
+    static func ensureAPIServerEnabled(
+        at url: URL,
+        generateKey: () throws -> String = { try OpenBurnBarSecureToken.randomBase64URL() }
+    ) throws {
         let fileManager = FileManager.default
-        let directoryURL = envURL.deletingLastPathComponent()
+        let directoryURL = url.deletingLastPathComponent()
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         var lines: [String] = []
-        if fileManager.fileExists(atPath: envURL.path) {
-            let content = try String(contentsOf: envURL, encoding: .utf8)
+        if fileManager.fileExists(atPath: url.path) {
+            let content = try String(contentsOf: url, encoding: .utf8)
             lines = content.components(separatedBy: .newlines)
         }
 
-        var replaced = false
-        lines = lines.map { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("API_SERVER_ENABLED=") else { return line }
-            replaced = true
-            return "API_SERVER_ENABLED=true"
+        var replacedEnabled = false
+        var hasUsableKey = false
+        var firstKeyLineIndex: Int?
+
+        for index in lines.indices {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("API_SERVER_ENABLED=") {
+                replacedEnabled = true
+                lines[index] = "API_SERVER_ENABLED=true"
+            }
+            if trimmed.hasPrefix("API_SERVER_KEY=") {
+                if firstKeyLineIndex == nil {
+                    firstKeyLineIndex = index
+                }
+                let rawValue = String(trimmed.dropFirst("API_SERVER_KEY=".count))
+                if !normalizedEnvValue(rawValue).isEmpty {
+                    hasUsableKey = true
+                }
+            }
         }
-        if !replaced {
+        if !replacedEnabled {
             if lines.last?.isEmpty == false {
                 lines.append("")
             }
             lines.append("API_SERVER_ENABLED=true")
         }
+        if !hasUsableKey {
+            let keyLine = "API_SERVER_KEY=\(try generateKey())"
+            if let firstKeyLineIndex {
+                lines[firstKeyLineIndex] = keyLine
+            } else {
+                if lines.last?.isEmpty == false {
+                    lines.append("")
+                }
+                lines.append(keyLine)
+            }
+        }
 
         let output = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
-        try output.write(to: envURL, atomically: true, encoding: .utf8)
+        try output.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Reads off the main actor (`nonisolated` `async`, SE-0338).
@@ -323,12 +354,18 @@ enum HermesEnvironmentFile {
         for rawLine in content.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("API_SERVER_KEY=") else { continue }
-            let rawValue = String(line.dropFirst("API_SERVER_KEY=".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !rawValue.isEmpty else { return nil }
-            return rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            let value = normalizedEnvValue(String(line.dropFirst("API_SERVER_KEY=".count)))
+            guard !value.isEmpty else { continue }
+            return value
         }
         return nil
+    }
+
+    private static func normalizedEnvValue(_ rawValue: String) -> String {
+        rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

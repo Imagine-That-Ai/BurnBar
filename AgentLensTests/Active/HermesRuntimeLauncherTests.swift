@@ -175,6 +175,36 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertNil(key)
     }
 
+    func test_ensureAPIServerEnabled_createsFlagAndSecureKeyWhenMissing() throws {
+        let url = Self.makeTempEnvURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        try HermesEnvironmentFile.ensureAPIServerEnabled(at: url, generateKey: { "test-generated-key" })
+
+        let content = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(content.contains("API_SERVER_ENABLED=true"))
+        XCTAssertTrue(content.contains("API_SERVER_KEY=test-generated-key"))
+        XCTAssertEqual(HermesEnvironmentFile.readAPIServerKey(at: url), "test-generated-key")
+    }
+
+    func test_ensureAPIServerEnabled_preservesExistingKeyAndNormalizesFlag() throws {
+        let url = Self.makeTempEnvURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let contents = """
+        API_SERVER_ENABLED=false
+        API_SERVER_KEY=existing-key
+        """
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+
+        try HermesEnvironmentFile.ensureAPIServerEnabled(at: url, generateKey: { "new-key" })
+
+        let content = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(content.contains("API_SERVER_ENABLED=true"))
+        XCTAssertTrue(content.contains("API_SERVER_KEY=existing-key"))
+        XCTAssertFalse(content.contains("API_SERVER_KEY=new-key"))
+        XCTAssertEqual(HermesEnvironmentFile.readAPIServerKey(at: url), "existing-key")
+    }
+
     /// CRITICAL: when the path *exists* but cannot be read as a UTF-8 file (here a
     /// directory stands in for a permissions/corruption/I/O fault), the read must
     /// NOT silently masquerade as "no key configured" via a swallowed `try?`. The
@@ -248,7 +278,7 @@ private actor FakeHermesRuntime {
         HermesRuntimeLauncherDependencies(
             resolveHermesExecutable: { [weak self] in
                 guard let self else { return nil }
-                return await self.executable
+                return self.executable
             },
             runCommand: { [weak self] _, arguments in
                 guard let self else { return "" }
@@ -323,6 +353,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: nil))
         controller.hermesCLIInstalled = false
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
         XCTAssertEqual(controller.reachability, .cliMissing)
     }
 
@@ -330,6 +361,16 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = false
+        controller.hasAPIServerKey = true
+        controller.probeAttempts = 1
+        XCTAssertEqual(controller.reachability, .apiServerDisabled)
+    }
+
+    func test_reachability_apiServerDisabled_whenKeyMissing() {
+        let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
+        controller.hermesCLIInstalled = true
+        controller.apiServerEnabled = true
+        controller.hasAPIServerKey = false
         controller.probeAttempts = 1
         XCTAssertEqual(controller.reachability, .apiServerDisabled)
     }
@@ -338,6 +379,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
         controller.isGatewayRunning = false
         controller.isDashboardRunning = true
         controller.probeAttempts = 1
@@ -349,6 +391,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
         controller.isGatewayRunning = true
         XCTAssertEqual(controller.reachability, .gatewayRunning)
         XCTAssertTrue(controller.reachability.isReady)
@@ -359,6 +402,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
         controller.probeAttempts = 0
         XCTAssertEqual(controller.reachability, .unknown)
     }
@@ -367,6 +411,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: .fake(executable: "/usr/local/bin/hermes"))
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
         controller.probeAttempts = 3
         XCTAssertEqual(controller.reachability, .unreachable)
     }
@@ -381,20 +426,21 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let fake = FakeWizardRuntime(executable: "/usr/local/bin/hermes", gatewayAvailable: false)
         let controller = HermesSetupWizardController(dependencies: fake.dependencies)
         controller.hermesCLIInstalled = true
-        controller.apiServerEnabled = true
+        controller.apiServerEnabled = false
+        controller.hasAPIServerKey = false
         controller.probeAttempts = 2
 
         controller.makeGatewayReachable()
-        // Wait for the async task to settle. isMakingReachable flips false on completion.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        await fake.waitForIdle()
+        await Self.awaitMakingReachableSettles(controller)
 
         let opened = await fake.openHermesAndGatewayCalls
         let refreshed = await fake.refreshStatusCalls
         XCTAssertEqual(opened, 1, "makeGatewayReachable must call openHermesAndGateway exactly once")
         XCTAssertEqual(refreshed, 0, "makeGatewayReachable must NOT call refreshStatus — openHermesAndGateway already re-probes")
+        XCTAssertTrue(controller.apiServerEnabled ?? false)
+        XCTAssertTrue(controller.hasAPIServerKey ?? false)
         XCTAssertTrue(controller.isGatewayRunning, "After makeGatewayReachable, the fake's gateway should be running")
+        XCTAssertEqual(controller.reachability, .gatewayRunning)
         XCTAssertNil(controller.makeReachableError)
     }
 
@@ -414,14 +460,15 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         )
         let controller = HermesSetupWizardController(dependencies: fake.dependencies)
         controller.hermesCLIInstalled = true
-        controller.apiServerEnabled = true
+        controller.apiServerEnabled = false
+        controller.hasAPIServerKey = false
 
         controller.makeGatewayReachable()
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        await fake.waitForIdle()
+        await Self.awaitMakingReachableSettles(controller)
 
         XCTAssertFalse(controller.isGatewayRunning)
+        XCTAssertTrue(controller.apiServerEnabled ?? false)
+        XCTAssertTrue(controller.hasAPIServerKey ?? false)
         XCTAssertNotNil(controller.makeReachableError)
         XCTAssertEqual(controller.makeReachableError, "gateway binary missing")
     }
@@ -436,6 +483,9 @@ final class HermesSetupWizardControllerTests: XCTestCase {
             modelName: "hermes-4"
         )
         let controller = HermesSetupWizardController(dependencies: fake.dependencies)
+        controller.hermesCLIInstalled = true
+        controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
 
         controller.probeGateway()
         await Task.yield()
@@ -510,6 +560,8 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         controller.hermesCLIInstalled = true
         XCTAssertFalse(controller.canContinueFromPrepare)
         controller.apiServerEnabled = true
+        XCTAssertFalse(controller.canContinueFromPrepare)
+        controller.hasAPIServerKey = true
         XCTAssertTrue(controller.canContinueFromPrepare)
     }
 
@@ -542,6 +594,13 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         }
     }
 
+    private static func awaitMakingReachableSettles(_ controller: HermesSetupWizardController) async {
+        for _ in 0..<50 {
+            if !controller.isMakingReachable { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     func test_startAutoProbe_probesImmediatelyThenStopsWhenReachable() async {
         let fake = FakeWizardRuntime(
             executable: "/usr/local/bin/hermes",
@@ -550,6 +609,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         let controller = HermesSetupWizardController(dependencies: fake.dependencies)
         controller.hermesCLIInstalled = true
         controller.apiServerEnabled = true
+        controller.hasAPIServerKey = true
 
         controller.startAutoProbe()
         await Task.yield()
@@ -610,7 +670,7 @@ private actor FakeWizardRuntime {
     private var dashboardAvailable: Bool
     private let modelName: String?
     private let openHermesGatewayResult: HermesRuntimeStatus?
-    private let envSnapshot: HermesEnvSnapshot
+    private var envSnapshot: HermesEnvSnapshot
     private let verificationResponse: String
 
     init(
@@ -640,7 +700,7 @@ private actor FakeWizardRuntime {
             },
             resolveHermesExecutable: { [weak self] in
                 guard let self else { return nil }
-                return await self.executable
+                return self.executable
             },
             readEnvSnapshot: { [weak self] in
                 guard let self else {
@@ -648,7 +708,10 @@ private actor FakeWizardRuntime {
                 }
                 return await self.envSnapshot
             },
-            ensureAPIServerEnabled: { },
+            ensureAPIServerEnabled: { [weak self] in
+                guard let self else { return }
+                await self.ensureAPIServerEnabled()
+            },
             refreshStatus: { @MainActor [weak self] _, _ in
                 guard let self else { return HermesRuntimeStatus() }
                 return await self.refreshStatus()
@@ -659,7 +722,7 @@ private actor FakeWizardRuntime {
             },
             runVerificationChat: { @MainActor [weak self] _, _ in
                 guard let self else { return "" }
-                return await self.verificationResponse
+                return self.verificationResponse
             },
             installHermesSkillIfNeeded: { }
         )
@@ -693,6 +756,7 @@ private actor FakeWizardRuntime {
 
     private func openHermesAndGateway() -> HermesRuntimeStatus {
         openHermesAndGatewayCalls += 1
+        ensureAPIServerEnabled()
         if let preset = openHermesGatewayResult { return preset }
         // Default: opening starts the gateway.
         gatewayAvailable = true
@@ -703,6 +767,15 @@ private actor FakeWizardRuntime {
             dashboardRunning: true,
             modelName: modelName ?? "hermes-agent",
             message: "Hermes Dashboard and gateway are running."
+        )
+    }
+
+    private func ensureAPIServerEnabled() {
+        envSnapshot = HermesEnvSnapshot(
+            fileExists: true,
+            apiServerEnabled: true,
+            hasAPIServerKey: true,
+            savedBearerToken: envSnapshot.savedBearerToken.isEmpty ? "test-generated-key" : envSnapshot.savedBearerToken
         )
     }
 }
