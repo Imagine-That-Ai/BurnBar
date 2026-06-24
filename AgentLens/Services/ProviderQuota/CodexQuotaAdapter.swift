@@ -343,13 +343,14 @@ private enum CodexOAuthQuotaFetcher {
 
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
-        guard let codexExecutable = CLILaunchAdapter.resolveExecutable(for: .codex) else {
+        guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
             return
         }
         let process = Process()
         process.executableURL = codexExecutable
         process.arguments = ["login", "status"]
         var env = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: environment)
+        env["PATH"] = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: environment["HOME"])
         env["CODEX_HOME"] = configURL.path
         env["CODEX_CONFIG_PATH"] = configURL.path
         process.environment = env

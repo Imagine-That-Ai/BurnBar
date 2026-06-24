@@ -558,6 +558,80 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.primaryDisplayableBucket?.remainingPercent?.rounded(), 75)
     }
 
+    func test_codexRefreshNudgeScrubsAmbientPathWhenExecutingTrustedCodex() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let configRoot = home.appendingPathComponent(".codex", isDirectory: true)
+        try FileManager.default.createDirectory(at: configRoot, withIntermediateDirectories: true)
+        try Data("""
+        {
+          "auth_mode": "chatgpt",
+          "last_refresh": "2020-01-01T00:00:00.000Z",
+          "tokens": {
+            "access_token": "codex-stale-token"
+          }
+        }
+        """.utf8).write(to: configRoot.appendingPathComponent("auth.json"))
+
+        let trustedBin = try makeTemporaryDirectory()
+        let observedPathURL = trustedBin.appendingPathComponent("observed-path")
+        let trustedCodexURL = trustedBin.appendingPathComponent("codex")
+        try Data("""
+        #!/bin/sh
+        printf '%s' "$PATH" > "\(observedPathURL.path)"
+        exit 0
+        """.utf8).write(to: trustedCodexURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: trustedCodexURL.path)
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? trustedCodexURL : nil
+        }
+        defer { CLILaunchAdapter.executableResolver = nil }
+
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
+            return try self.httpResponse(
+                url: request.url!,
+                statusCode: 200,
+                body: """
+                {
+                  "plan_type": "plus",
+                  "rate_limit": {
+                    "primary_window": {
+                      "used_percent": 25,
+                      "limit_window_seconds": 18000,
+                      "reset_after_seconds": 3600
+                    }
+                  }
+                }
+                """
+            )
+        }
+        let ambientPath = home.appendingPathComponent(".local/bin").path
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "HOME": home.path,
+                "PATH": ambientPath
+            ],
+            refreshProviders: [.codex]
+        )
+
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
+
+        let observedPath = try String(contentsOf: observedPathURL, encoding: .utf8)
+        XCTAssertFalse(
+            observedPath.split(separator: ":").contains(Substring(ambientPath)),
+            "Codex nudge must not pass user-managed PATH entries to a trusted shim."
+        )
+        XCTAssertTrue(
+            observedPath.split(separator: ":").contains("/opt/homebrew/bin")
+                || observedPath.split(separator: ":").contains("/usr/local/bin")
+        )
+    }
+
     func test_codexRefresh_readsQuotaSnapshotFromLargeRolloutTail() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

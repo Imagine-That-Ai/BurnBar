@@ -71,11 +71,49 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
             for: .codex,
             homeDirectory: home
         ).isEmpty)
+        XCTAssertTrue(CLILaunchAdapter.ambientFallbackExecutableSearchDirectories(
+            for: .claude,
+            homeDirectory: home
+        ).contains("\(home)/.local/bin"))
         XCTAssertFalse(CLILaunchAdapter.trustedExecutableSearchDirectories(
             for: .codex,
             environment: ["PATH": "\(home)/.local/bin:\(home)/.nvm/versions/node/v20/bin"],
             homeDirectory: home
         ).contains(where: { $0.hasPrefix(home) }))
+    }
+
+    func testPinnedCodexResolutionDoesNotInvokeLoginShell() throws {
+        let fileManager = FileManager.default
+        let tempHome = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-pinned-resolution-\(UUID().uuidString)", isDirectory: true)
+        temporaryRoots.append(tempHome)
+
+        let shellMarker = tempHome.appendingPathComponent("login-shell-ran")
+        let fakeShellPath = tempHome.appendingPathComponent("fake-login-shell")
+        try makeExecutableFile(
+            at: fakeShellPath,
+            contents: """
+            #!/bin/sh
+            /usr/bin/touch "\(shellMarker.path)"
+            printf '%s\\n' '\(tempHome.appendingPathComponent(".local/bin/codex").path)'
+            """
+        )
+
+        CLILaunchAdapter.homeDirectoryProvider = { tempHome.path }
+        CLILaunchAdapter.environmentProvider = {
+            [
+                "HOME": tempHome.path,
+                "PATH": tempHome.appendingPathComponent(".local/bin").path,
+                "SHELL": fakeShellPath.path
+            ]
+        }
+        CLILaunchAdapter.clearExecutableResolutionCache()
+
+        XCTAssertNil(CLILaunchAdapter.resolvePinnedExecutable(for: .codex))
+        XCTAssertFalse(
+            fileManager.fileExists(atPath: shellMarker.path),
+            "Pinned Codex resolution must not execute login-shell startup files."
+        )
     }
 
     private func makeExecutableFile(
