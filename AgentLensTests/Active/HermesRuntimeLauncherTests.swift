@@ -464,7 +464,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         XCTAssertFalse(controller.isCheckingCLI)
     }
 
-    func test_checkConfig_readsEnvSnapshot() async {
+    func test_checkConfig_readsEnvSnapshot() async throws {
         let fake = FakeWizardRuntime(
             executable: "/usr/local/bin/hermes",
             envSnapshot: HermesEnvSnapshot(
@@ -479,9 +479,9 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         controller.checkConfig()
         await Self.awaitCheckingSettles(controller, keyPath: \.isCheckingConfig)
 
-        XCTAssertTrue(controller.envFileExists)
-        XCTAssertTrue(controller.apiServerEnabled)
-        XCTAssertTrue(controller.hasAPIServerKey)
+        XCTAssertTrue(try XCTUnwrap(controller.envFileExists))
+        XCTAssertTrue(try XCTUnwrap(controller.apiServerEnabled))
+        XCTAssertTrue(try XCTUnwrap(controller.hasAPIServerKey))
         XCTAssertEqual(controller.bearerTokenInput, "sk-test")
         XCTAssertFalse(controller.isCheckingConfig)
     }
