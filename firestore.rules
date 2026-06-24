@@ -784,11 +784,42 @@ service cloud.firestore {
       return !(field in data) || (data[field] is int && data[field] >= 0);
     }
 
+    function validSessionLogToolTags(data) {
+      return !("toolTags" in data) || (
+        data.toolTags is list
+        && data.toolTags.size() <= 24
+        && data.toolTags.hasOnly([
+          "apply_patch",
+          "bash",
+          "edit",
+          "exec",
+          "exec_command",
+          "find",
+          "glob",
+          "grep",
+          "grep_search",
+          "ls",
+          "multi_edit",
+          "open",
+          "other",
+          "read",
+          "rg",
+          "search",
+          "sed",
+          "shell",
+          "todo_read",
+          "todo_write",
+          "view_file",
+          "write"
+        ])
+      );
+    }
+
     function validSessionLogFacets(data) {
       return (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32))
+        && validSessionLogToolTags(data)
         && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
         && validOptionalInt(data, "inputTokens")
         && validOptionalInt(data, "outputTokens")
