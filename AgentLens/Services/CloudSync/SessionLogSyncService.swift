@@ -618,7 +618,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// triggers a one-time backfill (`markAllSessionLogsUnsynced`) so existing manifests get the
     /// new facets. Facets are metadata only — token totals, cost, timing, model/provider, and
     /// generic tool tags. Project names and working directories are device-only.
-    static let facetSchemaVersion = 2
+    static let facetSchemaVersion = 3
 
     private static let legacyPlaintextFields = [
         "body",

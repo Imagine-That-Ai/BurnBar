@@ -825,6 +825,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let fields = SessionLogSyncService.facetFields(for: record, facets: nil, model: "gpt-5-codex")
         let tags = fields["toolTags"] as? [String]
 
+        XCTAssertEqual(fields["facetSchemaVersion"] as? Int, 3)
         XCTAssertEqual(tags, ["exec_command", "other", "read"])
     }
 }
