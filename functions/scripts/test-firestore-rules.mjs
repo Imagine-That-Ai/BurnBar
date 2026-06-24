@@ -3002,6 +3002,74 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   );
 });
 
+test("realtime relay URLs must stay on bounded secure host routes", async () => {
+  const db = authedDb("relay-url-user");
+  await seedHostedCloudEntitlement("relay-url-user");
+
+  const hermesConnectionPath = "users/relay-url-user/hermes_connections/hermes-relay-mac";
+  const piConnectionPath = "users/relay-url-user/pi_agent_connections/pi-relay-mac";
+  const hermesConnectionDoc = {
+    id: "hermes-relay-mac",
+    displayName: "Mac Hermes Relay",
+    mode: "relayLink",
+    status: "online",
+    capabilities: ["chat_completions", "remote_relay", "realtime_relay"],
+    relayPublicKey: "A".repeat(88),
+    relayKeyVersion: 3,
+    relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+    realtimeRelayURL: "wss://relay.openburnbar.test/v1/realtime",
+    realtimeRelayStatus: "online",
+    realtimeRelayProtocolVersion: 1,
+    createdAt: "2026-06-24T00:00:00.000Z",
+    updatedAt: "2026-06-24T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+  const piConnectionDoc = {
+    id: "pi-relay-mac",
+    displayName: "Mac Pi Relay",
+    mode: "relayLink",
+    status: "online",
+    capabilities: ["chat_completions", "remote_relay", "realtime_relay"],
+    relayPublicKey: "B".repeat(88),
+    relayKeyVersion: 1,
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    realtimeRelayURL: "wss://relay.openburnbar.test/v1/realtime",
+    realtimeRelayStatus: "online",
+    realtimeRelayProtocolVersion: 1,
+    createdAt: "2026-06-24T00:00:00.000Z",
+    updatedAt: "2026-06-24T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+
+  await assertSucceeds(setDoc(doc(db, hermesConnectionPath), hermesConnectionDoc));
+  await assertSucceeds(setDoc(doc(db, piConnectionPath), piConnectionDoc));
+
+  for (const realtimeRelayURL of [
+    "ws://relay.openburnbar.test/v1/realtime",
+    "wss://127.0.0.1:8317/v1/realtime",
+    "wss://10.0.0.5/v1/realtime",
+    "wss://metadata.google.internal/computeMetadata/v1",
+    "wss://user:pass@relay.openburnbar.test/v1/realtime",
+    "wss://relay.openburnbar.test/v1/realtime?token=secret",
+    "wss://relay.openburnbar.test/v1/realtime#fragment",
+  ]) {
+    await assertFails(
+      setDoc(doc(db, hermesConnectionPath), {
+        ...hermesConnectionDoc,
+        realtimeRelayURL,
+        updatedAt: "2026-06-24T00:00:01.000Z",
+      })
+    );
+    await assertFails(
+      setDoc(doc(db, piConnectionPath), {
+        ...piConnectionDoc,
+        realtimeRelayURL,
+        updatedAt: "2026-06-24T00:00:01.000Z",
+      })
+    );
+  }
+});
+
 test("runtime preferences are per device and provider device links are server-written", async () => {
   const db = authedDb("hank");
 
