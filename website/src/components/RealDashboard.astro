@@ -1,9 +1,7 @@
 ---
-// Real OpenBurnBar dashboard — pulled from the actual iPadOS app
-// (App Store screenshot, captured 2026-05-12). The iPadOS app and the
-// macOS app share the same SwiftUI design system so this is the closest
-// thing to a "Mac dashboard hero" we can ship until the macOS bundle
-// gets its own App Store-style capture.
+// Representative OpenBurnBar dashboard render for the public website. The
+// iPadOS and macOS apps share the same SwiftUI design system, but public copy
+// must describe these captures as synthetic demo data rather than live usage.
 //
 // Two layout modes:
 //   variant="device"  — framed in an iPad bezel (default, used on home)
@@ -19,9 +17,9 @@ interface Props {
 }
 const {
   src = "/screens/ipad-burn.webp",
-  alt = "OpenBurnBar iPadOS Burn screen — Fleet Quota 42% Pressured, $18.74 today, $126.40 over 7 days, per-provider rings",
+  alt = "OpenBurnBar iPadOS Burn screen - sample fleet quota, synthetic demo cost windows, and per-provider rings",
   variant = "device",
-  caption = "Real iPadOS capture · Burn tab · same SwiftUI design as the macOS app",
+  caption = "Representative iPadOS render · synthetic demo data",
   width = 1032,
   height = 1376
 } = Astro.props;
