@@ -180,8 +180,12 @@ function clipMap(clips) {
 // answers in the pet's own voice. Populated once the manifest source resolves;
 // an absent sidecar simply leaves pets on BurnBar's default voice.
 let personas = {};
+// BurnBar-native persona overrides (scripts/pet-personas.burnbar.json) — same
+// figures, re-grounded in BurnBar's world (tokens/spend/agents/code) so the pets
+// don't confabulate a web-design context. Preferred per-id over the website voice.
+let personasBurnbar = {};
 function agentFor(id) {
-  const p = personas[id];
+  const p = personasBurnbar[id] || personas[id];
   if (!p) return undefined;
   return {
     persona: `${p.voice} A few phrases you're known for: ${(p.signature || []).join(" / ")}`,
@@ -284,6 +288,15 @@ try {
   personas = parsedPersonas && typeof parsedPersonas === "object" && !Array.isArray(parsedPersonas) ? parsedPersonas : {};
 } catch {
   /* no pet-personas.json → default voice */
+}
+
+// BurnBar-local persona override — read from THIS repo (not the synced manifest),
+// so BurnBar can tune voices independently of the website. Best-effort.
+try {
+  const bb = JSON.parse(await readFile(path.join(repoRoot, "scripts", "pet-personas.burnbar.json"), "utf8"));
+  personasBurnbar = bb && typeof bb === "object" && !Array.isArray(bb) ? bb : {};
+} catch {
+  /* no scripts/pet-personas.burnbar.json → website personas */
 }
 
 await mkdir(modelsDir, { recursive: true });
