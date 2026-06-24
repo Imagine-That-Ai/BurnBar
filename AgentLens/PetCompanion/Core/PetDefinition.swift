@@ -257,6 +257,9 @@ extension PetDefinition {
         var clipNames: [String]?
         var preview: String?
         var usdz: String?
+        /// Static props grafted onto skeleton sockets (rigged forms only). Mirrors
+        /// the web `Model3dForm.props`; the SAME petdef JSON drives both runtimes.
+        var props: [PetProp]?
 
         var availableSemanticClips: Set<String> {
             var names = Set(clipNames ?? [])
@@ -267,6 +270,87 @@ extension PetDefinition {
             return names
         }
     }
+
+    /// A static prop (tool/hat/accessory) attached to a named skeleton socket and
+    /// offset by a bone-local transform. Cross-runtime mirror of petcore `PetProp`.
+    struct PetProp: Codable, Hashable, Sendable {
+        var id: String
+        var glb: String
+        /// semantic socket alias ("rightHand") or a raw bone name ("RightHand").
+        var socket: String
+        var transform: PetPropTransform?
+        /// show the prop only while the pet is in one of these logical states.
+        var visibleStates: [String]?
+        /// hide the prop while in one of these states (e.g. ["sleep"]); hidden wins.
+        var hiddenStates: [String]?
+        var label: String?
+    }
+
+    /// Bone-local offset for an attached prop. `scale` accepts a JSON number
+    /// (uniform) or a `[x, y, z]` array — both normalize to three components here.
+    struct PetPropTransform: Hashable, Sendable {
+        var position: [Double]?
+        var rotationEuler: [Double]?
+        var scale: [Double]?
+    }
+}
+
+extension PetDefinition.PetPropTransform: Codable {
+    enum CodingKeys: String, CodingKey { case position, rotationEuler, scale }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        position = try c.decodeIfPresent([Double].self, forKey: .position)
+        rotationEuler = try c.decodeIfPresent([Double].self, forKey: .rotationEuler)
+        if let uniform = try? c.decode(Double.self, forKey: .scale) {
+            scale = [uniform, uniform, uniform]
+        } else if let vec = try? c.decode([Double].self, forKey: .scale) {
+            scale = vec
+        } else {
+            scale = nil
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(position, forKey: .position)
+        try c.encodeIfPresent(rotationEuler, forKey: .rotationEuler)
+        try c.encodeIfPresent(scale, forKey: .scale)
+    }
+}
+
+extension PetDefinition.PetProp {
+    /// Semantic socket aliases → ordered candidate bone names. Mirror of petcore
+    /// `SOCKET_BONES`; insulates the data from rig-naming drift. An empty list
+    /// (`root`) means "attach to the content root, not a bone".
+    static let socketBones: [String: [String]] = [
+        "rightHand": ["RightHand", "mixamorig:RightHand", "hand_r", "Hand_R"],
+        "leftHand": ["LeftHand", "mixamorig:LeftHand", "hand_l", "Hand_L"],
+        "rightForeArm": ["RightForeArm", "mixamorig:RightForeArm", "forearm_r"],
+        "leftForeArm": ["LeftForeArm", "mixamorig:LeftForeArm", "forearm_l"],
+        "head": ["Head", "mixamorig:Head", "head"],
+        "spine": ["Spine2", "Spine1", "Spine", "mixamorig:Spine2", "mixamorig:Spine1", "mixamorig:Spine"],
+        "hips": ["Hips", "mixamorig:Hips", "pelvis"],
+        "root": [],
+    ]
+
+    /// Resolve a socket (alias or raw bone name) against the rig's bone names →
+    /// the matching bone, or `nil` for the scene-root socket / no match.
+    static func resolveSocketBone(_ socket: String, available: Set<String>) -> String? {
+        if let candidates = socketBones[socket] {
+            if candidates.isEmpty { return nil }            // "root" → content root
+            return candidates.first { available.contains($0) }
+        }
+        return available.contains(socket) ? socket : nil    // unknown → literal bone name
+    }
+
+    /// Whether the prop should be visible while the pet is in `state`
+    /// (`visibleStates` gates show, `hiddenStates` always wins).
+    func isVisible(in state: String) -> Bool {
+        if let hidden = hiddenStates, hidden.contains(state) { return false }
+        if let visible = visibleStates, !visible.isEmpty { return visible.contains(state) }
+        return true
+    }
 }
 
 private struct PetDefinitionForm: Decodable {
@@ -274,7 +358,7 @@ private struct PetDefinitionForm: Decodable {
     var model3d: PetDefinition.Model3D?
 
     enum CodingKeys: String, CodingKey {
-        case kind, modelKind, glb, clips, clipNames, preview, usdz
+        case kind, modelKind, glb, clips, clipNames, preview, usdz, props
     }
 
     init(from decoder: any Decoder) throws {
@@ -292,7 +376,8 @@ private struct PetDefinitionForm: Decodable {
                 clips: try c.decodeIfPresent([String: String].self, forKey: .clips),
                 clipNames: try c.decodeIfPresent([String].self, forKey: .clipNames),
                 preview: try c.decodeIfPresent(String.self, forKey: .preview),
-                usdz: try c.decodeIfPresent(String.self, forKey: .usdz)
+                usdz: try c.decodeIfPresent(String.self, forKey: .usdz),
+                props: try c.decodeIfPresent([PetDefinition.PetProp].self, forKey: .props)
             )
         default:
             atlas2d = nil
@@ -375,6 +460,16 @@ enum PetModelResourceLocator {
         return bundle.url(forResource: base, withExtension: ext, subdirectory: "Models/\(petID)")
             ?? bundle.url(forResource: base, withExtension: ext, subdirectory: "Models")
             ?? bundle.url(forResource: "\(petID)/\(base)", withExtension: ext, subdirectory: "Models")
+            ?? bundle.url(forResource: base, withExtension: ext)
+    }
+
+    /// Resolve a bundled PROP GLB (the static objects pets hold). The sync bridge
+    /// copies these to `Models/props/<file>`; fall back to `Models/` for older layouts.
+    static func propURL(for glbName: String, in bundle: Bundle = .main) -> URL? {
+        let base = (glbName as NSString).deletingPathExtension
+        let ext = (glbName as NSString).pathExtension.isEmpty ? "glb" : (glbName as NSString).pathExtension
+        return bundle.url(forResource: base, withExtension: ext, subdirectory: "Models/props")
+            ?? bundle.url(forResource: base, withExtension: ext, subdirectory: "Models")
             ?? bundle.url(forResource: base, withExtension: ext)
     }
 }

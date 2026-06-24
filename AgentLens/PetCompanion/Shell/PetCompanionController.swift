@@ -52,6 +52,12 @@ final class PetCompanionController: ObservableObject {
     private var clickTarget: PetClickTarget?
     /// Gesture gate that keeps empty renderer pixels click-through.
     private var clickGestureGate: PetClickGestureGate?
+    /// File drag-and-drop delegate installed on the current renderer view so a
+    /// drop anywhere on the desktop pet stages the file as a chat attachment on
+    /// the shared ``ChatSessionController`` (and opens the bubble to show it).
+    /// Re-installed on every renderer view swap alongside the click gesture so a
+    /// 2D↔3D form swap keeps the drop target live.
+    private var attachmentDropDelegate: PetAttachmentDropDelegate?
 
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.
@@ -382,6 +388,69 @@ final class PetCompanionController: ObservableObject {
         gesture.delegate = gate
         view.addGestureRecognizer(gesture)
         clickGesture = gesture
+
+        // Wire file drag-and-drop onto the same view so a drop anywhere on the
+        // desktop pet stages the file as a chat attachment on the shared
+        // ChatSessionController (and opens the bubble to show it). Only views
+        // that conform to PetDropHostingView (the SceneKit/SpriteKit renderer
+        // subclasses) accept drops; a plain NSView (the placeholder) is skipped.
+        installDropTarget(on: view)
+    }
+
+    /// Install (or re-install) the file drop delegate on the renderer view. The
+    /// gate reuses the click gesture's visible-content test so a drop only
+    /// "sticks" on pet pixels — empty panel padding stays drop-through. No-op for
+    /// renderer views that do not adopt ``PetDropHostingView`` (the placeholder).
+    private func installDropTarget(on view: NSView) {
+        guard let host = view as? PetDropHostingView else { return }
+        // Build one delegate per mount; closures reach back into this controller.
+        let gate: (CGPoint, NSView) -> Bool = { [weak self] point, view in
+            guard let self, let renderer = self.renderer, renderer.view === view else { return true }
+            return renderer.containsVisibleContent(at: point)
+        }
+        let delegate = PetAttachmentDropDelegate(
+            onDropFile: { [weak self] url in self?.handleDroppedFile(url) },
+            onDropImage: { [weak self] image, name in self?.handleDroppedImage(image, suggestedName: name) },
+            visibleContentGate: gate
+        )
+        attachmentDropDelegate = delegate
+        host.dropDelegate = delegate
+        host.registerPetDropTypes()
+    }
+
+    // MARK: File drag-and-drop
+
+    /// Stage a dropped file URL onto the shared chat controller, then play a
+    /// celebratory `react` beat and open the bubble so the attachment tray is
+    /// visible at the pet (Option C feedback). Falls back to `react` only when
+    /// no chat is attached (ambient-only pet), matching the click fallback — a
+    /// drop is never inert.
+    func handleDroppedFile(_ url: URL) {
+        lastInteractionAt = Date()
+        guard let chat else {
+            fire(.resultLanded)
+            drive(to: .react)
+            return
+        }
+        chat.stageAttachment(from: url)
+        fire(.resultLanded)
+        openBubble()       // drives to .listen via chat.open()
+        drive(to: .react)  // override: the drop celebration wins over the listen pose
+    }
+
+    /// Stage a dropped in-memory image onto the shared chat controller, then
+    /// react + open the bubble (see ``handleDroppedFile(_:)``).
+    func handleDroppedImage(_ image: NSImage, suggestedName: String?) {
+        lastInteractionAt = Date()
+        guard let chat else {
+            fire(.resultLanded)
+            drive(to: .react)
+            return
+        }
+        chat.stageAttachment(image: image, suggestedName: suggestedName)
+        fire(.resultLanded)
+        openBubble()       // drives to .listen via chat.open()
+        drive(to: .react)  // override: the drop celebration wins over the listen pose
     }
 
     /// Build/show the bubble panel and anchor it to the pet's contact socket.

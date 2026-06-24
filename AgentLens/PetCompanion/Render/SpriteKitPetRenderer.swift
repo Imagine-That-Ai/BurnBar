@@ -24,7 +24,7 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
 
     // MARK: SpriteKit state
 
-    private let skView: SKView
+    private let skView: InteractivePetSKView
     private let scene: SKScene
     private let sprite: SKSpriteNode
 
@@ -56,7 +56,7 @@ final class SpriteKitPetRenderer: NSObject, PetRenderer {
         }
 
         let frame = CGRect(origin: .zero, size: cellSize)
-        let view = SKView(frame: frame)
+        let view = InteractivePetSKView(frame: frame)
         view.allowsTransparency = true
         view.ignoresSiblingOrder = true
         view.preferredFramesPerSecond = 15
@@ -342,5 +342,38 @@ extension SpriteKitPetRenderer {
         controller.rendererFactory = { definition, form in
             SpriteKitPetRenderer(definition: definition, form: form)
         }
+    }
+}
+
+// MARK: - InteractivePetSKView
+
+/// The SpriteKit view subclass that hosts the 2D pet. Conforms to
+/// ``PetDropHostingView`` so ``PetCompanionController`` can install a
+/// ``PetAttachmentDropDelegate`` and route file drag-and-drop onto the pet into
+/// the shared chat attachment pipeline. Mirrors ``InteractivePetSceneView``
+/// (the 3D backend's `SCNView` subclass) so both renderer forms accept drops.
+private final class InteractivePetSKView: SKView, PetDropHostingView {
+    /// Drop delegate installed by ``PetCompanionController``; `nil` until the
+    /// controller wires it, so an unconfigured view is drop-through rather than
+    /// a silent no-op.
+    var dropDelegate: PetAttachmentDropDelegate?
+
+    /// Register the types the pet accepts. Called by the controller after it
+    /// installs ``dropDelegate`` so the view participates in AppKit's drag
+    /// session only when wired.
+    func registerPetDropTypes() {
+        registerForDraggedTypes(PetAttachmentDropDelegate.acceptableTypes)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        petDropEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        petDropEntered(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        petDropPerform(sender)
     }
 }

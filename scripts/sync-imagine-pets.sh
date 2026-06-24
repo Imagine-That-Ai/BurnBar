@@ -222,9 +222,31 @@ function agentFor(id) {
   };
 }
 
+// Prop GLBs referenced by any pet's props[] (the SceneKit renderer loads them from
+// Models/props/<glb> and grafts them onto a hand bone). The set is collected across
+// all pets so the copy + prune steps know exactly which prop files to ship.
+const referencedPropGlbs = new Set();
+
+function normalizedProps(entry) {
+  if (!Array.isArray(entry.props)) return undefined;
+  const props = entry.props
+    .filter((p) => p && typeof p.id === "string" && typeof p.glb === "string" && typeof p.socket === "string")
+    .map((p) => {
+      referencedPropGlbs.add(path.basename(p.glb));
+      const prop = { id: p.id, glb: path.basename(p.glb), socket: p.socket };
+      if (p.transform) prop.transform = p.transform;
+      if (Array.isArray(p.visibleStates)) prop.visibleStates = p.visibleStates;
+      if (Array.isArray(p.hiddenStates)) prop.hiddenStates = p.hiddenStates;
+      if (typeof p.label === "string") prop.label = p.label;
+      return prop;
+    });
+  return props.length ? props : undefined;
+}
+
 function petDefinition(entry) {
   const glbName = bundledGlbName(entry);
   const clips = normalizedClips(entry);
+  const props = normalizedProps(entry);
   const sourceLabel = entry.source ? `${entry.source} via Imagine That's 3D pet manifest` : `Imagine That's 3D pet manifest`;
   return {
     schema: "petdef/1",
@@ -241,6 +263,7 @@ function petDefinition(entry) {
         glb: glbName,
         clipNames: clips,
         clips: clipMap(clips),
+        ...(props ? { props } : {}),
       },
     ],
     behavior: {
@@ -362,8 +385,25 @@ for (const pet of pets) {
   if (await writeIfChanged(path.join(modelsDir, pet.id, "petdef.json"), petdefBytes)) written += 1;
 }
 
+// Copy the prop GLBs referenced by any pet's props[] into Models/props/. These ride
+// a hand bone at runtime (see SceneKitPetRenderer prop attach); they are static, so
+// they live alongside the rigged pet GLBs but in their own subdir.
+let propsCopied = 0;
+if (referencedPropGlbs.size > 0) {
+  const propsDir = path.join(modelsDir, "props");
+  await mkdir(propsDir, { recursive: true });
+  for (const glb of referencedPropGlbs) {
+    try {
+      const bytes = await readMaybeRemote(source, `props/opt/${glb}`);
+      if (await writeIfChanged(path.join(propsDir, glb), bytes)) propsCopied += 1;
+    } catch (error) {
+      console.warn(`prop GLB "${glb}" unavailable at source — skipped (${error.message})`);
+    }
+  }
+}
+
 const pruned = await pruneStaleManifestOutputs(currentIDs, currentGlbs);
 
 console.log(`Synced ${pets.length} Imagine 3D pets from ${source}`);
-console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}; stale outputs pruned: ${pruned}`);
+console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}; props copied/updated: ${propsCopied}; stale outputs pruned: ${pruned}`);
 NODE

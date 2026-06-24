@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "squeegee",
+          "glb": "squeegee.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.01,
+              0.03
+            ],
+            "rotationEuler": [
+              1.5708,
+              0,
+              0
+            ],
+            "scale": 0.28
+          },
+          "label": "Squeegee"
+        }
+      ]
     }
   ],
   "behavior": {

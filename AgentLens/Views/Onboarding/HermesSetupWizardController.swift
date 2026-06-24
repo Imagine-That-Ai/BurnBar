@@ -79,7 +79,7 @@ final class HermesSetupWizardController {
     // MARK: Lifecycle
 
     private let dependencies: HermesSetupWizardDependencies
-    private var autoProbeTask: Task<Void, Never>?
+    var autoProbeTask: Task<Void, Never>?
 
     init(dependencies: HermesSetupWizardDependencies) {
         self.dependencies = dependencies

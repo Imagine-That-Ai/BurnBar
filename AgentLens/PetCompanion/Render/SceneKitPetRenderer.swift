@@ -148,6 +148,10 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     private weak var contentRoot: SCNNode?
     /// Pre-resolved `clipName → SCNAnimationPlayer` from the loaded scene.
     private var clipPlayers: [String: SCNAnimationPlayer] = [:]
+    /// Props grafted onto skeleton sockets (e.g. a broom in the right hand). Each
+    /// node is a child of its bone, so it rides the bone's animated transform; we
+    /// keep the pairing to toggle visibility per logical state.
+    private var attachedProps: [(prop: PetDefinition.PetProp, node: SCNNode)] = []
     /// The clip key currently playing (for restore after pause / form swap).
     private var activeClipKey: String?
     /// Increments on every playback change so delayed settle tasks cannot race
@@ -249,6 +253,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         scene = nil
         contentRoot = nil
         clipPlayers.removeAll(keepingCapacity: false)
+        attachedProps.removeAll()
         activeClipKey = nil
         playbackGeneration += 1
         scnView.removeFromSuperview()
@@ -265,6 +270,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         contentRoot = nil
         modelFraming = nil
         clipPlayers.removeAll(keepingCapacity: true)
+        attachedProps.removeAll()
         activeClipKey = nil
         playbackGeneration += 1
         loadScene(for: form)
@@ -275,6 +281,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
 
     func play(state: String) {
         currentStateKey = state
+        updatePropVisibility(for: state)
 
         // Do NOT re-frame the camera on a pose change. The camera is framed ONCE —
         // upright and face-on, after the skinner settles (see `install` +
@@ -457,6 +464,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         normalizeFraming(root: root, in: loaded)
         harvestClipPlayers(from: loaded.rootNode)
         ensureCameraAndLights(in: loaded)
+        attachProps(under: root)
 
         // Skinned rigs (the founders) deform far beyond their bind-pose bounding
         // sphere once the skinner runs at first render, so the bind-pose camera
@@ -466,6 +474,67 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // change — so the view holds still while the pet animates (see `play`).
         needsPresentationFraming = true
         scnView.delegate = self
+    }
+
+    /// Graft each declared prop onto its skeleton socket: resolve socket → bone
+    /// node, load the static prop GLB, offset it in bone-local space, and add it as
+    /// a child of the bone so it rides the bone's animated transform — the same
+    /// contract the web three.js `attachProps` honors (the petdef `props[]` is the
+    /// shared wire format). A prop whose socket or GLB can't be resolved is skipped;
+    /// a missing prop never breaks the pet.
+    private func attachProps(under root: SCNNode) {
+        attachedProps.removeAll()
+        guard let props = definition.model3d?.props, !props.isEmpty else { return }
+
+        var boneNames = Set<String>()
+        root.enumerateHierarchy { node, _ in
+            if let name = node.name { boneNames.insert(name) }
+        }
+
+        for prop in props {
+            let parent: SCNNode?
+            if let boneName = PetDefinition.PetProp.resolveSocketBone(prop.socket, available: boneNames) {
+                parent = root.childNode(withName: boneName, recursively: true)
+            } else if prop.socket == "root" {
+                parent = root
+            } else {
+                parent = nil
+            }
+            guard let parent,
+                  let url = PetModelResourceLocator.propURL(for: prop.glb),
+                  let propScene = loader.loadScene(at: url, clipNames: []) else { continue }
+
+            let node = SCNNode()
+            node.name = "prop:\(prop.id)"
+            for child in propScene.rootNode.childNodes { node.addChildNode(child) }
+            applyPropTransform(node, prop.transform)
+            parent.addChildNode(node)
+            attachedProps.append((prop, node))
+        }
+        updatePropVisibility(for: currentStateKey)
+    }
+
+    /// Apply a bone-local offset to a prop node (identity for absent fields).
+    private func applyPropTransform(_ node: SCNNode, _ transform: PetDefinition.PetPropTransform?) {
+        guard let transform else { return }
+        if let p = transform.position, p.count == 3 {
+            node.position = SCNVector3(Float(p[0]), Float(p[1]), Float(p[2]))
+        }
+        if let r = transform.rotationEuler, r.count == 3 {
+            node.eulerAngles = SCNVector3(Float(r[0]), Float(r[1]), Float(r[2]))
+        }
+        if let s = transform.scale, s.count == 3 {
+            node.scale = SCNVector3(Float(s[0]), Float(s[1]), Float(s[2]))
+        }
+    }
+
+    /// Show/hide attached props for the pet's current logical state.
+    private func updatePropVisibility(for state: String?) {
+        guard !attachedProps.isEmpty else { return }
+        let key = state ?? definition.model3d?.clips?.keys.first ?? "idle"
+        for (prop, node) in attachedProps {
+            node.isHidden = !prop.isVisible(in: key)
+        }
     }
 
     /// Re-fit the camera to the model's PRESENTATION (post-skinning) bounds. The
@@ -904,8 +973,13 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     }
 }
 
-private final class InteractivePetSceneView: SCNView {
+private final class InteractivePetSceneView: SCNView, PetDropHostingView {
     var onScrollScale: ((CGFloat) -> Void)?
+
+    /// Drop delegate installed by ``PetCompanionController``; `nil` until the
+    /// controller wires it, so an unconfigured view is drop-through rather than
+    /// a silent no-op.
+    var dropDelegate: PetAttachmentDropDelegate?
 
     override func scrollWheel(with event: NSEvent) {
         let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY
@@ -914,6 +988,27 @@ private final class InteractivePetSceneView: SCNView {
         } else {
             super.scrollWheel(with: event)
         }
+    }
+
+    // MARK: File drag-and-drop
+
+    /// Register the types the pet accepts. Called by the controller after it
+    /// installs ``dropDelegate`` so the view participates in AppKit's drag
+    /// session only when wired.
+    func registerPetDropTypes() {
+        registerForDraggedTypes(PetAttachmentDropDelegate.acceptableTypes)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        petDropEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        petDropEntered(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        petDropPerform(sender)
     }
 }
 

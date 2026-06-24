@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Drag-and-drop files onto the floating 3D pet (or 2D avatar) to auto-attach
+  them as chat attachments from any page, Space, or fullscreen app. The pet
+  floats above every desktop surface, so it's inherently a global drop target.
+  Dropping an acceptable file (file URL, image, PDF, text document — same
+  pasteboard types and per-kind size caps as the chat composer) stages it on
+  the shared `ChatSessionController` via the existing `HermesAttachmentLoader`
+  pipeline, plays a celebratory `react` beat, and opens the pet chat bubble
+  which renders a mercury-styled `ChatAttachmentTray` (Option C feedback). A
+  drop on empty panel padding passes through to whatever window is beneath
+  (reusing the renderer's existing `containsVisibleContent(at:)` gate), so the
+  pet never swallows a drop aimed at another app. When no chat is attached the
+  pet still reacts so a drop is never inert. Covered by
+  `PetDropAttachmentTests` (11 tests: gate acceptance, URL/image staging,
+  oversized rejection, react+bubble feedback, no-chat safety, forwarder
+  round-trips, delegate perform).
+
 ### Changed
 
 - Redesigned the Prepare Hermes wizard with a state-driven "Make Gateway
@@ -25,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unblocked the test target: `HermesSetupWizardController.autoProbeTask` was
+  `private` but the committed `HermesRuntimeLauncherTests` test asserts
+  `controller.autoProbeTask` is nil after `stopAutoProbe()`. The property is
+  now `internal` so the test compiles and the full test target builds cleanly.
 - Stopped the 3D pet/avatar from flashing a bird's-eye (top-of-head) view the
   instant you click it to chat. The SceneKit camera was re-fitting itself to the
   model's presentation bounds on *every* pose change (`idle → listen` on chat
