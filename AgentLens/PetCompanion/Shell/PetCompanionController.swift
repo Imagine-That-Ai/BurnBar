@@ -60,6 +60,7 @@ final class PetCompanionController: ObservableObject {
     ///
     /// The controller is the sole owner of the delegate; the renderer views hold
     /// it weakly, so this strong reference is what keeps the drop target alive.
+    /// reason: a weak ref here would deallocate the sole-owned delegate at once.
     private var attachmentDropDelegate: PetAttachmentDropDelegate? // swiftlint:disable:this weak_delegate
 
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
