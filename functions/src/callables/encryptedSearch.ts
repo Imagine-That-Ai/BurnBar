@@ -37,7 +37,7 @@ import {
   mapSessionLogManifestRow,
   resolveConversationSort,
 } from "./conversationQuery.js";
-import { buildCloudSearchPostingEdges } from "./encryptedSearchIndex.js";
+import { assertCloudSearchIndexWriteBudget, buildCloudSearchPostingEdges } from "./encryptedSearchIndex.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // Re-export relocated callables so existing `import ... from "./callables/encryptedSearch.js"`
@@ -183,7 +183,16 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
       const postingsRef = db.collection(`users/${uid}/cloud_search_postings`);
       const committedDocumentIDs: string[] = [];
+      const committedDocumentIDSet = new Set<string>();
       const writePaths = new Set<string>();
+      const assertPlannedWriteBudget = () => {
+        try {
+          assertCloudSearchIndexWriteBudget(writeCount + 1);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "cloud search index commit exceeds write budget.";
+          throw new HttpsError("resource-exhausted", message);
+        }
+      };
 
       for (const raw of documents) {
         const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
@@ -244,10 +253,14 @@ export const commitEncryptedSearchIndexBatch = onCall(
         writePaths.add(docRef.path);
         writeCount += 1;
         committedDocumentIDs.push(documentID);
+        committedDocumentIDSet.add(documentID);
       }
 
       for (const raw of chunks) {
         const documentID = safeCloudDocumentID(raw.documentID, "chunk.documentID");
+        if (!committedDocumentIDSet.has(documentID)) {
+          throw new HttpsError("invalid-argument", "chunk.documentID must reference a document in the same commit.");
+        }
         const chunkID = safeCloudDocumentID(raw.chunkID, "chunk.chunkID");
         const tokenHashes = requireTokenHashes(raw.tokenHashes, "chunk.tokenHashes");
         const semanticHashes = requireOptionalSearchHashes(raw.semanticHashes, "chunk.semanticHashes");
@@ -321,6 +334,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
           writePaths.add(postingRef.path);
           writeCount += 1;
         }
+        assertPlannedWriteBudget();
       }
 
       for (const documentID of committedDocumentIDs) {
@@ -332,14 +346,17 @@ export const commitEncryptedSearchIndexBatch = onCall(
           if (writePaths.has(old.ref.path)) continue;
           writes.push((batch) => batch.delete(old.ref));
           writeCount += 1;
+          assertPlannedWriteBudget();
         }
         for (const old of oldPostings.docs) {
           if (writePaths.has(old.ref.path)) continue;
           writes.push((batch) => batch.delete(old.ref));
           writeCount += 1;
+          assertPlannedWriteBudget();
         }
       }
 
+      assertPlannedWriteBudget();
       writes.push((batch) =>
         batch.set(
           db.doc(`users/${uid}/cloud_search_index_state/${deviceId}`),
