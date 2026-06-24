@@ -41,6 +41,7 @@ protocol CloudSyncQueryGateway: AnyObject, Sendable {
 
 protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool)
+    func deleteDocument(_ document: CloudSyncDocumentGateway)
     func commit() async throws
 }
 
@@ -214,6 +215,17 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
             return
         }
         batch.setData(data, forDocument: liveDoc.reference, merge: merge)
+    }
+
+    func deleteDocument(_ document: CloudSyncDocumentGateway) {
+        guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
+            AppLogger.sync.error(
+                "cloud_sync_gateway_implementation_mismatch",
+                metadata: ["expected": "CloudSyncDocumentLiveGateway"]
+            )
+            return
+        }
+        batch.deleteDocument(liveDoc.reference)
     }
 
     func commit() async throws {

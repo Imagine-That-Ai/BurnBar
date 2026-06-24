@@ -2154,6 +2154,17 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
       updatedAt: serverTimestamp(),
     })
   );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/carol/session_logs/device_log/chunks/legacy"), {
+      index: 2,
+      body: "legacy plaintext markdown",
+      schemaVersion: 1,
+      updatedAt: new Date(),
+    });
+  });
+  await assertSucceeds(
+    deleteDoc(doc(db, "users/carol/session_logs/device_log/chunks/legacy"))
+  );
 });
 
 test("session-log manifest accepts bounded cockpit facets but rejects malformed ones", async () => {
@@ -3968,6 +3979,17 @@ test("T4 session_logs chunk denies all direct client writes", async () => {
       ...chunkBase,
       semanticHashes: ["not-a-valid-hash"],
     })
+  );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/slc-owner/session_logs/log/chunks/legacy"), {
+      index: 5,
+      body: "legacy plaintext markdown",
+      schemaVersion: 1,
+      updatedAt: new Date(),
+    });
+  });
+  await assertSucceeds(
+    deleteDoc(doc(db, "users/slc-owner/session_logs/log/chunks/legacy"))
   );
 });
 

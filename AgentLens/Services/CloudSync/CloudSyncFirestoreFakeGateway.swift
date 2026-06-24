@@ -433,11 +433,15 @@ private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnaps
 // MARK: - Fake Write Batch
 
 private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, Sendable {
-    private typealias PendingWrite = (path: String, data: [String: Any], merge: Bool)
+    private enum PendingOperation {
+        case set(path: String, data: [String: Any], merge: Bool)
+        case delete(path: String)
+    }
+
     private let store: FakeDocumentStore
     private let nextError: @Sendable () -> Error?
     private let onCommit: (@Sendable () -> Void)?
-    private let pending = OSAllocatedUnfairLock<[PendingWrite]>(uncheckedState: [])
+    private let pending = OSAllocatedUnfairLock<[PendingOperation]>(uncheckedState: [])
 
     init(
         store: FakeDocumentStore,
@@ -458,22 +462,40 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
             return
         }
         pending.withLockUnchecked {
-            $0.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+            $0.append(.set(path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+        }
+    }
+
+    func deleteDocument(_ document: CloudSyncDocumentGateway) {
+        guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
+            AppLogger.sync.error(
+                "cloud_sync_gateway_implementation_mismatch",
+                metadata: ["expected": "CloudSyncDocumentFakeGateway"]
+            )
+            return
+        }
+        pending.withLockUnchecked {
+            $0.append(.delete(path: fakeDoc.path))
         }
     }
 
     func commit() async throws {
         if let error = nextError() { throw error }
-        let writes = pending.withLockUnchecked { pending -> [PendingWrite] in
-            let writes = pending
+        let operations = pending.withLockUnchecked { pending -> [PendingOperation] in
+            let operations = pending
             pending.removeAll()
-            return writes
+            return operations
         }
-        for item in writes {
-            if item.merge {
-                store.mergeDocumentData(item.data, at: item.path)
-            } else {
-                store.setDocumentData(item.data, at: item.path)
+        for operation in operations {
+            switch operation {
+            case .set(let path, let data, let merge):
+                if merge {
+                    store.mergeDocumentData(data, at: path)
+                } else {
+                    store.setDocumentData(data, at: path)
+                }
+            case .delete(let path):
+                store.deleteDocument(at: path)
             }
         }
         onCommit?()

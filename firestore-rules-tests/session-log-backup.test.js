@@ -11,6 +11,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import {
+  deleteDoc,
   doc,
   deleteField,
   setDoc,
@@ -313,6 +314,7 @@ async function main() {
     });
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data, { merge: true }));
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data));
+    await assertSucceeds(deleteDoc(doc(aliceDB, legacy.path)));
   });
 
   await step("session-log manifest cannot be written into another user namespace", async () => {
