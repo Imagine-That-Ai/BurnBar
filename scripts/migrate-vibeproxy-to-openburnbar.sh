@@ -32,6 +32,7 @@ SUPPORT_DIR="$HOME/Library/Application Support/OpenBurnBar"
 CONFIG_PATH="$SUPPORT_DIR/provider-config.json"
 VIBEPROXY_CONFIG="$HOME/.cli-proxy-api/config.yaml"
 BACKUP_DIR="$SUPPORT_DIR/backups/pre-vibeproxy-migration-$(date +%Y%m%dT%H%M%S)"
+TEMP_FILES=()
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -44,12 +45,39 @@ ok()   { echo "${GREEN}[ok]${NC} $1"; }
 warn() { echo "${YELLOW}[warn]${NC} $1"; }
 err()  { echo "${RED}[err]${NC} $1" >&2; }
 
+cleanup() {
+    for f in "${TEMP_FILES[@]:-}"; do
+        [[ -n "$f" && -e "$f" ]] && rm -f "$f"
+    done
+}
+trap cleanup EXIT
+
+make_secret_temp() {
+    local __var_name=$1
+    local file
+    file=$(mktemp "${TMPDIR:-/tmp}/openburnbar-vibeproxy.XXXXXX")
+    chmod 600 "$file"
+    TEMP_FILES+=("$file")
+    printf -v "$__var_name" '%s' "$file"
+}
+
 # ---------------------------------------------------------------------------
 # 0. Preflight
 # ---------------------------------------------------------------------------
 
 if [[ ! -f "$VIBEPROXY_CONFIG" ]]; then
     err "VibeProxy config not found at $VIBEPROXY_CONFIG"
+    exit 1
+fi
+
+if ! python3 - <<'PY'
+try:
+    import yaml  # noqa: F401
+except ImportError:
+    raise SystemExit(1)
+PY
+then
+    err "PyYAML is required to read $VIBEPROXY_CONFIG. Install it first, for example: python3 -m pip install --user PyYAML"
     exit 1
 fi
 
@@ -69,12 +97,18 @@ done
 
 log "Parsing VibeProxy config..."
 
-# Use Python to parse the YAML and emit a JSON summary we can consume
-VIBEPROXY_DATA=$(python3 -c "
-import yaml, json, sys
+# Parse YAML into a 0600 temp file so provider API keys never appear in Python
+# argv or environment variables.
+make_secret_temp VIBEPROXY_DATA_FILE
+VIBEPROXY_CONFIG_PATH="$VIBEPROXY_CONFIG" python3 - "$VIBEPROXY_DATA_FILE" <<'PY'
+import json
+import os
+import sys
+import yaml
 
-with open('$VIBEPROXY_CONFIG') as f:
-    config = yaml.safe_load(f)
+output_path = sys.argv[1]
+with open(os.environ["VIBEPROXY_CONFIG_PATH"]) as f:
+    config = yaml.safe_load(f) or {}
 
 providers = []
 
@@ -105,16 +139,13 @@ for entry in config.get('claude-api-key', []):
         'models': models,
     })
 
-print(json.dumps(providers, indent=2))
-")
+with open(output_path, "w") as handle:
+    json.dump(providers, handle)
 
-echo "$VIBEPROXY_DATA" | python3 -c "
-import json, sys
-providers = json.load(sys.stdin)
 print(f'Found {len(providers)} VibeProxy provider entries:')
 for p in providers:
-    print(f'  {p[\"name\"]}: base={p[\"base_url\"]}, keys={len(p[\"keys\"])}, models={len(p[\"models\"])}')
-"
+    print(f'  {p["name"]}: base={p["base_url"]}, keys={len(p["keys"])}, models={len(p["models"])}')
+PY
 
 # ---------------------------------------------------------------------------
 # 2. Write API keys to keychain + build provider config
@@ -122,10 +153,16 @@ for p in providers:
 
 log "Writing API keys to macOS keychain and building provider config..."
 
-GENERATED_CONFIG=$(python3 -c "
-import json, sys, subprocess, uuid, time
+GENERATED_CONFIG=$(CONFIG_PATH="$CONFIG_PATH" VIBEPROXY_DATA_FILE="$VIBEPROXY_DATA_FILE" python3 - <<'PY'
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
 
-providers_data = json.loads('''$VIBEPROXY_DATA''')
+with open(os.environ["VIBEPROXY_DATA_FILE"]) as handle:
+    providers_data = json.load(handle)
 
 KEYCHAIN_SERVICE = 'com.openburnbar.daemon.provider-secrets'
 
@@ -178,7 +215,7 @@ def read_keychain(service, account):
 # We need to load the existing provider-config.json, then merge in the
 # credential slots and custom models.
 
-config_path = '$CONFIG_PATH'
+config_path = os.environ["CONFIG_PATH"]
 try:
     with open(config_path) as f:
         config = json.load(f)
@@ -202,7 +239,19 @@ def ensure_slot(provider_id, label, api_key, slot_id=None):
         print(f'  SKIP: provider {provider_id} not in OBB catalog', file=sys.stderr)
         return None
 
-    if slot_id is None:
+    p = provider_map[provider_id]
+    slots = p.get('credentialSlots', [])
+
+    # Check if a slot with this label already exists
+    existing = None
+    for s in slots:
+        if s.get('label') == label:
+            existing = s
+            break
+
+    if existing:
+        slot_id = existing['slotID']
+    elif slot_id is None:
         slot_id = str(uuid.uuid4())
 
     # The keychain account format: provider.{providerID}.slot.{slotID}.apiKey
@@ -220,22 +269,7 @@ def ensure_slot(provider_id, label, api_key, slot_id=None):
     if readback != api_key:
         print(f'  ERROR: keychain readback failed for {provider_id} slot {slot_id}', file=sys.stderr)
 
-    p = provider_map[provider_id]
-    slots = p.get('credentialSlots', [])
-
-    # Check if a slot with this label already exists
-    existing = None
-    for s in slots:
-        if s.get('label') == label:
-            existing = s
-            break
-
     if existing:
-        slot_id = existing['slotID']
-        # Update the keychain for the existing slot ID
-        secret_store_key = f'{provider_id}.slot.{slot_id}'
-        keychain_account = f'provider.{secret_store_key}.apiKey'
-        write_keychain(KEYCHAIN_SERVICE, keychain_account, api_key)
         existing['isEnabled'] = True
         existing['status'] = 'ready'
         existing['updatedAt'] = now_ts
@@ -316,7 +350,7 @@ for vp in providers_data:
         # The OBB catalog doesn't have a 'wafer' provider. We'll use 'misc' and
         # set a custom base URL.
         obb_provider_id = 'misc'
-        obb_base_url = base_url.rstrip('/v1') if base_url.endswith('/v1') else base_url
+        obb_base_url = base_url[:-3] if base_url.endswith('/v1') else base_url
     elif 'minimax' in name.lower() or 'minimax' in base_url.lower():
         obb_provider_id = 'minimax'
         obb_base_url = 'https://api.minimax.io/v1'
@@ -378,94 +412,43 @@ print(f'Enabled providers: {sorted(enabled_providers)}')
 print(f'Custom models added: {len(custom_models_added)}')
 for pid, mid, dn in custom_models_added:
     print(f'  {pid}: {mid} ({dn})')
-")
+PY
+)
 
 echo "$GENERATED_CONFIG"
 
-log "Writing VibeProxy keys to OpenBurnBar fallback credential pool..."
-VIBEPROXY_DATA_JSON="$VIBEPROXY_DATA" python3 - <<'PY'
-import datetime
-import hashlib
+log "Removing VibeProxy plaintext fallback credential remnants..."
+python3 - <<'PY'
 import json
 import os
 
-providers_data = json.loads(os.environ["VIBEPROXY_DATA_JSON"])
 auth_path = os.path.expanduser("~/.hermes/auth.json")
-os.makedirs(os.path.dirname(auth_path), exist_ok=True)
-
 try:
     with open(auth_path) as handle:
         auth = json.load(handle)
 except FileNotFoundError:
-    auth = {
-        "version": 1,
-        "active_provider": "",
-        "providers": {},
-        "credential_pool": {},
-    }
+    raise SystemExit(0)
 
 pool = auth.setdefault("credential_pool", {})
-now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 source = "vibeproxy-openburnbar-migration"
-
-def provider_mapping(name, base_url):
-    lowered = f"{name} {base_url}".lower()
-    if "z.ai" in lowered:
-        return "zai", "https://api.z.ai/api/coding/paas/v4"
-    if "ollama" in lowered:
-        return "ollama", base_url
-    if "opencode" in lowered or "opencode.ai" in lowered:
-        return "opencode", base_url
-    if "wafer" in lowered:
-        return "misc", base_url
-    if "minimax" in lowered:
-        return "minimax", base_url
-    return None, base_url
-
-written = 0
-for provider in providers_data:
-    provider_id, base_url = provider_mapping(provider.get("name", ""), provider.get("base_url", ""))
-    if not provider_id:
+removed = 0
+for provider_id, entries in list(pool.items()):
+    if not isinstance(entries, list):
         continue
-    keys = [key for key in provider.get("keys", []) if key and key.strip()]
-    if not keys:
-        continue
-    existing = [
+    filtered = [
         item
-        for item in pool.get(provider_id, [])
-        if item.get("source") != source
+        for item in entries
+        if not isinstance(item, dict) or item.get("source") != source
     ]
-    for index, key in enumerate(keys):
-        label = f"VibeProxy {provider.get('name') or provider_id}"
-        if len(keys) > 1:
-            label = f"{label} #{index + 1}"
-        digest = hashlib.sha256(f"{provider_id}:{label}:{key}".encode()).hexdigest()[:12]
-        existing.append({
-            "id": f"vibeproxy-{digest}",
-            "label": label,
-            "auth_type": "api_key",
-            "access_token": key,
-            "base_url": base_url,
-            "priority": index,
-            "request_count": 0,
-            "last_status": None,
-            "last_status_at": None,
-            "last_error_code": None,
-            "last_error_message": None,
-            "last_error_reason": None,
-            "last_error_reset_at": None,
-            "last_refresh": now,
-            "source": source,
-        })
-        written += 1
-    pool[provider_id] = existing
+    removed += len(entries) - len(filtered)
+    pool[provider_id] = filtered
 
-auth["updated_at"] = now
-with open(auth_path, "w") as handle:
-    json.dump(auth, handle, indent=2, sort_keys=True)
-    handle.write("\n")
-os.chmod(auth_path, 0o600)
-print(f"Wrote {written} fallback credential-pool entries to {auth_path}")
+if removed:
+    with open(auth_path, "w") as handle:
+        json.dump(auth, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.chmod(auth_path, 0o600)
+print(f"Removed {removed} VibeProxy plaintext fallback credential entries from {auth_path}")
 PY
 
 # ---------------------------------------------------------------------------
@@ -474,11 +457,14 @@ PY
 
 log "Enabling OpenBurnBar HTTP gateway on 127.0.0.1:8317..."
 
-# Enable the gateway in UserDefaults (com.burnbar.app = UserDefaults.standard)
-defaults write com.burnbar.app gatewayEnabled -bool YES
-defaults write com.burnbar.app gatewayHost "127.0.0.1"
-defaults write com.burnbar.app gatewayPort -int 8317
-defaults write com.burnbar.app gatewayAllowUnauthenticatedLoopback -bool NO
+# Enable the gateway in the active app domain; keep the legacy domain in sync
+# for older installs that still migrate UserDefaults on first launch.
+for domain in com.openburnbar.app com.burnbar.app; do
+    defaults write "$domain" gatewayEnabled -bool YES
+    defaults write "$domain" gatewayHost "127.0.0.1"
+    defaults write "$domain" gatewayPort -int 8317
+    defaults write "$domain" gatewayAllowUnauthenticatedLoopback -bool NO
+done
 
 # Generate a gateway auth token if none exists. The daemon reads controller
 # runtime secrets from this service/account pair.
@@ -539,16 +525,20 @@ fi
 # 5. Rewrite Droid config with the verified VibeProxy transfer set
 # ---------------------------------------------------------------------------
 
-log "Rewriting Droid config (~/.factory/settings.json and ~/.factory/config.json)..."
+log "Rewriting Droid config (~/.factory/settings.json, settings.local.json, and config.json)..."
 
-OBB_GATEWAY_TOKEN="$GATEWAY_TOKEN" python3 - <<'PY'
+make_secret_temp GATEWAY_TOKEN_FILE
+printf '%s' "$GATEWAY_TOKEN" > "$GATEWAY_TOKEN_FILE"
+GATEWAY_TOKEN_FILE="$GATEWAY_TOKEN_FILE" python3 - <<'PY'
 import json
 import os
 
 settings_path = os.path.expanduser("~/.factory/settings.json")
+settings_local_path = os.path.expanduser("~/.factory/settings.local.json")
 config_json_path = os.path.expanduser("~/.factory/config.json")
 
-gateway_token = os.environ.get("OBB_GATEWAY_TOKEN") or "openburnbar-local"
+with open(os.environ["GATEWAY_TOKEN_FILE"]) as token_file:
+    gateway_token = token_file.read().strip() or "openburnbar-local"
 gateway_base = "http://127.0.0.1:8317/v1"
 
 # This is intentionally explicit. Dumping every advertised /v1/models row into
@@ -563,7 +553,6 @@ verified_specs = [
     ("custom:openburnbar-vibeproxy-ollama-kimi-k2-7-code", "kimi-k2.7-code:cloud", "Kimi K2.7 Code [Ollama Cloud via OpenBurnBar]", 128000),
     ("custom:openburnbar-vibeproxy-ollama-kimi-k2-6", "kimi-k2.6:cloud", "Kimi K2.6 [Ollama Cloud via OpenBurnBar]", 128000),
     ("custom:openburnbar-vibeproxy-ollama-gpt-oss-120b", "gpt-oss:120b:cloud", "GPT OSS 120B [Ollama Cloud via OpenBurnBar]", 128000),
-    ("custom:openburnbar-vibeproxy-wafer-glm-5-2", "misc/GLM-5.2", "GLM 5.2 [Wafer via OpenBurnBar]", 131072),
     ("custom:openburnbar-vibeproxy-minimax-m3", "minimax/MiniMax-M3", "MiniMax M3 [MiniMax Anthropic via OpenBurnBar]", 64000),
 ]
 
@@ -585,10 +574,6 @@ def managed_blob(entry):
         "localhost:8318",
     ))
 
-settings = load_json(settings_path, {})
-old_custom = settings.get("customModels", [])
-kept_custom = [entry for entry in old_custom if not managed_blob(entry)]
-
 new_custom = []
 for custom_id, model, display_name, max_output_tokens in verified_specs:
     new_custom.append({
@@ -601,13 +586,9 @@ for custom_id, model, display_name, max_output_tokens in verified_specs:
         "maxOutputTokens": max_output_tokens,
         "noImageSupport": True,
         "provider": "generic-chat-completion-api",
-    })
+})
 
-settings["customModels"] = kept_custom + new_custom
-for index, entry in enumerate(settings["customModels"]):
-    entry["index"] = index
-
-valid_custom_ids = {entry["id"] for entry in settings["customModels"] if entry.get("id")}
+valid_custom_ids = {entry["id"] for entry in new_custom if entry.get("id")}
 preferred_default = "custom:openburnbar-vibeproxy-ollama-glm-5-2"
 
 def stale_managed_ref(value):
@@ -620,45 +601,59 @@ def stale_managed_ref(value):
         or (value.startswith("custom:") and value not in valid_custom_ids)
     )
 
-session_default = settings.get("sessionDefaultSettings")
-if not isinstance(session_default, dict):
-    session_default = {}
-    settings["sessionDefaultSettings"] = session_default
-if stale_managed_ref(session_default.get("model")):
-    session_default["model"] = preferred_default
-    session_default["reasoningEffort"] = "none"
-    session_default.setdefault("interactionMode", "auto")
-    session_default.setdefault("autonomyLevel", "high")
-    session_default.setdefault("autonomyMode", "auto-high")
+def rewrite_settings(path, fallback):
+    settings = load_json(path, fallback)
+    old_custom = settings.get("customModels", [])
+    kept_custom = [entry for entry in old_custom if not managed_blob(entry)]
+    settings["customModels"] = kept_custom + [dict(entry) for entry in new_custom]
+    for index, entry in enumerate(settings["customModels"]):
+        entry["index"] = index
 
-for top_level_key in ("model", "missionOrchestratorModel"):
-    if stale_managed_ref(settings.get(top_level_key)):
-        settings[top_level_key] = preferred_default
+    session_default = settings.get("sessionDefaultSettings")
+    if not isinstance(session_default, dict):
+        session_default = {}
+        settings["sessionDefaultSettings"] = session_default
+    if stale_managed_ref(session_default.get("model")):
+        session_default["model"] = preferred_default
+        session_default["reasoningEffort"] = "none"
+        session_default.setdefault("interactionMode", "auto")
+        session_default.setdefault("autonomyLevel", "high")
+        session_default.setdefault("autonomyMode", "auto-high")
 
-mission_settings = settings.get("missionModelSettings")
-if isinstance(mission_settings, dict):
-    for model_key, effort_key in (
-        ("validationWorkerModel", "validationWorkerReasoningEffort"),
-        ("workerModel", "workerReasoningEffort"),
-    ):
-        if stale_managed_ref(mission_settings.get(model_key)):
-            mission_settings[model_key] = preferred_default
-            mission_settings[effort_key] = "none"
+    for top_level_key in ("model", "missionOrchestratorModel"):
+        if stale_managed_ref(settings.get(top_level_key)):
+            settings[top_level_key] = preferred_default
 
-compaction = settings.get("compactionTokenLimitPerModel")
-if isinstance(compaction, dict):
-    cleaned = {
-        key: value
-        for key, value in compaction.items()
-        if not stale_managed_ref(key)
-    }
-    for entry in new_custom:
-        cleaned[entry["id"]] = min(int(entry["maxOutputTokens"]), 300000)
-    settings["compactionTokenLimitPerModel"] = cleaned
+    mission_settings = settings.get("missionModelSettings")
+    if isinstance(mission_settings, dict):
+        for model_key, effort_key in (
+            ("validationWorkerModel", "validationWorkerReasoningEffort"),
+            ("workerModel", "workerReasoningEffort"),
+        ):
+            if stale_managed_ref(mission_settings.get(model_key)):
+                mission_settings[model_key] = preferred_default
+                mission_settings[effort_key] = "none"
 
-with open(settings_path, "w") as handle:
-    json.dump(settings, handle, indent=2, ensure_ascii=False)
-    handle.write("\n")
+    compaction = settings.get("compactionTokenLimitPerModel")
+    if isinstance(compaction, dict):
+        cleaned = {
+            key: value
+            for key, value in compaction.items()
+            if not stale_managed_ref(key)
+        }
+        for entry in new_custom:
+            cleaned[entry["id"]] = min(int(entry["maxOutputTokens"]), 300000)
+        settings["compactionTokenLimitPerModel"] = cleaned
+
+    with open(path, "w") as handle:
+        json.dump(settings, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    os.chmod(path, 0o600)
+    return len(old_custom), len(kept_custom)
+
+old_custom_count, kept_custom_count = rewrite_settings(settings_path, {})
+if os.path.exists(settings_local_path):
+    rewrite_settings(settings_local_path, {})
 
 config_json = load_json(config_json_path, {})
 old_config_models = config_json.get("custom_models", [])
@@ -678,8 +673,9 @@ config_json["custom_models"] = kept_config_models + [
 with open(config_json_path, "w") as handle:
     json.dump(config_json, handle, indent=2, ensure_ascii=False)
     handle.write("\n")
+os.chmod(config_json_path, 0o600)
 
-print(f"Removed {len(old_custom) - len(kept_custom)} old VibeProxy/OpenBurnBar settings entries")
+print(f"Removed {old_custom_count - kept_custom_count} old VibeProxy/OpenBurnBar settings entries")
 print(f"Added {len(new_custom)} verified OpenBurnBar gateway settings entries")
 print(f"Removed {len(old_config_models) - len(kept_config_models)} old VibeProxy/OpenBurnBar config entries")
 print(f"Added {len(new_custom)} verified OpenBurnBar gateway config entries")

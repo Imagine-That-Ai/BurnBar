@@ -653,6 +653,11 @@ struct ChatPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             // Search section
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ChatViewModePicker(controller: controller)
+                    ChatEngineModelMenu(controller: controller)
+                }
+
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11))

@@ -95,7 +95,10 @@ struct DashboardChatWorkspaceToolbar: View {
             .popover(isPresented: $showChatMenu, arrowEdge: .top) {
                 ChatMenuPopover(
                     controller: controller,
-                    onShowClearChatPrompt: onShowClearChatPrompt
+                    onShowClearChatPrompt: onShowClearChatPrompt,
+                    onNewChat: onNewChat,
+                    onPopOut: mode == .embedded ? onPopOut : nil,
+                    onRestoreFloating: mode == .embedded ? onRestoreFloating : nil
                 )
             }
 

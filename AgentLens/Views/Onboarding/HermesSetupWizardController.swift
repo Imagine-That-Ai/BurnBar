@@ -172,7 +172,7 @@ final class HermesSetupWizardController {
     }
 
     func probeGateway() {
-        guard !isProbingGateway else { return }
+        guard !isProbingGateway, !isMakingReachable else { return }
         isProbingGateway = true
         probeAttempts += 1
         Task { @MainActor in
@@ -433,7 +433,19 @@ struct HermesSetupWizardDependencies: Sendable {
                 await CLIExecutableResolver().resolveExecutable(named: "hermes")
             },
             readEnvSnapshot: {
-                await Self.readEnvSnapshotLive()
+                let snapshot = await Self.readEnvSnapshotLive()
+                let settingsToken = await MainActor.run {
+                    settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                guard snapshot.savedBearerToken.isEmpty, !settingsToken.isEmpty else {
+                    return snapshot
+                }
+                return HermesEnvSnapshot(
+                    fileExists: snapshot.fileExists,
+                    apiServerEnabled: snapshot.apiServerEnabled,
+                    hasAPIServerKey: snapshot.hasAPIServerKey,
+                    savedBearerToken: settingsToken
+                )
             },
             ensureAPIServerEnabled: {
                 try await HermesEnvironmentFile.ensureAPIServerEnabled()

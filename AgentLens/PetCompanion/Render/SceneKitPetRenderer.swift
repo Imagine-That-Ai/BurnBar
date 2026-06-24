@@ -293,13 +293,6 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // drove the pet `idle → listen`. Every clip keeps the rig upright (the Hips
         // bone never tips past a lean), so one fixed frame holds every pose.
 
-        // Re-fit the camera to the NEW pose. The framing was one-shot (idle only),
-        // so when chat drove the pet to `listen`/`think` the camera kept the idle
-        // framing and the differently-posed model drifted out of frame — reading as
-        // a bird's-eye / top-of-head view. Re-framing on each state change keeps the
-        // current pose centered and face-on. (The clips themselves are upright.)
-        needsPresentationFraming = true
-
         guard let model = definition.model3d else { return }
 
         // Resolve the logical state → glTF clip name via the petdef clip map
@@ -457,10 +450,11 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         // glTF Y-up convention on the web — this matches it.)
         let root = SCNNode()
         let upright = SCNNode()
-        // The GLB geometry is Y-up (verified: height is its Y extent), and the web
-        // model-viewer renders it standing. SceneKit's import lands it tilted -90°
-        // about X (lying on its back), so a +90° pitch here returns it to vertical.
-        upright.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        // Rigged Meshy GLBs import into SceneKit tilted -90° about X. Static demo
+        // GLBs already carry their authoring transform, so leave those alone.
+        if definition.model3d?.kind?.lowercased() != "static" {
+            upright.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        }
         for child in loaded.rootNode.childNodes {
             upright.addChildNode(child)
         }
