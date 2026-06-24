@@ -725,7 +725,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         )
     }
 
-    func test_resolveExecutable_findsCursorManagedCodexBinary() throws {
+    func test_resolveExecutable_rejectsCursorManagedCodexBinary() throws {
         let tempHome = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true, attributes: nil)
@@ -753,10 +753,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             ]
         }
 
-        XCTAssertEqual(
-            CLILaunchAdapter.resolveExecutable(for: .codex)?.path,
-            executablePath
-        )
+        XCTAssertNotEqual(CLILaunchAdapter.resolveExecutable(for: .codex)?.path, executablePath)
     }
 
     // MARK: - Working Directory Validation

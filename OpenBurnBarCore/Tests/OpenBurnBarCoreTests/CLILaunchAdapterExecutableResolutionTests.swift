@@ -17,18 +17,21 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testResolveExecutablePrefersLoginShellVersionManagerPathOverNewestScannedNVMVersion() throws {
+    func testResolveExecutableRejectsCodexUserWritableFallbacks() throws {
         let fileManager = FileManager.default
         let tempHome = fileManager.temporaryDirectory
             .appendingPathComponent("openburnbar-cli-resolution-\(UUID().uuidString)", isDirectory: true)
         temporaryRoots.append(tempHome)
 
+        let localBinPath = tempHome
+            .appendingPathComponent(".local/bin/codex")
         let activeNVMPath = tempHome
             .appendingPathComponent(".nvm/versions/node/v20.20.2/bin/codex")
         let newerBrokenNVMPath = tempHome
             .appendingPathComponent(".nvm/versions/node/v24.14.0/bin/codex")
         let fakeShellPath = tempHome.appendingPathComponent("fake-login-shell")
 
+        try makeExecutableFile(at: localBinPath)
         try makeExecutableFile(at: activeNVMPath)
         try makeExecutableFile(at: newerBrokenNVMPath)
         try makeExecutableFile(
@@ -43,16 +46,36 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         CLILaunchAdapter.environmentProvider = {
             [
                 "HOME": tempHome.path,
-                "PATH": "\(activeNVMPath.deletingLastPathComponent().path):\(newerBrokenNVMPath.deletingLastPathComponent().path)",
+                "PATH": [
+                    localBinPath.deletingLastPathComponent().path,
+                    activeNVMPath.deletingLastPathComponent().path,
+                    newerBrokenNVMPath.deletingLastPathComponent().path
+                ].joined(separator: ":"),
                 "SHELL": fakeShellPath.path
             ]
         }
         CLILaunchAdapter.clearExecutableResolutionCache()
 
-        XCTAssertEqual(
-            CLILaunchAdapter.resolveExecutable(for: .codex)?.path,
-            activeNVMPath.path
-        )
+        if let resolvedPath = CLILaunchAdapter.resolveExecutable(for: .codex)?.path {
+            XCTAssertFalse(
+                [localBinPath.path, activeNVMPath.path, newerBrokenNVMPath.path].contains(resolvedPath),
+                "Codex resolution must not choose user-writable PATH or version-manager candidates."
+            )
+        }
+    }
+
+    func testCodexSearchPolicyExcludesAmbientUserManagedDirectories() {
+        let home = "/tmp/openburnbar-cli-resolution-home"
+        XCTAssertFalse(CLILaunchAdapter.allowsAmbientUserManagedExecutableFallback(for: .codex))
+        XCTAssertTrue(CLILaunchAdapter.ambientFallbackExecutableSearchDirectories(
+            for: .codex,
+            homeDirectory: home
+        ).isEmpty)
+        XCTAssertFalse(CLILaunchAdapter.trustedExecutableSearchDirectories(
+            for: .codex,
+            environment: ["PATH": "\(home)/.local/bin:\(home)/.nvm/versions/node/v20/bin"],
+            homeDirectory: home
+        ).contains(where: { $0.hasPrefix(home) }))
     }
 
     private func makeExecutableFile(

@@ -172,19 +172,8 @@ public enum CLILaunchAdapter {
 
         if let path = firstExecutable(
             named: cliType.executableName,
-            in: userManagedExecutableSearchDirectories(
-                homeDirectory: homeDirectory,
-                fileManager: fileManager
-            ),
-            fileManager: fileManager
-        ) {
-            executableResolutionCache.withLock { $0[cacheKey] = path }
-            return URL(fileURLWithPath: path)
-        }
-
-        if let path = firstExecutable(
-            named: cliType.executableName,
-            in: ideManagedExecutableSearchDirectories(
+            in: ambientFallbackExecutableSearchDirectories(
+                for: cliType,
                 homeDirectory: homeDirectory,
                 fileManager: fileManager
             ),
@@ -270,19 +259,37 @@ public enum CLILaunchAdapter {
         return deduplicatedDirectories(
             explicitDirectories
             + standardExecutableSearchDirectories(homeDirectory: homeDirectory)
-            + userManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
-            + ideManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+            + ambientFallbackExecutableSearchDirectories(
+                for: cliType,
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            )
         )
     }
 
     private static func standardExecutableSearchDirectories(homeDirectory: String) -> [String] {
         [
-            "\(homeDirectory)/.local/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
             "/bin"
         ]
+    }
+
+    static func allowsAmbientUserManagedExecutableFallback(for cliType: SwitcherCLIProfileType) -> Bool {
+        cliType != .codex
+    }
+
+    static func ambientFallbackExecutableSearchDirectories(
+        for cliType: SwitcherCLIProfileType,
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        guard allowsAmbientUserManagedExecutableFallback(for: cliType) else {
+            return []
+        }
+        return userManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+            + ideManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
     }
 
     private static func userManagedExecutableSearchDirectories(

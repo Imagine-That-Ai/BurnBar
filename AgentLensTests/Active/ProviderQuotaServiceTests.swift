@@ -18,6 +18,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         tempDirectories.removeAll()
         StubURLProtocol.requestHandler = nil
+        CLILaunchAdapter.executableResolver = nil
         OpenBurnBarDaemonManager.shared.providerConfigurations = []
     }
 
@@ -487,6 +488,74 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.count, 2)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 78)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "7-day window" })?.remainingPercent?.rounded(), 80)
+    }
+
+    func test_codexRefreshNudgeDoesNotExecuteCodexFromAmbientPath() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let configRoot = home.appendingPathComponent(".codex", isDirectory: true)
+        try FileManager.default.createDirectory(at: configRoot, withIntermediateDirectories: true)
+        try Data("""
+        {
+          "auth_mode": "chatgpt",
+          "last_refresh": "2020-01-01T00:00:00.000Z",
+          "tokens": {
+            "access_token": "codex-stale-token"
+          }
+        }
+        """.utf8).write(to: configRoot.appendingPathComponent("auth.json"))
+
+        let pathBin = try makeTemporaryDirectory()
+        let markerURL = pathBin.appendingPathComponent("ambient-codex-ran")
+        let ambientCodexURL = pathBin.appendingPathComponent("codex")
+        try Data("""
+        #!/bin/sh
+        /usr/bin/touch "\(markerURL.path)"
+        exit 0
+        """.utf8).write(to: ambientCodexURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: ambientCodexURL.path)
+
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://chatgpt.com/backend-api/wham/usage")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
+            return try self.httpResponse(
+                url: request.url!,
+                statusCode: 200,
+                body: """
+                {
+                  "plan_type": "plus",
+                  "rate_limit": {
+                    "primary_window": {
+                      "used_percent": 25,
+                      "limit_window_seconds": 18000,
+                      "reset_after_seconds": 3600
+                    }
+                  }
+                }
+                """
+            )
+        }
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "HOME": home.path,
+                "PATH": pathBin.path
+            ],
+            refreshProviders: [.codex]
+        )
+
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: markerURL.path),
+            "Codex auth refresh must not execute an ambient PATH binary when the trusted resolver has no Codex executable."
+        )
+        let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.primaryDisplayableBucket?.remainingPercent?.rounded(), 75)
     }
 
     func test_codexRefresh_readsQuotaSnapshotFromLargeRolloutTail() async throws {
