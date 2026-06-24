@@ -84,6 +84,27 @@ console.log("Self-test: verify-native-build-workflow-secret-boundary.mjs\n");
 expect("current native build workflows pass", () => {}, 0);
 
 expect(
+  "Android AAR artifact upload before parity fails",
+  (root) =>
+    mutate(root, ".github/workflows/build-iroh-android-aar.yml", (text) =>
+      text.replace(
+        "      - name: Verify committed AAR parity\n",
+        [
+          "      - name: Upload rebuilt AAR before parity",
+          "        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+          "        with:",
+          "          name: openburnbar-iroh-aar-rebuilt",
+          "          path: Vendor/openburnbar-iroh.aar",
+          "",
+          "      - name: Verify committed AAR parity",
+          "",
+        ].join("\n"),
+      ),
+    ),
+  1,
+);
+
+expect(
   "job-level secret in xcframework workflow fails",
   (root) =>
     mutate(root, ".github/workflows/iroh-xcframework.yml", (text) =>
