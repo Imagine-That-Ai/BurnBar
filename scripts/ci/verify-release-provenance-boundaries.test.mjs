@@ -34,6 +34,14 @@ on:
       tag:
         required: true
         type: string
+      run_mobile_unit_tests:
+        required: false
+        type: boolean
+        default: true
+      mobile_unit_test_bypass_reason:
+        required: false
+        type: string
+        default: ""
 jobs:
   build-and-release:
     steps:
@@ -97,6 +105,33 @@ jobs:
           fi
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
+      - name: Validate mobile unit test bypass reason
+        if: \${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
+        env:
+          MOBILE_UNIT_TEST_BYPASS_REASON: \${{ inputs.mobile_unit_test_bypass_reason }}
+        run: |
+          set -euo pipefail
+          compact="\${MOBILE_UNIT_TEST_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::run_mobile_unit_tests=false requires mobile_unit_test_bypass_reason with independent mobile validation evidence."
+            exit 1
+          fi
+          if ((\${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then
+            echo "::error::mobile_unit_test_bypass_reason must include owner approval plus independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(mobile|ios|simulator|OpenBurnBarMobileTests|test-openburnbar-mobile)\b' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must describe the independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '(https://github\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."
+            exit 1
+          fi
       - name: Generate direct-download update feeds
         env:
           DMG_PATH: \${{ steps.dmg.outputs.dmg_path }}
@@ -703,6 +738,46 @@ expect(
   GOOD_RELEASE.replace(
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "warning: missing bundles"\n          fi',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass validation step fails",
+  GOOD_RELEASE.replace(
+    /      - name: Validate mobile unit test bypass reason[\s\S]*?      - name: Generate direct-download update feeds/u,
+    "      - name: Generate direct-download update feeds",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow weak mobile bypass length guard fails",
+  GOOD_RELEASE.replace(
+    "if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then",
+    "if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 1)); then",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass owner approval evidence fails",
+  GOOD_RELEASE.replace(
+    '          if ! grep -Eiq \'\\b(owner|approved|approval|approver)\\b\' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then\n            echo "::error::mobile_unit_test_bypass_reason must name owner approval."\n            exit 1\n          fi\n',
+    "",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass run evidence fails",
+  GOOD_RELEASE.replace(
+    '          if ! grep -Eiq \'(https://github\\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})\' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then\n            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."\n            exit 1\n          fi\n',
+    "",
   ),
   GOOD_SUPPLY_CHAIN,
   1,
