@@ -1094,15 +1094,17 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
     func testGatewayModelsUsesOllamaCloudCatalogPageWhenAvailable() async throws {
         enqueueOllamaCloudCatalog([
-            "kimi-k2.6",
+            "kimi-k2.7-code",
             "glm-5.2-cloud",
-            "deepseek-v4-pro",
+            "deepseek-v4-flash",
             "minimax-m2.7",
             "deepseek-v3.2",
             "minimax-m2.1"
         ])
         let harness = try GatewayHarness()
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(
+            preferredModelIDs: ["glm-5.2", "deepseek-v4-flash"]
+        )
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "deepseek",
@@ -1133,17 +1135,17 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         let advertisedIDs = Set(data.compactMap { $0["id"] as? String })
-        XCTAssertTrue(advertisedIDs.contains("kimi-k2.6:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("kimi-k2.7-code:cloud"))
         XCTAssertTrue(advertisedIDs.contains("glm-5.2:cloud"))
-        XCTAssertTrue(advertisedIDs.contains("deepseek-v4-pro:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("deepseek-v4-flash:cloud"))
         XCTAssertTrue(advertisedIDs.contains("minimax-m2.7:cloud"))
         XCTAssertTrue(advertisedIDs.contains("deepseek-v3.2:cloud"))
         XCTAssertTrue(advertisedIDs.contains("minimax-m2.1:cloud"))
-        XCTAssertFalse(advertisedIDs.contains("kimi-k2.6"))
+        XCTAssertFalse(advertisedIDs.contains("kimi-k2.7-code"))
         XCTAssertFalse(advertisedIDs.contains("glm-5.2"))
         XCTAssertFalse(advertisedIDs.contains("glm-5.2-cloud"))
 
-        let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "kimi-k2.6:cloud" })
+        let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "kimi-k2.7-code:cloud" })
         XCTAssertEqual(discovered["provider_id"] as? String, "ollama")
         XCTAssertEqual(discovered["provider_name"] as? String, "Ollama Cloud")
         XCTAssertEqual(discovered["source_kind"] as? String, "ollama_cloud_catalog_page")
@@ -1156,14 +1158,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelAdvertisementToggleHidesPublicCatalogButKeepsSettingsCatalog() async throws {
-        enqueueOllamaCloudCatalog(["kimi-k2.6", "glm-5.1"], times: 3)
+        enqueueOllamaCloudCatalog(["kimi-k2.7-code", "glm-5.2"], times: 3)
         let harness = try GatewayHarness()
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["kimi-k2.7-code", "glm-5.2"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
 
         let snapshot = try await harness.configStore.snapshot()
         var settings = try XCTUnwrap(snapshot.providerSettings(id: "ollama"))
-        settings.setModelAdvertisement(modelID: "kimi-k2.6:cloud", isEnabled: false)
+        settings.setModelAdvertisement(modelID: "kimi-k2.7-code:cloud", isEnabled: false)
         _ = try await harness.configStore.upsertProvider(settings)
 
         try await harness.start()
@@ -1178,8 +1180,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let publicObject = try XCTUnwrap(JSONSerialization.jsonObject(with: publicBody) as? [String: Any])
         let publicData = try XCTUnwrap(publicObject["data"] as? [[String: Any]])
         let publicIDs = Set(publicData.compactMap { $0["id"] as? String })
-        XCTAssertFalse(publicIDs.contains("kimi-k2.6:cloud"))
-        XCTAssertTrue(publicIDs.contains("glm-5.1:cloud"))
+        XCTAssertFalse(publicIDs.contains("kimi-k2.7-code:cloud"))
+        XCTAssertTrue(publicIDs.contains("glm-5.2:cloud"))
 
         let (catalogResponse, catalogBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1189,11 +1191,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(catalogResponse.statusCode, 200)
         let catalogObject = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBody) as? [String: Any])
         let catalogData = try XCTUnwrap(catalogObject["data"] as? [[String: Any]])
-        let hidden = try XCTUnwrap(catalogData.first { ($0["id"] as? String) == "kimi-k2.6:cloud" })
+        let hidden = try XCTUnwrap(catalogData.first { ($0["id"] as? String) == "kimi-k2.7-code:cloud" })
         XCTAssertEqual(hidden["advertisement_enabled"] as? Bool, false)
         XCTAssertEqual(hidden["advertised"] as? Bool, false)
         XCTAssertEqual(hidden["route_eligible"] as? Bool, true)
-        let visible = try XCTUnwrap(catalogData.first { ($0["id"] as? String) == "glm-5.1:cloud" })
+        let visible = try XCTUnwrap(catalogData.first { ($0["id"] as? String) == "glm-5.2:cloud" })
         XCTAssertEqual(visible["advertisement_enabled"] as? Bool, true)
         XCTAssertEqual(visible["advertised"] as? Bool, true)
 
@@ -1202,11 +1204,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+            body: Data(#"{"model":"kimi-k2.7-code:cloud","messages":[{"role":"user","content":"hello"}]}"#.utf8)
         )
         XCTAssertEqual(chatResponse.statusCode, 503)
         let bodyText = String(decoding: chatBody, as: UTF8.self)
-        XCTAssertTrue(bodyText.contains("No eligible route for kimi-k2.6:cloud"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("No eligible route for kimi-k2.7-code:cloud"), "body was: \(bodyText)")
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search", "/search", "/search"])
     }
 
@@ -1486,14 +1488,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsUsesOllamaCloudCatalogPageWhenBaseURLOmitsAPIPath() async throws {
-        enqueueOllamaCloudCatalog(["kimi-k2.6"])
+        enqueueOllamaCloudCatalog(["kimi-k2.7-code"])
         let harness = try GatewayHarness()
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "ollama",
                 isEnabled: true,
-                baseURL: "https://gateway-upstream.test",
-                preferredModelIDs: ["deepseek-v4-flash"],
+                baseURL: "https://ollama.com",
+                preferredModelIDs: ["kimi-k2.7-code"],
                 preferredCredentialSlotID: "primary"
             )
         )
@@ -1516,7 +1518,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         XCTAssertTrue(data.contains {
-            ($0["id"] as? String) == "kimi-k2.6:cloud"
+            ($0["id"] as? String) == "kimi-k2.7-code:cloud"
                 && ($0["provider_id"] as? String) == "ollama"
                 && ($0["route_eligible"] as? Bool) == true
         })
@@ -2900,7 +2902,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(
+            preferredModelIDs: ["glm-5.2", "deepseek-v4-flash"]
+        )
         try await harness.start()
         addTeardownBlock { await harness.stop() }
 
@@ -2987,7 +2991,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["glm-5.2"])
         try await harness.start()
         addTeardownBlock { await harness.stop() }
 
@@ -3052,7 +3056,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["glm-5.2"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3089,32 +3093,16 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
-    func testGatewayRoutesDynamicOllamaCloudModelAbsentFromCatalogPage() async throws {
+    func testGatewayRejectsOllamaCloudModelAbsentFromCatalogPage() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
         enqueueOllamaCloudCatalog(["deepseek-v4-flash"], times: 2)
-        GatewayUpstreamURLProtocol.enqueue(
-            status: 200,
-            body: """
-            {
-              "model": "glm-5.2",
-              "created_at": "2026-06-16T00:00:00Z",
-              "message": {"role": "assistant", "content": "dynamic glm answered"},
-              "done": true,
-              "done_reason": "stop",
-              "prompt_eval_count": 9,
-              "eval_count": 6
-            }
-            """,
-            path: "/api/chat"
-        )
-
         let harness = try GatewayHarness(
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["glm-5.2"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3127,14 +3115,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"glm-5.2:cloud","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
         )
 
-        XCTAssertEqual(chatResponse.statusCode, 200, String(decoding: chatBody, as: UTF8.self))
-        XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("dynamic glm answered"))
+        XCTAssertEqual(chatResponse.statusCode, 503, String(decoding: chatBody, as: UTF8.self))
+        XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("No eligible route for glm-5.2:cloud"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.map(\.path), ["/search", "/api/chat"])
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/search"])
         XCTAssertEqual(upstreamRequests.first?.query, "c=cloud")
-        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"glm-5.2""#), true)
-        XCTAssertEqual(upstreamRequests.last?.body.contains(#""glm-5.2:cloud""#), false)
-        XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
     func testGatewayDoesNotRouteClaudeMessagesToOllamaCloudFallback() async throws {
@@ -3145,7 +3130,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["kimi-k2.7-code"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3170,12 +3155,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaCloudCatalog(["kimi-k2.6"], times: 1)
+        enqueueOllamaCloudCatalog(["glm-5.2"], times: 1)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
             {
-              "model": "kimi-k2.6",
+              "model": "glm-5.2",
               "created_at": "2026-05-17T00:00:00Z",
               "message": {"role": "assistant", "content": "", "thinking": "reasoning but no final answer"},
               "done": true,
@@ -3190,7 +3175,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["glm-5.2"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3200,7 +3185,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"What model are ye?"}],"stream":false,"max_tokens":8}"#.utf8)
+            body: Data(#"{"model":"glm-5.2:cloud","messages":[{"role":"user","content":"What model are ye?"}],"stream":false,"max_tokens":8}"#.utf8)
         )
 
         XCTAssertEqual(response.statusCode, 502, String(decoding: body, as: UTF8.self))
@@ -3217,12 +3202,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaCloudCatalog(["deepseek-v4-pro"], times: 1)
+        enqueueOllamaCloudCatalog(["deepseek-v4-flash"], times: 1)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
             {
-              "model": "deepseek-v4-pro",
+              "model": "deepseek-v4-flash",
               "created_at": "2026-05-17T00:00:00Z",
               "message": {"role": "assistant", "content": "array content answered"},
               "done": true,
@@ -3237,7 +3222,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["deepseek-v4-flash"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3247,7 +3232,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"deepseek-v4-pro:cloud","messages":[{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":"from droid"}]}],"stream":false}"#.utf8)
+            body: Data(#"{"model":"deepseek-v4-flash:cloud","messages":[{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":"from droid"}]}],"stream":false}"#.utf8)
         )
 
         XCTAssertEqual(chatResponse.statusCode, 200, String(decoding: chatBody, as: UTF8.self))
@@ -3263,12 +3248,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaCloudCatalog(["kimi-k2.6"])
+        enqueueOllamaCloudCatalog(["kimi-k2.7-code"])
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
-            {"model":"kimi-k2.6","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"burnbar_runtime_status","arguments":{}}}]},"done":false}
-            {"model":"kimi-k2.6","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":21,"eval_count":3}
+            {"model":"kimi-k2.7-code","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"burnbar_runtime_status","arguments":{}}}]},"done":false}
+            {"model":"kimi-k2.7-code","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":21,"eval_count":3}
             """
         )
 
@@ -3276,7 +3261,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["kimi-k2.7-code"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3286,7 +3271,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data((#"{"model":"kimi-k2.6:cloud","messages":[{"role":"system","content":"Use burnbar_runtime_status when asked what model you are using."},{"role":"user","content":"What model are ye?"}],"stream":true,"# +
+            body: Data((#"{"model":"kimi-k2.7-code:cloud","messages":[{"role":"system","content":"Use burnbar_runtime_status when asked what model you are using."},{"role":"user","content":"What model are ye?"}],"stream":true,"# +
                 #""tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#).utf8)
         )
 
@@ -3309,11 +3294,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaCloudCatalog(["kimi-k2.6"])
+        enqueueOllamaCloudCatalog(["kimi-k2.7-code"])
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
-            {"model":"kimi-k2.6","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":"I am running through Hermes on kimi-k2.6."},"done":true,"done_reason":"stop","prompt_eval_count":34,"eval_count":9}
+            {"model":"kimi-k2.7-code","created_at":"2026-05-17T00:00:00Z","message":{"role":"assistant","content":"I am running through Hermes on kimi-k2.7-code."},"done":true,"done_reason":"stop","prompt_eval_count":34,"eval_count":9}
             """
         )
 
@@ -3321,7 +3306,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
             modelCatalogSession: session
         )
-        try await harness.configureOllamaProviderForGateway()
+        try await harness.configureOllamaProviderForGateway(preferredModelIDs: ["kimi-k2.7-code"])
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         addTeardownBlock { await harness.stop() }
@@ -3331,14 +3316,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data((#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"What model are ye?"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_ollama_0","type":"function","function":{"name":"burnbar_runtime_status","arguments":"{}"}}]},"# +
-                #"{"role":"tool","tool_call_id":"call_ollama_0","content":"{\"assistant\":\"Hermes\",\"model\":\"kimi-k2.6:cloud\",\"status\":\"online\"}"}],"stream":true,"# +
+            body: Data((#"{"model":"kimi-k2.7-code:cloud","messages":[{"role":"user","content":"What model are ye?"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_ollama_0","type":"function","function":{"name":"burnbar_runtime_status","arguments":"{}"}}]},"# +
+                #"{"role":"tool","tool_call_id":"call_ollama_0","content":"{\"assistant\":\"Hermes\",\"model\":\"kimi-k2.7-code:cloud\",\"status\":\"online\"}"}],"stream":true,"# +
                 #""tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#).utf8)
         )
 
         XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.contains("I am running through Hermes on kimi-k2.6."), bodyText)
+        XCTAssertTrue(bodyText.contains("I am running through Hermes on kimi-k2.7-code."), bodyText)
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/search", "/api/chat"])
@@ -5215,13 +5200,15 @@ private final class GatewayHarness: @unchecked Sendable {
         )
     }
 
-    func configureOllamaProviderForGateway() async throws {
+    func configureOllamaProviderForGateway(
+        preferredModelIDs: [String] = ["deepseek-v4-flash"]
+    ) async throws {
         _ = try await configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "ollama",
                 isEnabled: true,
                 baseURL: "https://gateway-upstream.test/api",
-                preferredModelIDs: ["deepseek-v4-flash"],
+                preferredModelIDs: preferredModelIDs,
                 preferredCredentialSlotID: "primary"
             )
         )
