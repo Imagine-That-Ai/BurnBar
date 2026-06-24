@@ -6,10 +6,12 @@
 # Requires gcloud auth (or GOOGLE_APPLICATION_CREDENTIALS) and either
 # GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT / OPENBURNBAR_FIREBASE_PROJECT.
 #
-# Closes codex-gpt-5 FINDING-004 / kimi FINDING-005.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
+
+# shellcheck source=scripts/lib/curl-bearer.sh
+source scripts/lib/curl-bearer.sh
 
 PROJECT="${GCLOUD_PROJECT:-${GOOGLE_CLOUD_PROJECT:-${OPENBURNBAR_FIREBASE_PROJECT:-}}}"
 if [[ -z "$PROJECT" ]]; then
@@ -56,9 +58,10 @@ failed=0
 
 for service in "${services[@]}"; do
   service_name="projects/${project_number}/services/${service}"
-  response="$(curl -fsS \
-    -H "Authorization: Bearer ${access_token}" \
-    -H "x-goog-user-project: ${PROJECT}" \
+  response="$(obb_curl_with_bearer_user_project \
+    "${access_token}" \
+    "${PROJECT}" \
+    -fsS \
     "https://firebaseappcheck.googleapis.com/v1beta/${service_name}" 2>/dev/null || true)"
 
   if [[ -z "$response" ]]; then

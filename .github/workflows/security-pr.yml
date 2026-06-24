@@ -69,6 +69,9 @@ jobs:
       - name: Verify gitleaks workflow boundary
         run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
 
+      - name: Verify curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.sh
+
       - name: Run gitleaks
         env:
           # PR / merge_group expose an explicit base; a direct push to main

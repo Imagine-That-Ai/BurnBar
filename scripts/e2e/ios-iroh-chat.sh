@@ -26,6 +26,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
+# shellcheck source=scripts/lib/curl-bearer.sh
+source scripts/lib/curl-bearer.sh
+
 PROJECT="burnbar"
 DEVICE_ID="AFB07C15-AD18-5EFA-AD1C-CADB4F286797"
 DEVICE_WAIT_SECONDS=0
@@ -297,7 +300,8 @@ POLL_FAILURE_COUNT=0
 LAST_POLL_ERROR=""
 
 latest_events() {
-    curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+    obb_curl_with_bearer "${TOKEN}" \
+        -fsS \
         "${BASE_URL}?pageSize=${PAGE_SIZE}&orderBy=observedAt%20desc"
 }
 
