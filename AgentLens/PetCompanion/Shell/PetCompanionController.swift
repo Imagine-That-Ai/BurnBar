@@ -57,7 +57,10 @@ final class PetCompanionController: ObservableObject {
     /// the shared ``ChatSessionController`` (and opens the bubble to show it).
     /// Re-installed on every renderer view swap alongside the click gesture so a
     /// 2D↔3D form swap keeps the drop target live.
-    private var attachmentDropDelegate: PetAttachmentDropDelegate?
+    ///
+    /// The controller is the sole owner of the delegate; the renderer views hold
+    /// it weakly, so this strong reference is what keeps the drop target alive.
+    private var attachmentDropDelegate: PetAttachmentDropDelegate? // swiftlint:disable:this weak_delegate
 
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.

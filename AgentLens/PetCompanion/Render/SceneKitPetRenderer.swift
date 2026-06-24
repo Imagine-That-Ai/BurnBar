@@ -985,8 +985,9 @@ private final class InteractivePetSceneView: SCNView, PetDropHostingView {
 
     /// Drop delegate installed by ``PetCompanionController``; `nil` until the
     /// controller wires it, so an unconfigured view is drop-through rather than
-    /// a silent no-op.
-    var dropDelegate: PetAttachmentDropDelegate?
+    /// a silent no-op. Held weakly — the controller owns the delegate, so the
+    /// view observes without forming a controller↔view↔delegate retain cycle.
+    weak var dropDelegate: PetAttachmentDropDelegate?
 
     override func scrollWheel(with event: NSEvent) {
         let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY

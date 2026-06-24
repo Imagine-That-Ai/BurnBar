@@ -479,9 +479,9 @@ final class HermesSetupWizardControllerTests: XCTestCase {
         controller.checkConfig()
         await Self.awaitCheckingSettles(controller, keyPath: \.isCheckingConfig)
 
-        XCTAssertEqual(controller.envFileExists, true)
-        XCTAssertEqual(controller.apiServerEnabled, true)
-        XCTAssertEqual(controller.hasAPIServerKey, true)
+        XCTAssertTrue(controller.envFileExists)
+        XCTAssertTrue(controller.apiServerEnabled)
+        XCTAssertTrue(controller.hasAPIServerKey)
         XCTAssertEqual(controller.bearerTokenInput, "sk-test")
         XCTAssertFalse(controller.isCheckingConfig)
     }
@@ -524,7 +524,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
 
     /// Polls until the verification Task settles (isVerifying flips false), or
     /// bounds out after ~1s so a broken Task never hangs the suite.
-    static func awaitVerificationSettles(_ controller: HermesSetupWizardController) async {
+    private static func awaitVerificationSettles(_ controller: HermesSetupWizardController) async {
         for _ in 0..<50 {
             if !controller.isVerifying { return }
             try? await Task.sleep(nanoseconds: 20_000_000) // 20ms per tick = 1s ceiling
@@ -532,7 +532,7 @@ final class HermesSetupWizardControllerTests: XCTestCase {
     }
 
     /// Polls until a boolean flag flips false (e.g. `isCheckingCLI`), bounded.
-    static func awaitCheckingSettles(
+    private static func awaitCheckingSettles(
         _ controller: HermesSetupWizardController,
         keyPath: KeyPath<HermesSetupWizardController, Bool>
     ) async {

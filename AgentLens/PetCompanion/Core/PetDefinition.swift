@@ -331,7 +331,7 @@ extension PetDefinition.PetProp {
         "head": ["Head", "mixamorig:Head", "head"],
         "spine": ["Spine2", "Spine1", "Spine", "mixamorig:Spine2", "mixamorig:Spine1", "mixamorig:Spine"],
         "hips": ["Hips", "mixamorig:Hips", "pelvis"],
-        "root": [],
+        "root": []
     ]
 
     /// Resolve a socket (alias or raw bone name) against the rig's bone names →

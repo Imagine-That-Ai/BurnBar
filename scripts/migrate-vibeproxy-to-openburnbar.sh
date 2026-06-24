@@ -24,9 +24,12 @@
 #
 set -euo pipefail
 
+# Keep bearer tokens out of curl argv (security policy: verify-curl-bearer-token-boundary).
+# shellcheck source=scripts/lib/curl-bearer.sh
+source "$(dirname "$0")/lib/curl-bearer.sh"
+
 SUPPORT_DIR="$HOME/Library/Application Support/OpenBurnBar"
 CONFIG_PATH="$SUPPORT_DIR/provider-config.json"
-KEYCHAIN_SERVICE="com.openburnbar.daemon.provider-secrets"
 VIBEPROXY_CONFIG="$HOME/.cli-proxy-api/config.yaml"
 BACKUP_DIR="$SUPPORT_DIR/backups/pre-vibeproxy-migration-$(date +%Y%m%dT%H%M%S)"
 
@@ -517,8 +520,8 @@ fi
 # Wait for the daemon to come back up and the gateway to start listening
 log "Waiting for gateway on 127.0.0.1:8317..."
 GATEWAY_UP=false
-for i in $(seq 1 30); do
-    if curl -fsS -H "Authorization: Bearer $GATEWAY_TOKEN" http://127.0.0.1:8317/v1/models >/dev/null 2>&1; then
+for _ in $(seq 1 30); do
+    if obb_curl_with_bearer "$GATEWAY_TOKEN" -fsS http://127.0.0.1:8317/v1/models >/dev/null 2>&1; then
         GATEWAY_UP=true
         break
     fi
@@ -689,7 +692,7 @@ PY
 log "Verifying migration..."
 
 if [[ "$GATEWAY_UP" == "true" ]]; then
-    MODEL_COUNT=$(curl -fsS -H "Authorization: Bearer $GATEWAY_TOKEN" http://127.0.0.1:8317/v1/models 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "?")
+    MODEL_COUNT=$(obb_curl_with_bearer "$GATEWAY_TOKEN" -fsS http://127.0.0.1:8317/v1/models 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "?")
     ok "Gateway /v1/models reports $MODEL_COUNT models"
 else
     warn "Gateway not up - verification skipped"
