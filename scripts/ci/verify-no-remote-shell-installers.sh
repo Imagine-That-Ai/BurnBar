@@ -164,9 +164,6 @@ def script_download_target(tokens):
 
 failures = []
 for file_path in files:
-    if file_path == "scripts/ci/verify-no-remote-shell-installers.test.sh":
-        continue
-
     try:
         lines = open(file_path, encoding="utf-8").read().splitlines()
     except UnicodeDecodeError:
