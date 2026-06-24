@@ -369,7 +369,7 @@ extension OpenBurnBarDaemonManager {
             try validateDaemonBinary(at: paths.installedBinaryURL)
         }
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
-        _ = try launchAgentPlistStep("rotate_socket_token") {
+        let socketAuthToken = try launchAgentPlistStep("rotate_socket_token") {
             try rotateDaemonSocketAuthToken()
         }
 
@@ -384,6 +384,8 @@ extension OpenBurnBarDaemonManager {
         ]
 
         var environmentVariables: [String: String] = [:]
+        environmentVariables["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
+        environmentVariables["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
 
         // Propagate Sentry DSN to the daemon so crash reports are captured.
         // Uses the same resolution helper as the app: Info.plist first, then

@@ -70,7 +70,7 @@ final class OpenBurnBarDaemonSocketClientCredentialReadTests: XCTestCase {
         XCTAssertNil(OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(from: store))
     }
 
-    func test_readDaemonSocketAuthToken_readsPrivateTokenFileWhenKeychainFaults() throws {
+    func test_readDaemonSocketAuthToken_readsPrivateTokenFileWithoutTouchingFaultyKeychain() throws {
         let backend = FaultInjectingKeychainBackend()
         backend.readError = KeychainStoreError.unhandled(errSecNotAvailable)
         let store = makeStore(backend: backend)
@@ -88,7 +88,32 @@ final class OpenBurnBarDaemonSocketClientCredentialReadTests: XCTestCase {
             ),
             "file-token"
         )
-        XCTAssertEqual(backend.readAttempts, 1)
+        XCTAssertEqual(backend.readAttempts, 0)
+    }
+
+    func test_readDaemonSocketAuthToken_prefersPrivateTokenFileOverStaleKeychainToken() throws {
+        let backend = FaultInjectingKeychainBackend()
+        let store = makeStore(backend: backend)
+        try store.set("stale-keychain-token", for: account)
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BurnBarSocketTokenPreferredFile-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let tokenFileURL = rootURL.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
+        try "  fresh-file-token  ".write(to: tokenFileURL, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(
+            OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(
+                from: store,
+                tokenFileURL: tokenFileURL
+            ),
+            "fresh-file-token"
+        )
+        XCTAssertEqual(
+            backend.readAttempts,
+            0,
+            "file token is the daemon authority and should short-circuit stale keychain reads"
+        )
     }
 
     func test_readDaemonSocketAuthToken_returnsNilWhenKeychainAndTokenFileAreAbsent() {

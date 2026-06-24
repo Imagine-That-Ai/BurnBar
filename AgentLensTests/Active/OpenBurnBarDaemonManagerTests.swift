@@ -478,8 +478,15 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         let harness = try makeRuntimePathsHarness(name: "refresh-missing-launch-agent-installed-fallback")
         defer { harness.cleanup() }
 
-        try "#!/bin/sh\nexit 0\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
+        try "#!/bin/sh\nexit 0\n".write(
+            to: harness.paths.installedBinaryURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: harness.paths.installedBinaryURL.path
+        )
 
         let installedBundleURL = harness.paths.daemonDirectory.appendingPathComponent(
             OpenBurnBarDaemonManager.resourceBundleName,
@@ -593,6 +600,46 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             ),
             token
         )
+    }
+
+    func test_writeLaunchAgentPlistPreservesDaemonSocketTokenDiscoveryEnvironment() throws {
+        let harness = try makeRuntimePathsHarness(name: "launch-agent-socket-token-env")
+        defer { harness.cleanup() }
+
+        try FileManager.default.createDirectory(
+            at: harness.paths.daemonDirectory,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: harness.paths.launchAgentPlistURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "#!/bin/sh\nexit 0\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        try manager.writeLaunchAgentPlist()
+
+        let token = try String(contentsOf: harness.paths.socketAuthTokenFileURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let plistData = try Data(contentsOf: harness.paths.launchAgentPlistURL)
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any]
+        )
+        let arguments = try XCTUnwrap(plist["ProgramArguments"] as? [String])
+        let environment = try XCTUnwrap(plist["EnvironmentVariables"] as? [String: String])
+
+        XCTAssertFalse(token.isEmpty)
+        XCTAssertEqual(environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
+        XCTAssertEqual(environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
+        XCTAssertTrue(arguments.contains("--socket-auth-token-file"))
+        XCTAssertTrue(arguments.contains(harness.paths.socketAuthTokenFileURL.path))
+        XCTAssertFalse(arguments.contains(token), "daemon socket token must stay out of argv")
     }
 
     func test_usageSync_readsProviderConfigurationSnapshot() async throws {

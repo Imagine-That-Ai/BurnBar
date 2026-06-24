@@ -1211,6 +1211,10 @@ enum OpenBurnBarDaemonSocketClient {
     /// Exposed at file-internal visibility so the fault path is exercisable
     /// with an injected `KeychainStore` backend in tests.
     static func readDaemonSocketAuthToken(from secrets: KeychainStore, tokenFileURL: URL? = nil) -> String? {
+        if let tokenFileURL,
+           let fileToken = readDaemonSocketAuthTokenFile(at: tokenFileURL) {
+            return fileToken
+        }
         if let storedToken = secrets.credentialIfPresent(
             for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
             allowUserInteraction: false,
@@ -1221,8 +1225,7 @@ enum OpenBurnBarDaemonSocketClient {
                 return token
             }
         }
-        guard let tokenFileURL else { return nil }
-        return readDaemonSocketAuthTokenFile(at: tokenFileURL)
+        return nil
     }
 
     static func readDaemonSocketAuthTokenFile(at url: URL) -> String? {
