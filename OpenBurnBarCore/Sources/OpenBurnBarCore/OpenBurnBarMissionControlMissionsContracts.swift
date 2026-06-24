@@ -171,7 +171,7 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
         )
 
         return BurnBarPRLinkageSnapshot(
-            schemaVersion: Int(firstNumber(in: object, keys: ["schemaVersion", "schema_version"]) ?? Double(currentSchemaVersion)),
+            schemaVersion: firstInteger(in: object, keys: ["schemaVersion", "schema_version"]) ?? currentSchemaVersion,
             repository: repository,
             prNumberOrID: prNumberOrID,
             url: url,
@@ -236,7 +236,9 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
                     return trimmed
                 }
             case .number(let raw):
-                return String(raw)
+                if let integer = boundedIntegerString(raw) {
+                    return integer
+                }
             default:
                 continue
             }
@@ -244,15 +246,30 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
         return nil
     }
 
-    private static func firstNumber(
+    private static func firstInteger(
         in object: [String: BurnBarJSONValue],
         keys: [String]
-    ) -> Double? {
+    ) -> Int? {
         for key in keys {
-            guard case .number(let raw)? = object[key] else { continue }
-            return raw
+            guard case .number(let raw)? = object[key],
+                  raw.isFinite,
+                  raw.rounded(.towardZero) == raw,
+                  let value = Int(exactly: raw) else {
+                continue
+            }
+            return value
         }
         return nil
+    }
+
+    private static func boundedIntegerString(_ raw: Double) -> String? {
+        guard raw.isFinite,
+              raw.rounded(.towardZero) == raw,
+              raw >= 0,
+              raw <= 9_007_199_254_740_991 else {
+            return nil
+        }
+        return String(Int64(raw))
     }
 
     private static func firstBool(
