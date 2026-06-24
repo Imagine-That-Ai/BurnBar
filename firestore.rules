@@ -740,6 +740,10 @@ service cloud.firestore {
         && (!("version" in data) || (data.version is int && data.version >= 1));
     }
 
+    function sessionLogTombstoneIsSticky() {
+      return !("deletedAt" in resource.data) || ("deletedAt" in request.resource.data);
+    }
+
     function ownerWritableSessionLogManifestCreate(userId, logId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogManifestCore(userId, logId);
@@ -781,6 +785,7 @@ service cloud.firestore {
         && validSessionLogRefreshKeys()
         && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
         && validSessionLogLifecycleFields(request.resource.data)
+        && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);
     }
 
