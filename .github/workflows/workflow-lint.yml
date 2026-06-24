@@ -19,6 +19,8 @@ on:
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
+      - "scripts/generate-macos-appcast.mjs"
+      - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
@@ -56,6 +58,8 @@ on:
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
+      - "scripts/generate-macos-appcast.mjs"
+      - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
@@ -153,6 +157,9 @@ jobs:
 
       - name: Verify release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.mjs
+
+      - name: Self-test macOS appcast generator
+        run: node scripts/generate-macos-appcast.test.mjs
 
       - name: Self-test hosting deploy boundary
         run: node scripts/ci/verify-hosting-deploy-boundary.test.mjs

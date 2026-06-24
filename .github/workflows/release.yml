@@ -233,20 +233,33 @@ jobs:
 
       - name: Install Sparkle signing tools
         run: |
+          set -euo pipefail
           brew install --cask sparkle
           SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
           xattr -dr com.apple.quarantine "$SPARKLE_CASKROOM" 2>/dev/null || true
           SPARKLE_SIGN_UPDATE="$(
-            find "$SPARKLE_CASKROOM" /Applications -name sign_update \( -type f -o -type l \) -print -quit 2>/dev/null || true
+            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
           )"
           if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
             echo "::error::Sparkle sign_update tool was not found after cask install."
             echo "::group::Sparkle install tree"
-            find "$SPARKLE_CASKROOM" /Applications -path '*Sparkle*' -print 2>/dev/null || true
+            find "$SPARKLE_CASKROOM" -path '*Sparkle*' -print 2>/dev/null || true
             echo "::endgroup::"
             exit 1
           fi
-          chmod +x "$SPARKLE_SIGN_UPDATE" 2>/dev/null || true
+          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
+          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
+          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            exit 1
+          fi
+          case "$SPARKLE_SIGN_UPDATE_REAL" in
+            "$SPARKLE_CASKROOM_REAL"/*) ;;
+            *)
+              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              exit 1
+              ;;
+          esac
           if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
             echo "::error::Sparkle sign_update exists but is not executable: $SPARKLE_SIGN_UPDATE"
             exit 1

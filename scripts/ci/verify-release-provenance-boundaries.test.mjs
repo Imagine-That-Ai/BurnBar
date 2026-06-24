@@ -68,8 +68,53 @@ jobs:
           set -euo pipefail
           git checkout --detach "$RELEASE_COMMIT"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+      - name: Install Sparkle signing tools
+        run: |
+          set -euo pipefail
+          brew install --cask sparkle
+          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
+          SPARKLE_SIGN_UPDATE="$(
+            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
+          )"
+          if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
+          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
+          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
+          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            exit 1
+          fi
+          case "$SPARKLE_SIGN_UPDATE_REAL" in
+            "$SPARKLE_CASKROOM_REAL"/*) ;;
+            *)
+              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              exit 1
+              ;;
+          esac
+          if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
+      - name: Generate direct-download update feeds
+        env:
+          DMG_PATH: \${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: \${{ steps.zip.outputs.zip_path }}
+          SOURCE_PATH: \${{ steps.corresponding-source.outputs.source_path }}
+        run: |
+          DMG_NAME="$(basename "$DMG_PATH")"
+          ZIP_NAME="$(basename "$ZIP_PATH")"
+          SOURCE_NAME="$(basename "$SOURCE_PATH")"
+          APPCAST_PATH="$RUNNER_TEMP/appcast.xml"
+          LATEST_PATH="$RUNNER_TEMP/latest-macos.json"
+          node scripts/generate-macos-appcast.mjs \
+            --release-dir "$RUNNER_TEMP" \
+            --dmg-name "$DMG_NAME" \
+            --zip-name "$ZIP_NAME" \
+            --source-archive-name "$SOURCE_NAME" \
+            --appcast-name "$(basename "$APPCAST_PATH")" \
+            --latest-name "$(basename "$LATEST_PATH")"
       - name: Sigstore blob attestations (SBOM + VEX + checksums + binaries)
         env:
           RELEASE_REF: \${{ steps.version.outputs.tag_ref }}
@@ -428,6 +473,56 @@ expect(
   GOOD_RELEASE.replace(
     "      - name: Check out release tag\n        env:\n          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}\n        run: |\n          set -euo pipefail",
     "      - name: Check out release tag\n        env:\n          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}\n        run: |\n          set -u",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow global Sparkle signer search fails",
+  GOOD_RELEASE.replace(
+    'find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit',
+    'find "$SPARKLE_CASKROOM" /Applications -name sign_update \\( -type f -o -type l \\) -print -quit',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow symlink Sparkle signer acceptance fails",
+  GOOD_RELEASE.replace(
+    'find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit',
+    'find "$SPARKLE_CASKROOM" -name sign_update \\( -type f -o -type l \\) -print -quit',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing Sparkle signer canonical containment check fails",
+  GOOD_RELEASE.replace(
+    '          case "$SPARKLE_SIGN_UPDATE_REAL" in\n            "$SPARKLE_CASKROOM_REAL"/*) ;;\n            *)\n              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"\n              exit 1\n              ;;\n          esac\n',
+    "",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow raw appcast output path fails",
+  GOOD_RELEASE.replace(
+    '--appcast-name "$(basename "$APPCAST_PATH")"',
+    '--appcast-name "$APPCAST_PATH"',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow raw latest output path fails",
+  GOOD_RELEASE.replace(
+    '--latest-name "$(basename "$LATEST_PATH")"',
+    '--latest-name "$LATEST_PATH"',
   ),
   GOOD_SUPPLY_CHAIN,
   1,
