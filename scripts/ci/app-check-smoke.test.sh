@@ -16,6 +16,7 @@ new_fixture() {
   dir="$(mktemp -d "${tmp_root}/fixture.XXXXXX")"
   mkdir -p "${dir}/scripts/ci" "${dir}/scripts/ops" "${dir}/bin"
   cp "${source_script}" "${dir}/scripts/ci/app-check-smoke.sh"
+  ln -s "$(command -v dirname)" "${dir}/bin/dirname"
   chmod +x "${dir}/scripts/ci/app-check-smoke.sh"
   printf '%s' "${dir}"
 }
@@ -51,7 +52,7 @@ assert_exit 1 internal-run-without-project-fails \
 
 fixture="$(new_fixture)"
 assert_exit 1 internal-run-without-gcloud-fails \
-  env -i PATH="/usr/bin:/bin" INTERNAL_RUN=true OPENBURNBAR_FIREBASE_PROJECT=burnbar-ci bash "${fixture}/scripts/ci/app-check-smoke.sh"
+  env -i PATH="${fixture}/bin" INTERNAL_RUN=true OPENBURNBAR_FIREBASE_PROJECT=burnbar-ci /bin/bash "${fixture}/scripts/ci/app-check-smoke.sh"
 
 fixture="$(new_fixture)"
 cat >"${fixture}/bin/gcloud" <<'SH'

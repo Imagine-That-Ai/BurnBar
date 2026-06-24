@@ -981,6 +981,7 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag_name }}
           RELEASE_REF: ${{ steps.version.outputs.tag_ref }}
           RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
 
@@ -1036,6 +1037,9 @@ jobs:
                   "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
                   "runID": os.environ.get("GITHUB_RUN_ID", ""),
                   "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+              "runner": {
+                  "environment": os.environ["RUNNER_ENVIRONMENT"],
               },
           }
           predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
