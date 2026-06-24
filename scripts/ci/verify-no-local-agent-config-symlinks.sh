@@ -6,9 +6,28 @@ cd "$repo_root"
 
 violations=()
 
+is_local_agent_config_path() {
+  case "$1" in
+    .antigravitycli/*|*/.antigravitycli/*|\
+    .gemini/*|*/.gemini/*|\
+    .codex/*|*/.codex/*|\
+    .claude/agent-memory/*|*/.claude/agent-memory/*|\
+    .claude/settings.local.json|*/.claude/settings.local.json|\
+    .claude/*.lock|*/.claude/*.lock|\
+    .claude/worktrees/*|*/.claude/worktrees/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 while IFS= read -r -d '' path; do
-  violations+=("tracked local agent config path: ${path}")
-done < <(git ls-files -z -- .antigravitycli .gemini)
+  if is_local_agent_config_path "$path"; then
+    violations+=("tracked local agent config path: ${path}")
+  fi
+done < <(git ls-files -z)
 
 while IFS= read -r -d '' entry; do
   meta="${entry%%$'\t'*}"
@@ -18,7 +37,11 @@ while IFS= read -r -d '' entry; do
 
   target="$(git cat-file -p "$object")"
   case "$target" in
-    /Users/*|/home/*|~/*|*/.gemini/config/*|*/.claude/*|*/.codex/*)
+    /Users/*|/home/*|~/*|\
+    .antigravitycli/*|*/.antigravitycli/*|\
+    .gemini/*|*/.gemini/*|\
+    .claude/*|*/.claude/*|\
+    .codex/*|*/.codex/*)
       violations+=("tracked symlink points at local agent state: ${path} -> ${target}")
       ;;
   esac
