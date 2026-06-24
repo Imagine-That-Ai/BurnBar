@@ -3629,7 +3629,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequest.xApp, "cli")
         XCTAssertEqual(upstreamRequest.directBrowserAccess, "true")
         let ua = try XCTUnwrap(upstreamRequest.userAgent)
-        XCTAssertTrue(ua.hasPrefix("claude-cli/"), ua)
+        XCTAssertTrue(ua.hasPrefix("claude-code/"), ua)
+        let billingHeader = try XCTUnwrap(upstreamRequest.anthropicBillingHeader)
+        XCTAssertTrue(billingHeader.contains("cc_version=2.1.187"), billingHeader)
+        XCTAssertTrue(billingHeader.contains("cc_entrypoint=sdk-cli"), billingHeader)
         XCTAssertTrue(
             upstreamRequest.body.contains(#""system":"You are Claude Code, Anthropic's official CLI for Claude.""#),
             upstreamRequest.body
@@ -3759,6 +3762,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             "Console API key routes hit the bare /v1/messages URL; they must not get the Claude Code ?beta=true query."
         )
         XCTAssertNil(upstreamRequest.anthropicBeta)
+        XCTAssertNil(upstreamRequest.anthropicBillingHeader)
         XCTAssertNil(upstreamRequest.xApp)
         XCTAssertNil(upstreamRequest.directBrowserAccess)
         XCTAssertFalse(
@@ -5413,6 +5417,7 @@ private struct GatewayUpstreamRequest: Hashable {
     let xApiKey: String?
     let anthropicVersion: String?
     let anthropicBeta: String?
+    let anthropicBillingHeader: String?
     let userAgent: String?
     let xApp: String?
     let directBrowserAccess: String?
@@ -5493,6 +5498,7 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                     xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
                     anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version"),
                     anthropicBeta: request.value(forHTTPHeaderField: "anthropic-beta"),
+                    anthropicBillingHeader: request.value(forHTTPHeaderField: "x-anthropic-billing-header"),
                     userAgent: request.value(forHTTPHeaderField: "User-Agent"),
                     xApp: request.value(forHTTPHeaderField: "x-app"),
                     directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
