@@ -235,6 +235,13 @@ function petDefinition(entry) {
   };
 }
 
+// Legacy demo-roster assets that live in Models/ but are NOT part of the Imagine
+// manifest — the built-in demo pets (FormPicker.knownRoster) depend on them, so
+// the manifest prune must never delete them even though no manifest entry claims
+// them. Keeping this allowlist here fixes the "sync deletes go-gopher.glb /
+// claudecode-crab.glb and breaks demo 3D" regression.
+const KEEP_GLBS = new Set(["claudecode-crab.glb", "go-gopher.glb"]);
+
 async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
   const entries = await readdir(modelsDir, { withFileTypes: true });
   let pruned = 0;
@@ -247,7 +254,12 @@ async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
         await rm(fullPath, { recursive: true, force: true });
         pruned += 1;
       }
-    } else if (entry.isFile() && entry.name.endsWith(".glb") && !currentGlbs.has(entry.name)) {
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith(".glb") &&
+      !currentGlbs.has(entry.name) &&
+      !KEEP_GLBS.has(entry.name)
+    ) {
       await rm(fullPath, { force: true });
       pruned += 1;
     }

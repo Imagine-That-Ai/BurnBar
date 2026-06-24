@@ -191,6 +191,45 @@ enum PetChatFallback {
         reply(history: history).text
     }
 
+    // MARK: Persona floor (BurnBar in-character)
+
+    /// When the active pet carries BurnBar persona voice-lines (enter/work/cheer/
+    /// exit, parsed from its petdef `agent.voiceLines`), the floor answers IN
+    /// CHARACTER and on BurnBar's own domain (tokens/spend/agents) rather than the
+    /// studio site-guide above. Deterministic: same message → same line, so it
+    /// reads as intentional and stays unit-testable.
+    static func personaReplyText(history: [Turn], lines: [String: [String]]) -> String {
+        let text = latestUserText(history).trimmingCharacters(in: .whitespacesAndNewlines)
+        let phase = personaPhase(for: text)
+        let pool = lines[phase] ?? lines["work"] ?? lines.values.first(where: { !$0.isEmpty }) ?? []
+        guard !pool.isEmpty else { return "" }
+        return pool[stableIndex(text, modulo: pool.count)]
+    }
+
+    /// Map the latest user turn to a persona phase: a greeting perks the pet
+    /// (`enter`), praise makes it `cheer`, a farewell/dismissal sends it off
+    /// (`exit`), and anything else is treated as a working request (`work`).
+    private static func personaPhase(for text: String) -> String {
+        if text.isEmpty { return "enter" }
+        let t = " \(text.lowercased()) "
+        let greet = [" hi ", " hey ", " hello ", " yo ", " sup ", " morning ", " howdy "]
+        let praise = ["thank", "thanks", " nice", " great", "awesome", " love", "good job", "well done", "amazing", "perfect", " cool", "nailed", "🔥", "🙌"]
+        let bye = [" bye", "goodbye", "see you", " later", "go away", " leave", "shut up", " stop ", " quiet", " shoo"]
+        if greet.contains(where: { t.contains($0) }) { return "enter" }
+        if praise.contains(where: { t.contains($0) }) { return "cheer" }
+        if bye.contains(where: { t.contains($0) }) { return "exit" }
+        return "work"
+    }
+
+    /// A tiny deterministic (djb2) index so the same message always picks the same
+    /// line — no Foundation `Hasher` randomization, so it's stable across launches.
+    private static func stableIndex(_ text: String, modulo n: Int) -> Int {
+        guard n > 0 else { return 0 }
+        var h = 5381
+        for b in text.utf8 { h = (h &* 33) &+ Int(b) }
+        return abs(h) % n
+    }
+
     // MARK: Streaming
 
     /// Stream the local reply word-by-word so the floor path *streams* like a
@@ -200,9 +239,19 @@ enum PetChatFallback {
     /// only the token order (the contract), not wall-clock timing.
     static func stream(
         history: [Turn],
+        lines: [String: [String]]? = nil,
         perTokenDelay delay: Duration = .milliseconds(38)
     ) -> AsyncStream<String> {
-        let tokens = tokenize(reply(history: history).text)
+        // Prefer the pet's BurnBar persona lines when present; only fall back to the
+        // generic guide when a pet has no voice-lines at all.
+        let resolved: String
+        if let lines, !lines.isEmpty {
+            let line = personaReplyText(history: history, lines: lines)
+            resolved = line.isEmpty ? reply(history: history).text : line
+        } else {
+            resolved = reply(history: history).text
+        }
+        let tokens = tokenize(resolved)
         return AsyncStream { continuation in
             let task = Task {
                 for tok in tokens {

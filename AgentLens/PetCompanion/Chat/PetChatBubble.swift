@@ -52,6 +52,10 @@ final class PetChatController {
     private let chat: ChatSessionController
     /// The pet coordinator we drive states on.
     private weak var pet: PetCompanionController?
+
+    /// The chosen pet's human name (e.g. "Sam Altman") for chat chrome — so the
+    /// input says "Ask Sam Altman…" instead of the impersonal "Ask the pet…".
+    var petName: String { pet?.displayName ?? "your companion" }
     /// The app's shared settings — the *same* ``SettingsManager`` the main chat
     /// UI reads the enabled-engine set from (its `enabledChatBackendIDsCSV` key,
     /// decoded via `enabledChatBackends`). We reuse that property so the bubble's
@@ -315,7 +319,7 @@ final class PetChatController {
         pet?.noteAgentBusy(true)
         pet?.drive(to: .speak)
 
-        let stream = PetChatFallback.stream(history: history)
+        let stream = PetChatFallback.stream(history: history, lines: pet?.voiceLines)
         floorTask = Task { [weak self] in
             for await tok in stream {
                 guard let self, !Task.isCancelled else { break }
@@ -613,7 +617,7 @@ struct PetChatBubbleView: View {
 
     private var inputRow: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
-            TextField("Ask the pet…", text: $controller.draft, axis: .vertical)
+            TextField("Ask \(controller.petName)…", text: $controller.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Typography.body)
                 .lineLimit(1...4)
