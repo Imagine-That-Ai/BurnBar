@@ -44,6 +44,7 @@ env:
   SCHEME: OpenBurnBar
   PROJECT: OpenBurnBar.xcodeproj
   CONFIG: Release
+  SIGNAL_FFI_BUILD_PROFILE: release
   DESTINATION: "platform=macOS,arch=arm64"
   CACHE_DIR: .spm-cache
   DERIVED_DATA: .derived-data
