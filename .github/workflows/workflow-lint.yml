@@ -41,6 +41,8 @@ on:
       - "scripts/ci/app-check-smoke.test.sh"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ops/run-firestore-restore-drill.sh"
+      - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -86,6 +88,8 @@ on:
       - "scripts/ci/app-check-smoke.test.sh"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ops/run-firestore-restore-drill.sh"
+      - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -129,6 +133,9 @@ jobs:
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
+
+      - name: Self-test Firestore restore drill env validation
+        run: bash scripts/ops/run-firestore-restore-drill.test.sh
 
       - name: Check functional QA runner syntax
         run: bash -n tools/qa/run-functional-qa.sh
