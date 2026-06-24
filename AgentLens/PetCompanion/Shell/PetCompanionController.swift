@@ -309,6 +309,25 @@ final class PetCompanionController: ObservableObject {
         definition?.agent?.persona
     }
 
+    /// The chosen pet's human name (e.g. "Sam Altman"), for chat chrome that should
+    /// address the pet by name rather than "the pet". Falls back to the id, then a
+    /// gentle default when no pet is mounted.
+    var displayName: String {
+        definition?.displayName ?? definition?.name ?? "your companion"
+    }
+
+    /// The pet's BurnBar persona voice-lines (enter/work/cheer/exit), decoded from
+    /// the petdef `agent.voiceLines` JSON string. The local chat floor uses these
+    /// to answer IN CHARACTER (and on BurnBar's domain) when no AI provider replies.
+    var voiceLines: [String: [String]]? {
+        guard let raw = definition?.agent?.voiceLines,
+              let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: [String]].self, from: data),
+              !decoded.isEmpty
+        else { return nil }
+        return decoded
+    }
+
     /// Inject the app's **shared** ``ChatSessionController`` (Ground Truth #2 — do
     /// not duplicate the agent layer). Builds the ``PetChatController`` that the
     /// bubble binds to. Call once from the launch hook where the shared chat

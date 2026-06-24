@@ -180,8 +180,12 @@ function clipMap(clips) {
 // answers in the pet's own voice. Populated once the manifest source resolves;
 // an absent sidecar simply leaves pets on BurnBar's default voice.
 let personas = {};
+// BurnBar-native persona overrides (scripts/pet-personas.burnbar.json) — same
+// figures, re-grounded in BurnBar's world (tokens/spend/agents/code) so the pets
+// don't confabulate a web-design context. Preferred per-id over the website voice.
+let personasBurnbar = {};
 function agentFor(id) {
-  const p = personas[id];
+  const p = personasBurnbar[id] || personas[id];
   if (!p) return undefined;
   return {
     persona: `${p.voice} A few phrases you're known for: ${(p.signature || []).join(" / ")}`,
@@ -231,6 +235,13 @@ function petDefinition(entry) {
   };
 }
 
+// Legacy demo-roster assets that live in Models/ but are NOT part of the Imagine
+// manifest — the built-in demo pets (FormPicker.knownRoster) depend on them, so
+// the manifest prune must never delete them even though no manifest entry claims
+// them. Keeping this allowlist here fixes the "sync deletes go-gopher.glb /
+// claudecode-crab.glb and breaks demo 3D" regression.
+const KEEP_GLBS = new Set(["claudecode-crab.glb", "go-gopher.glb"]);
+
 async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
   const entries = await readdir(modelsDir, { withFileTypes: true });
   let pruned = 0;
@@ -243,7 +254,12 @@ async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
         await rm(fullPath, { recursive: true, force: true });
         pruned += 1;
       }
-    } else if (entry.isFile() && entry.name.endsWith(".glb") && !currentGlbs.has(entry.name)) {
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith(".glb") &&
+      !currentGlbs.has(entry.name) &&
+      !KEEP_GLBS.has(entry.name)
+    ) {
       await rm(fullPath, { force: true });
       pruned += 1;
     }
@@ -284,6 +300,15 @@ try {
   personas = parsedPersonas && typeof parsedPersonas === "object" && !Array.isArray(parsedPersonas) ? parsedPersonas : {};
 } catch {
   /* no pet-personas.json → default voice */
+}
+
+// BurnBar-local persona override — read from THIS repo (not the synced manifest),
+// so BurnBar can tune voices independently of the website. Best-effort.
+try {
+  const bb = JSON.parse(await readFile(path.join(repoRoot, "scripts", "pet-personas.burnbar.json"), "utf8"));
+  personasBurnbar = bb && typeof bb === "object" && !Array.isArray(bb) ? bb : {};
+} catch {
+  /* no scripts/pet-personas.burnbar.json → website personas */
 }
 
 await mkdir(modelsDir, { recursive: true });

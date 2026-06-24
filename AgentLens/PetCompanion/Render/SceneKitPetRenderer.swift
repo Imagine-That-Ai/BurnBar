@@ -276,6 +276,13 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     func play(state: String) {
         currentStateKey = state
 
+        // Re-fit the camera to the NEW pose. The framing was one-shot (idle only),
+        // so when chat drove the pet to `listen`/`think` the camera kept the idle
+        // framing and the differently-posed model drifted out of frame — reading as
+        // a bird's-eye / top-of-head view. Re-framing on each state change keeps the
+        // current pose centered and face-on. (The clips themselves are upright.)
+        needsPresentationFraming = true
+
         guard let model = definition.model3d else { return }
 
         // Resolve the logical state → glTF clip name via the petdef clip map
@@ -424,10 +431,23 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         scnView.scene = loaded
 
         // Wrap the imported root so we can yaw/bob without disturbing clips.
+        // `root` owns the yaw/bob (applied in applyModelTransform). The imported
+        // model goes under an inner `upright` node that stands it up: these Meshy
+        // rigs import into SceneKit lying on their back (Z-up source vs SceneKit's
+        // Y-up), so a fixed -90° pitch about X makes every pet stand. Framing reads
+        // `root`'s bounds AFTER this, so scale/centering stay correct, and the yaw
+        // on `root` spins an already-upright model. (model-viewer applies the same
+        // glTF Y-up convention on the web — this matches it.)
         let root = SCNNode()
+        let upright = SCNNode()
+        // The GLB geometry is Y-up (verified: height is its Y extent), and the web
+        // model-viewer renders it standing. SceneKit's import lands it tilted -90°
+        // about X (lying on its back), so a +90° pitch here returns it to vertical.
+        upright.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
         for child in loaded.rootNode.childNodes {
-            root.addChildNode(child)
+            upright.addChildNode(child)
         }
+        root.addChildNode(upright)
         loaded.rootNode.addChildNode(root)
         contentRoot = root
 
