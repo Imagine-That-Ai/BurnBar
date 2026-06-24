@@ -4,9 +4,11 @@ import path from "node:path";
 
 import { requireOptionalSearchHashes, requireTokenHashes } from "../callables/shared.js";
 import {
+  MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT,
   MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT,
   MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK,
   MAX_TOKEN_POSTING_EDGES_PER_CHUNK,
+  assertCloudSearchIndexCleanupWriteBudget,
   assertCloudSearchIndexWriteBudget,
   buildCloudSearchPostingEdges,
 } from "../callables/encryptedSearchIndex.js";
@@ -54,10 +56,25 @@ describe("encrypted search hash validation", () => {
     );
   });
 
+  it("budgets stale index cleanup separately from full replacement writes", () => {
+    expect(() => assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT)).not.toThrow();
+    expect(() => assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT + 1)).toThrow(
+      /cloud search index cleanup would write/,
+    );
+  });
+
   it("keeps the callable wired to same-commit chunk binding and write-budget enforcement", () => {
     const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearch.ts"), "utf8");
 
     expect(source).toContain("chunk.documentID must reference a document in the same commit");
     expect(source).toContain("assertCloudSearchIndexWriteBudget(writeCount + 1)");
+    expect(source).toContain("assertCloudSearchIndexCleanupWriteBudget(cleanupWriteCount + 1)");
+  });
+
+  it("keeps callable fallback queries isolated per hash", () => {
+    const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearchQuery.ts"), "utf8");
+
+    expect(source).toContain("Math.floor(250 / fallbackHashes.length)");
+    expect(source).toContain('chunksRef.where(fieldName, "array-contains-any", [hash])');
   });
 });

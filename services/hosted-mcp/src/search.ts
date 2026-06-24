@@ -19,6 +19,15 @@ export interface SearchArgs {
   includeBodyPreview?: boolean;
 }
 
+type SearchCandidate = {
+  id: string;
+  tokenMatches: number;
+  semanticMatches: number;
+  tokenMatchedHashes: Set<string>;
+  semanticMatchedHashes: Set<string>;
+  data: FirebaseFirestore.DocumentData;
+};
+
 function hashes(raw: unknown, max: number, field: string): string[] {
   if (raw === undefined) {return [];}
   if (!Array.isArray(raw)) {throw new HttpError(400, `${field} must be an array.`, "invalid_input");}
@@ -40,16 +49,18 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
 
   const offset = args.cursor ? verifyCursor(args.cursor, uid, "burnbar_search_conversations").offset : 0;
   let firestoreDocumentReads = 0;
-  const candidates = new Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>();
+  const candidates = new Map<string, SearchCandidate>();
   const remainingSearchReadBudget = Math.max(0, 150 - firestoreDocumentReads);
   const activePostingQueryCount = [tokenHashes, semanticHashes].filter((items) => items.length > 0).length;
   const candidateReadCap = Math.max(
     1,
-    Math.min(limit * 2, Math.floor(remainingSearchReadBudget / Math.max(1, activePostingQueryCount * 2)))
+    Math.min(limit * 2, Math.floor(remainingSearchReadBudget / Math.max(1, activePostingQueryCount * 3)))
   );
   const postingReads = await Promise.all([
     collectPostingMatches(db, uid, tokenHashes, "token", candidates, args.provider, candidateReadCap),
-    collectPostingMatches(db, uid, semanticHashes, "semantic", candidates, args.provider, candidateReadCap)
+    collectPostingMatches(db, uid, semanticHashes, "semantic", candidates, args.provider, candidateReadCap),
+    collectFallbackMatches(db, uid, tokenHashes, "token", candidates, args.provider, candidateReadCap),
+    collectFallbackMatches(db, uid, semanticHashes, "semantic", candidates, args.provider, candidateReadCap)
   ]);
   firestoreDocumentReads += postingReads.reduce((sum, reads) => sum + reads, 0);
 
@@ -110,7 +121,7 @@ async function collectPostingMatches(
   uid: string,
   inputHashes: string[],
   kind: "token" | "semantic",
-  candidates: Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>,
+  candidates: Map<string, SearchCandidate>,
   provider: string | undefined,
   candidateReadCap: number
 ): Promise<number> {
@@ -138,17 +149,66 @@ async function collectPostingMatches(
     if (!chunk.exists) {continue;}
     const data = chunk.data() ?? {};
     if (provider && data.provider !== provider) {continue;}
-    const values = Array.isArray(data[kind === "token" ? "tokenHashes" : "semanticHashes"])
-      ? data[kind === "token" ? "tokenHashes" : "semanticHashes"].filter((hash: unknown): hash is string => typeof hash === "string")
-      : [];
-    const matches = values.reduce((sum: number, hash: string) => sum + (requested.has(hash) ? 1 : 0), 0);
-    if (matches <= 0) {continue;}
-    const current = candidates.get(chunk.id) ?? { id: chunk.id, tokenMatches: 0, semanticMatches: 0, data };
-    if (kind === "token") {current.tokenMatches += matches;}
-    else {current.semanticMatches += matches;}
-    candidates.set(chunk.id, current);
+    scoreChunk(candidates, chunk.id, data, requested, kind);
   }
   return firestoreDocumentReads;
+}
+
+async function collectFallbackMatches(
+  db: Firestore,
+  uid: string,
+  inputHashes: string[],
+  kind: "token" | "semantic",
+  candidates: Map<string, SearchCandidate>,
+  provider: string | undefined,
+  candidateReadCap: number
+): Promise<number> {
+  if (inputHashes.length === 0) {return 0;}
+  const requested = new Set(inputHashes);
+  const field = kind === "token" ? "tokenHashes" : "semanticHashes";
+  let query: FirebaseFirestore.Query = db
+    .collection(`users/${uid}/cloud_search_chunks`)
+    .where(field, "array-contains-any", Array.from(requested));
+  if (provider) {query = query.where("provider", "==", provider);}
+  const chunks = await query.limit(candidateReadCap).get();
+  for (const chunk of chunks.docs) {
+    const data = chunk.data() ?? {};
+    if (provider && data.provider !== provider) {continue;}
+    scoreChunk(candidates, chunk.id, data, requested, kind);
+  }
+  return chunks.docs.length;
+}
+
+function scoreChunk(
+  candidates: Map<string, SearchCandidate>,
+  chunkID: string,
+  data: FirebaseFirestore.DocumentData,
+  requested: Set<string>,
+  kind: "token" | "semantic"
+): void {
+  const field = kind === "token" ? "tokenHashes" : "semanticHashes";
+  const values = Array.isArray(data[field])
+    ? data[field].filter((hash: unknown): hash is string => typeof hash === "string")
+    : [];
+  const current = candidates.get(chunkID) ?? {
+    id: chunkID,
+    tokenMatches: 0,
+    semanticMatches: 0,
+    tokenMatchedHashes: new Set<string>(),
+    semanticMatchedHashes: new Set<string>(),
+    data
+  };
+  const matched = kind === "token" ? current.tokenMatchedHashes : current.semanticMatchedHashes;
+  let matches = 0;
+  for (const hash of values) {
+    if (!requested.has(hash) || matched.has(hash)) {continue;}
+    matched.add(hash);
+    matches += 1;
+  }
+  if (matches <= 0) {return;}
+  if (kind === "token") {current.tokenMatches += matches;}
+  else {current.semanticMatches += matches;}
+  candidates.set(chunkID, current);
 }
 
 function timestampISO(value: unknown): string | undefined {

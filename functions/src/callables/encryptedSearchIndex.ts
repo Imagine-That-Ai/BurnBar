@@ -25,6 +25,7 @@ interface CloudSearchPostingEdge {
 export const MAX_TOKEN_POSTING_EDGES_PER_CHUNK = 24;
 export const MAX_SEMANTIC_POSTING_EDGES_PER_CHUNK = 12;
 export const MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT = 30_000;
+export const MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT = 30_000;
 
 function uniqueHashes(hashes: string[]): string[] {
   return Array.from(new Set(hashes));
@@ -39,6 +40,18 @@ export function assertCloudSearchIndexWriteBudget(writeCount: number): void {
   if (!Number.isSafeInteger(writeCount) || writeCount < 0 || writeCount > MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT) {
     throw new Error(
       `cloud search index commit would write ${writeCount} documents; maximum is ${MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT}.`,
+    );
+  }
+}
+
+export function assertCloudSearchIndexCleanupWriteBudget(writeCount: number): void {
+  if (
+    !Number.isSafeInteger(writeCount) ||
+    writeCount < 0 ||
+    writeCount > MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT
+  ) {
+    throw new Error(
+      `cloud search index cleanup would write ${writeCount} documents; maximum is ${MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT}.`,
     );
   }
 }
@@ -89,4 +102,8 @@ export function buildCloudSearchPostingEdges(params: {
 export function cloudSearchFallbackHashes(requestedHashes: string[], postingMatchedHashes: Iterable<string>): string[] {
   const matched = new Set(postingMatchedHashes);
   return uniqueHashes(requestedHashes).filter((hash) => !matched.has(hash));
+}
+
+export function cloudSearchCompleteFallbackHashes(requestedHashes: string[]): string[] {
+  return uniqueHashes(requestedHashes);
 }
