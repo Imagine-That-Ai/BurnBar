@@ -248,7 +248,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(remainingSessionLogs.isEmpty)
     }
 
-    func test_sessionLogUpload_writesCheapSearchMetadataOnExistingChunks() async throws {
+    func test_sessionLogUpload_deletesLegacyChunksAfterEncryptedReindex() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .kimi, sessionId: "session-kimi-1"),
             provider: .kimi,
@@ -304,22 +304,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["uid"] as? String, "test-uid-1")
-        XCTAssertEqual(chunk["sessionId"] as? String, "session-kimi-1")
-        XCTAssertEqual(chunk["deviceId"] as? String, "test-device-1")
-        XCTAssertEqual(chunk["docId"] as? String, docId)
-        XCTAssertEqual(chunk["schemaVersion"] as? Int, 1)
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["title"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNil(chunk["projectName"] as? String)
-        XCTAssertNil(chunk["workingDirectory"] as? String)
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
-        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
-        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
     }
 
     func test_sessionLogUploadIndexesExactNameBeyondFirstTokenWindow() async throws {
@@ -435,7 +420,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(remainingLogs.isEmpty)
     }
 
-    func test_sessionLogUpload_skipPathScrubsLegacyChunkPlaintext() async throws {
+    func test_sessionLogUpload_skipPathDeletesLegacyChunkPlaintext() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .factory, sessionId: "unchanged-legacy-chunk-session"),
             provider: .factory,
@@ -449,7 +434,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             keyFiles: [],
             keyCommands: [],
             keyTools: [],
-            inferredTaskTitle: "Scrub legacy chunks",
+            inferredTaskTitle: "Delete legacy chunks",
             lastAssistantMessage: "Done.",
             fullText: "Stable transcript body with enough content to produce a search chunk.",
             fileModifiedAt: nil
@@ -493,29 +478,11 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let remainingLogs = try await dataStore.fetchUnsyncedSessionLogs()
         XCTAssertTrue(remainingLogs.isEmpty)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(chunk["docId"] as? String, docId)
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["title"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
-        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
-        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
-
-        let orphan = try XCTUnwrap(fakeGateway.documentData(at: orphanChunkPath))
-        XCTAssertEqual(orphan["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(orphan["docId"] as? String, docId)
-        XCTAssertEqual(orphan["orphanedByEncryptedReindex"] as? Bool, true)
-        XCTAssertNil(orphan["body"] as? String)
-        XCTAssertNil(orphan["snippet"] as? String)
-        XCTAssertNil(orphan["terms"] as? [String])
-        XCTAssertTrue((orphan["tokenHashes"] as? [String] ?? ["not-empty"]).isEmpty)
-        XCTAssertTrue((orphan["semanticHashes"] as? [String] ?? ["not-empty"]).isEmpty)
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
+        XCTAssertNil(fakeGateway.documentData(at: orphanChunkPath))
     }
 
-    func test_sessionLogUpload_incompleteEncryptedManifestReuploadsBeforeScrubbingLegacyChunks() async throws {
+    func test_sessionLogUpload_incompleteEncryptedManifestReuploadsBeforeDeletingLegacyChunks() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .factory, sessionId: "incomplete-manifest-session"),
             provider: .factory,
@@ -569,13 +536,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(manifest["storagePath"] as? String, "session-logs/\(docId).json")
         XCTAssertNil(manifest["body"] as? String)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
-        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
-        XCTAssertEqual(chunk["storagePath"] as? String, "session-logs/\(docId).json")
-        XCTAssertNil(chunk["body"] as? String)
-        XCTAssertNil(chunk["snippet"] as? String)
-        XCTAssertNil(chunk["terms"] as? [String])
-        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
+        XCTAssertNil(fakeGateway.documentData(at: chunkPath))
     }
 
     func test_countUnsyncedSessionLogs_tracksDirtyFlags() async throws {
