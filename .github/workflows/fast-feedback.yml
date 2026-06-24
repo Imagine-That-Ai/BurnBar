@@ -314,6 +314,9 @@ jobs:
       - name: Source rollback target safety tests
         run: bash scripts/rollback.test.sh
 
+      - name: macOS appcast rollback safety tests
+        run: bash scripts/ops/rollback-macos-appcast.test.sh
+
   # ── Python scripts: Ruff defect floor + formatter gate ───────────────────
   python-lint:
     name: Python lint (ruff)

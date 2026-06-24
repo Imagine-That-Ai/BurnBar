@@ -66,15 +66,35 @@ vi.mock("firebase-admin/firestore", () => ({
 // Each call returns a URL that embeds the storage path so a re-init that DID
 // clobber would be observable as a fresh, different URL.
 let signedUrlCounter = 0;
-const storageObjects = new Set<string>();
+interface StorageObjectMetadata {
+  size: string;
+  contentType?: string;
+  generation?: string;
+}
+interface SignedUrlRequest {
+  path: string;
+  opts?: {
+    action?: string;
+    contentType?: string;
+    extensionHeaders?: Record<string, string>;
+    responseType?: string;
+    responseDisposition?: string;
+  };
+}
+const storageObjects = new Map<string, StorageObjectMetadata>();
+const signedUrlRequests: SignedUrlRequest[] = [];
 vi.mock("firebase-admin/storage", () => ({
   getStorage: () => ({
     bucket: () => ({
       file: (path: string) => ({
         exists: async () => [storageObjects.has(path)],
-        getSignedUrl: async (opts?: { action?: string }) => [
-          `https://signed.example/${encodeURIComponent(path)}?action=${opts?.action ?? "unknown"}&n=${++signedUrlCounter}`,
-        ],
+        getMetadata: async () => [storageObjects.get(path) ?? {}],
+        getSignedUrl: async (opts?: SignedUrlRequest["opts"]) => {
+          signedUrlRequests.push({ path, opts });
+          return [
+            `https://signed.example/${encodeURIComponent(path)}?action=${opts?.action ?? "unknown"}&n=${++signedUrlCounter}`,
+          ];
+        },
       }),
     }),
   }),
@@ -292,6 +312,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
   beforeEach(() => {
     stored.clear();
     storageObjects.clear();
+    signedUrlRequests.length = 0;
     signedUrlCounter = 0;
     popNonceCounter = 0;
     seedGrant();
@@ -307,6 +328,8 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     expect(res.status).toBe(200);
     const body = record(res.body, "init response body");
     expect(typeof body.uploadURL).toBe("string");
+    expect(body.uploadHeaders).toEqual({ "content-length": "1024" });
+    expect(signedUrlRequests.at(-1)?.opts?.extensionHeaders).toEqual({ "content-length": "1024" });
     const manifest = record(body.attachment, "attachment manifest");
     expect(manifest.id).toBe("att_happy_path_0001");
     expect(manifest.status).toBe("pending_upload");
@@ -399,6 +422,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
   beforeEach(() => {
     stored.clear();
     storageObjects.clear();
+    signedUrlRequests.length = 0;
     signedUrlCounter = 0;
     popNonceCounter = 0;
     seedGrant();
@@ -434,10 +458,11 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
       uploadedAt: "2026-06-01T00:01:00.000Z",
       finalizedAt: "2026-06-01T00:01:00.000Z",
       sha256: "a".repeat(64),
+      storageGeneration: "gen-1",
       schemaVersion: 2,
     };
     stored.set(`users/${UID}/hermes_gateway_attachments/${id}`, manifest);
-    storageObjects.add(storagePath);
+    storageObjects.set(storagePath, { size: "4096", contentType: "application/octet-stream", generation: "gen-1" });
     return manifest;
   }
 
@@ -457,6 +482,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
     expect(result.maxBytes).toBeGreaterThan(0);
     expect(result.downloadURL).toContain("action=read");
     expect(result.downloadURL).toContain(encodeURIComponent(String(manifest.storagePath)));
+    expect(signedUrlRequests.at(-1)?.opts?.responseType).toBe("application/octet-stream");
   });
 
   it("does not mint a URL for another user namespace", async () => {
@@ -502,7 +528,11 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
       ),
     ).rejects.toMatchObject({ code: "not-found" });
 
-    storageObjects.add(String(manifest.storagePath));
+    storageObjects.set(String(manifest.storagePath), {
+      size: "4096",
+      contentType: "application/octet-stream",
+      generation: "gen-1",
+    });
     await expect(
       handleHermesGatewayAttachmentDownloadUrl(
         callableRequest(UID, {
@@ -512,6 +542,43 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
         }),
       ),
     ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  it("does not mint a read URL when the finalized object size or generation changed", async () => {
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const manifest = seedUploadedAttachment("att_download_0003");
+
+    storageObjects.set(String(manifest.storagePath), {
+      size: "4097",
+      contentType: "application/octet-stream",
+      generation: "gen-1",
+    });
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest(UID, {
+          attachmentId: manifest.id,
+          clientId: CLIENT_ID,
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    storageObjects.set(String(manifest.storagePath), {
+      size: "4096",
+      contentType: "application/octet-stream",
+      generation: "gen-2",
+    });
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest(UID, {
+          attachmentId: manifest.id,
+          clientId: CLIENT_ID,
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    expect(signedUrlRequests.every((request) => request.opts?.action !== "read")).toBe(true);
   });
 });
 
