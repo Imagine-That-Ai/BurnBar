@@ -102,7 +102,7 @@ function validManifest(uid = aliceUid) {
       totalTokens: 22,
       costUSD: 0.01,
       durationSeconds: 120,
-      toolTags: ["run"],
+      toolTags: ["other"],
       startTime: Timestamp.fromMillis(Date.now() - 120_000),
       endTime: Timestamp.fromMillis(Date.now()),
     },
@@ -155,7 +155,7 @@ function validFacetRefresh() {
     totalTokens: 22,
     costUSD: 0.01,
     durationSeconds: 120,
-    toolTags: ["run"],
+    toolTags: ["other"],
     updatedAt: serverTimestamp(),
   };
 }

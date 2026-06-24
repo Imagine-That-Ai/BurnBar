@@ -787,29 +787,21 @@ service cloud.firestore {
     function validSessionLogToolTags(data) {
       return !("toolTags" in data) || (
         data.toolTags is list
-        && data.toolTags.size() <= 24
+        && data.toolTags.size() <= 12
         && data.toolTags.hasOnly([
           "apply_patch",
           "bash",
           "edit",
-          "exec",
           "exec_command",
           "find",
-          "glob",
-          "grep",
           "grep_search",
-          "ls",
           "multi_edit",
-          "open",
           "other",
           "read",
           "rg",
           "search",
           "sed",
           "shell",
-          "todo_read",
-          "todo_write",
-          "view_file",
           "write"
         ])
       );

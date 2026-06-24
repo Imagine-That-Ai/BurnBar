@@ -544,30 +544,22 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         return clamped
     }
 
-    private static let cloudPublicToolTagLimit = 24
+    private static let cloudPublicToolTagLimit = 12
 
     private static let cloudPublicToolTags: Set<String> = [
         "apply_patch",
         "bash",
         "edit",
-        "exec",
         "exec_command",
         "find",
-        "glob",
-        "grep",
         "grep_search",
-        "ls",
         "multi_edit",
-        "open",
         "other",
         "read",
         "rg",
         "search",
         "sed",
         "shell",
-        "todo_read",
-        "todo_write",
-        "view_file",
         "write"
     ]
 
