@@ -642,7 +642,10 @@ def clean_symbol():
     encoded_github = base64.b64encode(("ghp_" + ("A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8")).encode("utf-8")).decode(
         "ascii"
     )
+    openssh_magic = "-".join(["openssh", "key", "v1"]).encode("ascii")
+    encoded_openssh = base64.b64encode(openssh_magic + b"\x00\xff\xfe\x80" + (b"A" * 32)).decode("ascii")
     (repo / "encoded.py").write_text(f'payload = "{encoded_github}"\n', encoding="utf-8")
+    (repo / "encoded_openssh.py").write_text(f'payload = "{encoded_openssh}"\n', encoding="utf-8")
     (repo / "terraform.tfvars").write_text(
         'service_api_key = "abcdefghijklmnopqrstuvwxyz1234567890"\n',
         encoding="utf-8",
@@ -669,6 +672,7 @@ data:
         labels = {label for item in result["rejectedFiles"] for label in item["labels"]}
         assert result["indexedFiles"] == 1
         assert "GitHub token detected" in labels
+        assert "OpenSSH private key payload detected" in labels
         assert "Terraform variable secret detected" in labels
         assert "Kubernetes Secret manifest detected" not in labels
         assert "High entropy secret-like token detected" in labels
@@ -942,6 +946,53 @@ def test_remember_rejects_secret_bearing_memory_with_label_only_audit(tmp_path: 
         event = next(item for item in audit["events"] if item["action"] == "memory.secret_rejected")
         assert any("GitHub" in label for label in event["labels"])
         assert "ghp_" not in json.dumps(event)
+
+
+def test_remember_rejects_key_material_fragments_with_label_only_audit(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path / "repo-key-material-mem", "def durable_fact(): return 1\n")
+    db_path = tmp_path / "openburnbar.sqlite"
+    private_marker = " ".join(["-----BEGIN", "OPENSSH", "PRIVATE", "KEY-----"])
+    openssh_magic = "-".join(["openssh", "key", "v1"])
+    encoded_openssh = base64.b64encode(openssh_magic.encode("ascii") + b"\x00\xff\xfe\x80" + (b"A" * 32)).decode(
+        "ascii"
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        marker_result = pcm.remember(
+            conn,
+            f"Remember this key marker: {private_marker}",
+            project_path=str(repo),
+            kind="fact",
+            scope="personal",
+            tags=["secret"],
+            confidence=1.0,
+            source_path=None,
+        )
+        payload_result = pcm.remember(
+            conn,
+            f"Remember this encoded payload: {encoded_openssh}",
+            project_path=str(repo),
+            kind="fact",
+            scope="personal",
+            tags=["secret"],
+            confidence=1.0,
+            source_path=None,
+        )
+
+        assert marker_result["status"] == "rejected"
+        assert payload_result["status"] == "rejected"
+        assert "Private key marker detected" in marker_result["labels"]
+        assert "OpenSSH private key payload detected" in payload_result["labels"]
+        assert "OpenSSH private key payload detected" not in pcm.scan_secrets(openssh_magic)
+        assert conn.execute("SELECT COUNT(*) FROM agent_memories").fetchone()[0] == 0
+
+        audit = pcm.audit_trail(conn, str(repo), limit=10)
+        audit_json = json.dumps(audit)
+        assert "Private key marker detected" in audit_json
+        assert "OpenSSH private key payload detected" in audit_json
+        assert private_marker not in audit_json
+        assert encoded_openssh not in audit_json
 
 
 def test_index_project_evicts_oldest_files_first_under_budget(tmp_path: Path) -> None:
