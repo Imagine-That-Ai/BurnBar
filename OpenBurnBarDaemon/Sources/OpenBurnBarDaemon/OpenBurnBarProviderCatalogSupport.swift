@@ -116,9 +116,10 @@ public struct BurnBarProviderCatalogSupport: Sendable {
             .lowercased()
         guard !claimedProviderID.isEmpty else { return nil }
 
-        return supportedProviderIDs.first {
-            $0.caseInsensitiveCompare(claimedProviderID) == .orderedSame
-        }
+        return catalog.providers.first {
+            $0.capabilities.contains(.routing)
+                && $0.id.caseInsensitiveCompare(claimedProviderID) == .orderedSame
+        }?.id
     }
 
     public func modelID(_ modelID: String, isNamespaceSafeFor providerID: String) -> Bool {

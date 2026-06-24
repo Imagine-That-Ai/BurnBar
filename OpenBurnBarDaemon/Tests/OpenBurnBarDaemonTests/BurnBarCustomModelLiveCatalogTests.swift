@@ -183,6 +183,35 @@ final class BurnBarCustomModelLiveCatalogTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.id == "openai/gpt-net-new" })
     }
 
+    func testOwnerQualifiedModelIDIsAllowedWhenNamespaceIsNotRoutable() {
+        let support = BurnBarProviderCatalogSupport(
+            catalog: BurnBarCatalog(
+                schemaVersion: 1,
+                providers: [
+                    BurnBarCatalogProvider(
+                        id: "openai",
+                        displayName: "OpenAI",
+                        baseURL: "https://api.openai.com/v1",
+                        visibility: .public,
+                        capabilities: [.routing],
+                        models: []
+                    ),
+                    BurnBarCatalogProvider(
+                        id: "google",
+                        displayName: "Google Account",
+                        baseURL: "https://google.example",
+                        visibility: .public,
+                        capabilities: [.accounting],
+                        models: []
+                    )
+                ]
+            )
+        )
+
+        XCTAssertNil(support.providerNamespaceClaim(forModelID: "google/gemma-3-27b-it"))
+        XCTAssertTrue(support.modelID("google/gemma-3-27b-it", isNamespaceSafeFor: "openai"))
+    }
+
     private struct CustomHarness {
         let rootURL: URL
         let configStore: BurnBarConfigStore
