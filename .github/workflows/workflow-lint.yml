@@ -31,6 +31,8 @@ on:
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
       - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-release-attestations.sh"
+      - "scripts/ci/verify-release-attestations.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -66,6 +68,8 @@ on:
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
       - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-release-attestations.sh"
+      - "scripts/ci/verify-release-attestations.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -106,6 +110,9 @@ jobs:
 
       - name: Self-test App Check smoke fail-closed gate
         run: bash scripts/ci/app-check-smoke.test.sh
+
+      - name: Self-test release attestation verifier
+        run: bash scripts/ci/verify-release-attestations.test.sh
 
       - name: Check functional QA runner syntax
         run: bash -n tools/qa/run-functional-qa.sh

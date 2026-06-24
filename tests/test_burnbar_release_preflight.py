@@ -197,8 +197,11 @@ def test_release_attestation_verifier_uses_sigstore_blob_bundles():
     assert "OPENBURNBAR_RELEASE_PREDICATE_TYPE" in body
     assert "certificate_issuer=" in body
     assert "predicate_type=" in body
-    assert "download_pattern \"*.sigstore.json\"" in body
-    assert "download_pattern \"*.predicate.json\"" in body
+    assert "download_optional_pattern \"*.sigstore.json\"" in body
+    assert "download_optional_pattern \"*.predicate.json\"" in body
+    assert "signed_statement_from_bundle(bundle)" in body
+    assert "release predicate sidecar does not match the signed Sigstore bundle payload" in body
+    assert "\"runner.environment\": predicate.get(\"runner\", {}).get(\"environment\")" in body
     assert "artifact.sha256" in body
     assert "release.tag" in body
     assert "release.ref" in body
