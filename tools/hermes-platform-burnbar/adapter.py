@@ -868,8 +868,8 @@ def _headers(token: str) -> Dict[str, str]:
 # Every helper below is a byte-locked mirror of the server's TypeScript:
 #  - `_stable_json_string`     ⇄ stableJSONString (incl. localeCompare key sort)
 #  - `_canonical_query_string` ⇄ canonicalGatewayQueryString (decoded params
-#    sorted by key then value via UTF-16 code-unit `<`, joined k=v with `&`,
-#    repeated params as multiple pairs, no percent re-encoding)
+#    sorted by key then value via UTF-16 code-unit `<`, repeated params as
+#    multiple pairs, with only canonical delimiters escaped before joining)
 #  - `_gateway_signable_path`  ⇄ gatewayPath (prefix strips + trailing-slash)
 # Frozen Node-generated vectors in test_adapter_pop.py pin the parity.
 # ---------------------------------------------------------------------------
@@ -1032,12 +1032,17 @@ def _query_param_wire_string(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _escape_gateway_query_component(value: str) -> str:
+    return value.replace("%", "%25").replace("&", "%26").replace("=", "%3D")
+
+
 def _canonical_query_string(params: Optional[Dict[str, Any]]) -> str:
     """Mirror of canonicalGatewayQueryString over the DECODED params.
 
     Repeated params (list/tuple values) expand to multiple pairs; pairs sort by
     key then value using UTF-16 code-unit order (the server's plain JS ``<``);
-    pairs join as ``key=value`` with ``&`` and are never percent re-encoded.
+    canonical delimiters inside decoded keys/values are escaped before pairs
+    join as ``key=value`` with ``&``.
     """
     pairs: List[Tuple[str, str]] = []
     for key, value in (params or {}).items():
@@ -1051,7 +1056,10 @@ def _canonical_query_string(params: Optional[Dict[str, Any]]) -> str:
             if rendered is not None:
                 pairs.append((str(key), rendered))
     pairs.sort(key=lambda pair: (_utf16_code_unit_key(pair[0]), _utf16_code_unit_key(pair[1])))
-    return "&".join(f"{key}={value}" for key, value in pairs)
+    return "&".join(
+        f"{_escape_gateway_query_component(key)}={_escape_gateway_query_component(value)}"
+        for key, value in pairs
+    )
 
 
 def _gateway_signable_path(url_or_path: str) -> str:
