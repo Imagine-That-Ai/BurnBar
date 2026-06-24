@@ -658,7 +658,11 @@ final class HermesRelayHostService {
         }
         let request = try JSONDecoder().decode(CLIAgentSessionActionRequest.self, from: bodyData)
         let response = try await cliSessionActionDispatcher(request) {
-            (try? await self.relayRequestCanReceiveOutput(reference: reference)) ?? false
+            do {
+                return try await self.relayRequestCanReceiveOutput(reference: reference)
+            } catch {
+                return false
+            }
         }
         let responseData = try JSONEncoder().encode(response)
         let bodyText = String(data: responseData, encoding: .utf8) ?? "{}"
