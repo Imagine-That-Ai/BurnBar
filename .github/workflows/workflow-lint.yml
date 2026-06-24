@@ -25,6 +25,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
+      - "scripts/diff-coverage-ts.sh"
+      - "scripts/diff-coverage-ts-self-test.sh"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
@@ -64,6 +66,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
+      - "scripts/diff-coverage-ts.sh"
+      - "scripts/diff-coverage-ts-self-test.sh"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
@@ -172,6 +176,9 @@ jobs:
 
       - name: Verify native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.mjs
+
+      - name: Self-test TypeScript diff coverage gate
+        run: bash scripts/diff-coverage-ts-self-test.sh
 
       - name: Self-test wiki mem0 workflow boundary
         run: node scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs
