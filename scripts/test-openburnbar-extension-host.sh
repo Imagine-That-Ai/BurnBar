@@ -4,8 +4,19 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+parse_extension_host_attempts() {
+  local raw="${OPENBURNBAR_EXTENSION_HOST_ATTEMPTS:-3}"
+  if [[ ! "$raw" =~ ^[1-9][0-9]{0,2}$ ]]; then
+    echo "OPENBURNBAR_EXTENSION_HOST_ATTEMPTS must be a positive integer between 1 and 999." >&2
+    return 64
+  fi
+
+  printf '%s\n' "$raw"
+}
+
 run_extension_host_tests() {
-  local attempts="${OPENBURNBAR_EXTENSION_HOST_ATTEMPTS:-3}"
+  local attempts
+  attempts="$(parse_extension_host_attempts)" || return "$?"
   local attempt
 
   for ((attempt = 1; attempt <= attempts; attempt += 1)); do
@@ -36,6 +47,7 @@ run_extension_host_tests() {
   return 1
 }
 
+main() {
 # Emit VAL-CROSS-010 mission-authoring parity evidence from unit tests
 # The unit tests in projections.test.ts and extension.test.ts contain VAL-CROSS-010
 # assertion-tagged test cases that prove extension-authored mission state parity.
@@ -73,3 +85,8 @@ echo "VAL-CROSS-010: Running extension-host integration tests"
 echo "VAL-CROSS-015: Running extension-host real workspace integration tests"
 run_extension_host_tests
 echo "VAL-CROSS-015: Extension-host integration exercised live workspace command bridge"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

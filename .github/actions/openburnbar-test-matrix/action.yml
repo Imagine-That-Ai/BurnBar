@@ -133,7 +133,9 @@ runs:
     - name: Run OpenBurnBar extension-host tests
       if: inputs.tier == 'full' || inputs.tier == 'release'
       shell: bash
-      run: ./scripts/test-openburnbar-extension-host.sh
+      run: |
+        ./scripts/test-openburnbar-extension-host-self-test.sh
+        ./scripts/test-openburnbar-extension-host.sh
 
     - name: Run Firestore rules emulator tests
       if: inputs.tier == 'full' || inputs.tier == 'release'
