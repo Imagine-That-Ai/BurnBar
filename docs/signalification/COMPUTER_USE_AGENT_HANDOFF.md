@@ -25,15 +25,11 @@
    `info = "OpenBurnBar-Signal-AtRest-v1|" + aad`
    TS: `packages/signal-envelope-contracts/src/index.ts:bindingToAAD`. Swift: `OpenBurnBarCore/.../SignalEnvelopeAAD.swift:signalEnvelopeBindingToAAD`. **Add the Kotlin mirror** identically (NFC via `java.text.Normalizer.normalize(..., NFC)`).
 4. **Keep legacy openers.** Old AES-GCM/HPKE/ratchet envelopes must still open (lazy dual-read). Signal is a *new* v4 family.
-5. **Landing to `main` is protected** (`enforce_admins`). Use the surgical toggle (you have `gh` admin):
-   ```bash
-   REPO=Imagine-That-Ai/BurnBar
-   gh api -X DELETE repos/$REPO/branches/main/protection/enforce_admins   # bypass
-   git push origin HEAD:main                                              # FF only
-   gh api -X POST  repos/$REPO/branches/main/protection/enforce_admins    # ALWAYS restore
-   gh api repos/$REPO/branches/main/protection | python3 -c "import sys,json;d=json.load(sys.stdin);print('enforce_admins',d['enforce_admins']['enabled'])"
-   ```
-   Prefer a feature branch (`signal/phase3`) + the same FF land. Always re-enable protection even if the push fails.
+5. **Landing to `main` is protected.** Use a feature branch and reviewed pull
+   request only. Do not disable branch protection, do not push directly to
+   `main`, and do not change required checks from this runbook. If an emergency
+   break-glass change is truly required, handle it outside this agent-readable
+   document with an audited, time-bound human approval path.
 6. **Don't over-claim.** Do NOT add "Signal-quality privacy" copy. The cosine-vector graph (`PensieveVectorCloak`), deterministic search trapdoors, and routing metadata still leak — see `docs/signalification/00_ORCHESTRATION.md` over-claim guard.
 
 ---
@@ -42,7 +38,10 @@
 
 - Xcode 26.5 / Swift 6.3.2 · `cargo` 1.94 · `protoc` (libprotoc 35) — `brew install protobuf` if missing (libsignal Swift `build_ffi` needs it).
 - Android SDK at `$HOME/Library/Android/sdk` (platform-tools, build-tools;35.0.0, platforms;android-35). `adb` on PATH. `gradle` via brew. JDK 21 at `/Users/albertonunez/.homebrew/Cellar/openjdk@21/21.0.10/libexec/openjdk.jdk/Contents/Home`.
-- **Attached devices:** iPhone 17 Pro Max UDID `00008150-00180C661EF0401C`; Android `R3CXB0CNS0J` (`adb devices`); also iPad `00008132-001158191E9A401C`. Simulators "iPhone 17 Pro Max" booted.
+- **Attached devices:** iPhone 17 Pro Max UDID
+  `<iphone-device-udid>`; Android `<android-device-serial>`
+  (`adb devices`); also iPad `<ipad-device-udid>`. Simulators
+  "iPhone 17 Pro Max" booted.
 - libsignal pin: **v0.94.4**, commit `03c449017b57eccbda715b8b018dce5dff603ac6` (`third_party/libsignal/manifest.json`).
 
 ---
@@ -146,8 +145,8 @@ Implement, mirroring `packages/libsignal-protocol/src/index.ts`:
 
 ## Phase D — On-device E2E (real hardware)
 
-1. **iPhone:** `OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=00008150-00180C661EF0401C' ./scripts/test-openburnbar-mobile.sh` (run the new `OpenBurnBarSignalCore`/Mobile Signal tests on device), and `./scripts/cross-platform/run-ios 'iPhone 17 Pro Max'` for an interactive build+install. Drive the trust + chat flow with computer-use control; confirm a real Signal-sealed message round-trips device↔agent and the safety-code compare gates approval.
-2. **Android:** `cd android && ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew :app:installDebug` → `adb -s R3CXB0CNS0J shell am start ...`; run instrumented Signal round-trip; drive the UI.
+1. **iPhone:** `OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<iphone-device-udid>' ./scripts/test-openburnbar-mobile.sh` (run the new `OpenBurnBarSignalCore`/Mobile Signal tests on device), and `./scripts/cross-platform/run-ios 'iPhone 17 Pro Max'` for an interactive build+install. Drive the trust + chat flow with computer-use control; confirm a real Signal-sealed message round-trips device↔agent and the safety-code compare gates approval.
+2. **Android:** `cd android && ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew :app:installDebug` → `adb -s <android-device-serial> shell am start ...`; run instrumented Signal round-trip; drive the UI.
 3. **Mac:** `make build && make install`; verify CloudVault Signal at-rest read/write across the Mac↔phone pair.
 4. **Cross-device interop:** seal on iPhone, open on Mac/Android (and vice versa) for a domain (start with `pensieve` at-rest). Capture logs/screenshots into `.agent/runs/signalification-phases-3to8-20260604/evidence/on-device/`.
 

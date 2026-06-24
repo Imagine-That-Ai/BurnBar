@@ -10,8 +10,8 @@
     "releaseNotes": "Fixes Google Play subscription upgrades from Cloud Pro to Ultra."
   },
   "device": {
-    "model": "SM-S921U",
-    "serial": "R3CXB0CNS0J",
+    "model": "<android-device-model-id>",
+    "serial": "<android-device-serial>",
     "installerPackageName": "com.android.vending",
     "installedVersionCode": 25,
     "installedVersionName": "1.0.15"
@@ -27,15 +27,15 @@
   "backendProof": {
     "proofFile": "launch-evidence/paid-proof-google_play_ultra-v25-20260603T115132Z.out",
     "ok": true,
-    "project": "burnbar",
-    "uidHash16": "e82314a10622bcee",
+    "project": "<firebase-project-id>",
+    "uidHash16": "<uid-sha256-16>",
     "tier": "ultra",
     "channel": "google_play",
     "entitlementPath": "users/<uid>/entitlements/burnbar_ultra",
     "productID": "com.openburnbar.ultra.monthly",
     "source": "google_play_verified",
     "expiresAt": "2026-06-03T11:56:07.387Z",
-    "purchaseTokenHash": "b90dc50762e76433c3dcae2434558dd4b3e7b89393b9230bfa91a6d5880b8cd8"
+    "purchaseTokenHash": "<purchase-token-sha256>"
   },
   "liveLogReadback": [
     "restorePurchases queried subscriptions=1 topUps=0 products=[com.openburnbar.ultra.monthly:purchased:ack=true]",

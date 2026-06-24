@@ -5,7 +5,7 @@
     {
       "id": "burnbar_pro",
       "path": "users/<uid>/entitlements/burnbar_pro",
-      "uidHash16": "da261f1959f7c871",
+      "uidHash16": "<uid-sha256-16>",
       "source": "apple_jws_verified",
       "productID": "com.openburnbar.pro.monthly",
       "active": true,
@@ -15,7 +15,7 @@
     {
       "id": "hosted_quota_sync",
       "path": "users/<uid>/entitlements/hosted_quota_sync",
-      "uidHash16": "da261f1959f7c871",
+      "uidHash16": "<uid-sha256-16>",
       "source": "apple_jws_verified",
       "productID": "com.openburnbar.pro.monthly",
       "active": true,
