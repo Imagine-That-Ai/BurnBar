@@ -102,8 +102,11 @@ final class SmartDisplayActionsListener {
             return
         }
 
-        if let configData = data["pixelClock"] as? [String: Any],
-           let config = decodePixelClockConfig(configData) {
+        if let configData = data["pixelClock"] as? [String: Any] {
+            guard let config = decodePixelClockConfig(configData) else {
+                await fail(document: document, message: "invalid Pixel Clock target")
+                return
+            }
             settingsManager.pixelClockConfig = config
         }
 
@@ -253,9 +256,12 @@ final class SmartDisplayActionsListener {
             }
             return .rolling5h
         }()
+        let host = data["host"] as? String ?? "192.168.68.92"
+        guard let sanitizedHost = PixelClockTargetPolicy.sanitizedHost(host) else { return nil }
+
         return PixelClockConfig(
             enabled: data["enabled"] as? Bool ?? false,
-            host: data["host"] as? String ?? "192.168.68.92",
+            host: sanitizedHost,
             port: data["port"] as? Int ?? 80,
             layout: (data["layout"] as? String).flatMap(PixelClockLayout.init(rawValue:)) ?? .providerDashboard,
             palette: (data["palette"] as? String).flatMap(PixelClockPalette.init(rawValue:)) ?? .emberWhimsy,
