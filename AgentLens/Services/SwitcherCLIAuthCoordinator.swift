@@ -64,6 +64,14 @@ final class SwitcherCLIAuthCoordinator {
         var executableHealthChecker: @Sendable (SwitcherCLIProfileType, String) async -> CLIExecutableHealth = { cliType, executablePath in
             await SwitcherCLIAuthCoordinator.defaultExecutableHealth(cliType: cliType, executablePath: executablePath)
         }
+
+        var persistProfileCredentialAfterLogin: @Sendable (SwitcherCLIProfileType, String, String?) throws -> Void = { cliType, configDirectory, accountDescription in
+            guard cliType == .claude else { return }
+            try SwitcherCLIAuthCoordinator.persistClaudeProfileCredential(
+                configDirectory: configDirectory,
+                expectedAccountDescription: accountDescription
+            )
+        }
     }
 
     private let dependencies: Dependencies
@@ -183,6 +191,12 @@ final class SwitcherCLIAuthCoordinator {
                 previousAccount: previousAccount,
                 detectedAccount: detectedAccount
             )
+        }
+
+        do {
+            try dependencies.persistProfileCredentialAfterLogin(cliType, configDirectory, detectedAccount)
+        } catch {
+            return .failed("\(cliType.displayName) login completed, but BurnBar could not persist the profile credential: \(error.localizedDescription)")
         }
 
         return .readyToPersist(updatedProfile)
@@ -581,5 +595,68 @@ final class SwitcherCLIAuthCoordinator {
         }
 
         return "\(cliType.displayName) cannot open its login prompt because \(reason) Resolved wrapper: \(executablePath). \(installHint)"
+    }
+
+    nonisolated static func persistProfileCredentialAfterConfirmedLogin(for profile: SwitcherProfileRecord) throws {
+        guard profile.cliType == .claude,
+              let configDirectory = normalizedCredentialDirectory(profile.cliMetadata?.configDirectory) else {
+            return
+        }
+
+        try persistClaudeProfileCredential(
+            configDirectory: configDirectory,
+            expectedAccountDescription: normalizedCredentialDirectory(profile.cliMetadata?.accountDescription)
+        )
+    }
+
+    nonisolated private static func persistClaudeProfileCredential(
+        configDirectory: String,
+        expectedAccountDescription: String?
+    ) throws {
+        let profileImporter = ClaudeCodeOAuthCredentialImporter(
+            configDirectory: configDirectory,
+            allowDefaultKeychainFallback: false
+        )
+        let credentials: ClaudeOAuthCredentials
+        do {
+            credentials = try profileImporter.load(allowUserInteraction: false)
+        } catch let error as ClaudeCodeOAuthCredentialImportError {
+            switch error {
+            case .missing, .malformed, .expired:
+                break
+            }
+            let expectedAccountDescription = normalizedCredentialDirectory(expectedAccountDescription)
+            if let expectedAccountDescription,
+               !defaultClaudeAccountMatches(expectedAccountDescription) {
+                throw ClaudeCodeOAuthCredentialImportError.missing
+            }
+
+            credentials = try ClaudeCodeOAuthCredentialImporter(
+                configDirectory: nil,
+                allowDefaultKeychainFallback: true
+            ).load(allowUserInteraction: true)
+        }
+
+        let service = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: configDirectory
+        )
+        try KeychainStore(service: service, legacyServices: [])
+            .set(credentials.routeCredentialStoragePayload(), for: NSUserName())
+    }
+
+    nonisolated private static func normalizedCredentialDirectory(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    nonisolated private static func defaultClaudeAccountMatches(_ expectedAccountDescription: String) -> Bool {
+        let defaultAccount = CLIAuthDiscovery
+            .discoverAuthState(for: .claude, configDirectoryOverride: nil)
+            .accountDescription
+        guard let normalizedDefaultAccount = normalizedCredentialDirectory(defaultAccount) else {
+            return false
+        }
+        return normalizedDefaultAccount.caseInsensitiveCompare(expectedAccountDescription) == .orderedSame
     }
 }
