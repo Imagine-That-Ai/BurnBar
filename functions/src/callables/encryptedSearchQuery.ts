@@ -18,6 +18,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { boundedTrimmedString, requireOptionalSearchHashes, assertActiveBurnBarProEntitlement } from "./shared.js";
 import { cloudSearchCompleteFallbackHashes } from "./encryptedSearchIndex.js";
+import { sessionLogManifestIsVisible } from "./conversationQuery.js";
 import { wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -227,6 +228,8 @@ async function buildSearchHits(
     if (!docSnap.exists) continue;
     const docData = docSnap.data() ?? {};
     if (docData.bodyHash !== item.data.bodyHash || docData.storagePath !== item.data.storagePath) continue;
+    const manifestSnap = await db.doc(`users/${uid}/session_logs/${documentID}`).get();
+    if (!manifestSnap.exists || !sessionLogManifestIsVisible(manifestSnap.data() ?? {})) continue;
     seenDocuments.add(documentID);
     hits.push(buildSearchHit(uid, item, docData, documentID, tokenCount, semanticCount));
     if (hits.length >= limit) break;
@@ -276,20 +279,8 @@ export const searchEncryptedConversationIndex = onCall(
         mergePostingHits(context, semanticHashes, "semantic", "semanticHashes", "semanticMatches"),
       ]);
 
-      await mergeFallbackHits(
-        context,
-        chunksRef,
-        tokenHashes,
-        "tokenHashes",
-        "tokenMatches",
-      );
-      await mergeFallbackHits(
-        context,
-        chunksRef,
-        semanticHashes,
-        "semanticHashes",
-        "semanticMatches",
-      );
+      await mergeFallbackHits(context, chunksRef, tokenHashes, "tokenHashes", "tokenMatches");
+      await mergeFallbackHits(context, chunksRef, semanticHashes, "semanticHashes", "semanticMatches");
 
       const scored = sortScoredChunks(context.scoredById);
       const hits = await buildSearchHits(uid, scored, tokenHashes.length, semanticHashes.length, limit);

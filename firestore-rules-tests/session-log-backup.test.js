@@ -268,6 +268,35 @@ async function main() {
     await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data));
   });
 
+  await step("existing session-log manifest can be tombstoned with typed lifecycle fields", async () => {
+    await assertSucceeds(setDoc(
+      doc(aliceDB, aliceManifest.path),
+      {
+        deletedAt: serverTimestamp(),
+        version: 2,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ));
+  });
+
+  await step("existing session-log manifest rejects malformed lifecycle fields", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, aliceManifest.path),
+        { deletedAt: "2026-06-24T00:00:00.000Z", updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, aliceManifest.path),
+        { version: "2", updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    );
+  });
+
   await step("existing encrypted manifest can be refreshed with searchable facets", async () => {
     const legacy = legacyEncryptedManifest();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

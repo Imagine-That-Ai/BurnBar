@@ -2,7 +2,7 @@
  * @fileoverview Encrypted session logs, cloud search, and project memory callables
  */
 
-import { Timestamp, AggregateField } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
@@ -36,6 +36,7 @@ import {
   buildConversationPageQuery,
   mapSessionLogManifestRow,
   resolveConversationSort,
+  sessionLogManifestIsVisible,
 } from "./conversationQuery.js";
 import {
   assertCloudSearchIndexCleanupWriteBudget,
@@ -203,8 +204,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         try {
           assertCloudSearchIndexCleanupWriteBudget(cleanupWriteCount + 1);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "cloud search index cleanup exceeds write budget.";
+          const message = error instanceof Error ? error.message : "cloud search index cleanup exceeds write budget.";
           throw new HttpsError("resource-exhausted", message);
         }
       };
@@ -409,13 +409,20 @@ export const commitEncryptedSearchIndexBatch = onCall(
 // Callable: faceted conversation cockpit query (zero-knowledge bodies stay sealed)
 // ---------------------------------------------------------------------------
 
+type ConversationAggregates = { count: number; totalCostUSD: number; totalTokens: number };
+
+function lifecycleFilteredSessionLogAggregates(_includeAggregates: boolean): ConversationAggregates | null {
+  return null;
+}
+
 /**
  * Faceted, paginated query over a paid user's encrypted session-log manifests. Filters and sorts
  * run only on operational cockpit facets (provider, model, device, source, token/cost totals,
  * timing); project/path/title/body search uses `searchEncryptedConversationIndex` so the client
- * sends keyed hashes and decrypts result labels locally. Aggregates (count + cost + token sums)
- * are computed with Firestore aggregation when an index is available, and degrade to `null` rather
- * than failing the page when one is missing.
+ * sends keyed hashes and decrypts result labels locally. Aggregate rollups intentionally remain
+ * `null` because lifecycle visibility is applied in process: legacy live manifests may not have a
+ * `deletedAt` field, while tombstones do. A Firestore aggregate over the raw filtered query cannot
+ * express that mixed predicate without counting deleted manifests.
  */
 export const queryConversations = onCall(
   {
@@ -504,32 +511,16 @@ export const queryConversations = onCall(
         throw error;
       }
 
-      const rows = pageSnap.docs.map((doc) => mapSessionLogManifestRow(doc.id, doc.data()));
+      const rows = pageSnap.docs
+        .filter((doc) => sessionLogManifestIsVisible(doc.data()))
+        .map((doc) => mapSessionLogManifestRow(doc.id, doc.data()));
 
       const nextCursor = pageSnap.size === limit ? (pageSnap.docs[pageSnap.docs.length - 1]?.id ?? null) : null;
 
-      let aggregates: { count: number; totalCostUSD: number; totalTokens: number } | null = null;
-      if (includeAggregates) {
-        try {
-          const aggregateSnap = await filtered
-            .aggregate({
-              count: AggregateField.count(),
-              totalCostUSD: AggregateField.sum("costUSD"),
-              totalTokens: AggregateField.sum("totalTokens"),
-            })
-            .get();
-          const aggData = aggregateSnap.data();
-          aggregates = {
-            count: Number(aggData.count ?? 0),
-            totalCostUSD: Number(aggData.totalCostUSD ?? 0),
-            totalTokens: Number(aggData.totalTokens ?? 0),
-          };
-        } catch {
-          // Aggregation needs the same indexes as the filtered query; if one is still building we
-          // return the page without rollups rather than failing the whole request.
-          aggregates = null;
-        }
-      }
+      // Keep the request flag consumed for API compatibility, but do not compute rollups over the
+      // raw Firestore query. Tombstones are filtered after the page read so old live manifests that
+      // lack `deletedAt` stay visible; a server aggregate cannot mirror that predicate exactly.
+      const aggregates = lifecycleFilteredSessionLogAggregates(includeAggregates);
 
       return {
         rows,

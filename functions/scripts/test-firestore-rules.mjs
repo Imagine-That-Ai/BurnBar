@@ -2106,6 +2106,19 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
       updatedAt: serverTimestamp(),
     })
   );
+  await assertSucceeds(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      deletedAt: serverTimestamp(),
+      version: 2,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      deletedAt: "2026-06-24T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+    })
+  );
 
   await assertFails(
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
