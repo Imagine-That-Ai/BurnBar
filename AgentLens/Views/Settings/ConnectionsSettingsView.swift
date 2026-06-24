@@ -420,6 +420,7 @@ struct ConnectionsSettingsView: View {
                                     await viewModel.connect(
                                         target: target,
                                         settings: settingsManager,
+                                        daemonManager: daemonManager,
                                         restartGateway: restartLocalGateway
                                     )
                                 }
@@ -433,6 +434,7 @@ struct ConnectionsSettingsView: View {
                                     await viewModel.connect(
                                         target: target,
                                         settings: settingsManager,
+                                        daemonManager: daemonManager,
                                         restartGateway: restartLocalGateway
                                     )
                                 }
@@ -892,6 +894,7 @@ struct ConnectionsSettingsView: View {
             await viewModel.syncModels(
                 target: target,
                 settings: settingsManager,
+                daemonManager: daemonManager,
                 restartGateway: restartLocalGateway
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)

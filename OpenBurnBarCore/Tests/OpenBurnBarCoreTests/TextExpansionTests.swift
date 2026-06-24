@@ -90,6 +90,88 @@ final class TextExpansionTests: XCTestCase {
         ))
     }
 
+    #if canImport(AppKit)
+    func testKeyEventCharactersFallsBackToAmpersandForShiftedSeven() {
+        let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "&",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: 26
+        )
+        XCTAssertEqual(TextExpansionKeyEventCharacters.characters(from: event!), "&")
+    }
+    #endif
+
+    func testGlobalReplacementPlannerDeletesBoundaryCharacterAfterPassThrough() {
+        let snippet = TextExpansionSnippet(title: "Audit", trigger: "audit", body: "Audit body")
+        let match = TextExpansionMatch(
+            snippet: snippet,
+            token: "&&audit",
+            replacementRange: "&&audit".startIndex..<"&&audit".endIndex,
+            boundary: " ",
+            requiresPreview: false
+        )
+
+        XCTAssertEqual(
+            TextExpansionGlobalReplacementPlanner.plan(for: match),
+            TextExpansionGlobalReplacementPlanner.Plan(deleteCount: 8, replacement: "Audit body ")
+        )
+
+        let unambiguous = TextExpansionMatch(
+            snippet: snippet,
+            token: "&&audit",
+            replacementRange: "&&audit".startIndex..<"&&audit".endIndex,
+            boundary: nil,
+            requiresPreview: false
+        )
+        XCTAssertEqual(
+            TextExpansionGlobalReplacementPlanner.plan(for: unambiguous),
+            TextExpansionGlobalReplacementPlanner.Plan(deleteCount: 7, replacement: "Audit body")
+        )
+    }
+
+    func testGlobalTapPolicySkipsOpenBurnBarAndSecureSurfaces() {
+        let ownBundle = "com.openburnbar.app"
+        let policy = TextExpansionGlobalTapPolicy(
+            globalExpansionEnabled: true,
+            accessibilityTrusted: true,
+            frontmostBundleIdentifier: "com.apple.TextEdit",
+            ownBundleIdentifier: ownBundle,
+            focusedSurfaceDenied: false
+        )
+        XCTAssertTrue(policy.shouldInterceptKeystrokes)
+
+        XCTAssertFalse(TextExpansionGlobalTapPolicy(
+            globalExpansionEnabled: true,
+            accessibilityTrusted: true,
+            frontmostBundleIdentifier: ownBundle,
+            ownBundleIdentifier: ownBundle,
+            focusedSurfaceDenied: false
+        ).shouldInterceptKeystrokes)
+
+        XCTAssertFalse(TextExpansionGlobalTapPolicy(
+            globalExpansionEnabled: true,
+            accessibilityTrusted: true,
+            frontmostBundleIdentifier: "com.apple.TextEdit",
+            ownBundleIdentifier: ownBundle,
+            focusedSurfaceDenied: true
+        ).shouldInterceptKeystrokes)
+
+        XCTAssertFalse(TextExpansionGlobalTapPolicy(
+            globalExpansionEnabled: false,
+            accessibilityTrusted: true,
+            frontmostBundleIdentifier: "com.apple.TextEdit",
+            ownBundleIdentifier: ownBundle,
+            focusedSurfaceDenied: false
+        ).shouldInterceptKeystrokes)
+    }
+
     func testScopeBlocksUnavailableSurfaces() {
         let snippet = TextExpansionSnippet(
             title: "Thread Only",

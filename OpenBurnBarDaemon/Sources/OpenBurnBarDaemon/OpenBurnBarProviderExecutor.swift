@@ -882,7 +882,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let account = "provider.\(providerID).apiKey"
         var storedAnthropicCredentialRefreshFailed = false
         var failedAnthropicOrganizationUuid: String?
+        var foundStoredSecret = false
         if let secret = try secret(forService: service, account: account) {
+            foundStoredSecret = true
             if let routed = try await routeSecret(from: secret, providerID: providerID) {
                 return routed
             }
@@ -896,6 +898,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
         for legacyService in legacyServices where legacyService != service {
             if let secret = try secret(forService: legacyService, account: account) {
+                foundStoredSecret = true
                 if let routed = try await routeSecret(from: secret, providerID: providerID) {
                     return routed
                 }
@@ -906,12 +909,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 }
             }
         }
-        // Try Claude Code's own credential file as a fallback. Claude Code
-        // maintains its own OAuth session with a separate refresh token that
-        // may still be valid when the daemon's stored refresh token has been
-        // revoked or expired. This is the primary automatic recovery path for
-        // expired Anthropic OAuth credentials.
-        if storedAnthropicCredentialRefreshFailed,
+        // Try Claude Code's own credential file or Keychain item as a fallback.
+        // Claude Code maintains its own OAuth session with a separate refresh
+        // token that may still be valid when the daemon's stored refresh token
+        // has been revoked or expired, or when the daemon cannot read its own
+        // provider Keychain entry (for example after a manual import).
+        if Self.normalizedProviderID(providerID) == "anthropic",
+           storedAnthropicCredentialRefreshFailed || !foundStoredSecret,
            let ccToken = try await claudeCodeCredentialSecret(
             for: providerID,
             expectedOrganizationUuid: failedAnthropicOrganizationUuid
@@ -1150,31 +1154,89 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         for providerID: String,
         expectedOrganizationUuid: String?
     ) async throws -> String? {
-        let trimmedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard trimmedProviderID == "anthropic",
-              let claudeCodeCredentialsURL,
-              FileManager.default.fileExists(atPath: claudeCodeCredentialsURL.path) else {
+        guard Self.normalizedProviderID(providerID) == "anthropic" else {
             return nil
         }
-        guard let data = try? Data(contentsOf: claudeCodeCredentialsURL),
-              let raw = String(data: data, encoding: .utf8)?
+
+        let credentialSources = claudeCodeCredentialPayloads()
+        for raw in credentialSources {
+            guard let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
+                continue
+            }
+            if let expectedOrganizationUuid,
+               let organizationUuid = credential.organizationUuid,
+               organizationUuid != expectedOrganizationUuid {
+                continue
+            }
+            guard !credential.isExpired() else {
+                continue
+            }
+            let token = credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                return token
+            }
+        }
+        return nil
+    }
+
+    private func claudeCodeCredentialPayloads() -> [String] {
+        var payloads: [String] = []
+
+        if let claudeCodeCredentialsURL,
+           FileManager.default.fileExists(atPath: claudeCodeCredentialsURL.path),
+           let data = try? Data(contentsOf: claudeCodeCredentialsURL),
+           let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            payloads.append(raw)
+        }
+
+        let username = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        for service in [Self.claudeCodeKeychainService] {
+            if let raw = Self.readKeychainPassword(service: service, account: username)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
+               !raw.isEmpty {
+                payloads.append(raw)
+            }
+        }
+
+        return payloads
+    }
+
+    private static let claudeCodeKeychainService = "Claude Code-credentials"
+
+    private static func readKeychainPassword(service: String, account: String) -> String? {
+        #if os(macOS)
+        let securityURL = URL(fileURLWithPath: "/usr/bin/security")
+        guard FileManager.default.isExecutableFile(atPath: securityURL.path) else { return nil }
+
+        let process = Process()
+        process.executableURL = securityURL
+        process.arguments = [
+            "find-generic-password",
+            "-w",
+            "-s", service,
+            "-a", account
+        ]
+        process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
             return nil
         }
-        guard let expectedOrganizationUuid,
-              credential.organizationUuid == expectedOrganizationUuid else {
-            return nil
-        }
-        guard !credential.isExpired() else {
-            // Do not refresh or rewrite Claude Code's credential file from the
-            // daemon. Claude Code owns that OAuth session and its refresh-token
-            // rotation semantics.
-            return nil
-        }
-        let token = credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)
+        #else
+        return nil
+        #endif
     }
 
     /// Proactively refresh Anthropic OAuth credentials that will expire within

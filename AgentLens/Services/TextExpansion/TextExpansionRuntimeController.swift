@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 import os
@@ -11,18 +12,17 @@ final class TextExpansionRuntimeController: ObservableObject {
     private let settingsManager: SettingsManager
     private let inputController: MacInputController
     private let accessibilityInspector: MacAccessibilityInspector
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var globalKeyMonitor: Any?
     private var observers: [NSObjectProtocol] = []
+    private var permissionPollTimer: Timer?
 
-    // State touched by the nonisolated CGEvent tap callback (off the main actor),
-    // confined to an OSAllocatedUnfairLock so the controller stays Sendable.
     private struct CallbackState {
         var buffer = ""
         var cachedSnippets: [TextExpansionSnippet] = []
         var lastSnippetLoad = Date.distantPast
         var snippetRefreshInFlight = false
         var suppressEventsUntil = Date.distantPast
+        var runtime = TextExpansionGlobalTapPolicy()
     }
     private let callbackState = OSAllocatedUnfairLock<CallbackState>(uncheckedState: CallbackState())
 
@@ -41,7 +41,10 @@ final class TextExpansionRuntimeController: ObservableObject {
     @MainActor
     func start() {
         installObserversIfNeeded()
-        reconcileEventTap()
+        refreshTapRuntimeSnapshot()
+        bootstrapCachedSnippetsFromSnapshot()
+        reconcileGlobalKeyMonitor()
+        startPermissionPollTimerIfNeeded()
         Task { @MainActor [weak self] in
             await self?.refreshCachedSnippets()
         }
@@ -49,7 +52,8 @@ final class TextExpansionRuntimeController: ObservableObject {
 
     @MainActor
     func stop() {
-        stopEventTap()
+        stopPermissionPollTimer()
+        stopGlobalKeyMonitor()
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -66,7 +70,9 @@ final class TextExpansionRuntimeController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileEventTap()
+                self?.refreshTapRuntimeSnapshot()
+                self?.reconcileGlobalKeyMonitor()
+                self?.startPermissionPollTimerIfNeeded()
             }
         })
         observers.append(center.addObserver(
@@ -75,7 +81,17 @@ final class TextExpansionRuntimeController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileEventTap()
+                self?.refreshTapRuntimeSnapshot()
+                self?.reconcileGlobalKeyMonitor()
+            }
+        })
+        observers.append(center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshTapRuntimeSnapshot()
             }
         })
         observers.append(center.addObserver(
@@ -90,132 +106,156 @@ final class TextExpansionRuntimeController: ObservableObject {
     }
 
     @MainActor
-    private func reconcileEventTap() {
+    private func startPermissionPollTimerIfNeeded() {
+        guard settingsManager.textExpansion.macGlobalExpansionEnabled else {
+            stopPermissionPollTimer()
+            return
+        }
+        guard permissionPollTimer == nil else { return }
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshTapRuntimeSnapshot()
+                self?.reconcileGlobalKeyMonitor()
+            }
+        }
+    }
+
+    @MainActor
+    private func stopPermissionPollTimer() {
+        permissionPollTimer?.invalidate()
+        permissionPollTimer = nil
+    }
+
+    @MainActor
+    private func refreshTapRuntimeSnapshot() {
+        let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let focusedSurfaceDenied = accessibilityInspector.denyReason(
+            for: accessibilityInspector.focusedSnapshot()
+        ) != nil
+        let runtime = TextExpansionGlobalTapPolicy(
+            globalExpansionEnabled: settingsManager.textExpansion.macGlobalExpansionEnabled,
+            accessibilityTrusted: inputController.isAccessibilityTrusted(),
+            frontmostBundleIdentifier: frontmostBundleIdentifier,
+            ownBundleIdentifier: Bundle.main.bundleIdentifier,
+            focusedSurfaceDenied: focusedSurfaceDenied
+        )
+        callbackState.withLockUnchecked { $0.runtime = runtime }
+    }
+
+    @MainActor
+    private func reconcileGlobalKeyMonitor() {
+        refreshTapRuntimeSnapshot()
         guard settingsManager.textExpansion.macGlobalExpansionEnabled,
               inputController.isAccessibilityTrusted() else {
-            stopEventTap()
+            stopGlobalKeyMonitor()
             return
         }
-        startEventTapIfNeeded()
+        startGlobalKeyMonitorIfNeeded()
     }
 
     @MainActor
-    private func startEventTapIfNeeded() {
-        guard eventTap == nil else { return }
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-        let refcon = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: Self.eventTapCallback,
-            userInfo: refcon
-        ) else {
-            return
+    private func startGlobalKeyMonitorIfNeeded() {
+        bootstrapCachedSnippetsFromSnapshot()
+        guard globalKeyMonitor == nil else { return }
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleGlobalKeyDown(event)
         }
-        eventTap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
+        if globalKeyMonitor == nil {
+            AppLogger.chat.error(
+                "textExpansion.globalKeyMonitorCreateFailed",
+                metadata: ["accessibilityTrusted": "\(inputController.isAccessibilityTrusted())"]
+            )
+            if !inputController.isAccessibilityTrusted() {
+                _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+            }
+        }
     }
 
     @MainActor
-    private func stopEventTap() {
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
+    private func stopGlobalKeyMonitor() {
+        if let globalKeyMonitor {
+            NSEvent.removeMonitor(globalKeyMonitor)
         }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
+        globalKeyMonitor = nil
         callbackState.withLockUnchecked { $0.buffer = "" }
     }
 
-    nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-        guard let refcon else { return Unmanaged.passUnretained(event) }
-        let controller = Unmanaged<TextExpansionRuntimeController>.fromOpaque(refcon).takeUnretainedValue()
-        return controller.handleEvent(type: type, event: event)
+    @MainActor
+    private func bootstrapCachedSnippetsFromSnapshot() {
+        guard let url = TextExpansionSnapshotStore.snapshotURL(),
+              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else {
+            return
+        }
+        let snippets = snapshot.snippets
+            .filter(\.isEnabled)
+            .filter { $0.deletedAt == nil }
+            .filter { $0.scope.allows(surface: .macGlobal) }
+        callbackState.withLockUnchecked { state in
+            guard state.cachedSnippets.isEmpty else { return }
+            state.cachedSnippets = snippets
+            state.lastSnippetLoad = Date()
+        }
     }
 
-    nonisolated private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard type == .keyDown else { return Unmanaged.passUnretained(event) }
-        guard Date() >= lockedSuppressEventsUntil() else { return Unmanaged.passUnretained(event) }
+    nonisolated private func handleGlobalKeyDown(_ event: NSEvent) {
+        guard Date() >= lockedSuppressEventsUntil() else { return }
 
-        let frontmostBundleIdentifier = MainActor.assumeIsolated {
-            NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        }
-        let shouldProcess = MainActor.assumeIsolated {
-            settingsManager.textExpansion.macGlobalExpansionEnabled
-                && inputController.isAccessibilityTrusted()
-                && !isFrontmostOpenBurnBar(frontmostBundleIdentifier: frontmostBundleIdentifier)
-                && !isFocusedSecureSurface()
-        }
-        guard shouldProcess else {
+        let ownBundleIdentifier = callbackState.withLockUnchecked { $0.runtime.ownBundleIdentifier }
+        let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if ownBundleIdentifier != nil, ownBundleIdentifier == frontmostBundleIdentifier {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        guard let nsEvent = NSEvent(cgEvent: event) else { return Unmanaged.passUnretained(event) }
-        if !nsEvent.modifierFlags.isDisjoint(with: [.command, .control, .option]) {
+        let runtime = lockedRuntimeSnapshot()
+        guard runtime.globalExpansionEnabled, runtime.accessibilityTrusted else {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-        if keyCode == 51 {
+        if !event.modifierFlags.isDisjoint(with: [.command, .control, .option]) {
+            resetBuffer()
+            return
+        }
+
+        if event.keyCode == 51 {
             removeLastBufferCharacter()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        guard let chars = nsEvent.charactersIgnoringModifiers, !chars.isEmpty else {
-            resetBuffer()
-            return Unmanaged.passUnretained(event)
+        guard let chars = TextExpansionKeyEventCharacters.characters(from: event), !chars.isEmpty else {
+            return
         }
 
         let match = appendAndMatch(chars, bundleIdentifier: frontmostBundleIdentifier)
-        guard let match, !match.requiresPreview else {
-            return Unmanaged.passUnretained(event)
-        }
+        guard let match, !match.requiresPreview else { return }
 
-        let boundary = match.boundary.map(String.init) ?? ""
-        let typedToken: String
-        if match.boundary == nil {
-            typedToken = String(match.token.dropLast(chars.count))
-        } else {
-            typedToken = match.token
-        }
+        let plan = TextExpansionGlobalReplacementPlanner.plan(for: match)
         setSuppressEvents(for: 1.5)
-        DispatchQueue.main.async { [weak self] in
-            self?.replaceTypedToken(token: typedToken, replacement: match.snippet.body + boundary)
+        resetBuffer()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            guard self.canReplaceOnFocusedSurface() else { return }
+            self.applyGlobalReplacement(deleteCount: plan.deleteCount, replacement: plan.replacement)
         }
-        return nil
     }
 
     @MainActor
-    private func replaceTypedToken(token: String, replacement: String) {
+    private func canReplaceOnFocusedSurface() -> Bool {
+        accessibilityInspector.denyReason(for: accessibilityInspector.focusedSnapshot()) == nil
+    }
+
+    @MainActor
+    private func applyGlobalReplacement(deleteCount: Int, replacement: String) {
         do {
-            for _ in token {
-                try inputController.key("Delete")
-            }
-            _ = try inputController.type(text: replacement)
+            try TextExpansionFocusedTextInserter.replaceTrailingText(
+                deleteCount: deleteCount,
+                replacement: replacement,
+                inputController: inputController
+            )
         } catch {
             AppLogger.chat.silentFailure("textExpansion.globalReplace", error: error)
         }
-        callbackState.withLockUnchecked { $0.buffer = "" }
-    }
-
-    @MainActor
-    private func isFrontmostOpenBurnBar(frontmostBundleIdentifier: String?) -> Bool {
-        let own = Bundle.main.bundleIdentifier
-        return own != nil && own == frontmostBundleIdentifier
-    }
-
-    @MainActor
-    private func isFocusedSecureSurface() -> Bool {
-        accessibilityInspector.denyReason(for: accessibilityInspector.focusedSnapshot()) != nil
     }
 
     nonisolated private func appendAndMatch(_ characters: String, bundleIdentifier: String?) -> TextExpansionMatch? {
@@ -249,17 +289,39 @@ final class TextExpansionRuntimeController: ObservableObject {
 
     @MainActor
     private func refreshCachedSnippets() async {
-        let snippets: [TextExpansionSnippet]
+        let fetched: [TextExpansionSnippet]
         do {
-            snippets = try await dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
+            fetched = try await dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
         } catch {
-            snippets = []
+            fetched = []
         }
+
+        let resolved: [TextExpansionSnippet]
+        if fetched.isEmpty {
+            if let url = TextExpansionSnapshotStore.snapshotURL(),
+               let snapshot = try? TextExpansionSnapshotStore.read(from: url) {
+                resolved = snapshot.snippets
+                    .filter(\.isEnabled)
+                    .filter { $0.deletedAt == nil }
+                    .filter { $0.scope.allows(surface: .macGlobal) }
+            } else {
+                resolved = callbackState.withLockUnchecked { $0.cachedSnippets }
+            }
+        } else {
+            resolved = fetched
+        }
+
         callbackState.withLockUnchecked { state in
-            state.cachedSnippets = snippets
-            state.lastSnippetLoad = Date()
+            if !resolved.isEmpty {
+                state.cachedSnippets = resolved
+                state.lastSnippetLoad = Date()
+            }
             state.snippetRefreshInFlight = false
         }
+    }
+
+    nonisolated private func lockedRuntimeSnapshot() -> TextExpansionGlobalTapPolicy {
+        callbackState.withLockUnchecked { $0.runtime }
     }
 
     nonisolated private func resetBuffer() {
@@ -280,6 +342,110 @@ final class TextExpansionRuntimeController: ObservableObject {
 
     nonisolated private func lockedSuppressEventsUntil() -> Date {
         callbackState.withLockUnchecked { $0.suppressEventsUntil }
+    }
+}
+
+private enum TextExpansionFocusedTextInserter {
+    enum InsertError: Error {
+        case accessibilityNotTrusted
+        case valueMutationUnsupported
+    }
+
+    static func replaceTrailingText(
+        deleteCount: Int,
+        replacement: String,
+        inputController: MacInputController
+    ) throws {
+        guard deleteCount > 0 else { return }
+        guard inputController.isAccessibilityTrusted() else {
+            throw InsertError.accessibilityNotTrusted
+        }
+
+        if try replaceViaAccessibility(deleteCount: deleteCount, replacement: replacement) {
+            return
+        }
+        try replaceViaSyntheticKeys(deleteCount: deleteCount, replacement: replacement, inputController: inputController)
+    }
+
+    private static func replaceViaAccessibility(deleteCount: Int, replacement: String) throws -> Bool {
+        guard let element = focusedElement() else { return false }
+        guard isTextSurface(element) else { return false }
+
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
+              let currentValue = valueRef as? String else {
+            return false
+        }
+
+        let cursor = selectedLocation(in: element) ?? currentValue.count
+        guard cursor >= deleteCount else { return false }
+
+        let start = currentValue.index(currentValue.startIndex, offsetBy: cursor - deleteCount)
+        let end = currentValue.index(currentValue.startIndex, offsetBy: cursor)
+        var updated = currentValue
+        updated.replaceSubrange(start..<end, with: replacement)
+
+        let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, updated as CFTypeRef)
+        guard setResult == .success else {
+            throw InsertError.valueMutationUnsupported
+        }
+        return true
+    }
+
+    private static func replaceViaSyntheticKeys(
+        deleteCount: Int,
+        replacement: String,
+        inputController: MacInputController
+    ) throws {
+        for _ in 0..<deleteCount {
+            try inputController.key("Delete")
+        }
+        _ = try inputController.type(text: replacement)
+    }
+
+    private static func focusedElement() -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedRef
+        ) == .success else {
+            return nil
+        }
+        guard let focusedRef else { return nil }
+        return (focusedRef as! AXUIElement)
+    }
+
+    private static func isTextSurface(_ element: AXUIElement) -> Bool {
+        let role = attributeString(element, kAXRoleAttribute as CFString)?.lowercased() ?? ""
+        return role == "axtextfield"
+            || role == "axtextarea"
+            || role == "axcombobox"
+            || role == "axsearchfield"
+    }
+
+    private static func selectedLocation(in element: AXUIElement) -> Int? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element,
+            kAXSelectedTextRangeAttribute as CFString,
+            &rangeRef
+        ) == .success,
+              let rangeRef,
+              CFGetTypeID(rangeRef) == AXValueGetTypeID() else {
+            return nil
+        }
+        let axValue = unsafeBitCast(rangeRef, to: AXValue.self)
+        var range = CFRange(location: 0, length: 0)
+        guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
+        return range.location + range.length
+    }
+
+    private static func attributeString(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success else { return nil }
+        return raw as? String
     }
 }
 #endif

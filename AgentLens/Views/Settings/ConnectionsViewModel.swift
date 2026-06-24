@@ -312,11 +312,13 @@ final class ConnectionsViewModel {
     func connect(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager? = nil,
         restartGateway: (() async -> Void)? = nil
     ) async {
         await wireAndProbe(
             target: target,
             settings: settings,
+            daemonManager: daemonManager,
             restartGateway: restartGateway,
             busyState: .connecting
         )
@@ -330,11 +332,13 @@ final class ConnectionsViewModel {
     func syncModels(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager? = nil,
         restartGateway: (() async -> Void)? = nil
     ) async {
         await wireAndProbe(
             target: target,
             settings: settings,
+            daemonManager: daemonManager,
             restartGateway: restartGateway,
             busyState: .syncingModels
         )
@@ -343,12 +347,16 @@ final class ConnectionsViewModel {
     private func wireAndProbe(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager?,
         restartGateway: (() async -> Void)?,
         busyState: AppConnectState
     ) async {
         guard appStates[target]?.isBusy != true else { return }
         appStates[target] = busyState
         ensureLocalGateway(settings: settings)
+        if target == .claudeCode, let daemonManager {
+            _ = try? await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
+        }
         if let restartGateway {
             await restartGateway()
         }
@@ -577,6 +585,9 @@ final class ConnectionsViewModel {
         }
 
         ensureLocalGateway(settings: settings)
+        if snapshot.detectedTargets.contains(.claudeCode) {
+            _ = try? await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
+        }
         if let restartGateway {
             await restartGateway()
         }
