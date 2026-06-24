@@ -14,8 +14,54 @@ import base64
 import hashlib
 import importlib.util
 import sys
+import types
 import unittest
 from pathlib import Path
+
+if "gateway.config" not in sys.modules:
+    gateway_module = types.ModuleType("gateway")
+    gateway_module.__path__ = []  # type: ignore[attr-defined]
+    gateway_config_module = types.ModuleType("gateway.config")
+    gateway_platforms_module = types.ModuleType("gateway.platforms")
+    gateway_platforms_module.__path__ = []  # type: ignore[attr-defined]
+    gateway_platforms_base_module = types.ModuleType("gateway.platforms.base")
+
+    class Platform(str):
+        pass
+
+    class PlatformConfig:
+        def __init__(self, enabled: bool = True, extra: dict | None = None) -> None:
+            self.enabled = enabled
+            self.extra = extra or {}
+
+    class BasePlatformAdapter:
+        def __init__(self, config: PlatformConfig, platform: Platform) -> None:
+            self.config = config
+            self.platform = platform
+
+    class MessageEvent:
+        def __init__(self, **kwargs) -> None:
+            self.__dict__.update(kwargs)
+
+    class MessageType:
+        TEXT = "text"
+
+    class SendResult:
+        def __init__(self, success: bool, message_id: str | None = None, error: str | None = None) -> None:
+            self.success = success
+            self.message_id = message_id
+            self.error = error
+
+    gateway_config_module.Platform = Platform
+    gateway_config_module.PlatformConfig = PlatformConfig
+    gateway_platforms_base_module.BasePlatformAdapter = BasePlatformAdapter
+    gateway_platforms_base_module.MessageEvent = MessageEvent
+    gateway_platforms_base_module.MessageType = MessageType
+    gateway_platforms_base_module.SendResult = SendResult
+    sys.modules["gateway"] = gateway_module
+    sys.modules["gateway.config"] = gateway_config_module
+    sys.modules["gateway.platforms"] = gateway_platforms_module
+    sys.modules["gateway.platforms.base"] = gateway_platforms_base_module
 
 _ADAPTER_PATH = Path(__file__).resolve().parent / "adapter.py"
 _SPEC = importlib.util.spec_from_file_location("burnbar_adapter_under_test", _ADAPTER_PATH)
@@ -32,7 +78,7 @@ class CanonicalQueryStringTests(unittest.TestCase):
     def test_sorted_by_key_then_value_with_repeats_and_spaces(self) -> None:
         # Mirrors the server rule: decoded params, repeated keys expand to
         # multiple pairs, sort by key then value (plain JS `<`), join k=v with
-        # `&`, never percent re-encode. "d 1" stays a literal space.
+        # `&`. "d 1" stays a literal space.
         params = {"cursor": "abc", "destinationId": "d 1", "z": "2", "a": ["b", "a"]}
         self.assertEqual(
             adapter._canonical_query_string(params),
@@ -50,6 +96,12 @@ class CanonicalQueryStringTests(unittest.TestCase):
         # The phone sends `q=a%2Bb` on the wire; Express hands the server the
         # DECODED "a+b" and that is what both sides sign.
         self.assertEqual(adapter._canonical_query_string({"q": "a+b"}), "q=a+b")
+
+    def test_canonical_query_distinguishes_value_boundaries(self) -> None:
+        self.assertEqual(
+            adapter._canonical_query_string({"a": "1&b=2", "percent": "100%"}),
+            "a=1%26b%3D2&percent=100%25",
+        )
 
     def test_utf16_code_unit_ordering(self) -> None:
         # JS `<` compares UTF-16 code units: "Z" (0x5A) < "a" (0x61).

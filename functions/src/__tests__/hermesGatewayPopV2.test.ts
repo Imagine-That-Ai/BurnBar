@@ -121,7 +121,12 @@ function canonicalQuery(query: Record<string, unknown>): string {
     else if (v !== undefined && v !== null) pairs.push([k, String(v)]);
   }
   pairs.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1));
-  return pairs.map(([k, v]) => `${k}=${v}`).join("&");
+  const escapeComponent = (value: string) =>
+    value.replace(
+      /[%&=]/gu,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+    );
+  return pairs.map(([k, v]) => `${escapeComponent(k)}=${escapeComponent(v)}`).join("&");
 }
 
 /** Sign the PoP payload. `signedQuery` lets a test sign over a DIFFERENT query
@@ -306,6 +311,18 @@ describe("L2 — gateway PoP v2 query binding", () => {
       path: "/events",
       query: { cursor: "EVIL", limit: "50" },
       signedQuery: { cursor: "abc", limit: "50" },
+    });
+    expect(res.status).toBe(401);
+    expect(errOf(res.body)).toBe("bad_pop_signature");
+  });
+
+  it("rejects a signature produced for a different query value", async () => {
+    seedGrant();
+    const res = await call({
+      version: 2,
+      path: "/events",
+      query: { a: "1", b: "2" },
+      signedQuery: { a: "1&b=2" },
     });
     expect(res.status).toBe(401);
     expect(errOf(res.body)).toBe("bad_pop_signature");
