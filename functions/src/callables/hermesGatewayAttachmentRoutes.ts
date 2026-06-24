@@ -55,6 +55,34 @@ import {
 } from "./hermesGatewayResolve.js";
 import { checkHermesGatewayBearerRateLimit } from "./publicRateLimit.js";
 
+const CONTENT_LENGTH_HEADER = "content-length";
+
+function attachmentUploadHeaders(byteCount: number): Record<string, string> {
+  return { [CONTENT_LENGTH_HEADER]: String(byteCount) };
+}
+
+function storageGenerationString(raw: unknown): string | undefined {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return undefined;
+}
+
+async function assertFinalizedObjectMatchesManifest(
+  file: ReturnType<ReturnType<ReturnType<typeof getStorage>["bucket"]>["file"]>,
+  manifest: HermesGatewayAttachmentManifestDoc,
+): Promise<void> {
+  const [metadata] = await file.getMetadata();
+  const observedByteCount = Number(metadata.size);
+  if (!Number.isFinite(observedByteCount) || observedByteCount !== manifest.byteCount) {
+    throw new HttpsError("failed-precondition", "Gateway attachment body size no longer matches its manifest.");
+  }
+  const expectedGeneration = storageGenerationString(manifest.storageGeneration);
+  const observedGeneration = storageGenerationString(metadata.generation);
+  if (!expectedGeneration || observedGeneration !== expectedGeneration) {
+    throw new HttpsError("failed-precondition", "Gateway attachment body generation no longer matches its manifest.");
+  }
+}
+
 export async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   assertJsonWriteContentType(req);
@@ -121,11 +149,13 @@ export async function handleAttachmentInit(req: HttpRequest, res: HttpResponse):
   // private and never appears in a path the server (or a Storage listing) sees.
   const storagePath = `users/${grant.uid}/hermes_gateway_attachments/${grant.client.id}/${attachmentId}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const uploadHeaders = attachmentUploadHeaders(byteCount);
   const [uploadURL] = await getStorage().bucket().file(storagePath).getSignedUrl({
     version: "v4",
     action: "write",
     expires: expiresAt,
     contentType: declaredContentType,
+    extensionHeaders: uploadHeaders,
   });
   const now = nowISO();
   const manifest = stripUndefinedObject({
@@ -157,7 +187,12 @@ export async function handleAttachmentInit(req: HttpRequest, res: HttpResponse):
     }
     tx.set(attachmentRef, manifest);
   });
-  sendJSON(res, 200, { attachment: manifest, uploadURL, maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES });
+  sendJSON(res, 200, {
+    attachment: manifest,
+    uploadURL,
+    uploadHeaders,
+    maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES,
+  });
 }
 
 function attachmentManifestOrThrow(snap: {
@@ -331,6 +366,7 @@ export async function handleHermesGatewayAttachmentDownloadUrl(
   if (!exists) {
     throw new HttpsError("not-found", "Gateway attachment body is no longer stored in the cloud.");
   }
+  await assertFinalizedObjectMatchesManifest(file, manifest);
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   // T-ATT-08: force the browser/OS to DOWNLOAD the (sealed, opaque) blob rather
