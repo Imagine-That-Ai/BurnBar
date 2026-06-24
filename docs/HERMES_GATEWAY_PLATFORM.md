@@ -90,6 +90,13 @@ Base path: `https://api.burnbar.ai/v1/hermes-gateway`
 | `POST /runtime`          | Bearer `hermes.gateway.write` | Publish current model and selectable model catalog  |
 | `POST /attachments/init` | Bearer `hermes.gateway.write` | Mint a signed upload URL for file/image delivery    |
 
+Attachment init returns the signed `uploadURL`, the manifest, `maxBytes`, and an
+`uploadHeaders` object. Upload clients must include every returned upload header
+on the Storage `PUT`; today this includes the exact `content-length` that matches
+the manifest `byteCount`. Finalize and read URL issuance both re-check the stored
+object against the finalized manifest before the attachment can be referenced or
+downloaded.
+
 ## BurnBar Callables
 
 | Callable                          | Purpose                                                      |
