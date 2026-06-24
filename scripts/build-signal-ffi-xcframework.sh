@@ -27,15 +27,23 @@ BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
 EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
+METADATA_FILE_NAME=".openburnbar-signal-ffi-build.env"
 
 PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-release}"
-PROFILE_FLAG=""
-PROFILE_DIR="release"
-if [[ "${PROFILE}" == "debug" ]]; then
-  PROFILE_DIR="debug"
-else
-  PROFILE_FLAG="--release"
-fi
+case "${PROFILE}" in
+  debug)
+    PROFILE_FLAG=""
+    PROFILE_DIR="debug"
+    ;;
+  release)
+    PROFILE_FLAG="--release"
+    PROFILE_DIR="release"
+    ;;
+  *)
+    echo "[signal-ffi-xcframework] FATAL: invalid SIGNAL_FFI_BUILD_PROFILE=${PROFILE}; expected debug or release" >&2
+    exit 64
+    ;;
+esac
 
 DEFAULT_TARGETS=(
   aarch64-apple-darwin
@@ -56,6 +64,15 @@ log() { printf '[signal-ffi-xcframework] %s\n' "$*"; }
 abort() {
   echo "[signal-ffi-xcframework] FATAL: $*" >&2
   exit 1
+}
+
+write_build_metadata() {
+  local xcframework="$1"
+  [[ -d "${xcframework}" ]] || return 0
+  {
+    printf 'profile=%s\n' "${PROFILE}"
+    printf 'targets=%s\n' "${TARGETS[*]}"
+  } > "${xcframework}/${METADATA_FILE_NAME}"
 }
 
 [[ -d "${LIBSIGNAL_DIR}" ]] || abort "missing ${LIBSIGNAL_DIR}; clone libsignal v0.94.4 first"
@@ -331,6 +348,7 @@ if [[ "${#macos_xcframework_args[@]}" -gt 0 ]]; then
   /usr/bin/xcodebuild -create-xcframework \
     "${macos_xcframework_args[@]}" \
     -output "${MACOS_XCFRAMEWORK}"
+  write_build_metadata "${MACOS_XCFRAMEWORK}"
 fi
 
 if [[ "${#ios_xcframework_args[@]}" -gt 0 ]]; then
@@ -338,6 +356,7 @@ if [[ "${#ios_xcframework_args[@]}" -gt 0 ]]; then
   /usr/bin/xcodebuild -create-xcframework \
     "${ios_xcframework_args[@]}" \
     -output "${IOS_XCFRAMEWORK}"
+  write_build_metadata "${IOS_XCFRAMEWORK}"
 fi
 
 if [[ "${#macos_xcframework_args[@]}" -eq 0 && "${#ios_xcframework_args[@]}" -eq 0 ]]; then

@@ -15,6 +15,30 @@ ios_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfiIOS.xcframework"
 macos_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfiMac.xcframework"
 legacy_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework"
 build_script="$repo_root/scripts/build-signal-ffi-xcframework.sh"
+metadata_file_name=".openburnbar-signal-ffi-build.env"
+
+resolve_requested_profile() {
+  if [[ -n "${SIGNAL_FFI_BUILD_PROFILE:-}" ]]; then
+    case "${SIGNAL_FFI_BUILD_PROFILE}" in
+      debug | release) printf '%s\n' "${SIGNAL_FFI_BUILD_PROFILE}" ;;
+      *)
+        echo "Invalid SIGNAL_FFI_BUILD_PROFILE=${SIGNAL_FFI_BUILD_PROFILE}; expected debug or release." >&2
+        exit 64
+        ;;
+    esac
+    return
+  fi
+
+  if [[ "${CONFIGURATION:-}" == "Release" ]] || [[ "${CONFIG:-}" == "Release" ]] ||
+    [[ "${OPENBURNBAR_RELEASE_BUILD:-}" == "1" ]] || [[ "${OPENBURNBAR_RELEASE_BUILD:-}" == "YES" ]] ||
+    [[ "${GITHUB_WORKFLOW:-}" == "OpenBurnBar Release" ]]; then
+    printf 'release\n'
+  else
+    printf 'debug\n'
+  fi
+}
+
+requested_profile="$(resolve_requested_profile)"
 
 DEFAULT_SIGNAL_FFI_BUILD_TARGETS=(
   aarch64-apple-darwin
@@ -39,18 +63,77 @@ for target in "${requested_targets[@]}"; do
   esac
 done
 
-artifacts_satisfy_requested_targets() {
-  if [[ "$needs_ios_xcframework" == "1" && ! -d "$ios_xcframework" ]]; then
+metadata_value() {
+  local metadata_file="$1"
+  local key="$2"
+  local metadata_key
+  local metadata_value
+  while IFS='=' read -r metadata_key metadata_value; do
+    if [[ "$metadata_key" == "$key" ]]; then
+      printf '%s\n' "$metadata_value"
+      return
+    fi
+  done < "$metadata_file"
+}
+
+target_list_contains() {
+  local target_list="$1"
+  local target="$2"
+  case " ${target_list} " in
+    *" ${target} "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+artifact_matches_requested_build() {
+  local artifact_dir="$1"
+  local metadata_file="${artifact_dir}/${metadata_file_name}"
+  local artifact_profile
+  local artifact_targets
+
+  if [[ ! -f "$metadata_file" ]]; then
+    echo ">>> Signal FFI artifact metadata missing for ${artifact_dir}; rebuilding."
     return 1
   fi
-  if [[ "$needs_macos_xcframework" == "1" && ! -d "$macos_xcframework" && ! -d "$legacy_xcframework" ]]; then
+
+  artifact_profile="$(metadata_value "$metadata_file" profile)"
+  artifact_targets="$(metadata_value "$metadata_file" targets)"
+  if [[ "$artifact_profile" != "$requested_profile" ]]; then
+    echo ">>> Signal FFI artifact profile ${artifact_profile:-<missing>} does not match requested ${requested_profile}; rebuilding."
+    return 1
+  fi
+
+  for target in "${requested_targets[@]}"; do
+    if ! target_list_contains "$artifact_targets" "$target"; then
+      echo ">>> Signal FFI artifact ${artifact_dir} is missing target ${target}; rebuilding."
+      return 1
+    fi
+  done
+  return 0
+}
+
+artifact_family_satisfies_requested_build() {
+  local artifact_dir
+  for artifact_dir in "$@"; do
+    if [[ -d "$artifact_dir" ]] && artifact_matches_requested_build "$artifact_dir"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+artifacts_satisfy_requested_targets() {
+  if [[ "$needs_ios_xcframework" == "1" ]] && ! artifact_family_satisfies_requested_build "$ios_xcframework"; then
+    return 1
+  fi
+  if [[ "$needs_macos_xcframework" == "1" ]] && ! artifact_family_satisfies_requested_build "$macos_xcframework" "$legacy_xcframework"; then
     return 1
   fi
   return 0
 }
 
 if artifacts_satisfy_requested_targets; then
-  echo ">>> Using existing Signal FFI XCFramework artifacts for requested targets."
+  echo ">>> Using existing ${requested_profile} Signal FFI XCFramework artifacts for requested targets."
   exit 0
 fi
 
@@ -78,7 +161,7 @@ if ! command -v cargo >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; th
   exit 1
 fi
 
-echo ">>> Building Signal FFI XCFramework artifacts for Xcode tests."
-SIGNAL_FFI_BUILD_PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-debug}" \
+echo ">>> Building ${requested_profile} Signal FFI XCFramework artifacts for Xcode tests."
+SIGNAL_FFI_BUILD_PROFILE="${requested_profile}" \
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
   bash "$build_script"
