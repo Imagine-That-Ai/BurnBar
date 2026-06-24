@@ -604,7 +604,6 @@ final class HermesSetupWizardControllerTests: XCTestCase {
 private actor FakeWizardRuntime {
     var refreshStatusCalls = 0
     var openHermesAndGatewayCalls = 0
-    private var idleContinuations: [CheckedContinuation<Void, Never>] = []
 
     private let executable: String?
     private var gatewayAvailable: Bool
@@ -666,27 +665,23 @@ private actor FakeWizardRuntime {
         )
     }
 
-    /// Suspends until any in-flight refresh/open call completes, so tests can
-    /// deterministically await the controller's async Task without flaky sleeps.
-    ///
-    /// Polls briefly for the call to land (the controller's `Task { @MainActor }`
-    /// may not have started by the time we get here), then waits for the call to
-    /// resume its continuation. Bounded so a missing call never hangs the suite.
+    /// Polls briefly for the controller's async Task to reach this actor.
+    /// Once this actor observes the counter change, the fake call has already
+    /// completed because actor-isolated calls run serially.
     func waitForIdle() async {
-        // Wait for the controller's async Task to actually fire the call.
+        let startRefreshCalls = refreshStatusCalls
+        let startOpenCalls = openHermesAndGatewayCalls
+
         for _ in 0..<50 {
-            if refreshStatusCalls > 0 || openHermesAndGatewayCalls > 0 { break }
-            try? await Task.sleep(nanoseconds: 10_000_000) // 50ms per tick
-        }
-        guard refreshStatusCalls > 0 || openHermesAndGatewayCalls > 0 else { return }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            idleContinuations.append(cont)
+            if refreshStatusCalls > startRefreshCalls || openHermesAndGatewayCalls > startOpenCalls {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
     }
 
     private func refreshStatus() -> HermesRuntimeStatus {
         refreshStatusCalls += 1
-        drainIdleWaiters()
         return HermesRuntimeStatus(
             hermesCLIPath: executable,
             gatewayRunning: gatewayAvailable,
@@ -698,7 +693,6 @@ private actor FakeWizardRuntime {
 
     private func openHermesAndGateway() -> HermesRuntimeStatus {
         openHermesAndGatewayCalls += 1
-        drainIdleWaiters()
         if let preset = openHermesGatewayResult { return preset }
         // Default: opening starts the gateway.
         gatewayAvailable = true
@@ -710,12 +704,6 @@ private actor FakeWizardRuntime {
             modelName: modelName ?? "hermes-agent",
             message: "Hermes Dashboard and gateway are running."
         )
-    }
-
-    private func drainIdleWaiters() {
-        let waiters = idleContinuations
-        idleContinuations.removeAll()
-        for cont in waiters { cont.resume() }
     }
 }
 

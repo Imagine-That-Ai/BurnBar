@@ -6,6 +6,7 @@ struct ChatMenuPopover: View {
     var onNewChat: (() -> Void)?
     var onPopOut: (() -> Void)?
     var onRestoreFloating: (() -> Void)?
+    var onRevealWorkspace: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,6 +14,10 @@ struct ChatMenuPopover: View {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     ChatViewModePicker(controller: controller)
                     ChatEngineModelMenu(controller: controller)
+                }
+
+                if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                    quotaChip
                 }
 
                 HStack(spacing: 6) {
@@ -72,6 +77,11 @@ struct ChatMenuPopover: View {
                 if let onRestoreFloating {
                     chatMenuAction(icon: "macwindow.on.rectangle", label: "Restore floating chat window") {
                         onRestoreFloating()
+                    }
+                }
+                if let onRevealWorkspace {
+                    chatMenuAction(icon: "folder", label: "Reveal workspace in Finder") {
+                        onRevealWorkspace()
                     }
                 }
                 chatMenuAction(icon: "trash", label: "Clear current chat", color: DesignSystem.Colors.error.opacity(0.8)) {

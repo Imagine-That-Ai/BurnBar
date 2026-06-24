@@ -21,10 +21,10 @@ struct HermesSetupWizardView: View {
     let inventoryImportService: HermesInventoryImportService?
     let onDismiss: () -> Void
 
-    @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var controller: HermesSetupWizardController
+    @State private var statusDotPulse = false
 
     init(
         settingsManager: SettingsManager,
@@ -354,9 +354,8 @@ struct HermesSetupWizardView: View {
     private func primaryAction(for state: GatewayReachabilityState) {
         switch state {
         case .apiServerDisabled:
-            controller.writeEnvFile()
-            // After enabling, immediately try to make the gateway reachable so
-            // the user doesn't have to tap twice.
+            // `openHermesAndGateway` owns enabling the env flag and launching;
+            // starting a second write task here can race the final status.
             controller.makeGatewayReachable()
         case .unknown, .dashboardOnly, .unreachable:
             controller.makeGatewayReachable()
@@ -382,9 +381,11 @@ struct HermesSetupWizardView: View {
                 Circle()
                     .stroke(accent.color.opacity(0.4), lineWidth: 2)
                     .frame(width: 18, height: 18)
-                    .scaleEffect(pulsing ? 1.0 : 0.6)
-                    .opacity(pulsing ? 0.0 : 0.8)
-                    .animation(reduceMotion ? nil : DesignSystem.Animation.mercuryPulse, value: pulsing)
+                    .scaleEffect(statusDotPulse ? 1.0 : 0.6)
+                    .opacity(statusDotPulse ? 0.0 : 0.8)
+                    .animation(reduceMotion ? nil : DesignSystem.Animation.mercuryPulse, value: statusDotPulse)
+                    .onAppear { statusDotPulse = true }
+                    .onDisappear { statusDotPulse = false }
             }
         }
         .frame(width: 18, height: 18)
@@ -654,11 +655,7 @@ struct HermesSetupWizardView: View {
     // MARK: Terminal helper
 
     private func openTerminal() {
-        if let url = URL(string: "terminal://") {
-            openURL(url)
-        } else {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
-        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
     }
 }
 

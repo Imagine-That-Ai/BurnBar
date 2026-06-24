@@ -98,7 +98,8 @@ struct DashboardChatWorkspaceToolbar: View {
                     onShowClearChatPrompt: onShowClearChatPrompt,
                     onNewChat: onNewChat,
                     onPopOut: mode == .embedded ? onPopOut : nil,
-                    onRestoreFloating: mode == .embedded ? onRestoreFloating : nil
+                    onRestoreFloating: mode == .embedded ? onRestoreFloating : nil,
+                    onRevealWorkspace: controller.revealChatWorkspaceInFinder
                 )
             }
 

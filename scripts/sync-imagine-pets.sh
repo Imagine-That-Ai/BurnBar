@@ -345,6 +345,9 @@ const { source, pets } = manifest;
 if (!Array.isArray(pets)) {
   throw new Error("pets-3d.json root must be an array");
 }
+if (pets.length === 0) {
+  throw new Error("pets-3d.json is empty; refusing to prune all bundled pet models");
+}
 
 // Best-effort persona sidecar — pets keep BurnBar's default voice when it is absent.
 try {

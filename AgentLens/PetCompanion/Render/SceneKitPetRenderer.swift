@@ -409,6 +409,16 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         return CGPoint(x: size.width / 2, y: size.height / 2)
     }
 
+    func containsVisibleContent(at point: CGPoint) -> Bool {
+        guard scnView.bounds.contains(point), scnView.scene != nil else { return false }
+        return scnView.hitTest(point, options: [
+            .ignoreHiddenNodes: true,
+            .boundingBoxOnly: false
+        ]).contains { result in
+            result.node.geometry != nil
+        }
+    }
+
     // MARK: Scene loading
 
     /// Resolve the GLB master to an `SCNScene`, normalise it into the panel,

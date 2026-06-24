@@ -567,8 +567,8 @@ struct ChatPanel: View {
         .help("New chat")
     }
 
-    // Consolidated menu — search, history, clear, plus any actions the
-    // current tier folded away (folder, new-chat, pop-out, maximize).
+    // Consolidated menu — search, history, clear, plus any actions the current
+    // tier folded away (Elder Wand, folder, new-chat, pop-out, maximize).
     private var overflowMenuButton: some View {
         Button {
             showChatMenu.toggle()
@@ -658,6 +658,10 @@ struct ChatPanel: View {
                     ChatEngineModelMenu(controller: controller)
                 }
 
+                if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                    quotaChip
+                }
+
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11))
@@ -719,6 +723,7 @@ struct ChatPanel: View {
                     showChatMenu = false
                     controller.clearChat()
                 }
+                elderWandMenuAction
                 chatMenuAction(icon: "folder", label: "Show workspace in Finder") {
                     showChatMenu = false
                     controller.revealChatWorkspaceInFinder()
@@ -748,6 +753,25 @@ struct ChatPanel: View {
         .background(DesignSystem.Colors.surfaceElevated.opacity(0.95))
         .onAppear {
             controller.refreshHistory()
+        }
+    }
+
+    private var elderWandMenuAction: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 16)
+            Text("Configure Elder Wand")
+                .font(DesignSystem.Typography.caption)
+            Spacer()
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs + 2)
+        .contentShape(Rectangle())
+        .gatedFeature(.elderWand, tier: cloudEntitlement.cloudTier) {
+            showChatMenu = false
+            showElderWand = true
         }
     }
 

@@ -49,21 +49,18 @@ enum OllamaCloudModelRoutingPolicy {
                 normalizedBase: normalizedBase,
                 normalizedCanonical: normalizedCanonical
             )
+        } ?? configuration.preferredModels.first { model in
+            isCloudFamilyModelID(model.id)
         }
         guard let configuredCloudModel else { return nil }
 
-        let resolvedModelID = cloudAliasBaseModelID(from: configuredCloudModel.id) ?? configuredCloudModel.id
-        let canonicalModelID: String
-        if configuredCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
-            canonicalModelID = configuredCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
-                ?? configuredCloudModel.exactCanonicalModelID(forRequestedModelID: directCloudModelID)
-                ?? configuredCloudModel.canonicalModelID
-                ?? normalizedCanonical
-                ?? configuredCloudModel.id
-        } else {
-            canonicalModelID = normalizedCanonical ?? directCloudModelID
-        }
-        let capabilityClassID = configuredCloudModel.capabilityClassID ?? configuredCloudModel.id
+        let resolvedModelID = isCloudFamilyModelID(configuredCloudModel.id)
+            ? directCloudModelID
+            : (cloudAliasBaseModelID(from: configuredCloudModel.id) ?? configuredCloudModel.id)
+        let canonicalModelID = directCloudModelID
+        let capabilityClassID = isCloudFamilyModelID(configuredCloudModel.id)
+            ? directCloudModelID
+            : (configuredCloudModel.capabilityClassID ?? configuredCloudModel.id)
 
         return BurnBarCatalogModel(
             id: resolvedModelID,

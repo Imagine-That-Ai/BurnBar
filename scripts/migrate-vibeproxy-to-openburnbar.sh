@@ -86,7 +86,9 @@ mkdir -p "$BACKUP_DIR"
 # Backup current files
 for f in "$CONFIG_PATH" "$HOME/.factory/settings.json" "$HOME/.factory/settings.local.json" "$HOME/.factory/config.json"; do
     if [[ -f "$f" ]]; then
-        cp "$f" "$BACKUP_DIR/$(basename "$f").bak"
+        backup_file="$BACKUP_DIR/$(basename "$f").bak"
+        cp "$f" "$backup_file"
+        chmod 600 "$backup_file"
         log "Backed up $(basename "$f")"
     fi
 done
@@ -156,6 +158,7 @@ log "Writing API keys to macOS keychain and building provider config..."
 GENERATED_CONFIG=$(CONFIG_PATH="$CONFIG_PATH" VIBEPROXY_DATA_FILE="$VIBEPROXY_DATA_FILE" python3 - <<'PY'
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -167,15 +170,21 @@ with open(os.environ["VIBEPROXY_DATA_FILE"]) as handle:
 KEYCHAIN_SERVICE = 'com.openburnbar.daemon.provider-secrets'
 
 def write_keychain(service, account, value):
-    '''Write a secret to the macOS keychain using the security command.'''
+    '''Write a secret to the macOS keychain without placing it in process argv.'''
     # Delete existing item first (ignore errors if not found)
     subprocess.run(
         ['security', 'delete-generic-password', '-s', service, '-a', account],
         capture_output=True
     )
-    # Add the new item
+    command = (
+        'add-generic-password '
+        f'-s {shlex.quote(service)} '
+        f'-a {shlex.quote(account)} '
+        f'-w {shlex.quote(value)}\n'
+    )
     result = subprocess.run(
-        ['security', 'add-generic-password', '-s', service, '-a', account, '-w', value],
+        ['security', '-i'],
+        input=command,
         capture_output=True, text=True
     )
     if result.returncode != 0:
@@ -219,8 +228,12 @@ config_path = os.environ["CONFIG_PATH"]
 try:
     with open(config_path) as f:
         config = json.load(f)
-except:
+except FileNotFoundError:
     config = {'providers': [], 'routerMode': 'provider_family_failover'}
+except json.JSONDecodeError as error:
+    print(f'  ERROR: {config_path} is not valid JSON: {error}', file=sys.stderr)
+    print('  Aborting before rewriting provider config; restore or repair the backed-up file first.', file=sys.stderr)
+    raise SystemExit(1)
 
 providers = config.get('providers', [])
 
@@ -474,7 +487,8 @@ EXISTING_TOKEN=$(security find-generic-password -s "$GATEWAY_TOKEN_SERVICE" -a "
 if [[ -z "$EXISTING_TOKEN" ]]; then
     GATEWAY_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
     security delete-generic-password -s "$GATEWAY_TOKEN_SERVICE" -a "$GATEWAY_TOKEN_ACCOUNT" 2>/dev/null || true
-    security add-generic-password -s "$GATEWAY_TOKEN_SERVICE" -a "$GATEWAY_TOKEN_ACCOUNT" -w "$GATEWAY_TOKEN"
+    printf 'add-generic-password -s %q -a %q -w %q\n' \
+        "$GATEWAY_TOKEN_SERVICE" "$GATEWAY_TOKEN_ACCOUNT" "$GATEWAY_TOKEN" | security -i
     log "Generated new gateway auth token"
 else
     GATEWAY_TOKEN="$EXISTING_TOKEN"
@@ -598,7 +612,6 @@ def stale_managed_ref(value):
     return (
         "vibeproxy" in lowered
         or ("openburnbar" in lowered and value not in valid_custom_ids)
-        or (value.startswith("custom:") and value not in valid_custom_ids)
     )
 
 def rewrite_settings(path, fallback):
