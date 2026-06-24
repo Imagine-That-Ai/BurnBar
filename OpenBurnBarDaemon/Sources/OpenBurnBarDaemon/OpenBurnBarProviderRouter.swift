@@ -954,6 +954,9 @@ public struct BurnBarProviderRouter: Sendable {
         let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let normalized = trimmed.lowercased()
+        guard configStore.catalogSupport.modelID(trimmed, isNamespaceSafeFor: configuration.provider.id) else {
+            return nil
+        }
 
         // A credential-less local provider is always enabled and would otherwise
         // resolve ANY model name, shadowing real providers: a request for a

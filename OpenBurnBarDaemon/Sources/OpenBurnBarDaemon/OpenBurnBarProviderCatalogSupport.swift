@@ -102,6 +102,32 @@ public struct BurnBarProviderCatalogSupport: Sendable {
         }
     }
 
+    public func providerNamespaceClaim(forModelID modelID: String) -> String? {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let separators = [":", "/"].compactMap { separator in
+            trimmed.firstIndex(of: Character(separator))
+        }
+        guard let separatorIndex = separators.min() else { return nil }
+
+        let claimedProviderID = String(trimmed[..<separatorIndex])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !claimedProviderID.isEmpty else { return nil }
+
+        return supportedProviderIDs.first {
+            $0.caseInsensitiveCompare(claimedProviderID) == .orderedSame
+        }
+    }
+
+    public func modelID(_ modelID: String, isNamespaceSafeFor providerID: String) -> Bool {
+        guard let claimedProviderID = providerNamespaceClaim(forModelID: modelID) else {
+            return true
+        }
+        return claimedProviderID.caseInsensitiveCompare(providerID) == .orderedSame
+    }
+
     public func preferredModels(
         providerID: String,
         preferredModelIDs: [String]
