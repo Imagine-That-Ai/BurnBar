@@ -466,6 +466,69 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.modelCapabilityClassID, "claude-future-5-1")
     }
 
+    func testRouterDoesNotDynamicallyRouteForeignProviderNamespaceModelIDs() async throws {
+        let harness = try makeHarness(name: "dynamic-foreign-namespace", allowDynamicModels: true)
+        try await harness.configStore.setSecret("sk-openai-test", for: "openai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "openai",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: ["gpt-5.4"]
+            )
+        )
+
+        do {
+            _ = try await harness.router.route(
+                modelName: "anthropic/claude-net-new",
+                preferredProviderID: "openai"
+            )
+            XCTFail("Dynamic fallback must not mint an OpenAI route for an Anthropic-qualified model id.")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(modelID, "anthropic/claude-net-new")
+        }
+
+        let sameProviderRoute = try await harness.router.route(
+            modelName: "openai/gpt-net-new",
+            preferredProviderID: "openai"
+        )
+        XCTAssertEqual(sameProviderRoute.providerID, "openai")
+        XCTAssertEqual(sameProviderRoute.resolvedModelID, "openai/gpt-net-new")
+        XCTAssertEqual(sameProviderRoute.canonicalModelID, "openai/gpt-net-new")
+    }
+
+    func testRouterRejectsForeignProviderNamespaceBeforeFamilyMatcher() async throws {
+        let harness = try makeHarness(name: "foreign-namespace-before-matcher")
+        try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-8-family"]
+            )
+        )
+
+        do {
+            _ = try await harness.router.route(
+                modelName: "openai/claude-opus-4-8",
+                preferredProviderID: "anthropic",
+                requestedFormatFamily: .anthropic
+            )
+            XCTFail("Foreign provider namespaces must be rejected before family matchers run.")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(modelID, "openai/claude-opus-4-8")
+        }
+    }
+
     func testRouterTreatsFactoryAsRoutableDroidProvider() async throws {
         let harness = try makeHarness(name: "factory-droid")
         _ = try await harness.configStore.upsertProvider(

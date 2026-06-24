@@ -878,7 +878,8 @@ public struct BurnBarProviderRouter: Sendable {
         named modelName: String,
         in configuration: BurnBarResolvedProviderConfiguration
     ) -> BurnBarCatalogModel? {
-        let normalized = modelName.lowercased()
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, configStore.catalogSupport.modelID(normalized, isNamespaceSafeFor: configuration.provider.id) else { return nil }
 
         if configuration.provider.id.lowercased() == "ollama",
            isOllamaCloudBaseURL(configuration.settings.baseURL),
@@ -962,8 +963,7 @@ public struct BurnBarProviderRouter: Sendable {
         // surfacing a clean missing-credential error. Block only models a
         // different-family vendor owns. Ollama-family catalog models (e.g.
         // "gpt-oss:120b", "qwen3.6:27b-coding-nvfp4") stay routable locally,
-        // since the user may well have pulled them — keeping advertised local
-        // models callable.
+        // since the user may well have pulled them, so advertised local models stay callable.
         if configuration.provider.local,
            let vendor = configStore.catalogSupport.catalog.vendorForModel(named: trimmed),
            !vendor.local,
