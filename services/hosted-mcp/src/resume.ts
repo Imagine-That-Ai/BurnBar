@@ -51,8 +51,7 @@ interface ResumeConversationArgs {
 type ResumeCandidate = {
   documentID: string;
   score: number;
-  tokenMatchedHashes: Set<string>;
-  semanticMatchedHashes: Set<string>;
+  matchedChunkHashes: Set<string>;
 };
 
 const NATIVE_HOSTED_PROVIDERS = new Set(["Claude Code", "Codex"]);
@@ -239,12 +238,19 @@ async function collectPostingMatches(
   const snap = await query.limit(50).get();
   for (const posting of snap.docs) {
     const hash = posting.get("hash");
+    const chunkID = posting.get("chunkID");
     const documentID = posting.get("documentID");
-    if (posting.get("kind") !== kind || typeof hash !== "string" || !requested.has(hash) || typeof documentID !== "string") {
+    if (
+      posting.get("kind") !== kind ||
+      typeof hash !== "string" ||
+      !requested.has(hash) ||
+      typeof chunkID !== "string" ||
+      typeof documentID !== "string"
+    ) {
       continue;
     }
     if (projectName && posting.get("projectName") !== projectName) {continue;}
-    scoreCandidate(candidates, documentID, hash, kind);
+    scoreCandidate(candidates, documentID, chunkID, hash, kind);
   }
 }
 
@@ -268,14 +274,17 @@ async function collectFallbackMatches(
   for (const chunk of snap.docs) {
     const documentID = chunk.get("documentID");
     if (typeof documentID !== "string") {continue;}
-    if (projectName && chunk.get("projectName") !== projectName) {continue;}
+    if (projectName) {
+      const doc = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
+      if (!doc.exists || doc.get?.("projectName") !== projectName) {continue;}
+    }
     const rawValues = chunk.get(field);
     const values = Array.isArray(rawValues)
       ? rawValues.filter((hash: unknown): hash is string => typeof hash === "string")
       : [];
     for (const hash of values) {
       if (requested.has(hash)) {
-        scoreCandidate(candidates, documentID, hash, kind);
+        scoreCandidate(candidates, documentID, chunk.id, hash, kind);
       }
     }
   }
@@ -284,18 +293,18 @@ async function collectFallbackMatches(
 function scoreCandidate(
   candidates: Map<string, ResumeCandidate>,
   documentID: string,
+  chunkID: string,
   hash: string,
   kind: "token" | "semantic"
 ) {
   const current = candidates.get(documentID) ?? {
     documentID,
     score: 0,
-    tokenMatchedHashes: new Set<string>(),
-    semanticMatchedHashes: new Set<string>()
+    matchedChunkHashes: new Set<string>()
   };
-  const matched = kind === "token" ? current.tokenMatchedHashes : current.semanticMatchedHashes;
-  if (matched.has(hash)) {return;}
-  matched.add(hash);
+  const matchKey = `${kind}:${chunkID}:${hash}`;
+  if (current.matchedChunkHashes.has(matchKey)) {return;}
+  current.matchedChunkHashes.add(matchKey);
   current.score += kind === "token" ? 2 : 1;
   candidates.set(documentID, current);
 }

@@ -54,7 +54,7 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
   const activePostingQueryCount = [tokenHashes, semanticHashes].filter((items) => items.length > 0).length;
   const candidateReadCap = Math.max(
     1,
-    Math.min(limit * 2, Math.floor(remainingSearchReadBudget / Math.max(1, activePostingQueryCount * 2)))
+    Math.min(limit * 2, Math.floor(remainingSearchReadBudget / Math.max(1, activePostingQueryCount * 3)))
   );
   const postingReads = await Promise.all([
     collectPostingMatches(db, uid, tokenHashes, "token", candidates, args.provider, candidateReadCap),

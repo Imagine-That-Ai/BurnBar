@@ -70,4 +70,11 @@ describe("encrypted search hash validation", () => {
     expect(source).toContain("assertCloudSearchIndexWriteBudget(writeCount + 1)");
     expect(source).toContain("assertCloudSearchIndexCleanupWriteBudget(cleanupWriteCount + 1)");
   });
+
+  it("keeps callable fallback queries isolated per hash", () => {
+    const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearchQuery.ts"), "utf8");
+
+    expect(source).toContain("Math.floor(250 / fallbackHashes.length)");
+    expect(source).toContain('chunksRef.where(fieldName, "array-contains-any", [hash])');
+  });
 });

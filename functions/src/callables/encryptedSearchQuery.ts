@@ -127,37 +127,26 @@ async function loadPostingChunkIDs(
   return chunkIDs;
 }
 
-/**
- * Score posting-resolved chunks and return the set of requested hashes that actually landed on a
- * matched chunk (the prior `mergePostingHits` "matchedHashes" return used to gate fallbacks).
- */
+/** Score posting-resolved chunks. */
 async function mergePostingHits(
   context: SearchContext,
   hashes: string[],
   kind: "token" | "semantic",
   fieldName: HashFieldName,
   scoreName: ScoreName,
-): Promise<Set<string>> {
-  const matchedHashes = new Set<string>();
-  if (hashes.length === 0) return matchedHashes;
+): Promise<void> {
+  if (hashes.length === 0) return;
   const chunkIDs = await loadPostingChunkIDs(context, hashes, kind);
-  if (chunkIDs.size === 0) return matchedHashes;
+  if (chunkIDs.size === 0) return;
   const requested = new Set(hashes);
   for (const chunkID of chunkIDs) {
     const chunkSnap = context.chunkCache.get(chunkID);
     if (!chunkSnap) continue;
-    if (!mergeChunkDoc(context, chunkSnap, requested, fieldName, scoreName)) continue;
-    const hashesOnChunk = Array.isArray(chunkSnap.get(fieldName))
-      ? chunkSnap.get(fieldName).filter((hash: unknown): hash is string => typeof hash === "string")
-      : [];
-    for (const hash of hashesOnChunk) {
-      if (requested.has(hash)) matchedHashes.add(hash);
-    }
+    mergeChunkDoc(context, chunkSnap, requested, fieldName, scoreName);
   }
-  return matchedHashes;
 }
 
-/** Run the array-contains-any fallback for all requested hashes; scoring dedupes posting hits. */
+/** Run fallback queries per requested hash so common hashes cannot starve capped-only hits. */
 async function mergeFallbackHits(
   context: SearchContext,
   chunksRef: CollectionReference,
@@ -167,10 +156,13 @@ async function mergeFallbackHits(
 ): Promise<void> {
   const fallbackHashes = cloudSearchCompleteFallbackHashes(hashes);
   if (fallbackHashes.length === 0) return;
-  let query = chunksRef.where(fieldName, "array-contains-any", fallbackHashes);
-  if (context.provider) query = query.where("provider", "==", context.provider);
-  const snap = await query.limit(250).get();
-  mergeSnapshot(context, snap, new Set(fallbackHashes), fieldName, scoreName);
+  const perHashLimit = Math.max(1, Math.floor(250 / fallbackHashes.length));
+  for (const hash of fallbackHashes) {
+    let query = chunksRef.where(fieldName, "array-contains-any", [hash]);
+    if (context.provider) query = query.where("provider", "==", context.provider);
+    const snap = await query.limit(perHashLimit).get();
+    mergeSnapshot(context, snap, new Set([hash]), fieldName, scoreName);
+  }
 }
 
 /** Sort scored chunks by weighted score, breaking ties by ordinal (verbatim prior comparator). */

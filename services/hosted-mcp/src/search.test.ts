@@ -173,3 +173,15 @@ test("hosted search falls back to chunk hash arrays when posting fanout is cappe
   assert.equal(result.hits[0].matchKind, "token");
   assert.equal(result.readBudget.withinSearchReadBudget, true);
 });
+
+test("hosted search reserves read budget for posting and fallback phases", async () => {
+  const result = await searchConversations(makeSearchFirestore(), "user-1", {
+    tokenHashes: [HASH_OLD, HASH_CAPPED],
+    semanticHashes: [HASH_NEW],
+    limit: 50
+  });
+
+  assert.equal(result.readBudget.searchReadCap, 150);
+  assert.equal(result.readBudget.withinSearchReadBudget, true);
+  assert.ok(result.readBudget.firestoreDocumentReads <= 150);
+});

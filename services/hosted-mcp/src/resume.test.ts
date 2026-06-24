@@ -235,6 +235,109 @@ test("hosted resume resolves capped hashes through chunk-array fallback", async 
   assert.equal(result.header_plain.provider, "Codex");
 });
 
+test("hosted resume scores repeated document matches per chunk", async () => {
+  const hash = "c".repeat(32);
+  const result = await resumeConversation(
+    makeFirestore([
+      {
+        id: "doc-strong",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-strong",
+          sourceID: "Codex:codex-strong",
+          projectName: "FixtureApp",
+          model: "gpt-strong",
+          sealedTitle: envelope,
+          sealedBodyPreview: envelope
+        }
+      },
+      {
+        id: "doc-weak",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-weak",
+          sourceID: "Codex:codex-weak",
+          projectName: "FixtureApp",
+          model: "gpt-5.1",
+          sealedTitle: envelope,
+          sealedBodyPreview: envelope
+        }
+      }
+    ], [], [
+      {
+        id: "strong-0",
+        data: { documentID: "doc-strong", provider: "Codex", tokenHashes: [hash], semanticHashes: [], ordinal: 0, sealedSnippet: envelope }
+      },
+      {
+        id: "strong-1",
+        data: { documentID: "doc-strong", provider: "Codex", tokenHashes: [hash], semanticHashes: [], ordinal: 1, sealedSnippet: envelope }
+      },
+      {
+        id: "weak-0",
+        data: { documentID: "doc-weak", provider: "Codex", tokenHashes: [hash], semanticHashes: [], ordinal: 0, sealedSnippet: envelope }
+      }
+    ]),
+    "user-1",
+    { tokenHashes: [hash], provider: "Codex", projectName: "FixtureApp" }
+  );
+
+  assert.equal(result.kind, "ported_sealed");
+  if (result.kind !== "ported_sealed") {
+    throw new Error("expected ported_sealed");
+  }
+  assert.equal(result.header_plain.model, "gpt-strong");
+  assert.equal(result.trail_chunk_count, 2);
+});
+
+test("hosted resume applies project filters to fallback chunks through owning documents", async () => {
+  const hash = "d".repeat(32);
+  const result = await resumeConversation(
+    makeFirestore([
+      {
+        id: "doc-other",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-other",
+          sourceID: "Codex:codex-other",
+          projectName: "OtherApp",
+          model: "gpt-5.1",
+          sealedTitle: envelope,
+          sealedBodyPreview: envelope
+        }
+      },
+      {
+        id: "doc-fixture",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-fixture",
+          sourceID: "Codex:codex-fixture",
+          projectName: "FixtureApp",
+          model: "gpt-fixture",
+          sealedTitle: envelope,
+          sealedBodyPreview: envelope
+        }
+      }
+    ], [], [
+      {
+        id: "other-capped",
+        data: { documentID: "doc-other", provider: "Codex", tokenHashes: [hash], semanticHashes: [], ordinal: 0, sealedSnippet: envelope }
+      },
+      {
+        id: "fixture-capped",
+        data: { documentID: "doc-fixture", provider: "Codex", tokenHashes: [hash], semanticHashes: [], ordinal: 0, sealedSnippet: envelope }
+      }
+    ]),
+    "user-1",
+    { tokenHashes: [hash], provider: "Codex", projectName: "FixtureApp" }
+  );
+
+  assert.equal(result.kind, "ported_sealed");
+  if (result.kind !== "ported_sealed") {
+    throw new Error("expected ported_sealed");
+  }
+  assert.equal(result.header_plain.model, "gpt-fixture");
+});
+
 test("hosted resume reports missing sessions without exposing plaintext", async () => {
   const db = makeFirestore();
   const result = await resumeConversation(db, "user-1", { session_id: "missing" });
