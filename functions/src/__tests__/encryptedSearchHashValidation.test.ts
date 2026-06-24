@@ -57,10 +57,12 @@ describe("encrypted search hash validation", () => {
   });
 
   it("budgets stale index cleanup separately from full replacement writes", () => {
-    expect(() => assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT)).not.toThrow();
-    expect(() => assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT + 1)).toThrow(
-      /cloud search index cleanup would write/,
-    );
+    expect(() =>
+      assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT),
+    ).not.toThrow();
+    expect(() =>
+      assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT + 1),
+    ).toThrow(/cloud search index cleanup would write/);
   });
 
   it("keeps the callable wired to same-commit chunk binding and write-budget enforcement", () => {
@@ -74,7 +76,8 @@ describe("encrypted search hash validation", () => {
   it("keeps callable fallback queries isolated per hash", () => {
     const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearchQuery.ts"), "utf8");
 
-    expect(source).toContain("Math.floor(250 / fallbackHashes.length)");
+    expect(source).toContain("SEARCH_FALLBACK_SCAN_BATCH_LIMIT");
+    expect(source).toContain("startAfter(cursor)");
     expect(source).toContain('chunksRef.where(fieldName, "array-contains-any", [hash])');
   });
 });

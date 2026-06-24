@@ -735,6 +735,15 @@ service cloud.firestore {
         && validSessionLogFacets(request.resource.data);
     }
 
+    function validSessionLogLifecycleFields(data) {
+      return (!("deletedAt" in data) || data.deletedAt is timestamp)
+        && (!("version" in data) || (data.version is int && data.version >= 1));
+    }
+
+    function sessionLogTombstoneIsSticky() {
+      return !("deletedAt" in resource.data) || ("deletedAt" in request.resource.data);
+    }
+
     function ownerWritableSessionLogManifestCreate(userId, logId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogManifestCore(userId, logId);
@@ -764,6 +773,8 @@ service cloud.firestore {
         "totalTokens",
         "costUSD",
         "durationSeconds",
+        "deletedAt",
+        "version",
         "toolTags",
         "updatedAt"
       ]);
@@ -773,6 +784,8 @@ service cloud.firestore {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogRefreshKeys()
         && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
+        && validSessionLogLifecycleFields(request.resource.data)
+        && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);
     }
 

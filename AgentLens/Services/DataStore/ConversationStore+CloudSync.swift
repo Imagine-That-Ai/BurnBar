@@ -92,7 +92,7 @@ extension ConversationStore {
                     db,
                     sql: """
                     SELECT * FROM conversations
-                    WHERE logSyncedAt IS NULL AND isRemote = 0 AND deletedAt IS NULL
+                    WHERE logSyncedAt IS NULL AND isRemote = 0
                     ORDER BY COALESCE(endTime, startTime) ASC
                     LIMIT ?
                     """,
@@ -108,7 +108,7 @@ extension ConversationStore {
                     db,
                     sql: """
                     SELECT COUNT(*) FROM conversations
-                    WHERE logSyncedAt IS NULL AND isRemote = 0 AND deletedAt IS NULL
+                    WHERE logSyncedAt IS NULL AND isRemote = 0
                     """
                 ) ?? 0
             }

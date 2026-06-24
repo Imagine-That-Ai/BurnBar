@@ -138,6 +138,116 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertLessThanOrEqual(upload.documentID.count, 512)
     }
 
+    func test_sessionLogSyncPublishesTombstoneWithoutReuploadingBody() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-delete-marker"),
+            provider: .codex,
+            sessionId: "session-delete-marker",
+            projectName: "PrivacyCleanup",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 8,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Deletion marker",
+            lastAssistantMessage: "Cloud should stop surfacing this session.",
+            fullText: "Private transcript body that should not be re-uploaded during delete propagation.",
+            fileModifiedAt: nil,
+            summaryTitle: "Delete Marker"
+        )
+        try await dataStore.upsertConversation(record)
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+
+        await sessionLogSync.sync()
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadRequests.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+        XCTAssertNil(fakeGateway.documentData(at: manifestPath)?["deletedAt"])
+        var legacyManifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        let legacyPlaintextKeys = [
+            "body",
+            "payloadCiphertext",
+            "ciphertext",
+            "data",
+            "text",
+            "title",
+            "snippet",
+            "terms",
+            "projectName",
+            "workingDirectory"
+        ]
+        for key in legacyPlaintextKeys {
+            legacyManifest[key] = "legacy plaintext value"
+        }
+        fakeGateway.setDocumentData(legacyManifest, at: manifestPath)
+
+        let deletedAt = Date(timeIntervalSince1970: 1_700_010_000)
+        try await dataStore.softDeleteConversation(id: record.id, at: deletedAt)
+        let pendingTombstones = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertEqual(pendingTombstones.map(\.id), [record.id])
+        XCTAssertNotNil(pendingTombstones.first?.deletedAt)
+
+        await sessionLogSync.sync()
+
+        let manifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        XCTAssertEqual((manifest["deletedAt"] as? Timestamp)?.dateValue(), deletedAt)
+        XCTAssertEqual(manifest["version"] as? Int, 2)
+        XCTAssertEqual(manifest["id"] as? String, record.id)
+        XCTAssertEqual(manifest["provider"] as? String, AgentProvider.codex.rawValue)
+        for key in legacyPlaintextKeys {
+            XCTAssertNil(manifest[key], "Tombstone propagation must scrub legacy plaintext manifest field \(key).")
+        }
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadRequests.count, 1, "Delete propagation must not upload a second body.")
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1, "Delete propagation must not rewrite encrypted storage bytes.")
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1, "Delete propagation must not add fresh search chunks.")
+        let remainingSessionLogs = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertTrue(remainingSessionLogs.isEmpty)
+    }
+
+    func test_sessionLogSyncDrainsLocalOnlyTombstoneWithoutCreatingCloudManifest() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-delete-before-upload"),
+            provider: .codex,
+            sessionId: "session-delete-before-upload",
+            projectName: "PrivacyCleanup",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 1,
+            userWordCount: 2,
+            assistantWordCount: 3,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Local-only delete marker",
+            lastAssistantMessage: "This log was deleted before upload.",
+            fullText: "Private transcript body that should never leave the device.",
+            fileModifiedAt: nil,
+            summaryTitle: "Local Only Delete"
+        )
+        try await dataStore.upsertConversation(record)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_010_000)
+        try await dataStore.softDeleteConversation(id: record.id, at: deletedAt)
+
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let pendingTombstones = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertEqual(pendingTombstones.map(\.id), [record.id])
+        XCTAssertNotNil(pendingTombstones.first?.deletedAt)
+
+        await sessionLogSync.sync()
+
+        XCTAssertNil(fakeGateway.documentData(at: manifestPath))
+        XCTAssertTrue(fakeEncryptedCloudClient.uploadRequests.isEmpty)
+        XCTAssertTrue(fakeEncryptedCloudClient.uploadedBodies.isEmpty)
+        XCTAssertTrue(fakeEncryptedCloudClient.searchIndexCommits.isEmpty)
+        let remainingSessionLogs = try await dataStore.fetchUnsyncedSessionLogs(limit: 10)
+        XCTAssertTrue(remainingSessionLogs.isEmpty)
+    }
+
     func test_sessionLogUpload_writesCheapSearchMetadataOnExistingChunks() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .kimi, sessionId: "session-kimi-1"),

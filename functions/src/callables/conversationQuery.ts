@@ -118,6 +118,10 @@ export function applyConversationFacetFilters(query: Query, filters: Conversatio
   return filtered;
 }
 
+export function sessionLogManifestIsVisible(docData: Record<string, unknown>): boolean {
+  return !("deletedAt" in docData) || docData.deletedAt == null;
+}
+
 /**
  * Builds the page query: a single order on the requested sort field. Firestore *implicitly*
  * appends a `__name__` (document id) tiebreaker to every ordered query, so a snapshot-based

@@ -159,12 +159,35 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         operation: "Reading local session log"
                     )
 
+                    let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
+                    let manifestRef = logsRef.document(docId)
+                    if let deletedAt = record.deletedAt {
+                        let existingManifest = try await manifestRef.getData()
+                        let operation = existingManifest == nil ? "Skipping absent session tombstone" : "Publishing session tombstone"
+                        progress?.setCurrentRecord(label: label, operation: operation)
+                        var firestoreWrites = 0
+                        if existingManifest != nil {
+                            let tombstone = Self.sessionLogTombstoneFields(for: record, deviceId: deviceId, deletedAt: deletedAt)
+                            try await manifestRef.setData(tombstone, merge: true)
+                            firestoreWrites = 1
+                        }
+                        try await context.dataStore.markSessionLogsSynced(ids: [record.id])
+                        progress?.recordSessionLogOutcome(
+                            label: label,
+                            uploaded: false,
+                            facetRefreshOnly: false,
+                            plaintextBytes: 0,
+                            encryptedBytes: 0,
+                            storageUploads: 0,
+                            firestoreWrites: firestoreWrites,
+                            searchIndexCommits: 0
+                        )
+                        continue
+                    }
                     let markdown = SessionLogMarkdownFormatter.markdown(for: record)
                     // Project/path text is private. It is fed into keyed local
                     // search hashes, then stripped from every cloud document.
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
-                    let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
-                    let manifestRef = logsRef.document(docId)
                     let resolvedVaultKey = try await writableVaultKey(uid: uid)
                     let vaultKey = resolvedVaultKey.keyData
                     let vaultKeyID = resolvedVaultKey.vaultKeyID
@@ -177,6 +200,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                     let facetFields = Self.facetFields(for: record, facets: facets, model: model)
                     let existingManifest = try await manifestRef.getData()
                     if let existing = existingManifest,
+                       existing["deletedAt"] == nil,
                        existing["bodyHash"] as? String == bodyHash,
                        existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                        existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
@@ -512,6 +536,21 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                 context: ["retry": "next_sync_cycle"] // cov:ignore -- nonfatal-log
             ) // cov:ignore -- nonfatal-log
         }
+    }
+
+    private static func sessionLogTombstoneFields(for record: ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
+        var fields: [String: Any] = [
+            "id": record.id,
+            "deviceId": deviceId,
+            "provider": record.provider.rawValue,
+            "sessionId": record.sessionId,
+            "sourceType": record.sourceType.rawValue,
+            "deletedAt": Timestamp(date: deletedAt),
+            "version": record.version,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        fields.merge(legacyPlaintextFieldDeletes()) { _, new in new }
+        return fields
     }
 
     private func recordSyncError(_ error: Error) async {
@@ -1034,6 +1073,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
         return snapshot.documents.compactMap { doc -> ConversationRecord? in
             let data = doc.data()
+            if let deletedAt = data["deletedAt"], !(deletedAt is NSNull) { return nil }
             guard let rawProvider = data["provider"] as? String,
                   let provider = AgentProvider(rawValue: rawProvider) else { return nil }
 
