@@ -246,17 +246,6 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
         return nil
     }
 
-    private static func firstNumber(
-        in object: [String: BurnBarJSONValue],
-        keys: [String]
-    ) -> Double? {
-        for key in keys {
-            guard case .number(let raw)? = object[key] else { continue }
-            return raw
-        }
-        return nil
-    }
-
     private static func firstInteger(
         in object: [String: BurnBarJSONValue],
         keys: [String]
@@ -265,11 +254,10 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
             guard case .number(let raw)? = object[key],
                   raw.isFinite,
                   raw.rounded(.towardZero) == raw,
-                  raw >= Double(Int.min),
-                  raw <= Double(Int.max) else {
+                  let value = Int(exactly: raw) else {
                 continue
             }
-            return Int(raw)
+            return value
         }
         return nil
     }
