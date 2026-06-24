@@ -103,6 +103,32 @@ function respondToVerifyFailure(res: Response, err: unknown): void {
   res.status(500).json({ error: "internal" });
 }
 
+interface ReconcileFailureHttpResponse {
+  statusCode: number;
+  body: Record<string, unknown>;
+}
+
+const RETRYABLE_RECONCILE_ERROR_CODES = new Set(["asc_live_status_unavailable"]);
+
+export function appStoreNotificationReconcileFailureResponse(err: unknown): ReconcileFailureHttpResponse {
+  if (err instanceof EntitlementReconcileError) {
+    if (RETRYABLE_RECONCILE_ERROR_CODES.has(err.code)) {
+      return {
+        statusCode: 503,
+        body: { error: "app_store_unavailable", code: err.code },
+      };
+    }
+    return {
+      statusCode: 200,
+      body: { accepted: false, code: err.code },
+    };
+  }
+  return {
+    statusCode: 500,
+    body: { error: "internal" },
+  };
+}
+
 /**
  * Translate a `reconcileEntitlement` rejection into its HTTP response.
  * For internal errors return 500 so Apple retries. For known policy
@@ -110,17 +136,15 @@ function respondToVerifyFailure(res: Response, err: unknown): void {
  * Apple's retry budget on a doomed payload.
  */
 function respondToReconcileFailure(res: Response, err: unknown, type: string, subtype: string): void {
+  const failure = appStoreNotificationReconcileFailureResponse(err);
   logError({
     event: "appstore.notifications.reconcile_failed",
     message: errorMessage(err),
     type,
     subtype,
+    retryable: failure.statusCode >= 500,
   });
-  if (err instanceof EntitlementReconcileError) {
-    res.status(200).json({ accepted: false, code: err.code });
-    return;
-  }
-  res.status(500).json({ error: "internal" });
+  res.status(failure.statusCode).json(failure.body);
 }
 
 export const appStoreServerNotificationsV2 = onRequest(
