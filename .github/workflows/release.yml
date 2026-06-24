@@ -171,9 +171,26 @@ jobs:
         env:
           MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
         run: |
+          set -euo pipefail
           compact="${MOBILE_UNIT_TEST_BYPASS_REASON//[[:space:]]/}"
           if [[ -z "$compact" ]]; then
             echo "::error::run_mobile_unit_tests=false requires mobile_unit_test_bypass_reason with independent mobile validation evidence."
+            exit 1
+          fi
+          if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then
+            echo "::error::mobile_unit_test_bypass_reason must include owner approval plus independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(mobile|ios|simulator|OpenBurnBarMobileTests|test-openburnbar-mobile)\b' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must describe the independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '(https://github\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."
             exit 1
           fi
 

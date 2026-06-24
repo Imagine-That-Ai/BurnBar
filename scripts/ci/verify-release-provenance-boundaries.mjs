@@ -111,9 +111,8 @@ function yamlStepNameValue(line) {
       stripped = true;
       continue;
     }
-    const tagged = /^!(?:![A-Za-z0-9_-]+|<[^>]+>|[A-Za-z0-9_-]+)(?:\s+|$)/u.exec(
-      value,
-    );
+    const tagged =
+      /^!(?:![A-Za-z0-9_-]+|<[^>]+>|[A-Za-z0-9_-]+)(?:\s+|$)/u.exec(value);
     if (tagged) {
       value = value.slice(tagged[0].length).trimStart();
       stripped = true;
@@ -204,9 +203,29 @@ function namedStepBlock(file, source, stepName, message) {
   return stepBlock;
 }
 
+function conditionalNamedStepBlock(file, source, stepName, message) {
+  const stepBlocks = workflowStepBlocks(source, stepName);
+  if (stepBlocks.length === 0) {
+    fail(file, `${message}: missing step`);
+    return "";
+  }
+  if (stepBlocks.length > 1) {
+    fail(file, `${message}: duplicate step name ${stepName}`);
+  }
+  return stepBlocks[0];
+}
+
 function namedStepRunBlock(file, source, stepName, message) {
   const runBlock = shellRunBlockFromStep(
     namedStepBlock(file, source, stepName, message),
+  );
+  if (!runBlock) fail(file, `${message}: missing run block`);
+  return runBlock;
+}
+
+function conditionalNamedStepRunBlock(file, source, stepName, message) {
+  const runBlock = shellRunBlockFromStep(
+    conditionalNamedStepBlock(file, source, stepName, message),
   );
   if (!runBlock) fail(file, `${message}: missing run block`);
   return runBlock;
@@ -455,6 +474,18 @@ function verifyReleaseWorkflow() {
     "Publish release assets",
     "release publish step",
   );
+  const mobileBypassStep = conditionalNamedStepBlock(
+    file,
+    source,
+    "Validate mobile unit test bypass reason",
+    "release mobile-test bypass validation step",
+  );
+  const mobileBypassRun = conditionalNamedStepRunBlock(
+    file,
+    source,
+    "Validate mobile unit test bypass reason",
+    "release mobile-test bypass validation step",
+  );
 
   requireIncludes(
     file,
@@ -505,6 +536,54 @@ function verifyReleaseWorkflow() {
     file,
     source,
     "release product preflight must be mandatory",
+  );
+  requireIncludes(
+    file,
+    source,
+    "run_mobile_unit_tests:",
+    "release workflow must expose the mobile test gate input",
+  );
+  requireIncludes(
+    file,
+    source,
+    "mobile_unit_test_bypass_reason:",
+    "release workflow must expose a named mobile test bypass evidence input",
+  );
+  requireIncludes(
+    file,
+    mobileBypassStep,
+    "github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests",
+    "mobile test bypass validation must run only for explicit manual bypasses",
+  );
+  requireIncludes(
+    file,
+    mobileBypassRun,
+    "set -euo pipefail",
+    "mobile test bypass validation must fail closed",
+  );
+  requireIncludes(
+    file,
+    mobileBypassRun,
+    "if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then",
+    "mobile test bypass validation must reject weak one-line reasons",
+  );
+  requireIncludes(
+    file,
+    mobileBypassRun,
+    "\\b(owner|approved|approval|approver)\\b",
+    "mobile test bypass validation must require owner approval evidence",
+  );
+  requireIncludes(
+    file,
+    mobileBypassRun,
+    "\\b(mobile|ios|simulator|OpenBurnBarMobileTests|test-openburnbar-mobile)\\b",
+    "mobile test bypass validation must require mobile validation evidence",
+  );
+  requireIncludes(
+    file,
+    mobileBypassRun,
+    "https://github\\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40}",
+    "mobile test bypass validation must require an auditable run, PR, or commit reference",
   );
   requireStepFailClosedMode(
     file,
