@@ -544,6 +544,51 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         return clamped
     }
 
+    private static let cloudPublicToolTagLimit = 12
+
+    private static let cloudPublicToolTags: Set<String> = [
+        "apply_patch",
+        "bash",
+        "edit",
+        "exec_command",
+        "find",
+        "grep_search",
+        "multi_edit",
+        "other",
+        "read",
+        "rg",
+        "search",
+        "sed",
+        "shell",
+        "write"
+    ]
+
+    private static func normalizedPublicToolTag(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        let slug = String(
+            trimmed.map { character in
+                if character.isLetter || character.isNumber || character == "_" || character == "-" {
+                    return character
+                }
+                return "_"
+            }
+        )
+        .split(separator: "_")
+        .joined(separator: "_")
+        .trimmingCharacters(in: CharacterSet(charactersIn: "_-"))
+
+        guard !slug.isEmpty else { return nil }
+        return cloudPublicToolTags.contains(slug) ? slug : "other"
+    }
+
+    static func publicToolTags(from values: [String]) -> [String] {
+        let tags = Set(values.compactMap(normalizedPublicToolTag(_:)))
+        let sortedTags = Array(tags).sorted()
+        return Array(sortedTags[..<min(Self.cloudPublicToolTagLimit, sortedTags.count)])
+    }
+
     static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
         let data = Data(string.utf8)
         guard data.count > maxBytes else { return [string] }
@@ -573,7 +618,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// triggers a one-time backfill (`markAllSessionLogsUnsynced`) so existing manifests get the
     /// new facets. Facets are metadata only — token totals, cost, timing, model/provider, and
     /// generic tool tags. Project names and working directories are device-only.
-    static let facetSchemaVersion = 2
+    static let facetSchemaVersion = 3
 
     private static let legacyPlaintextFields = [
         "body",
@@ -829,14 +874,11 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
             "totalTokens": facets?.totalTokens ?? 0,
             "costUSD": facets?.costUSD ?? 0
         ]
-        // Generic tool names (e.g. "bash", "edit") are non-identifying, unlike key files/commands
-        // which can reveal content, so only tools become queryable cockpit tags.
-        let toolTags = Array(Set(record.keyTools.map { $0.lowercased() }))
-            .filter { !$0.isEmpty }
-            .sorted()
-            .prefix(24)
+        // Only coarse, allowlisted tool slugs are public cockpit facets. Unknown or noisy
+        // tool names collapse to "other" so parser artifacts cannot become content sidecars.
+        let toolTags = publicToolTags(from: record.keyTools)
         if !toolTags.isEmpty {
-            fields["toolTags"] = Array(toolTags)
+            fields["toolTags"] = toolTags
         }
         let start = facets?.startTime ?? record.startTime
         let end = facets?.endTime ?? record.endTime

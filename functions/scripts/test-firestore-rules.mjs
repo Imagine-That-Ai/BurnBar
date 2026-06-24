@@ -2146,7 +2146,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
   await assertSucceeds(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
       ...facetBase,
-      facetSchemaVersion: 2,
+      facetSchemaVersion: 3,
       model: "gpt-5-codex",
       messageCount: 12,
       userWordCount: 340,
@@ -2157,7 +2157,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
       cacheReadTokens: 9000,
       totalTokens: 25200,
       costUSD: 0.42,
-      toolTags: ["bash", "edit", "read"],
+      toolTags: ["bash", "edit", "exec_command", "grep_search", "other", "read"],
       durationSeconds: 540,
     })
   );
@@ -2183,6 +2183,21 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigtags"), {
       ...facetBase,
       toolTags: Array.from({ length: 64 }, (_, index) => `tag${index}`),
+    })
+  );
+
+  // Tool tags are public search facets: only small, known tool slugs are allowed.
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_arbitrary_tag"), {
+      ...facetBase,
+      toolTags: ["bash", "cat-/home/example/redacted-session.md"],
+    })
+  );
+
+  await assertFails(
+    updateDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
+      toolTags: ["read", "paste full prompt here"],
+      updatedAt: serverTimestamp(),
     })
   );
 

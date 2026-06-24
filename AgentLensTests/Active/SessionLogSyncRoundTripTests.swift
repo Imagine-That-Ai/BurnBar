@@ -785,6 +785,49 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(clamped.allSatisfy { $0 == "😀" })
         XCTAssertEqual(clamped.count, 256)
     }
+
+    func test_publicToolTags_collapsesPrivateOrUnknownToolNames() {
+        let tags = SessionLogSyncService.publicToolTags(from: [
+            "Read",
+            "exec_command",
+            "Bash",
+            "bash",
+            "/home/example/redacted-session.md",
+            "paste full prompt here",
+            "",
+            String(repeating: "x", count: 300)
+        ])
+
+        XCTAssertEqual(tags, ["bash", "exec_command", "other", "read"])
+        XCTAssertFalse(tags.contains { $0.contains("redacted") || $0.contains("example") || $0.count > 32 })
+    }
+
+    func test_facetFields_usesOnlyPublicToolTagSlugs() {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "facet-tags"),
+            provider: .codex,
+            sessionId: "facet-tags",
+            projectName: "PrivateProjectName",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_030),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 8,
+            keyFiles: ["/home/example/redacted.swift"],
+            keyCommands: ["cat ~/secret.txt"],
+            keyTools: ["Read", "exec_command", "cat ~/secret.txt"],
+            inferredTaskTitle: "Private task",
+            lastAssistantMessage: "done",
+            fullText: "private transcript",
+            fileModifiedAt: nil
+        )
+
+        let fields = SessionLogSyncService.facetFields(for: record, facets: nil, model: "gpt-5-codex")
+        let tags = fields["toolTags"] as? [String]
+
+        XCTAssertEqual(fields["facetSchemaVersion"] as? Int, 3)
+        XCTAssertEqual(tags, ["exec_command", "other", "read"])
+    }
 }
 
 @MainActor
