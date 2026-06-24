@@ -6,9 +6,10 @@
  * Manager cleanup happen under one audited callable.
  */
 
+import { createHash } from "node:crypto";
 import { getStorage } from "firebase-admin/storage";
 import { logWarn } from "./logging.js";
-import { appendAuditEvent, appendAuditEventRequired, AUDIT_ACTIONS } from "./callables/auditLog.js";
+import { appendAuditEventRequired, AUDIT_ACTIONS } from "./callables/auditLog.js";
 
 interface AccountDeletionSummary {
   destroyedSecrets: number;
@@ -46,6 +47,7 @@ interface AccountDeletionCollection {
 interface AccountDeletionDocumentReference {
   readonly path?: string;
   listCollections(): Promise<AccountDeletionCollection[]>;
+  set?(data: Record<string, unknown>, options?: { merge?: boolean }): Promise<unknown>;
 }
 
 interface AccountDeletionWriteBatch {
@@ -68,17 +70,18 @@ interface AccountDeletionAudit {
   actor: string;
   domain: string;
   /** Injectable appenders for tests; defaults to the live audit chain. */
-  appendAuditEvent?: AccountDeletionAuditAppender;
   appendAuditEventRequired?: AccountDeletionAuditAppender;
 }
 
 interface DeleteUserAccountOptions extends AccountDeletionOptions {
   deleteAuthUser: (uid: string) => Promise<void>;
-  /** Durable audit config. Required: account erasure is irreversible (FINDING-006). */
+  /** Durable audit config. Required because account erasure is irreversible. */
   audit: AccountDeletionAudit;
 }
 
 const BATCH_LIMIT = 400;
+const ACCOUNT_ERASURE_AUDIT_COLLECTION = "account_erasure_audit";
+const ACCOUNT_ERASURE_AUDIT_SCHEMA_VERSION = 1;
 
 /**
  * Root (non-`users/{uid}`) collections that carry per-document `uid` ownership
@@ -95,6 +98,10 @@ export function providerSecretRefDocumentID(uid: string, accountID: string): str
   return `${uid}_${accountID}`;
 }
 
+function accountErasureAuditDocumentID(uid: string): string {
+  return createHash("sha256").update(uid, "utf8").digest("hex");
+}
+
 export async function eraseUserAccount(
   db: AccountDeletionFirestore,
   uid: string,
@@ -102,15 +109,23 @@ export async function eraseUserAccount(
 ): Promise<AccountDeletionResult> {
   // Fail-closed intent: an irreversible account erasure must leave a durable
   // audit record. If the intent cannot be persisted, refuse the action rather
-  // than silently deleting data without evidence (FINDING-006).
+  // than silently deleting data without evidence.
   const appendRequired = options.audit.appendAuditEventRequired ?? appendAuditEventRequired;
-  await appendRequired(uid, {
+  const intentAudit = await appendRequired(uid, {
     actor: options.audit.actor,
     action: AUDIT_ACTIONS.accountDeleteIntent,
     domain: options.audit.domain,
   });
+  await writeAccountErasureAuditIntent(db, uid, options.audit, intentAudit);
 
   const summary = await eraseUserCloudData(db, uid, options);
+  await updateAccountErasureAuditBestEffort(db, uid, {
+    status: summary.failedSecretDestroys > 0 ? "cloud_data_deleted_with_secret_destroy_failures" : "cloud_data_deleted",
+    cloudDataDeletedAt: new Date().toISOString(),
+    deletedDocuments: summary.deletedDocuments,
+    destroyedSecrets: summary.destroyedSecrets,
+    failedSecretDestroys: summary.failedSecretDestroys,
+  });
   if (summary.failedSecretDestroys > 0) {
     return {
       ...summary,
@@ -119,22 +134,12 @@ export async function eraseUserAccount(
     };
   }
 
-  // Best-effort completion record: the intent is the fail-closed guard; the
-  // completion record improves forensics but cannot undo the deletion.
-  const appendComplete = options.audit.appendAuditEvent ?? appendAuditEvent;
-  try {
-    await appendComplete(uid, {
-      actor: options.audit.actor,
-      action: AUDIT_ACTIONS.accountDeleteComplete,
-      domain: options.audit.domain,
-    });
-  } catch {
-    // Completion audit is best-effort; the intent audit already guarantees a
-    // durable record of the irreversible action.
-  }
-
   try {
     await options.deleteAuthUser(uid);
+    await updateAccountErasureAuditBestEffort(db, uid, {
+      status: "account_deleted",
+      authDeletedAt: new Date().toISOString(),
+    });
     return {
       ...summary,
       deletedAuthUser: true,
@@ -142,12 +147,20 @@ export async function eraseUserAccount(
     };
   } catch (error) {
     if (isFirebaseAuthUserNotFound(error)) {
+      await updateAccountErasureAuditBestEffort(db, uid, {
+        status: "auth_user_already_missing",
+        authDeleteObservedAt: new Date().toISOString(),
+      });
       return {
         ...summary,
         deletedAuthUser: false,
         authUserAlreadyMissing: true,
       };
     }
+    await updateAccountErasureAuditBestEffort(db, uid, {
+      status: "auth_delete_failed",
+      authDeleteFailedAt: new Date().toISOString(),
+    });
     throw error;
   }
 }
@@ -170,7 +183,7 @@ export async function eraseUserCloudData(
 
   const safeWarn = (msg: string, err?: unknown, extra?: Record<string, unknown>) => {
     // Always route through the structured scrubber instead of any raw logger so
-    // UIDs and paths are truncated/redacted per I3/I7 invariants. Closes OPUS-F-005.
+    // UIDs and paths are truncated or redacted before logging.
     const payload = {
       event: "account_deletion_warning",
       user_id_hash: userIdHash,
@@ -313,4 +326,77 @@ class DeleteBatcher {
     this.batch = this.db.batch();
     this.pending = 0;
   }
+}
+
+function accountErasureAuditRef(db: AccountDeletionFirestore, uid: string): AccountDeletionDocumentReference {
+  return db.doc(`${ACCOUNT_ERASURE_AUDIT_COLLECTION}/${accountErasureAuditDocumentID(uid)}`);
+}
+
+function extractAuditAppendMetadata(result: unknown): Record<string, unknown> {
+  if (!result || typeof result !== "object") return {};
+  const seq = "seq" in result && typeof result.seq === "number" ? result.seq : undefined;
+  const hash = "hash" in result && typeof result.hash === "string" ? result.hash : undefined;
+  return stripUndefined({
+    intentAuditSeq: seq,
+    intentAuditHash: hash,
+  });
+}
+
+async function writeAccountErasureAuditIntent(
+  db: AccountDeletionFirestore,
+  uid: string,
+  audit: AccountDeletionAudit,
+  intentAudit: unknown,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await mergeAccountErasureAudit(db, uid, {
+    schemaVersion: ACCOUNT_ERASURE_AUDIT_SCHEMA_VERSION,
+    uidHash: accountErasureAuditDocumentID(uid),
+    status: "intent_recorded",
+    actor: audit.actor,
+    domain: audit.domain,
+    intentAction: AUDIT_ACTIONS.accountDeleteIntent,
+    completionAction: AUDIT_ACTIONS.accountDeleteComplete,
+    intentRecordedAt: now,
+    updatedAt: now,
+    ...extractAuditAppendMetadata(intentAudit),
+  });
+}
+
+async function updateAccountErasureAuditBestEffort(
+  db: AccountDeletionFirestore,
+  uid: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await mergeAccountErasureAudit(db, uid, {
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // The fail-closed pre-delete intent is already durable. Later status updates
+    // improve operator forensics but must not resurrect or block account erasure.
+  }
+}
+
+async function mergeAccountErasureAudit(
+  db: AccountDeletionFirestore,
+  uid: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const ref = accountErasureAuditRef(db, uid);
+  if (typeof ref.set !== "function") {
+    throw new Error("Account erasure audit reference does not support set().");
+  }
+  await ref.set(stripUndefined(data), { merge: true });
+}
+
+function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item !== undefined) {
+      result[key] = item;
+    }
+  }
+  return result;
 }

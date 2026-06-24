@@ -1,7 +1,7 @@
 /**
- * FINDING-006 / B.4 — Account erasure writes a durable pre-delete audit intent
- * and a best-effort post-delete completion record. The intent is fail-closed:
- * if it cannot be persisted, no data is destroyed.
+ * Account erasure writes a durable pre-delete retention record outside the
+ * user subtree. The intent is fail-closed: if it cannot be persisted, no data
+ * is destroyed.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -44,21 +44,44 @@ vi.mock("../callables/auditLog.js", () => ({
 
 import { eraseUserAccount } from "../accountDeletion.js";
 
-function fakeDb() {
+type Operation =
+  | { op: "set"; path: string; data: Record<string, unknown>; options?: { merge?: boolean } }
+  | { op: "delete"; path: string }
+  | { op: "commit"; path: string };
+
+function fakeDb({
+  operations = [],
+  failErasureAuditSet = false,
+}: {
+  operations?: Operation[];
+  failErasureAuditSet?: boolean;
+} = {}) {
+  const makeDoc = (path: string) => ({
+    path,
+    set: vi.fn(async (data: Record<string, unknown>, options?: { merge?: boolean }) => {
+      if (failErasureAuditSet && path.startsWith("account_erasure_audit/")) {
+        throw new Error("durable erasure audit unavailable");
+      }
+      operations.push({ op: "set", path, data, options });
+    }),
+    listCollections: async () => [],
+    collection: () => ({
+      listDocuments: async () => [],
+    }),
+  });
   return {
     collection: () => ({
       where: () => ({ get: async () => ({ docs: [], empty: true }) }),
       listDocuments: async () => [],
     }),
-    doc: () => ({
-      listCollections: async () => [],
-      collection: () => ({
-        listDocuments: async () => [],
-      }),
-    }),
+    doc: (path: string) => makeDoc(path),
     batch: () => ({
-      delete: vi.fn(),
-      commit: vi.fn(async () => undefined),
+      delete: vi.fn((ref: { path?: string }) => {
+        operations.push({ op: "delete", path: ref.path ?? "" });
+      }),
+      commit: vi.fn(async () => {
+        operations.push({ op: "commit", path: "batch" });
+      }),
     }),
   };
 }
@@ -72,7 +95,6 @@ function baseOptions(
   overrides: Partial<{
     deleteAuthUser: () => Promise<void>;
     appendAuditEventRequired: AccountDeletionAuditAppender;
-    appendAuditEvent: AccountDeletionAuditAppender;
   }> = {},
 ) {
   return {
@@ -83,7 +105,6 @@ function baseOptions(
       actor: "user:ios",
       domain: "account",
       appendAuditEventRequired: overrides.appendAuditEventRequired ?? appendAuditEventRequired,
-      appendAuditEvent: overrides.appendAuditEvent ?? appendAuditEvent,
     },
   };
 }
@@ -94,7 +115,10 @@ describe("eraseUserAccount — durable deletion audit", () => {
   });
 
   it("persists a pre-delete intent before destroying data", async () => {
-    await eraseUserAccount(fakeDb(), "u1", baseOptions());
+    const operations: Operation[] = [];
+
+    await eraseUserAccount(fakeDb({ operations }), "u1", baseOptions());
+
     expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
     expect(appendAuditEventRequired).toHaveBeenCalledWith(
       "u1",
@@ -104,6 +128,20 @@ describe("eraseUserAccount — durable deletion audit", () => {
         domain: "account",
       }),
     );
+
+    const erasureAuditIntentIndex = operations.findIndex(
+      (operation) =>
+        operation.op === "set" &&
+        operation.path.startsWith("account_erasure_audit/") &&
+        operation.data.status === "intent_recorded",
+    );
+    const userTreeDeleteIndex = operations.findIndex(
+      (operation) => operation.op === "delete" && operation.path === "users/u1",
+    );
+
+    expect(erasureAuditIntentIndex).toBeGreaterThanOrEqual(0);
+    expect(userTreeDeleteIndex).toBeGreaterThanOrEqual(0);
+    expect(erasureAuditIntentIndex).toBeLessThan(userTreeDeleteIndex);
   });
 
   it("fails closed and destroys nothing when the intent cannot be persisted", async () => {
@@ -121,40 +159,70 @@ describe("eraseUserAccount — durable deletion audit", () => {
     expect(appendAuditEvent).not.toHaveBeenCalled();
   });
 
-  it("appends a best-effort completion record after successful deletion", async () => {
-    await eraseUserAccount(fakeDb(), "u1", baseOptions());
-    expect(appendAuditEvent).toHaveBeenCalledTimes(1);
-    expect(appendAuditEvent).toHaveBeenCalledWith(
-      "u1",
-      expect.objectContaining({
-        actor: "user:ios",
-        action: "account.delete.complete",
-        domain: "account",
-      }),
-    );
+  it("fails closed and destroys nothing when the durable retention record cannot be persisted", async () => {
+    const operations: Operation[] = [];
+    const deleteAuthUser = vi.fn(async () => {});
+
+    await expect(
+      eraseUserAccount(fakeDb({ operations, failErasureAuditSet: true }), "u1", baseOptions({ deleteAuthUser })),
+    ).rejects.toThrow(/durable erasure audit unavailable/);
+
+    expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
+    expect(deleteAuthUser).not.toHaveBeenCalled();
+    expect(appendAuditEvent).not.toHaveBeenCalled();
+    expect(operations.find((operation) => operation.op === "delete")).toBeUndefined();
   });
 
-  it("still succeeds when the best-effort completion record fails", async () => {
-    const failingCompletion = vi.fn(async () => {
-      throw new Error("completion audit unavailable");
-    });
+  it("updates the durable retention record after successful deletion without recreating a user audit entry", async () => {
+    const operations: Operation[] = [];
 
-    const result = await eraseUserAccount(
-      fakeDb(),
-      "u1",
-      baseOptions({ appendAuditEvent: failingCompletion }),
-    );
+    const result = await eraseUserAccount(fakeDb({ operations }), "u1", baseOptions());
+
+    const statusUpdates = operations
+      .filter((operation): operation is Extract<Operation, { op: "set" }> => operation.op === "set")
+      .filter((operation) => operation.path.startsWith("account_erasure_audit/"))
+      .map((operation) => operation.data.status);
 
     expect(result.deletedAuthUser).toBe(true);
-    expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
-    expect(failingCompletion).toHaveBeenCalledTimes(1);
+    expect(statusUpdates).toEqual(["intent_recorded", "cloud_data_deleted", "account_deleted"]);
+    expect(appendAuditEvent).not.toHaveBeenCalled();
+    expect(
+      operations.find(
+        (operation) =>
+          operation.op === "set" &&
+          operation.path.startsWith("users/u1/unified_audit_log/") &&
+          operation.data.action === "account.delete.complete",
+      ),
+    ).toBeUndefined();
   });
 
-  it("still records completion when the auth user is already missing", async () => {
+  it("does not store the raw uid in the durable retention record", async () => {
+    const operations: Operation[] = [];
+
+    await eraseUserAccount(fakeDb({ operations }), "u1", baseOptions());
+
+    const erasureAuditWrites = operations.filter(
+      (operation): operation is Extract<Operation, { op: "set" }> =>
+        operation.op === "set" && operation.path.startsWith("account_erasure_audit/"),
+    );
+
+    expect(erasureAuditWrites.length).toBeGreaterThan(0);
+    expect(erasureAuditWrites.some((write) => typeof write.data.uidHash === "string")).toBe(true);
+    for (const write of erasureAuditWrites) {
+      expect(write.path).not.toContain("u1");
+      expect(JSON.stringify(write.data)).not.toContain("u1");
+      if (typeof write.data.uidHash === "string") {
+        expect(write.data.uidHash).toMatch(/^[a-f0-9]{64}$/u);
+      }
+    }
+  });
+
+  it("still records durable completion when the auth user is already missing", async () => {
     const userNotFound = Object.assign(new Error("No such user"), { code: "auth/user-not-found" });
+    const operations: Operation[] = [];
 
     const result = await eraseUserAccount(
-      fakeDb(),
+      fakeDb({ operations }),
       "u1",
       baseOptions({
         deleteAuthUser: async () => {
@@ -165,6 +233,14 @@ describe("eraseUserAccount — durable deletion audit", () => {
 
     expect(result.deletedAuthUser).toBe(false);
     expect(result.authUserAlreadyMissing).toBe(true);
-    expect(appendAuditEvent).toHaveBeenCalledTimes(1);
+    expect(
+      operations.find(
+        (operation) =>
+          operation.op === "set" &&
+          operation.path.startsWith("account_erasure_audit/") &&
+          operation.data.status === "auth_user_already_missing",
+      ),
+    ).toBeDefined();
+    expect(appendAuditEvent).not.toHaveBeenCalled();
   });
 });
