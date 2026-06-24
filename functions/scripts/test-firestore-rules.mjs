@@ -369,7 +369,7 @@ test("credential transfers are server-only for legacy and v2 ids", async () => {
   }
 });
 
-test("provider accounts reject plaintext or unknown credential containers", async () => {
+test("provider accounts reject plaintext, unknown credential containers, and client-authored refresh sweep entries", async () => {
   const ownerDb = authedDb("provider-owner");
   const basePath = "users/provider-owner/provider_accounts/account-1";
   const canonical = {
@@ -378,7 +378,7 @@ test("provider accounts reject plaintext or unknown credential containers", asyn
     label: "Codex",
     status: "connected",
     credentialKind: "token",
-    storageScope: "server_private",
+    storageScope: "device_keychain",
     redactedLabel: "sk_...1234",
     isDefault: true,
     sortKey: 0,
@@ -400,6 +400,28 @@ test("provider accounts reject plaintext or unknown credential containers", asyn
       ...canonical,
       id: "account-3",
       secretVersionName: "projects/x/secrets/y/versions/1",
+    })
+  );
+
+  for (const status of ["connected", "stale", "error"]) {
+    for (const storageScope of ["cloud_refreshable", "server_private"]) {
+      await assertFails(
+        setDoc(doc(ownerDb, `users/provider-owner/provider_accounts/${status}-${storageScope}`), {
+          ...canonical,
+          id: `${status}-${storageScope}`,
+          status,
+          storageScope,
+        })
+      );
+    }
+  }
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/disconnected-cloud"), {
+      ...canonical,
+      id: "disconnected-cloud",
+      status: "disconnected",
+      storageScope: "cloud_refreshable",
     })
   );
 });

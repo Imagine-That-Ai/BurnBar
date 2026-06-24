@@ -3163,6 +3163,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/provider_accounts/{accountId} {
+      function providerAccountRefreshSweepCandidate(data) {
+        return data.status in ["connected", "stale", "error"]
+          && data.storageScope in ["cloud_refreshable", "server_private"];
+      }
+
       function validProviderAccountDocument() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -3212,6 +3217,7 @@ service cloud.firestore {
         && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
         && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
         && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && !providerAccountRefreshSweepCandidate(request.resource.data)
         && request.resource.data.redactedLabel is string
         && request.resource.data.redactedLabel.size() <= 160
         && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
