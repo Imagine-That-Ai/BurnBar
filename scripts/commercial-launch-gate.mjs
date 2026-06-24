@@ -140,6 +140,14 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (python)",
 ];
 const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
+const GITHUB_ACTIONS_APP_SLUG = "github-actions";
+const REQUIRED_MAIN_GATE_WORKFLOW_PATHS = [
+  ".github/workflows/openburnbar-pr-harness.yml",
+];
+const REQUIRED_CODEQL_WORKFLOW_PATHS = [
+  ".github/workflows/codeql.yml",
+  ".github/workflows/codeql-pr.yml",
+];
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",
@@ -773,6 +781,156 @@ function ghJSON(path, options = {}) {
   return { ok: true, value: JSON.parse(result.stdout) };
 }
 
+export function actionsRunIdFromCheckRun(check) {
+  const detailsUrl = String(check?.details_url || check?.html_url || "");
+  const match = /\/actions\/runs\/([0-9]+)(?:\/|$)/u.exec(detailsUrl);
+  return match?.[1] || null;
+}
+
+export function evaluateTrustedGitHubActionsCheckRun(
+  check,
+  { sha, workflowRun, allowedWorkflowPaths },
+) {
+  if (!check) {
+    return {
+      ok: false,
+      status: "missing",
+      conclusion: null,
+      completedAt: null,
+      trust: "missing-check-run",
+    };
+  }
+
+  const picked = pickCheck(check);
+  const appSlug = check.app?.slug || null;
+  if (appSlug !== GITHUB_ACTIONS_APP_SLUG) {
+    return {
+      ...picked,
+      ok: false,
+      appSlug,
+      trust: "untrusted-check-app",
+    };
+  }
+
+  if (!workflowRun) {
+    return {
+      ...picked,
+      ok: false,
+      appSlug,
+      trust: "missing-workflow-run-metadata",
+    };
+  }
+
+  const workflowPath = workflowRun.path || null;
+  const headSha = workflowRun.head_sha || null;
+  const workflowAllowed = allowedWorkflowPaths.includes(workflowPath);
+  const shaMatches = !sha || headSha === sha;
+  const ok =
+    workflowAllowed &&
+    shaMatches &&
+    picked.status === "completed" &&
+    picked.conclusion === "success";
+  return {
+    ...picked,
+    ok,
+    appSlug,
+    workflowPath,
+    workflowName: workflowRun.name || null,
+    runId: workflowRun.id || null,
+    headSha,
+    trust: ok
+      ? "trusted"
+      : workflowAllowed
+        ? shaMatches
+          ? "check-not-successful"
+          : "workflow-run-head-sha-mismatch"
+        : "untrusted-workflow-path",
+  };
+}
+
+function trustedCheckRunFor(check, sha, allowedWorkflowPaths) {
+  if (!check) {
+    return evaluateTrustedGitHubActionsCheckRun(null, {
+      sha,
+      workflowRun: null,
+      allowedWorkflowPaths,
+    });
+  }
+
+  const runId = actionsRunIdFromCheckRun(check);
+  if (!runId) {
+    return {
+      ...pickCheck(check),
+      ok: false,
+      appSlug: check.app?.slug || null,
+      trust: "missing-actions-run-id",
+    };
+  }
+
+  const workflowRun = ghJSON(`/repos/${REPO}/actions/runs/${runId}`);
+  if (!workflowRun.ok) {
+    return {
+      ...pickCheck(check),
+      ok: false,
+      appSlug: check.app?.slug || null,
+      runId,
+      trust: "workflow-run-read-failed",
+      error: workflowRun.error,
+    };
+  }
+
+  return evaluateTrustedGitHubActionsCheckRun(check, {
+    sha,
+    workflowRun: workflowRun.value,
+    allowedWorkflowPaths,
+  });
+}
+
+function findTrustedCheckRun(checkRuns, name, sha, allowedWorkflowPaths) {
+  const candidates = checkRuns.filter((check) => check.name === name);
+  if (candidates.length === 0) {
+    return evaluateTrustedGitHubActionsCheckRun(null, {
+      sha,
+      workflowRun: null,
+      allowedWorkflowPaths,
+    });
+  }
+  const evaluated = candidates.map((check) =>
+    trustedCheckRunFor(check, sha, allowedWorkflowPaths),
+  );
+  return evaluated.find((check) => check.ok) || evaluated[0];
+}
+
+export function evaluateLatestMergedPrForMain({ mainSha, merged }) {
+  if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
+  if (!merged.merge_commit_sha) {
+    return {
+      ok: false,
+      pr: merged.number,
+      headSha: merged.head.sha,
+      error: "merged PR has no merge commit SHA",
+    };
+  }
+  if (merged.merge_commit_sha !== mainSha) {
+    return {
+      ok: false,
+      pr: merged.number,
+      headSha: merged.head.sha,
+      mergeCommitSha: merged.merge_commit_sha,
+      currentMainSha: mainSha,
+      reason:
+        "origin/main has advanced past the latest merged PR; require a new PR merge so launch QA is tied to current main.",
+    };
+  }
+  return {
+    ok: true,
+    pr: merged.number,
+    headSha: merged.head.sha,
+    checkedSha: mainSha,
+    mergeCommitSha: merged.merge_commit_sha,
+  };
+}
+
 function checkGitHubSecuritySettings() {
   const repo = ghJSON(`/repos/${REPO}`);
   if (!repo.ok) return repo;
@@ -843,42 +1001,10 @@ function checkLatestMergedPrGate() {
   ]);
   if (!pulls.ok) return { ok: false, error: pulls.stderr || pulls.stdout };
   const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
-  if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
+  const latestPr = evaluateLatestMergedPrForMain({ mainSha, merged });
+  if (!latestPr.ok) return latestPr;
 
-  if (mainSha && merged.head.sha !== mainSha) {
-    const ancestor = run("git", [
-      "merge-base",
-      "--is-ancestor",
-      merged.head.sha,
-      mainSha,
-    ]);
-    if (ancestor.ok) {
-      return {
-        ok: true,
-        pr: merged.number,
-        headSha: merged.head.sha,
-        supersededByMain: mainSha,
-        skipped: true,
-        reason:
-          "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
-        openburnbarPr: null,
-        functionalQa: null,
-      };
-    }
-  }
-
-  if (merged.merge_commit_sha && merged.merge_commit_sha !== mainSha) {
-    return {
-      ok: true,
-      pr: merged.number,
-      headSha: merged.head.sha,
-      mergeCommitSha: merged.merge_commit_sha,
-      supersededByMainSha: mainSha,
-      note: "Latest merged PR is not main HEAD; mainRequiredGate and mainCodeQL cover the current direct/admin landing commit.",
-    };
-  }
-
-  const checkedSha = merged.merge_commit_sha === mainSha ? mainSha : merged.head.sha;
+  const checkedSha = latestPr.checkedSha;
   const runs = run("gh", [
     "api",
     "-H",
@@ -888,13 +1014,19 @@ function checkLatestMergedPrGate() {
   if (!runs.ok)
     return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = checkRuns.find((check) => check.name === REQUIRED_MAIN_GATE_CHECK);
-  return {
-    ok: required?.status === "completed" && required?.conclusion === "success",
-    pr: merged.number,
-    headSha: merged.head.sha,
+  const required = findTrustedCheckRun(
+    checkRuns,
+    REQUIRED_MAIN_GATE_CHECK,
     checkedSha,
-    openburnbarPr: required ? pickCheck(required) : null,
+    REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+  );
+  return {
+    ok: required.ok === true,
+    pr: latestPr.pr,
+    headSha: latestPr.headSha,
+    mergeCommitSha: latestPr.mergeCommitSha,
+    checkedSha,
+    openburnbarPr: required,
   };
 }
 
@@ -915,11 +1047,16 @@ function checkMainRequiredGate() {
   ]);
   if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = checkRuns.find((check) => check.name === REQUIRED_MAIN_GATE_CHECK);
-  return {
-    ok: required?.status === "completed" && required?.conclusion === "success",
+  const required = findTrustedCheckRun(
+    checkRuns,
+    REQUIRED_MAIN_GATE_CHECK,
     sha,
-    openburnbarPr: required ? pickCheck(required) : null,
+    REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+  );
+  return {
+    ok: required.ok === true,
+    sha,
+    openburnbarPr: required,
   };
 }
 
@@ -941,20 +1078,17 @@ function checkMainCodeQL() {
   if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
 
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const byName = new Map(checkRuns.map((check) => [check.name, check]));
   const checks = REQUIRED_CODEQL_CHECKS.map((name) => {
-    const check = byName.get(name);
-    return {
+    const check = findTrustedCheckRun(
+      checkRuns,
       name,
-      ...(check
-        ? pickCheck(check)
-        : { status: "missing", conclusion: null, completedAt: null }),
-    };
+      sha,
+      REQUIRED_CODEQL_WORKFLOW_PATHS,
+    );
+    return { name, ...check };
   });
   return {
-    ok: checks.every(
-      (check) => check.status === "completed" && check.conclusion === "success",
-    ),
+    ok: checks.every((check) => check.ok === true),
     sha,
     checks,
   };

@@ -16,6 +16,35 @@ RESTORE_DATABASE_ID="${FIRESTORE_RESTORE_DATABASE_ID:-dr-drill-${DRILL_TS}}"
 EVIDENCE_DIR="${FIRESTORE_DRILL_EVIDENCE_DIR:-launch-evidence}"
 CLEANUP="${FIRESTORE_DRILL_CLEANUP:-1}"
 
+positive_integer_env() {
+  local name="$1"
+  local default_value="$2"
+  local max_value="$3"
+  local value="${!name:-$default_value}"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "Invalid ${name}: expected a positive integer number of seconds, got '${value}'." >&2
+    exit 64
+  fi
+  if (( value < 1 || value > max_value )); then
+    echo "Invalid ${name}: expected 1..${max_value} seconds, got ${value}." >&2
+    exit 64
+  fi
+  printf '%s\n' "$value"
+}
+
+validate_timeout_environment() {
+  positive_integer_env FIRESTORE_DRILL_CLEANUP_TIMEOUT_SECONDS 900 86400 >/dev/null
+  positive_integer_env FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS 14400 604800 >/dev/null
+  positive_integer_env FIRESTORE_DRILL_WAIT_POLL_SECONDS 30 3600 >/dev/null
+}
+
+if [[ "${FIRESTORE_DRILL_VALIDATE_TIMEOUTS_ONLY:-0}" == "1" ]]; then
+  validate_timeout_environment
+  exit 0
+fi
+
+validate_timeout_environment
+
 if [[ ! "$RESTORE_DATABASE_ID" =~ ^dr-drill-[a-z0-9-]+$ ]]; then
   echo "Refusing to operate on non-drill database id: ${RESTORE_DATABASE_ID}" >&2
   exit 64
@@ -46,7 +75,8 @@ cleanup_drill_database() {
     echo "Refusing cleanup for non-drill database id: ${RESTORE_DATABASE_ID}" >&2
     return 1
   fi
-  local cleanup_timeout="${FIRESTORE_DRILL_CLEANUP_TIMEOUT_SECONDS:-900}"
+  local cleanup_timeout
+  cleanup_timeout="$(positive_integer_env FIRESTORE_DRILL_CLEANUP_TIMEOUT_SECONDS 900 86400)"
   local cleanup_deadline=$(( $(date +%s) + cleanup_timeout ))
   while gcloud firestore databases describe --database="$RESTORE_DATABASE_ID" --project="$PROJECT" >/dev/null 2>&1; do
     gcloud firestore databases update \
@@ -71,8 +101,10 @@ cleanup_drill_database() {
 
 wait_firestore_operation() {
   local operation="$1"
-  local wait_timeout="${FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS:-14400}"
-  local poll_seconds="${FIRESTORE_DRILL_WAIT_POLL_SECONDS:-30}"
+  local wait_timeout
+  local poll_seconds
+  wait_timeout="$(positive_integer_env FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS 14400 604800)"
+  poll_seconds="$(positive_integer_env FIRESTORE_DRILL_WAIT_POLL_SECONDS 30 3600)"
   local deadline=$(( $(date +%s) + wait_timeout ))
   while true; do
     local operation_json

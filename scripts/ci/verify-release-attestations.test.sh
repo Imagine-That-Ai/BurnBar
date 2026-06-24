@@ -182,6 +182,12 @@ run_case 0 overlapping-required-patterns-pass \
 run_case 1 missing-required-pattern-fails \
   env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag" "*macOS.dmg" "*missing.zip"
 
+missing_sidecar_tag="v9.9.12"
+missing_sidecar_dir="$(new_release_fixture "$missing_sidecar_tag")"
+rm -f "$missing_sidecar_dir/$(safe_name "OpenBurnBar-${missing_sidecar_tag#v}-macOS.dmg").sigstore.json"
+run_case 1 missing-required-sidecar-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$missing_sidecar_tag" "*macOS.dmg"
+
 bad_tag="v9.9.10"
 new_release_fixture "$bad_tag" "self-hosted" >/dev/null
 run_case 1 self-hosted-runner-predicate-fails \
