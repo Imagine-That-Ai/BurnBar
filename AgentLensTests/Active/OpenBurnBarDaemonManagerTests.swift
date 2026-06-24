@@ -602,6 +602,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
+    @MainActor
     func test_writeLaunchAgentPlistPreservesDaemonSocketTokenDiscoveryEnvironment() throws {
         let harness = try makeRuntimePathsHarness(name: "launch-agent-socket-token-env")
         defer { harness.cleanup() }
