@@ -64,6 +64,11 @@ final class SwitcherCLIAuthCoordinator {
         var executableHealthChecker: @Sendable (SwitcherCLIProfileType, String) async -> CLIExecutableHealth = { cliType, executablePath in
             await SwitcherCLIAuthCoordinator.defaultExecutableHealth(cliType: cliType, executablePath: executablePath)
         }
+
+        var persistProfileCredentialAfterLogin: @Sendable (SwitcherCLIProfileType, String) throws -> Void = { cliType, configDirectory in
+            guard cliType == .claude else { return }
+            try SwitcherCLIAuthCoordinator.persistClaudeProfileCredential(configDirectory: configDirectory)
+        }
     }
 
     private let dependencies: Dependencies
@@ -164,6 +169,12 @@ final class SwitcherCLIAuthCoordinator {
                 return .failed("\(cliType.displayName) login did not complete successfully.\(detail)")
             }
             return .failed("\(cliType.displayName) login completed, but BurnBar could not verify the connected account.")
+        }
+
+        do {
+            try dependencies.persistProfileCredentialAfterLogin(cliType, configDirectory)
+        } catch {
+            return .failed("\(cliType.displayName) login completed, but BurnBar could not persist the profile credential: \(error.localizedDescription)")
         }
 
         let updatedProfile = updatedProfileRecord(
@@ -581,5 +592,27 @@ final class SwitcherCLIAuthCoordinator {
         }
 
         return "\(cliType.displayName) cannot open its login prompt because \(reason) Resolved wrapper: \(executablePath). \(installHint)"
+    }
+
+    nonisolated private static func persistClaudeProfileCredential(configDirectory: String) throws {
+        let profileImporter = ClaudeCodeOAuthCredentialImporter(
+            configDirectory: configDirectory,
+            allowDefaultKeychainFallback: false
+        )
+        let credentials: ClaudeOAuthCredentials
+        do {
+            credentials = try profileImporter.load(allowUserInteraction: false)
+        } catch ClaudeCodeOAuthCredentialImportError.missing {
+            credentials = try ClaudeCodeOAuthCredentialImporter(
+                configDirectory: configDirectory,
+                allowDefaultKeychainFallback: true
+            ).load(allowUserInteraction: true)
+        }
+
+        let service = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: configDirectory
+        )
+        try KeychainStore(service: service, legacyServices: [])
+            .set(credentials.routeCredentialStoragePayload(), for: NSUserName())
     }
 }
