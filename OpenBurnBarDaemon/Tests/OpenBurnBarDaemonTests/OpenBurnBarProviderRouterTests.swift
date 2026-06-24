@@ -106,8 +106,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.resolvedModelID, "deepseek-v4-flash")
     }
 
-    func testRouterPreservesUnlistedOllamaCloudAliasAsDirectCloudModelID() async throws {
-        let harness = try makeHarness(name: "ollama-cloud-family")
+    func testRouterRequiresConfiguredOllamaCloudModel() async throws {
+        let harness = try makeHarness(name: "ollama-cloud-allowlist")
         try await harness.configStore.setSecret("ollama-key", for: "ollama")
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -116,6 +116,22 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 baseURL: "https://ollama.com/api",
                 preferredModelIDs: ["ollama-cloud-family"]
             )
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
+            XCTFail("Ollama Cloud family rows must not allow arbitrary cloud aliases")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(modelID, "some-new-model:cloud")
+        }
+
+        _ = try await harness.configStore.upsertCustomModel(
+            providerID: "ollama",
+            customModel: BurnBarCustomModel(modelID: "some-new-model", displayName: "Some New Model")
         )
 
         let colonRoute = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
@@ -152,9 +168,16 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTAssertEqual(modelID, "claude-opus-4-8:cloud")
         }
 
-        let unlistedCloudRoute = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
-        XCTAssertEqual(unlistedCloudRoute.providerID, "ollama")
-        XCTAssertEqual(unlistedCloudRoute.resolvedModelID, "some-new-model")
+        do {
+            _ = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
+            XCTFail("Ollama Cloud must not synthesize unconfigured cloud model routes")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(modelID, "some-new-model:cloud")
+        }
     }
 
     func testRouterDoesNotRouteUnsuffixedModelToOllamaCloud() async throws {
@@ -184,10 +207,42 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(cloudRoute.providerID, "ollama")
         XCTAssertEqual(cloudRoute.resolvedModelID, "deepseek-v4-flash")
 
-        let unlistedCloudRoute = try await harness.router.route(modelName: "glm-5.2:cloud", preferredProviderID: "ollama")
-        XCTAssertEqual(unlistedCloudRoute.providerID, "ollama")
-        XCTAssertEqual(unlistedCloudRoute.resolvedModelID, "glm-5.2")
-        XCTAssertEqual(unlistedCloudRoute.modelCapabilityClassID, "glm-5.2")
+        for unconfiguredModel in ["some-new-model:cloud", "another-new-model-cloud"] {
+            do {
+                let route = try await harness.router.route(modelName: unconfiguredModel, preferredProviderID: "ollama")
+                XCTFail(
+                    """
+                    Expected unconfigured Ollama Cloud model to be rejected: \(unconfiguredModel); \
+                    routed via \(route.providerID) as \(route.resolvedModelID)
+                    """
+                )
+            } catch let error as BurnBarProviderRouterError {
+                guard case .unsupportedModel(let modelID) = error else {
+                    XCTFail("Unexpected error: \(error)")
+                    return
+                }
+                XCTAssertEqual(modelID, unconfiguredModel)
+            }
+        }
+    }
+
+    func testRouterRoutesConfiguredOllamaCloudCatalogAliases() async throws {
+        let harness = try makeHarness(name: "ollama-cloud-configured-aliases")
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["kimi-k2.7-code", "glm-5.2"]
+            )
+        )
+
+        let glmRoute = try await harness.router.route(modelName: "glm-5.2:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(glmRoute.providerID, "ollama")
+        XCTAssertEqual(glmRoute.resolvedModelID, "glm-5.2")
+        XCTAssertEqual(glmRoute.canonicalModelID, "glm-5.2:cloud")
+        XCTAssertEqual(glmRoute.modelCapabilityClassID, "glm-5.2")
 
         let documentedAliasRoute = try await harness.router.route(
             modelName: "kimi-k2.7:cloud",
