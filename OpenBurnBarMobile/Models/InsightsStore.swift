@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import os.log
 import Security
 import SwiftUI
@@ -196,7 +197,8 @@ final class InsightsStore {
         let answerModel = modelForAnalysis(instruction: .answerFollowUp)
         let modelDisplay = answerModel.displayName
         let egressLabel = answerModel.egressTier.displayLabel
-        Self.log.info("compose: prompt=\"\(prompt, privacy: .public)\" model=\(modelDisplay, privacy: .public) egress=\(egressLabel, privacy: .public)")
+        let promptLog = Self.sensitiveTextLogContext(prompt)
+        Self.log.info("compose: promptHash=\(promptLog.fingerprint, privacy: .public) promptChars=\(promptLog.characterCount, privacy: .public) model=\(modelDisplay, privacy: .public) egress=\(egressLabel, privacy: .public)")
         composerError = nil
         isComposing = true
         composerStatus = .running(prompt: prompt, modelDisplayName: modelDisplay, egressLabel: egressLabel)
@@ -286,7 +288,8 @@ final class InsightsStore {
                 let runtimeLabel = requestedRuntime == "auto" ? "Mac agent fleet" : requestedRuntime
                 missionStatus = .dispatched(title: title, runtime: runtimeLabel)
                 observeMission(requestID: requestID, fallbackTitle: title)
-                Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) title=\"\(title, privacy: .public)\" missionKind=\(missionKind, privacy: .public) runtime=\(runtimeLabel, privacy: .public)")
+                let titleLog = Self.sensitiveTextLogContext(title)
+                Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) titleHash=\(titleLog.fingerprint, privacy: .public) titleChars=\(titleLog.characterCount, privacy: .public) missionKind=\(missionKind, privacy: .public) runtime=\(runtimeLabel, privacy: .public)")
             } catch {
                 missionStatus = .failed(title: title, message: error.localizedDescription)
             }
@@ -339,6 +342,18 @@ final class InsightsStore {
     }
 
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "InsightsStore")
+
+    struct SensitiveTextLogContext: Equatable, Sendable {
+        let fingerprint: String
+        let characterCount: Int
+    }
+
+    nonisolated static func sensitiveTextLogContext(_ text: String) -> SensitiveTextLogContext {
+        SensitiveTextLogContext(
+            fingerprint: SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined(),
+            characterCount: text.count
+        )
+    }
 
     private static func missionKind(for prompt: String) -> String {
         let lowered = prompt.lowercased()
