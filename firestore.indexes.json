@@ -467,6 +467,52 @@
       ]
     },
     {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "targetClientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "destinationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "targetClientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "destinationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "hermes_gateway_messages",
       "queryScope": "COLLECTION",
       "fields": [
