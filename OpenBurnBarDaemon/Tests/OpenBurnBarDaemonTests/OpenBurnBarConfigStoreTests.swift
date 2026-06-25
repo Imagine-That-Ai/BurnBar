@@ -7,6 +7,13 @@ import Security
 #endif
 
 final class BurnBarConfigStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Keep the developer's real "Claude Code-credentials" Keychain item from leaking
+        // into Claude Code fallback fixtures. CI runners have no such item; dev machines do.
+        setenv("BURNBAR_DISABLE_CLAUDE_CODE_KEYCHAIN_FALLBACK", "1", 1)
+    }
+
     func testDaemonKeychainSecretStoresDisableSystemPromptsForBackgroundReads() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

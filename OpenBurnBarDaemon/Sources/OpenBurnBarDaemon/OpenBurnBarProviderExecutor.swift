@@ -918,7 +918,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
            storedAnthropicCredentialRefreshFailed || !foundStoredSecret,
            let ccToken = try await claudeCodeCredentialSecret(
             for: providerID,
-            expectedOrganizationUuid: failedAnthropicOrganizationUuid
+            expectedOrganizationUuid: failedAnthropicOrganizationUuid,
+            enforceOrganizationMatch: storedAnthropicCredentialRefreshFailed
            ) {
             return ccToken
         }
@@ -1152,7 +1153,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     /// OAuth session independently.
     private func claudeCodeCredentialSecret(
         for providerID: String,
-        expectedOrganizationUuid: String?
+        expectedOrganizationUuid: String?,
+        enforceOrganizationMatch: Bool
     ) async throws -> String? {
         guard Self.normalizedProviderID(providerID) == "anthropic" else {
             return nil
@@ -1163,7 +1165,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
                 continue
             }
-            if let expectedOrganizationUuid {
+            // When a daemon credential failed we may only borrow a Claude Code credential
+            // from the same organization. The match is nil-aware: a daemon credential with
+            // no organization may only borrow a Claude Code credential that also has none
+            // (so org-scoped CC credentials are never used for an org-less daemon slot).
+            // When there is no daemon credential to match against, any valid CC credential
+            // is acceptable.
+            if enforceOrganizationMatch || expectedOrganizationUuid != nil {
                 guard credential.organizationUuid == expectedOrganizationUuid else {
                     continue
                 }
@@ -1192,11 +1200,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
 
         let username = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
-        for service in [Self.claudeCodeKeychainService] {
-            if let raw = Self.readKeychainPassword(service: service, account: username)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-               !raw.isEmpty {
-                payloads.append(raw)
+        // Tests set this so the developer's real "Claude Code-credentials" Keychain item
+        // never leaks into fixtures (CI runners have no such item; dev machines do).
+        if ProcessInfo.processInfo.environment["BURNBAR_DISABLE_CLAUDE_CODE_KEYCHAIN_FALLBACK"] != "1" {
+            for service in [Self.claudeCodeKeychainService] {
+                if let raw = Self.readKeychainPassword(service: service, account: username)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !raw.isEmpty {
+                    payloads.append(raw)
+                }
             }
         }
 
