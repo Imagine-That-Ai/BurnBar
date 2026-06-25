@@ -40,11 +40,14 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
         persist(config)
         let controller = resolvedController()
         let hasUSBSetupPort = await PixelClockFirmwareFlasher.hasSetupCandidateSerialDevice()
-        let visibleSetupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID()
-        guard hasUSBSetupPort || visibleSetupSSID != nil else {
+        guard hasUSBSetupPort else {
+            let visibleSetupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID()
+            let setupNetworkGuidance = visibleSetupSSID.map {
+                " OpenBurnBar can see setup Wi-Fi \($0), but it will not send Wi-Fi credentials to a setup network unless it was just bound to this Mac by USB flashing."
+            } ?? ""
             throw NSError(domain: "PixelClock", code: 5, userInfo: [
                 NSLocalizedDescriptionKey: "No Pixel Clock setup path found. The TC001 can be powered by its battery or a charge-only cable without exposing USB data to the Mac. " +
-                    "Put the clock on Wi-Fi, connect it directly with a data-capable USB cable, or reboot it until the AWTRIX setup Wi-Fi appears."
+                    "Put the clock on Wi-Fi or connect it directly with a data-capable USB cable.\(setupNetworkGuidance)"
             ])
         }
         let credentials = try wifiCredentials ?? Self.promptForWiFiCredentials()
@@ -96,7 +99,7 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     private static func promptForWiFiCredentials() throws -> PixelClockWiFiCredentials {
         let alert = NSAlert()
         alert.messageText = "Finish Pixel Clock setup"
-        alert.informativeText = "Enter your 2.4 GHz Wi-Fi name and password once. OpenBurnBar will use USB or the AWTRIX setup Wi-Fi, send Wi-Fi, reconnect, and push the display."
+        alert.informativeText = "Enter your 2.4 GHz Wi-Fi name and password once. OpenBurnBar will flash the USB-connected Pixel Clock, join only that verified setup Wi-Fi, send Wi-Fi, reconnect, and push the display."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Finish Setup")
         alert.addButton(withTitle: "Cancel")

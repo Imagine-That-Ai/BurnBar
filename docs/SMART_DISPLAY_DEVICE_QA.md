@@ -38,8 +38,8 @@ The iOS-side bridge freshness gate (`SmartHubStore.hasLiveMacBridge`) requires a
 2. Launch the current OpenBurnBar app build.
 3. Enable `ULANZI TC001 Pixel Clock`.
 4. Use `Make display work`; that is the supported one-click repair/setup path for normal users.
-5. If the clock is already broadcasting an AWTRIX setup Wi-Fi network such as `awtrix_f0e1d2`, verify setup offers `Send Wi-Fi and Finish`, briefly joins that setup network, posts Wi-Fi credentials, returns to the normal network, and pushes OpenBurnBar after the clock reconnects.
-6. If the clock is not already on Wi-Fi and no setup network is visible, connect it to the Mac with a data-capable USB cable. Verify setup refuses to flash phone/modem serial ports and only offers the flash path when an ESP/CP210/CH340/WCH-style clock port is present.
+5. If the clock is already broadcasting an AWTRIX setup Wi-Fi network such as `awtrix_f0e1d2`, verify setup does **not** offer to send Wi-Fi credentials to that network until the clock has been USB-flashed by this Mac. A visible setup SSID by itself is only a diagnostic hint.
+6. If the clock is not already on Wi-Fi, connect it to the Mac with a data-capable USB cable. Verify setup refuses to flash phone/modem serial ports and only offers the flash path when an ESP/CP210/CH340/WCH-style clock port is present.
 7. Verify setup leaves brightness at or below `PixelClockConfig.safeMaximumBrightness` before the first custom frame is pushed.
 8. Verify the clock shows the OpenBurnBar provider carousel, not the stock AWTRIX screen.
 9. Verify every connected quota provider appears with both short and long window pages when buckets are available.
