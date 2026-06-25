@@ -53,6 +53,26 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         let reset = CLIQuotaExhaustionClassifier.exhaustionWindowEnd(from: detail, now: now)
         XCTAssertEqual(reset, now.addingTimeInterval(5 * 60 * 60))
     }
+
+    func test_classifierIgnoresUnanchoredOutOfLimitText() {
+        let detail = "The assistant draft says these examples are out of limits, then keeps writing."
+
+        XCTAssertNil(CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail))
+    }
+
+    func test_supervisorDoesNotEmitQuotaEventForUnanchoredOutOfLimitText() {
+        let recorder = SupervisorEventRecorder()
+        let supervisor = CLITerminalSessionSupervisor(cliType: .codex) { event in
+            recorder.record(event)
+        }
+
+        supervisor.ingest(
+            "Here is normal model output discussing values that are out of limits.\n",
+            source: .stdout
+        )
+
+        XCTAssertTrue(recorder.snapshot().isEmpty)
+    }
 }
 
 private final class SupervisorEventRecorder: Sendable {
