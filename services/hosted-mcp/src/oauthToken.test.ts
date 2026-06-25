@@ -44,10 +44,45 @@ function makeDb(opts: {
   grantRevoked?: boolean;
   grantExpiresAtMs?: number;
   suspended?: boolean;
+  beforeTransactionGet?: (grantState: { refreshTokenHash: string; sets: unknown[] }) => void;
 }): { db: RefreshFirestore; grantState: { refreshTokenHash: string; sets: unknown[] } } {
   const grantState: { refreshTokenHash: string; sets: unknown[] } = {
     refreshTokenHash: opts.refreshTokenHash,
     sets: [],
+  };
+  const grantField = (f: string): unknown => {
+    if (f === "refreshTokenHash") {return grantState.refreshTokenHash;}
+    if (f === "clientId") {return opts.clientId;}
+    if (f === "scopes") {return SCOPES;}
+    if (f === "revokedAt") {return opts.grantRevoked ? new Date().toISOString() : undefined;}
+    if (f === "expiresAt") {
+      return { toMillis: () => opts.grantExpiresAtMs ?? Date.now() + 90 * 24 * 3_600_000 };
+    }
+    return undefined;
+  };
+  const applyGrantSet = (value: unknown): void => {
+    grantState.sets.push(value);
+    if (
+      value &&
+      typeof value === "object" &&
+      "refreshTokenHash" in value &&
+      typeof (value as { refreshTokenHash?: unknown }).refreshTokenHash === "string"
+    ) {
+      grantState.refreshTokenHash = (value as { refreshTokenHash: string }).refreshTokenHash;
+    }
+  };
+  const grantRef = {
+    async get() {
+      return { get: grantField };
+    },
+    async set(value: unknown) {
+      applyGrantSet(value);
+    },
+  };
+  const grantDoc = {
+    id: "rmg_int",
+    get: grantField,
+    ref: grantRef,
   };
   const db: RefreshFirestore = {
     doc(path: string) {
@@ -84,34 +119,7 @@ function makeDb(opts: {
               return {
                 async get() {
                   return {
-                    docs: [
-                      {
-                        id: "rmg_int",
-                        get(f: string) {
-                          if (f === "refreshTokenHash") {return grantState.refreshTokenHash;}
-                          if (f === "clientId") {return opts.clientId;}
-                          if (f === "scopes") {return SCOPES;}
-                          if (f === "revokedAt") {return opts.grantRevoked ? new Date().toISOString() : undefined;}
-                          if (f === "expiresAt") {
-                            return { toMillis: () => opts.grantExpiresAtMs ?? Date.now() + 90 * 24 * 3_600_000 };
-                          }
-                          return undefined;
-                        },
-                        ref: {
-                          async set(value: unknown) {
-                            grantState.sets.push(value);
-                            if (
-                              value &&
-                              typeof value === "object" &&
-                              "refreshTokenHash" in value &&
-                              typeof (value as { refreshTokenHash?: unknown }).refreshTokenHash === "string"
-                            ) {
-                              grantState.refreshTokenHash = (value as { refreshTokenHash: string }).refreshTokenHash;
-                            }
-                          },
-                        },
-                      },
-                    ],
+                    docs: [grantDoc],
                   };
                 },
               };
@@ -119,6 +127,19 @@ function makeDb(opts: {
           };
         },
       };
+    },
+    async runTransaction(updateFunction) {
+      let beforeTransactionGet = opts.beforeTransactionGet;
+      return updateFunction({
+        async get(ref) {
+          beforeTransactionGet?.(grantState);
+          beforeTransactionGet = undefined;
+          return ref.get();
+        },
+        set(ref, value, options) {
+          void ref.set(value, options);
+        },
+      });
     },
   };
   return { db, grantState };
@@ -192,6 +213,29 @@ test("rotated refresh token cannot be replayed", async () => {
     () => handleRefreshTokenGrant(db, { grantType: "refresh_token", refreshToken, accessToken: expired }),
     /invalid or has been rotated/,
   );
+});
+
+test("refresh rotation re-checks the verifier inside the transaction", async () => {
+  process.env.MCP_TOKEN_HMAC_SECRET = SECRET;
+  const uid = "user-race";
+  const clientId = "obbc_race";
+  const expired = mintAccessToken(uid, clientId, { exp: Math.floor(Date.now() / 1000) - 60 });
+  const refreshToken = "obbr_racesecret";
+  const dbAndState = makeDb({
+    uid,
+    clientId,
+    refreshTokenHash: sha256(refreshToken),
+    beforeTransactionGet: (grantState) => {
+      grantState.refreshTokenHash = sha256("obbr_already_rotated_elsewhere");
+    },
+  });
+
+  await assert.rejects(
+    () => handleRefreshTokenGrant(dbAndState.db, { grantType: "refresh_token", refreshToken, accessToken: expired }),
+    /invalid or has been rotated/,
+  );
+  assert.equal(dbAndState.grantState.refreshTokenHash, sha256("obbr_already_rotated_elsewhere"));
+  assert.equal(dbAndState.grantState.sets.length, 0);
 });
 
 test("refresh fails closed on client revocation, lost entitlement, and revoked/expired grant", async () => {
