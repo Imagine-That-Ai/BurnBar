@@ -492,15 +492,6 @@ final class PixelClockController {
             )
         case .unknown, .unreachable:
             updateProbeStatus(result.status)
-            if let setupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID() {
-                return PixelClockSetupResult(
-                    mode: .needsWiFiProvisioning,
-                    probeStatus: result.status,
-                    message: "AWTRIX setup Wi-Fi \(setupSSID) is visible. OpenBurnBar can send your Wi-Fi settings and push the display.",
-                    clockHost: config.host,
-                    setupSSID: setupSSID
-                )
-            }
             let serialDiagnostics = await flasher.serialDiagnostics()
             if serialDiagnostics.hasClockCandidate {
                 return PixelClockSetupResult(
@@ -509,6 +500,16 @@ final class PixelClockController {
                     message: "Pixel Clock is not on Wi-Fi yet. OpenBurnBar found a USB setup port and can flash AWTRIX, send Wi-Fi, and push the display.",
                     clockHost: config.host,
                     flasherURL: Self.awtrixLightFlasherURL
+                )
+            }
+            if let setupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID() {
+                return PixelClockSetupResult(
+                    mode: .needsAwtrixLightFlash,
+                    probeStatus: result.status,
+                    message: "AWTRIX setup Wi-Fi \(setupSSID) is visible, but OpenBurnBar will not send Wi-Fi credentials to an unverified setup network. Connect the Pixel Clock over USB and run Flash and Finish Setup, or use the manual flasher.",
+                    clockHost: config.host,
+                    flasherURL: Self.awtrixLightFlasherURL,
+                    setupSSID: setupSSID
                 )
             }
             return PixelClockSetupResult(
@@ -532,27 +533,13 @@ final class PixelClockController {
     }
 
     func flashPixelClockFirmware(wifiCredentials: PixelClockWiFiCredentials? = nil) async throws -> PixelClockSetupResult {
-        if let setupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID() {
-            guard let wifiCredentials else {
-                return PixelClockSetupResult(
-                    mode: .needsWiFiProvisioning,
-                    probeStatus: .unreachable,
-                    message: "AWTRIX setup Wi-Fi \(setupSSID) is visible. Enter Wi-Fi to finish setup.",
-                    clockHost: settingsManager.pixelClockConfig.host,
-                    setupSSID: setupSSID
-                )
-            }
-            return try await provisionSetupNetworkAndFinish(
-                setupSSID: setupSSID,
-                firmwareVersion: nil,
-                wifiCredentials: wifiCredentials
-            )
-        }
-
         let flashResult = try await flasher.flash()
         var provisionedHost: String?
         if let wifiCredentials {
-            provisionedHost = try await PixelClockNetworkProvisioner(setupSSID: flashResult.setupSSID)
+            provisionedHost = try await PixelClockNetworkProvisioner(
+                setupSSID: flashResult.setupSSID,
+                setupNetworkTrust: .usbFlashDerived
+            )
                 .provision(credentials: wifiCredentials)
             var config = settingsManager.pixelClockConfig
             config.host = provisionedHost ?? config.host
@@ -577,39 +564,6 @@ final class PixelClockController {
                 ? "Flashed AWTRIX \(flashResult.firmwareVersion). Enter Wi-Fi to finish setup."
                 : "Flashed AWTRIX \(flashResult.firmwareVersion) and sent Wi-Fi, but the clock did not answer on \(provisionedHost ?? setup.clockHost) yet.",
             clockHost: provisionedHost ?? setup.clockHost
-        )
-    }
-
-    private func provisionSetupNetworkAndFinish(
-        setupSSID: String,
-        firmwareVersion: String?,
-        wifiCredentials: PixelClockWiFiCredentials
-    ) async throws -> PixelClockSetupResult {
-        let provisionedHost = try await PixelClockNetworkProvisioner(setupSSID: setupSSID)
-            .provision(credentials: wifiCredentials)
-        var config = settingsManager.pixelClockConfig
-        config.host = provisionedHost
-        config.updatedAt = Date()
-        settingsManager.pixelClockConfig = config
-
-        try await Task.sleep(nanoseconds: 5_000_000_000)
-        let setup = try await preparePixelClock()
-        if setup.probeStatus == .awtrixReady {
-            try await pushPixelClockNow()
-            let prefix = firmwareVersion.map { "Flashed AWTRIX \($0), " } ?? ""
-            return PixelClockSetupResult(
-                mode: .awtrixLightReady,
-                probeStatus: .awtrixReady,
-                message: "\(prefix)joined Wi-Fi, and pushed OpenBurnBar.",
-                clockHost: setup.clockHost
-            )
-        }
-        return PixelClockSetupResult(
-            mode: .needsWiFiProvisioning,
-            probeStatus: setup.probeStatus,
-            message: "Sent Wi-Fi to AWTRIX setup network \(setupSSID), but the clock did not answer on \(provisionedHost) yet.",
-            clockHost: provisionedHost,
-            setupSSID: setupSSID
         )
     }
 

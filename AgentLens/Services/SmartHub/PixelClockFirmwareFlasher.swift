@@ -370,8 +370,13 @@ struct PixelClockFirmwareFlasher {
 }
 
 struct PixelClockNetworkProvisioner {
+    enum SetupNetworkTrust: Equatable, Sendable {
+        case usbFlashDerived
+    }
+
     enum ProvisionError: LocalizedError {
         case missingSetupSSID
+        case unverifiedSetupNetwork(String)
         case joinFailed(String)
         case connectFailed(String)
 
@@ -379,6 +384,8 @@ struct PixelClockNetworkProvisioner {
             switch self {
             case .missingSetupSSID:
                 return "AWTRIX flashed, but OpenBurnBar could not determine the clock setup Wi-Fi name."
+            case .unverifiedSetupNetwork(let ssid):
+                return "OpenBurnBar will not send Wi-Fi credentials to unverified setup network \(ssid). Connect the Pixel Clock over USB and run Flash and Finish Setup so the setup network is bound to the flashed device."
             case .joinFailed(let ssid):
                 return "AWTRIX flashed, but the setup network \(ssid) was not visible. Reboot the clock while it is plugged in, then run Finish Setup again."
             case .connectFailed(let message):
@@ -388,10 +395,20 @@ struct PixelClockNetworkProvisioner {
     }
 
     let setupSSID: String?
+    let setupNetworkTrust: SetupNetworkTrust?
     let setupPassword = "12345678"
+
+    init(setupSSID: String?, setupNetworkTrust: SetupNetworkTrust? = nil) {
+        self.setupSSID = setupSSID
+        self.setupNetworkTrust = setupNetworkTrust
+    }
 
     func provision(credentials: PixelClockWiFiCredentials) async throws -> String {
         guard let setupSSID else { throw ProvisionError.missingSetupSSID }
+        guard setupNetworkTrust == .usbFlashDerived,
+              Self.isUSBFlashDerivedSetupSSID(setupSSID) else {
+            throw ProvisionError.unverifiedSetupNetwork(setupSSID)
+        }
         let originalSSID = Self.currentWiFiSSID()
 
         do {
@@ -451,6 +468,15 @@ struct PixelClockNetworkProvisioner {
             }
     }
 
+    static func isUSBFlashDerivedSetupSSID(_ ssid: String) -> Bool {
+        let normalized = ssid.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.hasPrefix("awtrix_") else { return false }
+        let suffix = normalized.dropFirst("awtrix_".count)
+        guard suffix.count == 6 else { return false }
+        let hexadecimalCharacters = Set("0123456789abcdef")
+        return suffix.allSatisfy { hexadecimalCharacters.contains($0) }
+    }
+
     private static func primaryWiFiInterface() -> CWInterface? {
         CWWiFiClient.shared().interface(withName: "en0")
             ?? CWWiFiClient.shared().interfaces()?.first
@@ -471,7 +497,7 @@ struct PixelClockNetworkProvisioner {
     private static func waitForSetupPortal() async throws {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
-            if (try? await run("/usr/bin/curl", ["-sS", "--max-time", "2", "http://192.168.4.1/ipaddress"], timeout: 4)) != nil { // try?-ok(poll retry until deadline)
+            if (try? await setupPortalData(path: "/ipaddress", method: "GET", timeout: 2)) != nil { // try?-ok(poll retry until deadline)
                 return
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000) // try?-ok(cancellation only)
@@ -481,48 +507,71 @@ struct PixelClockNetworkProvisioner {
 
     private static func postWiFi(_ credentials: PixelClockWiFiCredentials) async throws -> String {
         let body = "ssid=\(urlEncode(credentials.ssid))&password=\(urlEncode(credentials.password))"
-        let response = try await run(
-            "/usr/bin/curl",
-            ["-sS", "--max-time", "35", "-X", "POST", "-H", "Content-Type: application/x-www-form-urlencoded", "--data", body, "http://192.168.4.1/connect"],
-            timeout: 40
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard response.range(of: #"^\d{1,3}(\.\d{1,3}){3}$"#, options: String.CompareOptions.regularExpression) != nil else {
+        let data = try await setupPortalData(
+            path: "/connect",
+            method: "POST",
+            body: Data(body.utf8),
+            contentType: "application/x-www-form-urlencoded",
+            timeout: 35
+        )
+        let response = (String(data: data, encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPrivateLANIPv4Address(response) else {
             throw ProvisionError.connectFailed(response.isEmpty ? "AWTRIX did not return an IP address after Wi-Fi setup." : response)
         }
         return response
+    }
+
+    private static func setupPortalData(
+        path: String,
+        method: String,
+        body: Data? = nil,
+        contentType: String? = nil,
+        timeout: TimeInterval
+    ) async throws -> Data {
+        guard let url = URL(string: "http://192.168.4.1\(path)") else {
+            throw ProvisionError.connectFailed("AWTRIX setup URL is invalid.")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = timeout
+        request.httpBody = body
+        if let contentType {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
+                throw ProvisionError.connectFailed("AWTRIX setup server rejected the provisioning request.")
+            }
+            return data
+        } catch let error as ProvisionError {
+            throw error
+        } catch {
+            throw ProvisionError.connectFailed(error.localizedDescription)
+        }
+    }
+
+    private static func isPrivateLANIPv4Address(_ value: String) -> Bool {
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        let octets = parts.compactMap { part -> UInt8? in
+            guard !part.isEmpty, part.allSatisfy(\.isNumber) else { return nil }
+            guard part.count == 1 || !part.hasPrefix("0") else { return nil }
+            return UInt8(String(part))
+        }
+        guard octets.count == 4 else { return false }
+        if octets[0] == 10 { return true }
+        if octets[0] == 172, (16...31).contains(octets[1]) { return true }
+        if octets[0] == 192, octets[1] == 168, octets != [192, 168, 4, 1] { return true }
+        return false
     }
 
     private static func urlEncode(_ value: String) -> String {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&=+")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-    }
-
-    /// Blocking `Process` work runs off the main actor (`nonisolated` `async`, SE-0338).
-    private static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try runSync(executable, arguments, timeout: timeout)
-    }
-
-    private static func runSync(_ executable: String, _ arguments: [String], timeout: TimeInterval = 8) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            usleep(100_000)
-        }
-        if process.isRunning { process.terminate() }
-        process.waitUntilExit()
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else {
-            throw ProvisionError.connectFailed([output, error].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

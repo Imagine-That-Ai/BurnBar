@@ -566,6 +566,44 @@ final class AWTRIXClientTests: XCTestCase {
         )
     }
 
+    func testNetworkProvisionerOnlyTrustsUSBFlashDerivedSetupSSIDs() {
+        XCTAssertTrue(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID("awtrix_f0e1d2"))
+        XCTAssertTrue(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID(" AWTRIX_A1B2C3 "))
+        XCTAssertFalse(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID("awtrix-fallback"))
+        XCTAssertFalse(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID("ULANZI-SETUP"))
+        XCTAssertFalse(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID("awtrix_f0e1d2ff"))
+        XCTAssertFalse(PixelClockNetworkProvisioner.isUSBFlashDerivedSetupSSID("awtrix_zzzzzz"))
+    }
+
+    func testNetworkProvisionerRejectsVisibleSetupSSIDWithoutUSBFlashTrust() async {
+        let credentials = PixelClockWiFiCredentials(ssid: "Home Wi-Fi", password: "correct horse battery staple")
+        do {
+            _ = try await PixelClockNetworkProvisioner(setupSSID: "awtrix_f0e1d2")
+                .provision(credentials: credentials)
+            XCTFail("Provisioning should reject setup SSIDs that were only discovered over Wi-Fi.")
+        } catch PixelClockNetworkProvisioner.ProvisionError.unverifiedSetupNetwork(let ssid) {
+            XCTAssertEqual(ssid, "awtrix_f0e1d2")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testNetworkProvisionerRejectsGenericSetupSSIDEvenWithUSBFlashTrust() async {
+        let credentials = PixelClockWiFiCredentials(ssid: "Home Wi-Fi", password: "correct horse battery staple")
+        do {
+            _ = try await PixelClockNetworkProvisioner(
+                setupSSID: "ULANZI-SETUP",
+                setupNetworkTrust: .usbFlashDerived
+            )
+            .provision(credentials: credentials)
+            XCTFail("Provisioning should require the setup SSID shape emitted by a USB flash.")
+        } catch PixelClockNetworkProvisioner.ProvisionError.unverifiedSetupNetwork(let ssid) {
+            XCTAssertEqual(ssid, "ULANZI-SETUP")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testStockMQTTParsesSubscribePacketIdentifier() {
         var packet = Data([0x82, 0x13, 0x00, 0x02, 0x00, 0x0E])
         packet.append(Data("awtrixmatrix/#".utf8))
