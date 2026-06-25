@@ -159,6 +159,25 @@ describe("writeUserRollups dirty-clear guard", () => {
     }
   });
 
+  it("rotates a requeue nonce when capped work intentionally keeps the same dirty epoch alive", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, {
+      dirty: true,
+      dirtiedAt: "2026-06-09T00:00:00.000Z",
+      requeueNonce: "previous-resume",
+    });
+
+    const observed = await readRollupJobDirtiedAt(fake.asFirestore(), UID);
+    await writeUserRollups(fake.asFirestore(), UID, rollups(), observed, { keepDirty: true });
+
+    const job = fake.store.get(JOB_PATH);
+    expect(job?.dirty).toBe(true);
+    expect(job?.dirtiedAt).toBe("2026-06-09T00:00:00.000Z");
+    expect(typeof job?.requeueNonce).toBe("string");
+    expect(job?.requeueNonce).not.toBe("previous-resume");
+    expect(typeof job?.lastComputedAt).toBe("string");
+  });
+
   it("preserves a mid-compute lastErrorCode so the next pass falls back to a full rebuild", async () => {
     const fake = new FakeFirestore();
     fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: "2026-06-09T00:00:00.000Z" });
@@ -185,6 +204,7 @@ describe("writeUserRollups dirty-clear guard", () => {
 
     const job = fake.store.get(JOB_PATH);
     expect(job?.dirty).toBe(false);
+    expect(job?.requeueNonce).toBeUndefined();
     expect(typeof job?.lastComputedAt).toBe("string");
   });
 });

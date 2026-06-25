@@ -536,12 +536,15 @@ describe("pending-delta drain page cap", () => {
 
     await refreshUserRollups(fake.asFirestore(), UID, { drainMaxPages: 1 });
 
-    expect(fake.store.get(JOB_PATH)?.dirty).toBe(true);
+    const cappedJob = fake.store.get(JOB_PATH);
+    expect(cappedJob?.dirty).toBe(true);
+    expect(typeof cappedJob?.requeueNonce).toBe("string");
     expect(queueSize(fake)).toBe(50);
 
     // The next pass finishes the remaining queue and clears dirty.
     await refreshUserRollups(fake.asFirestore(), UID);
     expect(fake.store.get(JOB_PATH)?.dirty).toBe(false);
+    expect(fake.store.get(JOB_PATH)?.requeueNonce).toBeUndefined();
     expect(queueSize(fake)).toBe(0);
     expect(fake.recursiveDeletes).toEqual([]);
   });
