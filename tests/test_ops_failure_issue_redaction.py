@@ -31,6 +31,8 @@ def run_action_script(*, existing_issue: bool) -> dict:
           rest: {{
             issues: {{
               listForRepo: async () => [],
+              getLabel: async () => ({{}}),
+              createLabel: async () => ({{}}),
               create: async (payload) => {{
                 calls.created = payload;
                 return {{ data: {{ number: 123 }} }};
