@@ -3,18 +3,19 @@ import Foundation
 public enum RemoteAccessCredentialWorkerLaunchPlan {
     public static let credentialWorkerArgument = "--type-credential-worker"
     public static let focusProbeWorkerArgument = "--focus-probe-worker"
+    public static let credentialPipeFileDescriptor: Int32 = 3
 
     public static func launchctlArguments(
         executablePath: String,
         consoleUserUID: UInt32,
         loginWindowPID: Int32?,
-        credentialFilePath: String
+        credentialFileDescriptor: Int32 = credentialPipeFileDescriptor
     ) -> [String] {
         let workerArguments = [
             executablePath,
             credentialWorkerArgument,
-            "--credential-file",
-            credentialFilePath
+            "--credential-fd",
+            "\(credentialFileDescriptor)"
         ]
 
         return wrapForConsoleUser(
