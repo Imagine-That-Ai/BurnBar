@@ -18,7 +18,10 @@
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift"
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift",
+          "interfaces": [
+            "UsageEventDoc"
+          ]
         }
       ],
       "kotlinHandMirror": [
