@@ -48,7 +48,7 @@ struct ProjectMemoryHeroDetailSheet: View {
                         title: "Hermes Reading",
                         placeholder: "Hermes is synthesizing the project memory into a three-beat brief: what the team is working on, where the spend is going, what to do next.",
                         controller: insight,
-                        onRetry: { startInsight() }
+                        onRetry: { insight.generatePrepared() }
                     )
                     .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -365,7 +365,7 @@ struct ProjectMemoryHeroDetailSheet: View {
             "• \(page.title) — \(page.summary)\n  sections: \(page.sections.map(\.title).joined(separator: ", "))"
         }.joined(separator: "\n"))
         """
-        insight.generate(prompt: prompt)
+        insight.prepare(prompt: prompt)
     }
 
     @MainActor
@@ -599,7 +599,7 @@ struct ProjectMemoryPageDetailSheet: View {
                             title: "Hermes Reading",
                             placeholder: "Hermes is interpreting this page — what it tells the operator and what to do with it.",
                             controller: insight,
-                            onRetry: { startInsight() }
+                            onRetry: { insight.generatePrepared() }
                         )
                         .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -852,7 +852,7 @@ struct ProjectMemoryPageDetailSheet: View {
             "• \(section.title)\n  \(section.body)"
         }.joined(separator: "\n\n"))
         """
-        insight.generate(prompt: prompt)
+        insight.prepare(prompt: prompt)
     }
 
     @MainActor
@@ -943,7 +943,7 @@ struct ProjectMemoryVisualDetailSheet: View {
                         title: "Hermes Reading",
                         placeholder: "Hermes is interpreting this visual — what the distribution implies and what to do about it.",
                         controller: insight,
-                        onRetry: { startInsight() }
+                        onRetry: { insight.generatePrepared() }
                     )
                     .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -1173,7 +1173,7 @@ struct ProjectMemoryVisualDetailSheet: View {
         Top points: \(topLine)
         Total points: \(visual.points.count)
         """
-        insight.generate(prompt: prompt)
+        insight.prepare(prompt: prompt)
     }
 
     private func runEntranceMotion() {
@@ -1246,7 +1246,7 @@ struct CitationInsightSheet: View {
                             ? "Hermes is reading this citation — what it means and why it matters."
                             : "Hermes is reading the evidence — drawing connections and surfacing what matters.",
                         controller: insight,
-                        onRetry: { startInsight() }
+                        onRetry: { insight.generatePrepared() }
                     )
                     .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -1398,7 +1398,7 @@ struct CitationInsightSheet: View {
 
             \(citationSummaries)
             """
-        insight.generate(prompt: prompt)
+        insight.prepare(prompt: prompt)
     }
 
     @MainActor

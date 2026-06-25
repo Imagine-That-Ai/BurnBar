@@ -5,6 +5,13 @@ import OpenBurnBarCore
 @MainActor
 final class ProjectMemoryDetailSheetTests: XCTestCase {
 
+    private func makeInsightController(
+        chat: ChatSessionController,
+        sendAction: @escaping @MainActor (ChatSessionController) async -> Void = { _ in }
+    ) -> ProjectMemoryInsightController {
+        ProjectMemoryInsightController(chatController: chat, sendAction: sendAction)
+    }
+
     // MARK: - streamingTick reactivity
 
     func test_streamingTick_initiallyZero() throws {
@@ -45,10 +52,48 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
-        let controller = ProjectMemoryInsightController(chatController: chat)
+        let controller = makeInsightController(chat: chat)
 
         XCTAssertEqual(controller.state, .idle)
         XCTAssertEqual(controller.streamingContent, "")
+    }
+
+    func test_insightController_prepare_queuesPromptWithoutSendingOrOverwritingDraft() throws {
+        let harness = try OpenBurnBarSearchIntegrationHarness(name: "pm-insight-prepare")
+        defer { harness.cleanup() }
+
+        let chat = ChatSessionController(
+            dataStore: harness.dataStore,
+            searchService: ControlledChatSessionSearchProvider(responses: [:])
+        )
+        chat.inputText = "Keep this draft"
+        let controller = makeInsightController(chat: chat)
+
+        controller.prepare(prompt: "Summarize local project evidence")
+
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertEqual(controller.streamingContent, "")
+        XCTAssertEqual(chat.inputText, "Keep this draft")
+        XCTAssertTrue(chat.messages.isEmpty)
+    }
+
+    func test_insightController_generatePrepared_requiresExplicitSendAction() throws {
+        let harness = try OpenBurnBarSearchIntegrationHarness(name: "pm-insight-explicit-send")
+        defer { harness.cleanup() }
+
+        let chat = ChatSessionController(
+            dataStore: harness.dataStore,
+            searchService: ControlledChatSessionSearchProvider(responses: [:])
+        )
+        let controller = makeInsightController(chat: chat)
+
+        controller.prepare(prompt: "Summarize local project evidence")
+        XCTAssertEqual(controller.state, .ready)
+
+        controller.generatePrepared()
+
+        XCTAssertEqual(controller.state, .streaming)
+        XCTAssertEqual(chat.inputText, "Summarize local project evidence")
     }
 
     func test_insightController_observe_mirrorsAssistantContent_whileStreaming() throws {
@@ -59,7 +104,7 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
-        let controller = ProjectMemoryInsightController(chatController: chat)
+        let controller = makeInsightController(chat: chat)
 
         controller.generate(prompt: "Summarize the project")
 
@@ -91,7 +136,7 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
-        let controller = ProjectMemoryInsightController(chatController: chat)
+        let controller = makeInsightController(chat: chat)
 
         controller.generate(prompt: "Summarize")
 
@@ -130,7 +175,7 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
-        let controller = ProjectMemoryInsightController(chatController: chat)
+        let controller = makeInsightController(chat: chat)
 
         controller.generate(prompt: "Summarize")
 
@@ -157,7 +202,7 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
-        let controller = ProjectMemoryInsightController(chatController: chat)
+        let controller = makeInsightController(chat: chat)
 
         controller.generate(prompt: "Hello")
         controller.cancel()

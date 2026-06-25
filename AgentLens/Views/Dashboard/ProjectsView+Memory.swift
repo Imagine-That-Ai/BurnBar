@@ -466,6 +466,7 @@ struct CitationWrapper: Identifiable {
 final class ProjectMemoryInsightController {
     enum State: Equatable {
         case idle
+        case ready
         case streaming
         case complete
         case failed(String)
@@ -475,22 +476,46 @@ final class ProjectMemoryInsightController {
     private(set) var state: State = .idle
 
     private let chat: ChatSessionController
+    private let sendAction: @MainActor (ChatSessionController) async -> Void
+    private var preparedPrompt: String?
     private var trackedAssistantID: String?
     private var trackedAfterMessageCount: Int = 0
     private var streamTask: Task<Void, Never>?
 
-    init(chatController: ChatSessionController) {
+    init(
+        chatController: ChatSessionController,
+        sendAction: @escaping @MainActor (ChatSessionController) async -> Void = { chat in
+            await chat.send()
+        }
+    ) {
         self.chat = chatController
+        self.sendAction = sendAction
+    }
+
+    func prepare(prompt: String) {
+        cancel()
+        preparedPrompt = prompt
+        streamingContent = ""
+        state = .ready
+    }
+
+    func generatePrepared() {
+        guard let preparedPrompt else {
+            state = .failed("Hermes has no prepared reading to send.")
+            return
+        }
+        generate(prompt: preparedPrompt)
     }
 
     func generate(prompt: String) {
         cancel()
+        preparedPrompt = prompt
         streamingContent = ""
         state = .streaming
         trackedAfterMessageCount = chat.messages.count
         chat.inputText = prompt
         streamTask = Task { @MainActor in
-            await chat.send()
+            await sendAction(chat)
         }
     }
 
