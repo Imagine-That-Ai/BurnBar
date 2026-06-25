@@ -80,7 +80,7 @@ async function seed(testEnv, uid, tier = "free", entitlementOverride = null) {
   });
 }
 
-function missionGroup(groupID, childIDs, runtimeTokens = childIDs.map((_, index) => `runtime-${index}`)) {
+function missionGroup(groupID, childIDs, runtimeTokens = childIDs.map((_, index) => `runtime-${index}`), extra = {}) {
   const now = Timestamp.fromMillis(Date.now());
   return {
     id: groupID,
@@ -98,6 +98,7 @@ function missionGroup(groupID, childIDs, runtimeTokens = childIDs.map((_, index)
     sealedSchemaVersion: 2,
     vaultKeyID,
     sealedPayload: sealedPayload(GLOBAL_SEALED_PAYLOAD_AAD),
+    ...extra,
   };
 }
 
@@ -240,10 +241,91 @@ async function main() {
     );
   });
 
+  await step("mission request allows bounded mobile metadata variants", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const requestID = "bounded-metadata";
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/${requestID}`),
+        singleMission(aliceUid, requestID, {
+          source: "ios-insights",
+          sourceSurface: "ios-chat-cli",
+          requestedRuntime: "runtime-0",
+          deliveryMode: "full_stream",
+          resumeAction: "continue",
+        })
+      )
+    );
+  });
+
+  await step("mission request rejects free-form metadata values", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/bad-kind`),
+        singleMission(aliceUid, "bad-kind", {
+          missionKind: "diligence prompt text should never ride here",
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/bad-runtime`),
+        singleMission(aliceUid, "bad-runtime", {
+          requestedRuntime: "runtime ".repeat(16).trim(),
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/bad-source`),
+        singleMission(aliceUid, "bad-source", {
+          source: "ios-insights copied from a chat transcript",
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/bad-depth`),
+        singleMission(aliceUid, "bad-depth", {
+          depth: "standard plus hidden instructions",
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/bad-delivery`),
+        singleMission(aliceUid, "bad-delivery", {
+          deliveryMode: "full_stream with mirrored text",
+        })
+      )
+    );
+  });
+
   await step("mission group must contain at least one child", async () => {
     await seed(testEnv, aliceUid, "free");
     await assertFails(
       setDoc(doc(aliceDB, `users/${aliceUid}/mission_groups/empty-group`), missionGroup("empty-group", []))
+    );
+  });
+
+  await step("mission group rejects free-form dispatch metadata", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/bad-group-kind`),
+        missionGroup("bad-group-kind", ["bad-group-kind-child-1"], undefined, {
+          missionKind: "diligence with pasted user prompt",
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/bad-group-source`),
+        missionGroup("bad-group-source", ["bad-group-source-child-1"], undefined, {
+          source: "ios copied from a chat transcript",
+        })
+      )
     );
   });
 
