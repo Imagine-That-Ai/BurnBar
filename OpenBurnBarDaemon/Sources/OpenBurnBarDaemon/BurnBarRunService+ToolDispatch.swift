@@ -326,6 +326,7 @@ extension BurnBarRunService {
             )
         case .retryTool:
             run.attempt += 1
+            run.approvalResolvedForAttempt = false
             try transition(&run, to: .planning, activeApprovalID: nil)
             try await continueExecution(for: &run)
         case .failRun:

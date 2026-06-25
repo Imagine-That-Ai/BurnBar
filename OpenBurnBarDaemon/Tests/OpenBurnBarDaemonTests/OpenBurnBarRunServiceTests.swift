@@ -2139,6 +2139,89 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertFalse(recoveryEvents.isEmpty, "Should have recovery decision event")
     }
 
+    func testVAL_EXEC_007_AutomaticRetryClearsRunLevelApproval() async throws {
+        let harness = try makeHarness(name: "val-exec-007-retry-approval-reset")
+        let clientID = BurnBarClientID(rawValue: "client-retry-approval-reset")
+        let sessionID = BurnBarSessionID(rawValue: "session-retry-approval-reset")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Retry Approval Reset Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Change a string in one file",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue),
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+        XCTAssertEqual(created.phase, .awaitingApproval)
+
+        let awaitingDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        let approvalID = try XCTUnwrap(awaitingDetail.approvalRequest?.approvalID)
+        let approvedDetail = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+        XCTAssertEqual(approvedDetail.run?.phase, .waitingOnCompanion)
+        XCTAssertEqual(approvedDetail.pendingToolCall?.tool, .readFile)
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .applyFailed,
+                    message: "Workspace edit failed."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        let retriedDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(
+            retriedDetail.run?.phase,
+            .awaitingApproval,
+            "Automatic retry must require a fresh approval for the next attempt."
+        )
+        XCTAssertNotNil(retriedDetail.approvalRequest)
+        XCTAssertNil(retriedDetail.pendingToolCall)
+    }
+
     func testVAL_EXEC_007_RetryableFailureRetriesWithinBounds() async throws {
         // VAL-EXEC-007: Retryable failures retry within bounds.
         // applyFailed is a retryable tool error that should retry up to attempt limit.
