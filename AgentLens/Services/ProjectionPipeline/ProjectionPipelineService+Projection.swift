@@ -144,7 +144,8 @@ extension ProjectionPipelineService {
 
     internal func chunksForReembed(job: ProjectionJobRecord) async throws -> [SearchChunkRecord] {
         if let sourceKind = job.sourceKind, let sourceID = job.sourceID {
-            return try await dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
+            let chunks = try await dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
+            return chunks.filter(\.isEligibleForSemanticReembed)
         }
 
         // Paginate through ALL documents to avoid truncation for large corpora.
@@ -156,7 +157,8 @@ extension ProjectionPipelineService {
             guard documents.isEmpty == false else { break }
 
             for document in documents {
-                chunks.append(contentsOf: try await dataStore.fetchSearchChunks(documentID: document.id))
+                let documentChunks = try await dataStore.fetchSearchChunks(documentID: document.id)
+                chunks.append(contentsOf: documentChunks.filter(\.isEligibleForSemanticReembed))
             }
 
             offset += documents.count
@@ -294,4 +296,10 @@ extension ProjectionPipelineService {
         )
     }
 
+}
+
+private extension SearchChunkRecord {
+    var isEligibleForSemanticReembed: Bool {
+        sourceKind != .code
+    }
 }

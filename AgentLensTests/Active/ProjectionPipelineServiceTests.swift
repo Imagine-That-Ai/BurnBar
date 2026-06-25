@@ -1498,6 +1498,111 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
     }
 
+    func test_reembedJob_skipsCodeSourceChunks() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_831_000)
+
+        let eligibleDocument = SearchDocumentRecord(
+            id: "doc-reembed-normal",
+            sourceKind: .skillDoc,
+            sourceID: "skill-reembed-normal",
+            sourceVersionID: "v1",
+            provider: "codex",
+            projectName: "TestProject",
+            title: "Normal indexed memory",
+            subtitle: nil,
+            bodyPreview: "Normal user-authorized memory.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "normal-doc-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        let codeDocument = SearchDocumentRecord(
+            id: "doc-reembed-code",
+            sourceKind: .code,
+            sourceID: "code-reembed-local-only",
+            sourceVersionID: "v1",
+            provider: "codex",
+            projectName: "TestProject",
+            title: "Local code memory",
+            subtitle: nil,
+            bodyPreview: "Local code memory.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "code-doc-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.upsertSearchDocument(eligibleDocument)
+        try await store.upsertSearchDocument(codeDocument)
+
+        let eligibleChunk = SearchChunkRecord(
+            id: "chunk-reembed-normal",
+            documentID: eligibleDocument.id,
+            sourceKind: eligibleDocument.sourceKind,
+            sourceID: eligibleDocument.sourceID,
+            sourceVersionID: eligibleDocument.sourceVersionID,
+            ordinal: 0,
+            startOffset: 0,
+            endOffset: 42,
+            text: "Normal memory that may be semantically re-embedded.",
+            contentHash: "normal-chunk-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        let codeChunk = SearchChunkRecord(
+            id: "chunk-reembed-code",
+            documentID: codeDocument.id,
+            sourceKind: .code,
+            sourceID: codeDocument.sourceID,
+            sourceVersionID: codeDocument.sourceVersionID,
+            ordinal: 0,
+            startOffset: 0,
+            endOffset: 52,
+            text: "func localOnlySecret() { return \"do-not-embed\" }",
+            contentHash: "code-chunk-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.replaceSearchChunks(
+            documentID: eligibleDocument.id,
+            title: eligibleDocument.title,
+            chunks: [eligibleChunk]
+        )
+        try await store.replaceSearchChunks(
+            documentID: codeDocument.id,
+            title: codeDocument.title,
+            chunks: [codeChunk]
+        )
+
+        let embedder = RecordingTestEmbeddingProvider(versionTag: "reembed-scope-v2")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-scope",
+            chunkEmbedder: embedder
+        )
+
+        try await service.enqueueReembedJob(reason: "test-reembed-scope", priority: 1)
+        let report = try await service.runSweep(maxJobs: 10)
+        XCTAssertEqual(report.completedJobs, 1, "Re-embed job should complete.")
+
+        let embeddedTexts = await embedder.capturedEmbeddingTexts()
+        XCTAssertEqual(
+            embeddedTexts,
+            [eligibleChunk.text],
+            "Code-source chunks must not be submitted to the embedding provider during re-embed."
+        )
+
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(embeddings.map(\.chunkID), [eligibleChunk.id])
+        XCTAssertFalse(
+            embeddings.contains { $0.chunkID == codeChunk.id },
+            "Code-source chunks must not receive remote semantic embeddings."
+        )
+    }
+
     // MARK: - VAL-INDEX-012: Embedding failure preserves lexical continuity
 
     func test_embeddingFailure_preservesLexicalContinuity() async throws {
@@ -2068,6 +2173,38 @@ extension ProjectionPipelineServiceTests {
             ProjectionIdentity.conversationContentHash(for: keepRecord!),
             "Kept document should remain unchanged."
         )
+    }
+}
+
+// MARK: - Recording Test Embedding Provider
+
+private actor RecordingTestEmbeddingProvider: ChunkEmbeddingProviding {
+    nonisolated let descriptor: EmbeddingModelDescriptor
+    private var capturedTexts: [String] = []
+
+    init(versionTag: String) {
+        self.descriptor = EmbeddingModelDescriptor(
+            provider: "test-recording",
+            modelName: "recording-embed-model",
+            dimensions: 8,
+            distanceMetric: .cosine,
+            versionTag: versionTag,
+            chunkerVersion: ProjectionIdentity.chunkerVersion,
+            normalizationVersion: "unit-l2-v1",
+            promptVersion: "plain-text-v1"
+        )
+    }
+
+    func embedding(for text: String) async throws -> [Float] {
+        capturedTexts.append(text)
+        var vector = [Float](repeating: 0, count: descriptor.dimensions)
+        vector[0] = 1
+        vector[1] = Float(text.count % 11) / 10
+        return VectorMath.l2Normalized(vector)
+    }
+
+    func capturedEmbeddingTexts() -> [String] {
+        capturedTexts
     }
 }
 
