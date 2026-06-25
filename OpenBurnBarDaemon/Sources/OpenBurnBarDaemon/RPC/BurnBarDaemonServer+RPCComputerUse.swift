@@ -21,7 +21,8 @@ extension BurnBarDaemonServer {
                 method: method,
                 proof: typedRequest.params.localAuthProof,
                 sourceDeviceId: typedRequest.params.sourceDeviceId,
-                intentHashHex: typedRequest.params.intentHashHex
+                intentHashHex: typedRequest.params.intentHashHex,
+                grantBinding: typedRequest.params.localAuthGrantBinding
             ) {
                 return denial
             }
@@ -277,16 +278,17 @@ extension BurnBarDaemonServer {
     /// When `localAuthProofVerifier` is `nil` (in-process tests, unsigned developer
     /// builds) this is a no-op so existing behavior is preserved. When it is wired
     /// (production), the request MUST carry a proof, a source device, and the op
-    /// (intent) hash the daemon is about to honor; the daemon then re-verifies the
-    /// proof against the PINNED phone key. Any missing field or verification
-    /// failure is refused — so a compromised first-party app cannot forward a
-    /// fabricated or retargeted grant.
+    /// grant binding the daemon is about to honor; the daemon derives the expected
+    /// intent hash from those fields and re-verifies the proof against the PINNED
+    /// phone key. Any missing field or verification failure is refused so callers
+    /// cannot forward fabricated or retargeted grants.
     func enforceLocalAuthProof(
         requestId: String,
         method: BurnBarRPCMethod,
         proof: HermesRealtimeRelayAgentGrantLocalAuthProof?,
         sourceDeviceId: String?,
-        intentHashHex: String?
+        intentHashHex: String?,
+        grantBinding: ComputerUseLocalAuthGrantBinding?
     ) -> Data? {
         guard let verifier = localAuthProofVerifier else {
             // Proof enforcement is not wired for this daemon instance (dev/test).
@@ -295,7 +297,7 @@ extension BurnBarDaemonServer {
 
         guard let proof,
               let sourceDeviceId, sourceDeviceId.isEmpty == false,
-              let intentHashHex, intentHashHex.isEmpty == false else {
+              let grantBinding else {
             BurnBarDaemonMetricsCounters.recordRPCError()
             logger.warning(
                 "computer_use_local_auth_proof_missing",
@@ -304,7 +306,7 @@ extension BurnBarDaemonServer {
                     "method": method.rawValue,
                     "has_proof": "\(proof != nil)",
                     "has_device": "\(sourceDeviceId?.isEmpty == false)",
-                    "has_intent": "\(intentHashHex?.isEmpty == false)"
+                    "has_binding": "\(grantBinding != nil)"
                 ]
             )
             return encodeErrorResponse(
@@ -314,11 +316,68 @@ extension BurnBarDaemonServer {
             )
         }
 
+        guard grantBinding.sourceDeviceId == sourceDeviceId,
+              grantBinding.localAuthenticationSatisfied else {
+            BurnBarDaemonMetricsCounters.recordRPCError()
+            logger.warning(
+                "computer_use_local_auth_binding_rejected",
+                metadata: [
+                    "request_id": requestId,
+                    "method": method.rawValue,
+                    "binding_device_matches": "\(grantBinding.sourceDeviceId == sourceDeviceId)",
+                    "local_auth_satisfied": "\(grantBinding.localAuthenticationSatisfied)"
+                ]
+            )
+            return encodeErrorResponse(
+                id: requestId,
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof was rejected."
+            )
+        }
+
+        let expectedIntentHashHex: String
+        do {
+            expectedIntentHashHex = try ComputerUsePhoneControlSigner()
+                .canonicalAgentGrantRequestHashHex(binding: grantBinding)
+        } catch {
+            BurnBarDaemonMetricsCounters.recordRPCError()
+            logger.error(
+                "computer_use_local_auth_binding_hash_error",
+                metadata: [
+                    "request_id": requestId,
+                    "method": method.rawValue,
+                    "error": "\(error)"
+                ]
+            )
+            return encodeErrorResponse(
+                id: requestId,
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof could not be verified."
+            )
+        }
+
+        if let intentHashHex, intentHashHex.isEmpty == false,
+           intentHashHex.lowercased() != expectedIntentHashHex.lowercased() {
+            BurnBarDaemonMetricsCounters.recordRPCError()
+            logger.warning(
+                "computer_use_local_auth_intent_hint_mismatch",
+                metadata: [
+                    "request_id": requestId,
+                    "method": method.rawValue
+                ]
+            )
+            return encodeErrorResponse(
+                id: requestId,
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof was rejected."
+            )
+        }
+
         do {
             _ = try verifier.verify(
                 proof: proof,
                 expectedDeviceId: sourceDeviceId,
-                expectedIntentHashHex: intentHashHex
+                expectedIntentHashHex: expectedIntentHashHex
             )
             logger.notice(
                 "computer_use_local_auth_proof_verified",

@@ -122,6 +122,7 @@ final class AgentCapabilityGrantStore {
                 sourceDeviceID: request.sourceDeviceID,
                 localAuthProof: request.localAuthProof,
                 localAuthIntentHashHex: request.localAuthProof?.signedIntentHash,
+                localAuthGrantBinding: request.localAuthProof == nil ? nil : request.localAuthGrantBinding,
                 message: "Desktop tools are off."
             )
         } else {
@@ -140,6 +141,7 @@ final class AgentCapabilityGrantStore {
                 sourceDeviceID: request.sourceDeviceID,
                 localAuthProof: request.localAuthProof,
                 localAuthIntentHashHex: request.localAuthProof?.signedIntentHash,
+                localAuthGrantBinding: request.localAuthProof == nil ? nil : request.localAuthGrantBinding,
                 message: "\(request.preset.title) permissions enabled for this thread."
             )
         }

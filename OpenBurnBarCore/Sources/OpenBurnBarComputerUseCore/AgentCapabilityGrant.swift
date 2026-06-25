@@ -243,6 +243,24 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
         now.addingTimeInterval(grantDurationSeconds)
     }
 
+    public var localAuthGrantBinding: ComputerUseLocalAuthGrantBinding {
+        ComputerUseLocalAuthGrantBinding(
+            requestId: requestID,
+            runtime: runtimeID.rawValue,
+            threadId: threadID,
+            preset: preset.rawValue,
+            capabilities: capabilities.map(\.rawValue).sorted(),
+            trustMode: trustMode.rawValue,
+            deliveryMode: deliveryMode.rawValue,
+            requestedAt: requestedAt,
+            expiresAt: expiresAt,
+            grantDurationSeconds: grantDurationSeconds,
+            sourceDeviceId: sourceDeviceID,
+            clientIntentId: clientIntentID,
+            localAuthenticationSatisfied: localAuthenticationSatisfied
+        )
+    }
+
     public func makeGrant(workspaceRootPath: String? = nil, now: Date = Date()) -> AgentCapabilityGrant {
         AgentCapabilityGrant.sessionGrant(
             runtimeID: runtimeID,
@@ -254,7 +272,8 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
             now: now,
             duration: grantDurationSeconds,
             localAuthProof: localAuthProof,
-            localAuthIntentHashHex: localAuthProof?.signedIntentHash
+            localAuthIntentHashHex: localAuthProof?.signedIntentHash,
+            localAuthGrantBinding: localAuthProof == nil ? nil : localAuthGrantBinding
         )
     }
 }
@@ -273,6 +292,7 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
     public var sourceDeviceID: String?
     public var localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
     public var localAuthIntentHashHex: String?
+    public var localAuthGrantBinding: ComputerUseLocalAuthGrantBinding?
     public var denialReason: AgentGrantDenialReason?
     public var message: String?
 
@@ -292,6 +312,7 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
         sourceDeviceID: String? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         localAuthIntentHashHex: String? = nil,
+        localAuthGrantBinding: ComputerUseLocalAuthGrantBinding? = nil,
         denialReason: AgentGrantDenialReason? = nil,
         message: String? = nil
     ) {
@@ -308,6 +329,7 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
         self.sourceDeviceID = sourceDeviceID
         self.localAuthProof = localAuthProof
         self.localAuthIntentHashHex = localAuthIntentHashHex
+        self.localAuthGrantBinding = localAuthGrantBinding
         self.denialReason = denialReason
         self.message = message
     }
@@ -336,6 +358,9 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
     /// `AgentCapabilityGrantReceipt.localAuthIntentHashHex` so every downstream
     /// daemon call can bind the proof to the exact grant request.
     public let localAuthIntentHashHex: String?
+    /// Non-secret signable grant fields used by the daemon to derive
+    /// `localAuthIntentHashHex` independently before verifying the proof.
+    public let localAuthGrantBinding: ComputerUseLocalAuthGrantBinding?
 
     public var id: String { grantID }
 
@@ -352,7 +377,8 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         workspaceRootPath: String? = nil,
         createdAt: Date = Date(),
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
-        localAuthIntentHashHex: String? = nil
+        localAuthIntentHashHex: String? = nil,
+        localAuthGrantBinding: ComputerUseLocalAuthGrantBinding? = nil
     ) {
         self.grantID = grantID
         self.runtimeID = runtimeID
@@ -367,6 +393,7 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.localAuthProof = localAuthProof
         self.localAuthIntentHashHex = localAuthIntentHashHex
+        self.localAuthGrantBinding = localAuthGrantBinding
     }
 
     public static func sessionGrant(
@@ -379,7 +406,8 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         now: Date = Date(),
         duration: TimeInterval = 30 * 60,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
-        localAuthIntentHashHex: String? = nil
+        localAuthIntentHashHex: String? = nil,
+        localAuthGrantBinding: ComputerUseLocalAuthGrantBinding? = nil
     ) -> AgentCapabilityGrant {
         AgentCapabilityGrant(
             runtimeID: runtimeID,
@@ -391,7 +419,8 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
             workspaceRootPath: workspaceRootPath,
             createdAt: now,
             localAuthProof: localAuthProof,
-            localAuthIntentHashHex: localAuthIntentHashHex
+            localAuthIntentHashHex: localAuthIntentHashHex,
+            localAuthGrantBinding: localAuthGrantBinding
         )
     }
 
