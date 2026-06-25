@@ -20,6 +20,14 @@ public struct ChunkReassemblyValidator: Sendable, Equatable {
     public enum ValidationError: Error, Equatable, Sendable {
         /// A chunk arrived with a negative sequence — malformed/protocol violation.
         case negativeSequence(Int)
+        /// A completion frame followed one or more chunks without declaring a
+        /// positive total. Without that boundary, a relay could drop trailing
+        /// chunks and make an incomplete response look valid.
+        case missingDeclaredChunkCount(declaredChunkCount: Int, distinctReceived: Int)
+        /// A completion frame declared a total lower than a sequence already
+        /// received. That means the terminal boundary no longer covers the
+        /// observed chunk stream.
+        case chunkAfterDeclaredEnd(declaredChunkCount: Int, sequence: Int, distinctReceived: Int)
         /// `response.complete` declared `declaredChunkCount` chunks but at least one
         /// in-range sequence was never received; `firstMissing` is the lowest gap.
         case incompleteResponse(declaredChunkCount: Int, distinctReceived: Int, firstMissing: Int)
@@ -46,13 +54,27 @@ public struct ChunkReassemblyValidator: Sendable, Equatable {
     /// Validate that every chunk `0..<declaredChunkCount` was received.
     ///
     /// - Parameter declaredChunkCount: the count from the `response.complete`
-    ///   frame. When `<= 0` the count is unknown (e.g. a streaming completion that
-    ///   does not declare a total), so this is a no-op — preserving the prior
-    ///   behavior for transports that legitimately do not carry a count.
+    ///   frame. A non-positive count is only accepted for an empty response. Once
+    ///   chunks have arrived, the terminal boundary must declare a positive total.
     /// - Throws: ``ValidationError/incompleteResponse(declaredChunkCount:distinctReceived:firstMissing:)``
     ///   when an in-range sequence is missing (a dropped/withheld chunk).
     public func validateComplete(declaredChunkCount: Int) throws {
-        guard declaredChunkCount > 0 else { return }
+        guard declaredChunkCount > 0 else {
+            guard seen.isEmpty else {
+                throw ValidationError.missingDeclaredChunkCount(
+                    declaredChunkCount: declaredChunkCount,
+                    distinctReceived: seen.count
+                )
+            }
+            return
+        }
+        if let outOfRangeSequence = seen.filter({ $0 >= declaredChunkCount }).min() {
+            throw ValidationError.chunkAfterDeclaredEnd(
+                declaredChunkCount: declaredChunkCount,
+                sequence: outOfRangeSequence,
+                distinctReceived: seen.count
+            )
+        }
         for sequence in 0..<declaredChunkCount where !seen.contains(sequence) {
             throw ValidationError.incompleteResponse(
                 declaredChunkCount: declaredChunkCount,
