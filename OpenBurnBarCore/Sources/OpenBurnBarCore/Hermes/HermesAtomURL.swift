@@ -79,12 +79,7 @@ public enum HermesAtomURL {
         guard url.scheme?.lowercased() == hermesAtomURLScheme else { return nil }
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let host = (components.host ?? "").lowercased()
-        let params = Dictionary(
-            uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (String, String)? in
-                guard let value = item.value else { return nil }
-                return (item.name.lowercased(), value)
-            }
-        )
+        guard let params = uniqueQueryParams(from: components.queryItems ?? []) else { return nil }
         return decode(host: host, params: params)
     }
 
@@ -93,6 +88,17 @@ public enum HermesAtomURL {
     public static func decode(_ urlString: String) -> HermesAtom? {
         guard let url = URL(string: urlString) else { return nil }
         return decode(url)
+    }
+
+    private static func uniqueQueryParams(from queryItems: [URLQueryItem]) -> [String: String]? {
+        var params: [String: String] = [:]
+        for item in queryItems {
+            guard let value = item.value else { continue }
+            let name = item.name.lowercased()
+            guard params[name] == nil else { return nil }
+            params[name] = value
+        }
+        return params
     }
 
     private static func decode(host: String, params: [String: String]) -> HermesAtom? {

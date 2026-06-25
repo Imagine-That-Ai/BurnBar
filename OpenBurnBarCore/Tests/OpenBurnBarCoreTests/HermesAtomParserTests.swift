@@ -307,6 +307,24 @@ final class HermesAtomParserTests: XCTestCase {
         XCTAssertNil(HermesAtomURL.decode(url))
     }
 
+    func testURLCodecRejectsDuplicateQueryNames() {
+        let url = URL(string: "burnbar://session?id=abc&id=def")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    func testURLCodecRejectsCaseVariantDuplicateQueryNames() {
+        let url = URL(string: "burnbar://session?id=abc&ID=def")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    func testParserKeepsAmbiguousAtomLinksAsBodyText() {
+        let text = "Open [session](burnbar://session?id=abc&id=def) here."
+        let runs = HermesAtomParser.parse(text)
+
+        XCTAssertTrue(runs.allSatisfy { $0.atom == nil })
+        XCTAssertEqual(runs.map(\.text).joined(), text)
+    }
+
     // MARK: - Router contract
 
     func testNoopNavigatorIsCallableFromAnyContext() {
