@@ -7,7 +7,7 @@ struct CallHUD: View {
     @ObservedObject var state: CallHUDState
     let onMuteMic: () -> Void
     let onMuteCamera: () -> Void
-    let onShareScreen: () -> Void
+    let onStopScreenShare: () -> Void
     let onEnd: () -> Void
 
     var body: some View {
@@ -56,18 +56,22 @@ struct CallHUD: View {
                 HStack(spacing: 24) {
                     controlButton(
                         systemImage: state.isMicMuted ? "mic.slash.fill" : "mic.fill",
+                        label: state.isMicMuted ? "Unmute microphone" : "Mute microphone",
                         action: onMuteMic
                     )
                     controlButton(
                         systemImage: state.isCameraMuted ? "video.slash.fill" : "video.fill",
+                        label: state.isCameraMuted ? "Turn camera on" : "Turn camera off",
                         action: onMuteCamera
                     )
                     controlButton(
                         systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle",
-                        action: onShareScreen
+                        label: state.isSharingScreen ? "Stop screen sharing" : "Screen sharing stopping",
+                        action: onStopScreenShare
                     )
                     controlButton(
                         systemImage: "phone.down.fill",
+                        label: "End Mercury mirror",
                         tint: .red,
                         action: onEnd
                     )
@@ -147,6 +151,7 @@ struct CallHUD: View {
 
     private func controlButton(
         systemImage: String,
+        label: String,
         tint: Color = Color(red: 0.63, green: 0.67, blue: 0.73),
         action: @escaping () -> Void
     ) -> some View {
@@ -157,6 +162,8 @@ struct CallHUD: View {
                 .liquidGlassCircleButton(diameter: 44)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .help(label)
     }
 
     private var borderGradient: LinearGradient {
@@ -177,11 +184,11 @@ final class CallHUDState: ObservableObject {
     @Published var isCollapsed: Bool = true
     @Published var pulse: Bool = false
 
-    func reset(startedAt: Date = Date()) {
+    func reset(startedAt: Date = Date(), isSharingScreen: Bool = true) {
         self.startedAt = startedAt
         isMicMuted = false
         isCameraMuted = false
-        isSharingScreen = false
+        self.isSharingScreen = isSharingScreen
         isCollapsed = true
         pulse = false
     }
@@ -195,5 +202,17 @@ final class CallHUDState: ObservableObject {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+}
+
+@MainActor
+enum MercuryScreenShareHUDActions {
+    static func stopScreenShare(
+        state: CallHUDState,
+        stopMirror: @MainActor () async -> Void
+    ) async {
+        guard state.isSharingScreen else { return }
+        state.isSharingScreen = false
+        await stopMirror()
     }
 }

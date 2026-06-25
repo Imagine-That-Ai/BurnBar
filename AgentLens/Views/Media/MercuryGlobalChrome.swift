@@ -84,7 +84,13 @@ struct MercuryChromeRoot: View {
                     state: hudState,
                     onMuteMic: { hudState.isMicMuted.toggle() },
                     onMuteCamera: { hudState.isCameraMuted.toggle() },
-                    onShareScreen: { hudState.isSharingScreen.toggle() },
+                    onStopScreenShare: {
+                        Task {
+                            await MercuryScreenShareHUDActions.stopScreenShare(state: hudState) {
+                                await router.stopMirror()
+                            }
+                        }
+                    },
                     onEnd: { Task { await router.stopMirror() } }
                 )
                 .frame(
