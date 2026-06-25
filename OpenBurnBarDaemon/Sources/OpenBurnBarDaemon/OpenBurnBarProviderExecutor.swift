@@ -1205,27 +1205,22 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
     private static let claudeCodeKeychainService = "Claude Code-credentials"
 
-    private final class KeychainProcessOutput: @unchecked Sendable {
-        private let lock = NSLock()
-        private var data = Data()
-
-        func store(_ next: Data) {
-            lock.lock()
-            data = next
-            lock.unlock()
-        }
-
-        func load() -> Data {
-            lock.lock()
-            defer { lock.unlock() }
-            return data
-        }
-    }
-
     private static func readKeychainPassword(service: String, account: String) -> String? {
         #if os(macOS)
         let securityURL = URL(fileURLWithPath: "/usr/bin/security")
         guard FileManager.default.isExecutableFile(atPath: securityURL.path) else { return nil }
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-keychain-\(UUID().uuidString).out")
+        FileManager.default.createFile(
+            atPath: outputURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        )
+        guard let outputHandle = FileHandle(forWritingAtPath: outputURL.path) else { return nil }
+        defer {
+            try? outputHandle.close()
+            try? FileManager.default.removeItem(at: outputURL)
+        }
 
         let process = Process()
         process.executableURL = securityURL
@@ -1237,8 +1232,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         ]
         process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
 
-        let output = Pipe()
-        process.standardOutput = output
+        process.standardOutput = outputHandle
         let errorSink = FileHandle(forWritingAtPath: "/dev/null")
         process.standardError = errorSink
         defer {
@@ -1251,10 +1245,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return nil
         }
         let group = DispatchGroup()
-        let outputBuffer = KeychainProcessOutput()
         group.enter()
         DispatchQueue.global(qos: .utility).async {
-            outputBuffer.store(output.fileHandleForReading.readDataToEndOfFile())
+            process.waitUntilExit()
             group.leave()
         }
         guard group.wait(timeout: .now() + 2) == .success else {
@@ -1263,12 +1256,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             }
             return nil
         }
-        if process.isRunning {
-            process.waitUntilExit()
-        }
         guard process.terminationStatus == 0 else { return nil }
 
-        return String(data: outputBuffer.load(), encoding: .utf8)
+        guard let data = try? Data(contentsOf: outputURL) else { return nil }
+        return String(data: data, encoding: .utf8)
         #else
         return nil
         #endif
