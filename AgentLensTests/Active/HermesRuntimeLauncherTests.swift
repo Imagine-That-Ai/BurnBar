@@ -187,6 +187,17 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertEqual(HermesEnvironmentFile.readAPIServerKey(at: url), "test-generated-key")
     }
 
+    func test_ensureAPIServerEnabled_restrictsEnvFilePermissions() throws {
+        let url = Self.makeTempEnvURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        try HermesEnvironmentFile.ensureAPIServerEnabled(at: url, generateKey: { "test-generated-key" })
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let permissions = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber).intValue
+        XCTAssertEqual(permissions & 0o777, 0o600)
+    }
+
     func test_ensureAPIServerEnabled_preservesExistingKeyAndNormalizesFlag() throws {
         let url = Self.makeTempEnvURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

@@ -56,6 +56,11 @@ guard let credsData = try? Data(contentsOf: credsPath),
 }
 
 let oauth = credsRoot["claudeAiOauth"] as? [String: Any] ?? credsRoot
+guard let accessToken = oauth["accessToken"] as? String,
+      !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    fputs("Missing non-empty Claude OAuth accessToken in ~/.claude/.credentials.json\n", stderr)
+    exit(1)
+}
 var payload: [String: Any] = ["claudeAiOauth": oauth]
 if let org = credsRoot["organizationUuid"] as? String { payload["organizationUuid"] = org }
 let apiKeyData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])

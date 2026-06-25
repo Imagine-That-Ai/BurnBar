@@ -231,12 +231,17 @@ final class TextExpansionRuntimeController: ObservableObject {
         guard let match, !match.requiresPreview else { return }
 
         let plan = TextExpansionGlobalReplacementPlanner.plan(for: match)
+        let expectedTrailingText = match.token + (match.boundary.map(String.init) ?? "")
         setSuppressEvents(for: 1.5)
         resetBuffer()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.canReplaceOnFocusedSurface() else { return }
-            self.applyGlobalReplacement(deleteCount: plan.deleteCount, replacement: plan.replacement)
+            self.applyGlobalReplacement(
+                deleteCount: plan.deleteCount,
+                expectedTrailingText: expectedTrailingText,
+                replacement: plan.replacement
+            )
         }
     }
 
@@ -246,10 +251,11 @@ final class TextExpansionRuntimeController: ObservableObject {
     }
 
     @MainActor
-    private func applyGlobalReplacement(deleteCount: Int, replacement: String) {
+    private func applyGlobalReplacement(deleteCount: Int, expectedTrailingText: String, replacement: String) {
         do {
             try TextExpansionFocusedTextInserter.replaceTrailingText(
                 deleteCount: deleteCount,
+                expectedTrailingText: expectedTrailingText,
                 replacement: replacement,
                 inputController: inputController
             )
@@ -351,8 +357,15 @@ private enum TextExpansionFocusedTextInserter {
         case valueMutationUnsupported
     }
 
+    private enum AccessibilityReplacementResult {
+        case replaced
+        case unsupported
+        case staleFocusedText
+    }
+
     static func replaceTrailingText(
         deleteCount: Int,
+        expectedTrailingText: String,
         replacement: String,
         inputController: MacInputController
     ) throws {
@@ -361,35 +374,49 @@ private enum TextExpansionFocusedTextInserter {
             throw InsertError.accessibilityNotTrusted
         }
 
-        if try replaceViaAccessibility(deleteCount: deleteCount, replacement: replacement) {
+        switch try replaceViaAccessibility(
+            deleteCount: deleteCount,
+            expectedTrailingText: expectedTrailingText,
+            replacement: replacement
+        ) {
+        case .replaced:
             return
+        case .staleFocusedText:
+            return
+        case .unsupported:
+            try replaceViaSyntheticKeys(deleteCount: deleteCount, replacement: replacement, inputController: inputController)
         }
-        try replaceViaSyntheticKeys(deleteCount: deleteCount, replacement: replacement, inputController: inputController)
     }
 
-    private static func replaceViaAccessibility(deleteCount: Int, replacement: String) throws -> Bool {
-        guard let element = focusedElement() else { return false }
-        guard isTextSurface(element) else { return false }
+    private static func replaceViaAccessibility(
+        deleteCount: Int,
+        expectedTrailingText: String,
+        replacement: String
+    ) throws -> AccessibilityReplacementResult {
+        guard let element = focusedElement() else { return .unsupported }
+        guard isTextSurface(element) else { return .unsupported }
 
         var valueRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
               let currentValue = valueRef as? String else {
-            return false
+            return .unsupported
         }
 
-        let cursor = selectedLocation(in: element) ?? currentValue.count
-        guard cursor >= deleteCount else { return false }
+        let selectedCursor = selectedLocation(in: element) ?? currentValue.utf16.count
+        let cursor = min(max(selectedCursor, 0), currentValue.utf16.count)
+        guard cursor >= deleteCount else { return .staleFocusedText }
 
-        let start = currentValue.index(currentValue.startIndex, offsetBy: cursor - deleteCount)
-        let end = currentValue.index(currentValue.startIndex, offsetBy: cursor)
+        let deleteRange = NSRange(location: cursor - deleteCount, length: deleteCount)
+        guard let range = Range(deleteRange, in: currentValue) else { return .staleFocusedText }
+        guard currentValue[range] == expectedTrailingText else { return .staleFocusedText }
         var updated = currentValue
-        updated.replaceSubrange(start..<end, with: replacement)
+        updated.replaceSubrange(range, with: replacement)
 
         let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, updated as CFTypeRef)
         guard setResult == .success else {
             throw InsertError.valueMutationUnsupported
         }
-        return true
+        return .replaced
     }
 
     private static func replaceViaSyntheticKeys(

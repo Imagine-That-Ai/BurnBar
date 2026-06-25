@@ -354,11 +354,14 @@ final class ConnectionsViewModel {
         guard appStates[target]?.isBusy != true else { return }
         appStates[target] = busyState
         ensureLocalGateway(settings: settings)
-        if target == .claudeCode, let daemonManager {
-            _ = try? await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
-        }
         if let restartGateway {
             await restartGateway()
+        }
+        if target == .claudeCode, let daemonManager {
+            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
+                appStates[target] = .error(message: bootstrapError)
+                return
+            }
         }
         let gateway = makeGateway(from: settings)
         let wiring = wiringFactory()
@@ -525,10 +528,6 @@ final class ConnectionsViewModel {
         }
     }
 
-    func enableLocalGateway(settings: SettingsManager) {
-        ensureLocalGateway(settings: settings)
-    }
-
     func startProxyGateway(
         settings: SettingsManager,
         restartGateway: () async -> String?
@@ -585,11 +584,14 @@ final class ConnectionsViewModel {
         }
 
         ensureLocalGateway(settings: settings)
-        if snapshot.detectedTargets.contains(.claudeCode) {
-            _ = try? await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
-        }
         if let restartGateway {
             await restartGateway()
+        }
+        if snapshot.detectedTargets.contains(.claudeCode) {
+            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
+                vibeProxyMigrationState = .error(message: bootstrapError)
+                return
+            }
         }
 
         let importResult = await vibeProxyMigrationService.importCredentials(from: snapshot) { request in
@@ -661,6 +663,15 @@ final class ConnectionsViewModel {
                 targetFailures: targetFailures
             )
         )
+    }
+
+    private func bootstrapClaudeOAuthIfNeeded(daemonManager: OpenBurnBarDaemonManager) async -> String? {
+        do {
+            _ = try await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     private func refreshRoutedModelSyncState(

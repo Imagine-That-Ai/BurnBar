@@ -318,6 +318,7 @@ enum HermesEnvironmentFile {
 
         let output = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
         try output.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     /// Reads off the main actor (`nonisolated` `async`, SE-0338).
