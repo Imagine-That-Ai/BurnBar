@@ -51,11 +51,9 @@ public struct RemoteUnlockSessionContextSnapshot: Codable, Hashable, Sendable {
 }
 
 public enum RemoteUnlockSessionContextFailure: String, Sendable, Error, Equatable {
-    case expired = "session_context_expired"
     case issuerKeyUnavailable = "session_context_issuer_key_unavailable"
     case issuerRevoked = "session_context_issuer_revoked"
     case issuerKeyMismatch = "session_context_issuer_key_mismatch"
-    case scopeMismatch = "session_context_scope_mismatch"
     case signatureMissing = "session_context_signature_missing"
     case signatureInvalid = "session_context_signature_invalid"
 }
@@ -173,9 +171,6 @@ public struct RemoteUnlockSessionContextSnapshotStore: Sendable {
             guard !snapshot.isExpired(at: now) else { continue }
             guard snapshot.issuerKeyId == issuerTrust.keyId else {
                 throw RemoteUnlockSessionContextFailure.issuerKeyMismatch
-            }
-            guard snapshot.scopeHash == scopeHash else {
-                throw RemoteUnlockSessionContextFailure.scopeMismatch
             }
             guard (try? signer.verify(snapshot: snapshot, publicKey: issuerTrust.publicKey)) == true else {
                 throw RemoteUnlockSessionContextFailure.signatureInvalid

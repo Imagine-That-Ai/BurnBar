@@ -140,7 +140,6 @@ public final class PrivilegedInputDispatchHandler: Sendable {
     }
 
     private func sessionContext(for envelope: PrivilegedInputDispatchEnvelope) -> RemoteUnlockSessionContext {
-        _ = envelope
         let context = sessionContextProvider(envelope.capabilityToken)
         return RemoteUnlockSessionContext(
             escrowDeviceId: normalizedBinding(context.escrowDeviceId),
