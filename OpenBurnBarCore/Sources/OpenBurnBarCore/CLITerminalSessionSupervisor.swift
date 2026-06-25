@@ -55,7 +55,10 @@ public enum CLIQuotaExhaustionClassifier {
             "insufficient_quota",
             "insufficient quota",
             "credit balance is too low",
-            "billing quota exceeded",
+            "billing quota exceeded"
+        ]
+
+        let weakLimitPatterns = [
             "out of limit",
             "out of limits"
         ]
@@ -75,6 +78,7 @@ public enum CLIQuotaExhaustionClassifier {
         ]
 
         let cliSpecificPatterns: [String]
+        let cliIdentityPatterns: [String]
         switch cliType {
         case .codex:
             cliSpecificPatterns = [
@@ -82,30 +86,35 @@ public enum CLIQuotaExhaustionClassifier {
                 "chatgpt plan limit",
                 "run codex and use /status to refresh local quota data"
             ]
+            cliIdentityPatterns = ["codex", "chatgpt", "openai"]
         case .claude:
             cliSpecificPatterns = [
                 "claude code usage limit",
                 "anthropic quota",
                 "rate-limit payload"
             ]
+            cliIdentityPatterns = ["claude", "anthropic"]
         case .opencode:
             cliSpecificPatterns = [
                 "opencode quota",
                 "opencode go quota",
                 "opencode credit"
             ]
+            cliIdentityPatterns = ["opencode"]
         case .droid:
             cliSpecificPatterns = [
                 "droid quota",
                 "factory quota",
                 "factory usage limit"
             ]
+            cliIdentityPatterns = ["droid", "factory"]
         case .forge:
             cliSpecificPatterns = [
                 "forge quota",
                 "forge credit",
                 "provider quota"
             ]
+            cliIdentityPatterns = ["forge"]
         case .antigravity:
             cliSpecificPatterns = [
                 "antigravity quota",
@@ -113,6 +122,7 @@ public enum CLIQuotaExhaustionClassifier {
                 "gemini quota",
                 "google ai quota"
             ]
+            cliIdentityPatterns = ["antigravity", "agy", "gemini", "google ai"]
         case .grok:
             cliSpecificPatterns = [
                 "grok quota",
@@ -120,6 +130,7 @@ public enum CLIQuotaExhaustionClassifier {
                 "supergrok limit",
                 "grok build limit"
             ]
+            cliIdentityPatterns = ["grok", "xai", "supergrok", "grok build"]
         case .cursorAgent:
             cliSpecificPatterns = [
                 "cursor quota",
@@ -129,6 +140,7 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor agent quota",
                 "cursor agent limit"
             ]
+            cliIdentityPatterns = ["cursor", "cursor-agent", "cursor agent"]
         case .gemini:
             cliSpecificPatterns = [
                 "gemini quota",
@@ -136,18 +148,21 @@ public enum CLIQuotaExhaustionClassifier {
                 "approval-mode",
                 "yolo mode"
             ]
+            cliIdentityPatterns = ["gemini", "google ai"]
         case .kimi:
             cliSpecificPatterns = [
                 "kimi quota",
                 "moonshot quota",
                 "kimi limit"
             ]
+            cliIdentityPatterns = ["kimi", "moonshot"]
         case .pi:
             cliSpecificPatterns = [
                 "pi quota",
                 "pi limit",
                 "provider quota"
             ]
+            cliIdentityPatterns = ["pi"]
         }
 
         if genericPatterns.contains(where: normalized.contains) {
@@ -155,6 +170,17 @@ public enum CLIQuotaExhaustionClassifier {
         }
         if rateLimitPatterns.contains(where: normalized.contains) {
             return trimmed
+        }
+        if weakLimitPatterns.contains(where: normalized.contains) {
+            let anchoredToQuotaSource = normalized.contains("quota")
+                || normalized.contains("rate limit")
+                || normalized.contains("usage limit")
+                || normalized.contains("credit")
+                || cliSpecificPatterns.contains(where: normalized.contains)
+                || cliIdentityPatterns.contains(where: normalized.contains)
+            if anchoredToQuotaSource {
+                return trimmed
+            }
         }
         if normalized.contains("too many requests")
             && (normalized.contains("quota") || normalized.contains("rate limit") || normalized.contains("limit reached")) {
