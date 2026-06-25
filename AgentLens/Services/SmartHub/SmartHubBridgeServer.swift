@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import OpenBurnBarCore
+import Security
 
 // MARK: - Smart Hub Bridge Server
 //
@@ -31,6 +32,7 @@ final class SmartHubBridgeServer {
     private(set) var boundPort: UInt16?
     private(set) var lastRefreshedAt = Date()
     private(set) var refreshVersion: UInt64 = 0
+    private(set) var bridgeAccessToken: String = SmartHubBridgeServer.makeBridgeAccessToken()
 
     /// Wall-clock timestamp of the last `/state.json` GET. Used by the
     /// cast watchdog to distinguish "Nest Hub is actively rendering our
@@ -67,6 +69,7 @@ final class SmartHubBridgeServer {
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.openburnbar.smarthub.bridge")
+    private static let bridgeAccessTokenQueryName = "bridgeToken"
 
     private init() {}
 
@@ -124,6 +127,7 @@ final class SmartHubBridgeServer {
         // silently. Guard against re-entrant start by checking
         // `listener != nil` too.
         guard !isRunning, listener == nil else { return }
+        bridgeAccessToken = Self.makeBridgeAccessToken()
         tryBind(startingAt: port, attemptsRemaining: Self.portFallbackAttempts)
     }
 
@@ -266,33 +270,58 @@ final class SmartHubBridgeServer {
         }
         let method = parts[0]
         let path = parts[1]
+        let authorizationHeader = Self.headerValue(in: request, name: "Authorization")
 
         // Strip query string for routing; we parse params separately below.
         let pathOnly = path.split(separator: "?").first.map(String.init) ?? path
 
         switch (method, pathOnly) {
-        case ("GET", "/"), ("GET", ""):
-            sendRedirect(to: "/render.html", on: connection)
-        case ("GET", "/render.html"):
-            sendHTML(SmartHubBridgePage.html, on: connection)
+        case ("OPTIONS", _):
+            sendStatus(204, on: connection)
         case ("GET", "/brand-logo.svg"):
             sendSVG(SmartHubBridgePage.brandLogoSVG, on: connection)
+        case ("GET", "/"), ("GET", ""):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
+            sendRedirect(to: securedPath("/render.html"), on: connection)
+        case ("GET", "/render.html"):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
+            sendHTML(SmartHubBridgePage.html, on: connection)
         case ("GET", "/state.json"):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
             // Record the poll BEFORE serving so the watchdog sees the
             // device's heartbeat the moment it arrives, not after the
             // socket flushes.
             lastClientPollAt = Date()
             sendJSON(stateJSON(), on: connection)
         case ("POST", "/refresh"):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
             handleRefreshRequest(on: connection)
         case ("POST", "/period"):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
             handlePeriodRequest(rawPath: path, body: bodyData(from: data), on: connection)
         case ("POST", "/voice-refresh"):
+            guard isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader) else {
+                sendStatus(401, on: connection)
+                return
+            }
             // Voice routine hook — not implemented yet, but we ack so the
             // iPhone's "Speak Now" button gets a clean response.
             sendJSON("{\"ok\":true,\"voice\":\"queued\"}", on: connection)
-        case ("OPTIONS", _):
-            sendStatus(204, on: connection)
         default:
             sendStatus(404, on: connection)
         }
@@ -396,10 +425,74 @@ final class SmartHubBridgeServer {
         return nil
     }
 
+    func securedBridgeURL(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.queryItems = securedQueryItems(from: components.queryItems)
+        return components.url ?? url
+    }
+
+    private func securedPath(_ path: String) -> String {
+        guard var components = URLComponents(string: path) else { return path }
+        components.queryItems = securedQueryItems(from: components.queryItems)
+        return components.string ?? path
+    }
+
+    private func securedQueryItems(from queryItems: [URLQueryItem]?) -> [URLQueryItem] {
+        var items = queryItems?.filter { $0.name != Self.bridgeAccessTokenQueryName } ?? []
+        items.append(URLQueryItem(name: Self.bridgeAccessTokenQueryName, value: bridgeAccessToken))
+        return items
+    }
+
+    private func isAuthorizedBridgeRequest(rawPath: String, authorizationHeader: String?) -> Bool {
+        guard !bridgeAccessToken.isEmpty else { return false }
+        if Self.queryValue(in: rawPath, key: Self.bridgeAccessTokenQueryName) == bridgeAccessToken {
+            return true
+        }
+        let header = authorizationHeader?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return header == "Bearer \(bridgeAccessToken)"
+    }
+
+    private static func headerValue(in request: String, name: String) -> String? {
+        let canonical = name.lowercased()
+        for line in request.components(separatedBy: "\r\n").dropFirst() {
+            guard !line.isEmpty else { break }
+            let pieces = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard pieces.count == 2 else { continue }
+            guard pieces[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == canonical else {
+                continue
+            }
+            return pieces[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return nil
+    }
+
+    private static func makeBridgeAccessToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = bytes.withUnsafeMutableBytes { buffer in
+            guard let baseAddress = buffer.baseAddress else { return errSecAllocate }
+            return SecRandomCopyBytes(kSecRandomDefault, buffer.count, baseAddress)
+        }
+        if status == errSecSuccess {
+            return bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        return UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
+
     /// Exposed for tests so the JSON contract can be asserted directly.
     /// Production callers go through the `/state.json` HTTP endpoint.
     func renderStateJSONForTesting() -> String {
         stateJSON()
+    }
+
+    func isAuthorizedBridgeRequestForTesting(path: String, authorizationHeader: String? = nil) -> Bool {
+        isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader)
+    }
+
+    func renderJSONHeaderForTesting(contentLength: Int = 2) -> String {
+        jsonHeader(contentLength: contentLength)
     }
 
     private func stateJSON() -> String {
@@ -565,15 +658,19 @@ final class SmartHubBridgeServer {
             sendStatus(500, on: connection)
             return
         }
-        var head = "HTTP/1.1 200 OK\r\n"
-        head += "Content-Type: application/json; charset=utf-8\r\n"
-        head += "Access-Control-Allow-Origin: *\r\n"
-        head += "Cache-Control: no-store\r\n"
-        head += "Content-Length: \(body.count)\r\n"
-        head += "Connection: close\r\n\r\n"
+        let head = jsonHeader(contentLength: body.count)
         var data = head.data(using: .utf8) ?? Data()
         data.append(body)
         send(data, on: connection)
+    }
+
+    private func jsonHeader(contentLength: Int) -> String {
+        var head = "HTTP/1.1 200 OK\r\n"
+        head += "Content-Type: application/json; charset=utf-8\r\n"
+        head += "Cache-Control: no-store\r\n"
+        head += "Content-Length: \(contentLength)\r\n"
+        head += "Connection: close\r\n\r\n"
+        return head
     }
 
     private func sendStatus(_ code: Int, on connection: NWConnection) {
@@ -593,6 +690,7 @@ final class SmartHubBridgeServer {
         case 204: return "No Content"
         case 302: return "Found"
         case 400: return "Bad Request"
+        case 401: return "Unauthorized"
         case 404: return "Not Found"
         case 500: return "Internal Server Error"
         default:  return "Unknown"

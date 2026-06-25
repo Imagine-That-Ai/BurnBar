@@ -221,6 +221,10 @@ final class SmartHubBridgeController {
             lastDisplayConfig = currentDisplay
         }
 
+        if enabled {
+            syncPublishedBridgeURLsIfReady()
+        }
+
         lastEnabledState = enabled
     }
 
@@ -229,9 +233,8 @@ final class SmartHubBridgeController {
     /// macOS uses this for the "Open in browser" action so port
     /// fallback (8787 → 8788, …) opens the right page.
     func resolvedDashboardURL() -> URL? {
-        if SmartHubBridgeServer.shared.isRunning,
-           let boundPort = SmartHubBridgeServer.shared.boundPort {
-            return URL(string: "http://127.0.0.1:\(boundPort)/render.html")
+        if let live = liveLoopbackDashboardURL() {
+            return live
         }
         return URL(string: settingsManager.smartHubQuotaDashboardURL)
     }
@@ -1346,27 +1349,50 @@ final class SmartHubBridgeController {
             resolved = CastActionsListener.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL)
         }
         guard let resolved else { return nil }
-        let persisted = settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if persisted != resolved.absoluteString {
-            Self.log.info(
-                "preferredCastURL: rewriting persisted dashboard URL \(persisted, privacy: .public) -> \(resolved.absoluteString, privacy: .public)"
-            )
-            settingsManager.smartHubQuotaDashboardURL = resolved.absoluteString
-            // Keep companion endpoints (refresh hook, voice-refresh) in
-            // sync with the new host so the iPhone "Speak Now" /
-            // "Refresh Now" buttons hit this Mac instead of a stale IP.
-            if var base = URLComponents(url: resolved, resolvingAgainstBaseURL: false) {
-                base.path = "/refresh"
-                if let refreshURL = base.url {
-                    settingsManager.smartHubQuotaRefreshURL = refreshURL.absoluteString
-                }
-                base.path = "/voice-refresh"
-                if let voiceURL = base.url {
-                    settingsManager.smartHubQuotaVoiceRefreshURL = voiceURL.absoluteString
-                }
-            }
-        }
+        persistPublishedBridgeURLsIfChanged(dashboardURL: resolved)
         return resolved
+    }
+
+    private func liveLoopbackDashboardURL() -> URL? {
+        guard SmartHubBridgeServer.shared.isRunning,
+              let boundPort = SmartHubBridgeServer.shared.boundPort,
+              let url = URL(string: "http://127.0.0.1:\(boundPort)/render.html") else {
+            return nil
+        }
+        return SmartHubBridgeServer.shared.securedBridgeURL(url)
+    }
+
+    private func syncPublishedBridgeURLsIfReady() {
+        guard let live = liveLoopbackDashboardURL(),
+              let castable = CastActionsListener.castableDashboardURL(from: live.absoluteString) else {
+            return
+        }
+        persistPublishedBridgeURLsIfChanged(dashboardURL: castable)
+    }
+
+    private func persistPublishedBridgeURLsIfChanged(dashboardURL: URL) {
+        let dashboard = dashboardURL.absoluteString
+        let refresh = companionBridgeURL(from: dashboardURL, path: "/refresh")?.absoluteString
+            ?? settingsManager.smartHubQuotaRefreshURL
+        let voiceRefresh = companionBridgeURL(from: dashboardURL, path: "/voice-refresh")?.absoluteString
+            ?? settingsManager.smartHubQuotaVoiceRefreshURL
+        guard settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines) != dashboard
+            || settingsManager.smartHubQuotaRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != refresh
+            || settingsManager.smartHubQuotaVoiceRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != voiceRefresh else {
+            return
+        }
+        Self.log.info("preferredCastURL: refreshed Smart Hub bridge URLs for the current listener")
+        settingsManager.smartHubQuotaDashboardURL = dashboard
+        settingsManager.smartHubQuotaRefreshURL = refresh
+        settingsManager.smartHubQuotaVoiceRefreshURL = voiceRefresh
+    }
+
+    private func companionBridgeURL(from dashboardURL: URL, path: String) -> URL? {
+        guard var components = URLComponents(url: dashboardURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.path = path
+        return components.url
     }
 }
 
