@@ -916,6 +916,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         // provider Keychain entry (for example after a manual import).
         if Self.normalizedProviderID(providerID) == "anthropic",
            storedAnthropicCredentialRefreshFailed || !foundStoredSecret,
+           !foundStoredSecret || failedAnthropicOrganizationUuid != nil,
            let ccToken = try await claudeCodeCredentialSecret(
             for: providerID,
             expectedOrganizationUuid: failedAnthropicOrganizationUuid

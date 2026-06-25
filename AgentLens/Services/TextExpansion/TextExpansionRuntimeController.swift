@@ -440,8 +440,11 @@ private enum TextExpansionFocusedTextInserter {
         ) == .success else {
             return nil
         }
-        guard let focusedRef else { return nil }
-        return focusedRef as? AXUIElement
+        guard let focusedRef,
+              CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return unsafeBitCast(focusedRef, to: AXUIElement.self)
     }
 
     private static func isTextSurface(_ element: AXUIElement) -> Bool {
