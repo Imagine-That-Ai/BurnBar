@@ -339,6 +339,26 @@ public enum BurnBarProviderAuthRegistry {
         )
     }
 
+    /// Returns whether a stored auth method may be used for proxy routing.
+    ///
+    /// Older accounts may not have method metadata, and unknown providers can
+    /// still be user-defined routing providers. For registered providers,
+    /// unknown method IDs fail closed so non-routing setup flows cannot be
+    /// promoted into routeable credential slots by stale clients.
+    public static func authMethodAllowsProxyRouting(providerID: String, authMethodID: String?) -> Bool {
+        guard let authMethodID = authMethodID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !authMethodID.isEmpty else {
+            return true
+        }
+        guard let descriptor = descriptor(forCatalogProviderID: providerID) else {
+            return true
+        }
+        guard let method = descriptor.method(id: authMethodID) else {
+            return false
+        }
+        return method.unlocksProxyRouting
+    }
+
     public static func defaultDescriptor(
         providerID: String,
         displayName: String,

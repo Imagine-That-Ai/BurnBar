@@ -39,6 +39,64 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.resolvedModelID, "minimax-m2.7-highspeed")
     }
 
+    func testRouterRejectsCredentialSlotWithKnownNonRoutingAuthMethod() async throws {
+        let harness = try makeHarness(name: "openai-non-routing-auth-method")
+        let nonRoutingCredential = "fixture-openai-admin-credential"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "openai",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: ["gpt-5.4"],
+                preferredCredentialSlotID: "admin"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "openai",
+            slotID: "admin",
+            label: "OpenAI Admin",
+            apiKey: nonRoutingCredential,
+            authMethodID: "openai-admin-key"
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "gpt-5.4", preferredProviderID: "openai")
+            XCTFail("Expected non-routing auth method slot to be rejected")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(providerID, "openai")
+            XCTAssertTrue(reason.localizedCaseInsensitiveContains("proxy routing"))
+        }
+    }
+
+    func testRouterAllowsCredentialSlotWithKnownRoutingAuthMethod() async throws {
+        let harness = try makeHarness(name: "openai-routing-auth-method")
+        let routingCredential = "fixture-openai-routing-credential"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "openai",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: ["gpt-5.4"],
+                preferredCredentialSlotID: "api"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "openai",
+            slotID: "api",
+            label: "OpenAI API",
+            apiKey: routingCredential,
+            authMethodID: "openai-api-key"
+        )
+
+        let route = try await harness.router.route(modelName: "gpt-5.4", preferredProviderID: "openai")
+        XCTAssertEqual(route.providerID, "openai")
+        XCTAssertEqual(route.credentialSlotID, "api")
+    }
+
     func testRouterUsesExactAdvertisedAliasForNonFamilyModels() async throws {
         let harness = try makeHarness(name: "deepseek-live-alias")
         _ = try await harness.configStore.upsertProvider(

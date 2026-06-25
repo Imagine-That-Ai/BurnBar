@@ -181,6 +181,10 @@ public enum ProviderRoutingStateBuilder {
         // independent router.
         let localCredentialAvailable = account.storageScope == .deviceKeychain
             || account.storageScope == .localOnly
+        let routeEligible = BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: account.providerID.rawValue,
+            authMethodID: account.authMethodID
+        )
 
         return ProviderRoutingCandidate(
             providerID: account.providerID,
@@ -196,7 +200,7 @@ public enum ProviderRoutingStateBuilder {
             // Lower wins; default account has already been moved to index 0
             // by the caller, so we just forward the deterministic rank.
             priority: sortIndex,
-            routingEnabled: account.status != .disabled && account.status != .deleted,
+            routingEnabled: routeEligible && account.status != .disabled && account.status != .deleted,
             lastUsedAt: account.lastRefreshAt,
             lastFailureCode: account.lastErrorCode,
             localCredentialAvailable: localCredentialAvailable

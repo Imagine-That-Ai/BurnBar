@@ -97,6 +97,36 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(oauth?.storage.usesDaemonSlot ?? true)
     }
 
+    func test_authMethodAllowsProxyRoutingRejectsKnownNonRoutingMethods() {
+        XCTAssertTrue(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "openai",
+            authMethodID: "openai-api-key"
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "openai",
+            authMethodID: "openai-admin-key"
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "openai",
+            authMethodID: "openai-codex-oauth"
+        ))
+    }
+
+    func test_authMethodAllowsProxyRoutingAllowsLegacyEmptyMethodButRejectsUnknownRegisteredMethod() {
+        XCTAssertTrue(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "openai",
+            authMethodID: nil
+        ))
+        XCTAssertTrue(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "custom-provider",
+            authMethodID: "custom-api-key"
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "openai",
+            authMethodID: "not-in-registry"
+        ))
+    }
+
     func test_anthropic_exposesAPIKeyOAuthBearerAndClaudeCodeLoginMethods() {
         let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "claude")
         XCTAssertEqual(descriptor?.providerID, "anthropic")

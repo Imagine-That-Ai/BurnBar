@@ -531,22 +531,22 @@ public struct BurnBarProviderRouter: Sendable {
                 return .missingCredential(configuration.provider.id)
             }
 
-            if slotsWithSecret.allSatisfy({
-                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .exhausted
-            }) {
+            let routeEligibleSlots = slotsWithSecret.filter {
+                BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(providerID: configuration.provider.id, authMethodID: $0.slot.authMethodID)
+            }
+            if routeEligibleSlots.isEmpty {
+                return .credentialsUnavailable(providerID: configuration.provider.id, reason: "no configured credential slot is allowed for proxy routing.")
+            }
+
+            if routeEligibleSlots.allSatisfy({ BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .exhausted }) {
                 return .credentialsUnavailable(
                     providerID: configuration.provider.id,
-                    reason: unavailableCredentialReason(
-                        prefix: "all configured credential slots are exhausted",
-                        slots: slotsWithSecret
-                    )
+                    reason: unavailableCredentialReason(prefix: "all configured credential slots are exhausted", slots: routeEligibleSlots)
                 )
             }
 
-            let coolingSlots = slotsWithSecret.filter { resolvedSlot in
-                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: resolvedSlot.slot, now: now) == .coolingDown
-            }
-            if coolingSlots.count == slotsWithSecret.count {
+            let coolingSlots = routeEligibleSlots.filter { BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .coolingDown }
+            if coolingSlots.count == routeEligibleSlots.count {
                 let nextRetry = coolingSlots
                     .compactMap { slot in
                         slot.slot.cooldownUntil
@@ -561,9 +561,7 @@ public struct BurnBarProviderRouter: Sendable {
                 )
             }
 
-            if slotsWithSecret.allSatisfy({
-                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .missingSecret
-            }) {
+            if routeEligibleSlots.allSatisfy({ BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .missingSecret }) {
                 return .missingCredential(configuration.provider.id)
             }
 
@@ -713,6 +711,7 @@ public struct BurnBarProviderRouter: Sendable {
                 }
                 return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
                     slot: resolvedSlot.slot,
+                    providerID: configuration.provider.id,
                     hasCredential: true,
                     providerEnabled: configuration.settings.isEnabled,
                     now: now

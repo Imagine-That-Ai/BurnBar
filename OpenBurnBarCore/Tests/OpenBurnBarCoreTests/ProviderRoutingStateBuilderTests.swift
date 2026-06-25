@@ -150,6 +150,37 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         XCTAssertEqual(secondRun?.activeAccount?.accountID, "openai_a")
     }
 
+    func test_build_skipsKnownNonRoutingAuthMethodAccount() {
+        let admin = account(
+            id: "openai_admin",
+            isDefault: true,
+            authMethodID: "openai-admin-key"
+        )
+        let api = account(
+            id: "openai_api",
+            isDefault: false,
+            sortKey: 10,
+            authMethodID: "openai-api-key"
+        )
+
+        let snapshot = ProviderRoutingStateBuilder.build(
+            providerID: .openAI,
+            accounts: [admin, api],
+            snapshots: [
+                healthySnapshot(accountID: "openai_admin"),
+                healthySnapshot(accountID: "openai_api")
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(snapshot?.activeAccount?.accountID, "openai_api")
+        XCTAssertNil(snapshot?.nextFallback)
+        XCTAssertTrue(snapshot?.exhaustedOrCoolingDownAccounts.isEmpty ?? false)
+        XCTAssertTrue(snapshot?.recentEvents.first?.rejectedAlternatives.contains { rejected in
+            rejected.accountID == "openai_admin" && rejected.reason.localizedCaseInsensitiveContains("disabled")
+        } ?? false)
+    }
+
     // MARK: - Quota → routing state mapping
 
     func test_quotaState_mapsExhaustedSnapshotToExhaustedLane() {
@@ -435,7 +466,8 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         isDefault: Bool = false,
         sortKey: Double = 0,
         redactedLabel: String = "sk-***abcd",
-        lastErrorCode: String? = nil
+        lastErrorCode: String? = nil,
+        authMethodID: String? = nil
     ) -> ProviderAccountDoc {
         ProviderAccountDoc(
             id: id,
@@ -453,6 +485,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
             lastValidatedAt: now,
             lastRefreshAt: now,
             lastErrorCode: lastErrorCode,
+            authMethodID: authMethodID,
             schemaVersion: 1,
             createdAt: now,
             updatedAt: now

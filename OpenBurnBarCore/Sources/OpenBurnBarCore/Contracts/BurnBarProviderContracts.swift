@@ -93,12 +93,20 @@ public enum BurnBarProviderCredentialSlotRoutingPolicy {
 
     public static func canAttemptRoute(
         slot: BurnBarProviderCredentialSlot,
+        providerID: String? = nil,
         hasCredential: Bool,
         providerEnabled: Bool = true,
         now: Date = Date(),
         exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
     ) -> Bool {
-        canAttemptRoute(
+        if let providerID,
+           !BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: providerID,
+            authMethodID: slot.authMethodID
+           ) {
+            return false
+        }
+        return canAttemptRoute(
             status: slot.status,
             isEnabled: providerEnabled && slot.isEnabled,
             hasCredential: hasCredential,

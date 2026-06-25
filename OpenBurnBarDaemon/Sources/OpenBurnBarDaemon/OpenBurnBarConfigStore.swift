@@ -262,10 +262,14 @@ public actor BurnBarConfigStore {
             updatedSlot.endpointProfileID = resolvedProfile.id
             updatedSlot.region = resolvedProfile.region == .global ? region : resolvedProfile.region
             updatedSlot.authMethodID = authMethodID ?? resolvedProfile.authMethodID
-        } else if let endpointProfileID {
-            updatedSlot.endpointProfileID = endpointProfileID
-            updatedSlot.region = region
-            updatedSlot.authMethodID = authMethodID
+        } else {
+            if let endpointProfileID {
+                updatedSlot.endpointProfileID = endpointProfileID
+                updatedSlot.region = region
+            }
+            if let authMethodID {
+                updatedSlot.authMethodID = authMethodID
+            }
         }
         if let tokenPlanTier {
             updatedSlot.tokenPlanTier = tokenPlanTier
@@ -289,10 +293,14 @@ public actor BurnBarConfigStore {
                     existing.endpointProfileID = resolvedProfile.id
                     existing.region = resolvedProfile.region == .global ? region : resolvedProfile.region
                     existing.authMethodID = authMethodID ?? resolvedProfile.authMethodID
-                } else if let endpointProfileID {
-                    existing.endpointProfileID = endpointProfileID
-                    existing.region = region
-                    existing.authMethodID = authMethodID
+                } else {
+                    if let endpointProfileID {
+                        existing.endpointProfileID = endpointProfileID
+                        existing.region = region
+                    }
+                    if let authMethodID {
+                        existing.authMethodID = authMethodID
+                    }
                 }
                 if let tokenPlanTier {
                     existing.tokenPlanTier = tokenPlanTier
@@ -913,6 +921,7 @@ public actor BurnBarConfigStore {
             }
             return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
                 slot: resolved.slot,
+                providerID: settings.providerID,
                 hasCredential: true,
                 providerEnabled: settings.isEnabled
             )

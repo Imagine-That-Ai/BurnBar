@@ -60,6 +60,50 @@ function backendAdapterFor(provider: Provider) {
   }
 }
 
+const KNOWN_AUTH_METHODS_BY_PROVIDER: Partial<Record<Provider, ReadonlySet<string>>> = {
+  openai: new Set(["openai-api-key", "openai-admin-key", "openai-codex-oauth"]),
+  minimax: new Set(["minimax-coding-plan", "minimax-open-platform"]),
+  zai: new Set(["zai-coding-plan"]),
+  kimi: new Set(["kimi-session-token", "moonshot-api-key"]),
+  xai: new Set(["xai-api-key", "xai-management-key"]),
+  mimo: new Set(["mimo-token-plan", "mimo-payg"]),
+};
+
+export function normalizeCloudConnectAuthMethodID(
+  provider: Provider,
+  authMethodID: unknown,
+  credential?: string,
+): string | undefined {
+  if (authMethodID === undefined || authMethodID === null) {
+    return inferredCloudConnectAuthMethodID(provider, credential);
+  }
+  const normalized = boundedTrimmedString(authMethodID, "authMethodID", 96);
+  if (!normalized) return inferredCloudConnectAuthMethodID(provider, credential);
+  const knownMethods = KNOWN_AUTH_METHODS_BY_PROVIDER[provider];
+  if (knownMethods && !knownMethods.has(normalized)) {
+    throw new HttpsError("invalid-argument", "Unsupported provider credential method.");
+  }
+  return normalized;
+}
+
+function inferredCloudConnectAuthMethodID(provider: Provider, credential?: string): string | undefined {
+  const trimmed = credential?.trim() ?? "";
+  switch (provider) {
+    case "openai":
+      return trimmed.startsWith("sk-admin-") ? "openai-admin-key" : undefined;
+    case "xai":
+      return "xai-management-key";
+    case "kimi":
+      return "moonshot-api-key";
+    case "mimo":
+      if (trimmed.startsWith("tp-")) return "mimo-token-plan";
+      if (trimmed.startsWith("sk-")) return "mimo-payg";
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
 export function normalizeHostedCredential(provider: string, raw: unknown): string {
   const credential = boundedTrimmedString(raw, "credential", getConfig().maxCredentialLength, true);
   if (!credential) {
@@ -217,7 +261,7 @@ export async function connectProviderAccountInternal(params: {
     region: params.region,
     tokenPlanTier: params.tokenPlanTier,
     tokenPlanBillingCycle: params.tokenPlanBillingCycle,
-    authMethodID: params.authMethodID,
+    authMethodID: normalizeCloudConnectAuthMethodID(provider, params.authMethodID, credential),
   };
 
   const adapter = backendAdapterFor(provider);
@@ -271,7 +315,7 @@ export async function connectProviderAccountInternal(params: {
     region: params.region,
     tokenPlanTier: params.tokenPlanTier,
     tokenPlanBillingCycle: params.tokenPlanBillingCycle,
-    authMethodID: params.authMethodID,
+    authMethodID: accountContext.authMethodID,
     isDefault: params.isDefault ?? accountID.endsWith("_default"),
     sortKey: accountID.endsWith("_default") ? 0 : Date.now(),
     lastValidatedAt: now,

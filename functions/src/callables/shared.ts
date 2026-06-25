@@ -110,6 +110,7 @@ export {
 } from "./shared/stripe.js";
 
 export {
+  normalizeCloudConnectAuthMethodID,
   normalizeHostedCredential,
   sanitizeUploadedQuotaSnapshot,
   writePrivateSecretRef,
