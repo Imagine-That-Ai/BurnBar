@@ -106,6 +106,26 @@ final class TextExpansionTests: XCTestCase {
         )
         XCTAssertEqual(TextExpansionKeyEventCharacters.characters(from: event!), "&")
     }
+
+    func testUSKeyboardMapResolvesShiftedNumberRowSymbols() {
+        // Shift+7 (keyCode 26) must resolve to "&" so the `&&` trigger prefix can build up
+        // even when an event carries no unicode payload — the original global-tap bug.
+        XCTAssertEqual(TextExpansionKeyEventCharacters.usKeyboardCharacter(keyCode: 26, shift: true), "&")
+        XCTAssertEqual(TextExpansionKeyEventCharacters.usKeyboardCharacter(keyCode: 26, shift: false), "7")
+        XCTAssertEqual(TextExpansionKeyEventCharacters.usKeyboardCharacter(keyCode: 49, shift: false), " ")
+        XCTAssertEqual(TextExpansionKeyEventCharacters.usKeyboardCharacter(keyCode: 0, shift: false), "a")
+    }
+
+    func testCGEventCharacterExtractionPrefersUnicodePayload() throws {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let event = CGEvent(keyboardEventSource: source, virtualKey: 26, keyDown: true) else {
+            throw XCTSkip("CGEvent creation unavailable in this environment")
+        }
+        event.flags = .maskShift
+        var unicode: [UniChar] = Array("&".utf16)
+        event.keyboardSetUnicodeString(stringLength: unicode.count, unicodeString: &unicode)
+        XCTAssertEqual(TextExpansionKeyEventCharacters.characters(fromCGEvent: event), "&")
+    }
     #endif
 
     func testGlobalReplacementPlannerDeletesBoundaryCharacterAfterPassThrough() {

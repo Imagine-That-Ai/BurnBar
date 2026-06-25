@@ -21,6 +21,20 @@ public enum TextExpansionKeyEventCharacters {
         return usKeyboardCharacter(keyCode: event.keyCode, shift: event.modifierFlags.contains(.shift))
     }
 
+    /// Character extraction for a raw `CGEvent` (e.g. inside a `CGEvent` tap callback).
+    ///
+    /// `keyboardGetUnicodeString` reflects the layout-resolved character *with* modifiers
+    /// applied, so Shift+7 reliably yields `&` — unlike `NSEvent.charactersIgnoringModifiers`,
+    /// which can drop Shift and return `7`, breaking `&&` trigger detection. We fall back to a
+    /// US-ANSI keycode map when the event carries no unicode payload.
+    public static func characters(fromCGEvent event: CGEvent) -> String? {
+        if let unicode = unicodeString(from: event), !unicode.isEmpty {
+            return unicode
+        }
+        let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        return usKeyboardCharacter(keyCode: keyCode, shift: event.flags.contains(.maskShift))
+    }
+
     private static func unicodeString(from event: CGEvent) -> String? {
         var length = 0
         event.keyboardGetUnicodeString(
