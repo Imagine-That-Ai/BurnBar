@@ -1191,15 +1191,47 @@ final class CursorConnectorManager {
             guard
                 let components = URLComponents(string: String(candidate)),
                 components.scheme?.lowercased() == "https",
+                components.user == nil,
+                components.password == nil,
+                components.port == nil,
+                components.path.isEmpty || components.path == "/",
+                components.query == nil,
+                components.fragment == nil,
                 let host = components.host?.lowercased(),
-                host.hasSuffix(".trycloudflare.com"),
-                host.split(separator: ".").count == 3
+                let encodedHost = components.percentEncodedHost?.lowercased(),
+                host == encodedHost,
+                Self.isCanonicalTryCloudflareHost(host)
             else {
                 continue
             }
             return "https://\(host)"
         }
         return nil
+    }
+
+    private static func isCanonicalTryCloudflareHost(_ host: String) -> Bool {
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        guard labels.count == 3,
+              labels[1] == "trycloudflare",
+              labels[2] == "com",
+              let tunnelLabel = labels.first,
+              (1...63).contains(tunnelLabel.count) else {
+            return false
+        }
+        guard let first = tunnelLabel.unicodeScalars.first,
+              let last = tunnelLabel.unicodeScalars.last,
+              Self.isASCIILetterOrNumber(first),
+              Self.isASCIILetterOrNumber(last) else {
+            return false
+        }
+        return tunnelLabel.unicodeScalars.allSatisfy { scalar in
+            Self.isASCIILetterOrNumber(scalar) || scalar == "-"
+        }
+    }
+
+    private static func isASCIILetterOrNumber(_ scalar: UnicodeScalar) -> Bool {
+        (97...122).contains(scalar.value)
+            || (48...57).contains(scalar.value)
     }
 
     static var isoDateFormatter: ISO8601DateFormatter {

@@ -105,6 +105,17 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://trycloudflare.com"))
     }
 
+    func test_extractTryCloudflareURL_rejectsEncodedOrDecoratedHosts() {
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar%2etrycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar.trycloudflare.com%2eevil.example"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://user@quick-burnbar.trycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar.trycloudflare.com:443"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar.trycloudflare.com/path"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick_burnbar.trycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://-quick-burnbar.trycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar-.trycloudflare.com"))
+    }
+
     func test_normalizeUsageEvent_includesCacheCreationTokensInTotals() {
         let normalized = CursorConnectorManager.normalizeUsageEvent([
             "prompt_tokens": 120,
