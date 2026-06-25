@@ -22,6 +22,11 @@ const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080"
 const aliceUid = "alice-uid";
 const bobUid = "bob-uid";
 const now = Timestamp.fromMillis(Date.now());
+const opaqueDigits = "0123456789abcdef";
+
+function opaqueId(index) {
+  return opaqueDigits[index % opaqueDigits.length].repeat(64);
+}
 
 function memoryAad(uid, docID) {
   return `OpenBurnBar-CloudVault-aad-v2|${uid}|memory_facts|${docID}|sealedMemory|2|sealedMemory`;
@@ -121,25 +126,27 @@ async function main() {
   const googlePlayCloudProDB = testEnv.authenticatedContext(googlePlayCloudProUid).firestore();
 
   await step("memory facts require the Data Vault entitlement", async () => {
+    const noEntitlementDocID = opaqueId(15);
     await assertFails(
       setDoc(
-        doc(aliceDB, `users/${aliceUid}/memory_facts/memory-no-entitlement`),
-        memoryFact(aliceUid, "memory-no-entitlement")
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${noEntitlementDocID}`),
+        memoryFact(aliceUid, noEntitlementDocID)
       )
     );
 
     await seedEntitlement(cloudOnlyUid, "hosted_quota_sync", "com.openburnbar.hostedQuotaSync.cloud.monthly");
+    const cloudOnlyDocID = opaqueId(0);
     await assertFails(
       setDoc(
-        doc(cloudOnlyDB, `users/${cloudOnlyUid}/memory_facts/memory-cloud-only`),
-        memoryFact(cloudOnlyUid, "memory-cloud-only")
+        doc(cloudOnlyDB, `users/${cloudOnlyUid}/memory_facts/${cloudOnlyDocID}`),
+        memoryFact(cloudOnlyUid, cloudOnlyDocID)
       )
     );
   });
 
   await step("Cloud Pro owner can write and read a path-bound sealed memory fact", async () => {
     await seedEntitlement(aliceUid, "burnbar_pro_max", "com.openburnbar.proMax.v2.monthly");
-    const docID = "memory-1";
+    const docID = opaqueId(1);
     await assertSucceeds(
       setDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID))
     );
@@ -152,7 +159,7 @@ async function main() {
       "burnbar_pro_max",
       "com.openburnbar.promax.v2.monthly"
     );
-    const docID = "memory-play-cloud-pro";
+    const docID = opaqueId(2);
     await assertSucceeds(
       setDoc(
         doc(googlePlayCloudProDB, `users/${googlePlayCloudProUid}/memory_facts/${docID}`),
@@ -163,42 +170,53 @@ async function main() {
 
   await step("Ultra owner can write a path-bound sealed memory fact", async () => {
     await seedEntitlement(ultraUid, "burnbar_ultra", "com.openburnbar.ultra.monthly");
-    const docID = "memory-ultra";
+    const docID = opaqueId(3);
     await assertSucceeds(
       setDoc(doc(ultraDB, `users/${ultraUid}/memory_facts/${docID}`), memoryFact(ultraUid, docID))
     );
   });
 
   await step("cross-user memory fact access fails", async () => {
-    await assertFails(getDoc(doc(bobDB, `users/${aliceUid}/memory_facts/memory-1`)));
+    const docID = opaqueId(4);
+    await assertFails(getDoc(doc(bobDB, `users/${aliceUid}/memory_facts/${docID}`)));
     await assertFails(
-      setDoc(doc(bobDB, `users/${aliceUid}/memory_facts/memory-bob`), memoryFact(aliceUid, "memory-bob"))
+      setDoc(doc(bobDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID))
+    );
+  });
+
+  await step("memory facts require opaque path and payload ids", async () => {
+    const docID = "memory-cleartext";
+    await assertFails(
+      setDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID))
     );
   });
 
   await step("memory facts reject plaintext and vector material", async () => {
     const fields = ["text", "body", "citations", "vector", "cloakedVector", "embedding"];
-    for (const field of fields) {
+    for (const [index, field] of fields.entries()) {
+      const docID = opaqueId(index + 5);
       await assertFails(
         setDoc(
-          doc(aliceDB, `users/${aliceUid}/memory_facts/memory-${field}`),
-          memoryFact(aliceUid, `memory-${field}`, { [field]: field === "citations" ? ["raw"] : "raw" })
+          doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+          memoryFact(aliceUid, docID, { [field]: field === "citations" ? ["raw"] : "raw" })
         )
       );
     }
   });
 
   await step("memory facts require path-bound sealed memory", async () => {
+    const wrongAadDocID = opaqueId(11);
     await assertFails(
       setDoc(
-        doc(aliceDB, `users/${aliceUid}/memory_facts/memory-wrong-aad`),
-        memoryFact(aliceUid, "memory-wrong-aad", { sealedMemory: sealedBlob(memoryAad(aliceUid, "other-memory")) })
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${wrongAadDocID}`),
+        memoryFact(aliceUid, wrongAadDocID, { sealedMemory: sealedBlob(memoryAad(aliceUid, opaqueId(12))) })
       )
     );
+    const legacySealDocID = opaqueId(13);
     await assertFails(
       setDoc(
-        doc(aliceDB, `users/${aliceUid}/memory_facts/memory-legacy-seal`),
-        memoryFact(aliceUid, "memory-legacy-seal", {
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${legacySealDocID}`),
+        memoryFact(aliceUid, legacySealDocID, {
           sealedMemory: {
             schemaVersion: 1,
             algorithm: "AES-256-GCM",
@@ -213,16 +231,25 @@ async function main() {
   });
 
   await step("owner can write opaque forget receipts only", async () => {
-    const receiptID = "forget-1";
+    const receiptID = opaqueId(14);
     await assertSucceeds(
       setDoc(doc(aliceDB, `users/${aliceUid}/memory_forget_receipts/${receiptID}`), forgetReceipt(aliceUid, receiptID))
     );
 
-    for (const field of ["threadLogicalID", "messageID", "contentHash", "text", "body"]) {
+    const clearReceiptID = "forget-cleartext";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/memory_forget_receipts/${clearReceiptID}`),
+        forgetReceipt(aliceUid, clearReceiptID)
+      )
+    );
+
+    for (const [index, field] of ["threadLogicalID", "messageID", "contentHash", "text", "body"].entries()) {
+      const fieldReceiptID = opaqueId(index + 15);
       await assertFails(
         setDoc(
-          doc(aliceDB, `users/${aliceUid}/memory_forget_receipts/forget-${field}`),
-          forgetReceipt(aliceUid, `forget-${field}`, { [field]: "raw" })
+          doc(aliceDB, `users/${aliceUid}/memory_forget_receipts/${fieldReceiptID}`),
+          forgetReceipt(aliceUid, fieldReceiptID, { [field]: "raw" })
         )
       );
     }

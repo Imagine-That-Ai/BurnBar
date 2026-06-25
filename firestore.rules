@@ -849,6 +849,10 @@ service cloud.firestore {
         && value.matches("^[a-f0-9]{64}$");
     }
 
+    function validMemoryOpaqueId(value) {
+      return validMemorySourceRefHmac(value);
+    }
+
     function validMemorySourceRefHmacAt(values, position) {
       return values.size() <= position || validMemorySourceRefHmac(values[position]);
     }
@@ -921,11 +925,37 @@ service cloud.firestore {
     function validMemorySourceRefHmacs(values) {
       return values is list
         && values.size() <= 50
-        && validMemorySourceRefHmacs0to9(values)
-        && validMemorySourceRefHmacs10to19(values)
-        && validMemorySourceRefHmacs20to29(values)
-        && validMemorySourceRefHmacs30to39(values)
-        && validMemorySourceRefHmacs40to49(values);
+        && (
+          (
+            values.size() <= 10
+            && validMemorySourceRefHmacs0to9(values)
+          )
+          || (
+            values.size() <= 20
+            && validMemorySourceRefHmacs0to9(values)
+            && validMemorySourceRefHmacs10to19(values)
+          )
+          || (
+            values.size() <= 30
+            && validMemorySourceRefHmacs0to9(values)
+            && validMemorySourceRefHmacs10to19(values)
+            && validMemorySourceRefHmacs20to29(values)
+          )
+          || (
+            values.size() <= 40
+            && validMemorySourceRefHmacs0to9(values)
+            && validMemorySourceRefHmacs10to19(values)
+            && validMemorySourceRefHmacs20to29(values)
+            && validMemorySourceRefHmacs30to39(values)
+          )
+          || (
+            validMemorySourceRefHmacs0to9(values)
+            && validMemorySourceRefHmacs10to19(values)
+            && validMemorySourceRefHmacs20to29(values)
+            && validMemorySourceRefHmacs30to39(values)
+            && validMemorySourceRefHmacs40to49(values)
+          )
+        );
     }
 
     function cloudVaultAADContext(userId, collection, docID, field) {
@@ -2699,6 +2729,7 @@ service cloud.firestore {
         && validMemoryFactKeys()
         && request.resource.data.uid == userId
         && request.resource.data.docID == memoryDocId
+        && validMemoryOpaqueId(memoryDocId)
         && !("text" in request.resource.data)
         && !("body" in request.resource.data)
         && !("citations" in request.resource.data)
@@ -2747,6 +2778,7 @@ service cloud.firestore {
         && validMemoryForgetReceiptKeys()
         && request.resource.data.uid == userId
         && request.resource.data.receiptID == receiptId
+        && validMemoryOpaqueId(receiptId)
         && !("threadLogicalID" in request.resource.data)
         && !("messageID" in request.resource.data)
         && !("contentHash" in request.resource.data)
