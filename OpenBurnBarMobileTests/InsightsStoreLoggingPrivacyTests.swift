@@ -28,4 +28,25 @@ final class InsightsStoreLoggingPrivacyTests: XCTestCase {
             InsightsStore.sensitiveTextLogContext(prompt + " Include quota risk.").fingerprint
         )
     }
+
+    func testErrorLogContextDoesNotExposeLocalizedMessage() {
+        let error = SensitiveTestError(message: "Request failed for bearer secret-token-123")
+
+        let context = InsightsStore.errorLogContext(error)
+
+        XCTAssertTrue(context.typeName.contains("SensitiveTestError"))
+        XCTAssertEqual(context.message.fingerprint.count, 64)
+        XCTAssertTrue(context.message.fingerprint.allSatisfy(\.isHexDigit))
+        XCTAssertEqual(context.message.characterCount, error.localizedDescription.count)
+        XCTAssertFalse(context.message.fingerprint.contains("secret-token-123"))
+        XCTAssertFalse(context.message.fingerprint.contains(error.localizedDescription))
+    }
+
+    private struct SensitiveTestError: LocalizedError {
+        let message: String
+
+        var errorDescription: String? {
+            message
+        }
+    }
 }
