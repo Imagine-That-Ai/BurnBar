@@ -95,8 +95,7 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
             RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
                 executablePath: "/agent",
                 consoleUserUID: 501,
-                loginWindowPID: 415,
-                credentialFilePath: "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+                loginWindowPID: 415
             ),
             [
                 "asuser",
@@ -106,8 +105,8 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
                 "415",
                 "/agent",
                 "--type-credential-worker",
-                "--credential-file",
-                "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+                "--credential-fd",
+                "3"
             ]
         )
     }
@@ -117,35 +116,33 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
             RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
                 executablePath: "/agent",
                 consoleUserUID: 501,
-                loginWindowPID: nil,
-                credentialFilePath: "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+                loginWindowPID: nil
             ),
             [
                 "asuser",
                 "501",
                 "/agent",
                 "--type-credential-worker",
-                "--credential-file",
-                "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+                "--credential-fd",
+                "3"
             ]
         )
     }
 
     func testCredentialWorkerLaunchPlanNeverCarriesCredentialMaterialInArguments() {
         let credential = "correct-horse-battery-staple"
-        let credentialFilePath = "/var/run/openburnbar-remote-access-agent.credential.ABC123"
         let arguments = RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
             executablePath: "/agent",
             consoleUserUID: 501,
-            loginWindowPID: 415,
-            credentialFilePath: credentialFilePath
+            loginWindowPID: 415
         )
 
         XCTAssertFalse(arguments.contains(credential))
         XCTAssertFalse(arguments.contains("--password"))
         XCTAssertFalse(arguments.contains("--credential"))
-        XCTAssertEqual(arguments.filter { $0 == "--credential-file" }.count, 1)
-        XCTAssertEqual(arguments.filter { $0 == credentialFilePath }.count, 1)
+        XCTAssertFalse(arguments.contains("--credential-file"))
+        XCTAssertEqual(arguments.filter { $0 == "--credential-fd" }.count, 1)
+        XCTAssertEqual(arguments.filter { $0 == "3" }.count, 1)
     }
 
     func testCredentialWorkerUsesSessionScopedKeyboardEventSource() {

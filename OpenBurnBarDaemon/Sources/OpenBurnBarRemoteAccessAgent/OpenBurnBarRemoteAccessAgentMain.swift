@@ -395,19 +395,23 @@ private enum RemoteAccessCredentialWorker {
         agentLog(
             "launch credential worker uid=\(consoleUser.uid) loginWindowPID=\(loginPID.map { String($0) } ?? "nil")"
         )
-        try withCredentialFile(passwordData, owner: consoleUser) { credentialFilePath in
+        try withCredentialPipe(passwordData) { credentialPipe in
             try runLaunchctl(
                 arguments: RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
                     executablePath: executablePath,
                     consoleUserUID: consoleUser.uid,
                     loginWindowPID: loginPID,
-                    credentialFilePath: credentialFilePath
-                )
+                    credentialFileDescriptor: RemoteAccessCredentialWorkerLaunchPlan.credentialPipeFileDescriptor
+                ),
+                credentialPipe: credentialPipe
             )
         }
     }
 
-    private static func runLaunchctl(arguments: [String]) throws {
+    private static func runLaunchctl(
+        arguments: [String],
+        credentialPipe: CredentialPipe? = nil
+    ) throws {
         let executable = "/bin/launchctl"
         var cArguments: [UnsafeMutablePointer<CChar>?] = ([executable] + arguments).map { strdup($0) }
         cArguments.append(nil)
@@ -417,11 +421,44 @@ private enum RemoteAccessCredentialWorker {
             }
         }
 
+        var fileActions: posix_spawn_file_actions_t?
+        let fileActionsInitialized = posix_spawn_file_actions_init(&fileActions) == 0
+        defer {
+            if fileActionsInitialized {
+                posix_spawn_file_actions_destroy(&fileActions)
+            }
+        }
+        guard fileActionsInitialized else { throw AgentError.workerLaunchFailed }
+
+        if let credentialPipe {
+            let targetFD = RemoteAccessCredentialWorkerLaunchPlan.credentialPipeFileDescriptor
+            if credentialPipe.readFD != targetFD {
+                guard posix_spawn_file_actions_adddup2(&fileActions, credentialPipe.readFD, targetFD) == 0,
+                      posix_spawn_file_actions_addclose(&fileActions, credentialPipe.readFD) == 0 else {
+                    throw AgentError.workerLaunchFailed
+                }
+            }
+            guard posix_spawn_file_actions_addclose(&fileActions, credentialPipe.writeFD) == 0 else {
+                throw AgentError.workerLaunchFailed
+            }
+        }
+
         var pid = pid_t()
         let spawnStatus = cArguments.withUnsafeMutableBufferPointer { buffer in
-            posix_spawn(&pid, executable, nil, nil, buffer.baseAddress, nil)
+            posix_spawn(&pid, executable, &fileActions, nil, buffer.baseAddress, nil)
         }
         guard spawnStatus == 0 else { throw AgentError.workerLaunchFailed }
+
+        if let credentialPipe {
+            credentialPipe.closeRead()
+            defer { credentialPipe.closeWrite() }
+            do {
+                try writeCredentialInput(credentialPipe.input, to: credentialPipe.writeFD)
+            } catch {
+                killCredentialWorker(pid)
+                throw error
+            }
+        }
 
         let deadline = DispatchTime.now().uptimeNanoseconds + credentialWorkerExitTimeoutNanoseconds
         var status: Int32 = 0
@@ -460,18 +497,17 @@ private enum RemoteAccessCredentialWorker {
     }
 
     private static func credentialData() throws -> Data {
-        guard let path = argumentValue("--credential-file") else {
-            return FileHandle.standardInput.readDataToEndOfFile()
-        }
-        guard path.hasPrefix("/var/run/openburnbar-remote-access-agent.credential.") else {
+        if CommandLine.arguments.contains("--credential-file") {
             throw AgentError.credentialInvalid
         }
-        defer { _ = unlink(path) }
-        do {
-            return try Data(contentsOf: URL(fileURLWithPath: path))
-        } catch {
-            throw AgentError.credentialFileReadFailed
+        guard let fdValue = argumentValue("--credential-fd") else {
+            return FileHandle.standardInput.readDataToEndOfFile()
         }
+        guard let fd = Int32(fdValue), fd >= 0 else {
+            throw AgentError.credentialInvalid
+        }
+        defer { close(fd) }
+        return try readCredentialInput(from: fd)
     }
 
     private static func dropPrivilegesToConsoleUserIfNeeded() throws {
@@ -489,35 +525,28 @@ private enum RemoteAccessCredentialWorker {
         agentLog("credential worker dropped privileges uid=\(getuid()) euid=\(geteuid()) gid=\(getgid())")
     }
 
-    private static func withCredentialFile(
+    private static func withCredentialPipe(
         _ passwordData: Data,
-        owner: RemoteAccessConsoleUser,
-        _ body: (String) throws -> Void
+        _ body: (CredentialPipe) throws -> Void
     ) throws {
-        var template = Array("/var/run/openburnbar-remote-access-agent.credential.XXXXXX".utf8CString)
-        let fd = template.withUnsafeMutableBufferPointer { buffer -> Int32 in
-            guard let baseAddress = buffer.baseAddress else { return -1 }
-            return mkstemp(baseAddress)
-        }
-        guard fd >= 0 else { throw AgentError.credentialFileUnavailable }
+        var fds: [Int32] = [-1, -1]
+        guard pipe(&fds) == 0 else { throw AgentError.credentialPipeUnavailable }
+        let pipe = CredentialPipe(readFD: fds[0], writeFD: fds[1], input: passwordData)
+        defer { pipe.closeAll() }
 
-        let path = String(cString: template)
-        var shouldClose = true
-        defer {
-            if shouldClose { close(fd) }
-            _ = unlink(path)
+        guard setCloseOnExec(pipe.writeFD, enabled: true) else {
+            throw AgentError.credentialPipeUnavailable
         }
 
-        guard fchmod(fd, S_IRUSR | S_IWUSR) == 0,
-              fchown(fd, uid_t(owner.uid), gid_t(owner.gid)) == 0 else {
-            throw AgentError.credentialFileUnavailable
-        }
+        try body(pipe)
+    }
 
-        try passwordData.withUnsafeBytes { rawBuffer in
+    private static func writeCredentialInput(_ data: Data, to fd: Int32) throws {
+        try data.withUnsafeBytes { rawBuffer in
             guard let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return }
             var offset = 0
-            while offset < passwordData.count {
-                let written = Darwin.write(fd, base.advanced(by: offset), passwordData.count - offset)
+            while offset < data.count {
+                let written = Darwin.write(fd, base.advanced(by: offset), data.count - offset)
                 guard written >= 0 else {
                     if errno == EINTR { continue }
                     throw AgentError.workerInputFailed
@@ -525,10 +554,31 @@ private enum RemoteAccessCredentialWorker {
                 offset += written
             }
         }
+    }
 
-        guard close(fd) == 0 else { throw AgentError.workerInputFailed }
-        shouldClose = false
-        try body(path)
+    private static func readCredentialInput(from fd: Int32) throws -> Data {
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 512)
+        while true {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count == 0 { break }
+            guard count > 0 else {
+                if errno == EINTR { continue }
+                throw AgentError.workerInputFailed
+            }
+            data.append(buffer, count: count)
+            if data.count > maximumCredentialUTF8Bytes {
+                throw AgentError.credentialTooLarge
+            }
+        }
+        return data
+    }
+
+    private static func setCloseOnExec(_ fd: Int32, enabled: Bool) -> Bool {
+        let current = fcntl(fd, F_GETFD)
+        guard current >= 0 else { return false }
+        let next = enabled ? (current | FD_CLOEXEC) : (current & ~FD_CLOEXEC)
+        return fcntl(fd, F_SETFD, next) == 0
     }
 
     private static func loginWindowPID(for uid: uid_t) -> Int32? {
@@ -571,6 +621,37 @@ private enum RemoteAccessCredentialWorker {
         }
         guard length > 0 else { return nil }
         return String(cString: buffer)
+    }
+}
+
+private final class CredentialPipe {
+    let readFD: Int32
+    let writeFD: Int32
+    let input: Data
+    private var readOpen = true
+    private var writeOpen = true
+
+    init(readFD: Int32, writeFD: Int32, input: Data) {
+        self.readFD = readFD
+        self.writeFD = writeFD
+        self.input = input
+    }
+
+    func closeRead() {
+        guard readOpen else { return }
+        close(readFD)
+        readOpen = false
+    }
+
+    func closeWrite() {
+        guard writeOpen else { return }
+        close(writeFD)
+        writeOpen = false
+    }
+
+    func closeAll() {
+        closeRead()
+        closeWrite()
     }
 }
 
@@ -852,8 +933,7 @@ private enum AgentError: String, Error {
     case requestTooLarge = "request_too_large"
     case requestTimedOut = "request_timed_out"
     case socketPathTooLong = "socket_path_too_long"
-    case credentialFileReadFailed = "credential_file_read_failed"
-    case credentialFileUnavailable = "credential_file_unavailable"
+    case credentialPipeUnavailable = "credential_pipe_unavailable"
     case workerFailed = "login_session_worker_failed"
     case workerInputFailed = "login_session_worker_input_failed"
     case workerLaunchFailed = "login_session_worker_launch_failed"
