@@ -724,11 +724,10 @@ extension HermesSettingsView {
 
     func gatewayApprovalCard(_ approval: HermesGatewayApprovalRecord) -> some View {
         let isResponding = gatewayStore.isRespondingToApproval(approval)
-        // MP-6: the end-to-end-encrypted action detail, bound to this gate by actionId
-        // (the sealed payload's actionId == the agent confirm id), NOT the approval
-        // document id (hga_<hash>) — those differ, so keying by approval.id would never
-        // match and would permanently disable Approve.
-        let sealedDetail = gatewayStore.sealedApprovalDetails[approval.actionId]
+        // MP-6: the end-to-end-encrypted action detail is bound to this gate by
+        // the approval client/action pair. The approval document id is a server
+        // hash, while the sealed payload carries the agent confirm id.
+        let sealedDetail = gatewayStore.sealedApprovalDetail(for: approval)
         return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: "hand.raised.fill")
@@ -743,9 +742,10 @@ extension HermesSettingsView {
                             .lineLimit(1)
                     }
                     // MP-6: show the END-TO-END-ENCRYPTED detail (decrypted on this
-                    // device, bound to this gate by actionId) for the action being
-                    // approved — never a server-supplied free-text summary. Until the
-                    // sealed detail arrives, Approve stays disabled (deny-by-default).
+                    // device, bound to this gate by client/action) for the action
+                    // being approved — never a server-supplied free-text summary.
+                    // Until the sealed detail arrives, Approve stays disabled
+                    // (deny-by-default).
                     if let sealedDetail, !sealedDetail.isEmpty {
                         Text(sealedDetail)
                             .font(.caption)
