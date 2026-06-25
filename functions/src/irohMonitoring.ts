@@ -175,8 +175,13 @@ function uidFromPath(path: string): string {
   return parts[0] === "users" && parts.length >= 4 ? parts[1] : "unknown";
 }
 
-function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | null {
-  const data = doc.data();
+export function parseIrohAuditEventForRollup(
+  data: Record<string, unknown>,
+  refPath: string,
+): IrohAuditRollupInput | null {
+  if (data.rollupEligible !== true) {
+    return null;
+  }
   const connectionId = stringField(data, "connectionId");
   const eventType = recordField(data, "eventType");
   if (!connectionId || !isIrohAuditEventType(eventType)) {
@@ -185,12 +190,16 @@ function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | n
   const transportRaw = recordField(data, "transport");
   const transport = isIrohTransport(transportRaw) ? transportRaw : undefined;
   return {
-    uid: uidFromPath(doc.ref.path),
+    uid: uidFromPath(refPath),
     connectionId,
     eventType,
     transport,
     rttMillis: numberField(data, "rttMillis"),
   };
+}
+
+function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | null {
+  return parseIrohAuditEventForRollup(doc.data(), doc.ref.path);
 }
 
 async function buildAndPersistIrohDailyRollup(
