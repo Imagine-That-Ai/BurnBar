@@ -290,6 +290,8 @@ final class OpenBurnBarDaemonManager {
     static let providerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarIdentity.cursorConnectorKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+            + [OpenBurnBarIdentity.providerAPIKeychainService]
+            + OpenBurnBarIdentity.legacyProviderAPIKeychainServices
     )
 
     /// Supervisor configuration exposed for diagnostics / testing.

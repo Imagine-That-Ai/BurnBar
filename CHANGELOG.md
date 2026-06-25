@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
+  "Credential not found" badge and a permanent "Refresh credential" button even
+  right after a successful sign-in. Claude Max/Pro OAuth profiles routinely
+  authenticate while Anthropic returns no quota buckets; the row classified that
+  empty-quota snapshot as a missing credential, producing a self-contradictory
+  card (the message said the credential *was* signed in) and an endless
+  refresh-nag loop. A credential that auth discovery — or an official-API quota
+  snapshot — confirms is present is now reported as "Quota unavailable" (amber),
+  never "Credential not found", and the post-refresh confirmation truthfully
+  reports "Credential refreshed and connected" instead of promising quota that
+  some accounts never expose. The classification is covered by new unit tests.
+- Fixed 3D pets rendering horizontal (soles of feet toward camera) until clicked to chat. The root cause was that skinned-rig founders (and other skeleton-animated models) have a bind pose whose joint rotations orient the skinned mesh horizontally even though the raw mesh geometry is Y-dominant. The old orientation check ran at install time against bind-pose geometry and was a no-op for these models. `SceneKitPetRenderer` now corrects orientation at presentation time (post-skinning) across multiple render passes, and the camera reframe settles after the correction lands.
 - Made macOS updates converge on one canonical app launch. The direct-download
   updater now terminates stale OpenBurnBar GUI processes, normalizes
   LaunchServices registrations, and relaunches `/Applications/OpenBurnBar.app`

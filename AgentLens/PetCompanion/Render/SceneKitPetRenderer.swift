@@ -146,6 +146,10 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     private var scene: SCNScene?
     /// The node we yaw for facing and bob for the static-idle fallback.
     private weak var contentRoot: SCNNode?
+    /// The corrective-rotation wrapper inside `contentRoot`. We apply axis
+    /// corrections here after the first render so they reflect post-skinning
+    /// presentation bounds, not the (often misleading) bind-pose geometry.
+    private weak var orientationRoot: SCNNode?
     /// Pre-resolved `clipName → SCNAnimationPlayer` from the loaded scene.
     private var clipPlayers: [String: SCNAnimationPlayer] = [:]
     /// The clip key currently playing (for restore after pause / form swap).
@@ -164,7 +168,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     private var modelFraming: ModelFraming?
     /// Set when a freshly-loaded scene still needs the camera re-fit to its
     /// post-skinning presentation bounds on the next render (see install).
-    private var needsPresentationFraming = false
+    /// Uses a counter so the orientation correction and camera fit can settle
+    /// across multiple render passes (skin → detect → rotate → re-fit).
+    private var presentationFramingPasses = 0
     /// Window origin + mouse location captured at the start of a drag-to-move,
     /// so the panel tracks the cursor in absolute screen coordinates.
     private var dragStartWindowOrigin: NSPoint?
@@ -190,6 +196,26 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
             normalizedMaxExtent: maxExtent * scale,
             baseScale: framing.baseScale
         )
+    }
+
+    /// Test-only guard: true when the mounted model's longest dimension is
+    /// vertical (+Y) in presentation space, or at least close enough that it
+    /// isn't lying on its side/back. Catches the "soles toward camera" failure
+    /// mode while tolerating naturally wide mascots like the Go gopher.
+    var isUprightForTesting: Bool {
+        guard let contentRoot else { return false }
+        let (minB, maxB): (SCNVector3, SCNVector3) = {
+            if presentationFramingPasses > 0 {
+                return contentRoot.presentation.boundingBox
+            }
+            return contentRoot.boundingBox
+        }()
+        let extentX = CGFloat(maxB.x - minB.x)
+        let extentY = CGFloat(maxB.y - minB.y)
+        let extentZ = CGFloat(maxB.z - minB.z)
+        let longest = max(extentX, max(extentY, extentZ))
+        guard longest > 0 else { return false }
+        return extentY >= longest * 0.75
     }
 
     // MARK: Init
@@ -248,9 +274,11 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         scnView.scene = nil
         scene = nil
         contentRoot = nil
+        orientationRoot = nil
         clipPlayers.removeAll(keepingCapacity: false)
         activeClipKey = nil
         playbackGeneration += 1
+        presentationFramingPasses = 0
         scnView.removeFromSuperview()
     }
 
@@ -263,10 +291,12 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         scnView.scene = nil
         scene = nil
         contentRoot = nil
+        orientationRoot = nil
         modelFraming = nil
         clipPlayers.removeAll(keepingCapacity: true)
         activeClipKey = nil
         playbackGeneration += 1
+        presentationFramingPasses = 0
         loadScene(for: form)
         play(state: currentStateKey)
     }
@@ -423,13 +453,22 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         self.scene = loaded
         scnView.scene = loaded
 
-        // Wrap the imported root so we can yaw/bob without disturbing clips.
-        let root = SCNNode()
+        // Wrap the imported root so we can yaw/bob/scale without disturbing clips.
+        // The orientation wrapper sits between contentRoot and the imported
+        // children so a corrective rotation can be applied after we see the
+        // post-skinning presentation bounds (see frameCameraToPresentation).
+        let orientationRoot = SCNNode()
+        orientationRoot.name = "pet.orientation"
         for child in loaded.rootNode.childNodes {
-            root.addChildNode(child)
+            orientationRoot.addChildNode(child)
         }
+
+        let root = SCNNode()
+        root.name = "pet.content"
+        root.addChildNode(orientationRoot)
         loaded.rootNode.addChildNode(root)
         contentRoot = root
+        self.orientationRoot = orientationRoot
 
         normalizeFraming(root: root, in: loaded)
         harvestClipPlayers(from: loaded.rootNode)
@@ -437,20 +476,45 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
 
         // Skinned rigs (the founders) deform far beyond their bind-pose bounding
         // sphere once the skinner runs at first render, so the bind-pose camera
-        // framing above misses them entirely. Re-fit the camera to the actual
-        // PRESENTATION bounds after the first render lands.
-        needsPresentationFraming = true
+        // framing above misses them entirely. The skeleton bind pose can also
+        // orient the skinned mesh horizontally even though the raw mesh geometry
+        // is Y-dominant. Re-fit the camera AND correct orientation to the actual
+        // PRESENTATION bounds across several render passes.
+        presentationFramingPasses = 3
         scnView.delegate = self
     }
 
-    /// Re-fit the camera to the model's PRESENTATION (post-skinning) bounds. The
-    /// presentation node reflects the actual rendered pose; for skinned founder
-    /// rigs that is ~100x larger and offset high on +Y versus the static
-    /// bind-pose bounds used at install time. Unskinned models (presentation ==
-    /// bind pose, e.g. go-gopher) are unaffected.
+    /// Re-fit the camera to the model's PRESENTATION (post-skinning) bounds and
+    /// correct any horizontal orientation. Skinned rigs (the founders) have a
+    /// skeleton bind pose that can orient the mesh horizontally even though the
+    /// raw mesh geometry is Y-dominant — the skinner re-positions vertices
+    /// according to joint world transforms at render time. This method runs
+    /// across multiple render passes (see `presentationFramingPasses`) so the
+    /// orientation correction and camera fit can settle: skin evaluates on the
+    /// first render, we detect and rotate on the next, then re-fit the camera.
     private func frameCameraToPresentation() {
         guard let scene = scnView.scene,
-              let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true) else { return }
+              let cameraNode = scene.rootNode.childNode(withName: "pet.camera", recursively: true),
+              let contentRoot else { return }
+
+        // On every pass except the last: check orientation using the presentation
+        // bounding box and apply a corrective rotation if the model is lying on
+        // its side. The last pass is reserved for the final camera fit.
+        if presentationFramingPasses > 1, let orientationRoot {
+            let (minB, maxB) = contentRoot.presentation.boundingBox
+            let extentX = CGFloat(maxB.x - minB.x)
+            let extentY = CGFloat(maxB.y - minB.y)
+            let extentZ = CGFloat(maxB.z - minB.z)
+            let longest = max(extentX, max(extentY, extentZ))
+            if longest > 0 && extentY < longest * 0.75 {
+                if extentZ > extentX {
+                    orientationRoot.eulerAngles = SCNVector3(CGFloat.pi / 2, 0, 0)
+                } else {
+                    orientationRoot.eulerAngles = SCNVector3(0, 0, -CGFloat.pi / 2)
+                }
+            }
+        }
+
         let sphere = scene.rootNode.presentation.boundingSphere
         let center = sphere.center
         let radius = CGFloat(sphere.radius)
@@ -472,8 +536,8 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
 
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
         Task { @MainActor [weak self] in
-            guard let self, self.needsPresentationFraming else { return }
-            self.needsPresentationFraming = false
+            guard let self, self.presentationFramingPasses > 0 else { return }
+            self.presentationFramingPasses -= 1
             self.frameCameraToPresentation()
         }
     }

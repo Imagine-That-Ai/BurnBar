@@ -629,6 +629,7 @@
 		4D0D7937C37E1E78CBA80AED /* ChatAttachmentTray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8AC6887DC07E04FFF37CDB /* ChatAttachmentTray.swift */; };
 		4D3BB65EB9A53DA7AC06C53F /* UsageAggregationPolicies.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD5334A8CDFC4FDC23956AF0 /* UsageAggregationPolicies.swift */; };
 		4D485406C46E1C27DED30608 /* ProviderQuotaChipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBACE25666C69D44A08BEBE /* ProviderQuotaChipTests.swift */; };
+		2F6200865716336C6FD3D6F3 /* ExternalCredentialNoticeClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FABD3BD8E41AAE5E441AF1 /* ExternalCredentialNoticeClassifierTests.swift */; };
 		4D632AE1E8F19E4086490619 /* MissionConsoleMacHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58F6AE82537DB7DB7A142F1 /* MissionConsoleMacHost.swift */; };
 		4DC7FCD725CA373AB183654A /* AgentLensStringNilIfBlank.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE144C08BC54A92B6917070 /* AgentLensStringNilIfBlank.swift */; };
 		4DD27CA040ED9B857F9C2430 /* CLIAgentResumeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AF2D5325F794CAC95937C1 /* CLIAgentResumeSheet.swift */; };
@@ -2396,6 +2397,7 @@
 		1B69F858B4AE85E0BB670CCC /* MercuryGradientSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryGradientSnapshotTests.swift; sourceTree = "<group>"; };
 		1BABF98C4281ED876B268EF1 /* BurnBarDaemonServer+RPCCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarDaemonServer+RPCCode.swift"; sourceTree = "<group>"; };
 		1BBACE25666C69D44A08BEBE /* ProviderQuotaChipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaChipTests.swift; sourceTree = "<group>"; };
+		08FABD3BD8E41AAE5E441AF1 /* ExternalCredentialNoticeClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalCredentialNoticeClassifierTests.swift; sourceTree = "<group>"; };
 		1BDE272960AF1D36131DBD7C /* HermesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesServiceTests.swift; sourceTree = "<group>"; };
 		1C25DAF67D90C6EFEE0E0FCD /* SessionLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogsView.swift; sourceTree = "<group>"; };
 		1C2F37A6CA116C4E9D547608 /* UsageConflictResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageConflictResolutionTests.swift; sourceTree = "<group>"; };
@@ -6474,6 +6476,7 @@
 				E5B36452B9C637B74CAFCD5C /* ProviderQuotaAdapterCredentialReadTests.swift */,
 				A7CBBA515C19F01C0194C02A /* ProviderQuotaBucketElapsedResetTests.swift */,
 				1BBACE25666C69D44A08BEBE /* ProviderQuotaChipTests.swift */,
+				08FABD3BD8E41AAE5E441AF1 /* ExternalCredentialNoticeClassifierTests.swift */,
 				C01896CF74165FE12FF88578 /* ProviderQuotaServiceCredentialReadTests.swift */,
 				853B0E0A43E3B6BC22214035 /* ProviderQuotaServiceCumulativeAndContextTests.swift */,
 				641A55D41C6E2219C9C614AB /* ProviderQuotaServiceMattersTests.swift */,
@@ -9906,6 +9909,7 @@
 				322D05B56C82E2F6CE21A2A1 /* ProviderQuotaAdapterCredentialReadTests.swift in Sources */,
 				F45E3E01B4771AD381FC9CE2 /* ProviderQuotaBucketElapsedResetTests.swift in Sources */,
 				4D485406C46E1C27DED30608 /* ProviderQuotaChipTests.swift in Sources */,
+				2F6200865716336C6FD3D6F3 /* ExternalCredentialNoticeClassifierTests.swift in Sources */,
 				61E90207FB2CBF988FD0F635 /* ProviderQuotaServiceCredentialReadTests.swift in Sources */,
 				BB9711F597E7E11A5C73ADBC /* ProviderQuotaServiceCumulativeAndContextTests.swift in Sources */,
 				4AF8759CF79E7ED2C16F8DF2 /* ProviderQuotaServiceMattersTests.swift in Sources */,

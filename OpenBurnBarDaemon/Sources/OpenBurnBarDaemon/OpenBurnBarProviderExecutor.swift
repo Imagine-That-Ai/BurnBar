@@ -841,6 +841,16 @@ private enum BurnBarFakeProviderExecution {
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     public static let defaultService = "com.openburnbar.daemon.provider-secrets"
     public static let legacyCursorConnectorService = "com.openburnbar.cursor-connector"
+    /// All Keychain services the app has used to store provider API keys.
+    /// The daemon checks every one so credentials entered through any app
+    /// version or code path are resolvable.
+    public static let allLegacyServices: [String] = [
+        "com.openburnbar.cursor-connector",
+        "com.burnbar.cursor-connector",
+        "com.agentlens.cursor-connector",
+        "com.openburnbar.provider-api-keys",
+        "com.burnbar.provider-api-keys"
+    ]
 
     private let service: String
     private let legacyServices: [String]
@@ -857,7 +867,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     ) {
         self.service = service
         self.legacyServices = legacyServices ?? (
-            service == Self.defaultService ? [Self.legacyCursorConnectorService] : []
+            service == Self.defaultService ? Self.allLegacyServices : []
         )
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
@@ -880,6 +890,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
         for legacyService in legacyServices where legacyService != service {
             if let secret = try secret(forService: legacyService, account: account) {
+                // Self-heal: promote the credential to the daemon's primary
+                // service so subsequent reads don't depend on the legacy
+                // service being readable. Failures are best-effort — the
+                // credential is still returned even if promotion fails.
+                try? await setSecret(secret, for: providerID)
                 return try await routeSecret(from: secret, providerID: providerID)
             }
         }
