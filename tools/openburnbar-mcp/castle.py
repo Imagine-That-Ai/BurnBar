@@ -26,6 +26,7 @@ import ministry
 
 
 CASTLE_CACHE_DIR = ministry.MINISTRY_CACHE_DIR.parent / "castle"
+CASTLE_STATUS_ROOTS_ENV = "OPENBURNBAR_CASTLE_STATUS_ROOTS"
 STATUS_SCHEMA_VERSION = 1
 PROMPT_PLACEHOLDER = "__CASTLE_PROMPT_FROM_FILE__"
 STDERR_SUFFIX = ".stderr"
@@ -47,6 +48,29 @@ RUNTIMES = ("droid", "codex", "claude", "gemini", "opencode", "cursor-agent", "k
 def _default_run_dir() -> Path:
     run_id = f"{int(time.time())}-{os.getpid()}"
     return CASTLE_CACHE_DIR / "runs" / run_id
+
+
+def _canonical_path(path: str | Path) -> Path:
+    return Path(path).expanduser().resolve(strict=False)
+
+
+def _status_snapshot_roots(allowed_roots: Iterable[str | Path] | None = None) -> list[Path]:
+    roots = [Path(root) for root in allowed_roots] if allowed_roots is not None else [CASTLE_CACHE_DIR]
+    if allowed_roots is None:
+        for raw in os.environ.get(CASTLE_STATUS_ROOTS_ENV, "").split(os.pathsep):
+            if raw.strip():
+                roots.append(Path(raw.strip()))
+    return [_canonical_path(root) for root in roots]
+
+
+def _is_under_root(path: Path, roots: Iterable[Path]) -> bool:
+    for root in roots:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 RUNTIME_LABELS = {
@@ -1108,13 +1132,24 @@ def write_status_record(status_path: str | Path, record: dict[str, Any]) -> None
     os.replace(tmp, path)
 
 
-def status_snapshot(paths: list[str]) -> dict[str, Any]:
+def status_snapshot(paths: list[str], *, allowed_roots: Iterable[str | Path] | None = None) -> dict[str, Any]:
+    roots = _status_snapshot_roots(allowed_roots)
     records = []
     failures = []
     for raw in paths:
         path = Path(raw).expanduser()
         try:
-            records.append(json.loads(path.read_text(encoding="utf-8")))
+            resolved = _canonical_path(path)
+            if not _is_under_root(resolved, roots):
+                failures.append(
+                    {
+                        "path": str(path),
+                        "code": "CASTLE_STATUS_PATH_DENIED",
+                        "reason": "status path is outside allowed Castle status roots",
+                    }
+                )
+                continue
+            records.append(json.loads(resolved.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError) as exc:
             failures.append({"path": str(path), "reason": str(exc)})
     return {"status": "ok", "count": len(records), "records": records, "failures": failures}
