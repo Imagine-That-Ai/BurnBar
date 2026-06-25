@@ -192,6 +192,69 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertTrue(loaded.threads.isEmpty, "Bob's partition must not see Alice's threads")
     }
 
+    func testThreadFileComponentsAreCollisionResistant() {
+        let escapedSlash = MobileChatFileLocalStore.sanitizeThreadFileComponent("a/")
+        let literalEscape = MobileChatFileLocalStore.sanitizeThreadFileComponent("a_002f")
+
+        XCTAssertNotEqual(escapedSlash, literalEscape)
+        XCTAssertTrue(escapedSlash.hasPrefix("v2-"))
+        XCTAssertTrue(literalEscape.hasPrefix("v2-"))
+    }
+
+    func testFileBackedStoreKeepsEscapedThreadIDCollisionThreadsDistinct() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mobile-chat-history-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let store = MobileChatFileLocalStore(directory: tempDir)
+        store.setActivePartition("collisions")
+        let slashThread = Self.makeThread(id: "a/", runtime: .pi, title: "Slash")
+        let literalThread = Self.makeThread(id: "a_002f", runtime: .pi, title: "Literal")
+        try store.save(MobileChatHistorySnapshot(threads: [slashThread, literalThread]))
+
+        let reader = MobileChatFileLocalStore(directory: tempDir)
+        reader.setActivePartition("collisions")
+        let restored = try reader.load()
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: restored.threads.map { ($0.id, $0.title) }),
+            ["a/": "Slash", "a_002f": "Literal"]
+        )
+
+        let partitionDir = tempDir.appendingPathComponent("mobile-chat-history-collisions", isDirectory: true)
+        let threadFiles = try FileManager.default.contentsOfDirectory(atPath: partitionDir.path)
+            .filter { $0.hasPrefix("thread-") && $0.hasSuffix(".json") }
+        XCTAssertEqual(threadFiles.count, 2)
+        XCTAssertEqual(Set(threadFiles).count, 2)
+    }
+
+    func testFileBackedStoreReadsLegacyEscapedThreadFileName() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mobile-chat-history-tests-\(UUID().uuidString)")
+        let partitionDir = tempDir.appendingPathComponent("mobile-chat-history-legacy", isDirectory: true)
+        try FileManager.default.createDirectory(at: partitionDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let thread = Self.makeThread(id: "a/", runtime: .pi, title: "Legacy slash")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(thread).write(to: partitionDir.appendingPathComponent("thread-a_002f.json"))
+        try Data(#"{"threadIDs":["a/"],"tombstones":{}}"#.utf8)
+            .write(to: partitionDir.appendingPathComponent("index.json"))
+
+        let store = MobileChatFileLocalStore(directory: tempDir)
+        store.setActivePartition("legacy")
+        let restored = try store.load()
+        XCTAssertEqual(restored.threads.map(\.id), ["a/"])
+        XCTAssertEqual(restored.threads.first?.title, "Legacy slash")
+
+        try store.save(restored)
+        let legacyURL = partitionDir.appendingPathComponent("thread-a_002f.json")
+        let currentName = "thread-\(MobileChatFileLocalStore.sanitizeThreadFileComponent("a/")).json"
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: partitionDir.appendingPathComponent(currentName).path))
+    }
+
     func testWrittenChatFilesAreCompleteProtectedAndBackupExcluded() throws {
         // RR-14: every body / index file the local store drops must carry
         // NSFileProtectionComplete and be excluded from backup *at write time*,

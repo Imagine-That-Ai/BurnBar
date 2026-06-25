@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import FirebaseAuth
 import FirebaseCore
@@ -376,7 +377,7 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         var digests: [String: Int] = [:]
         threads.reserveCapacity(index.threadIDs.count)
         for threadID in index.threadIDs {
-            let url = threadFileURL(for: partition, threadID: threadID)
+            let url = existingThreadFileURL(for: partition, threadID: threadID)
             guard let data = try? Data(contentsOf: url) else { continue }
             guard let thread = try? decoder.decode(MobileChatThread.self, from: data) else { continue }
             threads.append(thread)
@@ -410,11 +411,13 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
                 continue // Unchanged body already on disk — skip the rewrite.
             }
             try writeProtected(data, to: threadFileURL(for: partition, threadID: thread.id))
+            removeLegacyThreadFileIfNeeded(for: partition, threadID: thread.id)
         }
 
         // 2. Remove thread files that are no longer part of the snapshot.
         for staleID in previousDigests.keys where !liveIDs.contains(staleID) {
             try? fileManager.removeItem(at: threadFileURL(for: partition, threadID: staleID))
+            try? fileManager.removeItem(at: legacyThreadFileURL(for: partition, threadID: staleID))
         }
 
         // 3. Rewrite the small index (cheap regardless of history size).
@@ -476,7 +479,7 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         let ids = (try? loadIndexLocked(for: partition, decoder: Self.makeDecoder()).threadIDs)
             ?? scanThreadIDsLocked(for: partition)
         for threadID in ids {
-            if let data = try? Data(contentsOf: threadFileURL(for: partition, threadID: threadID)) {
+            if let data = try? Data(contentsOf: existingThreadFileURL(for: partition, threadID: threadID)) {
                 digests[threadID] = Self.digest(of: data)
             }
         }
@@ -486,10 +489,35 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
     private func scanThreadIDsLocked(for partition: String) -> [String] {
         let dir = partitionDirectory(for: partition)
         guard let entries = try? fileManager.contentsOfDirectory(atPath: dir.path) else { return [] }
+        let decoder = Self.makeDecoder()
         return entries.compactMap { name in
             guard name.hasPrefix("thread-"), name.hasSuffix(".json") else { return nil }
-            return String(name.dropFirst("thread-".count).dropLast(".json".count))
+            let url = dir.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: url),
+                  let thread = try? decoder.decode(MobileChatThread.self, from: data) else {
+                return nil
+            }
+            return thread.id
         }
+    }
+
+    private func existingThreadFileURL(for partition: String, threadID: String) -> URL {
+        let current = threadFileURL(for: partition, threadID: threadID)
+        if fileManager.fileExists(atPath: current.path) {
+            return current
+        }
+        let legacy = legacyThreadFileURL(for: partition, threadID: threadID)
+        if fileManager.fileExists(atPath: legacy.path) {
+            return legacy
+        }
+        return current
+    }
+
+    private func removeLegacyThreadFileIfNeeded(for partition: String, threadID: String) {
+        let current = threadFileURL(for: partition, threadID: threadID)
+        let legacy = legacyThreadFileURL(for: partition, threadID: threadID)
+        guard current.path != legacy.path else { return }
+        try? fileManager.removeItem(at: legacy)
     }
 
     /// One-time idempotent migration: explode the legacy single-file snapshot
@@ -549,6 +577,11 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         return partitionDirectory(for: partition).appendingPathComponent("thread-\(safe).json")
     }
 
+    private func legacyThreadFileURL(for partition: String, threadID: String) -> URL {
+        let safe = Self.legacySanitizeThreadFileComponent(threadID)
+        return partitionDirectory(for: partition).appendingPathComponent("thread-\(safe).json")
+    }
+
     private func legacyFileURL(for partition: String) -> URL {
         directory.appendingPathComponent("mobile-chat-history-\(partition).json")
     }
@@ -585,10 +618,18 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         return cleaned.isEmpty ? "local" : cleaned
     }
 
-    /// Maps an arbitrary thread id to a filesystem-safe file component. Unlike
-    /// the partition key, thread ids must round-trip 1:1 on load via the index,
-    /// so we percent-escape disallowed characters rather than collapse them.
+    /// Maps an arbitrary thread id to a filesystem-safe file component.
+    /// The hash prefix keeps the mapping one-to-one even when an escaped value
+    /// would otherwise collide with a literal id such as `a_002f`.
     static func sanitizeThreadFileComponent(_ raw: String) -> String {
+        let digest = SHA256.hash(data: Data(raw.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let readable = legacySanitizeThreadFileComponent(raw).prefix(64)
+        return "v2-\(digest)-\(readable)"
+    }
+
+    private static func legacySanitizeThreadFileComponent(_ raw: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         var out = ""
         out.reserveCapacity(raw.count)
