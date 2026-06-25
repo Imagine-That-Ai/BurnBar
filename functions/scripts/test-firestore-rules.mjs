@@ -4207,8 +4207,49 @@ test("T7 session_logs manifest denies plaintext on the merge-update path", async
   );
 });
 
-// T8 — media_session_events rejects an arbitrary unlisted key (hasOnly).
-test("T8 media_session_events denies unlisted keys", async () => {
+// T8 — iroh_audit_events keeps client telemetry out of trusted ops rollups.
+test("T8 iroh_audit_events denies client rollup eligibility", async () => {
+  const db = authedDb("iroh-owner");
+  const base = {
+    id: "evt-1",
+    connectionId: "conn-1",
+    eventType: "iroh_fallback_to_firestore",
+    observedAt: "2026-06-02T00:00:00.000Z",
+    transport: "firestore",
+    rttMillis: 25,
+    detail: { reason: "relay_unavailable" },
+    schemaVersion: 1,
+    expireAt: Timestamp.fromDate(new Date("2026-07-02T00:00:00.000Z")),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/iroh-owner/iroh_audit_events/evt-1"), base)
+  );
+  await assertSucceeds(
+    setDoc(doc(db, "users/iroh-owner/iroh_audit_events/evt-2"), {
+      ...base,
+      id: "evt-2",
+      rollupEligible: false,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/iroh-owner/iroh_audit_events/evt-3"), {
+      ...base,
+      id: "evt-3",
+      rollupEligible: true,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/iroh-owner/iroh_audit_events/evt-4"), {
+      ...base,
+      id: "evt-4",
+      rttMillis: -1,
+    })
+  );
+});
+
+// T8b — media_session_events rejects an arbitrary unlisted key (hasOnly).
+test("T8b media_session_events denies unlisted keys", async () => {
   const db = authedDb("mse-owner");
   await seedBurnBarProMaxEntitlement("mse-owner");
   const base = {
