@@ -42,6 +42,56 @@ public struct DaemonPhoneControlPinProvisionResponse: Codable, Hashable, Sendabl
     }
 }
 
+/// Non-secret grant metadata the daemon uses to recompute the local-auth proof
+/// intent hash. Keeping the signable fields on the socket prevents the daemon
+/// from trusting a caller-supplied hash for high-risk Computer Use session
+/// starts.
+public struct ComputerUseLocalAuthGrantBinding: Codable, Hashable, Sendable {
+    public let requestId: String
+    public let runtime: String
+    public let threadId: String
+    public let preset: String
+    public let capabilities: [String]
+    public let trustMode: String
+    public let deliveryMode: String
+    public let requestedAt: Date
+    public let expiresAt: Date
+    public let grantDurationSeconds: Double
+    public let sourceDeviceId: String
+    public let clientIntentId: String
+    public let localAuthenticationSatisfied: Bool
+
+    public init(
+        requestId: String,
+        runtime: String,
+        threadId: String,
+        preset: String,
+        capabilities: [String],
+        trustMode: String,
+        deliveryMode: String,
+        requestedAt: Date,
+        expiresAt: Date,
+        grantDurationSeconds: Double,
+        sourceDeviceId: String,
+        clientIntentId: String,
+        localAuthenticationSatisfied: Bool
+    ) {
+        self.requestId = requestId
+        self.runtime = runtime
+        self.threadId = threadId
+        self.preset = preset
+        self.capabilities = capabilities.sorted()
+        self.trustMode = trustMode
+        self.deliveryMode = deliveryMode
+        self.requestedAt = requestedAt
+        self.expiresAt = expiresAt
+        self.grantDurationSeconds = grantDurationSeconds
+        self.sourceDeviceId = sourceDeviceId
+        self.clientIntentId = clientIntentId
+        self.localAuthenticationSatisfied = localAuthenticationSatisfied
+    }
+}
+
 public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let mode: String  // ComputerUseMode raw value
     public let trustMode: String  // ComputerUseTrustMode raw value
@@ -65,8 +115,14 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     /// requires `proof.deviceId == sourceDeviceId`. Optional for wire compat.
     public let sourceDeviceId: String?
     /// The canonical op/intent hash (hex) the daemon is about to honor. The proof
-    /// MUST be bound to exactly these bytes. Optional for wire compat.
+    /// MUST be bound to exactly these bytes. Optional for wire compat; enforced
+    /// daemons derive the expected value from `localAuthGrantBinding` and only
+    /// accept this field as a consistency hint.
     public let intentHashHex: String?
+    /// The canonical grant metadata the daemon hashes independently before
+    /// verifying `localAuthProof`. Optional for wire compat; required when daemon
+    /// proof enforcement is enabled.
+    public let localAuthGrantBinding: ComputerUseLocalAuthGrantBinding?
 
     public init(
         mode: String,
@@ -80,7 +136,8 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         runID: BurnBarRunID? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         sourceDeviceId: String? = nil,
-        intentHashHex: String? = nil
+        intentHashHex: String? = nil,
+        localAuthGrantBinding: ComputerUseLocalAuthGrantBinding? = nil
     ) {
         self.mode = mode
         self.trustMode = trustMode
@@ -94,6 +151,7 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         self.localAuthProof = localAuthProof
         self.sourceDeviceId = sourceDeviceId
         self.intentHashHex = intentHashHex
+        self.localAuthGrantBinding = localAuthGrantBinding
     }
 }
 
@@ -136,19 +194,26 @@ public struct ComputerUseInvokeRequest: Codable, Hashable, Sendable {
     public let sourceDeviceId: String?
     /// The canonical op/intent hash (hex) the daemon is about to honor.
     public let intentHashHex: String?
+    /// The canonical grant metadata associated with the proof. Session invokes
+    /// normally rely on the already-verified session-start record, but keeping
+    /// this on the wire preserves one request shape for future per-action proof
+    /// enforcement.
+    public let localAuthGrantBinding: ComputerUseLocalAuthGrantBinding?
 
     public init(
         sessionId: String,
         invocation: BurnBarToolInvocation,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         sourceDeviceId: String? = nil,
-        intentHashHex: String? = nil
+        intentHashHex: String? = nil,
+        localAuthGrantBinding: ComputerUseLocalAuthGrantBinding? = nil
     ) {
         self.sessionId = sessionId
         self.invocation = invocation
         self.localAuthProof = localAuthProof
         self.sourceDeviceId = sourceDeviceId
         self.intentHashHex = intentHashHex
+        self.localAuthGrantBinding = localAuthGrantBinding
     }
 }
 

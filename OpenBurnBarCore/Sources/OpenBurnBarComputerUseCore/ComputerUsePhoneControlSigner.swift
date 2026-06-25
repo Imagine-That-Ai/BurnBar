@@ -193,6 +193,27 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         )
     }
 
+    /// Canonical hash for the daemon socket binding. This lets the daemon
+    /// independently derive the expected local-auth proof hash from the grant
+    /// fields instead of trusting a caller-supplied hash string.
+    public func canonicalAgentGrantRequestHashHex(binding: ComputerUseLocalAuthGrantBinding) throws -> String {
+        try canonicalAgentGrantRequestHashHex(
+            requestId: binding.requestId,
+            runtime: binding.runtime,
+            threadId: binding.threadId,
+            preset: binding.preset,
+            capabilities: binding.capabilities.sorted(),
+            trustMode: binding.trustMode,
+            deliveryMode: binding.deliveryMode,
+            requestedAt: binding.requestedAt,
+            expiresAt: binding.expiresAt,
+            grantDurationSeconds: binding.grantDurationSeconds,
+            sourceDeviceId: binding.sourceDeviceId,
+            clientIntentId: binding.clientIntentId,
+            localAuthenticationSatisfied: binding.localAuthenticationSatisfied
+        )
+    }
+
     private func canonicalAgentGrantRequestHashHex(
         requestId: String,
         runtime: String,

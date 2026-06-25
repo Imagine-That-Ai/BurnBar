@@ -17,7 +17,6 @@ import XCTest
 /// proof-specific `unauthorized` error.
 final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
     private let deviceId = "device-abc"
-    private let intentHash = String(repeating: "a", count: 64)
 
     // MARK: - Helpers
 
@@ -43,6 +42,32 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         )
     }
 
+    private func makeGrantBinding(
+        requestId: String = "grant-request-abc",
+        sourceDeviceId: String? = nil,
+        localAuthenticationSatisfied: Bool = true
+    ) -> ComputerUseLocalAuthGrantBinding {
+        ComputerUseLocalAuthGrantBinding(
+            requestId: requestId,
+            runtime: "codex",
+            threadId: "thread-abc",
+            preset: "desktop",
+            capabilities: ["desktop_browser", "desktop_screenshot"],
+            trustMode: "manual",
+            deliveryMode: "live_then_queued",
+            requestedAt: Date(timeIntervalSinceReferenceDate: 789_000_000),
+            expiresAt: Date(timeIntervalSinceReferenceDate: 789_000_300),
+            grantDurationSeconds: 1_800,
+            sourceDeviceId: sourceDeviceId ?? deviceId,
+            clientIntentId: "client-intent-abc",
+            localAuthenticationSatisfied: localAuthenticationSatisfied
+        )
+    }
+
+    private func intentHash(for binding: ComputerUseLocalAuthGrantBinding) throws -> String {
+        try ComputerUsePhoneControlSigner().canonicalAgentGrantRequestHashHex(binding: binding)
+    }
+
     private func makeServer(
         socketPath: String,
         verifier: DaemonLocalAuthProofVerifier?,
@@ -64,6 +89,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         proof: HermesRealtimeRelayAgentGrantLocalAuthProof?,
         sourceDeviceId: String?,
         intentHashHex: String?,
+        grantBinding: ComputerUseLocalAuthGrantBinding? = nil,
         id: String
     ) -> BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest> {
         BurnBarRPCRequestEnvelopeWithParams(
@@ -76,7 +102,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
                 clientID: BurnBarClientID(rawValue: "test-client"),
                 localAuthProof: proof,
                 sourceDeviceId: sourceDeviceId,
-                intentHashHex: intentHashHex
+                intentHashHex: intentHashHex,
+                localAuthGrantBinding: grantBinding
             )
         )
     }
@@ -191,15 +218,23 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
         let forged = try makeProof(
             privateKey: attackerKey,
             deviceId: deviceId,
-            intentHash: intentHash,
+            intentHash: hash,
             authenticatedAt: now,
             expiresAt: now.addingTimeInterval(120)
         )
         let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
-            sessionStartRequest(proof: forged, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "forged"),
+            sessionStartRequest(
+                proof: forged,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "forged"
+            ),
             socketPath: socketPath
         )
         XCTAssertNil(response.result)
@@ -218,6 +253,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
         // Proof minted for a DIFFERENT op hash than the one the request declares.
         let proof = try makeProof(
             privateKey: key,
@@ -227,11 +264,58 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             expiresAt: now.addingTimeInterval(120)
         )
         let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
-            sessionStartRequest(proof: proof, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "wrong-intent"),
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "wrong-intent"
+            ),
             socketPath: socketPath
         )
         XCTAssertNil(response.result)
         XCTAssertTrue(isProofRefusal(response.error), "intent-retargeted proof must fail closed")
+    }
+
+    func test_enforcedDaemon_refusesCallerDeclaredHashWithoutMatchingGrantBinding() async throws {
+        let socketPath = makeSocketPath(name: "caller-hash")
+        let key = Curve25519.Signing.PrivateKey()
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(key.publicKey) : nil },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let now = Date()
+        let signedBinding = makeGrantBinding(requestId: "signed-grant")
+        let requestedBinding = makeGrantBinding(requestId: "requested-grant")
+        let signedHash = try intentHash(for: signedBinding)
+        let proof = try makeProof(
+            privateKey: key,
+            deviceId: deviceId,
+            intentHash: signedHash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(120)
+        )
+
+        let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: signedHash,
+                grantBinding: requestedBinding,
+                id: "caller-hash"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.result)
+        XCTAssertTrue(
+            isProofRefusal(response.error),
+            "daemon must derive the expected hash from the grant binding, not trust the caller-declared hash"
+        )
     }
 
     func test_enforcedDaemon_refusesWhenNoKeyIsPinnedForDevice() async throws {
@@ -246,19 +330,62 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: key,
             deviceId: deviceId,
-            intentHash: intentHash,
+            intentHash: hash,
             authenticatedAt: now,
             expiresAt: now.addingTimeInterval(120)
         )
         let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
-            sessionStartRequest(proof: proof, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "no-pin"),
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "no-pin"
+            ),
             socketPath: socketPath
         )
         XCTAssertNil(response.result)
         XCTAssertTrue(isProofRefusal(response.error), "no pinned key must fail closed")
+    }
+
+    func test_enforcedDaemon_refusesValidProofWithoutGrantBinding() async throws {
+        let socketPath = makeSocketPath(name: "missing-binding")
+        let key = Curve25519.Signing.PrivateKey()
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(key.publicKey) : nil },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
+        let proof = try makeProof(
+            privateKey: key,
+            deviceId: deviceId,
+            intentHash: hash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(120)
+        )
+        let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                id: "missing-binding"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.result)
+        XCTAssertTrue(isProofRefusal(response.error), "proof-enforced daemon must require the grant binding")
     }
 
     func test_enforcedDaemon_validProofPassesTheProofGate() async throws {
@@ -278,15 +405,23 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: key,
             deviceId: deviceId,
-            intentHash: intentHash,
+            intentHash: hash,
             authenticatedAt: now,
             expiresAt: now.addingTimeInterval(120)
         )
         let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
-            sessionStartRequest(proof: proof, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "valid"),
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "valid"
+            ),
             socketPath: socketPath
         )
         XCTAssertFalse(
@@ -598,15 +733,23 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
         // 2. Send a proof-bound session-start request.
         let now = Date()
+        let binding = makeGrantBinding()
+        let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: privateKey,
             deviceId: deviceId,
-            intentHash: intentHash,
+            intentHash: hash,
             authenticatedAt: now,
             expiresAt: now.addingTimeInterval(120)
         )
         let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
-            sessionStartRequest(proof: proof, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "verify"),
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "verify"
+            ),
             socketPath: socketPath
         )
         XCTAssertFalse(

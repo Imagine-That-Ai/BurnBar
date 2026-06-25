@@ -285,7 +285,8 @@ final class AgentToolBroker: Sendable {
                         runID: invocation.runID,
                         localAuthProof: grant.localAuthProof,
                         sourceDeviceId: grant.sourceDeviceID,
-                        intentHashHex: grant.localAuthIntentHashHex
+                        intentHashHex: grant.localAuthIntentHashHex,
+                        localAuthGrantBinding: grant.localAuthGrantBinding
                     )
                 )
                 // Publish atomically: if a concurrent first-call already created a
@@ -304,7 +305,8 @@ final class AgentToolBroker: Sendable {
                     invocation: invocation,
                     localAuthProof: grant.localAuthProof,
                     sourceDeviceId: grant.sourceDeviceID,
-                    intentHashHex: grant.localAuthIntentHashHex
+                    intentHashHex: grant.localAuthIntentHashHex,
+                    localAuthGrantBinding: grant.localAuthGrantBinding
                 )
             )
             return Self.payload(name: invocation.tool.rawValue, response: response)

@@ -66,10 +66,10 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
-    func testMacApprovedHighRiskGrantAppliesAfterLocalAuthProof() {
+    func testMacApprovedHighRiskGrantAppliesAfterLocalAuthProof() throws {
         let now = Date(timeIntervalSince1970: 2_000)
         let threadID = "thread-\(UUID().uuidString)"
-        let request = AgentCapabilityGrantRequest(
+        var request = AgentCapabilityGrantRequest(
             requestID: "grant-\(UUID().uuidString)",
             runtimeID: .codex,
             threadID: threadID,
@@ -79,22 +79,28 @@ final class PhoneControlReceiverTests: XCTestCase {
             expiresAt: now.addingTimeInterval(300),
             sourceDeviceID: "iphone-1",
             clientIntentID: "intent-\(UUID().uuidString)",
-            localAuthenticationSatisfied: true,
-            localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof(
-                proofId: "proof-\(UUID().uuidString)",
-                deviceId: "iphone-1",
-                signedIntentHash: String(repeating: "b", count: 64),
-                authenticatedAt: now,
-                expiresAt: now.addingTimeInterval(60),
-                signatureEd25519: "signature"
-            )
+            localAuthenticationSatisfied: true
+        )
+        let expectedBinding = request.localAuthGrantBinding
+        let expectedHash = try ComputerUsePhoneControlSigner()
+            .canonicalAgentGrantRequestHashHex(binding: expectedBinding)
+        request.localAuthProof = HermesRealtimeRelayAgentGrantLocalAuthProof(
+            proofId: "proof-\(UUID().uuidString)",
+            deviceId: "iphone-1",
+            signedIntentHash: expectedHash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(60),
+            signatureEd25519: "signature"
         )
 
         let receipt = AgentCapabilityGrantStore.shared.apply(request, now: now, macApprovalSatisfied: true)
 
         XCTAssertEqual(receipt.status, .applied)
+        XCTAssertEqual(receipt.localAuthGrantBinding, expectedBinding)
         let activeGrant = AgentCapabilityGrantStore.shared.activeGrant(runtimeID: .codex, threadID: threadID, now: now)
         XCTAssertEqual(activeGrant?.capabilities, AgentPermissionPreset.workspace.capabilities)
+        XCTAssertEqual(activeGrant?.localAuthIntentHashHex, expectedHash)
+        XCTAssertEqual(activeGrant?.localAuthGrantBinding, expectedBinding)
     }
 
     @MainActor
