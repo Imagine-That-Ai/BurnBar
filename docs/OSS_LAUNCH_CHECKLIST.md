@@ -113,7 +113,8 @@ Re-check every item immediately before changing repository visibility.
   production launch requirements.
 - Runtime env/secret readback confirms Apple ASC secrets are bound to the
   Apple-aware functions, `HOSTED_QUOTA_RUNNER_TOKEN` is bound to the hosted
-  refresh callable and quota runner, and the hosted runner rejects an
+  refresh callable and quota runner, `HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS`
+  matches the deployed quota runner host, and the hosted runner rejects an
   authenticated probe with `unsupported provider` instead of `unauthorized`.
 
 ## Still needs manual confirmation before public launch
