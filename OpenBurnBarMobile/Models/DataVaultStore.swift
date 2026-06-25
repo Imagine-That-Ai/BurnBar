@@ -385,13 +385,14 @@ final class DataVaultStore {
     func setupRecoveryKey(_ key: String) async -> Bool {
         do {
             guard let uid = Auth.auth().currentUser?.uid else { throw DataVaultError.notSignedIn }
-            let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
-            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: vaultKey, recoveryKey: key)
+            let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
+            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: resolvedKey.keyData, recoveryKey: key)
             return await setupRecovery(method: "recovery_key", payload: [
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
                 "verificationHash": wrapped.verificationHash,
-                "keyVersion": CloudVaultCrypto.currentKeyVersion
+                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+                "vaultKeyID": resolvedKey.vaultKeyID
             ])
         } catch {
             self.error = error.localizedDescription

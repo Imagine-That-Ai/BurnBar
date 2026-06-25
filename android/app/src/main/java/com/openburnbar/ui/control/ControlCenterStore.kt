@@ -14,6 +14,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+internal fun recoveryKeySetupPayload(wrapped: CloudVaultCrypto.RecoveryWrappedVaultKey, vaultKeyID: String): Map<String, Any> = mapOf(
+    "algorithm" to CloudVaultCrypto.AES_GCM_ALGORITHM,
+    "wrappedVaultKey" to wrapped.wrappedVaultKeyBase64,
+    "verificationHash" to wrapped.verificationHash,
+    "keyVersion" to CloudVaultCrypto.CURRENT_KEY_VERSION,
+    "vaultKeyID" to vaultKeyID,
+)
+
 /**
  * ViewModel backing the Data & Privacy Control Center.
  *
@@ -181,17 +189,12 @@ internal class ControlCenterStore(
             _error.value = null
             try {
                 val uid = FirebaseAuth.getInstance().currentUser?.uid ?: error("Sign in before setting up recovery.")
-                val vaultKey = AndroidCloudVaultKeyAccess.keyForRecoverySetup(uid).keyData
-                val wrapped = CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey, recoveryKey)
+                val resolvedKey = AndroidCloudVaultKeyAccess.keyForRecoverySetup(uid)
+                val wrapped = CloudVaultCrypto.wrapVaultKeyWithRecovery(resolvedKey.keyData, recoveryKey)
                 val result =
                     functions.setupRecovery(
                         "recovery_key",
-                        mapOf(
-                            "algorithm" to CloudVaultCrypto.AES_GCM_ALGORITHM,
-                            "wrappedVaultKey" to wrapped.wrappedVaultKeyBase64,
-                            "verificationHash" to wrapped.verificationHash,
-                            "keyVersion" to CloudVaultCrypto.CURRENT_KEY_VERSION,
-                        ),
+                        recoveryKeySetupPayload(wrapped, resolvedKey.vaultKeyID),
                     )
                 val recoveryId = result["recoveryId"] as? String
                 loadRecovery()

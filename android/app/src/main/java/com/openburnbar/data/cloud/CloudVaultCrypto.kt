@@ -1121,18 +1121,13 @@ object AndroidCloudVaultKeyAccess {
             )
 
     suspend fun keyForRecoverySetup(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey {
-        loadLocalKey(uid)?.let { local ->
-            return AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local))
-        }
-        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
-        AndroidEscrowDeviceRegistry(firestore).registerSelf(uid = uid, keypair = keypair)
-        unwrapExistingKey(uid, firestore, keypair)?.let { unwrapped ->
-            saveLocalKey(uid, unwrapped.keyData)
-            return unwrapped
-        }
+        keyForReading(uid = uid, firestore = firestore)?.let { return it }
+
         val key = CloudVaultCrypto.generateVaultKey()
+        val resolved = AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
+        verifyStateIfPresent(uid, firestore, resolved.vaultKeyID)
         saveLocalKey(uid, key)
-        return AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
+        return resolved
     }
 
     suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {

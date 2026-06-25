@@ -84,11 +84,34 @@ function requireSealedBlob(raw: unknown, fieldName: string): string {
   return value;
 }
 
+function requireVaultKeyID(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 128, true);
+  if (!/^v1_[a-f0-9]{32}$/u.test(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} is invalid.`);
+  }
+  return value;
+}
+
+function assertRecoveryVaultKeyMatchesCurrent(payloadVaultKeyID: string, currentVaultKeyID: unknown): void {
+  if (typeof currentVaultKeyID !== "string" || !/^v1_[a-f0-9]{32}$/u.test(currentVaultKeyID)) {
+    throw new HttpsError("failed-precondition", "Cloud Vault must be initialized before setting up recovery.");
+  }
+  if (payloadVaultKeyID !== currentVaultKeyID) {
+    throw new HttpsError("permission-denied", "Recovery payload must target the current Cloud Vault key.");
+  }
+}
+
+async function assertRecoveryPayloadTargetsCurrentVaultKey(uid: string, payloadVaultKeyID: string): Promise<void> {
+  const state = await db.doc(`users/${uid}/cloud_vault_state/current`).get();
+  assertRecoveryVaultKeyMatchesCurrent(payloadVaultKeyID, state.data()?.vaultKeyID);
+}
+
 function parseRecoveryKeyPayload(raw: unknown): {
   wrappedVaultKey: string;
   verificationHash: string;
   keyVersion: number;
   algorithm: string;
+  vaultKeyID: string;
 } {
   if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", "payload must be a recovery-key envelope.");
@@ -103,6 +126,7 @@ function parseRecoveryKeyPayload(raw: unknown): {
     verificationHash: requireHexDigest(payload.verificationHash, "payload.verificationHash"),
     keyVersion: requireBoundedNumber(payload.keyVersion ?? 1, "payload.keyVersion", 1, 100),
     algorithm,
+    vaultKeyID: requireVaultKeyID(payload.vaultKeyID, "payload.vaultKeyID"),
   };
 }
 
@@ -212,6 +236,7 @@ export const setupRecovery = onCall(
     let doc: Record<string, unknown>;
     if (method === "recovery_key") {
       const payload = parseRecoveryKeyPayload(request.data?.payload);
+      await assertRecoveryPayloadTargetsCurrentVaultKey(uid, payload.vaultKeyID);
       // M-5: persist a one-way commitment, NOT the raw verificationHash, so the
       // stored doc cannot be replayed to confirm without the recovery key.
       const commitment = buildConfirmationCommitment(payload.verificationHash);
@@ -219,6 +244,7 @@ export const setupRecovery = onCall(
         ...base,
         recoveryKey: {
           wrappedVaultKey: payload.wrappedVaultKey,
+          vaultKeyID: payload.vaultKeyID,
           keyVersion: payload.keyVersion,
           algorithm: payload.algorithm,
           ...commitment,
@@ -291,8 +317,10 @@ export const __testing__ = {
   RECOVERY_COLLECTION,
   MAX_RECOVERY_CONTACTS,
   requireSealedBlob,
+  requireVaultKeyID,
   parseRecoveryKeyPayload,
   parseRecoveryContactPayload,
+  assertRecoveryVaultKeyMatchesCurrent,
   verifyRecoveryConfirmation,
   buildConfirmationCommitment,
   requireRecoveryId,

@@ -2,6 +2,7 @@ import Foundation
 import OSLog
 import Observation
 @preconcurrency import FirebaseAuth
+@preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
@@ -350,13 +351,19 @@ final class DataControlCenterViewModel {
             return nil
         }
         do {
-            let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
-            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: vaultKey, recoveryKey: recoveryKey)
+            let deviceId = ComputerUseSecurityCallableClient.loadOrCreateLocalDeviceId()
+            let resolvedKey = try await MacCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                deviceId: deviceId,
+                firestore: Firestore.firestore()
+            )
+            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: resolvedKey.keyData, recoveryKey: recoveryKey)
             return await setupRecovery(method: .recoveryKey, payload: [
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
                 "verificationHash": wrapped.verificationHash,
-                "keyVersion": CloudVaultCrypto.currentKeyVersion
+                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+                "vaultKeyID": resolvedKey.vaultKeyID
             ])
         } catch {
             actionError = Self.userFacing(error)
