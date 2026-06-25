@@ -23,6 +23,9 @@ final class FakeProviderConnectionStore: ProviderConnectionProviding {
 
     struct DeleteCall { let account: ProviderAccountDoc }
     var deleteCalls: [DeleteCall] = []
+    var onConnect: (() -> Void)?
+    var onConnectHosted: (() -> Void)?
+    var onConnectSelfHosted: (() -> Void)?
 
     func configure(connectResult: ProviderAccountDoc?) {
         _connectResult = connectResult
@@ -34,16 +37,19 @@ final class FakeProviderConnectionStore: ProviderConnectionProviding {
 
     func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?, metadata: ProviderAccountConnectMetadata?) async -> ProviderAccountDoc? {
         connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label, metadata: metadata))
+        onConnect?()
         return _connectResult
     }
 
     func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
         connectCalls.append(ConnectCall(providerID: providerID, credential: credential, kind: kind, label: label, metadata: nil))
+        onConnectHosted?()
         return _connectHostedResult
     }
 
     func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc? {
         connectCalls.append(ConnectCall(providerID: providerID, credential: "", kind: .token, label: label, metadata: nil))
+        onConnectSelfHosted?()
         return _connectSelfHostedResult
     }
 

@@ -396,6 +396,7 @@ final class MobileProviderWizardModel {
         let kind: CredentialKind = resolvedCredentialKind
         let connectMetadata = resolvedConnectMetadata(for: provider)
         let created: ProviderAccountDoc?
+        var savedRunnerAccountID: String?
 
         switch syncMode {
         case .cloud:
@@ -406,7 +407,7 @@ final class MobileProviderWizardModel {
                 label: labelToUse,
                 metadata: connectMetadata
             )
-            if Task.isCancelled { return }
+            if await rollbackCreatedConnectionIfCancelled(created) { return }
         case .hosted:
             do {
                 try await subscriptionStore.refreshEntitlement()
@@ -430,16 +431,13 @@ final class MobileProviderWizardModel {
                 kind: kind,
                 label: labelToUse
             )
-            if Task.isCancelled { return }
+            if await rollbackCreatedConnectionIfCancelled(created) { return }
         case .selfHosted:
             created = await connectionStore.connectSelfHosted(
                 providerID: provider.providerID,
                 label: labelToUse
             )
-            if Task.isCancelled {
-                if let created { await connectionStore.delete(account: created) }
-                return
-            }
+            if await rollbackCreatedConnectionIfCancelled(created) { return }
             if let created {
                 do {
                     try runnerSaver.save(
@@ -447,6 +445,7 @@ final class MobileProviderWizardModel {
                         runnerURL: runnerURL,
                         accessSecret: runnerSecret.isEmpty ? nil : runnerSecret
                     )
+                    savedRunnerAccountID = created.id
                 } catch {
                     runnerSaver.delete(accountID: created.id)
                     await connectionStore.delete(account: created)
@@ -457,7 +456,10 @@ final class MobileProviderWizardModel {
             }
         }
 
-        if Task.isCancelled { return }
+        if await rollbackCreatedConnectionIfCancelled(
+            created,
+            savedRunnerAccountID: savedRunnerAccountID
+        ) { return }
         if let created {
             connectedAccount = created
             advance(to: .connected)
@@ -465,6 +467,20 @@ final class MobileProviderWizardModel {
             errorMessage = connectionStore.error ?? "We couldn't validate your credentials."
             advance(to: .failed)
         }
+    }
+
+    private func rollbackCreatedConnectionIfCancelled(
+        _ account: ProviderAccountDoc?,
+        savedRunnerAccountID: String? = nil
+    ) async -> Bool {
+        guard Task.isCancelled else { return false }
+        if let savedRunnerAccountID {
+            runnerSaver.delete(accountID: savedRunnerAccountID)
+        }
+        if let account {
+            await connectionStore.delete(account: account)
+        }
+        return true
     }
 
     private func resolvedConnectMetadata(for provider: AgentProvider) -> ProviderAccountConnectMetadata? {

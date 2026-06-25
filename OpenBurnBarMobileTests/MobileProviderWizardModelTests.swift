@@ -255,6 +255,22 @@ final class MobileProviderWizardModelTests: XCTestCase {
         XCTAssertEqual(model.connectedAccount?.id, account.id)
     }
 
+    func test_connect_cloudCancellationAfterCreate_rollsBackCreatedAccount() async {
+        let conn = FakeProviderConnectionStore()
+        let account = makeAccount(provider: .factory)
+        conn.configure(connectResult: account)
+        let model = makeModel(preselectedProvider: .factory, connectionStore: conn)
+        conn.onConnect = { model.connectTask?.cancel() }
+        model.credential = String(repeating: "a", count: 24)
+
+        model.startConnect()
+        await model.connectTask?.value
+
+        XCTAssertNil(model.connectedAccount)
+        XCTAssertFalse(model.isConnecting)
+        XCTAssertEqual(conn.deleteCalls.map(\.account.id), [account.id])
+    }
+
     // MARK: - Connect (cloud nil → failed)
 
     func test_connect_cloudNil_advancesToFailed() async {
@@ -283,6 +299,25 @@ final class MobileProviderWizardModelTests: XCTestCase {
         await model.connectTask?.value
         XCTAssertEqual(model.step, .failed)
         XCTAssertEqual(model.errorMessage, "Refresh failed")
+    }
+
+    func test_connect_hostedCancellationAfterCreate_rollsBackCreatedAccount() async {
+        let conn = FakeProviderConnectionStore()
+        let account = makeAccount(provider: .codex)
+        conn.configure(connectResult: account)
+        let sub = FakeHostedQuotaSubscriptionStore()
+        sub.configure(isActive: true)
+        let model = makeModel(preselectedProvider: .codex, connectionStore: conn, subscriptionStore: sub)
+        conn.onConnectHosted = { model.connectTask?.cancel() }
+        model.credential = String(repeating: "a", count: 24)
+        model.syncMode = .hosted
+
+        model.startConnect()
+        await model.connectTask?.value
+
+        XCTAssertNil(model.connectedAccount)
+        XCTAssertFalse(model.isConnecting)
+        XCTAssertEqual(conn.deleteCalls.map(\.account.id), [account.id])
     }
 
     // MARK: - Connect (hosted subscription not active)
@@ -318,6 +353,26 @@ final class MobileProviderWizardModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "Write failed")
         XCTAssertEqual(conn.deleteCalls.count, 1, "Account should be deleted after runner save failure")
         XCTAssertEqual(saver.deleteCalls.count, 1, "Runner should be deleted after save failure")
+    }
+
+    func test_connect_selfHostedCancellationAfterRunnerSave_rollsBackAccountAndRunner() async {
+        let conn = FakeProviderConnectionStore()
+        let account = makeAccount(provider: .codex)
+        conn.configure(connectResult: account)
+        let saver = FakeSelfHostedRunnerSaver()
+        let model = makeModel(preselectedProvider: .codex, connectionStore: conn, runnerSaver: saver)
+        saver.onSave = { model.connectTask?.cancel() }
+        model.credential = "unused"
+        model.syncMode = .selfHosted
+        model.runnerURL = "https://runner.example.com"
+
+        model.startConnect()
+        await model.connectTask?.value
+
+        XCTAssertNil(model.connectedAccount)
+        XCTAssertFalse(model.isConnecting)
+        XCTAssertEqual(conn.deleteCalls.map(\.account.id), [account.id])
+        XCTAssertEqual(saver.deleteCalls.map(\.accountID), [account.id])
     }
 
     // MARK: - Credential kind resolution
