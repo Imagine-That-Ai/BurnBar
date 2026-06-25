@@ -91,6 +91,9 @@ function refreshFirestore(db: HostedMcpFirestore): RefreshFirestore {
         },
       };
     },
+    runTransaction(updateFunction) {
+      return db.runTransaction(updateFunction);
+    },
   };
 }
 

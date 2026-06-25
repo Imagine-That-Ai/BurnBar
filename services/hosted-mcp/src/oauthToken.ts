@@ -15,7 +15,17 @@ const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export interface GrantDocLike {
   id: string;
   get(field: string): unknown;
-  ref: { set(value: unknown, options?: unknown): Promise<unknown> };
+  ref: GrantRefLike;
+}
+
+export interface GrantRefLike {
+  get(): Promise<{ get(field: string): unknown }>;
+  set(value: unknown, options?: unknown): Promise<unknown>;
+}
+
+export interface RefreshTransaction {
+  get(ref: GrantRefLike): Promise<{ get(field: string): unknown }>;
+  set(ref: GrantRefLike, value: unknown, options?: unknown): void;
 }
 
 export interface GrantQuery {
@@ -29,6 +39,7 @@ export interface GrantCollection {
 /** Firestore surface the refresh path needs: grant collection + the entitlement/client doc reads. */
 export interface RefreshFirestore extends RemoteMcpClientFirestore {
   collection(path: string): GrantCollection;
+  runTransaction<T>(updateFunction: (transaction: RefreshTransaction) => Promise<T>): Promise<T>;
 }
 
 export interface RefreshTokenRequest {
@@ -136,17 +147,31 @@ export async function handleRefreshTokenGrant(
   await requireActiveRemoteMcpClient(uid, clientId, db);
   const entitlement = await requireActiveBurnBarPro(uid, db);
 
-  const rawGrantScopes = grant.get("scopes");
-  const grantScopes = Array.isArray(rawGrantScopes)
-    ? rawGrantScopes.filter((s): s is string => typeof s === "string")
-    : presented.scopes;
-
   // Rotate the refresh token: a used refresh token must never be replayable.
   const newRefreshToken = randomSecret("obbr");
-  await grant.ref.set(
-    { refreshTokenHash: hashSecret(newRefreshToken), updatedAt: new Date() },
-    { merge: true },
-  );
+  const grantScopes = await db.runTransaction(async (tx) => {
+    const freshGrant = await tx.get(grant.ref);
+    if (!safeEqualHash(presentedRefresh, freshGrant.get("refreshTokenHash"))) {
+      throw new HttpError(401, "OpenBurnBar MCP refresh token is invalid or has been rotated.", "invalid_grant");
+    }
+    if (toMillis(freshGrant.get("revokedAt")) !== undefined) {
+      throw new HttpError(401, "OpenBurnBar MCP grant has been revoked.", "invalid_grant");
+    }
+    const freshGrantExpiresAt = toMillis(freshGrant.get("expiresAt"));
+    if (freshGrantExpiresAt !== undefined && freshGrantExpiresAt <= Date.now()) {
+      throw new HttpError(401, "OpenBurnBar MCP grant has expired; re-link the CLI.", "invalid_grant");
+    }
+    const freshRawGrantScopes = freshGrant.get("scopes");
+    const freshGrantScopes = Array.isArray(freshRawGrantScopes)
+      ? freshRawGrantScopes.filter((s): s is string => typeof s === "string")
+      : presented.scopes;
+    tx.set(
+      grant.ref,
+      { refreshTokenHash: hashSecret(newRefreshToken), updatedAt: new Date() },
+      { merge: true },
+    );
+    return freshGrantScopes;
+  });
 
   const entitlementFamily: AccessTokenClaims["entitlement_family"] =
     entitlement.source === "hosted_quota_sync" ? "hosted_quota_sync" : "burnbar_pro";
