@@ -68,10 +68,18 @@ extension OpenBurnBarApp {
 
         // The actor service wired through the TRANSACTIONAL slot (must-fix #2): because it
         // conforms to `TransactionalMemoryExtractionServing`, `saveChatMessage` enqueues the
-        // outbox row inside the chat-message transaction. Behavior stays gated by the G4
-        // kill switch in the controller and authority-writes default off, so this is dormant
-        // until the memory feature is enabled fleet-wide.
-        let service = OpenBurnBarMemoryService(store: store)
+        // outbox row inside the chat-message transaction. The service also binds caller
+        // scopes to the current OpenBurnBar app/account boundary before touching memory rows.
+        // Behavior stays gated by the G4 kill switch in the controller and authority-writes
+        // default off, so this is dormant until the memory feature is enabled fleet-wide.
+        let service = OpenBurnBarMemoryService(
+            store: store,
+            scopeAuthorizationProvider: {
+                OpenBurnBarMemoryService.ScopeAuthorization(
+                    userID: accountManager.currentUID
+                )
+            }
+        )
 
         // The drain-loop scheduler over the SAME store (must-fix #1). Local-first provider
         // order + the separate memory daily cap are enforced inside the engine (must-fix #5).

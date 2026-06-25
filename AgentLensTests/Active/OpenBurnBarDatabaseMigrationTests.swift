@@ -1271,6 +1271,130 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertNil(deletedMemory)
     }
 
+    func test_memoryServiceRejectsCallerSuppliedScopeOutsideBoundAccount() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let service = OpenBurnBarMemoryService(
+            store: store,
+            authorityWritesEnabled: { true },
+            scopeAuthorizationProvider: {
+                OpenBurnBarMemoryService.ScopeAuthorization(userID: "authorized-user")
+            }
+        )
+        let authorizedScope = MemoryScope(userID: "authorized-user", appID: "openburnbar")
+        let appLocalScope = MemoryScope(appID: "openburnbar")
+
+        _ = try await service.add(
+            MemoryAddRequest(
+                text: "Current account memory should persist.",
+                scope: authorizedScope,
+                reviewStatus: .approved
+            )
+        )
+        _ = try await service.add(
+            MemoryAddRequest(
+                text: "Same-device app memory should persist.",
+                scope: appLocalScope,
+                reviewStatus: .approved
+            )
+        )
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: "Foreign memory should not be reachable through the bound service.",
+                scope: MemoryScope(userID: "other-user", appID: "openburnbar"),
+                reviewStatus: .approved
+            ),
+            id: "mem-foreign-scope",
+            enabled: true
+        )
+
+        let allowedPage = try await service.getAll(
+            MemoryPageRequest(scope: authorizedScope, includeQuarantined: true)
+        )
+        XCTAssertEqual(allowedPage.items.count, 1)
+
+        do {
+            _ = try await service.search(
+                MemoryQuery(text: "foreign", scope: MemoryScope(userID: "other-user", appID: "openburnbar"))
+            )
+            XCTFail("Expected memory service to reject another user's scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.getAll(
+                MemoryPageRequest(scope: MemoryScope(userID: "authorized-user", appID: "other-app"))
+            )
+            XCTFail("Expected memory service to reject another app scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.get(id: "mem-foreign-scope")
+            XCTFail("Expected memory service to reject ID-only reads outside the bound scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.update(id: "mem-foreign-scope", MemoryPatch(text: "unauthorized update"))
+            XCTFail("Expected memory service to reject ID-only updates outside the bound scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.approve(id: "mem-foreign-scope")
+            XCTFail("Expected memory service to reject ID-only review changes outside the bound scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.delete(id: "mem-foreign-scope")
+            XCTFail("Expected memory service to reject ID-only deletes outside the bound scope.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        do {
+            _ = try await service.add(
+                MemoryAddRequest(
+                    text: "Project-scoped chat memory should not persist.",
+                    scope: MemoryScope(userID: "authorized-user", appID: "openburnbar", projectID: "foreign-project")
+                )
+            )
+            XCTFail("Expected memory service to reject project-scoped chat memory.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+        }
+
+        let entities = try await service.listEntities()
+        XCTAssertTrue(entities.contains(MemoryEntity(keyName: "user_id", value: "authorized-user", count: 1)))
+        XCTAssertFalse(entities.contains { $0.keyName == "user_id" && $0.value == "other-user" })
+
+        let transactionalService = service as any TransactionalMemoryExtractionServing
+        try await queue.write { db in
+            do {
+                try transactionalService.enqueueExtraction(
+                    ExtractionIntent(
+                        threadID: "thread-foreign",
+                        threadLogicalID: "thread-logical-foreign",
+                        messageID: "message-foreign",
+                        scope: MemoryScope(userID: "other-user", appID: "openburnbar"),
+                        promptVersion: "memory-extract-v1",
+                        idempotencyKey: "foreign-idem"
+                    ),
+                    in: db
+                )
+                XCTFail("Expected transactional extraction enqueue to reject non-local scopes.")
+            } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
+            }
+        }
+
+        let storedCount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? 0
+        }
+        XCTAssertEqual(storedCount, 3)
+    }
+
     func test_memoryDeletePurgesFactWithoutSourceWideTombstone() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
