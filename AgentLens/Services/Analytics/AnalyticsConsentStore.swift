@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import SwiftUI
 
 /// Tri-state analytics consent — the spine of the opt-in analytics system.
 ///

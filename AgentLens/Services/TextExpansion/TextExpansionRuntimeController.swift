@@ -279,7 +279,7 @@ final class TextExpansionRuntimeController: ObservableObject {
     @MainActor
     private func bootstrapCachedSnippetsFromSnapshot() {
         guard let url = TextExpansionSnapshotStore.snapshotURL(),
-              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else {
+              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else { // try?-ok(absent/corrupt snapshot is expected; skip bootstrap)
             return
         }
         let snippets = snapshot.snippets
@@ -307,7 +307,7 @@ final class TextExpansionRuntimeController: ObservableObject {
         let resolved: [TextExpansionSnippet]
         if fetched.isEmpty {
             if let url = TextExpansionSnapshotStore.snapshotURL(),
-               let snapshot = try? TextExpansionSnapshotStore.read(from: url) {
+               let snapshot = try? TextExpansionSnapshotStore.read(from: url) { // try?-ok(absent/corrupt snapshot is expected; fall back to cache)
                 resolved = snapshot.snippets
                     .filter(\.isEnabled)
                     .filter { $0.deletedAt == nil }
@@ -558,10 +558,11 @@ private enum TextExpansionFocusedTextInserter {
             systemWide,
             kAXFocusedUIElementAttribute as CFString,
             &focusedRef
-        ) == .success, let focusedRef else {
+        ) == .success, let focusedRef,
+              CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
             return nil
         }
-        return (focusedRef as! AXUIElement) // swiftlint:disable:this force_cast
+        return unsafeBitCast(focusedRef, to: AXUIElement.self)
     }
 
     private static func isTextSurface(_ element: AXUIElement) -> Bool {
