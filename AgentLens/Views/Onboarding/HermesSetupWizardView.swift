@@ -182,18 +182,20 @@ struct HermesSetupWizardView: View {
                     statusRow(
                         icon: "switch.2",
                         title: "API server",
-                        detail: controller.apiServerEnabled == true
-                            ? "~/.hermes/.env includes API_SERVER_ENABLED=true"
-                            : "OpenBurnBar can add API_SERVER_ENABLED=true for you.",
-                        isReady: controller.apiServerEnabled == true,
+                        detail: controller.apiServerEnabled == true && controller.hasAPIServerKey == true
+                            ? "~/.hermes/.env has the API server flag and bearer key."
+                            : controller.apiServerEnabled == true
+                                ? "API_SERVER_KEY is missing; Hermes will refuse to start."
+                                : "OpenBurnBar can add API_SERVER_ENABLED=true and API_SERVER_KEY for you.",
+                        isReady: controller.apiServerEnabled == true && controller.hasAPIServerKey == true,
                         isChecking: controller.isCheckingConfig
                     )
 
-                    if controller.apiServerEnabled != true {
+                    if controller.apiServerEnabled != true || controller.hasAPIServerKey != true {
                         Button {
                             controller.writeEnvFile()
                         } label: {
-                            Label("Enable API Server", systemImage: "wrench.and.screwdriver")
+                            Label("Prepare API Server", systemImage: "wrench.and.screwdriver")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(DesignSystem.Colors.hermesAureate)

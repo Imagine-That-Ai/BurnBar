@@ -26,7 +26,10 @@ final class HermesSetupWizardController {
     // MARK: Step
 
     var currentStep: HermesSetupStep = .prepare {
-        didSet { guard currentStep != oldValue else { return }; navigationDirection = .trailing }
+        didSet {
+            guard currentStep != oldValue else { return }
+            navigationDirection = currentStep.rawValue < oldValue.rawValue ? .leading : .trailing
+        }
     }
 
     /// Direction the next step transition should travel. Set to `.leading`
@@ -63,7 +66,7 @@ final class HermesSetupWizardController {
     /// Derived, single source of truth for the Connect step's hero card.
     var reachability: GatewayReachabilityState {
         if hermesCLIInstalled == false { return .cliMissing }
-        if apiServerEnabled != true { return .apiServerDisabled }
+        if apiServerEnabled != true || hasAPIServerKey != true { return .apiServerDisabled }
         if isGatewayRunning { return .gatewayRunning }
         if isDashboardRunning { return .dashboardOnly }
         if probeAttempts == 0 { return .unknown }
@@ -122,12 +125,7 @@ final class HermesSetupWizardController {
         hasAPIServerKey = nil
         Task { @MainActor in
             let snapshot = await dependencies.readEnvSnapshot()
-            envFileExists = snapshot.fileExists
-            apiServerEnabled = snapshot.apiServerEnabled
-            hasAPIServerKey = snapshot.hasAPIServerKey
-            if bearerTokenInput.isEmpty {
-                bearerTokenInput = snapshot.savedBearerToken
-            }
+            applyEnvSnapshot(snapshot)
             isCheckingConfig = false
         }
     }
@@ -139,13 +137,14 @@ final class HermesSetupWizardController {
                 checkConfig()
             } catch {
                 apiServerEnabled = false
+                hasAPIServerKey = false
             }
         }
     }
 
-    /// Prepare-step Continue gate: CLI present and API server enabled.
+    /// Prepare-step Continue gate: CLI present and API server auth configured.
     var canContinueFromPrepare: Bool {
-        hermesCLIInstalled == true && apiServerEnabled == true
+        hermesCLIInstalled == true && apiServerEnabled == true && hasAPIServerKey == true
     }
 
     // MARK: Connect step — the "make it reachable" action
@@ -189,7 +188,7 @@ final class HermesSetupWizardController {
     ///
     /// This is the button the old wizard was missing. It does the right thing
     /// for every non-running state:
-    ///   • Ensures `API_SERVER_ENABLED=true` is in `~/.hermes/.env`.
+    ///   • Ensures `API_SERVER_ENABLED=true` and `API_SERVER_KEY` are in `~/.hermes/.env`.
     ///   • Installs the gateway if `gateway run` fails (Hermes' own install hook).
     ///   • Launches the gateway detached.
     ///   • Launches the Hermes Dashboard (TUI) if it isn't already running.
@@ -208,6 +207,8 @@ final class HermesSetupWizardController {
                 resolvedGatewayBaseURL,
                 resolvedBearerToken
             )
+            let snapshot = await dependencies.readEnvSnapshot()
+            applyEnvSnapshot(snapshot)
             applyStatus(status)
             if !status.gatewayRunning {
                 makeReachableError = status.message.isEmpty
@@ -215,6 +216,15 @@ final class HermesSetupWizardController {
                     : status.message
             }
             isMakingReachable = false
+        }
+    }
+
+    private func applyEnvSnapshot(_ snapshot: HermesEnvSnapshot) {
+        envFileExists = snapshot.fileExists
+        apiServerEnabled = snapshot.apiServerEnabled
+        hasAPIServerKey = snapshot.hasAPIServerKey
+        if bearerTokenInput.isEmpty {
+            bearerTokenInput = snapshot.savedBearerToken
         }
     }
 
@@ -322,7 +332,7 @@ enum GatewayReachabilityState: Equatable {
         switch self {
         case .unknown: return "Waiting for Hermes"
         case .cliMissing: return "Hermes CLI not found"
-        case .apiServerDisabled: return "API server is off"
+        case .apiServerDisabled: return "API server not ready"
         case .dashboardOnly: return "Dashboard up, gateway down"
         case .gatewayRunning: return "Gateway is reachable"
         case .unreachable: return "Gateway not reachable"
@@ -336,7 +346,7 @@ enum GatewayReachabilityState: Equatable {
         case .cliMissing:
             return "Install the Hermes CLI, then return here. The wizard can open Terminal and copy the install command for you."
         case .apiServerDisabled:
-            return "Hermes is installed but the local API server isn't enabled. OpenBurnBar can add API_SERVER_ENABLED=true to ~/.hermes/.env for you."
+            return "Hermes needs both API_SERVER_ENABLED=true and API_SERVER_KEY in ~/.hermes/.env. OpenBurnBar can prepare both for you."
         case .dashboardOnly:
             return "The Hermes Dashboard is running, but the local gateway isn't reachable yet. Make it reachable in one step — OpenBurnBar will start the gateway for you."
         case .gatewayRunning:
@@ -355,7 +365,7 @@ enum GatewayReachabilityState: Equatable {
         case .cliMissing:
             return nil  // Prepare step owns the install flow.
         case .apiServerDisabled:
-            return "Enable API Server"
+            return "Prepare API Server"
         case .gatewayRunning:
             return nil
         }
@@ -475,11 +485,13 @@ struct HermesSetupWizardDependencies: Sendable {
     /// Reads `~/.hermes/.env` and the saved bearer token in one pass so the
     /// Prepare step's two rows stay consistent without two racing tasks.
     private static func readEnvSnapshotLive() async -> HermesEnvSnapshot {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        let envPath = "\(homeDir)/.hermes/.env"
+        let envURL = FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes", isDirectory: true)
+            .appendingPathComponent(".env")
         let fm = FileManager.default
-        guard fm.fileExists(atPath: envPath),
-              let content = try? String(contentsOfFile: envPath, encoding: .utf8)
+        guard fm.fileExists(atPath: envURL.path),
+              let content = try? String(contentsOf: envURL, encoding: .utf8)
         else {
             return HermesEnvSnapshot(
                 fileExists: false,
@@ -489,17 +501,12 @@ struct HermesSetupWizardDependencies: Sendable {
             )
         }
         let apiServerEnabled = content.contains("API_SERVER_ENABLED=true")
-        let hasKey = content.split(separator: "\n").contains { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("API_SERVER_KEY=") else { return false }
-            let value = trimmed.dropFirst("API_SERVER_KEY=".count)
-            return !value.isEmpty && value != "\"\"" && value != "''"
-        }
+        let savedBearerToken = HermesEnvironmentFile.readAPIServerKey(at: envURL) ?? ""
         return HermesEnvSnapshot(
             fileExists: true,
             apiServerEnabled: apiServerEnabled,
-            hasAPIServerKey: hasKey,
-            savedBearerToken: await HermesEnvironmentFile.readAPIServerKey() ?? ""
+            hasAPIServerKey: !savedBearerToken.isEmpty,
+            savedBearerToken: savedBearerToken
         )
     }
 

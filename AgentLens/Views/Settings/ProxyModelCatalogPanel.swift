@@ -95,6 +95,8 @@ struct ProxyModelCatalogPanel: View {
         switch state {
         case .idle:
             return ("Not checked", "circle.dashed", DesignSystem.Colors.textMuted)
+        case .startingGateway:
+            return ("Starting", "play.circle.fill", DesignSystem.Colors.textSecondary)
         case .loading:
             return ("Refreshing", "arrow.triangle.2.circlepath", DesignSystem.Colors.textSecondary)
         case .loaded:
@@ -117,6 +119,8 @@ struct ProxyModelCatalogPanel: View {
         switch state {
         case .idle:
             return "Not checked yet"
+        case .startingGateway:
+            return "Starting gateway"
         case .loading:
             return "Refreshing now"
         case .loaded(let lastRefresh):
@@ -365,6 +369,15 @@ struct ProxyModelCatalogPanel: View {
                 tint: DesignSystem.Colors.textSecondary,
                 actionTitle: "Refresh",
                 action: onRefresh
+            )
+        case .startingGateway:
+            catalogMessage(
+                title: "Starting local gateway",
+                message: "Installing or restarting OpenBurnBarDaemon so /v1/models can answer.",
+                systemImage: "play.circle.fill",
+                tint: DesignSystem.Colors.textSecondary,
+                actionTitle: nil,
+                action: nil
             )
         case .loading where models.isEmpty:
             catalogMessage(

@@ -189,6 +189,13 @@ extension BurnBarHTTPGatewayServer {
         return String(oneLine.prefix(260))
     }
 
+    static func routeLogFailureMessage(from error: Error) -> String {
+        if case let BurnBarProviderExecutorError.upstreamError(statusCode, _) = error {
+            return "OpenBurnBar provider request failed with status \(statusCode)."
+        }
+        return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
+    }
+
     static func normalizedNonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed

@@ -347,7 +347,28 @@ extension ChatSessionController {
 
         guard await validateChatBackendAvailability() else { return }
 
-        let pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
+        // Hermes gate hardening (build #769 symptom "could not read its live model
+        // catalog"): the routing error fires when `liveAdvertisedModels` is empty,
+        // which happens right after the gateway starts but before its /v1/models
+        // catalog has been re-probed. Re-probe once before surfacing the error so a
+        // ready gateway sends instead of dead-ending with a stale "not verified"
+        // message. Only retries the empty-catalog case (not "no eligible route",
+        // which a re-probe cannot fix).
+        var pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
+        if pendingModelRoutingError != nil,
+           pendingModelRoutingError?.contains("has not been verified against this gateway's live /v1/models catalog") == true {
+            switch chatBackend {
+            case .hermes:
+                await probeHermesAvailability()
+            case .openclaw:
+                await probeOpenClawAvailability()
+            case .piAgent:
+                await probePiAgentAvailability()
+            default:
+                break
+            }
+            pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
+        }
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
 

@@ -47,6 +47,45 @@ final class AppLoggerSanitizationTests: XCTestCase {
         XCTAssertEqual(sanitized["raw"], "[REDACTED]")
     }
 
+    func testSanitizeMetadata_redactsRawErrorDescriptionKeys() {
+        let input: [String: String] = [
+            "error": "PRIVATE_BUDGET_MARKER provider returned budget details for /Users/alberto/project",
+            "localizedDescription": "PRIVATE_BUDGET_MARKER detailed upstream response",
+            "debugDescription": "PRIVATE_BUDGET_MARKER debug payload",
+            "errorDomain": "NSCocoaErrorDomain",
+            "errorCode": "4"
+        ]
+
+        let sanitized = AppLogger.sanitizeMetadata(input)
+
+        XCTAssertEqual(sanitized["error"], "[REDACTED]")
+        XCTAssertEqual(sanitized["localizedDescription"], "[REDACTED]")
+        XCTAssertEqual(sanitized["debugDescription"], "[REDACTED]")
+        XCTAssertEqual(sanitized["errorDomain"], "NSCocoaErrorDomain")
+        XCTAssertEqual(sanitized["errorCode"], "4")
+    }
+
+    func testPublicErrorMetadataDoesNotIncludeLocalizedDescription() {
+        let error = NSError(
+            domain: "com.openburnbar.quota",
+            code: 402,
+            userInfo: [
+                NSLocalizedDescriptionKey: "PRIVATE_BUDGET_MARKER budget details from provider"
+            ]
+        )
+
+        let metadata = AppLogger.publicErrorMetadata(error)
+        let serialized = metadata.values.joined(separator: " ")
+
+        XCTAssertNil(metadata["error"])
+        XCTAssertEqual(metadata["errorType"], "NSError")
+        XCTAssertEqual(metadata["errorDomain"], "com.openburnbar.quota")
+        XCTAssertEqual(metadata["errorCode"], "402")
+        XCTAssertFalse(serialized.contains("PRIVATE_BUDGET_MARKER"))
+        XCTAssertFalse(serialized.contains("budget details"))
+        XCTAssertEqual(AppLogger.sanitizeMetadata(metadata), metadata)
+    }
+
     func testSanitizeMetadata_redactsProjectNamesAndModels() {
         let input: [String: String] = [
             "projectName": "AcmeCorp-SecretProject",

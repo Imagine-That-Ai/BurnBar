@@ -201,6 +201,70 @@ final class ConnectionsViewModelTests: XCTestCase {
         }
     }
 
+    func test_startProxyGatewayShowsStartingStateBeforeRestartCompletes() async {
+        var observedState: ProxyModelCatalogState?
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                XCTFail("Daemon start failure should stop before catalog fetch.")
+                return []
+            }
+        )
+
+        await viewModel.startProxyGateway(settings: settings) {
+            observedState = self.viewModel.proxyModelCatalogState
+            return "launchctl failed: helper missing"
+        }
+
+        XCTAssertEqual(observedState, .startingGateway)
+    }
+
+    func test_startProxyGatewaySurfacesDaemonFailureInsteadOfGenericCatalogFailure() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                XCTFail("Daemon start failure should stop before catalog fetch.")
+                return []
+            }
+        )
+
+        await viewModel.startProxyGateway(settings: settings) {
+            "OpenBurnBarDaemon resources are missing."
+        }
+
+        XCTAssertTrue(settings.gatewayEnabled)
+        XCTAssertEqual(settings.gatewayHost, "127.0.0.1")
+        XCTAssertEqual(settings.gatewayPort, 8317)
+        if case .error(let message, _) = viewModel.proxyModelCatalogState {
+            XCTAssertEqual(message, "OpenBurnBarDaemon resources are missing.")
+        } else {
+            XCTFail("Expected daemon start error, got \(viewModel.proxyModelCatalogState)")
+        }
+    }
+
+    func test_startProxyGatewayRefreshesCatalogAfterSuccessfulRestart() async {
+        var fetchCount = 0
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { gateway in
+                fetchCount += 1
+                XCTAssertEqual(gateway.baseURL, "http://127.0.0.1:8317")
+                return []
+            }
+        )
+
+        await viewModel.startProxyGateway(settings: settings) {
+            nil
+        }
+
+        XCTAssertEqual(fetchCount, 1)
+        if case .loaded = viewModel.proxyModelCatalogState {
+            // expected
+        } else {
+            XCTFail("Expected loaded catalog state, got \(viewModel.proxyModelCatalogState)")
+        }
+    }
+
     func test_refreshProxyRouteLogLoadsEntriesFromDaemonSocket() async throws {
         let socketURL = URL(fileURLWithPath: "/tmp/openburnbar-test.sock")
         let sample = makeRouteLogEntry(

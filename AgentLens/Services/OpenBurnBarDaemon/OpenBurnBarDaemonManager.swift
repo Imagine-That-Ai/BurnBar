@@ -16,6 +16,10 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
     let logURL: URL
     let launchAgentPlistURL: URL
 
+    var socketAuthTokenFileURL: URL {
+        supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
+    }
+
     var providerConfigURL: URL {
         supportDirectory.appendingPathComponent("provider-config.json", isDirectory: false)
     }
@@ -236,6 +240,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case emptyResponse
     case rpcError(String)
     case rpcTimedOut(seconds: Int)
+    case lifecycleStepFailed(step: String, underlying: String)
 
     var errorDescription: String? {
         switch self {
@@ -266,13 +271,15 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
             }
             return message
         case .daemonSocketAuthTokenUnavailable:
-            return "OpenBurnBar couldn't load a daemon socket auth token from the Keychain."
+            return "OpenBurnBar couldn't prepare a daemon socket auth token."
         case .emptyResponse:
             return "OpenBurnBarDaemon returned an empty response."
         case .rpcError(let message):
             return "OpenBurnBarDaemon RPC error: \(message)"
         case .rpcTimedOut(let seconds):
             return "OpenBurnBarDaemon RPC timed out after \(seconds) seconds."
+        case .lifecycleStepFailed(let step, let underlying):
+            return "OpenBurnBarDaemon \(step) failed: \(underlying)"
         }
     }
 }
@@ -301,6 +308,7 @@ final class OpenBurnBarDaemonManager {
     let dependencies: OpenBurnBarDaemonDependencies
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
+    let daemonSocketAuthTokenStore: KeychainStore
     weak var dataStore: DataStore?
     private var uploadPendingUsageAfterImport: (() async -> Void)?
 
@@ -326,12 +334,14 @@ final class OpenBurnBarDaemonManager {
         paths: OpenBurnBarDaemonRuntimePaths = .live(),
         dependencies: OpenBurnBarDaemonDependencies = .live(),
         usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil,
+        daemonSocketAuthTokenStore: KeychainStore = OpenBurnBarDaemonManager.controllerRuntimeSecrets,
         uploadPendingUsageAfterImport: (() async -> Void)? = nil
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
         self.dependencies = dependencies
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
+        self.daemonSocketAuthTokenStore = daemonSocketAuthTokenStore
         self.uploadPendingUsageAfterImport = uploadPendingUsageAfterImport
     }
 
@@ -375,6 +385,22 @@ final class OpenBurnBarDaemonManager {
             }
             return message
         }
+    }
+
+    var localGatewayStartErrorMessage: String? {
+        if let lastError = lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastError.isEmpty {
+            return lastError
+        }
+        let detail = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty,
+           detail.localizedCaseInsensitiveContains("gateway") {
+            return detail
+        }
+        if case .healthy = status {
+            return nil
+        }
+        return detail.isEmpty ? nil : detail
     }
 
     var isDaemonHeartbeatStale: Bool {

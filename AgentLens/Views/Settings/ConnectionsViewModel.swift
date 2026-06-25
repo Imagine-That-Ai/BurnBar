@@ -122,13 +122,18 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
 
 enum ProxyModelCatalogState: Equatable {
     case idle
+    case startingGateway
     case loading
     case loaded(lastRefresh: Date)
     case error(message: String, lastAttempt: Date)
 
     var isLoading: Bool {
-        if case .loading = self { return true }
-        return false
+        switch self {
+        case .startingGateway, .loading:
+            return true
+        case .idle, .loaded, .error:
+            return false
+        }
     }
 }
 
@@ -307,11 +312,13 @@ final class ConnectionsViewModel {
     func connect(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager? = nil,
         restartGateway: (() async -> Void)? = nil
     ) async {
         await wireAndProbe(
             target: target,
             settings: settings,
+            daemonManager: daemonManager,
             restartGateway: restartGateway,
             busyState: .connecting
         )
@@ -325,11 +332,13 @@ final class ConnectionsViewModel {
     func syncModels(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager? = nil,
         restartGateway: (() async -> Void)? = nil
     ) async {
         await wireAndProbe(
             target: target,
             settings: settings,
+            daemonManager: daemonManager,
             restartGateway: restartGateway,
             busyState: .syncingModels
         )
@@ -338,6 +347,7 @@ final class ConnectionsViewModel {
     private func wireAndProbe(
         target: RoutingClientWiringTarget,
         settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager?,
         restartGateway: (() async -> Void)?,
         busyState: AppConnectState
     ) async {
@@ -346,6 +356,12 @@ final class ConnectionsViewModel {
         ensureLocalGateway(settings: settings)
         if let restartGateway {
             await restartGateway()
+        }
+        if target == .claudeCode, let daemonManager {
+            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
+                appStates[target] = .error(message: bootstrapError)
+                return
+            }
         }
         let gateway = makeGateway(from: settings)
         let wiring = wiringFactory()
@@ -468,8 +484,9 @@ final class ConnectionsViewModel {
 
     // MARK: - Proxy catalog
 
-    func refreshProxyModelCatalog(settings: SettingsManager) async {
-        guard !proxyModelCatalogState.isLoading else { return }
+    func refreshProxyModelCatalog(settings: SettingsManager, allowStartingRefresh: Bool = false) async {
+        let canRefreshFromStarting = allowStartingRefresh && proxyModelCatalogState == .startingGateway
+        guard canRefreshFromStarting || !proxyModelCatalogState.isLoading else { return }
         proxyModelCatalogState = .loading
         let gateway = makeGateway(from: settings)
         do {
@@ -511,8 +528,23 @@ final class ConnectionsViewModel {
         }
     }
 
-    func enableLocalGateway(settings: SettingsManager) {
+    func startProxyGateway(
+        settings: SettingsManager,
+        restartGateway: () async -> String?
+    ) async {
+        guard !proxyModelCatalogState.isLoading else { return }
+        proxyModels = []
+        proxyModelCatalogState = .startingGateway
         ensureLocalGateway(settings: settings)
+
+        let startError = await restartGateway()
+        if let message = startError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            proxyModelCatalogState = .error(message: message, lastAttempt: Date())
+            return
+        }
+
+        await refreshProxyModelCatalog(settings: settings, allowStartingRefresh: true)
     }
 
     // MARK: - VibeProxy migration
@@ -555,6 +587,7 @@ final class ConnectionsViewModel {
         if let restartGateway {
             await restartGateway()
         }
+        var targetFailures: [RoutingClientWiringTarget: String] = [:]
 
         let importResult = await vibeProxyMigrationService.importCredentials(from: snapshot) { request in
             try await daemonManager.addProviderCredentialSlotReturningID(
@@ -569,6 +602,12 @@ final class ConnectionsViewModel {
         if importResult.importedCount > 0, let restartGateway {
             await restartGateway()
         }
+        if snapshot.detectedTargets.contains(.claudeCode) {
+            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
+                targetFailures[.claudeCode] = bootstrapError
+                appStates[.claudeCode] = .degraded(message: bootstrapError)
+            }
+        }
 
         await refreshProxyModelCatalog(settings: settings)
         let gateway = makeGateway(from: settings)
@@ -580,7 +619,6 @@ final class ConnectionsViewModel {
                 .map(RoutingClientAdvertisedModel.init(proxyModel:))
 
         var switchedTargets: [RoutingClientWiringTarget] = []
-        var targetFailures: [RoutingClientWiringTarget: String] = [:]
 
         for target in snapshot.detectedTargets {
             guard appStates[target]?.isBusy != true else { continue }
@@ -625,6 +663,15 @@ final class ConnectionsViewModel {
                 targetFailures: targetFailures
             )
         )
+    }
+
+    private func bootstrapClaudeOAuthIfNeeded(daemonManager: OpenBurnBarDaemonManager) async -> String? {
+        do {
+            _ = try await ClaudeOAuthProviderBootstrap.bootstrapIfNeeded(daemonManager: daemonManager)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     private func refreshRoutedModelSyncState(

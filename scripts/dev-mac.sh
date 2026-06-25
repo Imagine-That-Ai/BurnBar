@@ -12,6 +12,7 @@ TMUX_SESSION="${TMUX_SESSION:-openburnbar-dev}"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 ABS_APP_PATH="$REPO_ROOT/$APP_PATH"
+OPENBURNBAR_DEV_APP_EXEC="$ABS_APP_PATH/Contents/MacOS/OpenBurnBar"
 
 echo "▶ Building $SCHEME for macOS…"
 xcodebuild \
@@ -27,7 +28,7 @@ echo "▶ Quitting any running OpenBurnBar instance…"
 osascript -e 'tell application "OpenBurnBar" to quit' 2>/dev/null || true
 sleep 1
 # Force-kill if a stale instance lingers.
-pgrep -f "$ABS_APP_PATH/Contents/MacOS/OpenBurnBar" | xargs -r kill 2>/dev/null || true
+pgrep -f "$OPENBURNBAR_DEV_APP_EXEC" | xargs -r kill 2>/dev/null || true
 tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true
 
 echo "▶ Launching $APP_PATH"
@@ -37,12 +38,17 @@ launch_with_tmux() {
     echo "tmux is required for the fallback launcher when LaunchServices is unavailable." >&2
     exit 1
   fi
-  tmux new-session -d -s "$TMUX_SESSION" "cd \"$REPO_ROOT\" && \"$ABS_APP_PATH/Contents/MacOS/OpenBurnBar\""
+  tmux new-session \
+    -d \
+    -s "$TMUX_SESSION" \
+    -c "$REPO_ROOT" \
+    -e "OPENBURNBAR_DEV_APP_EXEC=$OPENBURNBAR_DEV_APP_EXEC" \
+    'exec "$OPENBURNBAR_DEV_APP_EXEC"'
 }
 
 if open "$APP_PATH"; then
   sleep 2
-  if ! pgrep -f "$ABS_APP_PATH/Contents/MacOS/OpenBurnBar" >/dev/null 2>&1; then
+  if ! pgrep -f "$OPENBURNBAR_DEV_APP_EXEC" >/dev/null 2>&1; then
     launch_with_tmux
   fi
 else

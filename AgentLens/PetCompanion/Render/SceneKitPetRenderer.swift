@@ -252,6 +252,37 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         }
         setPaused(false)
         play(state: currentStateKey)
+        // Force a render kick so the one-shot presentation framing lands WITHOUT a
+        // user tap. `rendersContinuously = true` is set above, but an idle SCNView
+        // only renders when something dirties the scene; the skinned rig's first
+        // idle frame may not dirty anything until a clip plays, so the panel shows
+        // the raw bind-pose / a dark blob and only "wakes" once the user clicks
+        // (which plays a clip → forces a render → framing finally fires). A
+        // snapshot forces one render now so `didRenderScene` runs and the camera
+        // frames from the settled presentation bounds immediately at idle.
+        kickRenderUntilFramed()
+    }
+
+    /// Force the SCNView to render frames until the one-shot presentation framing
+    /// consumes (the camera is framed at the settled bounds). Bounded by the
+    /// sample budget so it never spins. This is what makes the pet show up
+    /// oriented at idle instead of "asleep until tapped." Framing is driven
+    /// synchronously here (not via the async `didRenderScene` delegate) so it
+    /// lands even when the run loop can't pump the delegate's async Task (tests,
+    /// headless panels).
+    private func kickRenderUntilFramed() {
+        guard needsPresentationFraming else { return }
+        let scnView = self.scnView
+        let deadline = Date().addingTimeInterval(2.0)
+        while needsPresentationFraming, Date() < deadline {
+            _ = scnView.snapshot()
+            // Advance the stabilization latch synchronously (the delegate's
+            // async Task may not pump during this loop).
+            if needsPresentationFraming { _ = frameCameraToPresentation() }
+            if needsPresentationFraming {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+        }
     }
 
     func unmount() {
@@ -403,8 +434,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     }
 
     /// 3D socket projection: project the named atlas socket (if the pet also
-    /// carries a 2D atlas) onto the view, else center-top of the view as a
-    /// reasonable bubble anchor for a model-only pet.
+    /// carries a 2D atlas) onto the view, else project the model's actual
+    /// rendered top-of-head onto the view for a bubble anchor that sits ABOVE the
+    /// pet instead of overlapping its skull.
     func socketPoint(_ name: String) -> CGPoint? {
         if let atlas = definition.atlas2d, let p = atlas.socketPoint(name) {
             let size = scnView.bounds.size == .zero ? PetPanel.defaultSize : scnView.bounds.size
@@ -413,11 +445,36 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
                            y: (atlas.cell.h - p.y) / atlas.cell.h * size.height)
         }
         let size = scnView.bounds.size == .zero ? PetPanel.defaultSize : scnView.bounds.size
-        // "contact" → just above the model's head; default → center.
         if name == "contact" || name == "bubble" {
-            return CGPoint(x: size.width / 2, y: size.height * 0.9)
+            // Project the model's top-of-head onto the view so the bubble anchors
+            // above the skull, not on it. Falls back to a high anchor if the
+            // scene/camera isn't ready yet.
+            if let headTop = projectedModelTopPoint() {
+                return headTop
+            }
+            return CGPoint(x: size.width / 2, y: size.height * 0.92)
         }
         return CGPoint(x: size.width / 2, y: size.height / 2)
+    }
+
+    /// Project the model's world-space top (max Y of the content root's
+    /// presentation bounding box, at the screen centre X) into view space, so the
+    /// chat bubble can anchor just above the rendered head. Returns `nil` while
+    /// the scene/camera isn't ready (the caller falls back to a fixed anchor).
+    private func projectedModelTopPoint() -> CGPoint? {
+        guard let scene = scnView.scene, let pov = scnView.pointOfView,
+              let contentRoot else { return nil }
+        let presentationBounds = contentRoot.presentation.boundingBox
+        let minY = presentationBounds.min
+        let maxY = presentationBounds.max
+        guard CGFloat(maxY.y).isFinite, CGFloat(maxY.y) > CGFloat(minY.y) else { return nil }
+        let centreX = (CGFloat(minY.x) + CGFloat(maxY.x)) / 2
+        let topWorld = contentRoot.convertPosition(SCNVector3(centreX, CGFloat(maxY.y), 0), to: nil)
+        guard CGFloat(topWorld.x).isFinite, CGFloat(topWorld.y).isFinite, CGFloat(topWorld.z).isFinite else { return nil }
+        let projected = scnView.projectPoint(topWorld)
+        guard CGFloat(projected.x).isFinite, CGFloat(projected.y).isFinite else { return nil }
+        // SceneKit's view space is top-left origin; the bubble expects the same.
+        return CGPoint(x: CGFloat(projected.x), y: CGFloat(projected.y))
     }
 
     func containsVisibleContent(at point: CGPoint) -> Bool {
@@ -564,12 +621,14 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     /// rigs that is ~100x larger and offset high on +Y versus the static
     /// bind-pose bounds used at install time. Unskinned models (presentation ==
     /// bind pose, e.g. go-gopher) are unaffected.
-    /// Returns `true` only when a finite, sane presentation sphere was available and
-    /// the camera was actually re-aimed; `false` asks the caller to retry on a later
-    /// render. A skinned rig's first post-mount frame can momentarily report a
-    /// degenerate / NaN bounding-sphere centre while the skinner blends in — aiming
-    /// `look(at:)` at a NaN centre is the one way this otherwise-level camera tilts,
-    /// flashing a bird's-eye view — so never apply a non-finite frame.
+    ///
+    /// **Latch policy.** Frame on the first finite, sane presentation sphere (the
+    /// original behaviour that frames skinned founders correctly). A skinned
+    /// rig's idle pose animates continuously, so waiting for the sphere to "stop
+    /// moving" never converges; the first sane sphere is the settled idle pose.
+    /// The companion ``kickRenderUntilFraming`` ensures frames actually render at
+    /// idle (without a user tap) so this latch fires immediately on mount. Returns
+    /// `true` only when a finite, sane sphere was applied; `false` retries.
     @discardableResult
     private func frameCameraToPresentation() -> Bool {
         guard let scene = scnView.scene,
@@ -598,9 +657,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
         Task { @MainActor [weak self] in
             guard let self, self.needsPresentationFraming else { return }
-            // Consume the one-shot ONLY once a sane sphere was actually applied, so a
-            // degenerate first frame retries on the next render instead of leaving a
-            // bad (or bird's-eye) framing latched in.
+            // Consume the one-shot ONLY once a finite, sane sphere was applied, so
+            // a degenerate first frame retries on the next render instead of
+            // latching a bird's-eye / dark-blob view.
             if self.frameCameraToPresentation() {
                 self.needsPresentationFraming = false
             }
@@ -1003,6 +1062,18 @@ private final class InteractivePetSceneView: SCNView, PetDropHostingView {
     /// a silent no-op. Held weakly — the controller owns the delegate, so the
     /// view observes without forming a controller↔view↔delegate retain cycle.
     weak var dropDelegate: PetAttachmentDropDelegate?
+
+    /// Right-click handler installed by ``PetCompanionController``; `nil` until
+    /// wired so an unconfigured view ignores right-clicks.
+    var rightClickHandler: ((NSView, NSEvent) -> Void)?
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let rightClickHandler {
+            rightClickHandler(self, event)
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
 
     override func scrollWheel(with event: NSEvent) {
         let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY

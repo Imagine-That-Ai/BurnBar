@@ -475,6 +475,11 @@ targets:
         PRODUCT_NAME: OpenBurnBarDaemon
         PRODUCT_MODULE_NAME: OpenBurnBarDaemonExecutable
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.daemon
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarDaemon

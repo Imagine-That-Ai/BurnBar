@@ -52,12 +52,15 @@ final class PetBubblePanel: NSPanel {
     // MARK: Hosting
 
     /// Install (or refresh) the SwiftUI bubble bound to `chat`, sizing the panel
-    /// to the content's fitting size.
-    func host(chat: PetChatController) {
+    /// to the content's fitting size. `tailAnchorX` (0…1) points the speech-
+    /// bubble tail at the pet's contact socket so the bubble's tail tracks the
+    /// pet rather than always pointing at the bubble centre.
+    func host(chat: PetChatController, tailAnchorX: CGFloat = 0.5) {
+        let clamped = min(0.85, max(0.15, tailAnchorX))
         let root = AnyView(
             PetChatBubbleView(
                 controller: chat,
-                tailAnchorX: 0.5,
+                tailAnchorX: clamped,
                 onContentSizeChange: { [weak self] in
                     self?.resizeToContent()
                 }

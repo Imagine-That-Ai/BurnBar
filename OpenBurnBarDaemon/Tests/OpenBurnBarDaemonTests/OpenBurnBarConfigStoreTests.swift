@@ -7,6 +7,13 @@ import Security
 #endif
 
 final class BurnBarConfigStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Keep the developer's real "Claude Code-credentials" Keychain item from leaking
+        // into Claude Code fallback fixtures. CI runners have no such item; dev machines do.
+        setenv("BURNBAR_DISABLE_CLAUDE_CODE_KEYCHAIN_FALLBACK", "1", 1)
+    }
+
     func testDaemonKeychainSecretStoresDisableSystemPromptsForBackgroundReads() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -636,6 +643,51 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
     }
 
+    func testKeychainSecretStoreRejectsClaudeCodeFallbackWithMissingOrganizationWhenExpected() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let service = "com.openburnbar.tests.keychain.cc-nil-org-boundary.\(UUID().uuidString)"
+        let providerKey = "anthropic"
+        let account = "provider.\(providerKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-nil-org-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let expiredPayload = """
+        {"claudeAiOauth":{"accessToken":"expired-daemon-token","refreshToken":"invalid-refresh","expiresAt":\(expiredAtMilliseconds)},"organizationUuid":"org-daemon"}
+        """
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+        try await store.setSecret(expiredPayload, for: providerKey)
+
+        let ccExpiresAtMilliseconds = Date().addingTimeInterval(3600).timeIntervalSince1970 * 1000
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"nil-org-cc-token","refreshToken":"cc-refresh","expiresAt":\(ccExpiresAtMilliseconds)}}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        let secret = try await store.secret(for: providerKey)
+        XCTAssertNil(secret)
+        XCTAssertEqual(try String(contentsOf: ccCredentialsURL, encoding: .utf8), ccPayload)
+        XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
+    }
+
     func testKeychainSecretStoreRejectsClaudeCodeFallbackWhenDaemonOrganizationIsMissing() async throws {
         ClaudeOAuthRefreshURLProtocol.reset()
         ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
@@ -681,7 +733,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
     }
 
-    func testKeychainSecretStoreDoesNotUseGlobalClaudeCodeCredentialForSlots() async throws {
+    func testKeychainSecretStoreFallsBackToClaudeCodeCredentialsForAnthropicSlotWhenRefreshFails() async throws {
         ClaudeOAuthRefreshURLProtocol.reset()
         ClaudeOAuthRefreshURLProtocol.enqueue(status: 400, body: #"{"error":"invalid_grant"}"#)
         let sessionConfig = URLSessionConfiguration.ephemeral
@@ -721,8 +773,38 @@ final class BurnBarConfigStoreTests: XCTestCase {
         try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
 
         let secret = try await store.secret(for: providerSlotKey)
-        XCTAssertNil(secret)
+        XCTAssertEqual(secret, "valid-global-cc-token")
         XCTAssertEqual(try String(contentsOf: ccCredentialsURL, encoding: .utf8), ccPayload)
+    }
+
+    func testKeychainSecretStoreFallsBackToClaudeCodeCredentialsForAnthropicSlotWhenSecretMissing() async throws {
+        let service = "com.openburnbar.tests.keychain.cc-slot-missing.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.default"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-slot-missing-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+        }
+
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL
+        )
+
+        let ccExpiresAtMilliseconds = Date().addingTimeInterval(3600).timeIntervalSince1970 * 1000
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"valid-slot-missing-cc-token","refreshToken":"cc-refresh","expiresAt":\(ccExpiresAtMilliseconds)}}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "valid-slot-missing-cc-token")
     }
 
     func testKeychainSecretStoreReturnsNilWhenAllOAuthRefreshPathsFail() async throws {

@@ -190,6 +190,59 @@ public struct TextExpansionResult: Equatable, Sendable {
     public let match: TextExpansionMatch
 }
 
+/// Cached policy inputs for the macOS global CGEvent tap. The tap callback reads
+/// this snapshot from a lock instead of calling AX APIs or touching @MainActor state.
+public struct TextExpansionGlobalTapPolicy: Sendable, Equatable {
+    public var globalExpansionEnabled: Bool
+    public var accessibilityTrusted: Bool
+    public var frontmostBundleIdentifier: String?
+    public var ownBundleIdentifier: String?
+    public var focusedSurfaceDenied: Bool
+
+    public init(
+        globalExpansionEnabled: Bool = false,
+        accessibilityTrusted: Bool = false,
+        frontmostBundleIdentifier: String? = nil,
+        ownBundleIdentifier: String? = nil,
+        focusedSurfaceDenied: Bool = false
+    ) {
+        self.globalExpansionEnabled = globalExpansionEnabled
+        self.accessibilityTrusted = accessibilityTrusted
+        self.frontmostBundleIdentifier = frontmostBundleIdentifier
+        self.ownBundleIdentifier = ownBundleIdentifier
+        self.focusedSurfaceDenied = focusedSurfaceDenied
+    }
+
+    public var shouldInterceptKeystrokes: Bool {
+        globalExpansionEnabled
+            && accessibilityTrusted
+            && frontmostBundleIdentifier != ownBundleIdentifier
+            && !focusedSurfaceDenied
+    }
+}
+
+/// Plans how many backspace events to synthesize after a global key monitor match.
+/// The monitor cannot swallow keys, so boundary characters are already in the field.
+public enum TextExpansionGlobalReplacementPlanner {
+    public struct Plan: Equatable, Sendable {
+        public var deleteCount: Int
+        public var replacement: String
+
+        public init(deleteCount: Int, replacement: String) {
+            self.deleteCount = deleteCount
+            self.replacement = replacement
+        }
+    }
+
+    public static func plan(for match: TextExpansionMatch) -> Plan {
+        let boundary = match.boundary.map(String.init) ?? ""
+        if match.boundary != nil {
+            return Plan(deleteCount: match.token.count + 1, replacement: match.snippet.body + boundary)
+        }
+        return Plan(deleteCount: match.token.count, replacement: match.snippet.body)
+    }
+}
+
 public enum TextExpansionMatcher {
     public static func isBoundary(_ character: Character) -> Bool {
         if character.isWhitespace || character.isNewline { return true }

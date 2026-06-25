@@ -407,6 +407,242 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test_refreshInstalledDaemonIfNeededRepairsMissingLaunchAgent() async throws {
+        let harness = try makeRuntimePathsHarness(name: "refresh-missing-launch-agent")
+        defer { harness.cleanup() }
+
+        let sourceBinaryURL = harness.rootURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        try "#!/bin/sh\nexit 0\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+
+        let sourceBundleURL = harness.rootURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.resourceBundleName,
+            isDirectory: true
+        )
+        let sourceCorpusURL = harness.rootURL
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+        try FileManager.default.createDirectory(at: sourceBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"version":"test","patterns":[]}"#.write(to: sourceCorpusURL, atomically: true, encoding: .utf8)
+
+        try FileManager.default.copyItem(at: sourceBinaryURL, to: harness.paths.installedBinaryURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
+        let sourceAttributes = try FileManager.default.attributesOfItem(atPath: sourceBinaryURL.path)
+        if let sourceModifiedAt = sourceAttributes[.modificationDate] as? Date {
+            try FileManager.default.setAttributes(
+                [.modificationDate: sourceModifiedAt],
+                ofItemAtPath: harness.paths.installedBinaryURL.path
+            )
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
+
+        var launchctlCalls: [[String]] = []
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(
+                runProcess: { _, arguments in
+                    launchctlCalls.append(arguments)
+                    return ""
+                },
+                resolveDaemonBinary: { sourceBinaryURL }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            daemonSocketAuthTokenStore: makeTestKeychainStore()
+        )
+
+        let didRefresh = await manager.refreshInstalledDaemonIfNeededForCurrentAppBuild()
+
+        XCTAssertTrue(didRefresh, manager.lastError ?? "refresh should be triggered by a missing LaunchAgent plist")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path),
+            manager.lastError ?? "repair should recreate the missing LaunchAgent plist"
+        )
+        XCTAssertFalse(
+            manager.installedDaemonBinaryNeedsRefresh(),
+            manager.lastError ?? "fresh binary plus recreated LaunchAgent should not need another refresh"
+        )
+        XCTAssertTrue(
+            launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
+            manager.lastError ?? "repair should bootstrap the recreated LaunchAgent"
+        )
+        XCTAssertTrue(
+            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
+            manager.lastError ?? "repair should kickstart the recreated LaunchAgent"
+        )
+    }
+
+    @MainActor
+    func test_refreshInstalledDaemonIfNeededRepairsMissingLaunchAgentUsingInstalledBinaryFallback() async throws {
+        let harness = try makeRuntimePathsHarness(name: "refresh-missing-launch-agent-installed-fallback")
+        defer { harness.cleanup() }
+
+        try "#!/bin/sh\nexit 0\n".write(
+            to: harness.paths.installedBinaryURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: harness.paths.installedBinaryURL.path
+        )
+
+        let installedBundleURL = harness.paths.daemonDirectory.appendingPathComponent(
+            OpenBurnBarDaemonManager.resourceBundleName,
+            isDirectory: true
+        )
+        let installedCorpusURL = harness.paths.daemonDirectory
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+        try FileManager.default.createDirectory(at: installedBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: installedCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"version":"test","patterns":[]}"#.write(to: installedCorpusURL, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
+
+        var launchctlCalls: [[String]] = []
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(
+                runProcess: { _, arguments in
+                    launchctlCalls.append(arguments)
+                    return ""
+                },
+                resolveDaemonBinary: { nil }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            daemonSocketAuthTokenStore: makeTestKeychainStore()
+        )
+
+        let didRefresh = await manager.refreshInstalledDaemonIfNeededForCurrentAppBuild()
+
+        XCTAssertTrue(didRefresh, manager.lastError ?? "missing LaunchAgent should refresh from installed binary fallback")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path),
+            manager.lastError ?? "repair should recreate the missing LaunchAgent plist"
+        )
+        XCTAssertFalse(
+            manager.installedDaemonBinaryNeedsRefresh(),
+            manager.lastError ?? "installed binary fallback plus recreated LaunchAgent should not need another refresh"
+        )
+        XCTAssertTrue(
+            launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
+            manager.lastError ?? "repair should bootstrap the recreated LaunchAgent"
+        )
+        XCTAssertTrue(
+            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
+            manager.lastError ?? "repair should kickstart the recreated LaunchAgent"
+        )
+    }
+
+    @MainActor
+    func test_rotateDaemonSocketAuthTokenRecreatesStaleRuntimeKeychainItem() throws {
+        let harness = try makeRuntimePathsHarness(name: "socket-token-keychain-recreate")
+        defer { harness.cleanup() }
+
+        let backend = FirstSetFailsThenDeletesKeychainBackend()
+        let store = KeychainStore(
+            service: "tests.daemon-runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            daemonSocketAuthTokenStore: store
+        )
+
+        let token = try manager.rotateDaemonSocketAuthToken()
+
+        XCTAssertFalse(token.isEmpty)
+        XCTAssertEqual(backend.setCallCount, 2)
+        XCTAssertEqual(backend.deleteCallCount, 1)
+        XCTAssertEqual(try store.string(for: OpenBurnBarDaemonManager.daemonSocketAuthTokenAccount), token)
+        XCTAssertEqual(
+            try String(contentsOf: harness.paths.socketAuthTokenFileURL, encoding: .utf8),
+            token
+        )
+    }
+
+    @MainActor
+    func test_rotateDaemonSocketAuthTokenFallsBackToPrivateTokenFileWhenKeychainUnavailable() throws {
+        let harness = try makeRuntimePathsHarness(name: "socket-token-file-fallback")
+        defer { harness.cleanup() }
+
+        let store = KeychainStore(
+            service: "tests.daemon-runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: FailingWriteKeychainBackend()
+        )
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            daemonSocketAuthTokenStore: store
+        )
+
+        let token = try manager.rotateDaemonSocketAuthToken()
+
+        XCTAssertFalse(token.isEmpty)
+        XCTAssertEqual(
+            try String(contentsOf: harness.paths.socketAuthTokenFileURL, encoding: .utf8),
+            token
+        )
+        let attributes = try FileManager.default.attributesOfItem(atPath: harness.paths.socketAuthTokenFileURL.path)
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+        XCTAssertEqual(permissions & 0o777, 0o600)
+        XCTAssertEqual(
+            OpenBurnBarDaemonSocketClient.readDaemonSocketAuthToken(
+                from: store,
+                tokenFileURL: harness.paths.socketAuthTokenFileURL
+            ),
+            token
+        )
+    }
+
+    @MainActor
+    func test_writeLaunchAgentPlistPreservesDaemonSocketTokenDiscoveryEnvironment() throws {
+        let harness = try makeRuntimePathsHarness(name: "launch-agent-socket-token-env")
+        defer { harness.cleanup() }
+
+        try FileManager.default.createDirectory(
+            at: harness.paths.daemonDirectory,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: harness.paths.launchAgentPlistURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "#!/bin/sh\nexit 0\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        try manager.writeLaunchAgentPlist()
+
+        let token = try String(contentsOf: harness.paths.socketAuthTokenFileURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let plistData = try Data(contentsOf: harness.paths.launchAgentPlistURL)
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any]
+        )
+        let arguments = try XCTUnwrap(plist["ProgramArguments"] as? [String])
+        let environment = try XCTUnwrap(plist["EnvironmentVariables"] as? [String: String])
+
+        XCTAssertFalse(token.isEmpty)
+        XCTAssertEqual(environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
+        XCTAssertEqual(environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
+        XCTAssertTrue(arguments.contains("--socket-auth-token-file"))
+        XCTAssertTrue(arguments.contains(harness.paths.socketAuthTokenFileURL.path))
+        XCTAssertFalse(arguments.contains(token), "daemon socket token must stay out of argv")
+    }
+
     func test_usageSync_readsProviderConfigurationSnapshot() async throws {
         let harness = try makeRuntimePathsHarness(name: "provider-config")
         defer { harness.cleanup() }
@@ -1065,12 +1301,13 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     private func daemonDependencies(
+        runProcess: @escaping @Sendable (String, [String]) throws -> String = { _, _ in "" },
         resolveDaemonBinary: @escaping () -> URL?,
         validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
     ) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(
             fileManager: .default,
-            runProcess: { _, _ in "" },
+            runProcess: runProcess,
             resolveDaemonBinary: resolveDaemonBinary,
             requestHealth: { _ in
                 BurnBarHealthResponse(
@@ -1289,5 +1526,28 @@ private struct RuntimePathsHarness {
 
     func cleanup() {
         try? FileManager.default.removeItem(at: rootURL)
+    }
+}
+
+private final class FirstSetFailsThenDeletesKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    private var storage: [String: [String: Data]] = [:]
+    private(set) var setCallCount = 0
+    private(set) var deleteCallCount = 0
+
+    func set(_ value: Data, service: String, account: String) throws {
+        setCallCount += 1
+        if setCallCount == 1 {
+            throw KeychainStoreError.unhandled(errSecAuthFailed)
+        }
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        deleteCallCount += 1
+        storage[service]?[account] = nil
     }
 }

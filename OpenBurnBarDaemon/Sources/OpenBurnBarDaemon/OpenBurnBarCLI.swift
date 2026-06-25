@@ -224,6 +224,18 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         )
     }
 
+    public func upsertProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotUpsertRequest
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerCredentialSlotUpsert,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
     private func unwrap<Response>(_ envelope: BurnBarRPCResponseEnvelope<Response>) throws -> Response {
         if let error = envelope.error {
             throw NSError(domain: "OpenBurnBarCLI", code: error.code, userInfo: [NSLocalizedDescriptionKey: error.message])
@@ -549,6 +561,10 @@ public struct BurnBarCLIRunner {
             return try runClaudeHandoff(Array(effectiveArguments.dropFirst()))
         }
 
+        if effectiveArguments.first == "provider-bootstrap-claude" {
+            return try runProviderBootstrapClaude()
+        }
+
         if effectiveArguments.first == "audit-verify" {
             return try BurnBarCLIAuditVerify.run(arguments: Array(effectiveArguments.dropFirst()))
         }
@@ -640,6 +656,60 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    private func runProviderBootstrapClaude() throws -> BurnBarCLIInvocationResult {
+        guard let socketClient = client as? BurnBarCLISocketClient else {
+            throw BurnBarCLIError.invalidCommand("provider-bootstrap-claude requires the daemon socket client")
+        }
+        let payload = try Self.claudeCodeOAuthStoragePayload()
+        let response = try socketClient.upsertProviderCredentialSlot(
+            BurnBarProviderCredentialSlotUpsertRequest(
+                providerID: "anthropic",
+                slotID: nil,
+                label: "Claude Code OAuth",
+                apiKey: payload,
+                isEnabled: true,
+                authMethodID: "anthropic-claude-oauth"
+            )
+        )
+        let slotID = response.slot?.slotID ?? "unknown"
+        return BurnBarCLIInvocationResult(
+            output: "Imported Claude Code OAuth into Anthropic provider slot \(slotID).",
+            exitCode: EXIT_SUCCESS
+        )
+    }
+
+    private static func claudeCodeOAuthStoragePayload() throws -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".claude/.credentials.json"),
+            home.appendingPathComponent(".claude/credentials.json")
+        ]
+        for url in candidates {
+            guard let data = try? Data(contentsOf: url),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+            guard let accessToken = (oauth["accessToken"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !accessToken.isEmpty else {
+                continue
+            }
+            var payload: [String: Any] = ["claudeAiOauth": oauth]
+            if let organizationUuid = root["organizationUuid"] as? String {
+                payload["organizationUuid"] = organizationUuid
+            }
+            let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            guard let string = String(data: encoded, encoding: .utf8) else {
+                throw BurnBarCLIError.missingArgument("Could not encode Claude OAuth credentials.")
+            }
+            return string
+        }
+        throw BurnBarCLIError.missingArgument(
+            "No readable Claude Code OAuth token was found at ~/.claude/.credentials.json."
+        )
+    }
+
     private static let claudeHandoffUsageText = """
     Usage:
       openburnbar-cli claude-handoff dispatch --briefing <text> [--cwd <dir>] [--model <model>] [--terminal terminal|iterm|warp]
@@ -669,6 +739,7 @@ public struct BurnBarCLIRunner {
       audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       claude-handoff <dispatch|reconcile|list> [args]
+      provider-bootstrap-claude
       install-shell-shims
     """
 
@@ -693,6 +764,8 @@ public struct BurnBarCLIRunner {
         "remote-unlock-certification",
         "audit-verify",
         "exec",
+        "claude-handoff",
+        "provider-bootstrap-claude",
         "install-shell-shims"
     ]
 
