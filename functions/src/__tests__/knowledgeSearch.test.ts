@@ -24,5 +24,13 @@ describe("searchKnowledge input validation", () => {
     expect(clampLimit(0)).toBe(1);
     expect(clampLimit(999)).toBe(50);
     expect(clampLimit(25)).toBe(25);
+    expect(clampLimit(25.8)).toBe(25);
+  });
+
+  it("defaults invalid limits before clamping", () => {
+    expect(clampLimit("not-a-number")).toBe(10);
+    expect(clampLimit(Number.NaN)).toBe(10);
+    expect(clampLimit(Number.POSITIVE_INFINITY)).toBe(10);
+    expect(clampLimit(Number.NEGATIVE_INFINITY)).toBe(10);
   });
 });

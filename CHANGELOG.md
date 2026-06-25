@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Drag-and-drop files onto the floating 3D pet (or 2D avatar) to auto-attach
+  them as chat attachments from any page, Space, or fullscreen app. The pet
+  floats above every desktop surface, so it's inherently a global drop target.
+  Dropping an acceptable file (file URL, image, PDF, text document — same
+  pasteboard types and per-kind size caps as the chat composer) stages it on
+  the shared `ChatSessionController` via the existing `HermesAttachmentLoader`
+  pipeline, plays a celebratory `react` beat, and opens the pet chat bubble
+  which renders a mercury-styled `ChatAttachmentTray` (Option C feedback). A
+  drop on empty panel padding passes through to whatever window is beneath
+  (reusing the renderer's existing `containsVisibleContent(at:)` gate), so the
+  pet never swallows a drop aimed at another app. When no chat is attached the
+  pet still reacts so a drop is never inert. Covered by
+  `PetDropAttachmentTests` (11 tests: gate acceptance, URL/image staging,
+  oversized rejection, react+bubble feedback, no-chat safety, forwarder
+  round-trips, delegate perform).
+
+### Changed
+
+- Redesigned the Prepare Hermes wizard with a state-driven "Make Gateway
+  Reachable" action and the editorial Observatory design language. The wizard
+  no longer loops "not reachable yet" with no remediation: a new
+  `HermesSetupWizardController` derives a single `GatewayReachabilityState`
+  (cliMissing / apiServerDisabled / dashboardOnly / gatewayRunning /
+  unreachable / unknown) and the Connect step renders one editorial hero per
+  state, each with its own copy and the single primary action that resolves it.
+  The "Make Gateway Reachable" button drives `openHermesAndGateway` (ensure
+  `.env`, install + launch gateway, launch dashboard, re-probe) instead of
+  just re-probing. The wizard's mutable state is extracted behind a
+  dependency-injected, `@MainActor @Observable` controller so the reachability
+  logic, step gating, and remediation are unit-testable. Window size grew to
+  560×620 to fit the editorial hero.
+
 ### Fixed
 
 - Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
@@ -20,7 +54,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never "Credential not found", and the post-refresh confirmation truthfully
   reports "Credential refreshed and connected" instead of promising quota that
   some accounts never expose. The classification is covered by new unit tests.
-- Fixed 3D pets rendering horizontal (soles of feet toward camera) until clicked to chat. The root cause was that skinned-rig founders (and other skeleton-animated models) have a bind pose whose joint rotations orient the skinned mesh horizontally even though the raw mesh geometry is Y-dominant. The old orientation check ran at install time against bind-pose geometry and was a no-op for these models. `SceneKitPetRenderer` now corrects orientation at presentation time (post-skinning) across multiple render passes, and the camera reframe settles after the correction lands.
+- Unblocked the test target: `HermesSetupWizardController.autoProbeTask` was
+  `private` but the committed `HermesRuntimeLauncherTests` test asserts
+  `controller.autoProbeTask` is nil after `stopAutoProbe()`. The property is
+  now `internal` so the test compiles and the full test target builds cleanly.
+- Stopped the 3D pet/avatar from flashing a bird's-eye (top-of-head) view the
+  instant you click it to chat. The SceneKit camera was re-fitting itself to the
+  model's presentation bounds on *every* pose change (`idle → listen` on chat
+  open). Re-running that fit against an unsettled, mid-blend skinned pose — whose
+  bounding sphere is momentarily degenerate/NaN — snapped the camera for a frame
+  and read as a top-down look. The camera now frames the pet exactly once per
+  mount/form-swap (upright, face-on, after the skinner settles) and then stays
+  put until the user drags it; the one-shot fit also guards against a non-finite
+  bounding sphere so a degenerate first frame retries instead of latching a bad
+  (bird's-eye) framing. Regression test asserts the camera stays level and its
+  world transform is unchanged across an `idle → listen` pose change.
 - Made macOS updates converge on one canonical app launch. The direct-download
   updater now terminates stale OpenBurnBar GUI processes, normalizes
   LaunchServices registrations, and relaunches `/Applications/OpenBurnBar.app`

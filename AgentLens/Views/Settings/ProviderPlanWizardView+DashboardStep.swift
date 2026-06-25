@@ -481,9 +481,12 @@ extension ProviderPlanWizardView {
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.medium)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Text(account.isCurrentLogin ? "CLI login only" : "CLI profile only")
                             .font(DesignSystem.Typography.tiny)
+                            .fixedSize()
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(tint.opacity(0.12))
@@ -493,6 +496,7 @@ extension ProviderPlanWizardView {
                         if account.isDisabled {
                             Text("Disabled")
                                 .font(DesignSystem.Typography.tiny)
+                                .fixedSize()
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(DesignSystem.Colors.textMuted.opacity(0.12))
@@ -540,15 +544,26 @@ extension ProviderPlanWizardView {
                         }
                     }
                 }
+                .fixedSize()
             }
 
             let quotaWindows = externalOAuthQuotaWindows(for: account)
             if !quotaWindows.isEmpty {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    ForEach(quotaWindows) { window in
-                        externalQuotaPill(window)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        ForEach(quotaWindows) { window in
+                            externalQuotaPill(window)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    FlowLayout(
+                        horizontalSpacing: DesignSystem.Spacing.xs,
+                        verticalSpacing: DesignSystem.Spacing.xs
+                    ) {
+                        ForEach(quotaWindows) { window in
+                            externalQuotaPill(window)
+                        }
+                    }
                 }
             }
         }
@@ -642,12 +657,15 @@ extension ProviderPlanWizardView {
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.medium)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         if provider.preferredCredentialSlotID == slot.slotID {
                             HStack(spacing: 3) {
                                 Image(systemName: "star.fill").font(.system(size: 9))
                                 Text("Preferred").font(DesignSystem.Typography.tiny)
                             }
+                            .fixedSize()
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(DesignSystem.Colors.blaze.opacity(0.14))
                             .foregroundStyle(DesignSystem.Colors.blaze)
@@ -657,6 +675,7 @@ extension ProviderPlanWizardView {
                         if !slot.isEnabled {
                             Text("Disabled")
                                 .font(DesignSystem.Typography.tiny)
+                                .fixedSize()
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(DesignSystem.Colors.textMuted.opacity(0.12))
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -669,6 +688,7 @@ extension ProviderPlanWizardView {
                 Spacer()
 
                 slotActionRow(slot, provider: provider)
+                    .fixedSize()
             }
         }
         .padding(DesignSystem.Spacing.md)

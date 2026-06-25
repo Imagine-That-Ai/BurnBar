@@ -56,14 +56,12 @@ class PhoneControlSignerModelsTest {
     fun `every system permission kind bridges to the same named relay kind`() {
         for (kind in PhoneControlSystemPermissionKind.values()) {
             assertEquals(kind.name, kind.toRelayKind().name)
+            assertEquals(kind, PhoneControlSystemPermissionKind.fromRelayKind(kind.toRelayKind()))
         }
         assertEquals("screen_recording", PhoneControlSystemPermissionKind.SCREEN_RECORDING.wireValue)
+        assertEquals("remote_desktop", PhoneControlSystemPermissionKind.REMOTE_DESKTOP.wireValue)
+        assertEquals("system_extension", PhoneControlSystemPermissionKind.SYSTEM_EXTENSION.wireValue)
         assertEquals("full_disk_access", PhoneControlSystemPermissionKind.FULL_DISK_ACCESS.wireValue)
-        // The relay (wire) enum is schema-generated and is a SUPERSET of the
-        // Android-grantable kinds: the Mac can report permission kinds Android does
-        // not surface (e.g. remote_desktop, system_extension) and we must decode them
-        // without crashing. The invariant is that every Android kind has a same-named
-        // relay constant — not strict size-equality.
         val relayNames = HermesRealtimeRelaySystemPermissionKind.values().map { it.name }.toSet()
         for (kind in PhoneControlSystemPermissionKind.values()) {
             assertTrue(
@@ -71,10 +69,9 @@ class PhoneControlSignerModelsTest {
                 relayNames.contains(kind.name),
             )
         }
-        assertTrue(
-            "relay (wire) enum must be a superset of the Android-grantable kinds",
-            HermesRealtimeRelaySystemPermissionKind.values().size >=
-                PhoneControlSystemPermissionKind.values().size,
+        assertEquals(
+            HermesRealtimeRelaySystemPermissionKind.values().size,
+            PhoneControlSystemPermissionKind.values().size,
         )
     }
 

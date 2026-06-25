@@ -841,7 +841,20 @@ final class SettingsManager {
 
     var computerUsePhoneControlAttestationRequired: Bool {
         get { chatBackend.computerUsePhoneControlAttestationRequired }
-        set { chatBackend.computerUsePhoneControlAttestationRequired = newValue }
+        set { updateComputerUsePhoneControlAttestationRequired(newValue) }
+    }
+
+    private func updateComputerUsePhoneControlAttestationRequired(_ required: Bool) {
+        let previous = chatBackend.computerUsePhoneControlAttestationRequired
+        chatBackend.computerUsePhoneControlAttestationRequired = required
+        guard previous != required else { return }
+        NotificationCenter.default.post(
+            name: .phoneControlAttestationDidChange,
+            object: self,
+            userInfo: [
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired: required
+            ]
+        )
     }
 
     var computerUseTrustedScopesEnabled: Bool {

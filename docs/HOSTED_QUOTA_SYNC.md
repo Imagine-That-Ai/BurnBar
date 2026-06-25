@@ -335,7 +335,10 @@ Trust pipeline (every entitlement write flows through it):
    `payload.appAccountToken`, looks it up in
    `entitlement_bindings`, and writes the entitlement to the
    matching UID. A token replayed under a different UID is rejected
-   with `binding_mismatch`.
+   with `binding_mismatch`. Client-submitted JWS payloads without an
+   `appAccountToken` cannot create a first-time entitlement; they are
+   accepted only for legacy restore when the server already has a
+   matching `originalTransactionId` on file for that user.
 5. **Idempotent audit.** Every verified event is appended to
    `users/{uid}/entitlement_events/{eventId}` keyed on Apple's
    `notificationUUID` (S2S) or `transactionId.signedDate`

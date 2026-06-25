@@ -90,6 +90,8 @@ struct YoursVsServerFlip: View {
             Label(title, systemImage: system)
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .truncationMode(.tail)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)

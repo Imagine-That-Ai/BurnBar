@@ -34,7 +34,12 @@ import {
 } from "./shared.js";
 import Stripe from "stripe";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
-import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
+import {
+  allowanceDocPath,
+  cloudProTopUpReceiptDocPath,
+  monthKeyForDate,
+  type CloudProTopUpKind,
+} from "../cloudProAllowanceCore.js";
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
 import { googlePlayTopUpKind, STRIPE_TOP_UP_KINDS, topUpCheckoutSelection } from "./stripeTopUps.js";
@@ -489,12 +494,6 @@ export const verifyGooglePlayCloudProTopUp = onCall(
       const productID = boundedTrimmedString(request.data.productID, "productID", 256, true);
       const kind = googlePlayTopUpKind(productID);
       const tokenHash = sha256Hex(purchaseToken);
-      await claimGooglePlayPurchaseToken({
-        uid,
-        purchaseTokenHash: tokenHash,
-        productID,
-        kind: "topup",
-      });
 
       const { google } = await import("googleapis");
       const authClient = await google.auth.getClient({
@@ -524,6 +523,30 @@ export const verifyGooglePlayCloudProTopUp = onCall(
           purchaseState,
         });
       }
+      const receiptID = `google_play_${tokenHash}`;
+      const monthKey = monthKeyForDate(new Date());
+      const [existingServerReceipt, existingMonthlyTopUp] = await Promise.all([
+        db.doc(cloudProTopUpReceiptDocPath(uid, receiptID)).get(),
+        db.doc(`${allowanceDocPath(uid, monthKey)}/topups/${receiptID}`).get(),
+      ]);
+      if (consumptionState === 1 && !existingServerReceipt.exists && !existingMonthlyTopUp.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Google Play top-up purchase was already consumed before server verification.",
+          {
+            productID,
+            purchaseTokenHash: tokenHash,
+            purchaseState,
+            consumptionState,
+          },
+        );
+      }
+      await claimGooglePlayPurchaseToken({
+        uid,
+        purchaseTokenHash: tokenHash,
+        productID,
+        kind: "topup",
+      });
 
       const credited = await creditCloudProTopUp({
         uid,

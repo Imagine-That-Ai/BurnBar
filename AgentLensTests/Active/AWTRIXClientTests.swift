@@ -75,6 +75,43 @@ final class AWTRIXClientTests: XCTestCase {
         }
     }
 
+    func testPixelClockTargetPolicyAllowsNormalDisplayTargets() {
+        XCTAssertTrue(PixelClockTargetPolicy.allowsHost("192.168.68.92"))
+        XCTAssertTrue(PixelClockTargetPolicy.allowsHost("pixel-clock.local"))
+        XCTAssertTrue(PixelClockTargetPolicy.allowsHost("awtrix-display"))
+    }
+
+    func testPixelClockTargetPolicyRejectsLocalAndInjectedTargets() {
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("127.0.0.1"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("localhost"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("169.254.169.254"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("169.254.1.10"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("224.0.0.1"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("0177.0.0.1"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("2130706433"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("192.168.68.92:8080"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("192.168.68.92/api/stats"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("192.168.68.92?path=/api/stats"))
+        XCTAssertFalse(PixelClockTargetPolicy.allowsHost("user@192.168.68.92"))
+    }
+
+    func testProbeRejectsUnsafeTargetBeforeOpeningRequest() async {
+        var requestCount = 0
+        AWTRIXStubURLProtocol.handler = { request in
+            requestCount += 1
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                #"{"version":"0.96","app":"Time","ram":123456,"bat":88}"#.data(using: .utf8)!
+            )
+        }
+
+        let result = await AWTRIXClient(session: session).probe(config: PixelClockConfig(enabled: true, host: "127.0.0.1", port: 80))
+
+        XCTAssertEqual(result.status, .error)
+        XCTAssertEqual(result.message, AWTRIXClient.ClientError.invalidBaseURL.localizedDescription)
+        XCTAssertEqual(requestCount, 0)
+    }
+
     func testProbeDoesNotTreatGenericStatsJSONAsAWTRIX() async {
         AWTRIXStubURLProtocol.handler = { request in
             if request.url?.path == "/api/stats" {
@@ -663,7 +700,7 @@ private final class AWTRIXStubURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
-        request.url?.host?.hasPrefix("192.168.68.") == true
+        request.url?.scheme == "http"
     }
 
     override static func canonicalRequest(for request: URLRequest) -> URLRequest {

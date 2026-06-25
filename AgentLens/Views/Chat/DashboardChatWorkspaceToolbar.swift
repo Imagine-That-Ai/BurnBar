@@ -26,26 +26,50 @@ struct DashboardChatWorkspaceToolbar: View {
     }
 
     var body: some View {
+        // Progressive degradation: the full control row tries to fit first; when
+        // the toolbar is too narrow (pop-out / embedded panel squeezed near the
+        // window minimum) it falls back to a compact row that drops the secondary
+        // affordances (view-mode picker, quota chip, folder, pop-out, restore)
+        // while always keeping the backend strip, model menu, new-chat, the
+        // ellipsis menu, and — in the pop-out window — the close button reachable.
+        ViewThatFits(in: .horizontal) {
+            controlRow(compact: false)
+            controlRow(compact: true)
+        }
+        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.35)
+        }
+    }
+
+    @ViewBuilder
+    private func controlRow(compact: Bool) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
             ChatEngineModelMenu(controller: controller)
+                .layoutPriority(1)
 
-            ChatViewModePicker(controller: controller)
+            if !compact {
+                ChatViewModePicker(controller: controller)
 
-            if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
-                quotaChip
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                    quotaChip
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+
+                Button {
+                    controller.revealChatWorkspaceInFinder()
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(accent)
+                }
+                .buttonStyle(.plain)
+                .help("Show this chat's workspace in Finder")
             }
-
-            Button {
-                controller.revealChatWorkspaceInFinder()
-            } label: {
-                Image(systemName: "folder")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(accent)
-            }
-            .buttonStyle(.plain)
-            .help("Show this chat's workspace in Finder")
 
             ChatDesktopControlButton(controller: controller, tint: accent)
 
@@ -71,11 +95,15 @@ struct DashboardChatWorkspaceToolbar: View {
             .popover(isPresented: $showChatMenu, arrowEdge: .top) {
                 ChatMenuPopover(
                     controller: controller,
-                    onShowClearChatPrompt: onShowClearChatPrompt
+                    onShowClearChatPrompt: onShowClearChatPrompt,
+                    onNewChat: onNewChat,
+                    onPopOut: mode == .embedded ? onPopOut : nil,
+                    onRestoreFloating: mode == .embedded ? onRestoreFloating : nil,
+                    onRevealWorkspace: controller.revealChatWorkspaceInFinder
                 )
             }
 
-            if mode == .embedded, let onPopOut {
+            if !compact, mode == .embedded, let onPopOut {
                 Button(action: onPopOut) {
                     Image(systemName: "rectangle.on.rectangle")
                         .font(.system(size: 13, weight: .medium))
@@ -85,7 +113,7 @@ struct DashboardChatWorkspaceToolbar: View {
                 .help("Pop out chat into its own window")
             }
 
-            if mode == .embedded, let onRestoreFloating {
+            if !compact, mode == .embedded, let onRestoreFloating {
                 Button(action: onRestoreFloating) {
                     Image(systemName: "macwindow.on.rectangle")
                         .font(.system(size: 13, weight: .medium))
@@ -104,13 +132,6 @@ struct DashboardChatWorkspaceToolbar: View {
                 .buttonStyle(.plain)
                 .help("Close")
             }
-        }
-        .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
-        .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surface.opacity(0.6))
-        .overlay(alignment: .bottom) {
-            Divider().opacity(0.35)
         }
     }
 }

@@ -17,18 +17,34 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-curl-bearer-token-boundary.sh"
+      - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
+      - "scripts/lib/curl-bearer.sh"
+      - "scripts/lib/curl-bearer.test.sh"
+      - "scripts/lib/prepare-signal-ffi-xcframework.sh"
+      - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
+      - "scripts/generate-macos-appcast.mjs"
+      - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
+      - "scripts/diff-coverage-ts.sh"
+      - "scripts/diff-coverage-ts-self-test.sh"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/app-check-smoke.sh"
+      - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-release-attestations.sh"
+      - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ops/run-firestore-restore-drill.sh"
+      - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -50,18 +66,34 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-curl-bearer-token-boundary.sh"
+      - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
+      - "scripts/lib/curl-bearer.sh"
+      - "scripts/lib/curl-bearer.test.sh"
+      - "scripts/lib/prepare-signal-ffi-xcframework.sh"
+      - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
+      - "scripts/generate-macos-appcast.mjs"
+      - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
+      - "scripts/diff-coverage-ts.sh"
+      - "scripts/diff-coverage-ts-self-test.sh"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.mjs"
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
+      - "scripts/ci/app-check-smoke.sh"
+      - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-release-attestations.sh"
+      - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ops/run-firestore-restore-drill.sh"
+      - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -100,6 +132,15 @@ jobs:
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
 
+      - name: Self-test App Check smoke fail-closed gate
+        run: bash scripts/ci/app-check-smoke.test.sh
+
+      - name: Self-test release attestation verifier
+        run: bash scripts/ci/verify-release-attestations.test.sh
+
+      - name: Self-test Firestore restore drill env validation
+        run: bash scripts/ops/run-firestore-restore-drill.test.sh
+
       - name: Check functional QA runner syntax
         run: bash -n tools/qa/run-functional-qa.sh
 
@@ -134,11 +175,26 @@ jobs:
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
 
+      - name: Self-test curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh
+
+      - name: Verify curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.sh
+
+      - name: Self-test curl bearer helper
+        run: bash scripts/lib/curl-bearer.test.sh
+
+      - name: Self-test Signal FFI XCFramework prepare boundary
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.test.sh
+
       - name: Self-test release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.test.mjs
 
       - name: Verify release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.mjs
+
+      - name: Self-test macOS appcast generator
+        run: node scripts/generate-macos-appcast.test.mjs
 
       - name: Self-test hosting deploy boundary
         run: node scripts/ci/verify-hosting-deploy-boundary.test.mjs
@@ -152,6 +208,9 @@ jobs:
       - name: Verify native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.mjs
 
+      - name: Self-test TypeScript diff coverage gate
+        run: bash scripts/diff-coverage-ts-self-test.sh
+
       - name: Self-test wiki mem0 workflow boundary
         run: node scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs
 
@@ -160,3 +219,15 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      - name: Self-test gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.test.mjs
+
+      - name: Verify gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
+
+      - name: Self-test gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.test.mjs
+
+      - name: Verify gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs

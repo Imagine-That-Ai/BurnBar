@@ -59,7 +59,7 @@ struct DashboardToolbar: ToolbarContent {
                     navigationCoordinator.openConversationSearch()
                 }
             )
-            .frame(minWidth: 260, idealWidth: 380, maxWidth: 460)
+            .frame(minWidth: 160, idealWidth: 380, maxWidth: 460)
         }
 
         // MARK: Filters · Telemetry · Actions

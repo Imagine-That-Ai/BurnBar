@@ -11,9 +11,8 @@
  *   1. Verify the supplied JWS via `AppleJWSVerifier`.
  *   2. Resolve the Firebase UID:
  *      - Prefer `appAccountToken` ⇒ lookup `entitlement_bindings`.
- *      - Else, for callables, require an existing entitlement owned by
- *        the supplied `claimedUid`.
- *      - Else use the doc owner from the existing entitlement.
+ *      - Else require an existing entitlement already owned by the supplied
+ *        `claimedUid` or by a single server-known entitlement doc.
  *      - Mismatch ⇒ reject with `binding_mismatch`.
  *   3. Pull live state from `getAllSubscriptionStatuses` to catch
  *      revocations / renewals not yet on the supplied JWS.
@@ -389,8 +388,13 @@ async function resolveUid(
       return input.claimedUid;
     }
     const existingUid = await findUidByOriginalTransaction(db, originalTransactionId);
-    if (!existingUid) return input.claimedUid;
     if (existingUid === input.claimedUid) return input.claimedUid;
+    if (!existingUid) {
+      throw new EntitlementReconcileError(
+        "binding_unknown",
+        "JWS has no appAccountToken and no existing server entitlement for this original transaction.",
+      );
+    }
     throw new EntitlementReconcileError(
       "binding_mismatch",
       "JWS has no appAccountToken and the original transaction is already owned by a different user.",

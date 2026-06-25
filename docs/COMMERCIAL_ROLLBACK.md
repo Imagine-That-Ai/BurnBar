@@ -28,8 +28,9 @@ consecutive checks, unless the trigger is marked immediate:
 
 ## Immediate Kill Switches
 
-Remote Config is the fastest commercial rollback lever because clients poll it
-and the budget functions also enforce it server-side.
+Remote Config is the fastest rollback lever for client-polled commercial
+surfaces and the server-side budget functions that explicitly read those
+parameters.
 
 ```bash
 firebase remoteconfig:get --project burnbar > /tmp/openburnbar-rc.json
@@ -40,9 +41,7 @@ Edit `/tmp/openburnbar-rc.json` so these parameters are present:
 ```json
 {
   "media_kill_switch": "true",
-  "computer_use_kill_switch": "true",
-  "hosted_quota_daily_refresh_limit": "0",
-  "hosted_quota_monthly_refresh_limit": "0"
+  "computer_use_kill_switch": "true"
 }
 ```
 
@@ -57,8 +56,22 @@ Expected behavior:
 - Media sessions deny new starts and in-flight sessions terminate within 60 s.
 - Computer Use denies new hosted vision actions and active sessions halt within
   60 s.
-- Hosted quota refreshes fail closed instead of spending server budget.
 - Local-only Free features continue to work.
+
+Hosted quota refresh limits are not Remote Config parameters. The callable path
+reads Functions config / environment via `getConfig()`, and the refresh budget
+has a minimum daily floor. To contain hosted quota abuse, use one of these
+server-side controls instead:
+
+1. Suspend the affected account's cloud features by writing
+   `users/{uid}/ops/suspensions/cloudFeatures/current` with
+   `deniedSurfaces: ["hosted_quota"]`, a short `expiresAt`, and an incident
+   `reason`. This denies hosted quota for that account before runner spend.
+2. For global containment, deploy a Functions config/env rollback that removes
+   or disables the hosted quota runner endpoint/token, then redeploy Functions
+   through the normal protected release path.
+3. If the hosted quota runner itself is unsafe, move Cloud Run traffic to a
+   known-good revision or to zero-serving capacity as described below.
 
 ## Hosting Rollback
 

@@ -142,14 +142,10 @@ struct PetFormPickerView: View {
         self.onSelect = onSelect
     }
 
-    // The picker observes a *shared* singleton store (one render cache for the
-    // whole app), so it must NOT own it. `@StateObject` is for view-created
-    // objects; its `wrappedValue` is an `@escaping @autoclosure`, and capturing
-    // the `@MainActor` `.shared` global through it miscompiled the struct's
-    // value-witness copy — a `swift_retain` on garbage that SIGSEGV'd the moment
-    // the picker was constructed (build 45 / #769). `@ObservedObject` evaluates
-    // the singleton eagerly and copies cleanly.
-    @ObservedObject private var thumbnails = PetThumbnailStore.shared
+    // One cache per picker instance keeps thumbnail rendering stable without
+    // adding a process-wide singleton. SwiftUI preserves this object while the
+    // picker is mounted.
+    @StateObject private var thumbnails = PetThumbnailStore()
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @FocusState private var searchFocused: Bool
@@ -286,6 +282,10 @@ struct PetFormPickerView: View {
                 .padding(.horizontal, 2)
                 .padding(.vertical, DesignSystem.Spacing.xs)
             }
+            // Keep the gallery usable even when a short window starves the pane:
+            // the fixed chrome (search + category rail + divider) must not be able
+            // to collapse the only scrolling region to a few pixels.
+            .frame(minHeight: 320)
         }
     }
 
@@ -441,8 +441,6 @@ private struct ThumbnailPlaceholder: View {
 /// thumbnails fade in.
 @MainActor
 final class PetThumbnailStore: ObservableObject {
-    static let shared = PetThumbnailStore()
-
     @Published private(set) var images: [String: NSImage] = [:]
 
     private var inFlight: Set<String> = []
@@ -450,7 +448,7 @@ final class PetThumbnailStore: ObservableObject {
     private var isRendering = false
     private let renderSize = CGSize(width: 264, height: 264)
 
-    private init() {}
+    init() {}
 
     /// Cached thumbnail, or `nil` while one is produced (enqueued on first miss).
     func thumbnail(for definition: PetDefinition) -> NSImage? {

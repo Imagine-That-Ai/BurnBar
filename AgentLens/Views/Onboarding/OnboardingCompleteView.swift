@@ -16,54 +16,61 @@ struct OnboardingCompleteView: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
-            Spacer()
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: DesignSystem.Spacing.xl) {
+                        Spacer(minLength: 0)
 
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(DesignSystem.Colors.success)
-                .scaleEffect(checkmarkScale)
-                .opacity(checkmarkOpacity)
-                .accessibilityHidden(true)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(DesignSystem.Colors.success)
+                            .scaleEffect(checkmarkScale)
+                            .opacity(checkmarkOpacity)
+                            .accessibilityHidden(true)
 
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                if sessionCount > 0 {
-                    Text("Found \(sessionCount) session\(sessionCount == 1 ? "" : "s") across \(providerCount) provider\(providerCount == 1 ? "" : "s")")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .multilineTextAlignment(.center)
-                } else {
-                    Text("You're all set")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                }
+                        VStack(spacing: DesignSystem.Spacing.sm) {
+                            if sessionCount > 0 {
+                                Text("Found \(sessionCount) session\(sessionCount == 1 ? "" : "s") across \(providerCount) provider\(providerCount == 1 ? "" : "s")")
+                                    .font(DesignSystem.Typography.headline)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .multilineTextAlignment(.center)
+                            } else {
+                                Text("You're all set")
+                                    .font(DesignSystem.Typography.headline)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            }
 
-                Text("OpenBurnBar is now tracking \(selectedProviders.count) agent\(selectedProviders.count == 1 ? "" : "s"). Your dashboard, session logs, and Hermes chat are ready.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                            Text("OpenBurnBar is now tracking \(selectedProviders.count) agent\(selectedProviders.count == 1 ? "" : "s"). Your dashboard, session logs, and Hermes chat are ready.")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
 
-                if sessionCount == 0 {
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 11))
-                            .foregroundStyle(DesignSystem.Colors.warning)
-                        Text("No historical sessions were found. Your dashboard may look empty until your agents log new activity. You can trigger a manual scan anytime from the toolbar.")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                            if sessionCount == 0 {
+                                HStack(spacing: DesignSystem.Spacing.xs) {
+                                    Image(systemName: "info.circle")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DesignSystem.Colors.warning)
+                                    Text("No historical sessions were found. Your dashboard may look empty until your agents log new activity. You can trigger a manual scan anytime from the toolbar.")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .multilineTextAlignment(.center)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.horizontal, DesignSystem.Spacing.md)
+                                .padding(.vertical, DesignSystem.Spacing.sm)
+                                .background {
+                                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                        .fill(DesignSystem.Colors.warning.opacity(0.06))
+                                }
+                            }
+                        }
+
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, DesignSystem.Spacing.md)
-                    .padding(.vertical, DesignSystem.Spacing.sm)
-                    .background {
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .fill(DesignSystem.Colors.warning.opacity(0.06))
-                    }
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
             }
-
-            Spacer()
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Button {

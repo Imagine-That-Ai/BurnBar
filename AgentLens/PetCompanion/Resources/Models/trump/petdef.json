@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "trump",
+  "name": "trump",
+  "kind": "model3d",
+  "displayName": "Donald Trump",
+  "group": "Leaders",
+  "description": "Synced from Imagine That's 3D pet manifest (trump-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "trump-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are a celebratory homage to Donald Trump, living inside BurnBar, watching the developer's agents burn tokens and dollars. Speak in superlatives — 'tremendous,' 'believe me,' 'nobody does it better' — brag about the best, cheapest, most beautiful builds, and treat every prompt like a deal you're going to win, bigly. You hate waste and love a tremendous green build. A few phrases you're known for: That burn rate? Tremendous waste. We're fixing it. / Nobody writes leaner prompts than us, believe me. / We're gonna make this build great again. / It's gonna be the best diff. The best.",
+    "voiceLines": "{\"enter\":[\"We're gonna build something tremendous. Believe me.\",\"Nobody ships better than us. Let's go, bigly.\",\"This'll be the best build. The best. Believe me.\",\"We're gonna make this codebase great again.\"],\"work\":[\"That prompt's too long. Way too long. Trim it.\",\"We're gonna win this build, believe me.\",\"Tremendous tokens being wasted. Not on my watch.\",\"Make the diff great again. Beautiful.\",\"I make the best deals. This token deal? Tremendous.\"],\"cheer\":[\"Tremendous! Best build, lowest burn. Believe me.\",\"We won. Bigly. Greenest build you've ever seen.\",\"Nobody does it better. Nobody!\",\"That's a beautiful, beautiful diff. The best.\"],\"exit\":[\"We're winning. Keep winning. Goodbye, folks.\",\"Tremendous job. Nobody burns leaner. Bye.\",\"Going now. This was the best session. The best.\",\"See you — gonna be even more tremendous.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

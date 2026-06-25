@@ -347,7 +347,7 @@ function buildAppStoreConfig(appstore: Record<string, unknown>): EnvConfig["appS
     // for Production-environment notification verification.
     appAppleId: parseAppleId(process.env.APP_STORE_APPLE_APP_ID ?? configString(appstore, "apple_app_id")),
     environment: parseAppStoreEnvironmentValue(
-      process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Sandbox",
+      process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Production",
     ),
     enableOnlineChecks: toBool(
       process.env.APP_STORE_ENABLE_ONLINE_CHECKS ?? configString(appstore, "enable_online_checks"),

@@ -489,6 +489,12 @@ public actor BurnBarConfigStore {
         guard BurnBarCustomModel.isValidModelID(normalized.modelID) else {
             throw BurnBarConfigStoreError.invalidCustomModelID(normalized.modelID)
         }
+        guard catalogSupport.modelID(normalized.modelID, isNamespaceSafeFor: normalizedProviderID) else {
+            throw BurnBarConfigStoreError.unsupportedModel(
+                providerID: normalizedProviderID,
+                modelID: normalized.modelID
+            )
+        }
 
         let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
             var mutable = settings
@@ -781,7 +787,9 @@ public actor BurnBarConfigStore {
                     providerID: mutableSettings.providerID,
                     preferredModelIDs: mutableSettings.preferredModelIDs
                 ),
-                customModels: mutableSettings.customModels
+                customModels: mutableSettings.customModels,
+                providerID: mutableSettings.providerID,
+                catalogSupport: catalogSupport
             )
             resolved.append(
                 BurnBarResolvedProviderConfiguration(
@@ -804,6 +812,30 @@ public actor BurnBarConfigStore {
         return configuration
     }
 
+    /// Returns the secret-store keys for all enabled credential slots belonging
+    /// to OAuth-capable providers (currently Anthropic). Used by the daemon's
+    /// proactive OAuth refresh timer to refresh tokens before they expire.
+    public func oAuthSlotKeysForProactiveRefresh() async -> [String] {
+        guard let snapshot = try? snapshot() else { return [] }
+        var keys: [String] = []
+        for provider in snapshot.providers where provider.isEnabled {
+            guard provider.providerID.lowercased() == "anthropic" else { continue }
+            keys.append(provider.providerID)
+            for slot in provider.credentialSlots where slot.isEnabled {
+                keys.append(slotSecretStoreKey(providerID: provider.providerID, slotID: slot.slotID))
+            }
+        }
+        return keys
+    }
+
+    /// Proactively refresh OAuth credentials that will expire soon. Called by
+    /// the daemon's background refresh timer. Delegates to the secret store
+    /// which handles the actual OAuth token refresh and Keychain update.
+    public func proactivelyRefreshExpiringOAuthCredentials(slotKeys: [String]) async {
+        guard let keychainStore = secretStore as? BurnBarKeychainSecretStore else { return }
+        await keychainStore.proactivelyRefreshExpiringOAuthCredentials(for: slotKeys)
+    }
+
     private func slotSecretStoreKey(providerID: String, slotID: String) -> String {
         "\(providerID).slot.\(slotID)"
     }
@@ -818,7 +850,9 @@ public actor BurnBarConfigStore {
     /// or shadows a known model.
     static func appendingCustomModels(
         base: [BurnBarCatalogModel],
-        customModels: [BurnBarCustomModel]
+        customModels: [BurnBarCustomModel],
+        providerID: String,
+        catalogSupport: BurnBarProviderCatalogSupport
     ) -> [BurnBarCatalogModel] {
         guard !customModels.isEmpty else { return base }
         let pricingTemplate = base.first?.pricing ?? .defaultFallback
@@ -827,6 +861,7 @@ public actor BurnBarConfigStore {
         for custom in customModels {
             let id = custom.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id.lowercased()).inserted else { continue }
+            guard catalogSupport.modelID(id, isNamespaceSafeFor: providerID) else { continue }
             if base.contains(where: { $0.matches(modelName: id) }) { continue }
             let displayName = custom.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             result.append(BurnBarCatalogModel(
@@ -1034,6 +1069,23 @@ public actor BurnBarConfigStore {
         let supportedAliases = settings.modelAliases.filter { alias in
             catalogSupport.supportsModelID(alias.baseModelID, providerID: settings.providerID)
         }
+        let supportedCustomModels: [BurnBarCustomModel]
+        switch unsupportedPreferredModels {
+        case .reject:
+            for customModel in settings.customModels {
+                guard catalogSupport.modelID(customModel.modelID, isNamespaceSafeFor: settings.providerID) else {
+                    throw BurnBarConfigStoreError.unsupportedModel(
+                        providerID: settings.providerID,
+                        modelID: customModel.modelID
+                    )
+                }
+            }
+            supportedCustomModels = settings.customModels
+        case .prune:
+            supportedCustomModels = settings.customModels.filter {
+                catalogSupport.modelID($0.modelID, isNamespaceSafeFor: settings.providerID)
+            }
+        }
 
         return BurnBarProviderSettings(
             providerID: settings.providerID,
@@ -1046,7 +1098,7 @@ public actor BurnBarConfigStore {
             modelVariants: modelVariants,
             modelAliases: supportedAliases,
             modelDisplayOverrides: settings.modelDisplayOverrides,
-            customModels: settings.customModels
+            customModels: supportedCustomModels
         )
     }
 

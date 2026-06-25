@@ -132,6 +132,86 @@ final class BurnBarCustomModelLiveCatalogTests: XCTestCase {
         }
     }
 
+    func testCustomModelRejectsForeignProviderNamespaceClaim() async throws {
+        let harness = try makeHarness(name: "custom-foreign-namespace")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "openai",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: ["gpt-5.4"]
+            )
+        )
+
+        do {
+            _ = try await harness.configStore.upsertCustomModel(
+                providerID: "openai",
+                customModel: BurnBarCustomModel(modelID: "anthropic/claude-net-new")
+            )
+            XCTFail("Expected foreign provider namespace custom model to be rejected.")
+        } catch let error as BurnBarConfigStoreError {
+            guard case .unsupportedModel(let providerID, let modelID) = error else {
+                XCTFail("Expected .unsupportedModel, got \(error).")
+                return
+            }
+            XCTAssertEqual(providerID, "openai")
+            XCTAssertEqual(modelID, "anthropic/claude-net-new")
+        }
+    }
+
+    func testStaleForeignProviderNamespaceCustomModelIsNotFoldedIntoRoutes() {
+        let base = [
+            BurnBarCatalogModel(
+                id: "gpt-5.4",
+                displayName: "GPT-5.4",
+                visibility: .public,
+                pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1)
+            )
+        ]
+
+        let rows = BurnBarConfigStore.appendingCustomModels(
+            base: base,
+            customModels: [
+                BurnBarCustomModel(modelID: "anthropic/claude-net-new"),
+                BurnBarCustomModel(modelID: "openai/gpt-net-new")
+            ],
+            providerID: "openai",
+            catalogSupport: BurnBarProviderCatalogSupport(catalog: BurnBarCatalogLoader.bundledCatalog)
+        )
+
+        XCTAssertFalse(rows.contains { $0.id == "anthropic/claude-net-new" })
+        XCTAssertTrue(rows.contains { $0.id == "openai/gpt-net-new" })
+    }
+
+    func testOwnerQualifiedModelIDIsAllowedWhenNamespaceIsNotRoutable() {
+        let support = BurnBarProviderCatalogSupport(
+            catalog: BurnBarCatalog(
+                schemaVersion: 1,
+                providers: [
+                    BurnBarCatalogProvider(
+                        id: "openai",
+                        displayName: "OpenAI",
+                        baseURL: "https://api.openai.com/v1",
+                        visibility: .public,
+                        capabilities: [.routing],
+                        models: []
+                    ),
+                    BurnBarCatalogProvider(
+                        id: "google",
+                        displayName: "Google Account",
+                        baseURL: "https://google.example",
+                        visibility: .public,
+                        capabilities: [.accounting],
+                        models: []
+                    )
+                ]
+            )
+        )
+
+        XCTAssertNil(support.providerNamespaceClaim(forModelID: "google/gemma-3-27b-it"))
+        XCTAssertTrue(support.modelID("google/gemma-3-27b-it", isNamespaceSafeFor: "openai"))
+    }
+
     private struct CustomHarness {
         let rootURL: URL
         let configStore: BurnBarConfigStore

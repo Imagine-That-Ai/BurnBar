@@ -10,32 +10,106 @@ typealias CLIRuntimeModelCatalogDispatcher = @Sendable (
     _ request: CLIRuntimeModelCatalogRequest
 ) async throws -> CLIRuntimeModelCatalogResponse
 
+typealias CLIAgentSessionActionFreshnessProbe = @MainActor @Sendable () async -> Bool
+
 typealias CLIAgentSessionActionDispatcher = @MainActor @Sendable (
-    _ request: CLIAgentSessionActionRequest
+    _ request: CLIAgentSessionActionRequest,
+    _ requestStillActive: CLIAgentSessionActionFreshnessProbe?
 ) async throws -> CLIAgentSessionActionResponse
+
+typealias CLIAgentSessionActionApprovalPresenter = @MainActor @Sendable (
+    _ request: HermesRealtimeRelayApprovalRequest
+) async -> HermesRealtimeRelayApprovalResponse
+
+typealias CLIAgentSessionActionResumeRunner = @MainActor @Sendable (
+    _ sessionID: String,
+    _ targetHarness: String?,
+    _ targetModel: String?,
+    _ mode: BurnBarResumeMode
+) async throws -> BurnBarRunResumeResponse
+
+typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Void
+
+private enum CLIAgentSessionActionApprovalDecision {
+    case approve
+    case reject
+    case rejectAndHalt
+}
 
 @MainActor
 struct CLIAgentSessionActionDaemonDispatcher {
-    private let daemonManager: OpenBurnBarDaemonManager
+    private let resumeRunner: CLIAgentSessionActionResumeRunner
+    private let approvalPresenter: CLIAgentSessionActionApprovalPresenter?
+    private let haltHandler: CLIAgentSessionActionHaltHandler?
 
-    init(daemonManager: OpenBurnBarDaemonManager = .shared) {
-        self.daemonManager = daemonManager
+    init(
+        daemonManager: OpenBurnBarDaemonManager = .shared,
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
+    ) {
+        self.init(
+            resumeRunner: { sessionID, targetHarness, targetModel, mode in
+                try await daemonManager.runResume(
+                    sessionID: sessionID,
+                    targetHarness: targetHarness,
+                    targetModel: targetModel,
+                    mode: mode
+                )
+            },
+            approvalPresenter: approvalPresenter,
+            haltHandler: haltHandler
+        )
     }
 
-    func perform(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
+    init(
+        resumeRunner: @escaping CLIAgentSessionActionResumeRunner,
+        approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
+    ) {
+        self.resumeRunner = resumeRunner
+        self.approvalPresenter = approvalPresenter
+        self.haltHandler = haltHandler
+    }
+
+    func perform(
+        _ request: CLIAgentSessionActionRequest,
+        requestStillActive: CLIAgentSessionActionFreshnessProbe? = nil
+    ) async throws -> CLIAgentSessionActionResponse {
         let mode: BurnBarResumeMode
         switch request.action {
         case .packageOnly:
             mode = .open
         case .resume, .handoff:
+            switch await approvalDecision(for: request) {
+            case .approve:
+                break
+            case .reject:
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "Mac approval is required before this session action can run.",
+                    errorCode: "mac_approval_required",
+                    errorRecovery: "Approve the session action on the Mac, then try again."
+                )
+            case .rejectAndHalt:
+                await haltHandler?()
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "Mac approval was rejected and halt was requested.",
+                    errorCode: "mac_approval_rejected_and_halted",
+                    errorRecovery: "The Mac halt request was applied. Start a new trusted session before retrying."
+                )
+            }
+            if let requestStillActive, await requestStillActive() == false {
+                return CLIAgentSessionActionResponse(
+                    status: .error,
+                    note: "The relay request expired before the approved session action could run.",
+                    errorCode: "relay_request_not_active",
+                    errorRecovery: "Send a fresh session action request from the phone."
+                )
+            }
             mode = .spawn
         }
-        let response = try await daemonManager.runResume(
-            sessionID: request.sessionID,
-            targetHarness: request.targetRuntime,
-            targetModel: request.targetModelID,
-            mode: mode
-        )
+        let response = try await resumeRunner(request.sessionID, request.targetRuntime, request.targetModelID, mode)
         let status: CLIAgentSessionActionStatus
         switch response.kind {
         case "native":
@@ -66,6 +140,45 @@ struct CLIAgentSessionActionDaemonDispatcher {
             note: response.note,
             errorCode: response.errorCode,
             errorRecovery: response.errorRecovery
+        )
+    }
+
+    private func approvalDecision(for request: CLIAgentSessionActionRequest) async -> CLIAgentSessionActionApprovalDecision {
+        guard let approvalPresenter else { return .reject }
+        let approval = await approvalPresenter(approvalRequest(for: request))
+        switch approval.decision {
+        case .approve:
+            return .approve
+        case .reject:
+            return .reject
+        case .rejectAndHalt:
+            return .rejectAndHalt
+        }
+    }
+
+    private func approvalRequest(for request: CLIAgentSessionActionRequest) -> HermesRealtimeRelayApprovalRequest {
+        let target = request.targetRuntime?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetText = target.flatMap { $0.isEmpty ? nil : " in \($0)" } ?? ""
+        let actionTitle: String
+        switch request.action {
+        case .resume:
+            actionTitle = "Resume CLI session"
+        case .handoff:
+            actionTitle = "Handoff CLI session"
+        case .packageOnly:
+            actionTitle = "Prepare CLI session package"
+        }
+        let summary = "\(actionTitle)\(targetText)"
+        return HermesRealtimeRelayApprovalRequest(
+            approvalId: UUID().uuidString,
+            runId: "cli-session-action-\(request.sessionID)",
+            sessionId: request.sessionID,
+            toolKind: "cli.session.\(request.action.rawValue)",
+            title: actionTitle,
+            message: "\(summary) on this Mac.",
+            actionSummary: summary,
+            requestedAt: Date(),
+            trustMode: "manual"
         )
     }
 }

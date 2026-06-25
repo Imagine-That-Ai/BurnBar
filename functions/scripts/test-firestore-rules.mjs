@@ -369,7 +369,45 @@ test("credential transfers are server-only for legacy and v2 ids", async () => {
   }
 });
 
-test("provider accounts reject plaintext or unknown credential containers", async () => {
+test("account erasure retention records are server-only", async () => {
+  const ownerDb = authedDb("erasure-owner");
+  const otherDb = authedDb("erasure-attacker");
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const uidHash = "a".repeat(64);
+  const recordPath = `account_erasure_audit/${uidHash}`;
+  const retentionRecord = {
+    schemaVersion: 1,
+    uidHash,
+    status: "intent_recorded",
+    intentAudit: {
+      action: "account.delete.request",
+      auditLogPath: "users/erasure-owner/unified_audit_log/audit-event-1",
+      auditHash: "b".repeat(64),
+      previousHash: "0".repeat(64),
+      sequence: 1,
+    },
+    startedAt: Timestamp.fromMillis(Date.now()),
+    updatedAt: Timestamp.fromMillis(Date.now()),
+  };
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), recordPath), retentionRecord);
+  });
+
+  async function assertAllErasureRetentionClientOpsFail(db) {
+    await assertFails(setDoc(doc(db, recordPath), retentionRecord));
+    await assertFails(getDoc(doc(db, recordPath)));
+    await assertFails(updateDoc(doc(db, recordPath), { status: "account_deleted" }));
+    await assertFails(deleteDoc(doc(db, recordPath)));
+    await assertFails(getDocs(collection(db, "account_erasure_audit")));
+  }
+
+  for (const db of [ownerDb, otherDb, unauthDb]) {
+    await assertAllErasureRetentionClientOpsFail(db);
+  }
+});
+
+test("provider accounts reject plaintext, unknown credential containers, and client-authored refresh sweep entries", async () => {
   const ownerDb = authedDb("provider-owner");
   const basePath = "users/provider-owner/provider_accounts/account-1";
   const canonical = {
@@ -378,7 +416,7 @@ test("provider accounts reject plaintext or unknown credential containers", asyn
     label: "Codex",
     status: "connected",
     credentialKind: "token",
-    storageScope: "server_private",
+    storageScope: "device_keychain",
     redactedLabel: "sk_...1234",
     isDefault: true,
     sortKey: 0,
@@ -400,6 +438,28 @@ test("provider accounts reject plaintext or unknown credential containers", asyn
       ...canonical,
       id: "account-3",
       secretVersionName: "projects/x/secrets/y/versions/1",
+    })
+  );
+
+  for (const status of ["connected", "stale", "error"]) {
+    for (const storageScope of ["cloud_refreshable", "server_private"]) {
+      await assertFails(
+        setDoc(doc(ownerDb, `users/provider-owner/provider_accounts/${status}-${storageScope}`), {
+          ...canonical,
+          id: `${status}-${storageScope}`,
+          status,
+          storageScope,
+        })
+      );
+    }
+  }
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/disconnected-cloud"), {
+      ...canonical,
+      id: "disconnected-cloud",
+      status: "disconnected",
+      storageScope: "cloud_refreshable",
     })
   );
 });
@@ -601,6 +661,33 @@ test("L41 Signal prekey/session directory is server-only, owner-readable, and ro
       publicKeyData: "X".repeat(44),
       publicKeyFingerprint: "Y".repeat(44),
       keyVersion: 2,
+      algorithm: "signal-hpke-identity-seal-v1",
+      createdAt: now,
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/signal-dir-owner/escrow_devices/trusted-missing-signal"), {
+      deviceId: "trusted-missing-signal",
+      deviceName: "Trusted Mac",
+      platform: "macOS",
+      trustState: "trusted",
+      publicKeyFingerprint: "T".repeat(44),
+      keyVersion: 1,
+      targetSignalIdentityKeyId: "trusted-missing-signal_1",
+      targetSignalIdentityPublicKeyFingerprint: "P".repeat(44),
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/trusted-missing-signal_1"), {
+      deviceId: "trusted-missing-signal",
+      platform: "macOS",
+      identityKeyId: "trusted-missing-signal_1",
+      publicKeyData: "Z".repeat(44),
+      publicKeyFingerprint: "P".repeat(44),
+      keyVersion: 1,
       algorithm: "signal-hpke-identity-seal-v1",
       createdAt: now,
     })
@@ -2057,6 +2144,31 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
       updatedAt: serverTimestamp(),
     })
   );
+  await assertSucceeds(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      deletedAt: serverTimestamp(),
+      version: 2,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      version: 3,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      deletedAt: deleteField(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(db, "users/carol/session_logs/device_log"), {
+      deletedAt: "2026-06-24T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+    })
+  );
 
   await assertFails(
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
@@ -2080,6 +2192,17 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
       updatedAt: serverTimestamp(),
     })
   );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/carol/session_logs/device_log/chunks/legacy"), {
+      index: 2,
+      body: "legacy plaintext markdown",
+      schemaVersion: 1,
+      updatedAt: new Date(),
+    });
+  });
+  await assertSucceeds(
+    deleteDoc(doc(db, "users/carol/session_logs/device_log/chunks/legacy"))
+  );
 });
 
 test("session-log manifest accepts bounded cockpit facets but rejects malformed ones", async () => {
@@ -2097,7 +2220,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
   await assertSucceeds(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
       ...facetBase,
-      facetSchemaVersion: 2,
+      facetSchemaVersion: 3,
       model: "gpt-5-codex",
       messageCount: 12,
       userWordCount: 340,
@@ -2108,7 +2231,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
       cacheReadTokens: 9000,
       totalTokens: 25200,
       costUSD: 0.42,
-      toolTags: ["bash", "edit", "read"],
+      toolTags: ["bash", "edit", "exec_command", "grep_search", "other", "read"],
       durationSeconds: 540,
     })
   );
@@ -2134,6 +2257,21 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigtags"), {
       ...facetBase,
       toolTags: Array.from({ length: 64 }, (_, index) => `tag${index}`),
+    })
+  );
+
+  // Tool tags are public search facets: only small, known tool slugs are allowed.
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_arbitrary_tag"), {
+      ...facetBase,
+      toolTags: ["bash", "cat-/home/example/redacted-session.md"],
+    })
+  );
+
+  await assertFails(
+    updateDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
+      toolTags: ["read", "paste full prompt here"],
+      updatedAt: serverTimestamp(),
     })
   );
 
@@ -2975,6 +3113,74 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   );
 });
 
+test("realtime relay URLs must stay on bounded secure host routes", async () => {
+  const db = authedDb("relay-url-user");
+  await seedHostedCloudEntitlement("relay-url-user");
+
+  const hermesConnectionPath = "users/relay-url-user/hermes_connections/hermes-relay-mac";
+  const piConnectionPath = "users/relay-url-user/pi_agent_connections/pi-relay-mac";
+  const hermesConnectionDoc = {
+    id: "hermes-relay-mac",
+    displayName: "Mac Hermes Relay",
+    mode: "relayLink",
+    status: "online",
+    capabilities: ["chat_completions", "remote_relay", "realtime_relay"],
+    relayPublicKey: "A".repeat(88),
+    relayKeyVersion: 3,
+    relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+    realtimeRelayURL: "wss://relay.openburnbar.test/v1/realtime",
+    realtimeRelayStatus: "online",
+    realtimeRelayProtocolVersion: 1,
+    createdAt: "2026-06-24T00:00:00.000Z",
+    updatedAt: "2026-06-24T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+  const piConnectionDoc = {
+    id: "pi-relay-mac",
+    displayName: "Mac Pi Relay",
+    mode: "relayLink",
+    status: "online",
+    capabilities: ["chat_completions", "remote_relay", "realtime_relay"],
+    relayPublicKey: "B".repeat(88),
+    relayKeyVersion: 1,
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    realtimeRelayURL: "wss://relay.openburnbar.test/v1/realtime",
+    realtimeRelayStatus: "online",
+    realtimeRelayProtocolVersion: 1,
+    createdAt: "2026-06-24T00:00:00.000Z",
+    updatedAt: "2026-06-24T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+
+  await assertSucceeds(setDoc(doc(db, hermesConnectionPath), hermesConnectionDoc));
+  await assertSucceeds(setDoc(doc(db, piConnectionPath), piConnectionDoc));
+
+  for (const realtimeRelayURL of [
+    "ws://relay.openburnbar.test/v1/realtime",
+    "wss://127.0.0.1:8317/v1/realtime",
+    "wss://10.0.0.5/v1/realtime",
+    "wss://metadata.google.internal/computeMetadata/v1",
+    "wss://user:pass@relay.openburnbar.test/v1/realtime",
+    "wss://relay.openburnbar.test/v1/realtime?token=secret",
+    "wss://relay.openburnbar.test/v1/realtime#fragment",
+  ]) {
+    await assertFails(
+      setDoc(doc(db, hermesConnectionPath), {
+        ...hermesConnectionDoc,
+        realtimeRelayURL,
+        updatedAt: "2026-06-24T00:00:01.000Z",
+      })
+    );
+    await assertFails(
+      setDoc(doc(db, piConnectionPath), {
+        ...piConnectionDoc,
+        realtimeRelayURL,
+        updatedAt: "2026-06-24T00:00:01.000Z",
+      })
+    );
+  }
+});
+
 test("runtime preferences are per device and provider device links are server-written", async () => {
   const db = authedDb("hank");
 
@@ -3811,6 +4017,17 @@ test("T4 session_logs chunk denies all direct client writes", async () => {
       ...chunkBase,
       semanticHashes: ["not-a-valid-hash"],
     })
+  );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/slc-owner/session_logs/log/chunks/legacy"), {
+      index: 5,
+      body: "legacy plaintext markdown",
+      schemaVersion: 1,
+      updatedAt: new Date(),
+    });
+  });
+  await assertSucceeds(
+    deleteDoc(doc(db, "users/slc-owner/session_logs/log/chunks/legacy"))
   );
 });
 
@@ -4800,14 +5017,14 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   const timestamp = Timestamp.fromDate(new Date("2026-06-04T00:00:00.000Z"));
   const sourceRefHmac = "a".repeat(64);
 
-  const memoryFact = (docID, overrides = {}) => ({
-    uid: ownerUid,
+  const memoryFactFor = (uid, docID, overrides = {}) => ({
+    uid,
     docID,
     schemaVersion: 1,
     sourceKind: "chat",
     kind: "fact",
     reviewStatus: "approved",
-    sealedMemory: sealedBlobAt(ownerUid, "memory_facts", docID, "sealedMemory"),
+    sealedMemory: sealedBlobAt(uid, "memory_facts", docID, "sealedMemory"),
     sourceRefHmacs: [sourceRefHmac],
     citationCount: 1,
     validFrom: timestamp,
@@ -4815,9 +5032,37 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
     replicatedAt: timestamp,
     ...overrides,
   });
+  const memoryFact = (docID, overrides = {}) => memoryFactFor(ownerUid, docID, overrides);
+
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-no-entitlement`), memoryFact("fact-no-entitlement"))
+  );
+  await seedHostedCloudEntitlement(ownerUid);
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-cloud-only`), memoryFact("fact-cloud-only"))
+  );
+  await seedBurnBarProMaxEntitlement(ownerUid);
 
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-ok`), memoryFact("fact-ok"))
+  );
+  const googlePlayCloudProUid = "memory-play-cloud-pro-owner";
+  const googlePlayCloudProDb = authedDb(googlePlayCloudProUid);
+  await seedBurnBarProMaxEntitlement(googlePlayCloudProUid, "com.openburnbar.promax.v2.monthly");
+  await assertSucceeds(
+    setDoc(
+      doc(googlePlayCloudProDb, `users/${googlePlayCloudProUid}/memory_facts/fact-play-cloud-pro-ok`),
+      memoryFactFor(googlePlayCloudProUid, "fact-play-cloud-pro-ok")
+    )
+  );
+  const ultraUid = "memory-ultra-owner";
+  const ultraDb = authedDb(ultraUid);
+  await seedBurnBarUltraEntitlement(ultraUid);
+  await assertSucceeds(
+    setDoc(
+      doc(ultraDb, `users/${ultraUid}/memory_facts/fact-ultra-ok`),
+      memoryFactFor(ultraUid, "fact-ultra-ok")
+    )
   );
   await assertFails(
     setDoc(

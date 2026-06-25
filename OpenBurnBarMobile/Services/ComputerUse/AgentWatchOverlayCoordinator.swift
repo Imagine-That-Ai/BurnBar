@@ -94,6 +94,9 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
         supervisorTask?.cancel()
         supervisorTask = nil
         if let stream { await stream.close() }
+        if let activeConnectionID {
+            ControlSealSessionEstablisher.unregister(connectionID: activeConnectionID)
+        }
         stream = nil
         receiver = nil
         phoneControlSender = nil
@@ -182,6 +185,9 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                         controlSealKey: sealSession?.envelope
                     )
                 ))
+                if let sealSession {
+                    ControlSealSessionEstablisher.register(sealSession, connectionID: connectionID)
+                }
                 phase = .live
                 computerUseE2EProofLog("classified_live connection=\(connectionID)")
                 attempt = 0
@@ -198,6 +204,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
             stream = nil
             receiver = nil
             phoneControlSender = nil
+            ControlSealSessionEstablisher.unregister(connectionID: connectionID)
             if Task.isCancelled { break }
             let backoff = nextBackoff(attempt: attempt)
             attempt += 1

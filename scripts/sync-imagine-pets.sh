@@ -1,6 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Xcode build phases run with a sanitized PATH that excludes Homebrew, nvm,
+# fnm, volta, and ~/.local/bin, so `node` may be missing even when installed.
+# Augment PATH with the common macOS Node locations before invoking node.
+for _node_dir in \
+  "/opt/homebrew/bin" \
+  "$HOME/.homebrew/bin" \
+  "$HOME/.local/bin" \
+  "$HOME/.nvm/current/bin" \
+  "$HOME/.fnm/current/bin" \
+  "$HOME/.volta/bin" \
+  "/usr/local/bin"; do
+  case ":${PATH:-}:" in
+    *":${_node_dir}:"*) ;;
+    *) [ -x "${_node_dir}/node" ] && PATH="${_node_dir}:${PATH:-}" ;;
+  esac
+done
+export PATH
+
+# Pet model sync is OPT-IN (requires IMAGINE_PETS_SYNC=1). The committed
+# PetCompanion resources are the build's source of truth, so a missing node
+# should never break the build for someone who just wants to compile the app.
+# If node isn't available — common for end users who install from source
+# without a JS toolchain — skip the sync gracefully.
+if ! command -v node >/dev/null 2>&1; then
+  echo "Imagine pet sync skipped: node not found on PATH. PetCompanion will use committed model resources."
+  echo "  Install Node 18+ (brew install node) and set IMAGINE_PETS_SYNC=1 to refresh from the Imagine manifest."
+  exit 0
+fi
+
 cd "$(dirname "$0")/.."
 
 node --input-type=module <<'NODE'
@@ -180,8 +209,12 @@ function clipMap(clips) {
 // answers in the pet's own voice. Populated once the manifest source resolves;
 // an absent sidecar simply leaves pets on BurnBar's default voice.
 let personas = {};
+// BurnBar-native persona overrides (scripts/pet-personas.burnbar.json) — same
+// figures, re-grounded in BurnBar's world (tokens/spend/agents/code) so the pets
+// don't confabulate a web-design context. Preferred per-id over the website voice.
+let personasBurnbar = {};
 function agentFor(id) {
-  const p = personas[id];
+  const p = personasBurnbar[id] || personas[id];
   if (!p) return undefined;
   return {
     persona: `${p.voice} A few phrases you're known for: ${(p.signature || []).join(" / ")}`,
@@ -189,9 +222,31 @@ function agentFor(id) {
   };
 }
 
+// Prop GLBs referenced by any pet's props[] (the SceneKit renderer loads them from
+// Models/props/<glb> and grafts them onto a hand bone). The set is collected across
+// all pets so the copy + prune steps know exactly which prop files to ship.
+const referencedPropGlbs = new Set();
+
+function normalizedProps(entry) {
+  if (!Array.isArray(entry.props)) return undefined;
+  const props = entry.props
+    .filter((p) => p && typeof p.id === "string" && typeof p.glb === "string" && typeof p.socket === "string")
+    .map((p) => {
+      referencedPropGlbs.add(path.basename(p.glb));
+      const prop = { id: p.id, glb: path.basename(p.glb), socket: p.socket };
+      if (p.transform) prop.transform = p.transform;
+      if (Array.isArray(p.visibleStates)) prop.visibleStates = p.visibleStates;
+      if (Array.isArray(p.hiddenStates)) prop.hiddenStates = p.hiddenStates;
+      if (typeof p.label === "string") prop.label = p.label;
+      return prop;
+    });
+  return props.length ? props : undefined;
+}
+
 function petDefinition(entry) {
   const glbName = bundledGlbName(entry);
   const clips = normalizedClips(entry);
+  const props = normalizedProps(entry);
   const sourceLabel = entry.source ? `${entry.source} via Imagine That's 3D pet manifest` : `Imagine That's 3D pet manifest`;
   return {
     schema: "petdef/1",
@@ -208,6 +263,7 @@ function petDefinition(entry) {
         glb: glbName,
         clipNames: clips,
         clips: clipMap(clips),
+        ...(props ? { props } : {}),
       },
     ],
     behavior: {
@@ -231,6 +287,13 @@ function petDefinition(entry) {
   };
 }
 
+// Legacy demo-roster assets that live in Models/ but are NOT part of the Imagine
+// manifest — the built-in demo pets (FormPicker.knownRoster) depend on them, so
+// the manifest prune must never delete them even though no manifest entry claims
+// them. Keeping this allowlist here fixes the "sync deletes go-gopher.glb /
+// claudecode-crab.glb and breaks demo 3D" regression.
+const KEEP_GLBS = new Set(["claudecode-crab.glb", "go-gopher.glb"]);
+
 async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
   const entries = await readdir(modelsDir, { withFileTypes: true });
   let pruned = 0;
@@ -243,7 +306,12 @@ async function pruneStaleManifestOutputs(currentIDs, currentGlbs) {
         await rm(fullPath, { recursive: true, force: true });
         pruned += 1;
       }
-    } else if (entry.isFile() && entry.name.endsWith(".glb") && !currentGlbs.has(entry.name)) {
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith(".glb") &&
+      !currentGlbs.has(entry.name) &&
+      !KEEP_GLBS.has(entry.name)
+    ) {
       await rm(fullPath, { force: true });
       pruned += 1;
     }
@@ -277,6 +345,9 @@ const { source, pets } = manifest;
 if (!Array.isArray(pets)) {
   throw new Error("pets-3d.json root must be an array");
 }
+if (pets.length === 0) {
+  throw new Error("pets-3d.json is empty; refusing to prune all bundled pet models");
+}
 
 // Best-effort persona sidecar — pets keep BurnBar's default voice when it is absent.
 try {
@@ -284,6 +355,15 @@ try {
   personas = parsedPersonas && typeof parsedPersonas === "object" && !Array.isArray(parsedPersonas) ? parsedPersonas : {};
 } catch {
   /* no pet-personas.json → default voice */
+}
+
+// BurnBar-local persona override — read from THIS repo (not the synced manifest),
+// so BurnBar can tune voices independently of the website. Best-effort.
+try {
+  const bb = JSON.parse(await readFile(path.join(repoRoot, "scripts", "pet-personas.burnbar.json"), "utf8"));
+  personasBurnbar = bb && typeof bb === "object" && !Array.isArray(bb) ? bb : {};
+} catch {
+  /* no scripts/pet-personas.burnbar.json → website personas */
 }
 
 await mkdir(modelsDir, { recursive: true });
@@ -308,8 +388,25 @@ for (const pet of pets) {
   if (await writeIfChanged(path.join(modelsDir, pet.id, "petdef.json"), petdefBytes)) written += 1;
 }
 
+// Copy the prop GLBs referenced by any pet's props[] into Models/props/. These ride
+// a hand bone at runtime (see SceneKitPetRenderer prop attach); they are static, so
+// they live alongside the rigged pet GLBs but in their own subdir.
+let propsCopied = 0;
+if (referencedPropGlbs.size > 0) {
+  const propsDir = path.join(modelsDir, "props");
+  await mkdir(propsDir, { recursive: true });
+  for (const glb of referencedPropGlbs) {
+    try {
+      const bytes = await readMaybeRemote(source, `props/opt/${glb}`);
+      if (await writeIfChanged(path.join(propsDir, glb), bytes)) propsCopied += 1;
+    } catch (error) {
+      console.warn(`prop GLB "${glb}" unavailable at source — skipped (${error.message})`);
+    }
+  }
+}
+
 const pruned = await pruneStaleManifestOutputs(currentIDs, currentGlbs);
 
 console.log(`Synced ${pets.length} Imagine 3D pets from ${source}`);
-console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}; stale outputs pruned: ${pruned}`);
+console.log(`GLBs copied/updated: ${copied}; petdefs written/updated: ${written}; props copied/updated: ${propsCopied}; stale outputs pruned: ${pruned}`);
 NODE

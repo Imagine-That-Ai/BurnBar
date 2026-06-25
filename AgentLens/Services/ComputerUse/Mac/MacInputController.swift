@@ -91,8 +91,12 @@ public final class MacInputController: Sendable {
 
     @discardableResult
     public func clickCurrent(button: Int = 0) throws -> Double {
-        let current = CGEvent(source: nil)?.location ?? .zero
+        let current = currentPointerLocation()
         return try click(x: Int(current.x), y: Int(current.y), button: button)
+    }
+
+    public func currentPointerLocation() -> CGPoint {
+        CGEvent(source: nil)?.location ?? .zero
     }
 
     /// Type a UTF-8 string by walking each scalar through the

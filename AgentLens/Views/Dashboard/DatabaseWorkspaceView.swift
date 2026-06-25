@@ -40,6 +40,10 @@ struct DatabaseWorkspaceView: View {
     @State var conversationDetailCache: [String: ConversationRecord] = [:]
     @State var conversationDetailError: String?
 
+    /// Drives the collapsed (icon-only) search affordance used when the command strip is width-starved.
+    @State private var searchExpanded = false
+    @FocusState private var searchFieldFocused: Bool
+
     var showInspector: Bool {
         selection != nil && (mode == .atlas || mode == .system)
     }
@@ -121,58 +125,176 @@ struct DatabaseWorkspaceView: View {
     }
 
     var commandStrip: some View {
-        HStack(spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Database")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+        ViewThatFits(in: .horizontal) {
+            // Tier 1 — full row: title · search · full health pill · mode switcher.
+            commandStripRow(search: .full, pill: .full)
 
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Circle()
-                        .fill(statusDotColor)
-                        .frame(width: 6, height: 6)
+            // Tier 2 — collapse the health pill to its title chip (drops the 132pt Coverage row).
+            commandStripRow(search: .full, pill: .compact)
 
-                    Text(statusLabel)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            }
+            // Tier 3 — search shrinks to an icon-only button (expands on tap) alongside the compact pill.
+            commandStripRow(search: .icon, pill: .compact)
 
-            Spacer()
-
-            if mode == .atlas {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                    TextField("Search conversations, skills, and agent docs...", text: $filter.searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(DesignSystem.Typography.body)
-                        .frame(minWidth: 120, idealWidth: 260, maxWidth: 260)
-                }
-                .padding(.horizontal, DesignSystem.Spacing.md)
-                .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(
-                    Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
-                )
-                .overlay(
-                    Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
-                .layoutPriority(-1)
-            }
-
-            if snapshot.indexingEnabled {
-                indexStatusPill
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
-            }
-
-            modeSwitcher
+            // Tier 4 — last resort: title + compact pill + switcher on top, search on its own row below.
+            commandStripStacked
         }
         .padding(.horizontal, DesignSystem.Spacing.xl)
         .padding(.vertical, DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface.opacity(0.4))
+    }
+
+    /// Progressive-degradation form of the trailing search control.
+    private enum CommandStripSearch { case full, icon }
+
+    /// Progressive-degradation form of the trailing index-health pill.
+    private enum CommandStripPill { case full, compact }
+
+    private func commandStripRow(search: CommandStripSearch, pill: CommandStripPill) -> some View {
+        HStack(spacing: DesignSystem.Spacing.lg) {
+            titleColumn
+
+            Spacer(minLength: DesignSystem.Spacing.md)
+
+            if mode == .atlas {
+                switch search {
+                case .full:
+                    searchField
+                        .layoutPriority(-1)
+                case .icon:
+                    searchIconControl
+                }
+            }
+
+            if snapshot.indexingEnabled {
+                switch pill {
+                case .full:
+                    indexStatusPill
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                case .compact:
+                    indexStatusPillCompact
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                }
+            }
+
+            modeSwitcher
+        }
+    }
+
+    /// Final fallback: keep the title, compact health pill, and mode switcher on the top row,
+    /// and drop the full-width search onto its own row so nothing has to overlap.
+    private var commandStripStacked: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                titleColumn
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                if snapshot.indexingEnabled {
+                    indexStatusPillCompact
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                }
+
+                modeSwitcher
+            }
+
+            if mode == .atlas {
+                searchField
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var titleColumn: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Database")
+                .font(DesignSystem.Typography.title)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 6, height: 6)
+
+                Text(statusLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .layoutPriority(-1)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            TextField("Search conversations, skills, and agent docs...", text: $filter.searchQuery)
+                .textFieldStyle(.plain)
+                .font(DesignSystem.Typography.body)
+                .focused($searchFieldFocused)
+                .frame(minWidth: 120, idealWidth: 260, maxWidth: 260)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+        )
+        .overlay(
+            Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+        )
+    }
+
+    /// Width-tight search: an icon button that reveals a compact inline field once tapped or while a query is active.
+    @ViewBuilder
+    private var searchIconControl: some View {
+        let queryActive = filter.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        if searchExpanded || queryActive {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                TextField("Search...", text: $filter.searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(DesignSystem.Typography.body)
+                    .focused($searchFieldFocused)
+                    .frame(minWidth: 80, idealWidth: 140, maxWidth: 160)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .background(
+                Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+            )
+            .overlay(
+                Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+            )
+            .layoutPriority(-1)
+        } else {
+            Button {
+                searchExpanded = true
+                searchFieldFocused = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                    )
+                    .overlay(
+                        Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Search conversations, skills, and agent docs")
+        }
     }
 
     var modeSwitcher: some View {
@@ -285,6 +407,45 @@ struct DatabaseWorkspaceView: View {
             }
             .fixedSize(horizontal: true, vertical: false)
         }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.xl, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.xl, style: .continuous)
+                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+        )
+    }
+
+    /// Width-tight health pill: keeps the title chip (and a compact coverage %) but drops the 132pt
+    /// Coverage progress row so the command strip can fit a narrow main-content column.
+    var indexStatusPillCompact: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Text("Health")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(1)
+
+            Text(indexStatusTitle)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(statusDotColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, DesignSystem.Spacing.xs)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule().fill(statusDotColor.opacity(0.12))
+                )
+
+            Text(indexStatusValue)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.xs)
         .background(

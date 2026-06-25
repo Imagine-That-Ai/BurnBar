@@ -53,9 +53,9 @@ extension BurnBarProjectCodeMemoryStore {
                     blobSHA: hit.blobSHA,
                     contentHash: selection.contentHash ?? hit.contentHash
                 )
-                let symbolSuffix = selection.symbolName.map { " symbol=\"\($0)\"" } ?? ""
+                let symbolSuffix = selection.symbolName.map { " symbol=\"\(Self.xmlAttributeEscaped($0))\"" } ?? ""
                 let block = """
-                <file path="\(hit.filePath)" tier="\(selection.confidenceTier)" contentKind="\(selection.contentKind)"\(symbolSuffix)>
+                <file path="\(Self.xmlAttributeEscaped(hit.filePath))" tier="\(Self.xmlAttributeEscaped(selection.confidenceTier))" contentKind="\(Self.xmlAttributeEscaped(selection.contentKind))"\(symbolSuffix)>
                 \(wrapped)
                 </file>
 
@@ -82,6 +82,28 @@ extension BurnBarProjectCodeMemoryStore {
                 wrappedCount: hits.count
             )
         )
+    }
+
+    private static func xmlAttributeEscaped(_ value: String) -> String {
+        var escaped = ""
+        escaped.reserveCapacity(value.count)
+        for character in value {
+            switch character {
+            case "&":
+                escaped += "&amp;"
+            case "\"":
+                escaped += "&quot;"
+            case "'":
+                escaped += "&apos;"
+            case "<":
+                escaped += "&lt;"
+            case ">":
+                escaped += "&gt;"
+            default:
+                escaped.append(character)
+            }
+        }
+        return escaped
     }
 
     func getSymbol(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeSymbolResponse {

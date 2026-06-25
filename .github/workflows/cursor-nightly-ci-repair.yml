@@ -527,10 +527,11 @@ jobs:
             exit 1
           fi
 
-          curl --fail-with-body -sS \
+          source scripts/lib/curl-bearer.sh
+          obb_curl_with_bearer "${CURSOR_API_KEY}" \
+            --fail-with-body -sS \
             --request POST \
             --url https://api.cursor.com/v1/agents \
-            --header "Authorization: Bearer ${CURSOR_API_KEY}" \
             --header 'Content-Type: application/json' \
             --data-binary @"$payload_file" \
             | tee "$response_file"

@@ -262,28 +262,15 @@ struct DefaultViewSettingsDetailView: View {
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                            Text("Time Range")
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text("The default window for charts and totals.")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            timeRangeLabel
+                            Spacer()
+                            timeRangePicker
                         }
-                        Spacer()
-                        Picker("", selection: $settingsManager.defaultTimeRange) {
-                            ForEach(TimeRange.allCases) { range in
-                                Text(range.displayName).tag(range)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 160)
-                        .onChange(of: settingsManager.defaultTimeRange) { _, newValue in
-                            Analytics.shared.track(.settingsChanged, [
-                                "setting_key": "default_time_range",
-                                "new_value": .string(newValue.rawValue)
-                            ])
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            timeRangeLabel
+                            timeRangePicker
                         }
                     }
                     .settingsAnchor(SettingsAnchor.defaultsTimeRange)
@@ -292,33 +279,76 @@ struct DefaultViewSettingsDetailView: View {
                         .fill(DesignSystem.Colors.borderSubtle)
                         .frame(height: 0.5)
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                            Text("Usage Display")
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text("Show estimated USD or token volume (M/B).")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            usageDisplayLabel
+                            Spacer()
+                            usageDisplayPicker
                         }
-                        Spacer()
-                        Picker("", selection: $settingsManager.usageDisplayMode) {
-                            Text("USD").tag(UsageDisplayMode.currency)
-                            Text("Tokens").tag(UsageDisplayMode.tokens)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 200)
-                        .onChange(of: settingsManager.usageDisplayMode) { _, newValue in
-                            Analytics.shared.track(.settingsChanged, [
-                                "setting_key": "usage_display_mode",
-                                "new_value": .string(newValue.rawValue)
-                            ])
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            usageDisplayLabel
+                            usageDisplayPicker
                         }
                     }
                     .settingsAnchor(SettingsAnchor.defaultsUsageMode)
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+        }
+    }
+
+    private var timeRangeLabel: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+            Text("Time Range")
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("The default window for charts and totals.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var timeRangePicker: some View {
+        Picker("", selection: $settingsManager.defaultTimeRange) {
+            ForEach(TimeRange.allCases) { range in
+                Text(range.displayName).tag(range)
+            }
+        }
+        .pickerStyle(.menu)
+        .frame(width: 160)
+        .onChange(of: settingsManager.defaultTimeRange) { _, newValue in
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "default_time_range",
+                "new_value": .string(newValue.rawValue)
+            ])
+        }
+    }
+
+    private var usageDisplayLabel: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+            Text("Usage Display")
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("Show estimated USD or token volume (M/B).")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var usageDisplayPicker: some View {
+        Picker("", selection: $settingsManager.usageDisplayMode) {
+            Text("USD").tag(UsageDisplayMode.currency)
+            Text("Tokens").tag(UsageDisplayMode.tokens)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 200)
+        .onChange(of: settingsManager.usageDisplayMode) { _, newValue in
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "usage_display_mode",
+                "new_value": .string(newValue.rawValue)
+            ])
         }
     }
 }

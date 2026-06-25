@@ -116,14 +116,22 @@ class AndroidEscrowDeviceRegistry(
             publicKeyFingerprint: String,
             keyVersion: Int,
         ): Boolean {
+            val existingPublicKeyData = data["publicKeyData"] as? String ?: return false
+            val derivedFingerprint = publicKeyFingerprintForData(existingPublicKeyData) ?: return false
+
             if (data["deviceId"] != deviceId) return false
-            if (data["publicKeyData"] != publicKeyDataBase64) return false
+            if (existingPublicKeyData != publicKeyDataBase64) return false
+            if (derivedFingerprint != publicKeyFingerprint) return false
             if ((data["keyVersion"] as? Number)?.toInt() != keyVersion) return false
             if (data["algorithm"] != ESCROW_PUBLIC_KEY_ALGORITHM) return false
 
             val existingFingerprint = data["publicKeyFingerprint"] as? String
-            return existingFingerprint == null || existingFingerprint == publicKeyFingerprint
+            return existingFingerprint == null || existingFingerprint == derivedFingerprint
         }
+
+        internal fun publicKeyFingerprintForData(publicKeyDataBase64: String): String? = runCatching {
+            CloudVaultCrypto.sha256Base64(CloudVaultCryptoSupport.decodeBase64(publicKeyDataBase64))
+        }.getOrNull()
     }
 
     private suspend fun publishPublicKeyIfNeeded(keypair: AndroidCloudVaultDeviceKeypair, userRef: com.google.firebase.firestore.DocumentReference) {

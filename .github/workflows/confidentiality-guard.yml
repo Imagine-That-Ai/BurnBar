@@ -47,3 +47,9 @@ jobs:
 
       - name: Self-test the guard
         run: node --test scripts/security/__tests__/scan-internal-content.test.mjs
+
+      - name: Run public evidence redaction guard
+        run: node scripts/security/check-public-evidence-redaction.mjs
+
+      - name: Self-test public evidence redaction guard
+        run: node --test scripts/security/__tests__/check-public-evidence-redaction.test.mjs

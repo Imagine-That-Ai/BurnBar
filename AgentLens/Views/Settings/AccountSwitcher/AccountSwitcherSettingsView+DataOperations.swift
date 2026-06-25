@@ -495,8 +495,14 @@ extension AccountSwitcherSettingsView {
         }
     }
 
-    func persistCLIProfileUpdate(_ updatedProfile: SwitcherProfileRecord) {
+    func persistCLIProfileUpdate(
+        _ updatedProfile: SwitcherProfileRecord,
+        persistCredentialAfterLogin: Bool = false
+    ) {
         do {
+            if persistCredentialAfterLogin {
+                try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: updatedProfile)
+            }
             _ = try dataStore.switcherStore.update(updatedProfile)
             loadProfiles()
         } catch {
@@ -504,7 +510,10 @@ extension AccountSwitcherSettingsView {
         }
     }
 
-    func persistNewCLIProfile(_ pendingUpdate: PendingCLIAccountUpdate) {
+    func persistNewCLIProfile(
+        _ pendingUpdate: PendingCLIAccountUpdate,
+        persistCredentialAfterLogin: Bool = false
+    ) {
         guard let cliType = pendingUpdate.updatedProfile.cliType,
               let metadata = pendingUpdate.updatedProfile.cliMetadata else {
             error = "Failed to save the new CLI profile."
@@ -535,6 +544,9 @@ extension AccountSwitcherSettingsView {
                 ),
                 sortKey: 0
             )
+            if persistCredentialAfterLogin {
+                try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: newProfile)
+            }
             _ = try dataStore.switcherStore.create(newProfile)
             loadProfiles()
         } catch {

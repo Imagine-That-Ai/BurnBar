@@ -212,36 +212,42 @@ struct DataControlCenterView: View {
                     Image(systemName: row.domain.icon)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(row.tier.tint)
-                    Text(row.title).font(.system(size: 12))
+                    Text(row.title)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
-            .width(min: 150, ideal: 190)
+            .width(min: 124, ideal: 190)
 
             TableColumn("Tier") { row in
                 TierBadge(tier: row.tier)
             }
-            .width(min: 120, ideal: 140)
+            .width(min: 84, ideal: 140, max: 160)
 
             TableColumn("Records", value: \.count) { row in
                 Text("\(row.count)")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
-            .width(min: 60, ideal: 80)
+            .width(min: 52, ideal: 80, max: 100)
 
             TableColumn("Stored", value: \.bytes) { row in
                 Text(row.bytes > 0 ? Self.byteFormatter.string(fromByteCount: row.bytes) : "—")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 60, ideal: 90, max: 120)
 
             TableColumn("Retention", value: \.retention) { row in
                 Text(row.retention.replacingOccurrences(of: "_", with: " ").capitalized)
                     .font(.system(size: 11))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .width(min: 100, ideal: 130)
+            .width(min: 80, ideal: 130, max: 160)
         } rows: {
             ForEach(viewModel.rows.sorted(using: sortOrder)) { row in
                 TableRow(row)

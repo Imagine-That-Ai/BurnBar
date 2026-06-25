@@ -1244,6 +1244,104 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
     }
 
+    func testPointerClickWithoutCoordinatesDispatchesCurrentPointerAction() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerClick,
+            mouseButton: 0,
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            intent: intent,
+            peerNodeId: "phone-peer-pointer-click",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-pointer-click", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-pointer-click"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(intent))
+
+        let dispatched = try await capture.firstAction()
+        XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone-pointer-click"))
+        guard case let .macInput(action) = dispatched.action else {
+            XCTFail("expected macInput action")
+            return
+        }
+        XCTAssertEqual(action.kind, .pointerClick)
+        XCTAssertNil(action.displayX)
+        XCTAssertNil(action.displayY)
+        XCTAssertEqual(action.mouseButton, 0)
+        let deniedFrames = await capture.deniedFrames()
+        XCTAssertTrue(deniedFrames.isEmpty)
+    }
+
+    func testPointerClickWithPartialCoordinatesEmitDeniedFrame() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUsePhoneControlSigner()
+        let placeholder = emptyAuthority()
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerClick,
+            normalizedX: 0.5,
+            mouseButton: 0,
+            authority: placeholder
+        )
+        let signed = try signer.sign(
+            intent: intent,
+            peerNodeId: "phone-peer-pointer-click-partial",
+            counter: 1,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        intent.authority = envelope(from: signed)
+
+        let validator = isolatedPhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "phone-peer-pointer-click-partial", publicKey: privateKey.publicKey)
+        let capture = PhoneControlReceiverCapture()
+        let receiver = PhoneControlReceiver(
+            sessionId: ComputerUseSessionID("session-phone-pointer-click-partial"),
+            validator: validator,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            dispatchHandler: { action, sessionId, _ in
+                await capture.record(action: action, sessionId: sessionId)
+            },
+            denyFrameSink: { frame in
+                await capture.recordDenied(frame)
+            }
+        )
+
+        await receiver.ingest(frame(intent))
+
+        let actions = await capture.actions()
+        XCTAssertTrue(actions.isEmpty)
+        let deniedFrames = await capture.deniedFrames()
+        let denied = try XCTUnwrap(deniedFrames.first)
+        XCTAssertEqual(denied.type, .controlDenied)
+        XCTAssertEqual(denied.control?.denied?.reason, .unknown)
+        XCTAssertEqual(denied.control?.denied?.detail, "malformed_coordinates")
+    }
+
     func testSignedTypeIntentDispatchesMacTypeAction() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let signer = ComputerUsePhoneControlSigner()
@@ -1824,6 +1922,61 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(input.pasteShortcutCount, 0)
         XCTAssertEqual(coordinator.lastDeniedReason, .clipboardConsentRequired)
         XCTAssertEqual(coordinator.actionTimeline.last?.status, .rejected)
+    }
+
+    @MainActor
+    func testAttestationRequirementNotificationRefreshesLiveCoordinatorConfiguration() async throws {
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-attestation-refresh",
+                macHostNodeId: "mac-attestation-refresh",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-06-23"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-attestation-refresh-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test",
+                phoneControlAttestationRequired: false,
+                clipboardConsentGranted: true
+            ),
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+
+        XCTAssertFalse(coordinator.configuration.phoneControlAttestationRequired)
+        NotificationCenter.default.post(
+            name: .phoneControlAttestationDidChange,
+            object: nil,
+            userInfo: [
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired: true
+            ]
+        )
+        for _ in 0..<5 where !coordinator.configuration.phoneControlAttestationRequired {
+            await Task.yield()
+        }
+        XCTAssertTrue(coordinator.configuration.phoneControlAttestationRequired)
+
+        NotificationCenter.default.post(
+            name: .phoneControlAttestationDidChange,
+            object: nil,
+            userInfo: [
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired: false
+            ]
+        )
+        for _ in 0..<5 where coordinator.configuration.phoneControlAttestationRequired {
+            await Task.yield()
+        }
+        XCTAssertFalse(coordinator.configuration.phoneControlAttestationRequired)
     }
 
     @MainActor

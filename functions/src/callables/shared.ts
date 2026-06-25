@@ -56,6 +56,7 @@ export {
 
 export {
   assertUserStoragePath,
+  encryptedSessionBlobDocumentIDFromStoragePath,
   assertEncryptedSessionBlobObject,
   resolveEncryptedSessionBlobByteCount,
 } from "./shared/storage.js";

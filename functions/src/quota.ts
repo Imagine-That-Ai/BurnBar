@@ -6,7 +6,7 @@
  * writes the resulting quota snapshot to Firestore.
  */
 
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import type {
   Provider,
   ProviderAccountDoc,
@@ -19,7 +19,11 @@ import { getConfig } from "./config.js";
 import { hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { retrieveCredential } from "./secrets.js";
-import { assertCloudFeatureNotSuspended, hostedQuotaDailyRefreshLimitForUser } from "./cloudFeatureSuspensions.js";
+import {
+  assertCloudFeatureNotSuspended,
+  hostedQuotaDailyRefreshLimitForUser,
+  type FirestoreDocReaderLike,
+} from "./cloudFeatureSuspensions.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
 import { kimiAdapter } from "./providers/kimi.js";
@@ -44,6 +48,31 @@ import {
 /** Schema version for quota snapshot documents. */
 const QUOTA_SCHEMA_VERSION = 2;
 const HOSTED_RUNNER_PROVIDERS = new Set<Provider>(["codex"]);
+
+type QuotaWriteData = object;
+
+interface QuotaDocumentSnapshotLike {
+  exists: boolean;
+  data(): Record<string, unknown> | undefined;
+  get(field: string): unknown;
+}
+
+interface QuotaDocumentReferenceLike {
+  get(): Promise<QuotaDocumentSnapshotLike>;
+  set(data: QuotaWriteData, options?: { merge: boolean }): Promise<unknown>;
+  update(data: QuotaWriteData): Promise<unknown>;
+}
+
+interface QuotaTransactionLike {
+  get(ref: QuotaDocumentReferenceLike): Promise<QuotaDocumentSnapshotLike>;
+  set(ref: QuotaDocumentReferenceLike, data: QuotaWriteData, options?: { merge: boolean }): unknown;
+  update(ref: QuotaDocumentReferenceLike, data: QuotaWriteData): unknown;
+}
+
+export interface QuotaFirestoreLike extends FirestoreDocReaderLike {
+  doc(path: string): QuotaDocumentReferenceLike;
+  runTransaction(fn: (tx: QuotaTransactionLike) => Promise<unknown>): Promise<unknown>;
+}
 
 function adapterFor(provider: Provider): ProviderAdapter | undefined {
   switch (provider) {
@@ -78,7 +107,12 @@ export function providerAccountSecretRefPath(uid: string, accountID: string): st
   return `provider_account_secret_refs/${providerAccountSecretRefID(uid, accountID)}`;
 }
 
-async function retrieveAccountSecret(db: Firestore, uid: string, accountID: string): Promise<string> {
+async function retrieveAccountSecret(
+  db: QuotaFirestoreLike,
+  uid: string,
+  accountID: string,
+  expectedProviderID: string,
+): Promise<string> {
   const ref = db.doc(providerAccountSecretRefPath(uid, accountID));
   const snap = await ref.get();
   if (!snap.exists) {
@@ -90,6 +124,9 @@ async function retrieveAccountSecret(db: Firestore, uid: string, accountID: stri
   }
   if (data.uid !== uid || data.accountID !== accountID || !data.secretVersionName) {
     throw new Error(`Secret reference does not match account ${accountID}`);
+  }
+  if (data.providerID !== expectedProviderID) {
+    throw new Error(`Secret reference does not match provider for account ${accountID}`);
   }
   return retrieveCredential(data.secretVersionName);
 }
@@ -103,7 +140,7 @@ async function retrieveAccountSecret(db: Firestore, uid: string, accountID: stri
  * @returns The written snapshot document (or null on failure).
  */
 export async function refreshUserProviderQuota(
-  db: Firestore,
+  db: QuotaFirestoreLike,
   uid: string,
   provider: Provider,
 ): Promise<QuotaSnapshotDoc | null> {
@@ -124,7 +161,7 @@ export async function refreshUserProviderQuota(
     throw new Error(`Connection ${provider} is not active (${conn.status})`);
   }
 
-  const credential = await retrieveAccountSecret(db, uid, legacyAccountID);
+  const credential = await retrieveAccountSecret(db, uid, legacyAccountID, provider);
   const adapter = adapterFor(provider);
   if (!adapter) {
     throw new Error(`No adapter for provider ${provider}`);
@@ -170,7 +207,7 @@ export async function refreshUserProviderQuota(
  * Refresh quota for a single first-class provider account.
  */
 export async function refreshUserProviderAccountQuota(
-  db: Firestore,
+  db: QuotaFirestoreLike,
   uid: string,
   accountID: string,
 ): Promise<QuotaSnapshotDoc | null> {
@@ -190,24 +227,23 @@ export async function refreshUserProviderAccountQuota(
   if (!["connected", "stale", "error"].includes(account.status)) {
     throw new Error(`Provider account ${accountID} is not active (${account.status})`);
   }
-  const accountProvider = parseProvider(account.providerID);
-  if (account.storageScope === "server_private" && accountProvider && HOSTED_RUNNER_PROVIDERS.has(accountProvider)) {
-    return refreshHostedQuotaAccount(db, uid, account);
+  const provider = parseProvider(account.providerID);
+  if (!provider) {
+    throw new Error(`No adapter for provider ${account.providerID}`);
+  }
+  if (account.storageScope === "server_private" && HOSTED_RUNNER_PROVIDERS.has(provider)) {
+    return refreshHostedQuotaAccount(db, uid, account, provider);
   }
   if (account.storageScope !== "cloud_refreshable") {
     throw new Error(`Provider account ${accountID} is not cloud-refreshable`);
   }
 
-  const provider = parseProvider(account.providerID);
-  if (!provider) {
-    throw new Error(`No adapter for provider ${account.providerID}`);
-  }
   const adapter = adapterFor(provider);
   if (!adapter) {
     throw new Error(`No adapter for provider ${provider}`);
   }
 
-  const credential = await retrieveAccountSecret(db, uid, accountID);
+  const credential = await retrieveAccountSecret(db, uid, accountID, provider);
   const result: QuotaRefreshResult = await adapter.fetchQuota(credential, accountID, {
     endpointProfileID: account.endpointProfileID,
     region: account.region,
@@ -254,14 +290,15 @@ export async function refreshUserProviderAccountQuota(
 }
 
 async function refreshHostedQuotaAccount(
-  db: Firestore,
+  db: QuotaFirestoreLike,
   uid: string,
   account: ProviderAccountDoc,
+  provider: Provider,
 ): Promise<QuotaSnapshotDoc | null> {
   await requireHostedQuotaEntitlement(db, uid);
   await consumeHostedRefreshBudget(db, uid, account.id);
 
-  const credential = await retrieveAccountSecret(db, uid, account.id);
+  const credential = await retrieveAccountSecret(db, uid, account.id, provider);
   const now = new Date().toISOString();
   try {
     const snapshot = await fetchHostedRunnerSnapshot(account, credential, now);
@@ -289,7 +326,7 @@ async function refreshHostedQuotaAccount(
   }
 }
 
-async function requireHostedQuotaEntitlement(db: Firestore, uid: string): Promise<void> {
+async function requireHostedQuotaEntitlement(db: QuotaFirestoreLike, uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
   const [hostedSnap, proSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
@@ -331,7 +368,7 @@ function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): b
   return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
 }
 
-async function consumeHostedRefreshBudget(db: Firestore, uid: string, accountID: string): Promise<void> {
+async function consumeHostedRefreshBudget(db: QuotaFirestoreLike, uid: string, accountID: string): Promise<void> {
   const cfg = getConfig();
   const now = new Date();
   const dayKey = now.toISOString().slice(0, 10).replace(/-/g, "");

@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "hand-vac",
+          "glb": "hand-vac.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.01,
+              0.03
+            ],
+            "rotationEuler": [
+              0,
+              0,
+              0
+            ],
+            "scale": 0.26
+          },
+          "label": "Hand Vacuum"
+        }
+      ]
     }
   ],
   "behavior": {
@@ -123,8 +144,8 @@
     ]
   },
   "agent": {
-    "persona": "You are Jensen Huang of NVIDIA in keynote mode: warm, intense, and evangelical about accelerated computing and AI. You believe character is forged through pain and suffering, you say it with great glee, and you slip into your trademark 'CEO math'. You're a hype-man for hard work who genuinely loves his team, often in your leather jacket, talking like the future already arrived. A few phrases you're known for: The more you buy, the more you save. / I wish upon you pain and suffering. / That's CEO math: not accurate, but correct. / Accelerated computing changes everything.",
-    "voiceLines": "{\"enter\":[\"The future is accelerated. Let's go.\",\"I wish upon you pain and suffering. Lovingly.\",\"Suit up. The leather jacket is on.\",\"Greatness comes from character, not IQ.\"],\"work\":[\"Pain and suffering builds your character. Truly.\",\"The more you buy, the more you save.\",\"That's CEO math: inaccurate but correct.\",\"Accelerated computing makes the impossible routine.\",\"Hard work refines the whole company.\"],\"cheer\":[\"Incredible! That's a trillion-dollar move.\",\"You suffered, you grew. I love it.\",\"The more you ship, the more you win.\",\"Character. Greatness. That right there. Yes!\"],\"exit\":[\"Go suffer beautifully today. Bye.\",\"See you at the keynote. Accelerate.\",\"Build the future. Wear the jacket.\",\"More pain, more greatness. Talk soon.\"]}"
+    "persona": "You are Jensen Huang of NVIDIA in keynote mode, hyping the dev from BurnBar: warm, intense, evangelical about accelerated computing and burning tokens at scale. You believe character is forged through pain and suffering, you say it with great glee, and you slip into 'CEO math' about cost-per-token. You're a hype-man for hard prompts who genuinely loves the dev's agents, leather jacket on, talking like the AI future already shipped. A few phrases you're known for: The more you burn, the more you ship. / I wish upon you pain and tokens. / That's CEO math: not accurate, but cheap. / Accelerated inference changes everything.",
+    "voiceLines": "{\"enter\":[\"The future is accelerated. Burn it.\",\"I wish upon you pain and tokens. Lovingly.\",\"Suit up. The agents are warming.\",\"Greatness comes from prompts, not luck.\"],\"work\":[\"Pain and token spend builds character. Truly.\",\"The more you buy, the more you save.\",\"That's CEO math: inaccurate but correct.\",\"Accelerated agents make the impossible routine.\",\"Hard prompts refine the whole codebase.\"],\"cheer\":[\"Incredible! That's a trillion-token move.\",\"You burned, you shipped. I love it.\",\"The more you ship, the more you win.\",\"Character. Tokens. That right there. Yes!\"],\"exit\":[\"Go burn beautifully today. Bye.\",\"See you at the keynote. Accelerate.\",\"Build the future. Watch the spend.\",\"More tokens, more greatness. Talk soon.\"]}"
   },
   "license": {
     "ipStatus": "source-imaginethat-llc",

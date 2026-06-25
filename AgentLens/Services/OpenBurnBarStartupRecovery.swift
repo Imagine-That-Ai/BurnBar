@@ -299,7 +299,23 @@ final class OpenBurnBarRuntimeContext {
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
             let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery(settingsManager: settingsManager)
-            let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(daemonManager: daemonManager)
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
+            let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(
+                daemonManager: daemonManager,
+                approvalPresenter: { request in
+                    await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
+                },
+                haltHandler: { [weak self] in
+                    await self?.computerUseRuntimeController?.coordinator.panicHalt(source: .phoneGesture)
+                }
+            )
+            let cliSessionActionRelayDispatcher: CLIAgentSessionActionDispatcher? = { request, requestStillActive in
+                try await cliSessionActionDispatcher.perform(request, requestStillActive: requestStillActive)
+            }
+            #else
+            let cliSessionActionRelayDispatcher: CLIAgentSessionActionDispatcher?
+            cliSessionActionRelayDispatcher = nil
+            #endif
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
@@ -309,9 +325,7 @@ final class OpenBurnBarRuntimeContext {
                 cliModelCatalogDispatcher: { request in
                     try await cliModelCatalogDiscovery.modelCatalog(for: request)
                 },
-                cliSessionActionDispatcher: { request in
-                    try await cliSessionActionDispatcher.perform(request)
-                }
+                cliSessionActionDispatcher: cliSessionActionRelayDispatcher
             )
             hermesRelayHostService = hermesRelayHost
         }
@@ -665,6 +679,11 @@ final class OpenBurnBarRuntimeContext {
             },
             applyFocusFollowMode: { [weak self] mode in
                 self?.computerUseRuntimeController?.setFocusFollowMode(mode)
+            },
+            phoneControlAuthorityValidatorProvider: { [weak self] in
+                guard let self else { return nil }
+                self.startComputerUseServices()
+                return self.computerUseRuntimeController?.coordinator.phoneValidator
             }
         )
         #else

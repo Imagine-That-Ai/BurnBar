@@ -43,14 +43,26 @@ require_pattern "extension npm ci in test matrix" \
 require_pattern "per-lane ops failure dedupe" \
   'lane:\$\{lane\}' \
   .github/actions/ops-failure-issue/action.yml
+require_pattern "ops failure action creates missing labels" \
+  'github\.rest\.issues\.createLabel' \
+  .github/actions/ops-failure-issue/action.yml
+require_pattern "ops failure action ensures labels before use" \
+  'ensureIssueLabels\(\[\.{3}allLabels, `\$\{COUNT_PREFIX\}1`\]\)' \
+  .github/actions/ops-failure-issue/action.yml
 reject_pattern "nightly core excludes privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
   .github/workflows/nightly-e2e.yml
 require_pattern "sandbox privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
   .github/workflows/nightly-dast-sandbox.yml
-require_pattern "sandbox red-team advisory" \
+reject_pattern "sandbox security checks fail closed" \
   'continue-on-error: true' \
+  .github/workflows/nightly-dast-sandbox.yml
+require_pattern "sandbox hard failures open failure issue" \
+  "contains\\(needs\\.\\*\\.result, 'failure'\\)" \
+  .github/workflows/nightly-dast-sandbox.yml
+require_pattern "sandbox DAST actions fail closed" \
+  'fail_action: true' \
   .github/workflows/nightly-dast-sandbox.yml
 require_pattern "uptime check definitions" \
   'OPS_UPTIME_CHECKS' \

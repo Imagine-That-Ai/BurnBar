@@ -378,41 +378,9 @@ struct AccountSettingsView: View {
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(DesignSystem.Colors.blaze)
-                            .frame(width: 28, height: 28)
-                        Image("SettingsIconStore")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 18)
-                    }
-
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        HStack {
-                            Text("Free Plan")
-                                .font(DesignSystem.Typography.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text("Current")
-                                .font(DesignSystem.Typography.tiny)
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(DesignSystem.Colors.success.opacity(0.15))
-                                .foregroundStyle(DesignSystem.Colors.success)
-                                .clipShape(Capsule())
-                        }
-
-                        Text("50 summaries per month")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-
-                    Spacer()
-
-                    Button("Upgrade") { onUpgradeToPremium() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(DesignSystem.Colors.blaze)
+                ViewThatFits(in: .horizontal) {
+                    planRow(layout: .inline)
+                    planRow(layout: .stacked)
                 }
 
                 Text("OpenBurnBar Cloud Monthly is an optional 1 month auto-renewable subscription billed by Apple.")
@@ -433,6 +401,68 @@ struct AccountSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+        }
+    }
+
+    private enum PlanRowLayout {
+        case inline
+        case stacked
+    }
+
+    @ViewBuilder
+    private func planRow(layout: PlanRowLayout) -> some View {
+        let upgradeButton = Button("Upgrade") { onUpgradeToPremium() }
+            .buttonStyle(.borderedProminent)
+            .tint(DesignSystem.Colors.blaze)
+
+        let planIdentity = HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(DesignSystem.Colors.blaze)
+                    .frame(width: 28, height: 28)
+                Image("SettingsIconStore")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                HStack {
+                    Text("Free Plan")
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text("Current")
+                        .font(DesignSystem.Typography.tiny)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(DesignSystem.Colors.success.opacity(0.15))
+                        .foregroundStyle(DesignSystem.Colors.success)
+                        .clipShape(Capsule())
+                        .fixedSize()
+                }
+
+                Text("50 summaries per month")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+
+        switch layout {
+        case .inline:
+            HStack(spacing: DesignSystem.Spacing.md) {
+                planIdentity
+                Spacer()
+                upgradeButton
+            }
+        case .stacked:
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                planIdentity.frame(maxWidth: .infinity, alignment: .leading)
+                upgradeButton
+            }
         }
     }
 
@@ -465,6 +495,9 @@ struct AccountSettingsView: View {
                     Text(error)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(.red)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                         .background(Color.red.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm))
@@ -519,7 +552,7 @@ struct AccountSettingsView: View {
                 }
             }
         }
-        .frame(width: 320)
+        .frame(minWidth: 320, idealWidth: 360)
     }
 }
 
@@ -535,7 +568,9 @@ struct ICloudSessionSetupView: View {
     @State private var selectedBackupOption: ICloudBackupOption = .merge
 
     var body: some View {
-        VStack(spacing: DesignSystem.Spacing.xl) {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: DesignSystem.Spacing.xl) {
             Spacer()
 
             // Icon
@@ -630,8 +665,11 @@ struct ICloudSessionSetupView: View {
             .padding(.horizontal, DesignSystem.Spacing.lg)
 
             Spacer()
+                }
+                .frame(minHeight: proxy.size.height)
+            }
         }
-        .frame(width: 400)
+        .frame(minWidth: 360, idealWidth: 400)
     }
 
     @ViewBuilder

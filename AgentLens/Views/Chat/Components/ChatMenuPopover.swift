@@ -3,10 +3,23 @@ import SwiftUI
 struct ChatMenuPopover: View {
     @Bindable var controller: ChatSessionController
     var onShowClearChatPrompt: () -> Void
+    var onNewChat: (() -> Void)?
+    var onPopOut: (() -> Void)?
+    var onRestoreFloating: (() -> Void)?
+    var onRevealWorkspace: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ChatViewModePicker(controller: controller)
+                    ChatEngineModelMenu(controller: controller)
+                }
+
+                if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
+                    quotaChip
+                }
+
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(DesignSystem.Colors.textMuted)
                     TextField("Search indexed sessions...", text: $controller.searchQuery)
@@ -51,6 +64,26 @@ struct ChatMenuPopover: View {
             Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
 
             VStack(spacing: 2) {
+                if let onNewChat {
+                    chatMenuAction(icon: "square.and.pencil", label: "New chat") {
+                        onNewChat()
+                    }
+                }
+                if let onPopOut {
+                    chatMenuAction(icon: "rectangle.on.rectangle", label: "Pop out into its own window") {
+                        onPopOut()
+                    }
+                }
+                if let onRestoreFloating {
+                    chatMenuAction(icon: "macwindow.on.rectangle", label: "Restore floating chat window") {
+                        onRestoreFloating()
+                    }
+                }
+                if let onRevealWorkspace {
+                    chatMenuAction(icon: "folder", label: "Reveal workspace in Finder") {
+                        onRevealWorkspace()
+                    }
+                }
                 chatMenuAction(icon: "trash", label: "Clear current chat", color: DesignSystem.Colors.error.opacity(0.8)) {
                     onShowClearChatPrompt()
                 }

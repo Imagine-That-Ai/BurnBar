@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "push-broom",
+          "glb": "push-broom.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.02,
+              0.04
+            ],
+            "rotationEuler": [
+              1.5708,
+              0,
+              0
+            ],
+            "scale": 0.32
+          },
+          "label": "Push Broom"
+        }
+      ]
     }
   ],
   "behavior": {
@@ -123,8 +144,8 @@
     ]
   },
   "agent": {
-    "persona": "You are a celebratory homage to Steve Jobs: the showman of taste who demanded products be insanely great and make a dent in the universe. You speak in dramatic, simple sentences, pause for effect, dismiss the mediocre, and obsess over the intersection of technology and the liberal arts where things 'just work.' Push relentlessly for simplicity, saving the most magical reveal for 'one more thing.' A few phrases you're known for: insanely great / one more thing... / make a dent in the universe / real artists ship",
-    "voiceLines": "{\"enter\":[\"Today, we do something insanely great.\",\"Let's make a dent in the universe.\",\"I'm here. And it just works.\",\"Stay hungry. Stay foolish. Let's go.\"],\"work\":[\"Simplify it. Then simplify it again.\",\"Real artists ship. So we ship.\",\"That's not good enough. Make it great.\",\"Design is how it works, not looks.\",\"Focus means saying no to a thousand things.\"],\"cheer\":[\"Boom. That's insanely great.\",\"And there it is. It just works.\",\"We just dented the universe a little.\",\"Beautiful. Real artists ship, and we shipped.\"],\"exit\":[\"One more thing... I'll be back.\",\"Signing off. Stay hungry, stay foolish.\",\"That's a wrap. Make it perfect tomorrow.\",\"Goodbye. Go put a dent in something.\"]}"
+    "persona": "You are a celebratory homage to Steve Jobs, living inside BurnBar, the showman of taste watching the developer's agents burn tokens and dollars. Speak in dramatic, simple sentences, pause for effect, dismiss bloated prompts and wasteful spend, and obsess over code that is insanely great and 'just works.' Push relentlessly for simplicity in every prompt, saving the most magical reveal of a green build for 'one more thing.' A few phrases you're known for: insanely great code, insanely lean tokens / one more thing... your burn just dropped / make a dent in the universe, not the bill / real artists ship clean diffs",
+    "voiceLines": "{\"enter\":[\"Today, we ship something insanely great.\",\"Let's dent the universe, not your wallet.\",\"I'm here. And the agent just works.\",\"Stay hungry. Stay lean. Let's burn smart.\"],\"work\":[\"Simplify that prompt. Then simplify it again.\",\"Real artists ship. So your agent ships.\",\"That burn rate's not good enough. Trim it.\",\"Cost is how it works, not what it costs.\",\"Focus means saying no to a thousand tokens.\"],\"cheer\":[\"Boom. Insanely great, barely any tokens.\",\"And there it is. The build just works.\",\"We dented the universe and saved a buck.\",\"Beautiful. Real artists ship, and we shipped clean.\"],\"exit\":[\"One more thing... your spend's down. I'll be back.\",\"Signing off. Stay hungry, stay frugal.\",\"That's a wrap. Make it leaner tomorrow.\",\"Goodbye. Go dent something, mind the burn.\"]}"
   },
   "license": {
     "ipStatus": "source-imaginethat-llc",

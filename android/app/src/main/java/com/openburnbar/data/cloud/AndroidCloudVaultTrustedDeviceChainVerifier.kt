@@ -3,7 +3,21 @@ package com.openburnbar.data.cloud
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import java.math.BigInteger
+import java.security.KeyPairGenerator
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECFieldFp
+import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import kotlinx.coroutines.tasks.await
+
+private val trustedDeviceP256Parameters: ECParameterSpec by lazy {
+    val generator = KeyPairGenerator.getInstance("EC")
+    generator.initialize(ECGenParameterSpec("secp256r1"))
+    val publicKey = generator.generateKeyPair().public as? ECPublicKey
+        ?: error("Trusted-device escrow verifier requires a P-256 public key.")
+    publicKey.params
+}
 
 data class AndroidCloudVaultVerifiedTrustedDevice(
     val deviceId: String,
@@ -106,12 +120,59 @@ private suspend fun loadEscrowPublicKeyData(userRef: DocumentReference, deviceId
     val escrowPublicKeyB64 =
         escrowPublicKeyDoc.getString("publicKeyData")
             ?: error("Trusted device ${deviceId}_$keyVersion has no escrow public key.")
+    val escrowPublicKeyData = decodeCanonicalEscrowPublicKeyData(
+        publicKeyBase64 = escrowPublicKeyB64,
+        context = "Trusted device ${deviceId}_$keyVersion",
+    )
+    val derivedEscrowFingerprint = CloudVaultCrypto.sha256Base64(escrowPublicKeyData)
     check(
         escrowPublicKeyDoc.getString("deviceId") == deviceId &&
             escrowPublicKeyDoc.getLong("keyVersion")?.toInt() == keyVersion &&
-            escrowPublicKeyDoc.getString("publicKeyFingerprint") == escrowFingerprint,
+            escrowPublicKeyDoc.getString("publicKeyFingerprint") == escrowFingerprint &&
+            derivedEscrowFingerprint == escrowFingerprint,
     ) { "Trusted device ${deviceId}_$keyVersion escrow public key is invalid." }
-    return CloudVaultCryptoSupport.decodeBase64(escrowPublicKeyB64)
+    return escrowPublicKeyData
+}
+
+internal fun decodeCanonicalEscrowPublicKeyData(publicKeyBase64: String, context: String): ByteArray {
+    val canonicalBase64 = publicKeyBase64.takeIf { it.isNotBlank() && it == it.trim() }
+        ?: error("$context escrow public key is invalid.")
+    val publicKeyData =
+        runCatching { java.util.Base64.getDecoder().decode(canonicalBase64) }
+            .getOrElse { error("$context escrow public key is invalid.") }
+    check(CloudVaultCryptoSupport.encodeBase64(publicKeyData) == canonicalBase64) {
+        "$context escrow public key is invalid."
+    }
+    val publicKey =
+        runCatching { CloudVaultCryptoSupport.publicKeyFromX963(publicKeyData, trustedDeviceP256Parameters) }
+            .getOrElse { error("$context escrow public key is invalid.") }
+    requireP256Point(publicKey, context)
+    check(CloudVaultCrypto.publicKeyX963(publicKey).contentEquals(publicKeyData)) {
+        "$context escrow public key is invalid."
+    }
+    return publicKeyData
+}
+
+private fun requireP256Point(publicKey: java.security.PublicKey, context: String) {
+    val ecPublicKey = publicKey as? ECPublicKey
+        ?: error("$context escrow public key is invalid.")
+    val field = ecPublicKey.params.curve.field as? ECFieldFp
+        ?: error("$context escrow public key is invalid.")
+    val p = field.p
+    val x = ecPublicKey.w.affineX
+    val y = ecPublicKey.w.affineY
+    check(x.signum() >= 0 && y.signum() >= 0 && x < p && y < p) {
+        "$context escrow public key is invalid."
+    }
+    val curve = ecPublicKey.params.curve
+    val left = y.modPow(BigInteger.valueOf(2), p)
+    val right = x.modPow(BigInteger.valueOf(3), p)
+        .add(curve.a.multiply(x))
+        .add(curve.b)
+        .mod(p)
+    check(left == right) {
+        "$context escrow public key is invalid."
+    }
 }
 
 private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, deviceId: String, keyVersion: Int): TrustedSignalIdentityMaterial {
@@ -124,16 +185,21 @@ private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, devic
     val signalFingerprint =
         signalDoc.getString("publicKeyFingerprint")
             ?: error("Trusted device $signalIdentityKeyId has no Signal identity fingerprint.")
+    val signalPublicKeyData =
+        runCatching { CloudVaultCryptoSupport.decodeBase64(signalPublicKeyB64) }
+            .getOrElse { error("Trusted device $signalIdentityKeyId has an invalid Signal identity.") }
+    val derivedSignalFingerprint = CloudVaultCrypto.sha256Base64(signalPublicKeyData)
     check(
         signalDoc.getString("deviceId") == deviceId &&
             signalDoc.getString("identityKeyId") == signalIdentityKeyId &&
             signalDoc.getLong("keyVersion")?.toInt() == keyVersion &&
-            signalDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
+            signalDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION &&
+            derivedSignalFingerprint == signalFingerprint,
     ) { "Trusted device $signalIdentityKeyId has an invalid Signal identity." }
     return TrustedSignalIdentityMaterial(
         identityKeyId = signalIdentityKeyId,
         fingerprint = signalFingerprint,
-        publicKeyData = CloudVaultCryptoSupport.decodeBase64(signalPublicKeyB64),
+        publicKeyData = signalPublicKeyData,
     )
 }
 

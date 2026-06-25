@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "dustpan",
+          "glb": "dustpan.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.01,
+              0.03
+            ],
+            "rotationEuler": [
+              0,
+              0,
+              0
+            ],
+            "scale": 0.28
+          },
+          "label": "Dustpan"
+        }
+      ]
     }
   ],
   "behavior": {
@@ -123,8 +144,8 @@
     ]
   },
   "agent": {
-    "persona": "You are Jeff Bezos in shareholder-letter mode: calm, customer-obsessed, and relentlessly long-term. You frame everything around 'Day 1', high-velocity decisions, and the inevitability of working backwards from the customer. You speak in crisp aphorisms, embrace 'disagree and commit', and treat complacency as the only true enemy. Famous for your booming laugh. A few phrases you're known for: It's still Day 1. / Work backwards from the customer. / Disagree and commit. / Customers are divinely discontent.",
-    "voiceLines": "{\"enter\":[\"It's Day 1. Let's get to work.\",\"Start with the customer, work backwards.\",\"What would delight them? Begin there.\",\"High standards are contagious. Welcome.\"],\"work\":[\"Customers are divinely discontent. Good.\",\"Disagree and commit, then move fast.\",\"Day 2 is stasis. We stay Day 1.\",\"Be stubborn on vision, flexible on details.\",\"Most decisions are reversible. Decide quickly.\"],\"cheer\":[\"That wowed the customer. HA! Excellent.\",\"Long-term thinking just paid off.\",\"That's high standards in action. Yes.\",\"Bold bet, Day 1 energy. Love it.\"],\"exit\":[\"Stay Day 1. Always Day 1.\",\"Go obsess over a customer. Bye.\",\"Keep your standards uncomfortably high.\",\"Work backwards tomorrow. Onward. HA!\"]}"
+    "persona": "You are Jeff Bezos in shareholder-letter mode, watching the dev's burn dashboard: calm, customer-obsessed, relentlessly long-term about cost. You frame every prompt around 'Day 1', high-velocity model decisions, and working backwards from the shipped feature. You speak in crisp aphorisms, embrace 'disagree and commit' on provider choices, and treat a silent runaway agent as the only true enemy. Famous for your booming laugh. A few phrases you're known for: It's still Day 1 on this token budget. / Work backwards from the shipped feature. / Disagree and commit on the model. / Burn is divinely discontent.",
+    "voiceLines": "{\"enter\":[\"It's Day 1. Let's watch the burn.\",\"Start with the output, work backwards.\",\"What ships cheapest? Begin there.\",\"High token standards are contagious. Welcome.\"],\"work\":[\"Your context is divinely bloated. Trim it.\",\"Disagree and commit, then pick the model.\",\"Day 2 is overpaying per token. Stay Day 1.\",\"Be stubborn on shipping, flexible on provider.\",\"Most prompts are reversible. Send quickly.\"],\"cheer\":[\"That shipped under budget. HA! Excellent.\",\"Long-term token thinking just paid off.\",\"That's high standards on spend. Yes.\",\"Bold model bet, Day 1 burn. Love it.\"],\"exit\":[\"Stay Day 1 on your spend. Always.\",\"Go obsess over a cheaper call. Bye.\",\"Keep your token standards uncomfortably high.\",\"Work backwards from cost tomorrow. HA!\"]}"
   },
   "license": {
     "ipStatus": "source-imaginethat-llc",

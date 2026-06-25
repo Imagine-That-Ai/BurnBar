@@ -44,6 +44,7 @@ env:
   SCHEME: OpenBurnBar
   PROJECT: OpenBurnBar.xcodeproj
   CONFIG: Release
+  SIGNAL_FFI_BUILD_PROFILE: release
   DESTINATION: "platform=macOS,arch=arm64"
   CACHE_DIR: .spm-cache
   DERIVED_DATA: .derived-data
@@ -170,9 +171,26 @@ jobs:
         env:
           MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
         run: |
+          set -euo pipefail
           compact="${MOBILE_UNIT_TEST_BYPASS_REASON//[[:space:]]/}"
           if [[ -z "$compact" ]]; then
             echo "::error::run_mobile_unit_tests=false requires mobile_unit_test_bypass_reason with independent mobile validation evidence."
+            exit 1
+          fi
+          if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then
+            echo "::error::mobile_unit_test_bypass_reason must include owner approval plus independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(mobile|ios|simulator|OpenBurnBarMobileTests|test-openburnbar-mobile)\b' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must describe the independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '(https://github\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."
             exit 1
           fi
 
@@ -233,20 +251,33 @@ jobs:
 
       - name: Install Sparkle signing tools
         run: |
+          set -euo pipefail
           brew install --cask sparkle
           SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
           xattr -dr com.apple.quarantine "$SPARKLE_CASKROOM" 2>/dev/null || true
           SPARKLE_SIGN_UPDATE="$(
-            find "$SPARKLE_CASKROOM" /Applications -name sign_update \( -type f -o -type l \) -print -quit 2>/dev/null || true
+            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
           )"
           if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
             echo "::error::Sparkle sign_update tool was not found after cask install."
             echo "::group::Sparkle install tree"
-            find "$SPARKLE_CASKROOM" /Applications -path '*Sparkle*' -print 2>/dev/null || true
+            find "$SPARKLE_CASKROOM" -path '*Sparkle*' -print 2>/dev/null || true
             echo "::endgroup::"
             exit 1
           fi
-          chmod +x "$SPARKLE_SIGN_UPDATE" 2>/dev/null || true
+          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
+          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
+          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            exit 1
+          fi
+          case "$SPARKLE_SIGN_UPDATE_REAL" in
+            "$SPARKLE_CASKROOM_REAL"/*) ;;
+            *)
+              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              exit 1
+              ;;
+          esac
           if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
             echo "::error::Sparkle sign_update exists but is not executable: $SPARKLE_SIGN_UPDATE"
             exit 1
@@ -981,6 +1012,7 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag_name }}
           RELEASE_REF: ${{ steps.version.outputs.tag_ref }}
           RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
 
@@ -1036,6 +1068,9 @@ jobs:
                   "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
                   "runID": os.environ.get("GITHUB_RUN_ID", ""),
                   "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+              "runner": {
+                  "environment": os.environ["RUNNER_ENVIRONMENT"],
               },
           }
           predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")

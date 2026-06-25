@@ -55,8 +55,30 @@ struct ChatMessageView: View {
     /// render disabled (never a dead link).
     var onJumpToLocal: ((String) -> Void)?
 
+    /// Live width of the agent bubble row, used to scale the opposite-side
+    /// gutter so the reading column keeps a usable minimum on narrow panels
+    /// (e.g. the 260pt floating chat) instead of losing 36pt to the gutter.
+    @State private var agentRowWidth: CGFloat = 0
+
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
+    }
+
+    /// Opposite-side gutter for agent bubbles. Full 36pt breathing room on
+    /// wide layouts, easing down to `Spacing.lg` (16pt) as the row narrows so
+    /// the bubble's reading width isn't pinched on a 260pt floating panel.
+    private var agentGutter: CGFloat {
+        let wide: CGFloat = 36
+        let narrow = DesignSystem.Spacing.lg
+        guard agentRowWidth > 0 else { return wide }
+        // Above ~480pt keep the full gutter; below ~300pt clamp to the narrow
+        // floor; interpolate linearly between so it never snaps.
+        let upper: CGFloat = 480
+        let lower: CGFloat = 300
+        if agentRowWidth >= upper { return wide }
+        if agentRowWidth <= lower { return narrow }
+        let t = (agentRowWidth - lower) / (upper - lower)
+        return narrow + (wide - narrow) * t
     }
 
     private var lastTextPieceId: String? {
@@ -145,7 +167,7 @@ struct ChatMessageView: View {
     private var agentView: some View {
         HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
             if message.role == .user {
-                Spacer(minLength: 36)
+                Spacer(minLength: agentGutter)
                 userProseBubble
             } else {
                 HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
@@ -159,7 +181,23 @@ struct ChatMessageView: View {
                     }
                     assistantTranscriptColumn
                 }
-                Spacer(minLength: 36)
+                Spacer(minLength: agentGutter)
+            }
+        }
+        .background(
+            // Background GeometryReader reports the row's available width
+            // without affecting the HStack's own sizing (it fills the
+            // background frame). Drives `agentGutter` so the gutter eases
+            // down on narrow panels. macOS 14-safe (avoids macOS 15
+            // `onGeometryChange`).
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: AgentRowWidthKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(AgentRowWidthKey.self) { width in
+            if abs(width - agentRowWidth) > 0.5 {
+                agentRowWidth = width
             }
         }
     }
@@ -391,6 +429,15 @@ struct ChatMessageView: View {
             alignment: alignment,
             isUser: isUser
         )
+    }
+}
+
+/// Reports the agent bubble row's available width up to `ChatMessageView`
+/// so the opposite-side gutter can ease down on narrow panels.
+private struct AgentRowWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

@@ -267,6 +267,9 @@ struct MissionsLaneView: View {
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .monospaced))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
                 .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -343,7 +346,7 @@ struct MissionsLaneView: View {
 
     private var missionGrid: some View {
         let columns = [
-            GridItem(.adaptive(minimum: 420, maximum: 640), spacing: DesignSystem.Spacing.lg, alignment: .top)
+            GridItem(.adaptive(minimum: 340, maximum: 640), spacing: DesignSystem.Spacing.lg, alignment: .top)
         ]
 
         return LazyVGrid(columns: columns, alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -782,7 +785,7 @@ private struct MissionGateCard: View {
     }
 
     private var metricsRow: some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
+        HFlowLayout(horizontalSpacing: DesignSystem.Spacing.md, verticalSpacing: DesignSystem.Spacing.sm) {
             metricTile(
                 label: "BURN",
                 value: mission.burnCostUSD.formatAsCost(),
@@ -886,42 +889,44 @@ private struct MissionGateCard: View {
     }
 
     private var actionRow: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            if mission.approval == .pending {
-                primaryActionButton(
-                    title: "Approve",
-                    icon: "checkmark.seal.fill",
-                    tint: DesignSystem.Colors.success,
-                    action: onApprove
-                )
-            } else if mission.state == .planned {
-                primaryActionButton(
-                    title: "Start Mission",
-                    icon: "play.fill",
-                    tint: DesignSystem.Colors.blaze,
-                    action: onApprove
-                )
-            } else if mission.state == .blocked || mission.state == .partial {
-                primaryActionButton(
-                    title: "Resume",
-                    icon: "arrow.forward.circle.fill",
-                    tint: DesignSystem.Colors.amber,
-                    action: onApprove
-                )
-            }
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            HFlowLayout(horizontalSpacing: DesignSystem.Spacing.sm, verticalSpacing: DesignSystem.Spacing.sm) {
+                if mission.approval == .pending {
+                    primaryActionButton(
+                        title: "Approve",
+                        icon: "checkmark.seal.fill",
+                        tint: DesignSystem.Colors.success,
+                        action: onApprove
+                    )
+                } else if mission.state == .planned {
+                    primaryActionButton(
+                        title: "Start Mission",
+                        icon: "play.fill",
+                        tint: DesignSystem.Colors.blaze,
+                        action: onApprove
+                    )
+                } else if mission.state == .blocked || mission.state == .partial {
+                    primaryActionButton(
+                        title: "Resume",
+                        icon: "arrow.forward.circle.fill",
+                        tint: DesignSystem.Colors.amber,
+                        action: onApprove
+                    )
+                }
 
-            secondaryActionButton(
-                title: "Inspect Logs",
-                icon: "doc.text.magnifyingglass",
-                action: onInspect
-            )
-
-            if let linkage = mission.prLinkage {
                 secondaryActionButton(
-                    title: "Open PR",
-                    icon: "arrow.up.forward.square",
-                    action: { onOpenPR(linkage) }
+                    title: "Inspect Logs",
+                    icon: "doc.text.magnifyingglass",
+                    action: onInspect
                 )
+
+                if let linkage = mission.prLinkage {
+                    secondaryActionButton(
+                        title: "Open PR",
+                        icon: "arrow.up.forward.square",
+                        action: { onOpenPR(linkage) }
+                    )
+                }
             }
 
             Spacer(minLength: 0)
@@ -936,6 +941,7 @@ private struct MissionGateCard: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             }
             .buttonStyle(.plain)
+            .fixedSize()
         }
         .padding(.top, 2)
     }

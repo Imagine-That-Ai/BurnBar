@@ -450,7 +450,9 @@ service cloud.firestore {
         && entitlement.productID in [
           "com.openburnbar.proMax.bundle.monthly",
           "com.openburnbar.proMax.v2.monthly",
-          "com.openburnbar.proMax.annual"
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.promax.v2.monthly",
+          "com.openburnbar.promax.annual"
         ]
         // END GENERATED: entitlement-product-ids proMax
         && entitlement.expireAt is timestamp
@@ -513,6 +515,11 @@ service cloud.firestore {
     function hasActiveProMaxEntitlement(userId) {
       return exists(burnBarProMaxEntitlementPath(userId))
         && activeProMaxEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data);
+    }
+
+    function hasActiveDataVaultEntitlement(userId) {
+      return hasActiveProMaxEntitlement(userId)
+        || hasActiveUltraEntitlement(userId);
     }
 
     function wandFanOutCap(userId) {
@@ -728,6 +735,15 @@ service cloud.firestore {
         && validSessionLogFacets(request.resource.data);
     }
 
+    function validSessionLogLifecycleFields(data) {
+      return (!("deletedAt" in data) || data.deletedAt is timestamp)
+        && (!("version" in data) || (data.version is int && data.version >= 1));
+    }
+
+    function sessionLogTombstoneIsSticky() {
+      return !("deletedAt" in resource.data) || ("deletedAt" in request.resource.data);
+    }
+
     function ownerWritableSessionLogManifestCreate(userId, logId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogManifestCore(userId, logId);
@@ -757,6 +773,8 @@ service cloud.firestore {
         "totalTokens",
         "costUSD",
         "durationSeconds",
+        "deletedAt",
+        "version",
         "toolTags",
         "updatedAt"
       ]);
@@ -766,6 +784,8 @@ service cloud.firestore {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogRefreshKeys()
         && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
+        && validSessionLogLifecycleFields(request.resource.data)
+        && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);
     }
 
@@ -777,11 +797,34 @@ service cloud.firestore {
       return !(field in data) || (data[field] is int && data[field] >= 0);
     }
 
+    function validSessionLogToolTags(data) {
+      return !("toolTags" in data) || (
+        data.toolTags is list
+        && data.toolTags.size() <= 12
+        && data.toolTags.hasOnly([
+          "apply_patch",
+          "bash",
+          "edit",
+          "exec_command",
+          "find",
+          "grep_search",
+          "multi_edit",
+          "other",
+          "read",
+          "rg",
+          "search",
+          "sed",
+          "shell",
+          "write"
+        ])
+      );
+    }
+
     function validSessionLogFacets(data) {
       return (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32))
+        && validSessionLogToolTags(data)
         && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
         && validOptionalInt(data, "inputTokens")
         && validOptionalInt(data, "outputTokens")
@@ -1200,6 +1243,16 @@ service cloud.firestore {
           || hasActiveHostedQuotaEntitlement(userId));
     }
 
+    function validRealtimeRelayURL(value) {
+      return value is string
+        && value.size() <= 2048
+        && value.matches("^wss://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?(/[A-Za-z0-9._~%!$&()*+,;=:@/-]{0,512})?$")
+        && !value.matches("^wss://localhost(\\.|:|/|$).*")
+        && !value.matches("^wss://metadata\\.google\\.internal(\\.|:|/|$).*")
+        && !value.matches("^wss://[0-9]+(:|/|$).*")
+        && !value.matches("^wss://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+(:|/|$).*");
+    }
+
     function relayConnectionWrite(userId, connectionId) {
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
@@ -1229,7 +1282,7 @@ service cloud.firestore {
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
-        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
         && (!("realtimeRelayLastSeenAt" in request.resource.data) || (request.resource.data.realtimeRelayLastSeenAt is string && request.resource.data.realtimeRelayLastSeenAt.size() <= 64))
         && (!("realtimeRelayProtocolVersion" in request.resource.data) || request.resource.data.realtimeRelayProtocolVersion is int)
@@ -1377,7 +1430,7 @@ service cloud.firestore {
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
-        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"]);
     }
 
@@ -2619,8 +2672,9 @@ service cloud.firestore {
     }
 
     // Approved chat semantic memories. The client may write only sealed fact
-    // envelopes and opaque source HMACs; no plaintext bodies, citations, or raw
-    // vectors are valid fields.
+    // envelopes and opaque source HMACs after the server-reconciled Data Vault
+    // entitlement is active; no plaintext bodies, citations, or raw vectors are
+    // valid fields.
     match /users/{userId}/memory_facts/{memoryDocId} {
       function validMemoryFactKeys() {
         return request.resource.data.keys().hasOnly([
@@ -2641,6 +2695,7 @@ service cloud.firestore {
 
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
+        && hasActiveDataVaultEntitlement(userId)
         && validMemoryFactKeys()
         && request.resource.data.uid == userId
         && request.resource.data.docID == memoryDocId
@@ -2740,50 +2795,15 @@ service cloud.firestore {
     }
 
     // Connected GitHub repo registry (the dirty-signal source registration). The
-    // repo identity is project-class private text: rows are written by the
-    // connectKnowledgeRepo callable (Admin SDK, which bypasses these rules) and
-    // hold only an opaque server-keyed `repoMatchToken` (for webhook routing),
-    // an opaque server-keyed `sourceManifestId` (the manifest doc-id key —
-    // replaces the transitional `sourceSlugToken` and formerly-stored cleartext
-    // `sourceSlug`), and a vault-`sealedRepoFullName`
-    // (for owner-only display). A direct client write is now constrained to that
-    // opaque shape by a STRICT allowlist: no arbitrary smuggled fields, opaque
-    // 64-hex `repoMatchToken`/`sourceManifestId`, an owner-only `sealedRepoFullName`,
-    // and an explicit ban on every deprecated or cleartext repo identity
-    // (`repoFullName`/`sourcePath`/`sourceSlug`/`sourceSlugToken`) so a future/buggy client can never reintroduce
-    // reversible path/name text (F5). The cleartext name + cleartext slug are
-    // observed server-side only transiently (webhook routing / token derivation),
-    // never stored.
+    // repo identity is project-class private text: rows are written only by
+    // connectKnowledgeRepo/disconnectKnowledgeRepo (Admin SDK, which bypasses
+    // these rules). Client writes are denied entirely so clients cannot mint
+    // arbitrary opaque repo/source-manifest tokens and then ask the resync
+    // callable to dirty server-owned manifests. Owner reads remain allowed for
+    // UI display of the vault-sealed repo name.
     match /users/{userId}/knowledge_repos/{repoId} {
-      function validKnowledgeRepoKeys() {
-        return request.resource.data.keys().hasOnly([
-          "uid",
-          "repoId",
-          "repoMatchToken",
-          "sourceManifestId",
-          "sealedRepoFullName",
-          "installId",
-          "connectedAt",
-          "schemaVersion"
-        ]);
-      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && validKnowledgeRepoKeys()
-        && !("repoFullName" in request.resource.data)
-        && !("sourcePath" in request.resource.data)
-        && !("sourceSlug" in request.resource.data)
-        && !("sourceSlugToken" in request.resource.data)
-        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
-        && (!("repoMatchToken" in request.resource.data)
-            || (request.resource.data.repoMatchToken is string
-                && request.resource.data.repoMatchToken.matches("^[a-f0-9]{64}$")))
-        && (!("sourceManifestId" in request.resource.data)
-            || (request.resource.data.sourceManifestId is string
-                && request.resource.data.sourceManifestId.matches("^[a-f0-9]{64}$")))
-        && (!("sealedRepoFullName" in request.resource.data)
-            || validCloudSealedTextAt(userId, "knowledge_repos", repoId, "sealedRepoFullName", request.resource.data.sealedRepoFullName));
-      allow delete: if ownsUserNamespace(userId);
+      allow write: if false;
     }
 
     // Tamper-evident unified access-audit log (server-only writer). Per-user
@@ -3144,6 +3164,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/provider_accounts/{accountId} {
+      function providerAccountRefreshSweepCandidate(data) {
+        return data.status in ["connected", "stale", "error"]
+          && data.storageScope in ["cloud_refreshable", "server_private"];
+      }
+
       function validProviderAccountDocument() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -3193,6 +3218,7 @@ service cloud.firestore {
         && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
         && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
         && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && !providerAccountRefreshSweepCandidate(request.resource.data)
         && request.resource.data.redactedLabel is string
         && request.resource.data.redactedLabel.size() <= 160
         && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
@@ -4282,9 +4308,14 @@ service cloud.firestore {
           || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80));
       }
 
-      function signalIdentityMatchesKnownDevice() {
+      function signalIdentityMatchesPendingDevice() {
+        // Client-direct identity publication is only bootstrap for a pending
+        // device. After trust approval, the server-written escrow device pins
+        // the Signal identity metadata; Firestore rules cannot hash
+        // `publicKeyData`, so they must not accept a later self-asserted
+        // fingerprint/public-key pair for an already-trusted device.
         return exists(signalIdentityDevicePath())
-          && get(signalIdentityDevicePath()).data.trustState in ["pending", "trusted"]
+          && get(signalIdentityDevicePath()).data.trustState == "pending"
           && ("keyVersion" in get(signalIdentityDevicePath()).data)
           && request.resource.data.keyVersion == get(signalIdentityDevicePath()).data.keyVersion;
       }
@@ -4294,7 +4325,7 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validSignalIdentityPublicKeyDocument()
-        && signalIdentityMatchesKnownDevice();
+        && signalIdentityMatchesPendingDevice();
       allow update, delete: if false;
 
       match /signed_prekeys/{signedPreKeyId} {
@@ -4529,6 +4560,11 @@ service cloud.firestore {
 
     // --- Global Google Play token claims (server-only) ---
     match /google_play_token_claims/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    // --- Account erasure retention records (server-only) ---
+    match /account_erasure_audit/{recordId} {
       allow read, write: if false;
     }
 

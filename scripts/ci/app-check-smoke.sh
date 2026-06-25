@@ -16,8 +16,8 @@ if [[ -z "$PROJECT" && -f AgentLens/Resources/GoogleService-Info.plist ]]; then
   PROJECT="$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' AgentLens/Resources/GoogleService-Info.plist 2>/dev/null || true)"
 fi
 if [[ -z "$PROJECT" && ! -f AgentLens/Resources/GoogleService-Info.plist ]]; then
-  echo "Skipping App Check smoke — no OPENBURNBAR_FIREBASE_PROJECT or injected Firebase plist."
-  exit 0
+  echo "ERROR: App Check smoke is running as an internal CI gate, but no OPENBURNBAR_FIREBASE_PROJECT or injected Firebase plist is available." >&2
+  exit 1
 fi
 if [[ -z "$PROJECT" ]]; then
   echo "ERROR: Could not resolve Firebase project id from OPENBURNBAR_FIREBASE_PROJECT or injected plist." >&2
@@ -25,9 +25,9 @@ if [[ -z "$PROJECT" ]]; then
 fi
 
 if ! command -v gcloud >/dev/null 2>&1; then
-  echo "Skipping App Check smoke — gcloud is unavailable in this CI image."
-  echo "The commercial launch gate performs the authoritative live App Check enforcement check."
-  exit 0
+  echo "ERROR: App Check smoke is running as an internal CI gate, but gcloud is unavailable." >&2
+  echo "Install or configure gcloud so the live App Check enforcement probe can run fail-closed." >&2
+  exit 1
 fi
 
 OPENBURNBAR_FIREBASE_PROJECT="$PROJECT" scripts/ops/verify-firestore-app-check-enforcement.sh

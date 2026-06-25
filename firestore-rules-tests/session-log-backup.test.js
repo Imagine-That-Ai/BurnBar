@@ -11,6 +11,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import {
+  deleteDoc,
   doc,
   deleteField,
   setDoc,
@@ -90,7 +91,7 @@ function validManifest(uid = aliceUid) {
       cloudSearchIndexVersion: 4,
       cloudSearchIndexedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      facetSchemaVersion: 2,
+      facetSchemaVersion: 3,
       model: "Droid",
       messageCount: 1,
       userWordCount: 4,
@@ -102,7 +103,7 @@ function validManifest(uid = aliceUid) {
       totalTokens: 22,
       costUSD: 0.01,
       durationSeconds: 120,
-      toolTags: ["run"],
+      toolTags: ["other"],
       startTime: Timestamp.fromMillis(Date.now() - 120_000),
       endTime: Timestamp.fromMillis(Date.now()),
     },
@@ -143,7 +144,7 @@ function validFacetRefresh() {
     terms: deleteField(),
     projectName: deleteField(),
     workingDirectory: deleteField(),
-    facetSchemaVersion: 2,
+    facetSchemaVersion: 3,
     model: "Droid",
     messageCount: 1,
     userWordCount: 4,
@@ -155,7 +156,7 @@ function validFacetRefresh() {
     totalTokens: 22,
     costUSD: 0.01,
     durationSeconds: 120,
-    toolTags: ["run"],
+    toolTags: ["other"],
     updatedAt: serverTimestamp(),
   };
 }
@@ -268,6 +269,35 @@ async function main() {
     await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data));
   });
 
+  await step("existing session-log manifest can be tombstoned with typed lifecycle fields", async () => {
+    await assertSucceeds(setDoc(
+      doc(aliceDB, aliceManifest.path),
+      {
+        deletedAt: serverTimestamp(),
+        version: 2,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ));
+  });
+
+  await step("existing session-log manifest rejects malformed lifecycle fields", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, aliceManifest.path),
+        { deletedAt: "2026-06-24T00:00:00.000Z", updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(aliceDB, aliceManifest.path),
+        { version: "2", updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    );
+  });
+
   await step("existing encrypted manifest can be refreshed with searchable facets", async () => {
     const legacy = legacyEncryptedManifest();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
@@ -284,6 +314,7 @@ async function main() {
     });
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data, { merge: true }));
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data));
+    await assertSucceeds(deleteDoc(doc(aliceDB, legacy.path)));
   });
 
   await step("session-log manifest cannot be written into another user namespace", async () => {

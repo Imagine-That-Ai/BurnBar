@@ -366,7 +366,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             throw HermesRealtimeRelayHostError.invalidPath
         }
         let request = try decoder.decode(CLIAgentSessionActionRequest.self, from: body)
-        let response = try await cliSessionActionDispatcher(request)
+        let response = try await cliSessionActionDispatcher(request, nil)
         let data = try encoder.encode(response)
         try await sendChunk(
             data: String(data: data, encoding: .utf8) ?? "{}",

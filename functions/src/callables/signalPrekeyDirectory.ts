@@ -125,10 +125,8 @@ interface ResolvedIdentity {
 
 /**
  * Load the caller's published identity key and cross-check the backing escrow
- * device is trusted with a matching keyVersion — the admin-side equivalent of
- * signalIdentityMatchesKnownDevice() + signalDirectoryParentMatches() in the
- * rules. The deviceId/keyVersion are read from the AUTHORITATIVE stored identity
- * doc, never trusted from the request.
+ * device is trusted with a matching keyVersion. The deviceId/keyVersion are read
+ * from the AUTHORITATIVE stored identity doc, never trusted from the request.
  */
 async function resolveTrustedIdentity(uid: string, identityKeyIdRaw: unknown): Promise<ResolvedIdentity> {
   const identityKeyId = safeCloudDocumentID(identityKeyIdRaw, "identityKeyId");

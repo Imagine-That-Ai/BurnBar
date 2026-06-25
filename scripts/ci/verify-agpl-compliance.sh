@@ -105,7 +105,7 @@ while IFS= read -r -d '' cargo_toml; do
   if grep -nE 'license = "Apache-2\.0 OR MIT"' "$cargo_toml"; then
     stale_rust_license=1
   fi
-done < <(find crates -name Cargo.toml -print0)
+done < <(find crates -type f -name Cargo.toml -print0)
 if [[ "$stale_rust_license" -ne 0 ]]; then
   fail "found stale Rust package license metadata"
 fi

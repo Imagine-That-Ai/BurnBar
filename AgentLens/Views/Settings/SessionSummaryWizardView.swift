@@ -352,10 +352,12 @@ struct SessionSummaryWizardView: View {
             Text(label)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
-            Spacer()
+            Spacer(minLength: DesignSystem.Spacing.md)
             Text(value)
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(DesignSystem.Spacing.md)
     }

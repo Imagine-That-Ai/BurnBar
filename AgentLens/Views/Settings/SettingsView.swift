@@ -170,6 +170,8 @@ struct SettingsView: View {
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.vertical, 2)
@@ -543,7 +545,7 @@ private struct PetCompanionSettingsView: View {
                         PetCompanionFeature.showCompanion()
                     }
                 }
-                .frame(minHeight: 420, maxHeight: 640)
+                .frame(minHeight: 280, idealHeight: 420, maxHeight: 640)
                 .padding(DesignSystem.Spacing.md)
                 .background(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
@@ -563,10 +565,13 @@ private struct PetCompanionSettingsView: View {
                     Text("Answering Agent")
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .layoutPriority(1)
                     Spacer()
                     Text(activeAgentName)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 PetAgentSwitcher(backends: availableBackends) { backend in
                     activeAgentRaw = backend.rawValue
@@ -584,36 +589,55 @@ private struct PetCompanionSettingsView: View {
     private var summonSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             SettingsSectionHeader(title: "CONTROLS")
-            HStack(spacing: DesignSystem.Spacing.md) {
-                Button {
-                    petEnabled = true
-                    PetCompanionFeature.showCompanion()
-                    PetCompanionFeature.runtime.controller.openBubble()
-                } label: {
-                    Label("Summon", systemImage: "sparkles")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    summonButton
+                    hideButton
+                    hotkeyChip
                 }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    petEnabled = false
-                    PetCompanionFeature.runtime.controller.closeBubble()
-                    PetCompanionFeature.hideCompanion()
-                } label: {
-                    Label("Hide", systemImage: "eye.slash")
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack(spacing: DesignSystem.Spacing.md) {
+                        summonButton
+                        hideButton
+                    }
+                    hotkeyChip
                 }
-                .buttonStyle(.bordered)
-
-                Text(PetCompanionFeature.runtime.hotkey.combo.displayString)
-                    .font(DesignSystem.Typography.monoSmall)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.surface.opacity(0.55))
-                    )
             }
         }
+    }
+
+    private var summonButton: some View {
+        Button {
+            petEnabled = true
+            PetCompanionFeature.showCompanion()
+            PetCompanionFeature.runtime.controller.openBubble()
+        } label: {
+            Label("Summon", systemImage: "sparkles")
+        }
+        .buttonStyle(.borderedProminent)
+    }
+
+    private var hideButton: some View {
+        Button {
+            petEnabled = false
+            PetCompanionFeature.runtime.controller.closeBubble()
+            PetCompanionFeature.hideCompanion()
+        } label: {
+            Label("Hide", systemImage: "eye.slash")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var hotkeyChip: some View {
+        Text(PetCompanionFeature.runtime.hotkey.combo.displayString)
+            .font(DesignSystem.Typography.monoSmall)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
     }
 
     private func unavailableRow(icon: String, title: String, detail: String) -> some View {

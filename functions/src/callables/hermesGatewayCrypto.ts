@@ -228,9 +228,17 @@ function gatewayPopSignablePayload(options: {
 // flip would 401 every paired client), and refuses a v1 downgrade only once a
 // client has registered v2 capability (`popVersion >= 2`).
 
-/// Canonical query string for PoP v2 — decoded params sorted by key then value
-/// and joined `key=value` with `&`. Decoded (not re-encoded) so Node and the
-/// Python client agree byte-for-byte without percent-encoding variance.
+/// Canonical query string for PoP v2 — decoded params sorted by key then value.
+/// Query delimiters inside decoded keys/values are percent-escaped before the
+/// pairs are joined as `key=value` with `&`, so a value containing `&` or `=`
+/// cannot collide with a real query separator.
+function escapeGatewayQueryComponent(value: string): string {
+  return value.replace(
+    /[%&=]/gu,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+  );
+}
+
 function canonicalGatewayQueryString(req: HttpRequest): string {
   const pairs: Array<[string, string]> = [];
   for (const [key, value] of Object.entries(req.query ?? {})) {
@@ -241,7 +249,9 @@ function canonicalGatewayQueryString(req: HttpRequest): string {
     }
   }
   pairs.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1));
-  return pairs.map(([key, value]) => `${key}=${value}`).join("&");
+  return pairs
+    .map(([key, value]) => `${escapeGatewayQueryComponent(key)}=${escapeGatewayQueryComponent(value)}`)
+    .join("&");
 }
 
 /// The PoP version the client declares it signed with. Absent / "1" ⇒ v1.

@@ -20,7 +20,10 @@ struct OnboardingProviderPill: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.85)
             }
+            .frame(maxWidth: 220, alignment: .leading)
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background {

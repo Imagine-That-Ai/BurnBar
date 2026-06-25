@@ -1,11 +1,11 @@
 # Solo-operator merge & control policy
 
 Two consecutive diligence reviews (2026-06-10, 2026-06-11) made the same core
-finding: the repository's configured controls (required review, enforce_admins,
+finding: the repository's configured controls (required review, `enforce_admins`,
 quality gates) were being bypassed in practice — 0 human reviews across every
 merged PR, `enforce_admins` toggled around merges, and on 06-11 a coverage gate
 relaxed to flip a red check on the team's own diff. The artifacts were strong;
-the *process integrity* was not. This document is the written policy those
+the _process integrity_ was not. This document is the written policy those
 reviews prescribed: when solo-merging is acceptable, what compensates, and what
 is never acceptable.
 
@@ -21,18 +21,18 @@ is never acceptable.
   confidentiality guard, product-license posture, and PR security gates. A red
   required check is fixed, not redefined. **Changing a gate's definition in the
   same PR the gate is failing on is prohibited** — gate changes ship in their
-  own PR, with the rationale in the PR description, and apply to the *next*
+  own PR, with the rationale in the PR description, and apply to the _next_
   change.
 - Full-confidence lanes (`openburnbar-pr-harness.yml`, `nightly-e2e.yml`, and
   full CodeQL) run after merge, nightly, or by manual dispatch. They are not
   daily PR blockers, but a red paged nightly older than 24 hours is active
   repair work, not background noise. `nightly-e2e.yml` is the paged core lane:
   production health, full nightly tests, and the commercial launch gate.
-- `nightly-dast-sandbox.yml` is an advisory sandbox for hosted-runner-hostile
-  DAST and privileged live-socket red-team jobs. It records failures through
-  the separate `lane:nightly-sandbox` issue key and can never keep
-  `lane:nightly-e2e` red. The blocking peer-auth controls remain the PR-unit
-  suites until a self-hosted privileged macOS runner is armed.
+- `nightly-dast-sandbox.yml` is a fail-red security sandbox for
+  hosted-runner-hostile DAST and privileged live-socket red-team jobs. It
+  records failures through the separate `lane:nightly-sandbox` issue key and
+  can never keep `lane:nightly-e2e` red. The blocking peer-auth controls remain
+  the PR-unit suites until a self-hosted privileged macOS runner is armed.
 - Live governance proof is not a screenshot or memory. Run
   `bash scripts/ops/verify-github-governance.sh` before any release or
   commercial launch gate; it reads GitHub's branch-protection and environment
@@ -79,7 +79,7 @@ Require one of, in order of preference:
   durably published (e.g. pinning a commit that exists on no remote — the
   exact failure of commit `e0ba632f5`, reverted hours later).
 - Weakening a measuring gate (coverage, lint, provenance, size) in response
-  to it firing on your own change. If the gate is *wrong*, fix it in a
+  to it firing on your own change. If the gate is _wrong_, fix it in a
   separate PR that states what the gate previously measured and what it
   measures after.
 
@@ -87,23 +87,22 @@ Require one of, in order of preference:
 
 - **Monday red-run triage**: every scheduled workflow's latest run is
   reviewed; any paged lane red >7 days becomes P0 work with an owner, not
-  background noise. Advisory sandbox failures stay under the advisory-lane
-  budget below unless they become release-blocking. Close-on-green automation
-  keeps failure issues honest — never close one by hand without a green run or
-  a fix.
+  background noise. Sandbox failures stay under the sandbox-lane budget below
+  unless they become release-blocking. Close-on-green automation keeps failure
+  issues honest — never close one by hand without a green run or a fix.
 - **Nightly lane ownership**: `nightly-e2e` is the paged launch lane
   (production health, full nightly tests, commercial launch gate).
-  `nightly-dast-sandbox` is the advisory hosted-runner sandbox for public DAST,
+  `nightly-dast-sandbox` is the fail-red hosted-runner sandbox for public DAST,
   Functions-emulator DAST, and live privileged-socket redteam. It has its own
   `lane:nightly-sandbox` issue dedupe so sandbox failures cannot suppress the
   paged nightly lane. The live privileged-socket redteam returns to the paged
   lane only after a self-hosted privileged macOS runner is armed.
-- **Advisory-lane budget**: a quality lane may be advisory for at most 30
-  days, then it enforces (ratchet baselines are the house pattern) or it is
-  deleted. `nightly-dast-sandbox.yml` counts against this budget; the intended
-  enforcement path is a self-hosted privileged macOS runner for the live socket
-  red-team and reachable DAST targets for ZAP. A lane that asserts nothing is
-  removed rather than left green.
+- **Sandbox-lane budget**: a security lane may remain separate from the paged
+  nightly lane for at most 30 days, then it moves into the paged lane, gets a
+  ratcheted baseline, or is deleted. `nightly-dast-sandbox.yml` counts against
+  this budget; the intended enforcement path is a self-hosted privileged macOS
+  runner for the live socket red-team and reachable DAST targets for ZAP. A
+  lane that asserts nothing is removed rather than left green.
 - **Quarterly restore drill**: roll back functions + hosting + one Cloud Run
   service and PITR-restore Firestore into a throwaway database from a machine
   that is not the primary operator's laptop, following only the runbooks
@@ -115,5 +114,5 @@ Require one of, in order of preference:
 Diligence reads the gap between configured and operating controls as the
 single most predictive signal about a team. The controls in this repo are
 real; this policy makes their operation legible — including the documented,
-bounded exceptions — so an external reviewer can audit *adherence* instead of
+bounded exceptions — so an external reviewer can audit _adherence_ instead of
 inferring intent from toggle history.

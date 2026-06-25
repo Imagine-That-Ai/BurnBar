@@ -23,6 +23,7 @@ import {
   manifestFieldToISO,
   mapSessionLogManifestRow,
   resolveConversationSort,
+  sessionLogManifestIsVisible,
 } from "../lib/callables/conversationQuery.js";
 
 /**
@@ -222,6 +223,18 @@ test("buildConversationPageQuery emits exactly one explicit order key for every 
       );
     }
   }
+});
+
+test("sessionLogManifestIsVisible hides tombstoned manifests but preserves legacy live rows", () => {
+  assert.equal(sessionLogManifestIsVisible({ id: "legacy-live" }), true);
+  assert.equal(sessionLogManifestIsVisible({ id: "explicit-live", deletedAt: null }), true);
+  assert.equal(
+    sessionLogManifestIsVisible({
+      id: "deleted",
+      deletedAt: Timestamp.fromDate(new Date("2026-06-24T00:00:00.000Z")),
+    }),
+    false
+  );
 });
 
 test("manifestFieldToISO normalizes timestamps and stored strings, rejects junk", () => {

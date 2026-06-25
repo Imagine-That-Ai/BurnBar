@@ -1,0 +1,133 @@
+{
+  "schema": "petdef/1",
+  "id": "bush",
+  "name": "bush",
+  "kind": "model3d",
+  "displayName": "George W. Bush",
+  "group": "Leaders",
+  "description": "Synced from Imagine That's 3D pet manifest (bush-actions.glb).",
+  "forms": [
+    {
+      "kind": "model3d",
+      "modelKind": "rigged",
+      "glb": "bush-actions.glb",
+      "clipNames": [
+        "idle",
+        "walk",
+        "wave",
+        "jump",
+        "clap",
+        "cheer",
+        "clean",
+        "scoop",
+        "dance",
+        "think",
+        "nod",
+        "offended",
+        "shrug",
+        "sleep",
+        "listen",
+        "retreat",
+        "no",
+        "surprised",
+        "confused"
+      ],
+      "clips": {
+        "cheer": "cheer",
+        "clap": "clap",
+        "clean": "clean",
+        "confused": "confused",
+        "dance": "dance",
+        "dismiss": "retreat",
+        "drag": "walk",
+        "failure": "confused",
+        "greeting": "wave",
+        "hardError": "idle",
+        "hostile": "offended",
+        "idle": "idle",
+        "jump": "jump",
+        "listen": "listen",
+        "negate": "no",
+        "no": "no",
+        "nod": "nod",
+        "offended": "offended",
+        "praise": "cheer",
+        "question": "think",
+        "react": "cheer",
+        "retreat": "retreat",
+        "scoop": "scoop",
+        "shrug": "shrug",
+        "sleep": "sleep",
+        "speak": "nod",
+        "success": "cheer",
+        "surprised": "surprised",
+        "think": "think",
+        "walk": "walk",
+        "wander": "walk",
+        "wave": "wave",
+        "work": "clean"
+      }
+    }
+  ],
+  "behavior": {
+    "initial": "idle",
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "wander",
+        "when": "cooldownElapsed",
+        "weight": 1
+      },
+      {
+        "from": "wander",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      },
+      {
+        "from": "idle",
+        "to": "listen",
+        "when": "inputFocused",
+        "weight": 1
+      },
+      {
+        "from": "listen",
+        "to": "think",
+        "when": "sendPressed",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "speak",
+        "when": "streamStart",
+        "weight": 1
+      },
+      {
+        "from": "speak",
+        "to": "react",
+        "when": "resultLanded",
+        "weight": 1
+      },
+      {
+        "from": "think",
+        "to": "react",
+        "when": "fallbackFired",
+        "weight": 1
+      },
+      {
+        "from": "react",
+        "to": "idle",
+        "when": "idleElapsed",
+        "weight": 1
+      }
+    ]
+  },
+  "agent": {
+    "persona": "You are a celebratory homage to George W. Bush, living inside BurnBar, watching the developer's agents burn tokens and dollars. Speak folksy and Texan, good-natured, prone to a cheerful malapropism, fond of nicknames, and dead-set on not letting the bill misunderestimate you. A little strategery beats a lot of spend; a green build is mission accomplished. A few phrases you're known for: Don't misunderestimate that burn rate. / Is our prompts learning? Trim 'em. / It's all about strategery. / Mission accomplished — clean and cheap.",
+    "voiceLines": "{\"enter\":[\"Welcome aboard, partner. Let's get to strategery.\",\"We're fixin' to ship somethin' lean.\",\"Don't misunderestimate this build. Let's go.\",\"Rise and shine — we got prompts to trim.\"],\"work\":[\"Is our prompts learning? Trim 'em down.\",\"A little strategery saves a lotta tokens.\",\"Don't misunderestimate that bill. Cut it.\",\"Fool me once on a bloated prompt... won't get fooled again.\",\"Stay the course — a leaner course.\"],\"cheer\":[\"Mission accomplished — clean and cheap!\",\"That's some fine strategery right there.\",\"Heck of a job. Greenest build in Texas.\",\"We didn't misunderestimate it. We nailed it.\"],\"exit\":[\"Off to the ranch. Keep 'er lean, partner.\",\"Good work today. Don't spend it all at once.\",\"So long — stay the course.\",\"Mission accomplished. Goodnight, y'all.\"]}"
+  },
+  "license": {
+    "ipStatus": "source-imaginethat-llc",
+    "licenseNote": "Synced one-way from imaginethat-llc public/pet-models."
+  }
+}

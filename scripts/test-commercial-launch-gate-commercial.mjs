@@ -16,6 +16,9 @@ import {
   evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
+  evaluateLatestMergedPrForMain,
+  evaluateTrustedGitHubActionsCheckRun,
+  actionsRunIdFromCheckRun,
   requiredVerifiableAlertChannels,
   verdict,
 } from "./commercial-launch-gate.mjs";
@@ -44,6 +47,91 @@ assert.doesNotMatch(
   launchGateSource,
   /["']-H["'][\s\S]{0,120}Authorization:\s*`?Bearer/u,
 );
+
+{
+  const trustedCheck = {
+    name: "Analyze (python)",
+    status: "completed",
+    conclusion: "success",
+    completed_at: "2026-06-24T16:00:00Z",
+    app: { slug: "github-actions" },
+    details_url: "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/123456/job/789",
+  };
+  assert.equal(actionsRunIdFromCheckRun(trustedCheck), "123456");
+  assert.equal(
+    evaluateTrustedGitHubActionsCheckRun(trustedCheck, {
+      sha: "abc",
+      workflowRun: {
+        id: 123456,
+        name: "CodeQL",
+        path: ".github/workflows/codeql.yml",
+        head_sha: "abc",
+      },
+      allowedWorkflowPaths: [".github/workflows/codeql.yml"],
+    }).ok,
+    true,
+  );
+  assert.equal(
+    evaluateTrustedGitHubActionsCheckRun(
+      { ...trustedCheck, app: { slug: "third-party-ci" } },
+      {
+        sha: "abc",
+        workflowRun: {
+          path: ".github/workflows/codeql.yml",
+          head_sha: "abc",
+        },
+        allowedWorkflowPaths: [".github/workflows/codeql.yml"],
+      },
+    ).trust,
+    "untrusted-check-app",
+  );
+  assert.equal(
+    evaluateTrustedGitHubActionsCheckRun(trustedCheck, {
+      sha: "abc",
+      workflowRun: {
+        path: ".github/workflows/spoof.yml",
+        head_sha: "abc",
+      },
+      allowedWorkflowPaths: [".github/workflows/codeql.yml"],
+    }).trust,
+    "untrusted-workflow-path",
+  );
+  assert.equal(
+    evaluateTrustedGitHubActionsCheckRun(trustedCheck, {
+      sha: "abc",
+      workflowRun: {
+        path: ".github/workflows/codeql.yml",
+        head_sha: "def",
+      },
+      allowedWorkflowPaths: [".github/workflows/codeql.yml"],
+    }).trust,
+    "workflow-run-head-sha-mismatch",
+  );
+}
+
+{
+  assert.equal(
+    evaluateLatestMergedPrForMain({
+      mainSha: "merge-sha",
+      merged: {
+        number: 835,
+        head: { sha: "head-sha" },
+        merge_commit_sha: "merge-sha",
+      },
+    }).ok,
+    true,
+  );
+  const directMain = evaluateLatestMergedPrForMain({
+    mainSha: "direct-main-sha",
+    merged: {
+      number: 835,
+      head: { sha: "head-sha" },
+      merge_commit_sha: "merge-sha",
+    },
+  });
+  assert.equal(directMain.ok, false);
+  assert.match(directMain.reason, /origin\/main has advanced past the latest merged PR/);
+}
 
 assert.equal(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,

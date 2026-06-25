@@ -22,6 +22,7 @@ import { resolve } from "node:path";
 
 const state = vi.hoisted(() => {
   const docSets: Array<{ path: string; data: Record<string, unknown> }> = [];
+  const existingDocPaths = new Set<string>();
   return {
     googleapisLoads: 0,
     getClient: vi.fn(),
@@ -34,6 +35,7 @@ const state = vi.hoisted(() => {
     assertActiveMock: vi.fn(),
     enforceMock: vi.fn(),
     docSets,
+    existingDocPaths,
   };
 });
 
@@ -55,6 +57,9 @@ vi.mock("googleapis", () => {
 vi.mock("../adminRuntime.js", () => ({
   db: {
     doc: (path: string) => ({
+      get: async () => ({
+        exists: state.existingDocPaths.has(path),
+      }),
       set: async (data: Record<string, unknown>) => {
         state.docSets.push({ path, data });
       },
@@ -145,6 +150,15 @@ function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function googlePlayTopUpReceiptPath(token: string): string {
+  return `users/${UID}/billing/cloud_pro_topups/receipts/google_play_${tokenHash(token)}`;
+}
+
+function googlePlayCurrentMonthTopUpPath(token: string): string {
+  const monthKey = new Date().toISOString().slice(0, 7);
+  return `users/${UID}/billing/allowances/months/${monthKey}/topups/google_play_${tokenHash(token)}`;
+}
+
 function req(data: Record<string, unknown>) {
   return {
     auth: { uid: UID },
@@ -166,6 +180,7 @@ function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, 
 beforeEach(() => {
   vi.clearAllMocks();
   state.docSets.length = 0;
+  state.existingDocPaths.clear();
   state.getClient.mockResolvedValue({});
   state.claimMock.mockResolvedValue(undefined);
   state.assertActiveMock.mockResolvedValue(undefined);
@@ -342,7 +357,89 @@ describe("verifyGooglePlayCloudProTopUp", () => {
     await expect(
       invokeCallable(verifyGooglePlayCloudProTopUp, { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" }),
     ).rejects.toThrow(/not in the purchased state/);
+    expect(state.claimMock).not.toHaveBeenCalled();
     expect(state.creditMock).not.toHaveBeenCalled();
     expect(state.productsConsume).not.toHaveBeenCalled();
+  });
+
+  it("rejects a consumed top-up without an existing server receipt", async () => {
+    state.productsGet.mockResolvedValue({ data: { purchaseState: 0, consumptionState: 1 } });
+
+    await expect(
+      invokeCallable(verifyGooglePlayCloudProTopUp, { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" }),
+    ).rejects.toThrow(/already consumed before server verification/);
+    expect(state.claimMock).not.toHaveBeenCalled();
+    expect(state.creditMock).not.toHaveBeenCalled();
+    expect(state.productsConsume).not.toHaveBeenCalled();
+  });
+
+  it("keeps consumed top-up retries idempotent when the server receipt exists", async () => {
+    state.productsGet.mockResolvedValue({ data: { purchaseState: 0, consumptionState: 1 } });
+    state.existingDocPaths.add(googlePlayTopUpReceiptPath(TOPUP_TOKEN));
+    state.creditMock.mockResolvedValueOnce({
+      credited: false,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "agent_control_actions_100",
+    });
+
+    const res = await invokeCallable<{ credited: boolean; purchaseState: number; consumed: boolean }>(
+      verifyGooglePlayCloudProTopUp,
+      { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" },
+    );
+
+    expect(state.claimMock).toHaveBeenCalledWith({
+      uid: UID,
+      purchaseTokenHash: tokenHash(TOPUP_TOKEN),
+      productID: "gp_agent_control_100",
+      kind: "topup",
+    });
+    expect(state.creditMock).toHaveBeenCalledWith({
+      uid: UID,
+      kind: "agent_control_actions_100",
+      source: "google_play",
+      externalPaymentID: tokenHash(TOPUP_TOKEN),
+    });
+    expect(state.productsConsume).not.toHaveBeenCalled();
+    expect(res).toMatchObject({
+      credited: false,
+      purchaseState: 0,
+      consumed: false,
+    });
+  });
+
+  it("keeps consumed legacy top-up retries idempotent when only the monthly receipt exists", async () => {
+    state.productsGet.mockResolvedValue({ data: { purchaseState: 0, consumptionState: 1 } });
+    state.existingDocPaths.add(googlePlayCurrentMonthTopUpPath(TOPUP_TOKEN));
+    state.creditMock.mockResolvedValueOnce({
+      credited: false,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "agent_control_actions_100",
+    });
+
+    const res = await invokeCallable<{ credited: boolean; purchaseState: number; consumed: boolean }>(
+      verifyGooglePlayCloudProTopUp,
+      { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" },
+    );
+
+    expect(state.claimMock).toHaveBeenCalledWith({
+      uid: UID,
+      purchaseTokenHash: tokenHash(TOPUP_TOKEN),
+      productID: "gp_agent_control_100",
+      kind: "topup",
+    });
+    expect(state.creditMock).toHaveBeenCalledWith({
+      uid: UID,
+      kind: "agent_control_actions_100",
+      source: "google_play",
+      externalPaymentID: tokenHash(TOPUP_TOKEN),
+    });
+    expect(state.productsConsume).not.toHaveBeenCalled();
+    expect(res).toMatchObject({
+      credited: false,
+      purchaseState: 0,
+      consumed: false,
+    });
   });
 });

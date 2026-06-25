@@ -383,27 +383,30 @@ struct ExternalOAuthAccountRowView: View {
 
     private var rowText: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(account.label)
                     .font(DesignSystem.Typography.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                chip(
-                    label: account.isCurrentLogin ? "Current login" : "OAuth profile",
-                    systemImage: account.isCurrentLogin ? "checkmark.seal.fill" : "person.crop.circle.badge.checkmark",
-                    tint: account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success
-                )
-                if let credentialNotice {
+                    .layoutPriority(1)
+                HFlowLayout(horizontalSpacing: 6, verticalSpacing: DesignSystem.Spacing.xxs) {
                     chip(
-                        label: credentialNotice.title,
-                        systemImage: credentialNotice.systemImage,
-                        tint: credentialNotice.tint
+                        label: account.isCurrentLogin ? "Current login" : "OAuth profile",
+                        systemImage: account.isCurrentLogin ? "checkmark.seal.fill" : "person.crop.circle.badge.checkmark",
+                        tint: account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success
                     )
-                }
-                if account.isDisabled {
-                    chip(label: "Disabled", systemImage: "pause.circle.fill", tint: DesignSystem.Colors.textMuted)
+                    if let credentialNotice {
+                        chip(
+                            label: credentialNotice.title,
+                            systemImage: credentialNotice.systemImage,
+                            tint: credentialNotice.tint
+                        )
+                    }
+                    if account.isDisabled {
+                        chip(label: "Disabled", systemImage: "pause.circle.fill", tint: DesignSystem.Colors.textMuted)
+                    }
                 }
             }
             Text(account.statusText)
@@ -506,7 +509,7 @@ struct ConnectionQuotaWindowPills: View {
     let windows: [SwitcherQuotaWindowDisplay]
 
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
+        HFlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xxs) {
             ForEach(windows) { window in
                 HStack(spacing: 4) {
                     Text(window.label)
@@ -522,6 +525,7 @@ struct ConnectionQuotaWindowPills: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
+                .fixedSize()
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(DesignSystem.Colors.surfaceElevated.opacity(0.72))
@@ -540,23 +544,19 @@ struct VibeProxyMigrationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.blaze)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Move from VibeProxy")
-                        .font(DesignSystem.Typography.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text(summaryText)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineLimit(4)
-                        .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                    headerIdentity
+                    Spacer()
+                    actionButtons
                 }
-                Spacer()
-                actionButtons
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                        headerIdentity
+                        Spacer(minLength: 0)
+                    }
+                    actionButtons
+                }
             }
 
             if let snapshot, snapshot.foundAnything {
@@ -623,6 +623,25 @@ struct VibeProxyMigrationCard: View {
             return message
         case .error(let message):
             return message
+        }
+    }
+
+    private var headerIdentity: some View {
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.blaze)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Move from VibeProxy")
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(summaryText)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -748,6 +767,7 @@ struct AppConnectRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .layoutPriority(1)
                 Spacer(minLength: DesignSystem.Spacing.sm)
                 trailingColumn
             }
@@ -892,7 +912,7 @@ struct AppConnectRow: View {
         if badges.isEmpty {
             EmptyView()
         } else {
-            HStack(spacing: DesignSystem.Spacing.xs) {
+            HFlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xs) {
                 ForEach(badges, id: \.id) { badge in
                     RoutedClientStateBadge(
                         badge: badge,
@@ -910,7 +930,7 @@ struct AppConnectRow: View {
     private var metadataStrip: some View {
         let items = metadataItems
         if !items.isEmpty {
-            HStack(spacing: DesignSystem.Spacing.xs) {
+            HFlowLayout(horizontalSpacing: DesignSystem.Spacing.xs, verticalSpacing: DesignSystem.Spacing.xxs) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     if index > 0 {
                         Text("\u{00B7}")
@@ -924,6 +944,8 @@ struct AppConnectRow: View {
                         }
                         Text(item.text)
                             .font(DesignSystem.Typography.monoTiny)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     .foregroundStyle(item.tint)
                 }

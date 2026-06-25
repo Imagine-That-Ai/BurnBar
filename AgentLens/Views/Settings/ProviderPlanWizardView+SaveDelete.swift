@@ -243,7 +243,7 @@ extension ProviderPlanWizardView {
                 Text("Singapore").tag(ProviderEndpointRegion.sgp)
                 Text("Europe (Amsterdam)").tag(ProviderEndpointRegion.ams)
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
             Text("Subscription tier (for BurnBar credit tracking when vendor remains is unavailable)")
                 .font(DesignSystem.Typography.tiny)

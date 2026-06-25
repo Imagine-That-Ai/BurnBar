@@ -135,8 +135,8 @@ struct PixelClockSettingsCard: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                if model.firmware == .awtrixReady {
+            if model.firmware == .awtrixReady {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     GlassButton(
                         title: model.setupPrimaryTitle,
                         icon: model.isBusy ? "ellipsis" : "paperplane.fill",
@@ -145,33 +145,19 @@ struct PixelClockSettingsCard: View {
                         Task { await model.push() }
                     }
                     .disabled(model.isBusy)
-                } else {
-                    GlassButton(
-                        title: model.isBusy ? "Flashing..." : "Flash and Finish Setup",
-                        icon: model.isBusy ? "ellipsis" : "bolt.badge.automatic.fill",
-                        style: .prominent
-                    ) {
-                        Task { await model.flashAndFinishSetup() }
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        setupFlashButton
+                        setupManualFallbackLink
+                        setupDetectButton
                     }
-                    .disabled(model.isBusy)
-
-                    Link(destination: URL(string: PixelClockSetupResult.awtrixLightFlasherURL)!) {
-                        Label("Manual fallback", systemImage: "safari")
-                            .font(DesignSystem.Typography.caption)
-                            .fontWeight(.semibold)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        setupFlashButton
+                        setupManualFallbackLink
+                        setupDetectButton
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .accessibilityLabel("Open manual AWTRIX Light flasher")
-
-                    GlassButton(
-                        title: model.isBusy ? "Detecting..." : "Detect after flash",
-                        icon: model.isBusy ? "ellipsis" : "wifi",
-                        style: .regular
-                    ) {
-                        Task { await model.probe() }
-                    }
-                    .disabled(model.isBusy)
                 }
             }
         }
@@ -184,6 +170,39 @@ struct PixelClockSettingsCard: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(setupStatusColor.opacity(0.35), lineWidth: 0.6)
         )
+    }
+
+    private var setupFlashButton: some View {
+        GlassButton(
+            title: model.isBusy ? "Flashing..." : "Flash and Finish Setup",
+            icon: model.isBusy ? "ellipsis" : "bolt.badge.automatic.fill",
+            style: .prominent
+        ) {
+            Task { await model.flashAndFinishSetup() }
+        }
+        .disabled(model.isBusy)
+    }
+
+    private var setupManualFallbackLink: some View {
+        Link(destination: URL(string: PixelClockSetupResult.awtrixLightFlasherURL)!) {
+            Label("Manual fallback", systemImage: "safari")
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(DesignSystem.Colors.textMuted)
+        .accessibilityLabel("Open manual AWTRIX Light flasher")
+    }
+
+    private var setupDetectButton: some View {
+        GlassButton(
+            title: model.isBusy ? "Detecting..." : "Detect after flash",
+            icon: model.isBusy ? "ellipsis" : "wifi",
+            style: .regular
+        ) {
+            Task { await model.probe() }
+        }
+        .disabled(model.isBusy)
     }
 
     private var setupStatusIcon: some View {
@@ -486,24 +505,38 @@ struct PixelClockSettingsCard: View {
                 Text("Spinner colors")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    pixelColorField(
-                        title: "Primary spinner color",
-                        text: Binding(
-                            get: { model.config.workingSpinnerPrimaryHex },
-                            set: { model.updateWorkingSpinnerPrimaryHex($0) }
-                        )
-                    )
-                    pixelColorField(
-                        title: "Secondary spinner color",
-                        text: Binding(
-                            get: { model.config.workingSpinnerSecondaryHex },
-                            set: { model.updateWorkingSpinnerSecondaryHex($0) }
-                        )
-                    )
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        spinnerPrimaryColorField
+                        spinnerSecondaryColorField
+                    }
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        spinnerPrimaryColorField
+                        spinnerSecondaryColorField
+                    }
                 }
             }
         }
+    }
+
+    private var spinnerPrimaryColorField: some View {
+        pixelColorField(
+            title: "Primary spinner color",
+            text: Binding(
+                get: { model.config.workingSpinnerPrimaryHex },
+                set: { model.updateWorkingSpinnerPrimaryHex($0) }
+            )
+        )
+    }
+
+    private var spinnerSecondaryColorField: some View {
+        pixelColorField(
+            title: "Secondary spinner color",
+            text: Binding(
+                get: { model.config.workingSpinnerSecondaryHex },
+                set: { model.updateWorkingSpinnerSecondaryHex($0) }
+            )
+        )
     }
 
     private var completionAlertsRow: some View {
@@ -556,7 +589,7 @@ struct PixelClockSettingsCard: View {
             TextField("#52D6FF", text: text)
                 .font(DesignSystem.Typography.monoSmall)
                 .textFieldStyle(.plain)
-                .frame(width: 78)
+                .frame(minWidth: 56, idealWidth: 78, maxWidth: 78)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

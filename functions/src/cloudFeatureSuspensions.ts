@@ -5,7 +5,6 @@
  * `users/{uid}/ops/suspensions/cloudFeatures/current`.
  */
 
-import type { Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { isTimestampWithToMillis } from "./guards.js";
@@ -23,6 +22,14 @@ export const REQUIRED_SUSPENDED_USER_DENIED_SURFACES = [
 
 type RequiredSuspendedUserDeniedSurface = (typeof REQUIRED_SUSPENDED_USER_DENIED_SURFACES)[number];
 type CloudFeatureSurface = RequiredSuspendedUserDeniedSurface | "burnbar_cloud" | "burnbar_cloud_pro";
+
+export interface FirestoreDocReaderLike {
+  doc(path: string): {
+    get(): Promise<{
+      data(): Record<string, unknown> | undefined;
+    }>;
+  };
+}
 
 interface ActiveCloudFeatureSuspension {
   pathTemplate: typeof CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE;
@@ -79,7 +86,7 @@ export function cloudFeatureSuspensionDeniesSurface(
 }
 
 async function loadActiveCloudFeatureSuspension(
-  firestore: Firestore,
+  firestore: FirestoreDocReaderLike,
   uid: string,
 ): Promise<ActiveCloudFeatureSuspension | null> {
   const snap = await firestore.doc(cloudFeatureSuspensionPath(uid)).get();
@@ -87,7 +94,7 @@ async function loadActiveCloudFeatureSuspension(
 }
 
 export async function assertCloudFeatureNotSuspended(
-  firestore: Firestore,
+  firestore: FirestoreDocReaderLike,
   uid: string,
   surface: CloudFeatureSurface,
 ): Promise<void> {
@@ -102,7 +109,7 @@ export async function assertCloudFeatureNotSuspended(
 }
 
 export async function hostedQuotaDailyRefreshLimitForUser(
-  firestore: Firestore,
+  firestore: FirestoreDocReaderLike,
   uid: string,
   configuredLimit: number,
 ): Promise<number> {

@@ -22,6 +22,8 @@ const REPO_ROOT = process.env.PR_SECRET_BOUNDARY_ROOT
 
 const TRUSTED_PR_EXPR =
   'github.event_name != \'pull_request\' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))';
+const MAIN_PUSH_OR_SCHEDULE_EXPR =
+  "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')";
 
 const failures = [];
 
@@ -472,6 +474,180 @@ function validateCodeQualityWorkflow() {
   );
 }
 
+function validateOpenBurnBarPrHarnessWorkflow() {
+  const file = ".github/workflows/openburnbar-pr-harness.yml";
+  const source = stripYamlComments(readRepoFile(file));
+  const androidSecret =
+    "GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}";
+  const iosFirebaseSecrets = [
+    "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}",
+    "FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}",
+  ];
+
+  const androidJob = extractJob(source, "android");
+  const androidTemplateStep = extractStep(
+    androidJob,
+    "Use Android Firebase template when secret run is not allowed",
+  );
+  const androidInjectStep = extractStep(androidJob, "Inject Android Firebase config");
+  const androidUploadStep = extractStep(androidJob, "Upload Android APK");
+
+  requireEnvEntry(
+    file,
+    androidJob,
+    4,
+    "ALLOW_ANDROID_FIREBASE_SECRET_RUN",
+    `\${{ ${MAIN_PUSH_OR_SCHEDULE_EXPR} }}`,
+    "full harness Android job must only allow real Firebase config on reviewed main push/schedule runs",
+  );
+  requireEnvEntry(
+    file,
+    androidJob,
+    4,
+    "HAS_ANDROID_SECRETS",
+    "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+    "full harness Android job must probe Firebase secret availability without exposing its value",
+  );
+  requireFieldEquals(
+    file,
+    androidTemplateStep,
+    "if",
+    8,
+    "env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'",
+    "full harness Android job must use the non-secret template when real config is not allowed",
+  );
+  requireIncludes(
+    file,
+    androidTemplateStep,
+    "cp android/app/google-services.json.template android/app/google-services.json",
+    "full harness Android template step must materialize the non-secret Firebase template",
+  );
+  requireFieldEquals(
+    file,
+    androidInjectStep,
+    "if",
+    8,
+    "env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'",
+    "full harness Android real Firebase injection must be main push/schedule gated",
+  );
+  requireEnvEntry(
+    file,
+    androidInjectStep,
+    8,
+    "GOOGLE_SERVICES_JSON_BASE64",
+    "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}",
+    "full harness Android injection step is missing its Firebase secret",
+  );
+  requireFieldEquals(
+    file,
+    androidUploadStep,
+    "if",
+    8,
+    "env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'",
+    "full harness must not upload APK artifacts built with real Android Firebase config",
+  );
+  requireOnlyAllowedSecretLines(
+    file,
+    androidJob,
+    [
+      "HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+      androidSecret,
+    ],
+    "full harness Android job contains unallowlisted secret reference",
+  );
+
+  const hermesSmokeJob = extractJob(source, "android-hermes-smoke");
+  const hermesTemplateStep = extractStep(
+    hermesSmokeJob,
+    "Use Android Firebase template when secret run is not allowed",
+  );
+  const hermesInjectStep = extractStep(hermesSmokeJob, "Inject Android Firebase config");
+  requireEnvEntry(
+    file,
+    hermesSmokeJob,
+    4,
+    "ALLOW_ANDROID_FIREBASE_SECRET_RUN",
+    `\${{ ${MAIN_PUSH_OR_SCHEDULE_EXPR} }}`,
+    "Android Hermes smoke must only allow real Firebase config on reviewed main push/schedule runs",
+  );
+  requireFieldEquals(
+    file,
+    hermesTemplateStep,
+    "if",
+    8,
+    "env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'",
+    "Android Hermes smoke must use the non-secret template when real config is not allowed",
+  );
+  requireFieldEquals(
+    file,
+    hermesInjectStep,
+    "if",
+    8,
+    "env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'",
+    "Android Hermes smoke real Firebase injection must be main push/schedule gated",
+  );
+  requireOnlyAllowedSecretLines(
+    file,
+    hermesSmokeJob,
+    [
+      "HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+      androidSecret,
+    ],
+    "Android Hermes smoke contains unallowlisted secret reference",
+  );
+
+  const mercuryJob = extractJob(source, "mercury-media-e2e");
+  const mercuryAndroidInjectStep = extractStep(mercuryJob, "Inject Android Firebase config");
+  const mercuryAndroidTemplateStep = extractStep(
+    mercuryJob,
+    "Generate dummy google-services.json when secret unavailable",
+  );
+  const mercuryIosInjectStep = extractStep(mercuryJob, "Inject Firebase config");
+  requireEnvEntry(
+    file,
+    mercuryJob,
+    4,
+    "ALLOW_FIREBASE_SECRET_RUN",
+    `\${{ ${MAIN_PUSH_OR_SCHEDULE_EXPR} }}`,
+    "Mercury media job must only allow real Firebase config on reviewed main push/schedule runs",
+  );
+  requireFieldEquals(
+    file,
+    mercuryAndroidInjectStep,
+    "if",
+    8,
+    "env.ALLOW_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'",
+    "Mercury Android Firebase injection must be main push/schedule gated",
+  );
+  requireFieldEquals(
+    file,
+    mercuryAndroidTemplateStep,
+    "if",
+    8,
+    "env.ALLOW_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'",
+    "Mercury Android lane must generate a dummy config when real config is not allowed",
+  );
+  requireFieldEquals(
+    file,
+    mercuryIosInjectStep,
+    "if",
+    8,
+    "env.ALLOW_FIREBASE_SECRET_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'",
+    "Mercury iOS Firebase injection must be main push/schedule gated",
+  );
+  requireOnlyAllowedSecretLines(
+    file,
+    mercuryJob,
+    [
+      "HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}",
+      "HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}",
+      androidSecret,
+      ...iosFirebaseSecrets,
+    ],
+    "Mercury media job contains unallowlisted secret reference",
+  );
+}
+
 function validateWorkflowLintWiring() {
   const file = ".github/workflows/workflow-lint.yml";
   const source = stripYamlComments(readRepoFile(file));
@@ -501,6 +677,7 @@ function validateWorkflowLintWiring() {
 
 validateQaWorkflow();
 validateCodeQualityWorkflow();
+validateOpenBurnBarPrHarnessWorkflow();
 validateWorkflowLintWiring();
 
 if (failures.length > 0) {
@@ -510,5 +687,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "PASS: PR-adjacent QA and Android secret surfaces are trusted-author gated with non-secret fallbacks.",
+  "PASS: PR-adjacent QA and Android/Firebase secret surfaces are trusted-author gated with non-secret fallbacks.",
 );

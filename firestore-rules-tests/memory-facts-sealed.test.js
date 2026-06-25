@@ -72,6 +72,18 @@ function forgetReceipt(uid, receiptID, overrides = {}) {
   };
 }
 
+async function seedEntitlement(uid, entitlementID, productID) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/entitlements/${entitlementID}`), {
+      id: entitlementID,
+      active: true,
+      productID,
+      expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+      schemaVersion: 2,
+    });
+  });
+}
+
 let testEnv;
 let runs = 0;
 let failures = 0;
@@ -101,11 +113,60 @@ async function main() {
 
   const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
   const bobDB = testEnv.authenticatedContext(bobUid).firestore();
+  const cloudOnlyUid = "cloud-only-uid";
+  const cloudOnlyDB = testEnv.authenticatedContext(cloudOnlyUid).firestore();
+  const ultraUid = "ultra-uid";
+  const ultraDB = testEnv.authenticatedContext(ultraUid).firestore();
+  const googlePlayCloudProUid = "play-cloud-pro-uid";
+  const googlePlayCloudProDB = testEnv.authenticatedContext(googlePlayCloudProUid).firestore();
 
-  await step("owner can write and read a path-bound sealed memory fact", async () => {
+  await step("memory facts require the Data Vault entitlement", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/memory_facts/memory-no-entitlement`),
+        memoryFact(aliceUid, "memory-no-entitlement")
+      )
+    );
+
+    await seedEntitlement(cloudOnlyUid, "hosted_quota_sync", "com.openburnbar.hostedQuotaSync.cloud.monthly");
+    await assertFails(
+      setDoc(
+        doc(cloudOnlyDB, `users/${cloudOnlyUid}/memory_facts/memory-cloud-only`),
+        memoryFact(cloudOnlyUid, "memory-cloud-only")
+      )
+    );
+  });
+
+  await step("Cloud Pro owner can write and read a path-bound sealed memory fact", async () => {
+    await seedEntitlement(aliceUid, "burnbar_pro_max", "com.openburnbar.proMax.v2.monthly");
     const docID = "memory-1";
-    await assertSucceeds(setDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID)));
+    await assertSucceeds(
+      setDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), memoryFact(aliceUid, docID))
+    );
     await assertSucceeds(getDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`)));
+  });
+
+  await step("Google Play Cloud Pro owner can write a path-bound sealed memory fact", async () => {
+    await seedEntitlement(
+      googlePlayCloudProUid,
+      "burnbar_pro_max",
+      "com.openburnbar.promax.v2.monthly"
+    );
+    const docID = "memory-play-cloud-pro";
+    await assertSucceeds(
+      setDoc(
+        doc(googlePlayCloudProDB, `users/${googlePlayCloudProUid}/memory_facts/${docID}`),
+        memoryFact(googlePlayCloudProUid, docID)
+      )
+    );
+  });
+
+  await step("Ultra owner can write a path-bound sealed memory fact", async () => {
+    await seedEntitlement(ultraUid, "burnbar_ultra", "com.openburnbar.ultra.monthly");
+    const docID = "memory-ultra";
+    await assertSucceeds(
+      setDoc(doc(ultraDB, `users/${ultraUid}/memory_facts/${docID}`), memoryFact(ultraUid, docID))
+    );
   });
 
   await step("cross-user memory fact access fails", async () => {

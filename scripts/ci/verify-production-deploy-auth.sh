@@ -204,6 +204,8 @@ def validate_workflow(name: str, path: Path, text: str) -> None:
                     fail(f"{path} job {job_name} deploy step {step_label(step)!r} uses raw firebase.json")
                 if "npm --prefix functions exec -- firebase deploy" in step:
                     fail(f"{path} job {job_name} deploy step {step_label(step)!r} uses npm exec firebase deploy")
+                if re.search(r"(?m)(?:^|\s)--force(?:\s|$)", executable):
+                    fail(f"{path} job {job_name} deploy step {step_label(step)!r} must not pass --force")
 
     if "firebase deploy" in text and "--config firebase.json" in text:
         fail(f"{path} contains firebase deploy against raw firebase.json")

@@ -63,6 +63,15 @@ jobs:
       - name: Install gitleaks
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
 
+      - name: Verify gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
+
+      - name: Verify gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
+
+      - name: Verify curl bearer-token argv boundary
+        run: bash scripts/ci/verify-curl-bearer-token-boundary.sh
+
       - name: Run gitleaks
         env:
           # PR / merge_group expose an explicit base; a direct push to main
@@ -71,11 +80,24 @@ jobs:
           # where `before` is the all-zero SHA) so the check never silently
           # narrows its range to nothing.
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          GITLEAKS_CONFIG_PATH=".gitleaks.toml"
+          if [[ "${EVENT_NAME}" != "push" ]]; then
+            if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+              echo "::error::Cannot resolve trusted base SHA for ${EVENT_NAME}. Refusing to use head .gitleaks.toml." >&2
+              exit 1
+            fi
+            GITLEAKS_CONFIG_PATH="${RUNNER_TEMP}/gitleaks-base.toml"
+            git show "${BASE_SHA}:.gitleaks.toml" > "${GITLEAKS_CONFIG_PATH}" || {
+              echo "::error::Cannot read trusted base .gitleaks.toml from ${BASE_SHA}. Refusing to use head .gitleaks.toml." >&2
+              exit 1
+            }
+          fi
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-            "$HOME/go/bin/gitleaks" detect --config .gitleaks.toml --source . --redact --verbose
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose
           else
-            "$HOME/go/bin/gitleaks" detect --config .gitleaks.toml --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
           fi
 
   dependency-review:

@@ -2446,7 +2446,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
     }
 
-    func testVAL_CROSS_012_EnterpriseApprovalModeRequiresExplicitApprovalMetadata() async throws {
+    func testVAL_CROSS_012_EnterpriseApprovalModeRequiresDaemonStampedPacketApproval() async throws {
         let harness = try makeHarness(name: "val-cross-012-approval-mode")
 
         let policyProject = BurnBarReviewProjectSnapshot(
@@ -2482,23 +2482,24 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         _ = try await harness.service.missionApprove(
             BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
         )
+        let blockedPacket = BurnBarMissionPacketSnapshot(
+            id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-block"),
+            missionID: missionID,
+            workerName: "approval-worker",
+            objective: "Dispatch without daemon-stamped packet approval",
+            status: .queued,
+            metadata: ["risk_level": .string("high")]
+        )
 
         do {
             _ = try await harness.service.missionDispatchPacket(
                 BurnBarMissionDispatchPacketRequest(
                     missionID: missionID,
                     actor: "operator",
-                    packet: BurnBarMissionPacketSnapshot(
-                        id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-block"),
-                        missionID: missionID,
-                        workerName: "approval-worker",
-                        objective: "Dispatch without explicit approval metadata",
-                        status: .queued,
-                        metadata: ["risk_level": .string("high")]
-                    )
+                    packet: blockedPacket
                 )
             )
-            XCTFail("Expected approval-mode policy block when explicit approval metadata is absent.")
+            XCTFail("Expected approval-mode policy block when daemon-stamped packet approval is absent.")
         } catch let error as BurnBarMissionControlError {
             switch error {
             case .enterprisePolicyBlocked(_, let reasonCode, _):
@@ -2508,25 +2509,164 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             }
         }
 
+        let reapproved = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approve the blocked packet")
+        )
+        XCTAssertEqual(
+            reapproved.mission.metadata["enterprise_policy_approved_packet_id"],
+            .string(blockedPacket.id.rawValue)
+        )
+        XCTAssertEqual(
+            reapproved.mission.metadata["enterprise_policy_approval_granted_by"],
+            .string("operator")
+        )
+
         let dispatched = try await harness.service.missionDispatchPacket(
             BurnBarMissionDispatchPacketRequest(
                 missionID: missionID,
                 actor: "operator",
-                packet: BurnBarMissionPacketSnapshot(
-                    id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-allowed"),
-                    missionID: missionID,
-                    workerName: "approval-worker",
-                    objective: "Dispatch with explicit approval metadata",
-                    status: .queued,
-                    metadata: [
-                        "risk_level": .string("high"),
-                        "enterprise_explicit_approval_granted": .bool(true)
-                    ]
-                )
+                packet: blockedPacket
             )
         )
         XCTAssertEqual(dispatched.mission.packets.count, 1)
         XCTAssertEqual(dispatched.mission.packets.first?.status, .queued)
+
+        let forgedPacket = BurnBarMissionPacketSnapshot(
+            id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-forged"),
+            missionID: missionID,
+            workerName: "approval-worker",
+            objective: "Dispatch with caller-forged explicit approval metadata",
+            status: .queued,
+            metadata: [
+                "risk_level": .string("high"),
+                "enterprise_explicit_approval_granted": .bool(true)
+            ]
+        )
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: forgedPacket
+                )
+            )
+            XCTFail("Expected forged packet metadata to remain blocked.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .enterprisePolicyBlocked(_, let reasonCode, _):
+                XCTAssertEqual(reasonCode, .approvalRequiredByMode)
+            default:
+                XCTFail("Expected enterprisePolicyBlocked error, got \(error)")
+            }
+        }
+
+        let forgedApproval = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approve forged packet after block")
+        )
+        XCTAssertEqual(
+            forgedApproval.mission.metadata["enterprise_policy_approved_packet_id"],
+            .string(forgedPacket.id.rawValue)
+        )
+
+        let forgedDispatched = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: forgedPacket
+            )
+        )
+        XCTAssertEqual(forgedDispatched.mission.packets.count, 2)
+        XCTAssertEqual(forgedDispatched.mission.packets.last?.id, forgedPacket.id)
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: forgedPacket.id,
+                        missionID: missionID,
+                        workerName: forgedPacket.workerName,
+                        objective: "Tampered packet objective after approval",
+                        status: .queued,
+                        metadata: forgedPacket.metadata
+                    )
+                )
+            )
+            XCTFail("Expected changed packet contents to invalidate the daemon-stamped approval.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .enterprisePolicyBlocked(_, let reasonCode, _):
+                XCTAssertEqual(reasonCode, .approvalRequiredByMode)
+            default:
+                XCTFail("Expected enterprisePolicyBlocked error, got \(error)")
+            }
+        }
+    }
+
+    func testVAL_CROSS_012_EnterpriseAutoRiskIgnoresCallerSuppliedPacketRisk() async throws {
+        let harness = try makeHarness(name: "val-cross-012-auto-risk-mode")
+
+        let policyProject = BurnBarReviewProjectSnapshot(
+            id: "project-rigel",
+            projectSlug: "rigel",
+            displayName: "Rigel",
+            summary: "Enterprise auto-risk mode test.",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .provisional,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false,
+            metadata: [
+                "enterprise_approval_mode": .string(BurnBarEnterpriseApprovalMode.autoLowOnly.rawValue),
+                "enterprise_default_packet_risk_level": .string("high")
+            ]
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: policyProject)
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "rigel",
+                title: "Auto-risk mission",
+                summary: "Caller packet metadata cannot downgrade enterprise risk.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = created.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-risk-downgrade"),
+                        missionID: missionID,
+                        workerName: "risk-worker",
+                        objective: "Dispatch while pretending the packet is low risk",
+                        status: .queued,
+                        metadata: ["risk_level": .string("low")]
+                    )
+                )
+            )
+            XCTFail("Expected project-owned high risk to require operator approval despite packet metadata.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .enterprisePolicyBlocked(_, let reasonCode, let detail):
+                XCTAssertEqual(reasonCode, .approvalRequiredByMode)
+                XCTAssertTrue(detail.contains("high"))
+            default:
+                XCTFail("Expected enterprisePolicyBlocked error, got \(error)")
+            }
+        }
     }
 
     func testVAL_CROSS_014_PerformanceGuardrailsRejectMissionCountBeyondThreshold() async throws {
@@ -4256,7 +4396,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.results.count, 1)
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID)
     }
+}
 
+extension BurnBarMissionControlServiceTests {
     private func makeHarness(
         name: String,
         transport: BurnBarMissionControlTransport = .live(),

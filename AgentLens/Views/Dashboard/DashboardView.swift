@@ -776,7 +776,20 @@ struct DashboardView: View {
         guard width > 0 else { return }
         // Match the old ViewThatFits break point without asking SwiftUI to build
         // and measure both expensive lane trees on every scroll/layout pass.
-        let shouldStack = width < 920
+        //
+        // Use a hysteresis dead-band around the 920pt break instead of a single
+        // hard threshold: collapse to stacked only below 910 and expand to
+        // side-by-side only above 930. Inside the 910...930 band the current
+        // layout is held, so sub-pixel width jitter from the GeometryReader when
+        // the user parks the divider near 920 can't oscillate the lane layout.
+        let shouldStack: Bool
+        if width < 910 {
+            shouldStack = true
+        } else if width > 930 {
+            shouldStack = false
+        } else {
+            shouldStack = overviewUsesStackedLanes
+        }
         guard shouldStack != overviewUsesStackedLanes else { return }
         overviewUsesStackedLanes = shouldStack
     }

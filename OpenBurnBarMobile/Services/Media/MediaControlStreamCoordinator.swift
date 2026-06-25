@@ -232,6 +232,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     func stop() async {
         _ = nextSupervisorGeneration()
+        let stoppedConnectionID = activeConnectionID
         supervisorTask?.cancel()
         supervisorTask = nil
         heartbeatTask?.cancel()
@@ -245,6 +246,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
             continuation.resume(throwing: CancellationError())
         }
         streamReadyContinuations.removeAll()
+        if let stoppedConnectionID {
+            await ControlSealSessionEstablisher.unregister(connectionID: stoppedConnectionID)
+        }
         phase = .stopped
         activeUID = nil
         activeConnectionID = nil
@@ -515,6 +519,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 heartbeatTask = nil
                 currentStream = nil
                 currentSendGate = nil
+                await ControlSealSessionEstablisher.unregister(connectionID: connectionID)
                 if Task.isCancelled { break }
                 await stream.close()
                 if lastFailureReason == nil {

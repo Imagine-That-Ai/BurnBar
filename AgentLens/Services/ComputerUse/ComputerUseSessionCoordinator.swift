@@ -185,6 +185,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
     #endif
     nonisolated(unsafe) var remoteConfigObserver: NSObjectProtocol?
+    nonisolated(unsafe) var phoneControlAttestationObserver: NSObjectProtocol?
 
     struct ApprovalContext: Sendable {
         let uid: String?
@@ -282,11 +283,26 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
                 self?.updateKillSwitch(true)
             }
         }
+        self.phoneControlAttestationObserver = NotificationCenter.default.addObserver(
+            forName: .phoneControlAttestationDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let required = notification.userInfo?[
+                ComputerUseRemoteConfigNotificationUserInfo.phoneControlAttestationRequired
+            ] as? Bool else { return }
+            Task { @MainActor in
+                self?.updatePhoneControlAttestationRequired(required)
+            }
+        }
     }
 
     deinit {
         if let remoteConfigObserver {
             NotificationCenter.default.removeObserver(remoteConfigObserver)
+        }
+        if let phoneControlAttestationObserver {
+            NotificationCenter.default.removeObserver(phoneControlAttestationObserver)
         }
     }
     public func updateEntitlement(_ entitlement: ComputerUseEntitlementSnapshot) {
@@ -316,6 +332,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         if enabled {
             Task { await panicHalt(source: .remoteConfig) }
         }
+    }
+
+    public func updatePhoneControlAttestationRequired(_ required: Bool) {
+        configuration.phoneControlAttestationRequired = required
     }
 
     @discardableResult
@@ -638,7 +658,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         switch input.kind {
         case .type, .key, .shortcut:
             return true
-        case .click, .dragDrop, .scroll, .pointerMove:
+        case .click, .dragDrop, .scroll, .pointerMove, .pointerClick:
             return false
         }
     }

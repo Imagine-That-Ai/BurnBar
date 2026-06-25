@@ -42,7 +42,12 @@ export function requireCloakedQueryVector(raw: unknown): number[] {
 }
 
 export function clampLimit(raw: unknown): number {
-  return Math.max(1, Math.min(Math.floor(Number(raw ?? 10)), MAX_LIMIT));
+  const parsed = Number(raw ?? 10);
+  if (!Number.isFinite(parsed)) {
+    return 10;
+  }
+
+  return Math.max(1, Math.min(Math.floor(parsed), MAX_LIMIT));
 }
 
 export const searchKnowledge = onCall(

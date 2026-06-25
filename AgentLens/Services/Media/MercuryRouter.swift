@@ -128,6 +128,12 @@ final class MercuryRouter: ObservableObject {
     typealias ComputerUseSessionEnsurer = @MainActor () async throws -> Void
     typealias FocusFollowModeApplier = @MainActor (AgentFocusFollowMode) -> Void
     typealias LocalStreamingCapabilityProvider = @MainActor @Sendable () -> MercuryStreamingCapabilitySnapshot
+    typealias PhoneControlAuthorityValidatorProvider = @MainActor () -> PhoneControlAuthorityValidator?
+    typealias PhoneControlAuthorityRegistrationProvider = @MainActor (
+        _ uid: String,
+        _ connectionID: String,
+        _ peerNodeID: String
+    ) async throws -> (publicKey: PhoneControlVerifyingKey, requiredAttestationHashBlake3: String?)
 
     @Published var phase: Phase = .idle
     @Published var lastError: String?
@@ -144,6 +150,8 @@ final class MercuryRouter: ObservableObject {
     let applyFocusFollowMode: FocusFollowModeApplier?
     let maxMirrorViewers: Int
     let remoteUnlockReadiness: MacRemoteUnlockReadinessService
+    let phoneControlAuthorityValidatorProvider: PhoneControlAuthorityValidatorProvider
+    let phoneControlAuthorityRegistrationProvider: PhoneControlAuthorityRegistrationProvider?
     let localStreamingCapabilityProvider: LocalStreamingCapabilityProvider
 
     var mirrorSinkFactory: MirrorSinkFactory?
@@ -195,6 +203,8 @@ final class MercuryRouter: ObservableObject {
         startScreenShare: ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
         remoteUnlockReadiness: MacRemoteUnlockReadinessService = .shared,
+        phoneControlAuthorityValidatorProvider: @escaping PhoneControlAuthorityValidatorProvider = { nil },
+        phoneControlAuthorityRegistrationProvider: PhoneControlAuthorityRegistrationProvider? = MercuryRouter.defaultPhoneControlAuthorityRegistrationProvider(),
         localStreamingCapabilityProvider: @escaping LocalStreamingCapabilityProvider = {
             MercuryRouter.cachedLocalStreamingCapabilities
         },
@@ -227,7 +237,24 @@ final class MercuryRouter: ObservableObject {
         self.maxMirrorViewers = max(1, maxMirrorViewers)
         self.cooldownSeconds = cooldownSeconds
         self.clock = clock
+        self.phoneControlAuthorityValidatorProvider = phoneControlAuthorityValidatorProvider
+        self.phoneControlAuthorityRegistrationProvider = phoneControlAuthorityRegistrationProvider
         installHostAuthGateListeners()
+    }
+
+    private static func defaultPhoneControlAuthorityRegistrationProvider() -> PhoneControlAuthorityRegistrationProvider? {
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        return { uid, connectionID, peerNodeID in
+            let registration = try await FirestorePhoneControlAuthorityProvider.shared.fetchAuthorityRegistration(
+                uid: uid,
+                connectionId: connectionID,
+                peerNodeId: peerNodeID
+            )
+            return (registration.publicKey, registration.requiredAttestationHashBlake3)
+        }
+        #else
+        return nil
+        #endif
     }
 
     var activeMirrorControlAuthorityPeerNodeID: String? {

@@ -17,6 +17,7 @@ struct MacCloudStoreLegalLinks: View {
         }
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(DesignSystem.Colors.ember)
+        .fixedSize()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("macCloudStore.legalLinks")
     }

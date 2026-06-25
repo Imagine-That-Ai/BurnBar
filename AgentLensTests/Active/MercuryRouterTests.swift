@@ -1,4 +1,5 @@
 import CoreMedia
+import CryptoKit
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -7,6 +8,8 @@ import OpenBurnBarMedia
 @testable import OpenBurnBar
 
 private enum MercuryRouterTestFixtures {
+    static let remoteUnlockAttestationHash = String(repeating: "a", count: 64)
+
     static let runtimeHealth = MercuryRuntimeHealthSnapshot(
         timestampMillis: 1_742_600_000_000,
         cpuUsagePercent: nil,
@@ -48,6 +51,7 @@ private enum MercuryRouterTestFixtures {
 /// auto-accepts (consent fast-path), and acks on the control stream.
 @MainActor
 final class MercuryRouterTests: XCTestCase {
+    private let remoteUnlockPrivateKey = Curve25519.Signing.PrivateKey()
 
     // MARK: - Test scaffolding
 
@@ -59,6 +63,8 @@ final class MercuryRouterTests: XCTestCase {
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
         remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
+        phoneControlAuthorityValidator: PhoneControlAuthorityValidator? = nil,
+        phoneControlAuthorityRegistrationProvider: MercuryRouter.PhoneControlAuthorityRegistrationProvider? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let scoped = makeRouterWithConsentStore(
@@ -69,6 +75,8 @@ final class MercuryRouterTests: XCTestCase {
             startScreenShare: startScreenShare,
             maxMirrorViewers: maxMirrorViewers,
             remoteUnlockReadiness: remoteUnlockReadiness,
+            phoneControlAuthorityValidator: phoneControlAuthorityValidator,
+            phoneControlAuthorityRegistrationProvider: phoneControlAuthorityRegistrationProvider,
             clock: clock
         )
         return (scoped.router, scoped.sink)
@@ -82,6 +90,8 @@ final class MercuryRouterTests: XCTestCase {
         startScreenShare: MercuryRouter.ScreenShareStarter? = nil,
         maxMirrorViewers: Int = 3,
         remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
+        phoneControlAuthorityValidator: PhoneControlAuthorityValidator? = nil,
+        phoneControlAuthorityRegistrationProvider: MercuryRouter.PhoneControlAuthorityRegistrationProvider? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink, consentStore: MercuryConsentStore) {
         let registry = MediaControlStreamRegistry()
@@ -105,6 +115,8 @@ final class MercuryRouterTests: XCTestCase {
         if consent {
             seedTestAutoAcceptGrants(in: consentStore)
         }
+        let effectivePhoneControlAuthorityValidator = phoneControlAuthorityValidator
+            ?? makeRemoteUnlockAuthorityFixture().validator
 
         let router = MercuryRouter(
             sessionCoordinator: sessionCoordinator,
@@ -117,6 +129,10 @@ final class MercuryRouterTests: XCTestCase {
             remoteUnlockReadiness: remoteUnlockReadiness ?? makeRemoteUnlockReadinessService(
                 lockStateProvider: { .unlocked }
             ),
+            phoneControlAuthorityValidatorProvider: {
+                effectivePhoneControlAuthorityValidator
+            },
+            phoneControlAuthorityRegistrationProvider: phoneControlAuthorityRegistrationProvider,
             localStreamingCapabilityProvider: {
                 MercuryRouterTestFixtures.localStreamingCapabilities
             },
@@ -1267,6 +1283,89 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
     }
 
+    func testRemoteUnlockHostUnlockRevokesSiblingSessions() async throws {
+        let now = Date()
+        var lockState = HermesRealtimeRelayMacLockState.loginWindow
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-primary",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session-1",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-sibling",
+                viewerID: "viewer-2",
+                viewerDeviceID: "iphone-2",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session-2",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-2",
+                    issuedAt: now,
+                    counter: 2
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-1",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-2",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-2",
+                now: now
+            )
+        )
+
+        lockState = .unlocked
+        await router.handleHostAuthGateOpenedForTesting(reason: "unit_unlock")
+
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-1",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session-2",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-2",
+                now: now
+            )
+        )
+    }
+
     func testRemoteUnlockCredentialResultPollsUntilHostUnlocksAndResumesCapture() async throws {
         let now = Date()
         var lockState = HermesRealtimeRelayMacLockState.loginWindow
@@ -1401,6 +1500,162 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertNil(router.pendingRequest)
         XCTAssertEqual(try extractStreaming(from: router.phase), "locked-with-session")
         XCTAssertEqual(consentStore.activeGrantCount, 0)
+    }
+
+    func testSignedRemoteUnlockSessionManualApprovalDoesNotReplayPrecheckCounter() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "locked-agent-terminal",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now,
+                    counter: 41
+                ),
+                agentTerminal: HermesRealtimeRelayAgentTerminalRequest(
+                    runtimeId: "codex",
+                    interactive: true
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let framesBeforeApproval = await sink.frames
+        XCTAssertTrue(framesBeforeApproval.isEmpty)
+        let pending = try XCTUnwrap(router.pendingRequest)
+        await router.acceptMirrorWithAgentTerminal(pending)
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .accepted)
+        XCTAssertEqual(ack.remoteUnlockState?.sessionId, "unlock-session")
+        XCTAssertEqual(startCount, 0)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(try extractStreaming(from: router.phase), "locked-agent-terminal")
+    }
+
+    func testRemoteUnlockSessionRejectsMissingBoundAttestationAfterRegistrationFetch() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        let validator = PhoneControlAuthorityValidator(
+            freshnessWindow: 60,
+            authorityMaxLifetime: 120,
+            controllerPinStore: nil,
+            pinEnforcement: { false },
+            replayCounterStore: PhoneControlReplayCounterStore(fileURL: temporaryRemoteUnlockAuthorityURL("replay")),
+            consumedProofStore: PhoneControlConsumedProofStore(fileURL: temporaryRemoteUnlockAuthorityURL("proofs"))
+        )
+        let publicKey = remoteUnlockPrivateKey.publicKey
+        let (router, sink) = makeRouter(
+            consent: false,
+            remoteUnlockReadiness: readiness,
+            phoneControlAuthorityValidator: validator,
+            phoneControlAuthorityRegistrationProvider: { _, _, peerNodeID in
+                XCTAssertEqual(peerNodeID, "ios-peer")
+                return (
+                    .ed25519(publicKey),
+                    MercuryRouterTestFixtures.remoteUnlockAttestationHash
+                )
+            },
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "locked-missing-attestation",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now,
+                    attestationHashBlake3: nil
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .unsupported)
+        XCTAssertEqual(ack.detail, "attestation_required")
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
+    }
+
+    func testRemoteUnlockSessionRejectsUnsignedLocalAuthenticationClaim() async throws {
+        let now = Date()
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
+        var startCount = 0
+        let (router, sink, consentStore) = makeRouterWithConsentStore(
+            consent: false,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            },
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "locked-with-unsigned-session",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now,
+                    signed: false
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .unsupported)
+        XCTAssertEqual(ack.detail, "signature_failure")
+        XCTAssertEqual(startCount, 0)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
+        XCTAssertFalse(
+            readiness.isRemoteUnlockSessionActive(
+                sessionId: "unlock-session",
+                peerNodeId: "ios-peer",
+                viewerDeviceId: "iphone-1",
+                now: now
+            )
+        )
     }
 
     func testSignedRemoteUnlockSessionRejectsMismatchedTransportPeer() async throws {
@@ -1867,13 +2122,47 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
+    private struct RemoteUnlockAuthorityFixture {
+        let validator: PhoneControlAuthorityValidator
+        let privateKey: Curve25519.Signing.PrivateKey
+    }
+
+    private func makeRemoteUnlockAuthorityFixture(
+        peerNodeId: String = "ios-peer",
+        requiredAttestationHashBlake3: String? = MercuryRouterTestFixtures.remoteUnlockAttestationHash
+    ) -> RemoteUnlockAuthorityFixture {
+        let privateKey = remoteUnlockPrivateKey
+        let validator = PhoneControlAuthorityValidator(
+            freshnessWindow: 60,
+            authorityMaxLifetime: 120,
+            controllerPinStore: nil,
+            pinEnforcement: { false },
+            replayCounterStore: PhoneControlReplayCounterStore(fileURL: temporaryRemoteUnlockAuthorityURL("replay")),
+            consumedProofStore: PhoneControlConsumedProofStore(fileURL: temporaryRemoteUnlockAuthorityURL("proofs"))
+        )
+        XCTAssertTrue(validator.registerPeer(
+            nodeId: peerNodeId,
+            publicKey: privateKey.publicKey,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        ))
+        return RemoteUnlockAuthorityFixture(validator: validator, privateKey: privateKey)
+    }
+
+    private func temporaryRemoteUnlockAuthorityURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("MercuryRouterTests-\(UUID().uuidString)-\(name).json")
+    }
+
     private func remoteUnlockSession(
         sessionId: String,
         peerNodeId: String,
         viewerDeviceId: String,
-        issuedAt: Date = Date()
+        issuedAt: Date = Date(),
+        signed: Bool = true,
+        counter: UInt64 = 1,
+        attestationHashBlake3: String? = MercuryRouterTestFixtures.remoteUnlockAttestationHash
     ) -> HermesRealtimeRelayRemoteUnlockSession {
-        return HermesRealtimeRelayRemoteUnlockSession(
+        var session = HermesRealtimeRelayRemoteUnlockSession(
             requestId: "remote-unlock-request",
             sessionId: sessionId,
             intent: .request,
@@ -1889,9 +2178,32 @@ final class MercuryRouterTests: XCTestCase {
                 counter: 1,
                 timestamp: issuedAt,
                 intentHashBlake3: "hash",
-                signatureEd25519: "signature"
+                signatureEd25519: "signature",
+                attestationHashBlake3: attestationHashBlake3
             )
         )
+        if signed {
+            do {
+                let signed = try ComputerUsePhoneControlSigner().sign(
+                    remoteUnlockSession: session,
+                    peerNodeId: peerNodeId,
+                    counter: counter,
+                    timestamp: issuedAt,
+                    privateKey: remoteUnlockPrivateKey
+                )
+                session.authority = HermesRealtimeRelayAuthorityEnvelope(
+                    peerNodeId: signed.peerNodeId,
+                    counter: signed.counter,
+                    timestamp: signed.timestamp,
+                    intentHashBlake3: signed.intentHashHex,
+                    signatureEd25519: signed.signatureBase64,
+                    attestationHashBlake3: attestationHashBlake3
+                )
+            } catch {
+                XCTFail("Failed to sign remote-unlock test session: \(error)")
+            }
+        }
+        return session
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {

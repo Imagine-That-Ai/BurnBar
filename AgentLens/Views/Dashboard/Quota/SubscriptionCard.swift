@@ -171,12 +171,11 @@ struct SubscriptionCard: View {
 
     private var mainRow: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
-            QuotaArcDial(
-                outer: visibleWeeklyOrMonthlyBucket ?? visiblePrimaryDisplayableBucket,
-                inner: visibleHourlyBucket,
-                provider: entry.provider,
-                diameter: 138
-            )
+            ViewThatFits(in: .horizontal) {
+                arcDial(diameter: 138)
+                arcDial(diameter: 108)
+            }
+            .layoutPriority(0)
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 metricRow(
@@ -230,7 +229,17 @@ struct SubscriptionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .layoutPriority(1)
         }
+    }
+
+    private func arcDial(diameter: CGFloat) -> some View {
+        QuotaArcDial(
+            outer: visibleWeeklyOrMonthlyBucket ?? visiblePrimaryDisplayableBucket,
+            inner: visibleHourlyBucket,
+            provider: entry.provider,
+            diameter: diameter
+        )
     }
 
     @ViewBuilder
@@ -567,7 +576,8 @@ struct SubscriptionListRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .frame(minWidth: 180, alignment: .leading)
+            .frame(minWidth: 140, idealWidth: 180, alignment: .leading)
+            .layoutPriority(1)
 
             QuotaDualWindowStrip(
                 hourlyBucket: entry.hourlyBucket,
@@ -582,7 +592,9 @@ struct SubscriptionListRow: View {
                 .font(.system(size: 18, weight: .bold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(theme.gradient)
-                .frame(width: 60, alignment: .trailing)
+                .lineLimit(1)
+                .fixedSize()
+                .frame(minWidth: 60, alignment: .trailing)
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)

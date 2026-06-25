@@ -2,6 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/curl-bearer.sh
+source scripts/lib/curl-bearer.sh
+
 ENDPOINT="${OPENBURNBAR_MCP_ENDPOINT:-http://127.0.0.1:8080/mcp}"
 
 # ---------------------------------------------------------------------------
@@ -24,9 +27,9 @@ missing_auth_status="$(curl -sS -o /tmp/openburnbar-mcp-missing-auth.json -w '%{
   "$ENDPOINT")"
 test "$missing_auth_status" = "401"
 
-bad_origin_status="$(curl -sS -o /tmp/openburnbar-mcp-bad-origin.json -w '%{http_code}' \
+bad_origin_status="$(obb_curl_with_bearer "invalid.invalid" \
+  -sS -o /tmp/openburnbar-mcp-bad-origin.json -w '%{http_code}' \
   -H 'origin: https://attacker.invalid' \
-  -H 'authorization: Bearer invalid.invalid' \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
@@ -63,8 +66,8 @@ SKIP=0
 ZERO_VEC="$(python3 -c 'import json;print(json.dumps([0.0]*384))')"
 
 call_knowledge() { # $1=bearer  $2=arguments-json -> prints http_code, body in /tmp/pk.json
-  python3 - "$2" <<'PY' | curl -sS -o /tmp/pk.json -w '%{http_code}' \
-    -H "authorization: Bearer $1" -H 'content-type: application/json' \
+  python3 - "$2" <<'PY' | obb_curl_with_bearer "$1" -sS -o /tmp/pk.json -w '%{http_code}' \
+    -H 'content-type: application/json' \
     -H 'accept: application/json, text/event-stream' --data-binary @- "$ENDPOINT"
 import json,sys
 print(json.dumps({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"burnbar_search_knowledge","arguments":json.loads(sys.argv[1])}}))
@@ -89,7 +92,7 @@ else echo "SKIP case6 revoked-client (set PENSIEVE_REVOKED_BEARER)"; SKIP=$((SKI
 
 # Case 8 — Non-entitled gate: free user calling configureKnowledgeSource must 403/permission-denied.
 if [ -n "${PENSIEVE_FREE_BEARER:-}" ] && [ -n "${PENSIEVE_FUNCTIONS_URL:-}" ]; then
-  code="$(curl -sS -o /tmp/pk.json -w '%{http_code}' -H "authorization: Bearer $PENSIEVE_FREE_BEARER" \
+  code="$(obb_curl_with_bearer "$PENSIEVE_FREE_BEARER" -sS -o /tmp/pk.json -w '%{http_code}' \
     -H 'content-type: application/json' --data '{"data":{"sourceKind":"notes"}}' \
     "$PENSIEVE_FUNCTIONS_URL/configureKnowledgeSource")"
   if [ "$code" = "403" ] || grep -q "permission-denied" /tmp/pk.json; then

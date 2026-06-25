@@ -31,6 +31,12 @@ bash -n scripts/ci/post-deploy-health-gate.sh
 bash scripts/ci/verify-hosted-mcp-deploy-health.sh
 
 echo "==> production ops plane scripts"
+bash -n scripts/rollback.sh
+bash -n scripts/rollback.test.sh
+bash scripts/rollback.test.sh
+bash -n scripts/ops/rollback-macos-appcast.sh
+bash -n scripts/ops/rollback-macos-appcast.test.sh
+bash scripts/ops/rollback-macos-appcast.test.sh
 bash -n scripts/ops/activate-production-ops-plane.sh
 bash -n scripts/ops/verify-production-ops-plane.sh
 bash -n scripts/ops/verify-firestore-disaster-recovery.sh

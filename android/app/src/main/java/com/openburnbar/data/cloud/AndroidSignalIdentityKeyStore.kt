@@ -67,8 +67,10 @@ object AndroidSignalIdentityKeyStore {
     /**
      * Publish the PUBLIC identity key once (idempotent). Client-direct write; the doc
      * must satisfy firestore.rules `validSignalIdentityPublicKeyDocument` +
-     * `signalIdentityMatchesKnownDevice` (the escrow device must already be pending/trusted
-     * with a matching keyVersion).
+     * `signalIdentityMatchesPendingDevice` (the escrow device must still be pending
+     * with a matching keyVersion). Once the device is trusted, missing identity
+     * repair/rotation must go through a server path because rules cannot hash
+     * `publicKeyData` to verify a self-asserted fingerprint.
      */
     suspend fun publishIfNeeded(
         uid: String,

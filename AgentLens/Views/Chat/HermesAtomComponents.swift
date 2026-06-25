@@ -319,7 +319,12 @@ struct HermesRichBubble: View {
         GeometryReader { proxy in
             content(width: proxy.size.width)
         }
-        .frame(height: estimatedHeight)
+        // Use the row count only as a *minimum* height. A hard `.frame(height:)`
+        // pinned to a line estimate that can lag the real wrap (the fallback
+        // branch undercounts wrapped rows at narrow widths) would clip the last
+        // line mid-resolve. With `minHeight`, the self-sizing content wins when
+        // its intrinsic height exceeds the estimate, so no row is ever clipped.
+        .frame(minHeight: estimatedHeight, alignment: .topLeading)
     }
 
     private var estimatedHeight: CGFloat {
@@ -333,8 +338,14 @@ struct HermesRichBubble: View {
 
     @ViewBuilder
     private func content(width: CGFloat) -> some View {
-        if lines.isEmpty {
-            attributedFallback(width: width)
+        // During a resize drag the bubble width can momentarily collapse toward
+        // zero. Laying the resolved fragments into a 0-wide frame would stack
+        // every fragment on top of each other; render the self-sizing fallback
+        // at a 1pt floor instead until the width recovers. `measure()` already
+        // no-ops at width <= 0, so the resolved `lines` are still valid once it
+        // widens again.
+        if lines.isEmpty || width < 1 {
+            attributedFallback(width: max(width, 1))
                 .task(id: measureKey(width: width)) { await measure(at: width) }
         } else {
             VStack(alignment: .leading, spacing: 0) {
@@ -369,6 +380,12 @@ struct HermesRichBubble: View {
                     .italic(style.contains(.italic))
                     .strikethrough(style.contains(.strikethrough))
                     .foregroundStyle(baseColor)
+                    // Pretext computes the per-fragment line breaks; this is one
+                    // already-wrapped run, so cap it to a single line and let it
+                    // tail-truncate as a backstop rather than push the row past
+                    // `width` if an oversized run ever slips through.
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .padding(.leading, fragment.gapBefore)
             case .atom(let atom, let label):
                 HermesAtomChip(atom: atom, label: label, size: .inline(baseSize: baseSize))
@@ -449,7 +466,13 @@ struct HermesRichBubble: View {
     }
 
     private func measureKey(width: CGFloat) -> String {
-        "\(text.hashValue)|\(baseSize)|\(width)|\(resolvedLineHeight)"
+        // Quantize the width to ~8pt buckets so a resize drag re-keys the
+        // measure `.task` once per bucket instead of once per pixel — the raw
+        // float would spawn an async Pretext relayout on every sample. Pretext
+        // re-wraps at the bucket width, which is visually indistinguishable from
+        // the exact width at this granularity.
+        let bucket = Int((width / 8).rounded(.down))
+        return "\(text.hashValue)|\(baseSize)|\(bucket)|\(resolvedLineHeight)"
     }
 
     private func measure(at width: CGFloat) async {

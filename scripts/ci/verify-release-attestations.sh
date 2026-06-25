@@ -41,6 +41,7 @@ version="${tag#v}"
 predicate_type="${OPENBURNBAR_RELEASE_PREDICATE_TYPE:-https://openburnbar.dev/attestations/release-artifact/v1}"
 certificate_identity="${OPENBURNBAR_RELEASE_CERTIFICATE_IDENTITY:-https://github.com/${repo}/.github/workflows/release.yml@refs/tags/${tag}}"
 certificate_issuer="${OPENBURNBAR_RELEASE_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+expected_runner_environment="${OPENBURNBAR_RELEASE_RUNNER_ENVIRONMENT:-github-hosted}"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "FAIL: gh CLI is required." >&2
@@ -70,22 +71,39 @@ tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-release-attest.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 downloaded=0
-download_pattern() {
+download_required_pattern() {
   local pattern="$1"
-  before_count="$(find "$tmp_dir" -type f | wc -l | tr -d ' ')"
-  gh release download "$tag" --repo "$repo" --pattern "$pattern" --dir "$tmp_dir" --clobber >/dev/null 2>&1 || true
-  after_count="$(find "$tmp_dir" -type f | wc -l | tr -d ' ')"
-  if [[ "$after_count" -eq "$before_count" ]]; then
-    echo "WARN: no release assets matched pattern '$pattern' for $tag" >&2
+  local pattern_dir
+  pattern_dir="$(mktemp -d "$tmp_dir/pattern.XXXXXX")"
+  gh release download "$tag" --repo "$repo" --pattern "$pattern" --dir "$pattern_dir" --clobber >/dev/null 2>&1 || true
+  if [[ "$(find "$pattern_dir" -type f | wc -l | tr -d ' ')" -eq 0 ]]; then
+    echo "FAIL: required release asset pattern '$pattern' matched no assets for $tag." >&2
+    exit 1
   fi
+  find "$pattern_dir" -type f -exec cp -f {} "$tmp_dir/" \;
+  rm -rf "$pattern_dir"
+}
+
+download_optional_pattern() {
+  local pattern="$1"
+  local pattern_dir
+  pattern_dir="$(mktemp -d "$tmp_dir/pattern.XXXXXX")"
+  gh release download "$tag" --repo "$repo" --pattern "$pattern" --dir "$pattern_dir" --clobber >/dev/null 2>&1 || true
+  if [[ "$(find "$pattern_dir" -type f | wc -l | tr -d ' ')" -eq 0 ]]; then
+    echo "WARN: no release sidecar assets matched pattern '$pattern' for $tag" >&2
+    rm -rf "$pattern_dir"
+    return
+  fi
+  find "$pattern_dir" -type f -exec cp -f {} "$tmp_dir/" \;
+  rm -rf "$pattern_dir"
 }
 
 for pattern in "${patterns[@]}"; do
-  download_pattern "$pattern"
+  download_required_pattern "$pattern"
 done
 
-download_pattern "*.sigstore.json"
-download_pattern "*.predicate.json"
+download_optional_pattern "*.sigstore.json"
+download_optional_pattern "*.predicate.json"
 
 while IFS= read -r -d '' asset; do
   case "$asset" in
@@ -123,19 +141,80 @@ PY
     --certificate-oidc-issuer "$certificate_issuer" \
     "$asset" >/dev/null
 
-  python3 - "$asset" "$predicate_path" "$tag" "$version" "$repo" "$predicate_type" <<'PY'
+  python3 - "$asset" "$bundle_path" "$predicate_path" "$tag" "$version" "$repo" "$predicate_type" "$expected_runner_environment" <<'PY'
+import base64
 import hashlib
 import json
 import sys
 from pathlib import Path
 
 asset = Path(sys.argv[1])
-predicate = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-tag = sys.argv[3]
-version = sys.argv[4]
-repo = sys.argv[5]
-predicate_type = sys.argv[6]
+bundle = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+sidecar_predicate = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
+tag = sys.argv[4]
+version = sys.argv[5]
+repo = sys.argv[6]
+predicate_type = sys.argv[7]
+expected_runner_environment = sys.argv[8]
 actual_sha256 = hashlib.sha256(asset.read_bytes()).hexdigest()
+
+
+def decode_json_payload(value):
+    if not isinstance(value, str):
+        return None
+    padded = value + ("=" * (-len(value) % 4))
+    for kwargs in ({}, {"altchars": b"-_"}):
+        try:
+            raw = base64.b64decode(padded.encode("ascii"), validate=True, **kwargs)
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            continue
+    return None
+
+
+def candidate_payloads(node):
+    if isinstance(node, dict):
+        for key in ("dsseEnvelope", "DSSEEnvelope", "envelope", "Envelope"):
+            envelope = node.get(key)
+            if isinstance(envelope, dict):
+                yield envelope.get("payload")
+        payload = node.get("payload")
+        if isinstance(payload, str) and "payloadType" in node:
+            yield payload
+        legacy_payload = node.get("Payload")
+        if isinstance(legacy_payload, dict):
+            yield legacy_payload.get("body")
+        for value in node.values():
+            yield from candidate_payloads(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from candidate_payloads(value)
+
+
+def signed_statement_from_bundle(bundle_json):
+    if isinstance(bundle_json, dict) and "predicateType" in bundle_json:
+        return bundle_json
+    for encoded_payload in candidate_payloads(bundle_json):
+        statement = decode_json_payload(encoded_payload)
+        if isinstance(statement, dict) and "predicateType" in statement:
+            return statement
+    raise SystemExit(f"{asset.name}: verified Sigstore bundle did not contain a signed in-toto predicate payload")
+
+
+statement = signed_statement_from_bundle(bundle)
+statement_predicate_type = statement.get("predicateType")
+if statement_predicate_type != predicate_type:
+    raise SystemExit(
+        f"{asset.name}: signed statement predicateType mismatch: got {statement_predicate_type!r}, want {predicate_type!r}"
+    )
+
+predicate = statement.get("predicate")
+if isinstance(predicate, dict) and isinstance(predicate.get("Data"), dict) and "artifact" not in predicate:
+    predicate = predicate["Data"]
+if not isinstance(predicate, dict):
+    raise SystemExit(f"{asset.name}: signed statement predicate is not a JSON object")
+if predicate != sidecar_predicate:
+    raise SystemExit(f"{asset.name}: release predicate sidecar does not match the signed Sigstore bundle payload")
 
 expected = {
     "predicateType": predicate_type,
@@ -146,6 +225,7 @@ expected = {
     "release.tag": tag,
     "release.repository": repo,
     "release.ref": f"refs/tags/{tag}",
+    "runner.environment": expected_runner_environment,
 }
 
 checks = {
@@ -157,6 +237,7 @@ checks = {
     "release.tag": predicate.get("release", {}).get("tag"),
     "release.repository": predicate.get("release", {}).get("repository"),
     "release.ref": predicate.get("release", {}).get("ref"),
+    "runner.environment": predicate.get("runner", {}).get("environment"),
 }
 
 for key, want in expected.items():

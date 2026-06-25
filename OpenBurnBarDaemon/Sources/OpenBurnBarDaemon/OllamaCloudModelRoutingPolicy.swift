@@ -39,33 +39,31 @@ enum OllamaCloudModelRoutingPolicy {
             return nil
         }
 
-        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let exactCloudModel = configuration.preferredModels.first {
-            $0.id.lowercased() == normalized || $0.aliases.contains { $0.lowercased() == normalized }
+        let normalizedRequested = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedBase = directCloudModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedCanonical = canonicalCloudModelID(modelName)?.lowercased()
+        let configuredCloudModel = configuration.preferredModels.first { model in
+            isExplicitlyConfiguredCloudModel(
+                model,
+                normalizedRequested: normalizedRequested,
+                normalizedBase: normalizedBase,
+                normalizedCanonical: normalizedCanonical
+            )
         }
-        let concreteCloudModel: BurnBarCatalogModel? = exactCloudModel.flatMap {
-            if isCloudFamilyModelID($0.id) || cloudAliasBaseModelID(from: $0.id) != nil {
-                return nil
-            }
-            return $0
-        }
-        let cloudFamily = configuration.provider.models.first { $0.id == "ollama-cloud-family" }
-        let modelTemplate = concreteCloudModel ?? cloudFamily
-        guard let modelTemplate else { return nil }
+        guard let configuredCloudModel else { return nil }
 
-        let resolvedModelID = concreteCloudModel?.id ?? directCloudModelID
+        let resolvedModelID = cloudAliasBaseModelID(from: configuredCloudModel.id) ?? configuredCloudModel.id
         let canonicalModelID: String
-        if let concreteCloudModel,
-           concreteCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
-            canonicalModelID = concreteCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
-                ?? concreteCloudModel.canonicalModelID
-                ?? concreteCloudModel.id
+        if configuredCloudModel.id.caseInsensitiveCompare(directCloudModelID) != .orderedSame {
+            canonicalModelID = configuredCloudModel.exactCanonicalModelID(forRequestedModelID: modelName)
+                ?? configuredCloudModel.exactCanonicalModelID(forRequestedModelID: directCloudModelID)
+                ?? configuredCloudModel.canonicalModelID
+                ?? normalizedCanonical
+                ?? configuredCloudModel.id
         } else {
-            canonicalModelID = directCloudModelID
+            canonicalModelID = normalizedBase
         }
-        let capabilityClassID = concreteCloudModel?.capabilityClassID
-            ?? concreteCloudModel?.id
-            ?? directCloudModelID
+        let capabilityClassID = configuredCloudModel.capabilityClassID ?? configuredCloudModel.id
 
         return BurnBarCatalogModel(
             id: resolvedModelID,
@@ -73,13 +71,31 @@ enum OllamaCloudModelRoutingPolicy {
             visibility: .hidden,
             aliases: [modelName],
             matchers: [],
-            pricing: modelTemplate.pricing,
+            pricing: configuredCloudModel.pricing,
             canonicalModelID: canonicalModelID,
             capabilityClassID: capabilityClassID,
-            capabilityClassRank: concreteCloudModel?.capabilityClassRank
-                ?? cloudFamily?.capabilityClassRank
-                ?? modelTemplate.capabilityClassRank
+            capabilityClassRank: configuredCloudModel.capabilityClassRank
         )
+    }
+
+    private static func isExplicitlyConfiguredCloudModel(
+        _ model: BurnBarCatalogModel,
+        normalizedRequested: String,
+        normalizedBase: String,
+        normalizedCanonical: String?
+    ) -> Bool {
+        if isCloudFamilyModelID(model.id) {
+            return false
+        }
+
+        let configuredIDs = [model.id, model.canonicalModelID].compactMap(\.self) + model.aliases
+        let exactModelIDs = configuredIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        let requestedIDs = [normalizedRequested, normalizedBase, normalizedCanonical]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        return requestedIDs.contains { exactModelIDs.contains($0) }
     }
 
     static func mayClaimModelID(_ rawID: String, catalog: BurnBarCatalog) -> Bool {

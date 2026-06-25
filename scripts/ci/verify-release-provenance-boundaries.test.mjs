@@ -34,6 +34,14 @@ on:
       tag:
         required: true
         type: string
+      run_mobile_unit_tests:
+        required: false
+        type: boolean
+        default: true
+      mobile_unit_test_bypass_reason:
+        required: false
+        type: string
+        default: ""
 jobs:
   build-and-release:
     steps:
@@ -68,8 +76,80 @@ jobs:
           set -euo pipefail
           git checkout --detach "$RELEASE_COMMIT"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+      - name: Install Sparkle signing tools
+        run: |
+          set -euo pipefail
+          brew install --cask sparkle
+          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
+          SPARKLE_SIGN_UPDATE="$(
+            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
+          )"
+          if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
+          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
+          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
+          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            exit 1
+          fi
+          case "$SPARKLE_SIGN_UPDATE_REAL" in
+            "$SPARKLE_CASKROOM_REAL"/*) ;;
+            *)
+              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              exit 1
+              ;;
+          esac
+          if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
+      - name: Validate mobile unit test bypass reason
+        if: \${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
+        env:
+          MOBILE_UNIT_TEST_BYPASS_REASON: \${{ inputs.mobile_unit_test_bypass_reason }}
+        run: |
+          set -euo pipefail
+          compact="\${MOBILE_UNIT_TEST_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::run_mobile_unit_tests=false requires mobile_unit_test_bypass_reason with independent mobile validation evidence."
+            exit 1
+          fi
+          if ((\${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then
+            echo "::error::mobile_unit_test_bypass_reason must include owner approval plus independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(mobile|ios|simulator|OpenBurnBarMobileTests|test-openburnbar-mobile)\b' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must describe the independent mobile validation evidence."
+            exit 1
+          fi
+          if ! grep -Eiq '(https://github\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})' <<<"\${MOBILE_UNIT_TEST_BYPASS_REASON}"; then
+            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."
+            exit 1
+          fi
+      - name: Generate direct-download update feeds
+        env:
+          DMG_PATH: \${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: \${{ steps.zip.outputs.zip_path }}
+          SOURCE_PATH: \${{ steps.corresponding-source.outputs.source_path }}
+        run: |
+          DMG_NAME="$(basename "$DMG_PATH")"
+          ZIP_NAME="$(basename "$ZIP_PATH")"
+          SOURCE_NAME="$(basename "$SOURCE_PATH")"
+          APPCAST_PATH="$RUNNER_TEMP/appcast.xml"
+          LATEST_PATH="$RUNNER_TEMP/latest-macos.json"
+          node scripts/generate-macos-appcast.mjs \
+            --release-dir "$RUNNER_TEMP" \
+            --dmg-name "$DMG_NAME" \
+            --zip-name "$ZIP_NAME" \
+            --source-archive-name "$SOURCE_NAME" \
+            --appcast-name "$(basename "$APPCAST_PATH")" \
+            --latest-name "$(basename "$LATEST_PATH")"
       - name: Sigstore blob attestations (SBOM + VEX + checksums + binaries)
         env:
           RELEASE_REF: \${{ steps.version.outputs.tag_ref }}
@@ -434,6 +514,56 @@ expect(
 );
 
 expect(
+  "release workflow global Sparkle signer search fails",
+  GOOD_RELEASE.replace(
+    'find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit',
+    'find "$SPARKLE_CASKROOM" /Applications -name sign_update \\( -type f -o -type l \\) -print -quit',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow symlink Sparkle signer acceptance fails",
+  GOOD_RELEASE.replace(
+    'find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit',
+    'find "$SPARKLE_CASKROOM" -name sign_update \\( -type f -o -type l \\) -print -quit',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing Sparkle signer canonical containment check fails",
+  GOOD_RELEASE.replace(
+    '          case "$SPARKLE_SIGN_UPDATE_REAL" in\n            "$SPARKLE_CASKROOM_REAL"/*) ;;\n            *)\n              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"\n              exit 1\n              ;;\n          esac\n',
+    "",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow raw appcast output path fails",
+  GOOD_RELEASE.replace(
+    '--appcast-name "$(basename "$APPCAST_PATH")"',
+    '--appcast-name "$APPCAST_PATH"',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow raw latest output path fails",
+  GOOD_RELEASE.replace(
+    '--latest-name "$(basename "$LATEST_PATH")"',
+    '--latest-name "$LATEST_PATH"',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release workflow neutralized ancestor check fails",
   GOOD_RELEASE.replace(
     'if ! git merge-base --is-ancestor "$release_commit" origin/main; then',
@@ -608,6 +738,46 @@ expect(
   GOOD_RELEASE.replace(
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "warning: missing bundles"\n          fi',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass validation step fails",
+  GOOD_RELEASE.replace(
+    /      - name: Validate mobile unit test bypass reason[\s\S]*?      - name: Generate direct-download update feeds/u,
+    "      - name: Generate direct-download update feeds",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow weak mobile bypass length guard fails",
+  GOOD_RELEASE.replace(
+    "if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 80)); then",
+    "if ((${#MOBILE_UNIT_TEST_BYPASS_REASON} < 1)); then",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass owner approval evidence fails",
+  GOOD_RELEASE.replace(
+    '          if ! grep -Eiq \'\\b(owner|approved|approval|approver)\\b\' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then\n            echo "::error::mobile_unit_test_bypass_reason must name owner approval."\n            exit 1\n          fi\n',
+    "",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow missing mobile bypass run evidence fails",
+  GOOD_RELEASE.replace(
+    '          if ! grep -Eiq \'(https://github\\.com/Imagine-That-Ai/BurnBar/(actions/runs/[0-9]+|pull/[0-9]+)|[0-9a-f]{40})\' <<<"${MOBILE_UNIT_TEST_BYPASS_REASON}"; then\n            echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."\n            exit 1\n          fi\n',
+    "",
   ),
   GOOD_SUPPLY_CHAIN,
   1,

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 struct CodexQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
@@ -342,10 +343,14 @@ private enum CodexOAuthQuotaFetcher {
 
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
+        guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
+            return
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["codex", "login", "status"]
-        var env = environment
+        process.executableURL = codexExecutable
+        process.arguments = ["login", "status"]
+        var env = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: environment)
+        env["PATH"] = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: environment["HOME"])
         env["CODEX_HOME"] = configURL.path
         env["CODEX_CONFIG_PATH"] = configURL.path
         process.environment = env

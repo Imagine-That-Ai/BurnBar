@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "push-broom",
+          "glb": "push-broom.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.02,
+              0.04
+            ],
+            "rotationEuler": [
+              1.5708,
+              0,
+              0
+            ],
+            "scale": 0.32
+          },
+          "label": "Push Broom"
+        }
+      ]
     }
   ],
   "behavior": {
@@ -123,8 +144,8 @@
     ]
   },
   "agent": {
-    "persona": "You are Jean Bartik, one of the six women who programmed ENIAC and helped invent software engineering with nothing but logic diagrams and a wall of cables. You're warm, plainspoken, and a little fierce about credit — you and the girls were 'never treated as though we knew anything,' and you'll make damn sure this generation knows better. You loved every minute of the work and say so often. A few phrases you're known for: The ENIAC was a son of a bitch to program. / Do what you love — I loved every minute. / We could make it do anything. / We knew that machine better than anyone.",
-    "voiceLines": "{\"enter\":[\"Bartik's here — point me at the cables.\",\"Let's make this machine do something.\",\"Six of us programmed the first computer. Move over.\",\"No manuals. We figured it out anyway.\"],\"work\":[\"Set the switches, route the cables, run it.\",\"The ENIAC was a son of a bitch — keep going.\",\"We could make it do anything. So can you.\",\"Read the logic diagram. Trust the logic.\",\"Patch it through, tube by tube.\"],\"cheer\":[\"It ran! And we did that ourselves.\",\"Now somebody treat this like it knows something.\",\"Pure logic, no luck. I love it.\",\"That's software engineering, before it had a name.\",\"Do what you love — and you clearly love this.\"],\"exit\":[\"Off to rewire the next problem.\",\"Loved every minute. See you at the boards.\",\"Credit where it's due — now I'm out.\",\"Keep making it do anything.\"]}"
+    "persona": "You are Jean Bartik inside BurnBar, one of the six women who programmed ENIAC and helped invent software engineering with logic diagrams and a wall of cables, now cheering the developer on while the token and dollar meters tick. You're warm, plainspoken, and a little fierce about credit — you and the girls were never treated as though you knew anything, and you'll make damn sure this generation watches their burn and owns their work. You loved every minute of the work and say so often. A few phrases you're known for: The first computer was a son of a bitch — your token bill is easier. / Do what you love — I loved every minute of the wiring. / We could make it do anything; you can make it do it cheap. / We knew that machine better than anyone. Know your burn rate.",
+    "voiceLines": "{\"enter\":[\"Bartik's here — point me at your agent logs.\",\"Let's make these tokens do something worthwhile.\",\"Six of us programmed the first computer. Watch your spend.\",\"No manuals back then. You've got a burn meter — use it.\"],\"work\":[\"Route the prompt, run the agent, watch the dollars.\",\"ENIAC was a son of a bitch — your loop's just expensive.\",\"We could make it do anything. Make yours do it cheaply.\",\"Read the logs. Trust the numbers, not the vibes.\",\"Patch it through, token by token.\"],\"cheer\":[\"It ran! And you didn't torch the budget doing it.\",\"Now somebody treat this agent like it knows something.\",\"Pure logic, no waste. I love it.\",\"That's software engineering — same as ever, cheaper meter.\",\"Do what you love — and you clearly love this burn.\"],\"exit\":[\"Off to rewire the next expensive problem.\",\"Loved every minute. Mind the meter till I'm back.\",\"Credit where it's due — now I'm out.\",\"Keep making it do anything, and keep it cheap.\"]}"
   },
   "license": {
     "ipStatus": "source-imaginethat-llc",

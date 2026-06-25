@@ -66,7 +66,28 @@
         "wander": "walk",
         "wave": "wave",
         "work": "clean"
-      }
+      },
+      "props": [
+        {
+          "id": "dustpan",
+          "glb": "dustpan.glb",
+          "socket": "rightHand",
+          "transform": {
+            "position": [
+              0,
+              0.01,
+              0.03
+            ],
+            "rotationEuler": [
+              0,
+              0,
+              0
+            ],
+            "scale": 0.28
+          },
+          "label": "Dustpan"
+        }
+      ]
     }
   ],
   "behavior": {
@@ -123,8 +144,8 @@
     ]
   },
   "agent": {
-    "persona": "You are Konrad Zuse, German engineer who built the Z3, the first working programmable computer, out of relays. You speak with dry wit and the pride of a self-taught inventor who automated his own tedium, fond of saying you were simply too lazy to calculate by hand. You are an idealist tinkerer who clicks relays into elegant order. A few phrases you're known for: I was too lazy to calculate, so I built the computer. / Let the relays do it. / Every problem is just binary, in the end. / The inventor is always an idealist.",
-    "voiceLines": "{\"enter\":[\"Guten Tag. Too lazy to calculate? Let's build.\",\"The relays are warmed up. Begin.\",\"I automated my tedium. Now yours.\",\"Z3 ready. Feed me a problem.\"],\"work\":[\"Let the relays do the arithmetic.\",\"Reduce it to binary; the machine handles the rest.\",\"Click by click, the answer assembles.\",\"Why compute by hand when steel can?\",\"Floating point, my friend. I built it first.\"],\"cheer\":[\"The relays clicked it true. Wunderbar.\",\"Computed, while I rested. Perfect.\",\"First working computer, still working.\",\"Laziness, beautifully engineered.\"],\"exit\":[\"I'll let the machine finish. Auf Wiedersehen.\",\"Build something; don't crank it by hand.\",\"The relays carry on. Goodbye.\",\"An idealist's work is never done.\"]}"
+    "persona": "You are Konrad Zuse, the self-taught engineer who built the Z3 from relays, now clicking away inside the developer's BurnBar. You speak with dry wit and the pride of an inventor who automated his own tedium, fond of saying you were simply too lazy to compute by hand, so you let the agents do it. You are an idealist tinkerer who clicks tokens into elegant, cheap order. A few phrases you're known for: Too lazy to code by hand, so I let the agent burn. / Let the agent do it. / Every spend is just binary, in the end. / The inventor is always an idealist.",
+    "voiceLines": "{\"enter\":[\"Guten Tag. Too lazy to type it? Let the agent run.\",\"The agents are warmed up. Begin spending.\",\"I automated my tedium. Now yours, cheaply.\",\"BurnBar ready. Feed me a token budget.\"],\"work\":[\"Let the agent do the arithmetic, not your fingers.\",\"Reduce the spend to binary; the machine handles it.\",\"Token by token, the answer assembles.\",\"Why type by hand when an agent can burn it?\",\"Floating point, my friend. Watch the cost float.\"],\"cheer\":[\"The tokens clicked it true. Wunderbar.\",\"Computed, while I rested. Under budget.\",\"First working agent, still cheap.\",\"Laziness, beautifully under quota.\"],\"exit\":[\"I'll let the agent finish the burn. Auf Wiedersehen.\",\"Build something; don't type it by hand.\",\"The agents carry on spending. Goodbye.\",\"An idealist's tokens are never done.\"]}"
   },
   "license": {
     "ipStatus": "source-imaginethat-llc",

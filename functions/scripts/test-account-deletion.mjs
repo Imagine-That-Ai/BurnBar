@@ -23,6 +23,10 @@ class FakeDocument {
   async listCollections() {
     return [...this.collections.values()];
   }
+
+  async set(data, options = {}) {
+    this.data = options.merge ? { ...this.data, ...data } : { ...data };
+  }
 }
 
 class FakeCollection {

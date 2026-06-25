@@ -210,60 +210,6 @@ extension BurnBarHTTPGatewayServer {
         return routeKeysByFamily
     }
 
-    func dynamicOllamaCloudRouteKeysByFamily(for requestedModel: GatewayRequestedModel) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
-        if let providerID = requestedModel.providerID,
-           providerID.caseInsensitiveCompare("ollama") != .orderedSame {
-            return [:]
-        }
-        guard let canonicalCloudModelID = OllamaCloudModelRoutingPolicy.canonicalCloudModelID(
-            requestedModel.modelID
-        ) else {
-            return [:]
-        }
-        guard OllamaCloudModelRoutingPolicy.mayClaimModelID(
-            canonicalCloudModelID,
-            catalog: configStore.catalogSupport.catalog
-        ) else {
-            return [:]
-        }
-
-        var routeKeys = Set<String>()
-        for configuration in try await configStore.resolvedConfigurations()
-            where configuration.provider.id.caseInsensitiveCompare("ollama") == .orderedSame
-                && configuration.settings.isEnabled {
-            guard configuration.settings.isModelAdvertisementEnabled(requestedModel.modelID),
-                  configuration.settings.isModelAdvertisementEnabled(canonicalCloudModelID) else {
-                continue
-            }
-            if configuration.credentialSlots.isEmpty {
-                if requestedModel.accountID == nil || requestedModel.accountID?.caseInsensitiveCompare("legacy") == .orderedSame,
-                   OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
-                    providerID: configuration.provider.id,
-                    rawSecret: configuration.apiKey
-                   ) != nil {
-                    routeKeys.insert(routeKey(providerID: configuration.provider.id, slotID: nil))
-                }
-                continue
-            }
-
-            for resolvedSlot in configuration.credentialSlots where resolvedSlot.slot.isEnabled {
-                if let accountID = requestedModel.accountID,
-                   accountID.caseInsensitiveCompare(resolvedSlot.slot.slotID) != .orderedSame {
-                    continue
-                }
-                guard OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
-                    providerID: configuration.provider.id,
-                    rawSecret: resolvedSlot.apiKey
-                ) != nil else {
-                    continue
-                }
-                routeKeys.insert(routeKey(providerID: configuration.provider.id, slotID: resolvedSlot.slot.slotID))
-            }
-        }
-
-        return routeKeys.isEmpty ? [:] : [.openaiCompat: routeKeys]
-    }
-
     func resolveAdvertisedRouteKeys(
         requestedModel: GatewayRequestedModel,
         advertisedRequestedModel: GatewayRequestedModel
@@ -274,15 +220,6 @@ extension BurnBarHTTPGatewayServer {
                 requestedModel: requestedModel,
                 advertisedRequestedModel: advertisedRequestedModel,
                 routeKeysByFamily: primaryKeys
-            )
-        }
-
-        let dynamicCloudKeys = try await dynamicOllamaCloudRouteKeysByFamily(for: advertisedRequestedModel)
-        if dynamicCloudKeys.values.contains(where: { !$0.isEmpty }) {
-            return GatewayAdvertisedRouteResolution(
-                requestedModel: requestedModel,
-                advertisedRequestedModel: advertisedRequestedModel,
-                routeKeysByFamily: dynamicCloudKeys
             )
         }
 
@@ -303,18 +240,10 @@ extension BurnBarHTTPGatewayServer {
             )
         }
 
-        let dynamicLegacyCloudKeys = try await dynamicOllamaCloudRouteKeysByFamily(for: cloudCandidate)
-        guard dynamicLegacyCloudKeys.values.contains(where: { !$0.isEmpty }) else {
-            return GatewayAdvertisedRouteResolution(
-                requestedModel: requestedModel,
-                advertisedRequestedModel: advertisedRequestedModel,
-                routeKeysByFamily: primaryKeys
-            )
-        }
         return GatewayAdvertisedRouteResolution(
-            requestedModel: cloudCandidate,
-            advertisedRequestedModel: cloudCandidate,
-            routeKeysByFamily: dynamicLegacyCloudKeys
+            requestedModel: requestedModel,
+            advertisedRequestedModel: advertisedRequestedModel,
+            routeKeysByFamily: primaryKeys
         )
     }
 

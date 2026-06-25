@@ -705,6 +705,18 @@ final class ChatSessionController {
             .id
     }
 
+    nonisolated static func allowsTextExpansionRewriteGateway(_ baseURL: URL) -> Bool {
+        guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              components.user == nil,
+              components.password == nil else {
+            return false
+        }
+        return LocalLLMEndpointPolicy.isLoopbackHost(host)
+    }
+
     static func resolvedHermesModelSelection(
         panelSelection: String,
         settingsOverride: String,
@@ -1033,6 +1045,9 @@ final class ChatSessionController {
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
+        guard Self.allowsTextExpansionRewriteGateway(baseURL) else {
+            throw TextExpansionRewriteError.nonLocalGatewayURL(chatBackend.displayName)
+        }
         guard let url = URL(string: "v1/chat/completions", relativeTo: baseURL)?.absoluteURL else {
             throw TextExpansionRewriteError.invalidGatewayURL
         }

@@ -915,6 +915,8 @@ struct HermesInventoryImportDetailView: View {
                 .font(DesignSystem.Typography.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Text(label)
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)

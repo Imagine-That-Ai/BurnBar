@@ -139,6 +139,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("--config \"$FIREBASE_FUNCTIONS_CI_CONFIG\"", "--config firebase.json", 1)'
 expect_fail "functions predeploy after auth via raw config fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/functions-forced-deploy"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("--non-interactive", "--non-interactive \\\n            --force", 1)'
+expect_fail "functions forced deploy fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/functions-raw-dispatch-tag"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("TAG=\"$INPUT_TAG\"", "TAG=\"${{ inputs.tag }}\"", 1)'

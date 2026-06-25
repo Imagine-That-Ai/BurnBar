@@ -496,6 +496,55 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         XCTAssertEqual(result.prLinkage?.state, .opened)
     }
 
+    func testVAL_GOV_007_PRLinkageMetadataAcceptsBoundedNumericIdentifier() {
+        let prLinkage = BurnBarPRLinkageSnapshot.fromMetadata([
+            "pr_repository": .string("Ajnunezg/BurnBar"),
+            "number": .number(101),
+            "pr_url": .string("https://github.com/Ajnunezg/BurnBar/pull/101"),
+            "schemaVersion": .number(Double.nan),
+            "pr_state": .string("opened")
+        ])
+
+        XCTAssertEqual(prLinkage?.schemaVersion, BurnBarPRLinkageSnapshot.currentSchemaVersion)
+        XCTAssertEqual(prLinkage?.prNumberOrID, "101")
+        XCTAssertEqual(prLinkage?.state, .opened)
+    }
+
+    func testVAL_GOV_007_PRLinkageMetadataRejectsOverflowSchemaVersion() {
+        let prLinkage = BurnBarPRLinkageSnapshot.fromMetadata([
+            "pr_repository": .string("Ajnunezg/BurnBar"),
+            "number": .number(101),
+            "pr_url": .string("https://github.com/Ajnunezg/BurnBar/pull/101"),
+            "schemaVersion": .number(9_223_372_036_854_775_808),
+            "pr_state": .string("opened")
+        ])
+
+        XCTAssertEqual(prLinkage?.schemaVersion, BurnBarPRLinkageSnapshot.currentSchemaVersion)
+        XCTAssertEqual(prLinkage?.prNumberOrID, "101")
+        XCTAssertEqual(prLinkage?.state, .opened)
+    }
+
+    func testVAL_GOV_007_PRLinkageMetadataRejectsUnsafeNumericIdentifiers() {
+        let unsafeNumbers: [Double] = [
+            .nan,
+            .infinity,
+            -.infinity,
+            .greatestFiniteMagnitude,
+            101.25
+        ]
+
+        for unsafeNumber in unsafeNumbers {
+            let prLinkage = BurnBarPRLinkageSnapshot.fromMetadata([
+                "pr_repository": .string("Ajnunezg/BurnBar"),
+                "number": .number(unsafeNumber),
+                "pr_url": .string("https://github.com/Ajnunezg/BurnBar/pull/101"),
+                "pr_state": .string("opened")
+            ])
+
+            XCTAssertNil(prLinkage, "unsafe numeric metadata should not create PR linkage: \(unsafeNumber)")
+        }
+    }
+
     func testNotificationAndSimulatorContracts_roundTrip() throws {
         let config = BurnBarNotificationConfig(
             defaultSnoozeMinutes: 90,
