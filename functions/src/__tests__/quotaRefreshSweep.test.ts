@@ -323,6 +323,18 @@ describe("runQuotaRefreshSweep backfill (the corrected design)", () => {
     expect(calls.refreshedAccounts).toHaveLength(2);
   });
 
+  it("does not backfill seeded demo provider accounts", async () => {
+    const db = new FakeSweepDb();
+    const demoPath = seedAccount(db, "demo-user", "demo_android_openai", { demo: true });
+
+    const calls: SweepCalls = { refreshedAccounts: [], refreshedLegacy: [] };
+    const result = await runQuotaRefreshSweep(asSweepDb(db), sweepOptions(db, calls));
+
+    expect(result.backfill.backfilled).toBe(0);
+    expect(db.store.get(demoPath)).not.toHaveProperty("lastRefreshAt");
+    expect(calls.refreshedAccounts).toEqual([]);
+  });
+
   it("marks the migration complete and stops issuing backfill scan queries on later runs", async () => {
     const db = new FakeSweepDb();
     seedAccount(db, "legacy-user", "acct-1", {});
@@ -404,6 +416,24 @@ describe("runQuotaRefreshSweep backfill (the corrected design)", () => {
 });
 
 describe("runQuotaRefreshSweep refresh pass", () => {
+  it("skips demo account docs without spending the refresh slot", async () => {
+    const db = new FakeSweepDb();
+    seedAccount(db, "demo-user", "demo_android_openai", {
+      demo: true,
+      lastRefreshAt: null,
+    });
+    const realPath = seedAccount(db, "real-user", "openai_default", {
+      providerID: "openai",
+      lastRefreshAt: "2026-06-01T00:00:00.000Z",
+    });
+
+    const calls: SweepCalls = { refreshedAccounts: [], refreshedLegacy: [] };
+    const result = await runQuotaRefreshSweep(asSweepDb(db), sweepOptions(db, calls, 1));
+
+    expect(calls.refreshedAccounts).toEqual([realPath]);
+    expect(result.refreshedAccountPaths).toEqual([realPath]);
+  });
+
   it("respects the batch budget across statuses, stale-first", async () => {
     const db = new FakeSweepDb();
     seedAccount(db, "u1", "a1", { lastRefreshAt: "2026-06-01T00:00:00.000Z" });

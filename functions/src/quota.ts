@@ -44,6 +44,7 @@ import {
   parseQuotaBucket,
   recordOrUndefined,
 } from "./guards.js";
+import { isDemoProviderAccountRecord } from "./providerAccountIsolation.js";
 
 /** Schema version for quota snapshot documents. */
 const QUOTA_SCHEMA_VERSION = 2;
@@ -217,7 +218,12 @@ export async function refreshUserProviderAccountQuota(
     throw new Error(`No provider account doc found for ${accountID}`);
   }
 
-  const account = parseProviderAccountDoc(accountSnap.data());
+  const accountData = accountSnap.data();
+  if (isDemoProviderAccountRecord(accountData, accountID)) {
+    return null;
+  }
+
+  const account = parseProviderAccountDoc(accountData);
   if (!account) {
     throw new Error(`Provider account doc for ${accountID} is invalid`);
   }

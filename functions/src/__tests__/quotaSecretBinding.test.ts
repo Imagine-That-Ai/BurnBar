@@ -23,6 +23,7 @@ import { providerAccountSecretRefPath, refreshUserProviderAccountQuota, type Quo
 
 const UID = "quota-secret-user";
 const ACCOUNT_ID = "openai_default";
+const DEMO_ACCOUNT_ID = "demo_android_openai";
 const NOW = "2026-06-24T17:00:00.000Z";
 
 function seedProviderAccount(store: Map<string, Record<string, unknown>>, providerID = "openai") {
@@ -147,5 +148,31 @@ describe("provider account quota secret binding", () => {
       providerID: "openai",
       accountID: ACCOUNT_ID,
     });
+  });
+
+  it("does not refresh seeded demo provider accounts", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    seedDoc(store, `users/${UID}/provider_accounts/${DEMO_ACCOUNT_ID}`, {
+      id: DEMO_ACCOUNT_ID,
+      providerID: "openai",
+      label: "OpenAI demo",
+      status: "connected",
+      credentialKind: "token",
+      storageScope: "cloud_refreshable",
+      redactedLabel: "openai_***demo",
+      isDefault: false,
+      sortKey: 10,
+      schemaVersion: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+      demo: true,
+    });
+
+    const db = quotaTestFirestore(store);
+
+    await expect(refreshUserProviderAccountQuota(db, UID, DEMO_ACCOUNT_ID)).resolves.toBeNull();
+    expect(mocks.retrieveCredential).not.toHaveBeenCalled();
+    expect(mocks.fetchQuota).not.toHaveBeenCalled();
+    expect(store.has(`users/${UID}/quota_snapshots/openai_${DEMO_ACCOUNT_ID}_usage`)).toBe(false);
   });
 });
