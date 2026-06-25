@@ -207,7 +207,8 @@ final class InsightsStore {
         do {
             snapshot = try await makeSnapshot(for: currentCanvas?.filter.window ?? .last7d)
         } catch {
-            Self.log.error("compose: snapshot failed: \(error.localizedDescription, privacy: .public)")
+            let errorLog = Self.errorLogContext(error)
+            Self.log.error("compose: snapshot failed errorType=\(errorLog.typeName, privacy: .public) messageHash=\(errorLog.message.fingerprint, privacy: .public) messageChars=\(errorLog.message.characterCount, privacy: .public)")
             composerError = error.localizedDescription
             composerStatus = .failed(prompt: prompt, modelDisplayName: modelDisplay,
                                      message: "Couldn't build the snapshot: \(error.localizedDescription)")
@@ -236,7 +237,8 @@ final class InsightsStore {
             composerStatus = .succeeded(prompt: prompt, modelDisplayName: modelDisplay)
             Self.log.info("compose: succeeded auditID=\(result.auditID?.uuidString ?? "nil", privacy: .public) resultHash=\(result.resultHash, privacy: .public)")
         } catch {
-            Self.log.error("compose: failed: \(error.localizedDescription, privacy: .public)")
+            let errorLog = Self.errorLogContext(error)
+            Self.log.error("compose: failed errorType=\(errorLog.typeName, privacy: .public) messageHash=\(errorLog.message.fingerprint, privacy: .public) messageChars=\(errorLog.message.characterCount, privacy: .public)")
             composerError = error.localizedDescription
             composerStatus = .failed(prompt: prompt, modelDisplayName: modelDisplay,
                                      message: error.localizedDescription)
@@ -348,10 +350,22 @@ final class InsightsStore {
         let characterCount: Int
     }
 
+    struct ErrorLogContext: Equatable, Sendable {
+        let typeName: String
+        let message: SensitiveTextLogContext
+    }
+
     nonisolated static func sensitiveTextLogContext(_ text: String) -> SensitiveTextLogContext {
         SensitiveTextLogContext(
             fingerprint: SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined(),
             characterCount: text.count
+        )
+    }
+
+    nonisolated static func errorLogContext(_ error: Error) -> ErrorLogContext {
+        ErrorLogContext(
+            typeName: String(reflecting: type(of: error)),
+            message: sensitiveTextLogContext(error.localizedDescription)
         )
     }
 
