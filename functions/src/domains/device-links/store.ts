@@ -7,12 +7,20 @@
 
 import { type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
+import { createHash } from "node:crypto";
 
 import type { DeviceLinkCapability, DeviceLinkStatus, ProviderAccountDeviceLinkDoc } from "../../types.js";
 import { isRecord, parseProviderAccountDoc, recordOrUndefined, stringField } from "../../guards.js";
 import { logInfo } from "../../logging.js";
 
 const SCHEMA_VERSION = 1;
+const LOG_HASH_VERSION = "openburnbar:device-link-log:v1";
+
+interface DeviceLinkLogFields {
+  user_id_hash: string;
+  account_id_hash?: string;
+  device_id_hash?: string;
+}
 
 export function isDeviceLinkCapability(value: unknown): value is DeviceLinkCapability {
   switch (value) {
@@ -39,6 +47,14 @@ export function deviceLinkId(accountID: string, deviceID: string): string {
 
 export function deviceLinkPath(uid: string, accountID: string, deviceID: string): string {
   return `users/${uid}/provider_account_device_links/${deviceLinkId(accountID, deviceID)}`;
+}
+
+export function deviceLinkLogFields(uid: string, accountID?: string, deviceID?: string): DeviceLinkLogFields {
+  return {
+    user_id_hash: logCorrelationHash("user", uid),
+    ...(accountID ? { account_id_hash: logCorrelationHash("account", accountID) } : {}),
+    ...(deviceID ? { device_id_hash: logCorrelationHash("device", deviceID) } : {}),
+  };
 }
 
 function deviceLinkCollectionPath(uid: string): string {
@@ -128,9 +144,7 @@ export async function adoptDeviceLink(params: AdoptParams): Promise<ProviderAcco
   });
   logInfo({
     event: "device_link_adopted",
-    user_id_hash: uid.slice(0, 8),
-    account_id: accountID,
-    device_id: deviceID,
+    ...deviceLinkLogFields(uid, accountID, deviceID),
     capability,
   });
   return link;
@@ -144,7 +158,9 @@ interface RevokeParams {
 }
 
 export async function revokeDeviceLink(params: RevokeParams): Promise<void> {
-  const ref = params.db.doc(deviceLinkPath(params.uid, params.accountID, params.deviceID));
+  const accountID = safeIdentifier(params.accountID, "account");
+  const deviceID = safeIdentifier(params.deviceID, "device");
+  const ref = params.db.doc(deviceLinkPath(params.uid, accountID, deviceID));
   const snap = await ref.get();
   if (!snap.exists) return;
   await ref.set(
@@ -158,9 +174,7 @@ export async function revokeDeviceLink(params: RevokeParams): Promise<void> {
   );
   logInfo({
     event: "device_link_revoked",
-    user_id_hash: params.uid.slice(0, 8),
-    account_id: params.accountID,
-    device_id: params.deviceID,
+    ...deviceLinkLogFields(params.uid, accountID, deviceID),
   });
 }
 
@@ -207,7 +221,7 @@ export async function backfillUserDeviceLinks(
   if (writes > 0) {
     logInfo({
       event: "device_link_backfill",
-      user_id_hash: uid.slice(0, 8),
+      ...deviceLinkLogFields(uid),
       writes,
     });
   }
@@ -215,10 +229,8 @@ export async function backfillUserDeviceLinks(
 }
 
 export async function revokeAllLinksForAccount(db: Firestore, uid: string, accountID: string): Promise<void> {
-  const snap = await db
-    .collection(deviceLinkCollectionPath(uid))
-    .where("accountID", "==", safeIdentifier(accountID, "account"))
-    .get();
+  const safeAccountID = safeIdentifier(accountID, "account");
+  const snap = await db.collection(deviceLinkCollectionPath(uid)).where("accountID", "==", safeAccountID).get();
   if (snap.empty) return;
   const batch = db.batch();
   const now = new Date().toISOString();
@@ -237,10 +249,20 @@ export async function revokeAllLinksForAccount(db: Firestore, uid: string, accou
   await batch.commit();
   logInfo({
     event: "device_link_revoke_all",
-    user_id_hash: uid.slice(0, 8),
-    account_id: accountID,
+    ...deviceLinkLogFields(uid, safeAccountID),
     revoked_count: snap.size,
   });
+}
+
+function logCorrelationHash(kind: "user" | "account" | "device", value: string): string {
+  return createHash("sha256")
+    .update(LOG_HASH_VERSION)
+    .update("\0")
+    .update(kind)
+    .update("\0")
+    .update(value.trim())
+    .digest("hex")
+    .slice(0, 16);
 }
 
 async function resolveDeviceName(db: Firestore, uid: string, deviceID: string): Promise<string> {
