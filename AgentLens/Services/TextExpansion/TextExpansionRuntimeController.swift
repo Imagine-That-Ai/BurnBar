@@ -183,7 +183,7 @@ final class TextExpansionRuntimeController: ObservableObject {
     @MainActor
     private func bootstrapCachedSnippetsFromSnapshot() {
         guard let url = TextExpansionSnapshotStore.snapshotURL(),
-              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else {
+              let snapshot = try? TextExpansionSnapshotStore.read(from: url) else { // try?-ok(snapshot fallback)
             return
         }
         let snippets = snapshot.snippets
@@ -305,7 +305,7 @@ final class TextExpansionRuntimeController: ObservableObject {
         let resolved: [TextExpansionSnippet]
         if fetched.isEmpty {
             if let url = TextExpansionSnapshotStore.snapshotURL(),
-               let snapshot = try? TextExpansionSnapshotStore.read(from: url) {
+               let snapshot = try? TextExpansionSnapshotStore.read(from: url) { // try?-ok(snapshot fallback)
                 resolved = snapshot.snippets
                     .filter(\.isEnabled)
                     .filter { $0.deletedAt == nil }
@@ -441,7 +441,7 @@ private enum TextExpansionFocusedTextInserter {
             return nil
         }
         guard let focusedRef else { return nil }
-        return (focusedRef as! AXUIElement)
+        return focusedRef as? AXUIElement
     }
 
     private static func isTextSurface(_ element: AXUIElement) -> Bool {
