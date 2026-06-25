@@ -6,11 +6,13 @@ const {
   requireSealedBlob,
   parseRecoveryKeyPayload,
   parseRecoveryContactPayload,
+  assertRecoveryVaultKeyMatchesCurrent,
   MAX_RECOVERY_CONTACTS,
   requireRecoveryId,
 } = __testing__;
 
 const VALID_HASH = "a".repeat(64);
+const VALID_VAULT_KEY_ID = `v1_${"b".repeat(32)}`;
 
 describe("requireSealedBlob", () => {
   it("accepts base64 / base64url sealed blobs", () => {
@@ -32,12 +34,14 @@ describe("parseRecoveryKeyPayload", () => {
       algorithm: "AES-256-GCM",
       wrappedVaultKey: "QUJDREVG",
       verificationHash: VALID_HASH,
+      vaultKeyID: VALID_VAULT_KEY_ID,
       keyVersion: 2,
     });
     expect(parsed).toEqual({
       algorithm: "AES-256-GCM",
       wrappedVaultKey: "QUJDREVG",
       verificationHash: VALID_HASH,
+      vaultKeyID: VALID_VAULT_KEY_ID,
       keyVersion: 2,
     });
   });
@@ -46,22 +50,62 @@ describe("parseRecoveryKeyPayload", () => {
       algorithm: "AES-256-GCM",
       wrappedVaultKey: "QUJD",
       verificationHash: VALID_HASH,
+      vaultKeyID: VALID_VAULT_KEY_ID,
     });
     expect(parsed.keyVersion).toBe(1);
   });
   it("rejects a non-AES algorithm", () => {
     expect(() =>
-      parseRecoveryKeyPayload({ algorithm: "rot13", wrappedVaultKey: "QUJD", verificationHash: VALID_HASH }),
+      parseRecoveryKeyPayload({
+        algorithm: "rot13",
+        wrappedVaultKey: "QUJD",
+        verificationHash: VALID_HASH,
+        vaultKeyID: VALID_VAULT_KEY_ID,
+      }),
     ).toThrow(/AES-256-GCM/);
   });
   it("rejects a malformed verification hash", () => {
     expect(() =>
-      parseRecoveryKeyPayload({ algorithm: "AES-256-GCM", wrappedVaultKey: "QUJD", verificationHash: "short" }),
+      parseRecoveryKeyPayload({
+        algorithm: "AES-256-GCM",
+        wrappedVaultKey: "QUJD",
+        verificationHash: "short",
+        vaultKeyID: VALID_VAULT_KEY_ID,
+      }),
     ).toThrow();
+  });
+  it("rejects a missing or malformed vaultKeyID", () => {
+    expect(() =>
+      parseRecoveryKeyPayload({ algorithm: "AES-256-GCM", wrappedVaultKey: "QUJD", verificationHash: VALID_HASH }),
+    ).toThrow(/vaultKeyID/);
+    expect(() =>
+      parseRecoveryKeyPayload({
+        algorithm: "AES-256-GCM",
+        wrappedVaultKey: "QUJD",
+        verificationHash: VALID_HASH,
+        vaultKeyID: "not-current",
+      }),
+    ).toThrow(/vaultKeyID/);
   });
   it("rejects non-object payloads", () => {
     expect(() => parseRecoveryKeyPayload("nope")).toThrow();
     expect(() => parseRecoveryKeyPayload([])).toThrow();
+  });
+});
+
+describe("assertRecoveryVaultKeyMatchesCurrent", () => {
+  it("accepts a recovery payload bound to the current Cloud Vault key", () => {
+    expect(() => assertRecoveryVaultKeyMatchesCurrent(VALID_VAULT_KEY_ID, VALID_VAULT_KEY_ID)).not.toThrow();
+  });
+
+  it("fails closed when Cloud Vault state is missing", () => {
+    expect(() => assertRecoveryVaultKeyMatchesCurrent(VALID_VAULT_KEY_ID, undefined)).toThrow(/Cloud Vault/);
+  });
+
+  it("rejects recovery wrappers for stale or alternate vault keys", () => {
+    expect(() => assertRecoveryVaultKeyMatchesCurrent(VALID_VAULT_KEY_ID, `v1_${"c".repeat(32)}`)).toThrow(
+      /current Cloud Vault key/,
+    );
   });
 });
 
