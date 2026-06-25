@@ -587,10 +587,11 @@ final class ConnectionsViewModel {
         if let restartGateway {
             await restartGateway()
         }
+        var targetFailures: [RoutingClientWiringTarget: String] = [:]
         if snapshot.detectedTargets.contains(.claudeCode) {
             if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
-                vibeProxyMigrationState = .error(message: bootstrapError)
-                return
+                targetFailures[.claudeCode] = bootstrapError
+                appStates[.claudeCode] = .degraded(message: bootstrapError)
             }
         }
 
@@ -618,7 +619,6 @@ final class ConnectionsViewModel {
                 .map(RoutingClientAdvertisedModel.init(proxyModel:))
 
         var switchedTargets: [RoutingClientWiringTarget] = []
-        var targetFailures: [RoutingClientWiringTarget: String] = [:]
 
         for target in snapshot.detectedTargets {
             guard appStates[target]?.isBusy != true else { continue }

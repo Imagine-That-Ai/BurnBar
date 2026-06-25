@@ -1163,10 +1163,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard let credential = BurnBarClaudeOAuthRouteCredential.decode(raw) else {
                 continue
             }
-            if let expectedOrganizationUuid,
-               let organizationUuid = credential.organizationUuid,
-               organizationUuid != expectedOrganizationUuid {
-                continue
+            if let expectedOrganizationUuid {
+                guard credential.organizationUuid == expectedOrganizationUuid else {
+                    continue
+                }
             }
             guard !credential.isExpired() else {
                 continue
@@ -1222,17 +1222,21 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
         let output = Pipe()
         process.standardOutput = output
-        process.standardError = Pipe()
+        let errorSink = FileHandle(forWritingAtPath: "/dev/null")
+        process.standardError = errorSink
+        defer {
+            try? errorSink?.close()
+        }
 
         do {
             try process.run()
         } catch {
             return nil
         }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return nil }
 
-        let data = output.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)
         #else
         return nil

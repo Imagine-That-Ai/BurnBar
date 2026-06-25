@@ -414,7 +414,7 @@ private enum TextExpansionFocusedTextInserter {
 
         let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, updated as CFTypeRef)
         guard setResult == .success else {
-            throw InsertError.valueMutationUnsupported
+            return .unsupported
         }
         return .replaced
     }

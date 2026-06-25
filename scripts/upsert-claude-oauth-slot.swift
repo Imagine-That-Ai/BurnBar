@@ -38,9 +38,17 @@ struct SlotMutationResponse: Codable {
     struct Slot: Codable { let slotID: String }
 }
 
+let environment = ProcessInfo.processInfo.environment
 let home = FileManager.default.homeDirectoryForCurrentUser
-let socketPath = home.appendingPathComponent("Library/Application Support/OpenBurnBar/openburnbar-daemon.sock").path
-let tokenPath = home.appendingPathComponent("Library/Application Support/OpenBurnBar/daemon-socket-auth-token")
+let supportDirectory: URL
+if let override = environment["OPENBURNBAR_DAEMON_SUPPORT_DIR"] ?? environment["BURNBAR_DAEMON_SUPPORT_DIR"],
+   !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    supportDirectory = URL(fileURLWithPath: override, isDirectory: true)
+} else {
+    supportDirectory = home.appendingPathComponent("Library/Application Support/OpenBurnBar", isDirectory: true)
+}
+let socketPath = supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false).path
+let tokenPath = supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
 let credsPath = home.appendingPathComponent(".claude/.credentials.json")
 
 guard let authToken = try? String(contentsOf: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
