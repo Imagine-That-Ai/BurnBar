@@ -5,7 +5,7 @@ extension BurnBarProjectCodeMemoryStore {
     func searchCode(_ request: BurnBarProjectCodeSearchRequest) throws -> BurnBarProjectCodeSearchResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let evaluated = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
         if evaluated.degradation != nil {
             logger.warning(
@@ -35,7 +35,7 @@ extension BurnBarProjectCodeMemoryStore {
     func contextPack(_ request: BurnBarProjectCodeContextPackRequest) throws -> BurnBarProjectCodeContextPackResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let evaluated = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
         let hits = evaluated.hits
         let maxBytes = max(1_000, min(request.maxBytes, 250_000))
@@ -109,7 +109,7 @@ extension BurnBarProjectCodeMemoryStore {
     func getSymbol(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeSymbolResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let (symbols, degradation) = try databaseSync {
             let rows = try querySymbols(
                 """
@@ -148,7 +148,7 @@ extension BurnBarProjectCodeMemoryStore {
     func findReferences(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeReferencesResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let exactReferences = try self.exactLSPReferences(
             symbolName: request.name,
             root: root,
@@ -215,7 +215,7 @@ extension BurnBarProjectCodeMemoryStore {
     func callGraph(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeCallGraphResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let (edges, degradation): ([BurnBarProjectCodeCallEdge], BurnBarProjectCodeDegradation?) = try databaseSync {
             struct CandidateEdge {
                 let edge: BurnBarProjectCodeCallEdge
@@ -325,7 +325,7 @@ extension BurnBarProjectCodeMemoryStore {
     func diagnostics(_ request: BurnBarProjectCodeDiagnosticsRequest) throws -> BurnBarProjectCodeDiagnosticsResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let diagnostics = try databaseSync {
             var sql = "SELECT file_path, tool, payload_json, cached_at FROM code_diagnostics_cache WHERE project_id = ?"
             var binds: [SQLiteBind] = [.text(projectID)]
@@ -349,7 +349,7 @@ extension BurnBarProjectCodeMemoryStore {
     func indexStatus(_ request: BurnBarProjectCodeIndexStatusRequest) throws -> BurnBarProjectCodeIndexStatusResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         return try databaseSync {
             let checkpoint = try queryRows(
                 """
@@ -436,12 +436,22 @@ extension BurnBarProjectCodeMemoryStore {
     func explore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
+        let projectID = try readOnlyProjectIdentity(root: root).projectID
         let hasCheckpoint = try databaseSync {
             try fetchInt("SELECT COUNT(*) FROM code_index_checkpoints WHERE project_id = ?", [.text(projectID)]) > 0
         }
         if hasCheckpoint == false {
-            _ = try indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: root.path))
+            return BurnBarProjectCodeExploreResponse(
+                traceID: traceID,
+                projectID: projectID,
+                files: [],
+                repoMap: nil,
+                context: nil,
+                hits: [],
+                truncated: false,
+                status: "degraded",
+                degradation: missingIndexDegradation(projectID: projectID)
+            )
         }
         let files = try databaseSync {
             try queryRows(
@@ -482,5 +492,16 @@ extension BurnBarProjectCodeMemoryStore {
             )
         }
         return BurnBarProjectCodeExploreResponse(traceID: traceID, projectID: projectID, files: files, repoMap: repoMap)
+    }
+
+    private func missingIndexDegradation(projectID: String) -> BurnBarProjectCodeDegradation {
+        BurnBarProjectCodeDegradation(
+            code: "INDEX_MISSING",
+            message: "No project code index exists for this project, so the read-only explore request did not index files.",
+            staleCandidateCount: 0,
+            totalCandidateCount: 0,
+            indexAgeSeconds: nil,
+            reindexHint: "Run burnbar_index_project for this project before relying on code-memory results."
+        )
     }
 }

@@ -79,6 +79,46 @@ extension BurnBarProjectCodeMemoryStore {
         }
     }
 
+    func readOnlyProjectIdentity(root: URL) throws -> ProjectIdentity {
+        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalPath = canonicalRoot.path
+        let pathHash = Self.sha256Hex(canonicalPath)
+        let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
+        let longLegacyProjectID = Self.longLegacyProjectID(for: canonicalRoot)
+        let fingerprint = Self.projectIdentityFingerprint(root: canonicalRoot)
+        let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
+
+        return try databaseSync {
+            let existingForFingerprint = try queryRows(
+                "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+                [.text(fingerprint)]
+            ).first?.string(0)
+            let existingForAlias = try queryRows(
+                "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
+                [.text(pathHash)]
+            ).first?.string(0)
+            let projectID: String
+            if let existingForFingerprint {
+                projectID = existingForFingerprint
+            } else if let existingForAlias {
+                projectID = existingForAlias
+            } else if try hasProjectRows(projectID: legacyProjectID) {
+                projectID = legacyProjectID
+            } else if try hasProjectRows(projectID: longLegacyProjectID) {
+                projectID = longLegacyProjectID
+            } else {
+                projectID = preferredProjectID
+            }
+
+            return ProjectIdentity(
+                projectID: projectID,
+                canonicalPath: canonicalPath,
+                pathHash: pathHash,
+                fingerprint: fingerprint
+            )
+        }
+    }
+
     func hasProjectRows(projectID: String) throws -> Bool {
         let tables = [
             "agent_memories",

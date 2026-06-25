@@ -72,6 +72,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
 
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let indexed = try store.indexProject(
+            BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20)
+        )
+        XCTAssertEqual(indexed.indexedFiles, 1)
+
         let explored = try store.explore(
             BurnBarProjectCodeExploreRequest(
                 projectPath: fixture.project.path,
@@ -90,6 +95,76 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(explored.context?.contains("contentKind=\"complete_symbol\"") ?? false)
         XCTAssertTrue(explored.hits.contains { $0.filePath == "Sources/Explore.swift" })
         XCTAssertFalse(explored.truncated)
+    }
+
+    func testExploreDoesNotIndexMissingProjectFromReadPath() throws {
+        let fixture = try makeFixture()
+        try write(
+            """
+            func unindexedExploreTarget() {
+                print("unindexed-explore-token")
+            }
+            """,
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Unindexed.swift")
+        )
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let explored = try store.explore(
+            BurnBarProjectCodeExploreRequest(
+                projectPath: fixture.project.path,
+                query: "unindexed-explore-token",
+                limit: 5,
+                maxBytes: 2_000
+            )
+        )
+
+        XCTAssertEqual(explored.status, "degraded")
+        XCTAssertEqual(explored.degradation?.code, "INDEX_MISSING")
+        XCTAssertTrue(explored.files.isEmpty)
+        XCTAssertTrue(explored.hits.isEmpty)
+        XCTAssertNil(explored.context)
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM code_index_checkpoints"),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM code_artifacts"),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_projects"),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_project_aliases"),
+            ["0"]
+        )
+    }
+
+    func testReadOnlyProjectQueriesDoNotCreateProjectIdentityRows() throws {
+        let fixture = try makeFixture()
+        try write(
+            """
+            func unindexedSearchTarget() {
+                print("unindexed-search-token")
+            }
+            """,
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("UnindexedSearch.swift")
+        )
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "unindexed-search-token", projectPath: fixture.project.path))
+        _ = try store.indexStatus(BurnBarProjectCodeIndexStatusRequest(projectPath: fixture.project.path))
+        _ = try store.diagnostics(BurnBarProjectCodeDiagnosticsRequest(projectPath: fixture.project.path))
+
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_projects"),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_project_aliases"),
+            ["0"]
+        )
     }
 
     func testIndexProjectKeepsAllSupportedLexicalLanguages() throws {
@@ -978,6 +1053,13 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let second = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "identity-move-token", projectPath: moved.path))
         XCTAssertEqual(second.projectID, first.projectID)
         XCTAssertTrue(second.hits.contains { $0.filePath == "Sources/Identity.swift" })
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_project_aliases WHERE project_id = '\(first.projectID)'").first,
+            "1"
+        )
+
+        let reindexed = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: moved.path, maxFiles: 20))
+        XCTAssertEqual(reindexed.projectID, first.projectID)
         XCTAssertEqual(
             try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM pcm_project_aliases WHERE project_id = '\(first.projectID)'").first,
             "2"
