@@ -29,7 +29,9 @@ const config: RollupTaskQueueConfig = {
   serviceAccountEmail: "burnbar-test@appspot.gserviceaccount.com",
 };
 
-function fakeClient(createTask = vi.fn().mockResolvedValue({})): CloudTasksClientLike & { createTask: typeof createTask } {
+function fakeClient(
+  createTask = vi.fn().mockResolvedValue({}),
+): CloudTasksClientLike & { createTask: typeof createTask } {
   return {
     queuePath: (project, location, queue) => `projects/${project}/locations/${location}/queues/${queue}`,
     taskPath: (project, location, queue, task) =>
@@ -82,11 +84,24 @@ describe("rollup task queue fan-out", () => {
     });
   });
 
-  it("uses dirty epoch in deterministic task ids", () => {
+  it("uses dirty epoch and resume nonce in deterministic task ids", () => {
     const first = rollupUserRebuildTaskId({ uid: "same-user", dirtiedAt: "2026-06-17T01:02:03.000Z" });
     const second = rollupUserRebuildTaskId({ uid: "same-user", dirtiedAt: "2026-06-17T01:03:03.000Z" });
+    const resumed = rollupUserRebuildTaskId({
+      uid: "same-user",
+      dirtiedAt: "2026-06-17T01:02:03.000Z",
+      requeueNonce: "resume-1",
+    });
     expect(first).toBe(rollupUserRebuildTaskId({ uid: "same-user", dirtiedAt: "2026-06-17T01:02:03.000Z" }));
     expect(first).not.toBe(second);
+    expect(first).not.toBe(resumed);
+    expect(resumed).toBe(
+      rollupUserRebuildTaskId({
+        uid: "same-user",
+        dirtiedAt: "2026-06-17T01:02:03.000Z",
+        requeueNonce: "resume-1",
+      }),
+    );
   });
 
   it("treats duplicate task creation as idempotent enqueue success", async () => {
@@ -112,9 +127,16 @@ describe("rollup task queue fan-out", () => {
   });
 
   it("validates task payloads before the worker touches Firestore", () => {
-    expect(parseRollupUserRebuildTaskData({ uid: "user-1", dirtiedAt: "2026-06-17T01:02:03.000Z" })).toEqual({
+    expect(
+      parseRollupUserRebuildTaskData({
+        uid: "user-1",
+        dirtiedAt: "2026-06-17T01:02:03.000Z",
+        requeueNonce: "resume-1",
+      }),
+    ).toEqual({
       uid: "user-1",
       dirtiedAt: "2026-06-17T01:02:03.000Z",
+      requeueNonce: "resume-1",
     });
     expect(parseRollupUserRebuildTaskData({ uid: " user-1 " })).toEqual({ uid: "user-1" });
     expect(parseRollupUserRebuildTaskData({ uid: "" })).toBeUndefined();

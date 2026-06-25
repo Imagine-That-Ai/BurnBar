@@ -19,6 +19,7 @@ export const ROLLUP_USER_REBUILD_TASK_QUEUE_ID = "rollup-user-rebuilds";
 type RollupUserRebuildTaskData = {
   uid: string;
   dirtiedAt?: string;
+  requeueNonce?: string;
 };
 
 type RollupUserRebuildQueueJob = RollupUserRebuildTaskData;
@@ -67,7 +68,12 @@ export function parseRollupUserRebuildTaskData(data: unknown): RollupUserRebuild
   const uid = nonEmptyString(data.uid);
   if (!uid) return undefined;
   const dirtiedAt = nonEmptyString(data.dirtiedAt);
-  return dirtiedAt ? { uid, dirtiedAt } : { uid };
+  const requeueNonce = nonEmptyString(data.requeueNonce);
+  return {
+    uid,
+    ...(dirtiedAt ? { dirtiedAt } : {}),
+    ...(requeueNonce ? { requeueNonce } : {}),
+  };
 }
 
 function getRollupTaskQueueConfig(): RollupTaskQueueConfig {
@@ -87,7 +93,7 @@ function getRollupTaskQueueConfig(): RollupTaskQueueConfig {
 }
 
 function taskEpoch(job: RollupUserRebuildQueueJob): string {
-  return job.dirtiedAt ?? "missing-dirtied-at";
+  return `${job.dirtiedAt ?? "missing-dirtied-at"}\0${job.requeueNonce ?? "initial"}`;
 }
 
 export function rollupUserRebuildTaskId(job: RollupUserRebuildQueueJob): string {

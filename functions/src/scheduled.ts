@@ -18,10 +18,7 @@ import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { MODEL_LANDSCAPE_SECRETS, resolveModelLandscapeEnv } from "./modelLandscapeSecrets.js";
 import { processRollupUserRebuild } from "./rollups.js";
-import {
-  enqueueRollupUserRebuildTasks,
-  parseRollupUserRebuildTaskData,
-} from "./rollupTaskQueue.js";
+import { enqueueRollupUserRebuildTasks, parseRollupUserRebuildTaskData } from "./rollupTaskQueue.js";
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
 import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
@@ -72,7 +69,7 @@ export const rebuildRollups = onSchedule(
         const uid = parts[1];
         const job = parseRollupJobDoc(doc.data());
         if (uid && job?.dirty === true) {
-          jobsByUid.set(uid, { uid, dirtiedAt: job.dirtiedAt });
+          jobsByUid.set(uid, { uid, dirtiedAt: job.dirtiedAt, requeueNonce: job.requeueNonce });
         }
       }
 
@@ -101,7 +98,7 @@ export const rollupUserRebuild = onTaskDispatched(
     runScheduledJob("rollupUserRebuild", async () => {
       const data = parseRollupUserRebuildTaskData(request.data);
       if (!data) {
-        throw new HttpsError("invalid-argument", "rollupUserRebuild requires uid and optional dirtiedAt.");
+        throw new HttpsError("invalid-argument", "rollupUserRebuild requires uid and optional dirtiedAt/requeueNonce.");
       }
       await processRollupUserRebuild(getFirestore(), data.uid, { taskDirtiedAt: data.dirtiedAt });
     }),

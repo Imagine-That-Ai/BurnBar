@@ -1,6 +1,6 @@
 # Usage Rollup Cloud Tasks
 
-The `rebuildRollups` scheduler now only discovers dirty `users/{uid}/rollup_jobs/current` markers and enqueues one Cloud Task per uid. `rollupUserRebuild` owns the per-user rebuild body, including the dirty-epoch race guard, delta drain, full-rebuild breaker, and dirty clear.
+The `rebuildRollups` scheduler now only discovers dirty `users/{uid}/rollup_jobs/current` markers and enqueues one Cloud Task per uid. `rollupUserRebuild` owns the per-user rebuild body, including the dirty-epoch race guard, delta drain, full-rebuild breaker, capped-drain resume nonce, and dirty clear.
 
 ## Queue
 
@@ -41,7 +41,7 @@ gcloud iam service-accounts add-iam-policy-binding burnbar@appspot.gserviceaccou
   --role="roles/iam.serviceAccountUser"
 ```
 
-`rollupUserRebuild` is deployed with `invoker: "private"` and validates only `{ uid, dirtiedAt? }`; it re-reads `users/{uid}/rollup_jobs/current` before work. A task whose `dirtiedAt` no longer matches is a no-op.
+`rollupUserRebuild` is deployed with `invoker: "private"` and validates only `{ uid, dirtiedAt?, requeueNonce? }`; it re-reads `users/{uid}/rollup_jobs/current` before work. A task whose `dirtiedAt` no longer matches is a no-op. The `requeueNonce` participates only in Cloud Task naming: a capped delta drain rotates it while keeping the same dirty epoch alive, so the next scheduler tick can enqueue the resume task instead of colliding with the completed task name.
 
 ## Poison Tasks
 

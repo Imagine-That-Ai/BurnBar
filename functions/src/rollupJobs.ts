@@ -4,6 +4,7 @@
  * the rollup-doc writer that clears the dirty flag.
  */
 
+import { randomUUID } from "node:crypto";
 import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { RollupJobDoc, UsageRollupDoc } from "./types.js";
 import { errorMessage, parseRollupJobDoc } from "./guards.js";
@@ -522,10 +523,13 @@ export async function writeUserRollups(
   //
   // `keepDirty`: a capped delta drain left queue docs behind — clearing dirty
   // would orphan them until the next usage event, so the job stays dirty for
-  // the next tick. `clearFullRebuildAttempt`: only the caller that ran the
-  // full rebuild clears its own in-flight marker; clearing unconditionally
-  // would let a racing cheap-path write erase another invocation's marker and
-  // hide its kill from the breaker (see beginFullRebuildAttempt).
+  // the next tick. Rotate `requeueNonce` with that surviving dirty marker so
+  // the scheduler creates a fresh Cloud Task instead of colliding with the
+  // completed dirty-epoch task name. `clearFullRebuildAttempt`: only the
+  // caller that ran the full rebuild clears its own in-flight marker; clearing
+  // unconditionally would let a racing cheap-path write erase another
+  // invocation's marker and hide its kill from the breaker (see
+  // beginFullRebuildAttempt).
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(jobRef);
@@ -539,9 +543,21 @@ export async function writeUserRollups(
       fullRebuildCircuitOpenUntil: FieldValue.delete(),
     };
     if (!options.keepDirty && job?.dirtiedAt === observedDirtiedAt) {
-      transaction.set(jobRef, { dirty: false, ...successPatch, ...attemptPatch }, { merge: true });
+      transaction.set(
+        jobRef,
+        { dirty: false, requeueNonce: FieldValue.delete(), ...successPatch, ...attemptPatch },
+        { merge: true },
+      );
     } else {
-      transaction.set(jobRef, { lastComputedAt, ...attemptPatch }, { merge: true });
+      transaction.set(
+        jobRef,
+        {
+          lastComputedAt,
+          ...(options.keepDirty ? { dirty: true, requeueNonce: randomUUID() } : {}),
+          ...attemptPatch,
+        },
+        { merge: true },
+      );
     }
   });
 }

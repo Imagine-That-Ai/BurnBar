@@ -292,6 +292,7 @@ export function parseRollupJobDoc(raw: unknown): RollupJobDoc | undefined {
   return {
     dirty: raw.dirty,
     dirtiedAt: typeof raw.dirtiedAt === "string" ? raw.dirtiedAt : undefined,
+    requeueNonce: typeof raw.requeueNonce === "string" ? raw.requeueNonce : undefined,
     lastComputedAt: typeof raw.lastComputedAt === "string" ? raw.lastComputedAt : undefined,
     lastErrorCode: typeof raw.lastErrorCode === "string" ? raw.lastErrorCode : undefined,
     consecutiveFullRebuildFailures:

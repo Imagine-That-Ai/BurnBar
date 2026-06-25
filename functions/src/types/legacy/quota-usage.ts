@@ -443,6 +443,13 @@ export interface RollupJobDoc {
   /** ISO 8601 timestamp of the last time the dirty flag was set. */
   dirtiedAt?: string;
 
+  /**
+   * Random nonce rotated when a capped delta drain intentionally leaves this
+   * job dirty for a later scheduler pass. This is part of Cloud Task identity;
+   * it does not affect stale dirty-epoch validation.
+   */
+  requeueNonce?: string;
+
   /** Error code from the most recent failed rollup run. */
   lastErrorCode?: string;
 
