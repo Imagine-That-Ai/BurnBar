@@ -41,12 +41,11 @@ const CROSS_ORIGIN_IMPORT = /\b(?:import|from)\s*\(?\s*["'`](?:https?:)?\/\/(?!b
 // `type="application/ld+json"` structured data, plain JSON payloads — are
 // inert per the HTML spec: browsers never run them and CSP never consults
 // their hashes. Hashing them anyway coupled the committed CSP to volatile
-// content: the daily router-rundown JSON-LD embeds research data that
-// `npm run build` refreshes via run-research when API keys + compiled
-// functions are present (local), while CI builds from the committed
-// snapshot — so csp:check diverged across environments. Skip them; every
-// executable script (no type, module, importmap, speculationrules, …)
-// stays gated.
+// content: the daily router-rundown JSON-LD embeds research data that is
+// refreshed only by the explicit `npm run research` command. Normal website
+// builds consume the committed snapshot, so CSP checks stay deterministic.
+// Skip inert data blocks; every executable script (no type, module, importmap,
+// speculationrules, ...) stays gated.
 const INERT_DATA_BLOCK_TYPE = /\btype\s*=\s*["']?(?:application\/(?:ld\+)?json|text\/plain)\b/i;
 
 function inlineHashesFromDist() {
