@@ -452,7 +452,12 @@ private enum RemoteAccessCredentialWorker {
         if let credentialPipe {
             credentialPipe.closeRead()
             defer { credentialPipe.closeWrite() }
-            try writeCredentialInput(credentialPipe.input, to: credentialPipe.writeFD)
+            do {
+                try writeCredentialInput(credentialPipe.input, to: credentialPipe.writeFD)
+            } catch {
+                killCredentialWorker(pid)
+                throw error
+            }
         }
 
         let deadline = DispatchTime.now().uptimeNanoseconds + credentialWorkerExitTimeoutNanoseconds
