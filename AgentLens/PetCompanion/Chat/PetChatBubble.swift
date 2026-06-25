@@ -35,6 +35,8 @@ final class PetChatController {
     var draft = ""
     /// The reply currently rendering in the bubble (streamed text).
     private(set) var replyText = ""
+    /// User-resized bubble width. The AppKit panel fits to this SwiftUI width.
+    private(set) var bubbleWidth: CGFloat = 300
     /// True while a stream (cloud or local floor) is in flight.
     private(set) var isAnswering = false
     /// True when the *local* floor is answering (drives the "answering locally"
@@ -145,6 +147,11 @@ final class PetChatController {
         } else {
             open()
         }
+    }
+
+    func resizeBubbleWidth(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0 else { return }
+        bubbleWidth = min(520, max(240, bubbleWidth * factor))
     }
 
     // MARK: Attachments (file drag-and-drop onto the pet)
@@ -533,7 +540,7 @@ struct PetChatBubbleView: View {
             // Reserve room at the bottom for the speech-bubble tail (carved into
             // the outline) so it never clips the input row.
             .padding(.bottom, DesignSystem.Spacing.md + 6)
-            .frame(width: 300)
+            .frame(width: controller.bubbleWidth)
             .glassBubbleChrome(tailAnchor: tailAnchorX)
             .onAppear { inputFocused = true }
             .onChange(of: controller.isOpen) { _, open in inputFocused = open }

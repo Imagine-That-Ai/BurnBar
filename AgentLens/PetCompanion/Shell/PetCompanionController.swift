@@ -538,15 +538,9 @@ final class PetCompanionController: ObservableObject {
     /// Resize the chat bubble by `factor` (scales the bubble panel width/height,
     /// clamped, re-anchored above the pet).
     func resizeChatBubble(by factor: CGFloat) {
-        guard factor.isFinite, factor > 0, let bubble = bubblePanel else { return }
-        let frame = bubble.frame
-        let minW: CGFloat = 240, maxW: CGFloat = 520
-        let aspect = frame.height / max(frame.width, 1)
-        let newWidth = min(maxW, max(minW, frame.width * factor))
-        let newHeight = newWidth * aspect
-        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
-        bubble.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
-        bubble.clamp(to: panel?.bestScreen)
+        guard factor.isFinite, factor > 0, let chat, let bubble = bubblePanel else { return }
+        chat.resizeBubbleWidth(by: factor)
+        bubble.resizeToContent()
         reanchorBubble()
     }
 
@@ -630,8 +624,9 @@ final class PetCompanionController: ObservableObject {
                 return
             }
             let menu = self.buildPetContextMenu(at: point, in: clickedView)
-            if let event = NSApp.currentEvent {
-                menu.popUp(positioning: nil, at: event.locationInWindow, in: nil)
+            if let window = clickedView.window {
+                let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+                menu.popUp(positioning: nil, at: screenPoint, in: nil)
             } else {
                 menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
             }

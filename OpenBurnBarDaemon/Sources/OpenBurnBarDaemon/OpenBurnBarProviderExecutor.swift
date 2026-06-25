@@ -916,7 +916,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         // provider Keychain entry (for example after a manual import).
         if Self.normalizedProviderID(providerID) == "anthropic",
            storedAnthropicCredentialRefreshFailed || !foundStoredSecret,
-           !foundStoredSecret || failedAnthropicOrganizationUuid != nil,
            let ccToken = try await claudeCodeCredentialSecret(
             for: providerID,
             expectedOrganizationUuid: failedAnthropicOrganizationUuid
@@ -1206,6 +1205,23 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
     private static let claudeCodeKeychainService = "Claude Code-credentials"
 
+    private final class KeychainProcessOutput: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+
+        func store(_ next: Data) {
+            lock.lock()
+            data = next
+            lock.unlock()
+        }
+
+        func load() -> Data {
+            lock.lock()
+            defer { lock.unlock() }
+            return data
+        }
+    }
+
     private static func readKeychainPassword(service: String, account: String) -> String? {
         #if os(macOS)
         let securityURL = URL(fileURLWithPath: "/usr/bin/security")
@@ -1234,11 +1250,25 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         } catch {
             return nil
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        let group = DispatchGroup()
+        let outputBuffer = KeychainProcessOutput()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            outputBuffer.store(output.fileHandleForReading.readDataToEndOfFile())
+            group.leave()
+        }
+        guard group.wait(timeout: .now() + 2) == .success else {
+            if process.isRunning {
+                process.terminate()
+            }
+            return nil
+        }
+        if process.isRunning {
+            process.waitUntilExit()
+        }
         guard process.terminationStatus == 0 else { return nil }
 
-        return String(data: data, encoding: .utf8)
+        return String(data: outputBuffer.load(), encoding: .utf8)
         #else
         return nil
         #endif

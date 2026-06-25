@@ -874,19 +874,7 @@ struct ConnectionsSettingsView: View {
     }
 
     private func localGatewayStartError() -> String? {
-        if let lastError = daemonManager.lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !lastError.isEmpty {
-            return lastError
-        }
-        let detail = daemonManager.detailText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !detail.isEmpty,
-           detail.localizedCaseInsensitiveContains("gateway") {
-            return detail
-        }
-        if case .healthy = daemonManager.status {
-            return nil
-        }
-        return detail.isEmpty ? nil : detail
+        daemonManager.localGatewayStartErrorMessage
     }
 
     private func syncRoutedProxyModels(_ target: RoutingClientWiringTarget = .droid) {

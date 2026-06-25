@@ -270,7 +270,12 @@ enum HermesEnvironmentFile {
     ) throws {
         let fileManager = FileManager.default
         let directoryURL = url.deletingLastPathComponent()
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
 
         var lines: [String] = []
         if fileManager.fileExists(atPath: url.path) {

@@ -385,6 +385,22 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
+    var localGatewayStartErrorMessage: String? {
+        if let lastError = lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastError.isEmpty {
+            return lastError
+        }
+        let detail = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty,
+           detail.localizedCaseInsensitiveContains("gateway") {
+            return detail
+        }
+        if case .healthy = status {
+            return nil
+        }
+        return detail.isEmpty ? nil : detail
+    }
+
     var isDaemonHeartbeatStale: Bool {
         OpenBurnBarDaemonHeartbeatReader.isStale(
             snapshot: readDaemonHeartbeatSnapshot()

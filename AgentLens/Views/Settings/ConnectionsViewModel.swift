@@ -588,12 +588,6 @@ final class ConnectionsViewModel {
             await restartGateway()
         }
         var targetFailures: [RoutingClientWiringTarget: String] = [:]
-        if snapshot.detectedTargets.contains(.claudeCode) {
-            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
-                targetFailures[.claudeCode] = bootstrapError
-                appStates[.claudeCode] = .degraded(message: bootstrapError)
-            }
-        }
 
         let importResult = await vibeProxyMigrationService.importCredentials(from: snapshot) { request in
             try await daemonManager.addProviderCredentialSlotReturningID(
@@ -607,6 +601,12 @@ final class ConnectionsViewModel {
 
         if importResult.importedCount > 0, let restartGateway {
             await restartGateway()
+        }
+        if snapshot.detectedTargets.contains(.claudeCode) {
+            if let bootstrapError = await bootstrapClaudeOAuthIfNeeded(daemonManager: daemonManager) {
+                targetFailures[.claudeCode] = bootstrapError
+                appStates[.claudeCode] = .degraded(message: bootstrapError)
+            }
         }
 
         await refreshProxyModelCatalog(settings: settings)

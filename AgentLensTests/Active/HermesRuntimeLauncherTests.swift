@@ -196,6 +196,10 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let permissions = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber).intValue
         XCTAssertEqual(permissions & 0o777, 0o600)
+
+        let directoryAttributes = try FileManager.default.attributesOfItem(atPath: url.deletingLastPathComponent().path)
+        let directoryPermissions = try XCTUnwrap(directoryAttributes[.posixPermissions] as? NSNumber).intValue
+        XCTAssertEqual(directoryPermissions & 0o777, 0o700)
     }
 
     func test_ensureAPIServerEnabled_preservesExistingKeyAndNormalizesFlag() throws {
