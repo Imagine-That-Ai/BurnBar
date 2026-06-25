@@ -68,15 +68,34 @@ final class MercuryCallHUDStateTests: XCTestCase {
         state.isCollapsed = false
         state.isMicMuted = true
         state.isCameraMuted = true
-        state.isSharingScreen = true
+        state.isSharingScreen = false
 
         state.reset(startedAt: Date(timeIntervalSince1970: 42))
 
         XCTAssertTrue(state.isCollapsed)
         XCTAssertFalse(state.isMicMuted)
         XCTAssertFalse(state.isCameraMuted)
-        XCTAssertFalse(state.isSharingScreen)
+        XCTAssertTrue(state.isSharingScreen)
         XCTAssertEqual(state.startedAt, Date(timeIntervalSince1970: 42))
+    }
+
+    func test_screenShareStopActionStopsMirrorOnceAndMarksStopping() async {
+        let state = CallHUDState()
+        state.isSharingScreen = true
+        var stopCount = 0
+
+        await MercuryScreenShareHUDActions.stopScreenShare(state: state) {
+            stopCount += 1
+        }
+
+        XCTAssertFalse(state.isSharingScreen)
+        XCTAssertEqual(stopCount, 1)
+
+        await MercuryScreenShareHUDActions.stopScreenShare(state: state) {
+            stopCount += 1
+        }
+
+        XCTAssertEqual(stopCount, 1)
     }
 
     func test_collapsedHUDRendersTrafficLightPillControls() throws {
@@ -87,7 +106,7 @@ final class MercuryCallHUDStateTests: XCTestCase {
             state: state,
             onMuteMic: {},
             onMuteCamera: {},
-            onShareScreen: {},
+            onStopScreenShare: {},
             onEnd: {}
         )
 
