@@ -140,19 +140,19 @@ jobs:
           workspaces: ${{ matrix.path }}
 
       # Security posture: deny correctness lints that are genuine FFI/memory
-      # footguns (transmute-to-ref, invalid reference casting, unchecked-utf8)
-      # plus panic-prone unwrap/expect in library code. We do NOT use a blanket
-      # `-D warnings` here: openburnbar-iroh's generated/FFI surface carries
-      # accepted pedantic cast_possible_truncation / cast_sign_loss warnings.
-      # Full strictness for burnbar-remote is enforced by rust-remote-engine.yml.
+      # footguns (transmute-to-ref, invalid reference casting, unchecked-utf8),
+      # panic-prone unwrap/expect in library code, and lossy numeric casts.
+      # Keep this fail-closed: a newly introduced clippy warning must either be
+      # fixed or explicitly justified in source where reviewers can inspect it.
       - name: cargo clippy (security lints)
         working-directory: ${{ matrix.path }}
         run: |
           cargo clippy --workspace --all-targets -- \
+            -D warnings \
             -D clippy::transmute_ptr_to_ref \
             -D invalid_reference_casting \
             -D invalid_from_utf8_unchecked \
             -D clippy::unwrap_used \
             -D clippy::expect_used \
-            -W clippy::cast_possible_truncation \
-            -W clippy::cast_sign_loss
+            -D clippy::cast_possible_truncation \
+            -D clippy::cast_sign_loss
