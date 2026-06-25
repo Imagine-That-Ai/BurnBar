@@ -44,6 +44,24 @@ enum PetCompanionFeature {
         static let enabled = "pet.companionEnabled"
         static let activeAgent = "pet.activeAgent"
         static let activePetID = "pet.activePetID"
+        /// Whether the active pet's `agent.persona` drives chat voice (cloud +
+        /// local fallback). Default ON; per-app UserDefaults so it survives
+        /// relaunch and is independent of the host app's own settings.
+        static let personaVoiceEnabled = "pet.personaVoiceEnabled"
+    }
+
+    /// Whether the pet persona voice override is on. Default ON when never set
+    /// (per-app UserDefaults), so a freshly-selected pet speaks in character
+    /// until the user turns it off via the right-click menu.
+    static var personaVoiceEnabled: Bool {
+        if UserDefaults.standard.object(forKey: DefaultsKey.personaVoiceEnabled) == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: DefaultsKey.personaVoiceEnabled)
+    }
+
+    static func setPersonaVoiceEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: DefaultsKey.personaVoiceEnabled)
     }
 
     /// The bundled pet shown by default until the form/agent picker (C8) lands.

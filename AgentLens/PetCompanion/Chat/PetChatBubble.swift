@@ -35,6 +35,8 @@ final class PetChatController {
     var draft = ""
     /// The reply currently rendering in the bubble (streamed text).
     private(set) var replyText = ""
+    /// User-resized bubble width. The AppKit panel fits to this SwiftUI width.
+    private(set) var bubbleWidth: CGFloat = 300
     /// True while a stream (cloud or local floor) is in flight.
     private(set) var isAnswering = false
     /// True when the *local* floor is answering (drives the "answering locally"
@@ -145,6 +147,11 @@ final class PetChatController {
         } else {
             open()
         }
+    }
+
+    func resizeBubbleWidth(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0 else { return }
+        bubbleWidth = min(520, max(240, bubbleWidth * factor))
     }
 
     // MARK: Attachments (file drag-and-drop onto the pet)
@@ -527,30 +534,36 @@ struct PetChatBubbleView: View {
     @FocusState private var inputFocused: Bool
 
     var body: some View {
+        contentColumn
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.top, DesignSystem.Spacing.md)
+            // Reserve room at the bottom for the speech-bubble tail (carved into
+            // the outline) so it never clips the input row.
+            .padding(.bottom, DesignSystem.Spacing.md + 6)
+            .frame(width: controller.bubbleWidth)
+            .glassBubbleChrome(tailAnchor: tailAnchorX)
+            .onAppear { inputFocused = true }
+            .onChange(of: controller.isOpen) { _, open in inputFocused = open }
+            .onChange(of: controller.draft) { _, _ in controller.userDidType() }
+            .onChange(of: controller.replyText) { _, _ in onContentSizeChange() }
+            .onChange(of: controller.isAnswering) { _, _ in onContentSizeChange() }
+            .onChange(of: controller.isAnsweringLocally) { _, _ in onContentSizeChange() }
+            .onChange(of: controller.lastErrorNote) { _, _ in onContentSizeChange() }
+            .onChange(of: controller.pendingAttachments.count) { _, _ in onContentSizeChange() }
+            .animation(DesignSystem.Animation.gentle, value: controller.isAnswering)
+            .animation(DesignSystem.Animation.gentle, value: controller.replyText)
+            .animation(DesignSystem.Animation.gentle, value: controller.pendingAttachments.count)
+    }
+
+    /// The bubble's content column, broken out so `body`'s modifier chain
+    /// type-checks in reasonable time.
+    private var contentColumn: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
             attachmentTray
             transcript
             inputRow
         }
-        .padding(DesignSystem.Spacing.md)
-        .frame(width: 300)
-        .background(bubbleBackground)
-        .overlay(bubbleBorder)
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
-        .overlay(alignment: .bottom) { bubbleTail }
-        .onAppear { inputFocused = true }
-        .onChange(of: controller.isOpen) { _, open in inputFocused = open }
-        .onChange(of: controller.draft) { _, _ in controller.userDidType() }
-        .onChange(of: controller.replyText) { _, _ in onContentSizeChange() }
-        .onChange(of: controller.isAnswering) { _, _ in onContentSizeChange() }
-        .onChange(of: controller.isAnsweringLocally) { _, _ in onContentSizeChange() }
-        .onChange(of: controller.lastErrorNote) { _, _ in onContentSizeChange() }
-        .onChange(of: controller.pendingAttachments.count) { _, _ in onContentSizeChange() }
-        .animation(DesignSystem.Animation.gentle, value: controller.isAnswering)
-        .animation(DesignSystem.Animation.gentle, value: controller.replyText)
-        .animation(DesignSystem.Animation.gentle, value: controller.pendingAttachments.count)
     }
 
     // MARK: Attachment tray (file drag-and-drop onto the pet)
@@ -732,42 +745,146 @@ struct PetChatBubbleView: View {
 
     // MARK: Chrome
 
-    private var bubbleBackground: some View {
-        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(DesignSystem.Colors.cardGradient)
-            )
+    // The chrome (Liquid Glass plate, sheen, specular rim, shadow + glow) lives
+    // in `glassBubbleChrome` below, broken out so `body`'s modifier chain
+    // type-checks in reasonable time.
+}
+
+// MARK: - Liquid Glass bubble chrome
+
+/// The state-of-the-art Liquid Glass speech-bubble chrome. Everything is CLIPPED
+/// to the bubble silhouette (body + tail) so it reads as one real refracting
+/// glass bubble, not a glass plate with a rectangle behind it:
+///   • the Liquid Glass plate is the primary surface (on macOS 26+ it refracts
+///     the desktop behind it; older systems get a tuned `ultraThinMaterial`);
+///   • a faint brand-tinted sheen rides under the glass;
+///   • a hairline specular rim catches the light along the top edge;
+///   • a layered soft shadow + warm glow ground the bubble in space.
+/// Broken into its own modifier so `body`'s chain type-checks in reasonable
+/// time.
+private struct GlassBubbleChrome: ViewModifier {
+    let tailAnchor: CGFloat
+
+    func body(content: Content) -> some View {
+        let shape = SpeechBubbleShape(tailAnchor: tailAnchor)
+        // Clip FIRST so the glass plate, sheen, and rim all conform to the
+        // bubble silhouette and the content never leaks past the tail.
+        content
+            .background {
+                // Soft brand sheen riding UNDER the glass — drawn as a
+                // background so the content (text) stays legible on top.
+                shape.fill(SpeechBubbleSheen.gradient)
+            }
+            .clipShape(shape)
+            .liquidGlassSurface(in: shape, fallback: .ultraThinMaterial)
+            .overlay {
+                // Hairline specular rim along the bubble's outer edge.
+                shape.stroke(specularRim, lineWidth: 1)
+            }
+            // Shadow + glow apply to the clipped bubble silhouette, not a rect.
+            .shadow(color: .black.opacity(0.24), radius: 22, x: 0, y: 12)
+            .shadow(color: DesignSystem.Colors.ember.opacity(0.10), radius: 34, x: 0, y: 16)
     }
 
-    private var bubbleBorder: some View {
-        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 1)
-    }
-
-    /// A small triangle tail pointing down toward the pet's contact socket.
-    private var bubbleTail: some View {
-        BubbleTail()
-            .fill(.ultraThinMaterial)
-            .overlay(BubbleTail().stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 1))
-            .frame(width: 18, height: 10)
-            .offset(y: 9)
-            .alignmentGuide(.bottom) { d in d[.bottom] }
-            .padding(.leading, max(0, (tailAnchorX - 0.5)) * 280)
+    private var specularRim: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.white.opacity(0.5),
+                Color.white.opacity(0.06),
+                Color.white.opacity(0.22)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }
 
-// MARK: - BubbleTail shape
+/// The faint brand-tinted gradient that rides under the glass so the bubble has
+/// a warm identity even where the desktop behind it is dark.
+private enum SpeechBubbleSheen {
+    static let gradient = LinearGradient(
+        colors: [
+            DesignSystem.Colors.ember.opacity(0.14),
+            DesignSystem.Colors.amber.opacity(0.08),
+            Color.clear
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+}
 
-/// Downward speech-bubble tail.
-private struct BubbleTail: Shape {
+private extension View {
+    func glassBubbleChrome(tailAnchor: CGFloat) -> some View {
+        modifier(GlassBubbleChrome(tailAnchor: tailAnchor))
+    }
+}
+
+// MARK: - SpeechBubbleShape
+
+/// A proper speech-bubble silhouette: a rounded body with the downward tail
+/// carved INTO the bottom edge as one continuous outline (no internal seam).
+/// The tail's horizontal position follows the pet's contact socket
+/// (`tailAnchor`, 0…1). Used as the Liquid Glass plate shape so the bubble
+/// refracts light as a real chat bubble, not a plain rounded rect with a
+/// stuck-on triangle.
+private struct SpeechBubbleShape: Shape {
+    var tailAnchor: CGFloat = 0.5
+    var cornerRadius: CGFloat = DesignSystem.Radius.lg
+    var tailWidth: CGFloat = 16
+    var tailHeight: CGFloat = 12
+
     func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        p.closeSubpath()
-        return p
+        var path = Path()
+        let r = min(cornerRadius, min(rect.width, rect.height - tailHeight) / 2)
+        guard r > 0, rect.width > tailWidth, (rect.height - tailHeight) > 0 else {
+            path.addRoundedRect(in: rect, cornerSize: CGSize(width: r, height: r))
+            return path
+        }
+
+        let left = rect.minX
+        let right = rect.maxX
+        let top = rect.minY
+        let bodyBottom = rect.maxY - tailHeight
+
+        // Tail anchor, clamped so the tail never collides with the bottom corners.
+        let anchorX = left + max(tailWidth / 2 + r + 2,
+                                 min(right - tailWidth / 2 - r - 2,
+                                     rect.width * tailAnchor))
+        let tailLeft = anchorX - tailWidth / 2
+        let tailRight = anchorX + tailWidth / 2
+        let tailTipY = rect.maxY
+
+        // Trace the bubble as ONE continuous path:
+        //   start at top-left (after the rounded corner), go clockwise across the
+        //   top, down the right, along the bottom to the tail, OUT to the tip,
+        //   back to the bottom, and down the left — so the tail is carved into the
+        //   outline instead of being a separate triangle with an internal seam.
+        path.move(to: CGPoint(x: left, y: top + r))
+        // Top-left corner.
+        path.addArc(center: CGPoint(x: left + r, y: top + r), radius: r,
+                    startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        // Top edge.
+        path.addLine(to: CGPoint(x: right - r, y: top))
+        // Top-right corner.
+        path.addArc(center: CGPoint(x: right - r, y: top + r), radius: r,
+                    startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+        // Right edge down to the bottom-right corner.
+        path.addLine(to: CGPoint(x: right, y: bodyBottom - r))
+        // Bottom-right corner.
+        path.addArc(center: CGPoint(x: right - r, y: bodyBottom - r), radius: r,
+                    startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        // Bottom edge up to the tail's right base.
+        path.addLine(to: CGPoint(x: tailRight, y: bodyBottom))
+        // Out to the tail tip and back to the left base.
+        path.addLine(to: CGPoint(x: anchorX, y: tailTipY))
+        path.addLine(to: CGPoint(x: tailLeft, y: bodyBottom))
+        // Bottom edge to the bottom-left corner.
+        path.addLine(to: CGPoint(x: left + r, y: bodyBottom))
+        // Bottom-left corner.
+        path.addArc(center: CGPoint(x: left + r, y: bodyBottom - r), radius: r,
+                    startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        // Left edge back up to the start.
+        path.closeSubpath()
+        return path
     }
 }

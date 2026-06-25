@@ -359,6 +359,18 @@ private final class InteractivePetSKView: SKView, PetDropHostingView {
     /// view observes without forming a controller↔view↔delegate retain cycle.
     weak var dropDelegate: PetAttachmentDropDelegate?
 
+    /// Right-click handler installed by ``PetCompanionController``; `nil` until
+    /// wired so an unconfigured view ignores right-clicks.
+    var rightClickHandler: ((NSView, NSEvent) -> Void)?
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let rightClickHandler {
+            rightClickHandler(self, event)
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
+
     /// Register the types the pet accepts. Called by the controller after it
     /// installs ``dropDelegate`` so the view participates in AppKit's drag
     /// session only when wired.
