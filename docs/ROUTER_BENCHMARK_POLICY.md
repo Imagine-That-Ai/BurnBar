@@ -53,7 +53,8 @@ weight, a freshness state, and a documented update path.
 ### Design Arena
 
 - **Endpoint:** `https://www.designarena.ai/api/v1/models`
-- **Auth:** `DESIGN_ARENA_API_KEY` header `Authorization: Bearer <key>`
+- **Auth:** Secret Manager-backed `DESIGN_ARENA_API_KEY` header
+  `Authorization: Bearer <key>`
 - **Fallback:** if the live API is unreachable, BurnBar uses the
   `DESIGN_ARENA_FIXTURE_JSON` cached fixture — the source row stays
   visible and is tagged `stale` in the daily rundown so the operator
