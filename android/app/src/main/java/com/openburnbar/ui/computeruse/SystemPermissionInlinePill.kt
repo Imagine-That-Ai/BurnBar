@@ -108,6 +108,8 @@ private fun subtitle(item: SystemPermissionItem): String = when (item.status) {
 private fun displayTitle(kind: PhoneControlSystemPermissionKind): String = when (kind) {
     PhoneControlSystemPermissionKind.SCREEN_RECORDING -> "Screen Recording"
     PhoneControlSystemPermissionKind.ACCESSIBILITY -> "Accessibility"
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP -> "Remote Desktop"
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION -> "System Extensions"
     PhoneControlSystemPermissionKind.CAMERA -> "Camera"
     PhoneControlSystemPermissionKind.MICROPHONE -> "Microphone"
     PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> "Full Disk Access"
