@@ -69,21 +69,42 @@ const KNOWN_AUTH_METHODS_BY_PROVIDER: Partial<Record<Provider, ReadonlySet<strin
   mimo: new Set(["mimo-token-plan", "mimo-payg"]),
 };
 
+const CLOUD_CONNECT_AUTH_METHODS_BY_PROVIDER: Partial<Record<Provider, ReadonlySet<string>>> = {
+  openai: new Set(["openai-api-key", "openai-admin-key"]),
+  minimax: new Set(["minimax-coding-plan", "minimax-open-platform"]),
+  zai: new Set(["zai-coding-plan"]),
+  kimi: new Set(["moonshot-api-key"]),
+  xai: new Set(["xai-management-key"]),
+  mimo: new Set(["mimo-token-plan", "mimo-payg"]),
+};
+
 export function normalizeCloudConnectAuthMethodID(
   provider: Provider,
   authMethodID: unknown,
   credential?: string,
 ): string | undefined {
   if (authMethodID === undefined || authMethodID === null) {
-    return inferredCloudConnectAuthMethodID(provider, credential);
+    return assertCloudConnectAuthMethodID(provider, inferredCloudConnectAuthMethodID(provider, credential));
   }
   const normalized = boundedTrimmedString(authMethodID, "authMethodID", 96);
-  if (!normalized) return inferredCloudConnectAuthMethodID(provider, credential);
+  if (!normalized) return assertCloudConnectAuthMethodID(provider, inferredCloudConnectAuthMethodID(provider, credential));
   const knownMethods = KNOWN_AUTH_METHODS_BY_PROVIDER[provider];
   if (knownMethods && !knownMethods.has(normalized)) {
     throw new HttpsError("invalid-argument", "Unsupported provider credential method.");
   }
-  return normalized;
+  return assertCloudConnectAuthMethodID(provider, normalized);
+}
+
+function assertCloudConnectAuthMethodID(provider: Provider, authMethodID: string | undefined): string | undefined {
+  if (!authMethodID) return undefined;
+  const cloudMethods = CLOUD_CONNECT_AUTH_METHODS_BY_PROVIDER[provider];
+  if (cloudMethods && !cloudMethods.has(authMethodID)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "That credential method is local-only or daemon-managed. Use the Mac app provider setup, hosted quota sync, or self-hosted quota sync for that provider.",
+    );
+  }
+  return authMethodID;
 }
 
 function inferredCloudConnectAuthMethodID(provider: Provider, credential?: string): string | undefined {
