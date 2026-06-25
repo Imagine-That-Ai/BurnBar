@@ -31,6 +31,12 @@ lives outside `users/{uid}` in a server-private collection. Mac-local credential
 stay in the macOS Keychain or daemon credential slots; only non-secret metadata
 and quota snapshots sync to mobile devices.
 
+`connectProviderAccount` only accepts credential methods that the server-side
+adapter can validate and refresh from Cloud Functions. Browser-login, local
+runtime, and daemon-managed methods must use the Mac app, hosted quota sync, or
+self-hosted quota sync flow so local/session secrets are not promoted into
+cloud-refreshable server credentials by stale clients.
+
 ## Refresh Behavior
 
 - **Cloud-refreshable accounts:** refresh from Cloud Functions on any signed-in
