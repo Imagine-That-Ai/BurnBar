@@ -1,5 +1,5 @@
 import { createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   createRemoteMcpGrant,
@@ -18,6 +18,19 @@ interface RemoteMcpAccessClaims {
   grant_mode: RemoteMcpGrantMode;
   exp: number;
   jti: string;
+}
+
+export const REMOTE_MCP_DEFAULT_GRANT_SCOPES: readonly RemoteMcpScope[] = [
+  "search:read",
+  "conversation:read",
+  "usage:read",
+  "index:status",
+] as const;
+
+interface RemoteMcpGrantIssuerWriter {
+  doc(path: string): {
+    set(data: object, options?: { merge?: boolean }): Promise<unknown>;
+  };
 }
 
 function privateKeyFromBase64PEM(value: string) {
@@ -44,7 +57,7 @@ function signRemoteMcpAccessToken(
 }
 
 export async function issueRemoteMcpGrantForSignedInUser(
-  db: Firestore,
+  db: RemoteMcpGrantIssuerWriter,
   uid: string,
   input: {
     clientId?: string;
@@ -61,9 +74,7 @@ export async function issueRemoteMcpGrantForSignedInUser(
   },
 ) {
   const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
-  const scopes: RemoteMcpScope[] = input.scopes?.length
-    ? input.scopes
-    : ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"];
+  const scopes: RemoteMcpScope[] = input.scopes?.length ? input.scopes : [...REMOTE_MCP_DEFAULT_GRANT_SCOPES];
   const grantMode = input.grantMode ?? "local_decrypt_shim";
   await upsertRemoteMcpClient(db, uid, {
     clientId,
