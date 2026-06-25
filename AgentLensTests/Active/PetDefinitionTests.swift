@@ -57,6 +57,29 @@ final class PetDefinitionTests: XCTestCase {
             .sorted()
     }
 
+    /// All bundled pets that ship a 3D form, including legacy `Pets/` demos
+    /// (e.g. go-gopher) and synced `Models/` cast members.
+    private func bundledModel3DPetIDs(in bundle: Bundle = .main) -> [String] {
+        let roots = ["Models", "Pets"].compactMap { bundle.url(forResource: $0, withExtension: nil) }
+        var ids: [String] = []
+        for modelsRoot in roots {
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: modelsRoot,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            ids.append(contentsOf: entries
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+                .filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("petdef.json").path) }
+                .map { $0.lastPathComponent }
+            )
+        }
+        return Array(Set(ids)).filter { id in
+            guard let def = PetDefinition.loadBundled(id: id, in: bundle) else { return false }
+            return def.model3d != nil
+        }.sorted()
+    }
+
     // MARK: Fixtures
 
     /// The exact shipped `public/pets/claudecode/pet.json` (legacy PET-ATLAS-
@@ -383,6 +406,139 @@ final class PetDefinitionTests: XCTestCase {
                 XCTAssertGreaterThan(metrics.sourceMaxExtent, 0, id)
                 XCTAssertGreaterThan(metrics.baseScale, 0, id)
                 XCTAssertEqual(metrics.normalizedMaxExtent, 2.0, accuracy: 0.01, id)
+            }
+        }
+    }
+
+    /// Regression: every bundled 3D pet must launch upright (longest dimension
+    /// vertical, +Y). This guards against exports authored on their side/back,
+    /// which currently render as soles/feet toward the camera instead of face
+    /// and full body.
+    @MainActor
+    func test_sceneKitRendererLaunchesEveryModelPetUpright() throws {
+        let ids = bundledModel3DPetIDs()
+        XCTAssertFalse(ids.isEmpty, "expected bundled 3D pets")
+
+        for id in ids {
+            autoreleasepool {
+                guard let def = PetDefinition.loadBundled(id: id) else {
+                    XCTFail("missing petdef for \(id)")
+                    return
+                }
+                guard let form = def.defaultForm else {
+                    XCTFail("missing default form for \(id)")
+                    return
+                }
+
+                let renderer = SceneKitPetRenderer(definition: def, form: form)
+                let container = NSView(frame: CGRect(origin: .zero, size: PetPanel.defaultSize))
+                renderer.mount(in: container)
+                defer { renderer.unmount() }
+
+                XCTAssertTrue(
+                    renderer.isUprightForTesting,
+                    "\(id) did not launch upright — likely rendered on its side/back"
+                )
+            }
+        }
+    }
+
+    /// Regression: skinned founder models specifically must be upright at mount
+    /// BEFORE any user interaction (click/chat). The skeleton bind-pose can
+    /// orient the skinned mesh horizontally even though the raw mesh geometry
+    /// is Y-dominant. This test pumps the render loop so the presentation-time
+    /// orientation correction fires, then verifies the presentation bounding
+    /// box is Y-dominant. Guards the "soles of feet until clicked" failure.
+    @MainActor
+    func test_skinnedFoundersAreUprightBeforeInteraction() throws {
+        let ids = ["founder-gates", "founder-zuckerberg", "founder-jobs", "founder-musk"]
+        for id in ids {
+            try autoreleasepool {
+                let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+                let form = try XCTUnwrap(def.defaultForm, id)
+                let renderer = SceneKitPetRenderer(definition: def, form: form)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 256, height: 256),
+                    styleMask: [.borderless], backing: .buffered, defer: false
+                )
+                let container = NSView(frame: NSRect(x: 0, y: 0, width: 256, height: 256))
+                window.contentView = container
+                renderer.mount(in: container)
+                defer { renderer.unmount(); window.orderOut(nil) }
+
+                // Pump the render loop so the presentation-time orientation
+                // correction and camera reframe fire (3 passes, one per render).
+                let scnView = try XCTUnwrap(renderer.view as? SCNView)
+                scnView.frame = container.bounds
+                container.layoutSubtreeIfNeeded()
+                for _ in 0..<3 {
+                    _ = scnView.snapshot()
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                }
+
+                XCTAssertTrue(
+                    renderer.isUprightForTesting,
+                    "\(id) was not upright after mount — skeleton bind pose orients it horizontally"
+                )
+            }
+        }
+    }
+
+    /// Pixel-truth: a representative set of 3D pets renders with face + body
+    /// visible, not just feet/soles toward the camera. Guards the "launch
+    /// upright" requirement with a real rasterization check.
+    @MainActor
+    func test_sceneKitRendererShowsFaceAndBodyNotJustFeet() throws {
+        let ids = ["founder-gates", "founder-zuckerberg", "newton", "go-gopher"]
+        for id in ids {
+            try autoreleasepool {
+                let def = try XCTUnwrap(PetDefinition.loadBundled(id: id), id)
+                let form = try XCTUnwrap(def.defaultForm, id)
+                let renderer = SceneKitPetRenderer(definition: def, form: form)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 256, height: 256),
+                    styleMask: [.borderless],
+                    backing: .buffered,
+                    defer: false
+                )
+                let container = NSView(frame: NSRect(x: 0, y: 0, width: 256, height: 256))
+                window.contentView = container
+                renderer.mount(in: container)
+                renderer.setPaused(false)
+                renderer.play(state: "idle")
+                defer { renderer.unmount(); window.orderOut(nil) }
+
+                let scnView = try XCTUnwrap(renderer.view as? SCNView)
+                scnView.frame = container.bounds
+                container.layoutSubtreeIfNeeded()
+                _ = scnView.snapshot()
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+                let image = scnView.snapshot()
+                let tiff = try XCTUnwrap(image.tiffRepresentation, id)
+                let bitmap = try XCTUnwrap(NSBitmapImageRep(data: tiff), id)
+                let w = bitmap.pixelsWide
+                let h = bitmap.pixelsHigh
+
+                var top = 0, middle = 0, bottom = 0
+                for y in stride(from: 0, to: h, by: 4) {
+                    for x in stride(from: 0, to: w, by: 4) {
+                        guard let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.05 else { continue }
+                        if y < h / 3 {
+                            top += 1
+                        } else if y < 2 * h / 3 {
+                            middle += 1
+                        } else {
+                            bottom += 1
+                        }
+                    }
+                }
+
+                XCTAssertGreaterThan(top, 0, "\(id) head/face not visible")
+                XCTAssertGreaterThan(middle, top / 4, "\(id) body missing or tiny")
+                XCTAssertGreaterThan(bottom, 0, "\(id) feet/legs not visible")
+                // If bottom dominates top, the pet is likely feet-first / on its back.
+                XCTAssertGreaterThan(top, bottom / 3, "\(id) rendered feet-first (soles toward camera)")
             }
         }
     }
@@ -731,4 +887,5 @@ final class PetDefinitionTests: XCTestCase {
         XCTAssertEqual(item.anchorID, SettingsAnchor.petsCompanion)
         XCTAssertTrue(SettingsManifest.visibleAnchorIDs.contains(SettingsAnchor.petsCompanion))
     }
+
 }

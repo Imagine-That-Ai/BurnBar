@@ -819,6 +819,64 @@ struct ConnectionsSettingsView: View {
         }
     }
 
+    /// Pure classification for an external OAuth account row's credential
+    /// notice. Returns the *kind* of warning (or `nil` for "all good") given
+    /// the few facts the row actually knows about a credential.
+    ///
+    /// The cardinal rule: a credential that is genuinely present is **never**
+    /// reported as "Credential not found", even when the provider withholds
+    /// quota buckets. Isolated Claude OAuth (Max/Pro) profiles routinely sign
+    /// in successfully while Anthropic returns no quota windows — that is a
+    /// `.quotaUnavailable` state, not a missing credential. Treating it as
+    /// missing produced a self-contradictory row (a red "Credential not found"
+    /// badge above a message that says the credential *is* signed in) and an
+    /// endless refresh-nag loop where refreshing never cleared the warning.
+    ///
+    /// Presence is proven two independent ways, either of which suffices:
+    ///  - `authConnected == true`: local auth discovery found a usable
+    ///    credential in the profile's config directory.
+    ///  - `snapshotSource == .officialAPI`: the Claude quota adapter only
+    ///    stamps an unavailable snapshot with `.officialAPI` *after* it loaded
+    ///    this account's stored credential, so that source proves the
+    ///    credential exists even with empty buckets.
+    ///
+    /// - Parameter authConnected: `true`/`false` from auth discovery, or `nil`
+    ///   when no auth state was discovered for the account at all.
+    static func classifyExternalCredentialNotice(
+        isDisabled: Bool,
+        isCurrentLogin: Bool,
+        hasQuotaWindows: Bool,
+        authConnected: Bool?,
+        snapshotSource: ProviderQuotaSourceKind?,
+        snapshotConfidence: ProviderQuotaConfidence?
+    ) -> ExternalOAuthCredentialNotice.Kind? {
+        // Disabled rows and rows already showing real quota windows need no
+        // warning at all.
+        guard !isDisabled, !hasQuotaWindows else { return nil }
+
+        // Auth discovery explicitly reports the saved credential is gone.
+        if authConnected == false { return .credentialMissing }
+
+        let credentialPresent = (authConnected == true) || snapshotSource == .officialAPI
+
+        if let snapshotSource, let snapshotConfidence {
+            let quotaIsUnavailable = snapshotConfidence == .unavailable
+                || snapshotSource == .unavailable
+            if quotaIsUnavailable {
+                // A present credential with withheld quota reads as a quota
+                // gap; only a genuinely-absent credential is "not found".
+                return credentialPresent ? .quotaUnavailable : .credentialMissing
+            }
+            // A usable snapshot proves the credential and simply lacks windows.
+            return .quotaUnavailable
+        }
+
+        // No snapshot captured yet for this account.
+        if credentialPresent, !isCurrentLogin { return .quotaUnavailable }
+        if isCurrentLogin { return nil }
+        return .credentialMissing
+    }
+
     private struct AccountGroup {
         let providerID: ProviderID
         let accounts: [ProviderAccountDoc]
@@ -1208,47 +1266,65 @@ struct ConnectionsSettingsView: View {
     }
 
     private func credentialNotice(for account: ExternalOAuthAccount) -> ExternalOAuthCredentialNotice? {
-        guard !account.isDisabled,
-              let provider = account.cliType.agentProvider,
-              quotaWindows(for: account).isEmpty else {
-            return nil
-        }
+        guard let provider = account.cliType.agentProvider else { return nil }
 
-        if let authInfo = externalAuthInfo(for: account),
-           !isExternalAuthConnected(authInfo) {
-            return .credentialMissing(
-                cliType: account.cliType,
-                message: credentialMissingMessage(for: account, authInfo: authInfo)
-            )
-        }
+        let authInfo = externalAuthInfo(for: account)
+        let snapshot = exactExternalQuotaSnapshot(for: account, provider: provider)
+        let kind = Self.classifyExternalCredentialNotice(
+            isDisabled: account.isDisabled,
+            isCurrentLogin: account.isCurrentLogin,
+            hasQuotaWindows: !quotaWindows(for: account).isEmpty,
+            authConnected: authInfo.map(isExternalAuthConnected),
+            snapshotSource: snapshot?.source,
+            snapshotConfidence: snapshot?.confidence
+        )
 
-        if let snapshot = exactExternalQuotaSnapshot(for: account, provider: provider) {
-            let statusMessage = normalizedString(snapshot.statusMessage)
-            if snapshot.confidence == .unavailable || snapshot.source == .unavailable {
+        guard let kind else { return nil }
+        switch kind {
+        case .credentialMissing:
+            // Prefer the most specific explanation available, mirroring the
+            // previous message precedence (auth state → snapshot → default).
+            if let authInfo, !isExternalAuthConnected(authInfo) {
+                return .credentialMissing(
+                    cliType: account.cliType,
+                    message: credentialMissingMessage(for: account, authInfo: authInfo)
+                )
+            }
+            if let snapshot {
                 return .credentialMissing(
                     cliType: account.cliType,
                     message: credentialMissingMessage(
                         for: account,
-                        snapshotMessage: statusMessage
+                        snapshotMessage: normalizedString(snapshot.statusMessage)
                     )
                 )
             }
-
-            if let statusMessage {
+            return .credentialMissing(cliType: account.cliType)
+        case .quotaUnavailable:
+            if let statusMessage = normalizedString(snapshot?.statusMessage) {
                 return .quotaUnavailable(message: statusMessage)
             }
-        }
-
-        if let authInfo = externalAuthInfo(for: account),
-           isExternalAuthConnected(authInfo),
-           !account.isCurrentLogin {
             return .quotaUnavailable(
                 message: "\(account.cliType.displayName) credential is present, but no quota snapshot has been captured for this profile yet. Refresh to capture current quota."
             )
         }
+    }
 
-        guard !account.isCurrentLogin else { return nil }
-        return .credentialMissing(cliType: account.cliType)
+    /// Confirmation line shown after a manual credential refresh. Mirrors the
+    /// row's own notice so the acknowledgement is truthful: a refreshed,
+    /// connected credential reads as success even when the provider returns no
+    /// quota — rather than promising a quota meter that will never appear.
+    private func refreshConfirmationMessage(for account: ExternalOAuthAccount) -> String {
+        let name = account.cliType.displayName
+        guard let kind = credentialNotice(for: account)?.kind else {
+            return "Credential refreshed. Quota captured for this profile."
+        }
+        switch kind {
+        case .quotaUnavailable:
+            return "Credential refreshed and connected. \(name) returned no current quota, so this profile won't show a quota meter yet."
+        case .credentialMissing:
+            return "Refresh finished, but no usable \(name) credential was captured for this profile. Open the \(name) login again to finish signing in."
+        }
     }
 
     private func externalAuthInfo(for account: ExternalOAuthAccount) -> CLIAuthInfo? {
@@ -1365,7 +1441,13 @@ struct ConnectionsSettingsView: View {
                 if let provider = account.cliType.agentProvider {
                     await quotaService.refresh(provider: provider, dataStore: dataStore)
                 }
-                externalCredentialMessages[account.id] = "Credential refreshed. Quota will update from this profile only."
+                // Re-read state after the quota refresh so the confirmation
+                // reflects what actually happened — connected with quota,
+                // connected without quota, or still missing — instead of
+                // unconditionally promising quota that some accounts never
+                // expose.
+                refreshExternalAuthStates()
+                externalCredentialMessages[account.id] = refreshConfirmationMessage(for: account)
             } catch {
                 externalCredentialMessages[account.id] = "Failed to save refreshed credential: \(error.localizedDescription)"
             }

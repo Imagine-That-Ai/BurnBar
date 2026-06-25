@@ -43,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
+  "Credential not found" badge and a permanent "Refresh credential" button even
+  right after a successful sign-in. Claude Max/Pro OAuth profiles routinely
+  authenticate while Anthropic returns no quota buckets; the row classified that
+  empty-quota snapshot as a missing credential, producing a self-contradictory
+  card (the message said the credential *was* signed in) and an endless
+  refresh-nag loop. A credential that auth discovery — or an official-API quota
+  snapshot — confirms is present is now reported as "Quota unavailable" (amber),
+  never "Credential not found", and the post-refresh confirmation truthfully
+  reports "Credential refreshed and connected" instead of promising quota that
+  some accounts never expose. The classification is covered by new unit tests.
 - Unblocked the test target: `HermesSetupWizardController.autoProbeTask` was
   `private` but the committed `HermesRuntimeLauncherTests` test asserts
   `controller.autoProbeTask` is nil after `stopAutoProbe()`. The property is
@@ -58,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounding sphere so a degenerate first frame retries instead of latching a bad
   (bird's-eye) framing. Regression test asserts the camera stays level and its
   world transform is unchanged across an `idle → listen` pose change.
+- Made macOS updates converge on one canonical app launch. The direct-download
   updater now terminates stale OpenBurnBar GUI processes, normalizes
   LaunchServices registrations, and relaunches `/Applications/OpenBurnBar.app`
   by exact path; source-channel updates use the same one-click install/cleanup

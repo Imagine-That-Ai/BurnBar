@@ -196,6 +196,17 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         )
     }
 
+    var isUprightForTesting: Bool {
+        guard let contentRoot,
+              let bounds = subtreeBoundingBox(for: contentRoot) else { return false }
+        let (minB, maxB) = bounds
+        let extentX = CGFloat(maxB.x - minB.x)
+        let extentY = CGFloat(maxB.y - minB.y)
+        let extentZ = CGFloat(maxB.z - minB.z)
+        guard [extentX, extentY, extentZ].allSatisfy(\.isFinite) else { return false }
+        return extentY >= max(extentX, extentZ) * 0.95
+    }
+
     // MARK: Init
 
     init(

@@ -490,6 +490,55 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(daemonSecret, "daemon-secret")
     }
 
+    func testKeychainSecretStoreDoesNotPromoteExpiredLegacyOAuthOverRefresh() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        ClaudeOAuthRefreshURLProtocol.enqueue(
+            status: 200,
+            body: #"{"access_token":"legacy-refreshed-token","refresh_token":"legacy-new-refresh","expires_in":28800}"#
+        )
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let primaryService = "com.openburnbar.tests.keychain.primary-refresh.\(UUID().uuidString)"
+        let legacyService = "com.openburnbar.tests.keychain.legacy-refresh.\(UUID().uuidString)"
+        let providerKey = "anthropic"
+        let account = "provider.\(providerKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        defer {
+            deleteKeychainSecret(service: primaryService, account: account)
+            deleteKeychainSecret(service: legacyService, account: account)
+            removeFallbackVault(fallbackURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let legacyPayload = """
+        {"claudeAiOauth":{"accessToken":"legacy-expired-token","refreshToken":"legacy-old-refresh","expiresAt":\(expiredAtMilliseconds),"subscriptionType":"max"},"organizationUuid":"org-legacy"}
+        """
+        try addKeychainSecret(legacyPayload, service: legacyService, account: account)
+
+        let store = BurnBarKeychainSecretStore(
+            service: primaryService,
+            legacyServices: [legacyService],
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: nil,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+
+        let secret = try await store.secret(for: providerKey)
+
+        XCTAssertEqual(secret, "legacy-refreshed-token")
+        let promotedPayload = try keychainSecret(service: primaryService, account: account)
+        let oauth = try XCTUnwrap(claudeOAuthPayload(from: promotedPayload))
+        XCTAssertEqual(oauth["accessToken"] as? String, "legacy-refreshed-token")
+        XCTAssertEqual(oauth["refreshToken"] as? String, "legacy-new-refresh")
+        XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies(), [
+            "grant_type=refresh_token&refresh_token=legacy-old-refresh&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+        ])
+    }
+
     func testKeychainSecretStoreFallsBackToClaudeCodeCredentialsWhenKeychainOAuthRefreshFails() async throws {
         ClaudeOAuthRefreshURLProtocol.reset()
         // The daemon-owned Keychain token refresh fails. Claude Code's file is

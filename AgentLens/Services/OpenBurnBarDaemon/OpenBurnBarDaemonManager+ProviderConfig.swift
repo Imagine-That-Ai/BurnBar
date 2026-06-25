@@ -350,9 +350,27 @@ extension OpenBurnBarDaemonManager {
 
                 for slot in settings.credentialSlots {
                     let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
-                    guard let apiKey = try Self.providerRuntimeSecrets.string(for: account)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines),
-                        !apiKey.isEmpty else {
+                    // Read defensively: a locked or ACL-restricted keychain item for
+                    // one slot must not abort repair for all remaining providers.
+                    // A `nil` result (item not found) or an error (auth denied,
+                    // locked keychain) both mean we cannot migrate this slot — log
+                    // and continue to the next one.
+                    let apiKey: String?
+                    do {
+                        apiKey = try Self.providerRuntimeSecrets.string(for: account)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    } catch {
+                        AppLogger.daemon.error(
+                            "provider_slot_secret_read_failed",
+                            metadata: [
+                                "provider": settings.providerID,
+                                "slot": slot.slotID,
+                                "errorClass": "\(String(describing: type(of: error)))"
+                            ]
+                        )
+                        continue
+                    }
+                    guard let apiKey, !apiKey.isEmpty else {
                         continue
                     }
 

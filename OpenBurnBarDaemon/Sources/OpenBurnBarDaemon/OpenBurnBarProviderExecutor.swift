@@ -841,6 +841,16 @@ private enum BurnBarFakeProviderExecution {
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     public static let defaultService = "com.openburnbar.daemon.provider-secrets"
     public static let legacyCursorConnectorService = "com.openburnbar.cursor-connector"
+    /// All Keychain services the app has used to store provider API keys.
+    /// The daemon checks every one so credentials entered through any app
+    /// version or code path are resolvable.
+    public static let allLegacyServices: [String] = [
+        "com.openburnbar.cursor-connector",
+        "com.burnbar.cursor-connector",
+        "com.agentlens.cursor-connector",
+        "com.openburnbar.provider-api-keys",
+        "com.burnbar.provider-api-keys"
+    ]
     private static let logger = BurnBarDaemonLogger(category: "provider-secret-store")
 
     private let service: String
@@ -861,7 +871,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     ) {
         self.service = service
         self.legacyServices = legacyServices ?? (
-            service == Self.defaultService ? [Self.legacyCursorConnectorService] : []
+            service == Self.defaultService ? Self.allLegacyServices : []
         )
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
         self.claudeCodeCredentialsURL = claudeCodeCredentialsURL
@@ -900,6 +910,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             if let secret = try secret(forService: legacyService, account: account) {
                 foundStoredSecret = true
                 if let routed = try await routeSecret(from: secret, providerID: providerID) {
+                    // Self-heal: promote the credential to the daemon's primary
+                    // service so subsequent reads don't depend on the legacy
+                    // service being readable. Best-effort — the routed secret is
+                    // still returned even if promotion fails.
+                    if !Self.isExpiredClaudeOAuthSecret(secret, providerID: providerID) {
+                        try? await setSecret(secret, for: providerID)
+                    }
                     return routed
                 }
                 storedAnthropicCredentialRefreshFailed = storedAnthropicCredentialRefreshFailed
