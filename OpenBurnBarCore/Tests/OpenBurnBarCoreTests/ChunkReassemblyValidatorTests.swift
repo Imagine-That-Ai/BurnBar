@@ -58,11 +58,36 @@ final class ChunkReassemblyValidatorTests: XCTestCase {
         }
     }
 
-    func testUnknownCountIsNoOp() throws {
-        // Streaming completions that do not declare a total (chunkCount <= 0) keep
-        // the prior behavior — no false positive.
+    func testMissingDeclaredCountFailsAfterChunks() throws {
         var v = ChunkReassemblyValidator()
-        for s in [0, 2] { try v.record(sequence: s) } // a gap, but count unknown
+        for s in [0, 1] { try v.record(sequence: s) }
+        XCTAssertThrowsError(try v.validateComplete(declaredChunkCount: 0)) { error in
+            XCTAssertEqual(
+                error as? ChunkReassemblyValidator.ValidationError,
+                .missingDeclaredChunkCount(declaredChunkCount: 0, distinctReceived: 2)
+            )
+        }
+        XCTAssertThrowsError(try v.validateComplete(declaredChunkCount: -1)) { error in
+            XCTAssertEqual(
+                error as? ChunkReassemblyValidator.ValidationError,
+                .missingDeclaredChunkCount(declaredChunkCount: -1, distinctReceived: 2)
+            )
+        }
+    }
+
+    func testDeclaredCountMustCoverObservedSequences() throws {
+        var v = ChunkReassemblyValidator()
+        for s in [0, 1, 2] { try v.record(sequence: s) }
+        XCTAssertThrowsError(try v.validateComplete(declaredChunkCount: 2)) { error in
+            XCTAssertEqual(
+                error as? ChunkReassemblyValidator.ValidationError,
+                .chunkAfterDeclaredEnd(declaredChunkCount: 2, sequence: 2, distinctReceived: 3)
+            )
+        }
+    }
+
+    func testEmptyCompletionCanOmitDeclaredCount() throws {
+        let v = ChunkReassemblyValidator()
         XCTAssertNoThrow(try v.validateComplete(declaredChunkCount: 0))
         XCTAssertNoThrow(try v.validateComplete(declaredChunkCount: -1))
     }
