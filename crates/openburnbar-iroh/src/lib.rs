@@ -249,7 +249,7 @@ impl IrohStream {
 /// per-source cooldown table consulted on the `Incoming` *before* we complete
 /// the QUIC handshake or call `accept_bi`. The key is derived from the cheapest
 /// pre-handshake discriminator iroh exposes (`Incoming::remote_addr()`): the
-/// remote socket address for a direct connection, or the relay URL + remote
+/// remote IP address for a direct connection, or the relay URL + remote
 /// EndpointId for a relayed one. This is an anti-abuse rate limit only — every
 /// stream that survives the cooldown is still subject to the Swift-side
 /// inbound allowlist, so the limiter can never widen who is allowed in.
@@ -294,10 +294,11 @@ impl AcceptSourceRateLimiter {
 
 /// Derives the cheap pre-handshake rate-limit key from an `IncomingAddr`.
 /// Relayed connections already carry the remote EndpointId, so we key on the
-/// peer identity; direct connections key on the source socket address.
+/// peer identity; direct connections key on the source IP, not the ephemeral
+/// port, so reconnect bursts stay in one cooldown bucket across port changes.
 fn accept_source_key(addr: &IncomingAddr) -> String {
     match addr {
-        IncomingAddr::Ip(socket_addr) => format!("ip:{socket_addr}"),
+        IncomingAddr::Ip(socket_addr) => format!("ip:{}", socket_addr.ip()),
         IncomingAddr::Relay { url, endpoint_id } => format!("relay:{url}|{endpoint_id}"),
         // `IncomingAddr` is `#[non_exhaustive]`; fall back to the Debug form so
         // a future variant still produces a stable, distinct key.
@@ -816,6 +817,25 @@ mod tests {
     }
 
     #[test]
+    fn accept_rate_limiter_throttles_ip_port_rotation() {
+        let parse = |raw: &str| -> SocketAddr {
+            match raw.parse() {
+                Ok(addr) => addr,
+                Err(err) => panic!("test socket addr {raw} must parse: {err}"),
+            }
+        };
+        let mut limiter = AcceptSourceRateLimiter::default();
+        let start = Instant::now();
+
+        let first = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:5")));
+        let rotated_port = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:6")));
+
+        assert_eq!(first, rotated_port);
+        assert!(!limiter.should_throttle(first, start));
+        assert!(limiter.should_throttle(rotated_port, start + Duration::from_millis(10)));
+    }
+
+    #[test]
     fn accept_rate_limiter_bounds_table_size() {
         let mut limiter = AcceptSourceRateLimiter::default();
         let start = Instant::now();
@@ -829,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn accept_source_key_distinguishes_ip_addresses() {
+    fn accept_source_key_coalesces_ip_ports() {
         let parse = |raw: &str| -> SocketAddr {
             match raw.parse() {
                 Ok(addr) => addr,
@@ -838,7 +858,22 @@ mod tests {
         };
         let a = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:5")));
         let b = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:6")));
+        assert_eq!(a, b);
+        assert_eq!(a, "ip:1.2.3.4");
+    }
+
+    #[test]
+    fn accept_source_key_distinguishes_ip_addresses() {
+        let parse = |raw: &str| -> SocketAddr {
+            match raw.parse() {
+                Ok(addr) => addr,
+                Err(err) => panic!("test socket addr {raw} must parse: {err}"),
+            }
+        };
+        let a = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:5")));
+        let b = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.5:5")));
         assert_ne!(a, b);
-        assert!(a.starts_with("ip:"));
+        assert_eq!(a, "ip:1.2.3.4");
+        assert_eq!(b, "ip:1.2.3.5");
     }
 }
