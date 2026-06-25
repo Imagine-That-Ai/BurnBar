@@ -26,7 +26,7 @@ struct UpsertParams: Codable {
     let authMethodID: String?
 }
 
-struct RPCError: Codable { let code: String; let message: String }
+struct RPCError: Codable { let code: Int; let message: String }
 struct RPCEnvelope<T: Codable>: Codable {
     let id: String
     let result: T?
