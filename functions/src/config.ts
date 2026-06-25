@@ -19,6 +19,15 @@ function configString(cfg: Record<string, unknown>, key: string): string | undef
   return stringValue(cfg[key]);
 }
 
+function parseStringList(raw: unknown): string[] {
+  const source = typeof raw === "string" ? raw : stringValue(raw);
+  if (!source) return [];
+  return source
+    .split(/[\s,]+/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function parseAppStoreEnvironmentValue(raw: unknown): EnvConfig["appStore"]["environment"] {
   switch (raw) {
     case "Production":
@@ -329,10 +338,13 @@ function buildGooglePlaySettings(
 /** Hosted-quota runner endpoint and shared bearer token. */
 function buildHostedQuotaRunnerSettings(
   openburnbar: Record<string, unknown>,
-): Pick<EnvConfig, "hostedQuotaRunnerURL" | "hostedQuotaRunnerToken"> {
+): Pick<EnvConfig, "hostedQuotaRunnerURL" | "hostedQuotaRunnerAllowedHosts" | "hostedQuotaRunnerToken"> {
   return {
     hostedQuotaRunnerURL:
       process.env.HOSTED_QUOTA_RUNNER_URL ?? configString(openburnbar, "hosted_quota_runner_url") ?? "",
+    hostedQuotaRunnerAllowedHosts: parseStringList(
+      process.env.HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS ?? configString(openburnbar, "hosted_quota_runner_allowed_hosts"),
+    ),
     hostedQuotaRunnerToken:
       process.env.HOSTED_QUOTA_RUNNER_TOKEN ?? configString(openburnbar, "hosted_quota_runner_token") ?? "",
   };

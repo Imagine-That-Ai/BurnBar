@@ -230,6 +230,62 @@ const REQUIRED_HOSTED_QUOTA_ENV = {
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
   BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
 };
+
+export function parseHostedQuotaRunnerAllowedHosts(raw) {
+  return String(raw || "")
+    .split(/[\s,]+/u)
+    .map((host) => host.trim().toLowerCase().replace(/\.$/u, ""))
+    .filter(Boolean);
+}
+
+function parseURL(raw) {
+  try {
+    return new URL(raw || "");
+  } catch {
+    return undefined;
+  }
+}
+
+export function evaluateHostedQuotaRunnerEndpoint({
+  configuredURL,
+  allowedHosts,
+  cloudRunURL,
+}) {
+  const runnerURL = parseURL(configuredURL);
+  const serviceURL = parseURL(cloudRunURL);
+  const allowed = parseHostedQuotaRunnerAllowedHosts(allowedHosts);
+  const allowedHostSet = new Set(allowed);
+  const host = runnerURL?.hostname.toLowerCase().replace(/\.$/u, "") || null;
+  const serviceHost =
+    serviceURL?.hostname.toLowerCase().replace(/\.$/u, "") || null;
+  const usesHTTPS = runnerURL?.protocol === "https:";
+  const noUserInfo = Boolean(
+    runnerURL && !runnerURL.username && !runnerURL.password,
+  );
+  const defaultHTTPSPort = Boolean(
+    runnerURL && (!runnerURL.port || runnerURL.port === "443"),
+  );
+  const allowedHostConfigured = Boolean(host && allowedHostSet.has(host));
+  const matchesCloudRunService = Boolean(
+    host && serviceHost && host === serviceHost,
+  );
+  return {
+    ok:
+      usesHTTPS &&
+      noUserInfo &&
+      defaultHTTPSPort &&
+      allowedHostConfigured &&
+      matchesCloudRunService,
+    host,
+    cloudRunHost: serviceHost,
+    allowedHosts: allowed,
+    usesHTTPS,
+    noUserInfo,
+    defaultHTTPSPort,
+    allowedHostConfigured,
+    matchesCloudRunService,
+  };
+}
 const REQUIRED_COMMERCIAL_ENV_VALUES = {
   STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
@@ -1427,7 +1483,7 @@ function checkRedis() {
   };
 }
 
-function checkFunctionHostedQuotaRuntime(fn) {
+function checkFunctionHostedQuotaRuntime(fn, cloudRunURL) {
   const result = run("gcloud", [
     "functions",
     "describe",
@@ -1454,13 +1510,6 @@ function checkFunctionHostedQuotaRuntime(fn) {
   )
     .map((entry) => entry.key)
     .sort();
-  let runnerURL;
-  try {
-    runnerURL = new URL(env.HOSTED_QUOTA_RUNNER_URL || "");
-  } catch {
-    runnerURL = undefined;
-  }
-
   const envChecks = Object.entries(REQUIRED_HOSTED_QUOTA_ENV).map(
     ([name, expected]) => ({
       name,
@@ -1469,10 +1518,11 @@ function checkFunctionHostedQuotaRuntime(fn) {
       expected,
     }),
   );
-  const runnerURLCheck = {
-    ok: runnerURL?.protocol === "https:",
-    host: runnerURL?.host || null,
-  };
+  const runnerURLCheck = evaluateHostedQuotaRunnerEndpoint({
+    configuredURL: env.HOSTED_QUOTA_RUNNER_URL,
+    allowedHosts: env.HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS,
+    cloudRunURL,
+  });
   const runnerTokenCheck = {
     ok:
       !fn.requiresRunnerToken ||
@@ -1495,9 +1545,6 @@ function checkFunctionHostedQuotaRuntime(fn) {
 }
 
 function checkHostedQuotaRuntime() {
-  const functions = REQUIRED_HOSTED_QUOTA_FUNCTIONS.map(
-    checkFunctionHostedQuotaRuntime,
-  );
   const runner = run("gcloud", [
     "run",
     "services",
@@ -1513,8 +1560,10 @@ function checkHostedQuotaRuntime() {
     ok: false,
     error: runner.stderr || runner.stdout || runner.error,
   };
+  let runnerURL;
   if (runner.ok) {
     const service = JSON.parse(runner.stdout);
+    runnerURL = service.status?.url;
     const secretEnvVarNames = (service.spec?.template?.spec?.containers || [])
       .flatMap((container) => container.env || [])
       .filter((entry) => entry.valueFrom?.secretKeyRef?.name)
@@ -1522,9 +1571,13 @@ function checkHostedQuotaRuntime() {
       .sort();
     runnerConfig = {
       ok: secretEnvVarNames.includes("RUNNER_SHARED_SECRET"),
+      url: runnerURL || null,
       secretEnvVarNames,
     };
   }
+  const functions = REQUIRED_HOSTED_QUOTA_FUNCTIONS.map((fn) =>
+    checkFunctionHostedQuotaRuntime(fn, runnerURL),
+  );
 
   return {
     ok: functions.every((fn) => fn.ok) && runnerConfig.ok,

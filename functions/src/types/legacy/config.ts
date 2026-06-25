@@ -49,8 +49,7 @@ export interface QuotaRefreshResult {
   errorMessage?: string;
 }
 
-export type ProviderAccountConnectContext =
-  import("../generated/provider-account.js").ProviderAccountConnectContext;
+export type ProviderAccountConnectContext = import("../generated/provider-account.js").ProviderAccountConnectContext;
 
 /** Every provider adapter must satisfy this interface. */
 export interface ProviderAdapter {
@@ -60,11 +59,7 @@ export interface ProviderAdapter {
   testCredential(credential: string, accountContext?: ProviderAccountConnectContext): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
-  fetchQuota(
-    credential: string,
-    sourceId: string,
-    accountContext?: ProviderAccountConnectContext,
-  ): Promise<QuotaRefreshResult>;
+  fetchQuota(credential: string, sourceId: string, accountContext?: ProviderAccountConnectContext): Promise<QuotaRefreshResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +213,8 @@ export interface EnvConfig {
 
   /** HTTPS endpoint for the paid hosted quota runner. */
   hostedQuotaRunnerURL: string;
+
+  hostedQuotaRunnerAllowedHosts: string[];
 
   /** Shared bearer token used between Functions and the hosted quota runner. */
   hostedQuotaRunnerToken: string;

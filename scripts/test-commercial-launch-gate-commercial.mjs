@@ -13,6 +13,7 @@ import {
   evaluateElderWandHostedSearchRuntime,
   evaluateAlertDeliverabilityEvidence,
   evaluateEnvRequirements,
+  evaluateHostedQuotaRunnerEndpoint,
   evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
@@ -39,6 +40,7 @@ assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
 assert.match(launchGateSource, /alertDeliverability/);
+assert.match(launchGateSource, /HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS/);
 assert.doesNotMatch(
   launchGateSource,
   /run\(\s*["']curl["']\s*,\s*\[[\s\S]{0,900}Authorization:\s*`?Bearer/u,
@@ -55,7 +57,8 @@ assert.doesNotMatch(
     conclusion: "success",
     completed_at: "2026-06-24T16:00:00Z",
     app: { slug: "github-actions" },
-    details_url: "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/123456/job/789",
+    details_url:
+      "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/123456/job/789",
   };
   assert.equal(actionsRunIdFromCheckRun(trustedCheck), "123456");
   assert.equal(
@@ -130,7 +133,10 @@ assert.doesNotMatch(
     },
   });
   assert.equal(directMain.ok, false);
-  assert.match(directMain.reason, /origin\/main has advanced past the latest merged PR/);
+  assert.match(
+    directMain.reason,
+    /origin\/main has advanced past the latest merged PR/,
+  );
 }
 
 assert.equal(
@@ -141,11 +147,26 @@ assert.equal(
   GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   "com.openburnbar.agentcontrol.actions100",
 );
-assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches100, "com.openburnbar.elderwand.searches100");
-assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches500, "com.openburnbar.elderwand.searches500");
-assert.equal(COMMERCIAL_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual.v2");
-assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches100, "com.openburnbar.elderWand.searches100");
-assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches500, "com.openburnbar.elderWand.searches500");
+assert.equal(
+  GOOGLE_PLAY_PRODUCTS.elderWandSearches100,
+  "com.openburnbar.elderwand.searches100",
+);
+assert.equal(
+  GOOGLE_PLAY_PRODUCTS.elderWandSearches500,
+  "com.openburnbar.elderwand.searches500",
+);
+assert.equal(
+  COMMERCIAL_PRODUCTS.ultraAnnual,
+  "com.openburnbar.ultra.annual.v2",
+);
+assert.equal(
+  COMMERCIAL_PRODUCTS.elderWandSearches100,
+  "com.openburnbar.elderWand.searches100",
+);
+assert.equal(
+  COMMERCIAL_PRODUCTS.elderWandSearches500,
+  "com.openburnbar.elderWand.searches500",
+);
 assert.equal(GOOGLE_PLAY_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual");
 assert.notEqual(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
@@ -487,6 +508,36 @@ function passingChecks(overrides = {}) {
 }
 
 {
+  const endpoint = evaluateHostedQuotaRunnerEndpoint({
+    configuredURL: "https://openburnbar-quota-runner-abc-uc.a.run.app/ignored",
+    allowedHosts:
+      "openburnbar-quota-runner-abc-uc.a.run.app,openburnbar-quota-runner-dr-uc.a.run.app",
+    cloudRunURL: "https://openburnbar-quota-runner-abc-uc.a.run.app",
+  });
+  assert.equal(endpoint.ok, true);
+  assert.equal(endpoint.host, "openburnbar-quota-runner-abc-uc.a.run.app");
+  assert.equal(endpoint.allowedHostConfigured, true);
+  assert.equal(endpoint.matchesCloudRunService, true);
+
+  const untrusted = evaluateHostedQuotaRunnerEndpoint({
+    configuredURL: "https://untrusted-runner.example",
+    allowedHosts: "openburnbar-quota-runner-abc-uc.a.run.app",
+    cloudRunURL: "https://openburnbar-quota-runner-abc-uc.a.run.app",
+  });
+  assert.equal(untrusted.ok, false);
+  assert.equal(untrusted.allowedHostConfigured, false);
+  assert.equal(untrusted.matchesCloudRunService, false);
+
+  const credentialed = evaluateHostedQuotaRunnerEndpoint({
+    configuredURL: "https://operator@openburnbar-quota-runner-abc-uc.a.run.app",
+    allowedHosts: "openburnbar-quota-runner-abc-uc.a.run.app",
+    cloudRunURL: "https://openburnbar-quota-runner-abc-uc.a.run.app",
+  });
+  assert.equal(credentialed.ok, false);
+  assert.equal(credentialed.noUserInfo, false);
+}
+
+{
   const retired = evaluateRetiredCloudRunServiceAbsence(
     "hermes-realtime-relay",
     { ok: true, missing: true, name: "hermes-realtime-relay" },
@@ -526,9 +577,10 @@ function passingChecks(overrides = {}) {
     },
   ];
   const required = requiredVerifiableAlertChannels(...alertChecks);
-  assert.deepEqual(required.map((channel) => channel.name), [
-    "projects/burnbar/notificationChannels/email",
-  ]);
+  assert.deepEqual(
+    required.map((channel) => channel.name),
+    ["projects/burnbar/notificationChannels/email"],
+  );
 
   const fresh = evaluateAlertDeliverabilityEvidence(
     {

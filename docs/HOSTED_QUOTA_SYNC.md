@@ -397,6 +397,7 @@ legacy `functions.config()`. The deployed callable environment must include:
 ```text
 KMS_KEY_NAME
 HOSTED_QUOTA_RUNNER_URL
+HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS
 HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly
 BURNBAR_PRO_PRODUCT_ID=com.openburnbar.pro.monthly
 STRIPE_BURNBAR_PRO_PRICE_ID=price_...
@@ -419,6 +420,12 @@ to Functions that call the hosted runner:
 ```bash
 firebase functions:secrets:set HOSTED_QUOTA_RUNNER_TOKEN
 ```
+
+`HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS` must contain the exact hostname from the
+Cloud Run service URL for `openburnbar-quota-runner` (comma-separated if a
+future failover host is intentionally approved). Functions reject hosted-runner
+credential posts when the configured URL host is not in that allowlist, and the
+commercial launch gate verifies it still matches the deployed Cloud Run service.
 
 #### App Store JWS verification config
 

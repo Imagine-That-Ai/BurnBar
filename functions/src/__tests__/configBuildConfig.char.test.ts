@@ -37,6 +37,7 @@ const TOUCHED = [
   "ENCRYPTED_SESSION_BLOB_MAX_BYTES",
   "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
   "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+  "HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS",
   "STRIPE_BURNBAR_PRO_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
   "APP_STORE_ENV",
@@ -128,6 +129,7 @@ describe("buildConfig characterization (via getConfig)", () => {
 
     // Hosted quota runner.
     expect(cfg.hostedQuotaRunnerURL).toBe("");
+    expect(cfg.hostedQuotaRunnerAllowedHosts).toEqual([]);
     expect(cfg.hostedQuotaRunnerToken).toBe("");
 
     // App Store defaults.

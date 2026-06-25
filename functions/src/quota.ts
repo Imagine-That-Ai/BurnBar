@@ -16,7 +16,7 @@ import type {
   ProviderAdapter,
 } from "./types.js";
 import { getConfig } from "./config.js";
-import { hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
+import { hostedQuotaRunnerRefreshEndpoint, hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { retrieveCredential } from "./secrets.js";
 import {
@@ -425,17 +425,11 @@ async function fetchHostedRunnerSnapshot(
   credential: string,
   now: string,
 ): Promise<QuotaSnapshotDoc> {
-  const { hostedQuotaRunnerURL } = getConfig();
   const runnerToken = hostedQuotaRunnerToken();
-  if (!hostedQuotaRunnerURL) {
-    throw new Error("failed-precondition: HOSTED_QUOTA_RUNNER_URL is not set.");
-  }
-  const endpoint = new URL("/v1/quota/refresh", hostedQuotaRunnerURL);
-  if (endpoint.protocol !== "https:") {
-    throw new Error("failed-precondition: hosted quota runner must use HTTPS.");
-  }
+  const endpoint = hostedQuotaRunnerRefreshEndpoint();
   const response = await resilientFetch("hosted-quota-runner.refresh", endpoint, {
     method: "POST",
+    redirect: "error",
     headers: {
       "content-type": "application/json",
       ...(runnerToken ? { authorization: `Bearer ${runnerToken}` } : {}),
