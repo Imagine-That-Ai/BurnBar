@@ -14,8 +14,8 @@ struct DataVaultRecoveryView: View {
     @State private var generatedKey = ""
     @State private var confirmationKey = ""
     @State private var confirmingRecoveryID: String?
-    @State private var contactName = ""
-    @State private var contactShare = ""
+    @State private var contactID = ""
+    @State private var sealedContactShare = ""
     @State private var isWorking = false
 
     var body: some View {
@@ -178,14 +178,14 @@ struct DataVaultRecoveryView: View {
                 Text("Recovery contact")
                     .font(MobileTheme.Typography.headline)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text("Split-knowledge: a trusted person holds one share. Neither of you alone can open your vault.")
+                Text("Split-knowledge: a trusted person holds one sealed share. Neither of you alone can open your vault.")
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
 
-                TextField("Contact name", text: $contactName)
+                TextField("Contact ID", text: $contactID)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
-                TextField("Their key share", text: $contactShare)
+                TextField("Sealed share envelope", text: $sealedContactShare)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     #if os(iOS)
@@ -195,9 +195,13 @@ struct DataVaultRecoveryView: View {
                 Button {
                     Task {
                         isWorking = true
-                        if await store.setupRecoveryContact(name: contactName, share: contactShare) {
-                            contactName = ""
-                            contactShare = ""
+                        if await store.setupRecoveryContact(
+                            contactID: contactID,
+                            sealedShare: sealedContactShare,
+                            contactHint: contactID
+                        ) {
+                            contactID = ""
+                            sealedContactShare = ""
                         }
                         isWorking = false
                     }
@@ -206,7 +210,7 @@ struct DataVaultRecoveryView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.aurora(.secondary, fullWidth: true))
-                .disabled(contactName.isEmpty || contactShare.isEmpty || isWorking)
+                .disabled(contactID.isEmpty || sealedContactShare.isEmpty || isWorking)
             }
         }
     }

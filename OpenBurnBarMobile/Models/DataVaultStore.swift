@@ -74,12 +74,70 @@ struct RevokeAllResult: Decodable, Sendable {
 enum DataVaultError: LocalizedError {
     case malformedResponse
     case notSignedIn
+    case invalidRecoveryContact(String)
 
     var errorDescription: String? {
         switch self {
         case .malformedResponse: return "The server returned an unexpected response."
         case .notSignedIn: return "Sign in to manage your data and privacy."
+        case .invalidRecoveryContact(let reason): return reason
         }
+    }
+}
+
+enum RecoveryContactEnvelope {
+    private static let maxContactIDLength = 160
+    private static let maxContactHintLength = 256
+    private static let maxSealedShareLength = 8_192
+    private static let minimumDecodedShareBytes = 32
+    private static let sealedShareAlphabet = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-"
+    )
+
+    static func payload(
+        contactID rawContactID: String,
+        sealedShare rawSealedShare: String,
+        contactHint rawContactHint: String? = nil
+    ) throws -> [String: Any] {
+        let contactID = rawContactID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !contactID.isEmpty, contactID.count <= maxContactIDLength else {
+            throw DataVaultError.invalidRecoveryContact("Enter a valid recovery contact ID.")
+        }
+
+        let sealedShare = rawSealedShare.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sealedShare.isEmpty, sealedShare.count <= maxSealedShareLength else {
+            throw DataVaultError.invalidRecoveryContact("Paste a sealed recovery-contact share.")
+        }
+        guard sealedShare.unicodeScalars.allSatisfy({ sealedShareAlphabet.contains($0) }),
+              let decoded = decodeBase64URLish(sealedShare),
+              decoded.count >= minimumDecodedShareBytes else {
+            throw DataVaultError.invalidRecoveryContact("Recovery-contact shares must be sealed envelopes, not plaintext.")
+        }
+
+        var contact: [String: Any] = [
+            "contactId": contactID,
+            "sealedShare": sealedShare
+        ]
+        if let hint = rawContactHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !hint.isEmpty {
+            contact["contactHint"] = String(hint.prefix(maxContactHintLength))
+        }
+        return [
+            "contacts": [contact],
+            "threshold": 1
+        ]
+    }
+
+    private static func decodeBase64URLish(_ value: String) -> Data? {
+        var normalized = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = normalized.count % 4
+        guard remainder != 1 else { return nil }
+        if remainder > 0 {
+            normalized += String(repeating: "=", count: 4 - remainder)
+        }
+        return Data(base64Encoded: normalized)
     }
 }
 
@@ -401,8 +459,22 @@ final class DataVaultStore {
     }
 
     @discardableResult
-    func setupRecoveryContact(name: String, share: String) async -> Bool {
-        await setupRecovery(method: "recovery_contact", payload: ["contactName": name, "share": share])
+    func setupRecoveryContact(
+        contactID: String,
+        sealedShare: String,
+        contactHint: String? = nil
+    ) async -> Bool {
+        do {
+            let payload = try RecoveryContactEnvelope.payload(
+                contactID: contactID,
+                sealedShare: sealedShare,
+                contactHint: contactHint
+            )
+            return await setupRecovery(method: "recovery_contact", payload: payload)
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
 
     private func setupRecovery(method: String, payload: [String: Any]) async -> Bool {
