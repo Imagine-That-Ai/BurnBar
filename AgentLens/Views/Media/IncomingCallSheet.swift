@@ -1,15 +1,11 @@
 import SwiftUI
 
 /// Phase 5 Mac incoming-call sheet. Full-window NSPanel with mercury
-/// hairline, 96pt avatar with mercuryPulse, Decline / Accept buttons.
+/// hairline, 96pt requester glyph with mercuryPulse, Decline / Accept buttons.
 @MainActor
 struct IncomingCallSheet: View {
     let pairedDeviceName: String
     let initial: String
-    /// Profile photo of the account requesting access. When present it fills
-    /// the avatar circle; while it loads (or if it fails / is `nil`) the view
-    /// falls back to the monogram `initial`.
-    let avatarURL: URL?
     let subtitle: String
     let actionNoun: String
     let secondaryAcceptTitle: String?
@@ -21,7 +17,6 @@ struct IncomingCallSheet: View {
     init(
         pairedDeviceName: String,
         initial: String,
-        avatarURL: URL? = nil,
         subtitle: String = "Pair-debug call",
         actionNoun: String = "call",
         secondaryAcceptTitle: String? = nil,
@@ -32,7 +27,6 @@ struct IncomingCallSheet: View {
     ) {
         self.pairedDeviceName = pairedDeviceName
         self.initial = initial
-        self.avatarURL = avatarURL
         self.subtitle = subtitle
         self.actionNoun = actionNoun
         self.secondaryAcceptTitle = secondaryAcceptTitle
@@ -60,7 +54,7 @@ struct IncomingCallSheet: View {
                                 value: pulseTrigger
                             )
                     }
-                    avatar
+                    requesterGlyph
                     Circle()
                         .strokeBorder(borderGradient, lineWidth: 1.5)
                         .frame(width: 96, height: 96)
@@ -132,37 +126,11 @@ struct IncomingCallSheet: View {
         }
     }
 
-    /// The 96pt circular avatar: the requester's profile photo when available,
-    /// otherwise (and while it loads or fails) the monogram fallback.
+    /// Privacy boundary: this inbound approval prompt only renders identity
+    /// data that came with the incoming request. It must not fetch or display
+    /// the local signed-in account avatar as a stand-in for the requester.
     @ViewBuilder
-    private var avatar: some View {
-        if let avatarURL {
-            AsyncImage(
-                url: avatarURL,
-                transaction: Transaction(animation: .easeIn(duration: 0.25))
-            ) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .transition(.opacity)
-                default:
-                    monogram
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: 96, height: 96)
-            .clipShape(Circle())
-        } else {
-            monogram
-        }
-    }
-
-    /// Fallback when there is no photo: the requester's initial, or a generic
-    /// person glyph when no usable name was supplied.
-    @ViewBuilder
-    private var monogram: some View {
+    private var requesterGlyph: some View {
         Group {
             if hasInitial {
                 Text(initial)
@@ -197,7 +165,6 @@ struct IncomingCallSheet: View {
     IncomingCallSheet(
         pairedDeviceName: "Alberto's iPhone",
         initial: "A",
-        avatarURL: URL(string: "https://i.pravatar.cc/192"),
         subtitle: "Screen mirror request",
         actionNoun: "mirror request",
         onAccept: {},
