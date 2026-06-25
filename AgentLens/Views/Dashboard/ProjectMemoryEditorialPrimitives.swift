@@ -131,6 +131,7 @@ struct HermesReadingCard: View {
     private var accessibilityValue: String {
         switch controller.state {
         case .idle: return placeholder
+        case .ready: return placeholder
         case .streaming where controller.streamingContent.isEmpty: return "Hermes is reading the evidence."
         case .streaming: return controller.streamingContent
         case .complete: return controller.streamingContent
@@ -156,6 +157,16 @@ struct HermesReadingCard: View {
     @ViewBuilder
     private var trailingControl: some View {
         switch controller.state {
+        case .ready:
+            Button {
+                controller.generatePrepared()
+            } label: {
+                Label("Generate", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            .font(DesignSystem.Typography.monoTiny)
+            .foregroundStyle(DesignSystem.Colors.hermesAureate)
         case .streaming:
             MercuryPoolDots()
         case .failed:
@@ -182,7 +193,7 @@ struct HermesReadingCard: View {
     @ViewBuilder
     private var content: some View {
         switch controller.state {
-        case .idle:
+        case .idle, .ready:
             Text(placeholder)
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
