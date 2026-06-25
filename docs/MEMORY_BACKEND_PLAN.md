@@ -218,6 +218,8 @@ Build `CanonicalSourceEvent`: `{schema_version, thread_logical_id (content‑der
 ### 5.6 Recall query service (the frontend's `recallForPrompt`/`search`)
 `MemoryRecallService`: embed query (active version) → version‑floored ANN over `memory_embedding_refs` → RRF with redacted lexical (title/tags) → reuse `CrossEncoderReranker` (optional) → hydrate sealed bodies transiently → filter `review_status ∈ {approved}` and `valid_to IS NULL` (**G4** — quarantined never returned for injection) → return `MemorySnippet[]` with provenance + `tokenCountEstimate` (frontend arbiter consumes). Scope filters mirror mem0.
 
+Production `MemoryServing` instances must bind caller-carried `MemoryScope` values to the current OpenBurnBar app/account authority before CRUD, recall, or extraction enqueue. The protocol keeps `scope` explicit for testability and future project memory, but the app service is the trust boundary: it permits only the OpenBurnBar app scope plus the current signed-in user scope, and refuses unrelated app, user, or project scopes for chat memory.
+
 ### 5.7 Cloud sync + two‑phase forget + review lifecycle (G4, G5)
 `MemorySyncService` reusing `ChatThreadSyncService` sealed‑payload + `CloudVaultCrypto` AAD:
 - **Vectors local‑only by default.** If cloud recall is enabled, replicate via the **shipped Pensieve cloak path** (`embed.ts` Householder cloak → seal → `commitKnowledgeBatch`), carrying `embeddingModelVersion`; never a raw vector mirror.
