@@ -30,6 +30,15 @@ public struct RemoteUnlockSetupProbe {
     /// survives reboots (F-RR10-002: `/var/run` is tmpfs and was lost on reboot).
     public static let capabilityTokenNonceLedgerPath =
         "/Library/Application Support/OpenBurnBar/RemoteUnlock/capability-token-nonces.json"
+    /// Signed, short-lived active-session context snapshots published by the
+    /// app and read by the user-session privileged input helper. This is
+    /// intentionally user-scoped so the LaunchAgent and app share it without
+    /// granting write access to the root-owned helper bundle.
+    public static var sessionContextSnapshotLedgerPath: String {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support/OpenBurnBar/RemoteUnlock/session-context-snapshots.json")
+            .path
+    }
 
     public var defaults: UserDefaults
     public var fileExists: @Sendable (String) -> Bool

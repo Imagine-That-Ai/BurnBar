@@ -17,6 +17,7 @@ public enum VirtualHIDBridgeCapabilityGate {
         case capabilityTokenSignatureInvalid = "capability_token_signature_invalid"
         case capabilityTokenNonceReplay = "capability_token_nonce_replay"
         case capabilityTokenActionNotAllowed = "capability_token_action_not_allowed"
+        case capabilityTokenBindingMissing = "capability_token_binding_missing"
         case capabilityTokenAttestationMismatch = "capability_token_attestation_mismatch"
         case capabilityTokenIssuerUnavailable = "capability_token_issuer_unavailable"
         case capabilityTokenIssuerRevoked = "capability_token_issuer_revoked"
@@ -53,6 +54,10 @@ public enum VirtualHIDBridgeCapabilityGate {
         public var key: String?
         public var modifiers: [String]?
         public var capabilityToken: CapabilityToken?
+        /// Legacy wire fields forwarded from the caller. They are retained for
+        /// contract compatibility but are not trusted as presenter context by
+        /// the HID leaf; `presenterBinding` must come from the active session
+        /// context provider.
         public var presentingEscrowDeviceId: String?
         public var requiredAttestationHashBlake3: String?
 
@@ -77,6 +82,10 @@ public enum VirtualHIDBridgeCapabilityGate {
 
     public struct CredentialRequest: Sendable, Equatable {
         public var capabilityToken: CapabilityToken?
+        /// Legacy wire fields forwarded from the caller. They are retained for
+        /// contract compatibility but are not trusted as presenter context by
+        /// the HID leaf; `presenterBinding` must come from the active session
+        /// context provider.
         public var presentingEscrowDeviceId: String?
         public var requiredAttestationHashBlake3: String?
 
@@ -110,17 +119,10 @@ public enum VirtualHIDBridgeCapabilityGate {
             break
         }
 
-        // Verify scope binding before signature checks to fail fast on
-        // cross-session replay.
-        let effectiveBinding = presenterBinding.merging(
-            escrowDeviceId: request.presentingEscrowDeviceId,
-            attestationHashBlake3: request.requiredAttestationHashBlake3
-        )
-
+        let effectiveBinding = presenterBinding.normalized()
         if let token = request.capabilityToken,
-           let requiredScopeHash = effectiveBinding.scopeHash,
-           token.scopeHash != requiredScopeHash {
-            return .failure(.capabilityTokenScopeMismatch)
+           let bindingFailure = trustedBindingFailure(for: token, presenterBinding: effectiveBinding) {
+            return .failure(bindingFailure)
         }
 
         let actionKind = request.kind?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
@@ -128,6 +130,7 @@ public enum VirtualHIDBridgeCapabilityGate {
             token: request.capabilityToken,
             expectedDomain: .remoteUnlock,
             actionKind: actionKind,
+            requiredScopeHash: effectiveBinding.scopeHash,
             requiredAttestationHashBlake3: effectiveBinding.attestationHashBlake3,
             boundEscrowDeviceId: effectiveBinding.escrowDeviceId
         )
@@ -145,23 +148,17 @@ public enum VirtualHIDBridgeCapabilityGate {
         presenterBinding: PresenterBinding = .none,
         now: Date = Date()
     ) -> Result<Void, RejectionReason> {
-        // Verify scope binding before signature checks to fail fast on
-        // cross-session replay.
-        let effectiveBinding = presenterBinding.merging(
-            escrowDeviceId: request.presentingEscrowDeviceId,
-            attestationHashBlake3: request.requiredAttestationHashBlake3
-        )
-
+        let effectiveBinding = presenterBinding.normalized()
         if let token = request.capabilityToken,
-           let requiredScopeHash = effectiveBinding.scopeHash,
-           token.scopeHash != requiredScopeHash {
-            return .failure(.capabilityTokenScopeMismatch)
+           let bindingFailure = trustedBindingFailure(for: token, presenterBinding: effectiveBinding) {
+            return .failure(bindingFailure)
         }
 
         let tokenRequest = CapabilityTokenLeafVerifier.Request(
             token: request.capabilityToken,
             expectedDomain: .remoteUnlock,
             actionKind: "type_credential",
+            requiredScopeHash: effectiveBinding.scopeHash,
             requiredAttestationHashBlake3: effectiveBinding.attestationHashBlake3,
             boundEscrowDeviceId: effectiveBinding.escrowDeviceId
         )
@@ -199,23 +196,48 @@ public enum VirtualHIDBridgeCapabilityGate {
         case .nonceReplay: return .capabilityTokenNonceReplay
         case .actionNotAllowed: return .capabilityTokenActionNotAllowed
         case .actionBudgetExhausted: return .capabilityTokenBudgetExhausted
+        case .scopeMismatch: return .capabilityTokenScopeMismatch
         case .attestationMismatch: return .capabilityTokenAttestationMismatch
         case .escrowDeviceMismatch: return .capabilityTokenEscrowMismatch
         case .issuerKeyUnavailable: return .capabilityTokenIssuerUnavailable
         case .issuerRevoked: return .capabilityTokenIssuerRevoked
         }
     }
+
+    private static func trustedBindingFailure(
+        for token: CapabilityToken,
+        presenterBinding: PresenterBinding
+    ) -> RejectionReason? {
+        guard let requiredScopeHash = presenterBinding.scopeHash else {
+            return .capabilityTokenBindingMissing
+        }
+        guard token.scopeHash == requiredScopeHash else {
+            return .capabilityTokenScopeMismatch
+        }
+        if normalized(token.boundEscrowDeviceId) != nil,
+           presenterBinding.escrowDeviceId == nil {
+            return .capabilityTokenBindingMissing
+        }
+        if normalized(token.attestationHashBlake3) != nil,
+           presenterBinding.attestationHashBlake3 == nil {
+            return .capabilityTokenBindingMissing
+        }
+        return nil
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 private extension VirtualHIDBridgeCapabilityGate.PresenterBinding {
-    func merging(
-        escrowDeviceId: String?,
-        attestationHashBlake3: String?
-    ) -> Self {
+    func normalized() -> Self {
         Self(
-            escrowDeviceId: self.escrowDeviceId ?? Self.normalized(escrowDeviceId),
-            attestationHashBlake3: self.attestationHashBlake3 ?? Self.normalized(attestationHashBlake3),
-            scopeHash: self.scopeHash
+            escrowDeviceId: Self.normalized(escrowDeviceId),
+            attestationHashBlake3: Self.normalized(attestationHashBlake3),
+            scopeHash: Self.normalized(scopeHash)
         )
     }
 

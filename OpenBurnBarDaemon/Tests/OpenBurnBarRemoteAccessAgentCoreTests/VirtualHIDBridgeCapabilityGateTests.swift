@@ -24,7 +24,11 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             modifiers: nil,
             capabilityToken: token
         )
-        if case .failure = VirtualHIDBridgeCapabilityGate.validate(ok, verifier: leafVerifier) {
+        if case .failure = VirtualHIDBridgeCapabilityGate.validate(
+            ok,
+            verifier: leafVerifier,
+            presenterBinding: VirtualHIDBridgeCapabilityGate.PresenterBinding(scopeHash: "scope")
+        ) {
             XCTFail("Expected success")
         }
 
@@ -72,7 +76,11 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
         )
 
         let ok = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: token)
-        if case .failure = VirtualHIDBridgeCapabilityGate.validateCredentialType(ok, verifier: leafVerifier) {
+        if case .failure = VirtualHIDBridgeCapabilityGate.validateCredentialType(
+            ok,
+            verifier: leafVerifier,
+            presenterBinding: VirtualHIDBridgeCapabilityGate.PresenterBinding(scopeHash: "scope")
+        ) {
             XCTFail("Expected credential token success")
         }
 
@@ -93,7 +101,8 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
         let wrongAction = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: clickToken)
         guard case .failure(.capabilityTokenActionNotAllowed) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
             wrongAction,
-            verifier: leafVerifier
+            verifier: leafVerifier,
+            presenterBinding: VirtualHIDBridgeCapabilityGate.PresenterBinding(scopeHash: "scope")
         ) else {
             XCTFail("Expected click token to be rejected for credential typing")
             return
@@ -119,7 +128,10 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             modifiers: nil,
             capabilityToken: token
         )
-        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-b")
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: "iphone-b",
+            scopeHash: "scope"
+        )
         guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validate(
             request,
             verifier: leafVerifier,
@@ -130,7 +142,7 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
         }
     }
 
-    func test_requestPresenterBindingRejectsMismatchedEscrowDevice() throws {
+    func test_requestCarriedBindingDoesNotSatisfyTrustedPresenterContextForInput() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let nonceStore = InMemoryCapabilityTokenNonceStore()
         let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
@@ -151,16 +163,16 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             presentingEscrowDeviceId: "iphone-b"
         )
 
-        guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validate(
+        guard case .failure(.capabilityTokenBindingMissing) = VirtualHIDBridgeCapabilityGate.validate(
             request,
             verifier: leafVerifier
         ) else {
-            XCTFail("Expected request-carried escrow device mismatch")
+            XCTFail("Expected request-carried binding to be ignored without trusted presenter context")
             return
         }
     }
 
-    func test_requestPresenterBindingAcceptsMatchingEscrowAndAttestation() throws {
+    func test_requestCarriedMatchingBindingDoesNotSatisfyTrustedPresenterContextForInput() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let nonceStore = InMemoryCapabilityTokenNonceStore()
         let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
@@ -183,15 +195,16 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             requiredAttestationHashBlake3: "attest-a"
         )
 
-        if case .failure(let reason) = VirtualHIDBridgeCapabilityGate.validate(
+        guard case .failure(.capabilityTokenBindingMissing) = VirtualHIDBridgeCapabilityGate.validate(
             request,
             verifier: leafVerifier
-        ) {
-            XCTFail("Expected request-carried binding success, got \(reason)")
+        ) else {
+            XCTFail("Expected request-carried matching binding to be ignored without trusted presenter context")
+            return
         }
     }
 
-    func test_credentialRequestPresenterBindingRejectsMismatchedEscrowDevice() throws {
+    func test_credentialRequestCarriedBindingDoesNotSatisfyTrustedPresenterContext() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let nonceStore = InMemoryCapabilityTokenNonceStore()
         let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
@@ -208,11 +221,11 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             presentingEscrowDeviceId: "iphone-b"
         )
 
-        guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
+        guard case .failure(.capabilityTokenBindingMissing) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
             request,
             verifier: leafVerifier
         ) else {
-            XCTFail("Expected credential request-carried escrow device mismatch")
+            XCTFail("Expected credential request-carried binding to be ignored without trusted presenter context")
             return
         }
     }
@@ -237,7 +250,10 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             capabilityToken: token,
             presentingEscrowDeviceId: "iphone-b"
         )
-        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-a")
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: "iphone-a",
+            scopeHash: "scope"
+        )
 
         guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validate(
             request,
@@ -265,7 +281,10 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             capabilityToken: token,
             presentingEscrowDeviceId: "iphone-b"
         )
-        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-a")
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: "iphone-a",
+            scopeHash: "scope"
+        )
 
         guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
             request,
@@ -296,7 +315,10 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             modifiers: nil,
             capabilityToken: token
         )
-        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(attestationHashBlake3: "bbb")
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            attestationHashBlake3: "bbb",
+            scopeHash: "scope"
+        )
         guard case .failure(.capabilityTokenAttestationMismatch) = VirtualHIDBridgeCapabilityGate.validate(
             request,
             verifier: leafVerifier,

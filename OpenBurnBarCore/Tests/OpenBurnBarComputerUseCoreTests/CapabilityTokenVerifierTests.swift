@@ -107,7 +107,7 @@ final class CapabilityTokenVerifierTests: XCTestCase {
         }
     }
 
-    func test_offlineVerification_allowsBoundTokenWhenPresenterBindingOmitted() throws {
+    func test_offlineVerification_rejectsBoundTokenWhenPresenterBindingOmitted() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let verifier = CapabilityTokenLeafVerifier(nonceStore: InMemoryCapabilityTokenNonceStore()) {
             CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
@@ -125,8 +125,35 @@ final class CapabilityTokenVerifierTests: XCTestCase {
             actionKind: "click"
         )
 
+        guard case .failure(.attestationMismatch) = verifier.verify(request: request) else {
+            XCTFail("Expected omitted presenter binding to reject a bound token")
+            return
+        }
+    }
+
+    func test_offlineVerification_acceptsBoundTokenWithExplicitPresenterBinding() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = CapabilityTokenLeafVerifier(nonceStore: InMemoryCapabilityTokenNonceStore()) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click",
+            boundEscrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a"
+        )
+        let request = CapabilityTokenLeafVerifier.Request(
+            token: token,
+            expectedDomain: .remoteUnlock,
+            actionKind: "click",
+            requiredScopeHash: "scope",
+            requiredAttestationHashBlake3: "attest-a",
+            boundEscrowDeviceId: "iphone-a"
+        )
+
         if case .failure(let reason) = verifier.verify(request: request) {
-            XCTFail("Expected bound token to validate without explicit presenter binding, got \(reason)")
+            XCTFail("Expected explicit presenter binding to validate, got \(reason)")
         }
     }
 
@@ -174,5 +201,76 @@ final class CapabilityTokenVerifierTests: XCTestCase {
             actionKind: "click"
         )
         XCTAssertTrue(try signer.verify(token: token, publicKey: trust.publicKey))
+    }
+
+    func test_sessionContextSnapshotStore_loadsMatchingSignedScopeOnly() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let contextSigner = RemoteUnlockSessionContextSnapshotSigner()
+        let tempPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-context-\(UUID().uuidString).json")
+            .path
+        defer { try? FileManager.default.removeItem(atPath: tempPath) }
+        let store = RemoteUnlockSessionContextSnapshotStore(path: tempPath, signer: contextSigner)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let trust = CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "cap-test")
+        let matching = RemoteUnlockSessionContextSnapshot(
+            sessionId: "session-a",
+            peerNodeId: "peer-a",
+            scopeHash: "scope-a",
+            escrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a",
+            issuedAt: now,
+            expiresAt: now.addingTimeInterval(30),
+            issuerKeyId: "cap-test"
+        )
+        let other = RemoteUnlockSessionContextSnapshot(
+            sessionId: "session-b",
+            peerNodeId: "peer-b",
+            scopeHash: "scope-b",
+            escrowDeviceId: "iphone-b",
+            attestationHashBlake3: "attest-b",
+            issuedAt: now,
+            expiresAt: now.addingTimeInterval(30),
+            issuerKeyId: "cap-test"
+        )
+        try store.save(try contextSigner.sign(snapshot: matching, privateKey: privateKey), now: now)
+        try store.save(try contextSigner.sign(snapshot: other, privateKey: privateKey), now: now)
+
+        let loaded = try store.loadVerified(scopeHash: "scope-a", now: now, issuerTrust: trust)
+        XCTAssertEqual(loaded?.sessionId, "session-a")
+        XCTAssertEqual(loaded?.escrowDeviceId, "iphone-a")
+        XCTAssertNil(try store.loadVerified(scopeHash: "missing", now: now, issuerTrust: trust))
+    }
+
+    func test_sessionContextSnapshotStore_rejectsTamperedSignedContext() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let contextSigner = RemoteUnlockSessionContextSnapshotSigner()
+        let tempPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-context-tampered-\(UUID().uuidString).json")
+            .path
+        defer { try? FileManager.default.removeItem(atPath: tempPath) }
+        let store = RemoteUnlockSessionContextSnapshotStore(path: tempPath, signer: contextSigner)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let trust = CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "cap-test")
+        let snapshot = RemoteUnlockSessionContextSnapshot(
+            sessionId: "session-a",
+            peerNodeId: "peer-a",
+            scopeHash: "scope-a",
+            escrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a",
+            issuedAt: now,
+            expiresAt: now.addingTimeInterval(30),
+            issuerKeyId: "cap-test"
+        )
+        var tampered = try contextSigner.sign(snapshot: snapshot, privateKey: privateKey)
+        tampered.escrowDeviceId = "iphone-b"
+        try store.save(tampered, now: now)
+
+        XCTAssertThrowsError(try store.loadVerified(scopeHash: "scope-a", now: now, issuerTrust: trust)) { error in
+            XCTAssertEqual(
+                error as? RemoteUnlockSessionContextFailure,
+                .signatureInvalid
+            )
+        }
     }
 }

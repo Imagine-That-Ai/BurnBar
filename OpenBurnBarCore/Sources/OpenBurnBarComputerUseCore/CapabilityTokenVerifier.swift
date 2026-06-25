@@ -11,6 +11,7 @@ public enum CapabilityTokenVerificationFailure: String, Codable, Sendable, Equat
     case nonceReplay = "capability_token_nonce_replay"
     case actionNotAllowed = "capability_token_action_not_allowed"
     case actionBudgetExhausted = "capability_token_action_budget_exhausted"
+    case scopeMismatch = "capability_token_scope_mismatch"
     case attestationMismatch = "capability_token_attestation_mismatch"
     case escrowDeviceMismatch = "capability_token_escrow_device_mismatch"
     case issuerKeyUnavailable = "capability_token_issuer_key_unavailable"
@@ -130,6 +131,7 @@ public struct CapabilityTokenLeafVerifier: Sendable {
         public var token: CapabilityToken?
         public var expectedDomain: CapabilityToken.Domain
         public var actionKind: String
+        public var requiredScopeHash: String?
         public var requiredAttestationHashBlake3: String?
         public var boundEscrowDeviceId: String?
 
@@ -137,12 +139,14 @@ public struct CapabilityTokenLeafVerifier: Sendable {
             token: CapabilityToken?,
             expectedDomain: CapabilityToken.Domain,
             actionKind: String,
+            requiredScopeHash: String? = nil,
             requiredAttestationHashBlake3: String? = nil,
             boundEscrowDeviceId: String? = nil
         ) {
             self.token = token
             self.expectedDomain = expectedDomain
             self.actionKind = actionKind
+            self.requiredScopeHash = Self.normalizedBinding(requiredScopeHash)
             self.requiredAttestationHashBlake3 = Self.normalizedBinding(requiredAttestationHashBlake3)
             self.boundEscrowDeviceId = Self.normalizedBinding(boundEscrowDeviceId)
         }
@@ -188,24 +192,31 @@ public struct CapabilityTokenLeafVerifier: Sendable {
         guard (try? signer.verify(token: token, publicKey: trust.publicKey)) == true else {
             return .failure(.signatureInvalid)
         }
-        // Attestation binding is enforced symmetrically: if either side carries
-        // a hash, the token must match the required hash. This prevents a bound
-        // token from being accepted under an unbound request (replay across
-        // same-UID first-party contexts) and vice versa.
+        if let requiredScopeHash = request.requiredScopeHash,
+           token.scopeHash != requiredScopeHash {
+            return .failure(.scopeMismatch)
+        }
+
+        // Attestation binding is enforced without self-matching: if the token is
+        // bound, the caller must provide the expected binding from a trusted
+        // presenter context. A bound token cannot satisfy itself when the
+        // expected binding is omitted.
         let tokenAttestation = token.attestationHashBlake3
-        let requiredAttestation = request.requiredAttestationHashBlake3 ?? tokenAttestation
-        if requiredAttestation != nil || tokenAttestation != nil {
-            guard tokenAttestation == requiredAttestation else {
+        if request.requiredAttestationHashBlake3 != nil || tokenAttestation != nil {
+            guard let requiredAttestation = request.requiredAttestationHashBlake3,
+                  let tokenAttestation,
+                  tokenAttestation == requiredAttestation else {
                 return .failure(.attestationMismatch)
             }
         }
 
-        // Escrow-device binding is enforced symmetrically: if either side
-        // specifies a device, they must agree.
+        // Escrow-device binding follows the same rule: a request-side binding is
+        // required whenever the token is bound, and the two values must agree.
         let tokenDevice = token.boundEscrowDeviceId
-        let requiredDevice = request.boundEscrowDeviceId ?? tokenDevice
-        if requiredDevice != nil || tokenDevice != nil {
-            guard tokenDevice == requiredDevice else {
+        if request.boundEscrowDeviceId != nil || tokenDevice != nil {
+            guard let requiredDevice = request.boundEscrowDeviceId,
+                  let tokenDevice,
+                  tokenDevice == requiredDevice else {
                 return .failure(.escrowDeviceMismatch)
             }
         }
