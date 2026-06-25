@@ -618,29 +618,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     )
                 }
                 try onChunk(chunk)
-                if payload.operation == .chatCompletions,
-                   chunk.kind == .sse,
-                   Self.isTerminalSSEChunk(chunk.data ?? chunk.text) {
-                    let rtt = Int(Date().timeIntervalSince(started) * 1000)
-                    await auditLogger.record(
-                        event: .streamClosed,
-                        uid: uid,
-                        connectionId: payload.connectionID,
-                        transport: .irohDirect,
-                        rttMillis: rtt,
-                        detail: auditDetail([
-                            "stage": "ios_response_complete",
-                            "requestId": requestID,
-                            "chunks": "\(receivedChunkCount)",
-                            "completedBy": "terminal_sse"
-                        ], networkAuditDetail)
-                    )
-                    return
-                }
             case .responseComplete:
                 // F4: refuse a truncated response — a relay that dropped a sealed
-                // chunk leaves a gap below the declared `chunkCount`. No-op when the
-                // completion does not declare a total (streaming).
+                // chunk leaves a gap below the declared `chunkCount`. The declared
+                // total is mandatory once chunks have arrived; terminal SSE is not
+                // accepted as a substitute for the completion frame.
                 try chunkValidator.validateComplete(declaredChunkCount: frame.payload?.chunkCount ?? 0)
                 let rtt = Int(Date().timeIntervalSince(started) * 1000)
                 await auditLogger.record(
@@ -731,40 +713,6 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         requestStreamRoute(for: type) == .ignore
     }
     #endif
-
-    private nonisolated static func isTerminalSSEChunk(_ raw: String?) -> Bool {
-        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else {
-            return false
-        }
-        let dataLines = raw
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> String in
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.lowercased().hasPrefix("data:") else { return trimmed }
-                return String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            .filter { !$0.isEmpty }
-        let payloads = dataLines.isEmpty ? [raw] : dataLines
-        if payloads.contains(where: { $0 == "[DONE]" }) {
-            return true
-        }
-        return payloads.contains { payload in
-            guard let data = payload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = object["choices"] as? [[String: Any]] else {
-                return false
-            }
-            return choices.contains { choice in
-                guard let finishReason = choice["finish_reason"] else { return false }
-                if finishReason is NSNull { return false }
-                if let string = finishReason as? String {
-                    return !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-                return true
-            }
-        }
-    }
 
     private nonisolated static func effectiveRequestTimeout(
         operation: HermesRelayOperation,
