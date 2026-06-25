@@ -7,8 +7,9 @@ import type {
   QuotaSnapshotDoc,
   UsageEventDoc,
 } from "./types.js";
+import { demoProviderAccountIDPrefix } from "./providerAccountIsolation.js";
 
-const DEMO_PREFIX = "demo_android_";
+const DEMO_PREFIX = demoProviderAccountIDPrefix();
 const DEMO_SCHEMA_VERSION = 1;
 
 type DemoProvider = {

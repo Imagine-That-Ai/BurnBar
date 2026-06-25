@@ -13,6 +13,7 @@ import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "../qu
 import { errorMessage, requireProviderAccountDoc } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { HOSTED_RUNNER_SECRETS } from "../hostedRunnerConfig.js";
+import { isDemoProviderAccountRecord } from "../providerAccountIsolation.js";
 
 // ---------------------------------------------------------------------------
 // Callable: refreshProviderAccountQuota
@@ -99,7 +100,12 @@ async function refreshAccountsForProvider(uid: string, provider: string, docs: P
   const errors: Array<{ accountID: string; message: string }> = [];
 
   for (const doc of docs) {
-    const account = requireProviderAccountDoc(doc.data());
+    const accountData = doc.data();
+    const account = requireProviderAccountDoc(accountData);
+    if (isDemoProviderAccountRecord(accountData, account.id)) {
+      skippedAccountIDs.push(account.id);
+      continue;
+    }
     if (account.storageScope !== "cloud_refreshable" && account.storageScope !== "server_private") {
       skippedAccountIDs.push(account.id);
       continue;

@@ -41,6 +41,8 @@
  * admin-SDK objects satisfy them directly (zero casts, production and tests).
  */
 
+import { isDemoProviderAccountID, providerAccountIDFromPath } from "./providerAccountIsolation.js";
+
 /** Subset of `DocumentReference` the sweep touches on account docs. */
 type SweepAccountDocRef = {
   readonly path: string;
@@ -200,6 +202,14 @@ function backfillStreamKeys(): string[] {
   return keys;
 }
 
+function isDemoSweepAccountDoc(doc: SweepAccountDoc): boolean {
+  if (doc.get("demo") === true) return true;
+  const id = doc.get("id");
+  if (typeof id === "string" && isDemoProviderAccountID(id)) return true;
+  const accountID = providerAccountIDFromPath(doc.ref.path);
+  return accountID !== undefined && isDemoProviderAccountID(accountID);
+}
+
 /**
  * One bounded slice of the one-time `lastRefreshAt` backfill. Missing-field
  * docs are stamped explicit null so the ordered refresh pass can see them;
@@ -258,6 +268,7 @@ async function runLastRefreshAtBackfill<Doc extends SweepAccountDoc>(
     examined += snapshot.docs.length;
 
     for (const doc of snapshot.docs) {
+      if (isDemoSweepAccountDoc(doc)) continue;
       if (doc.get("lastRefreshAt") !== undefined) continue;
       try {
         await doc.ref.update({ lastRefreshAt: null });
@@ -317,20 +328,35 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
 
   for (const status of REFRESHABLE_STATUSES) {
     if (selectedAccounts.length >= options.batchSize) break;
-    const snapshot = await db
-      .collectionGroup("provider_accounts")
-      .where("status", "==", status)
-      .where("storageScope", "in", [...REFRESHABLE_SCOPES])
-      .orderBy("lastRefreshAt", "asc")
-      .limit(options.batchSize - selectedAccounts.length)
-      .get();
+    let cursor: Doc | undefined;
 
-    for (const doc of snapshot.docs) {
-      if (selectedAccountPaths.has(doc.ref.path)) continue;
-      selectedAccountPaths.add(doc.ref.path);
-      const legacyKey = options.legacyKeyForAccountDoc(doc);
-      if (legacyKey !== undefined) legacyKeys.add(legacyKey);
-      selectedAccounts.push(doc);
+    for (;;) {
+      const limit = options.batchSize - selectedAccounts.length;
+      let query = db
+        .collectionGroup("provider_accounts")
+        .where("status", "==", status)
+        .where("storageScope", "in", [...REFRESHABLE_SCOPES])
+        .orderBy("lastRefreshAt", "asc")
+        .limit(limit);
+
+      if (cursor !== undefined) {
+        query = query.startAfter(cursor);
+      }
+
+      const snapshot = await query.get();
+      for (const doc of snapshot.docs) {
+        if (isDemoSweepAccountDoc(doc) || selectedAccountPaths.has(doc.ref.path)) continue;
+        selectedAccountPaths.add(doc.ref.path);
+        const legacyKey = options.legacyKeyForAccountDoc(doc);
+        if (legacyKey !== undefined) legacyKeys.add(legacyKey);
+        selectedAccounts.push(doc);
+        if (selectedAccounts.length >= options.batchSize) break;
+      }
+
+      if (selectedAccounts.length >= options.batchSize || snapshot.docs.length < limit) {
+        break;
+      }
+      cursor = snapshot.docs.at(-1);
     }
   }
 
