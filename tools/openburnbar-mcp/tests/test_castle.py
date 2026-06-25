@@ -280,6 +280,58 @@ def test_droid_build_command_returns_status_path_for_status_bridge(monkeypatch, 
     assert status_path.parent.parent == tmp_path / "castle" / "runs"
 
 
+def test_status_snapshot_reads_records_inside_castle_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(castle, "CASTLE_CACHE_DIR", tmp_path / "castle")
+    status_path = tmp_path / "castle" / "runs" / "run-1" / "status.json"
+    castle.write_status_record(
+        status_path,
+        castle.status_record_for_worker(
+            runtime="codex",
+            model_arg="gpt-5.5",
+            phase="landed",
+            lands_commit=True,
+            base_sha="base",
+            head_sha="head",
+            result_path=None,
+            done_path=None,
+        ),
+    )
+
+    payload = castle.status_snapshot([str(status_path)])
+
+    assert payload["count"] == 1
+    assert payload["failures"] == []
+    assert payload["records"][0]["runtime"] == "codex"
+
+
+def test_status_snapshot_rejects_paths_outside_castle_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(castle, "CASTLE_CACHE_DIR", tmp_path / "castle")
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"secret":"do-not-read"}\n', encoding="utf-8")
+
+    payload = castle.status_snapshot([str(outside)])
+
+    assert payload["count"] == 0
+    assert payload["records"] == []
+    assert payload["failures"][0]["code"] == "CASTLE_STATUS_PATH_DENIED"
+
+
+def test_status_snapshot_rejects_symlink_escape_from_castle_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(castle, "CASTLE_CACHE_DIR", tmp_path / "castle")
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"secret":"do-not-read"}\n', encoding="utf-8")
+    status_dir = tmp_path / "castle" / "runs" / "run-1"
+    status_dir.mkdir(parents=True)
+    status_link = status_dir / "status.json"
+    status_link.symlink_to(outside)
+
+    payload = castle.status_snapshot([str(status_link)])
+
+    assert payload["count"] == 0
+    assert payload["records"] == []
+    assert payload["failures"][0]["code"] == "CASTLE_STATUS_PATH_DENIED"
+
+
 def test_collect_result_writes_noop_status_when_head_does_not_move(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
