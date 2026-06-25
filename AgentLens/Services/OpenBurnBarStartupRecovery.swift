@@ -702,8 +702,7 @@ final class OpenBurnBarRuntimeContext {
         self.mercuryIncomingPanelPresenter = MercuryIncomingPanelPresenter(
             router: router,
             peerSource: peerSource,
-            hudState: hud,
-            accountManager: accountManager
+            hudState: hud
         )
         router.setMirrorSinkFactory { request, frame, replySender in
             // F7: when the phone wrapped a media-seal key into its mirror
