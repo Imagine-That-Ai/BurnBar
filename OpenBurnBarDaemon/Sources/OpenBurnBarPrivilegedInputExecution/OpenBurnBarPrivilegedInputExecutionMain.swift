@@ -16,9 +16,13 @@ struct OpenBurnBarPrivilegedInputExecutionMain {
         do {
             let keyboard = try VirtualHIDKeyboardEngine()
             let socketPath = argumentValue("--socket") ?? PrivilegedInputXPCConstants.userSessionSocketPath()
+            let contextPath = argumentValue("--session-context")
+                ?? RemoteUnlockSetupProbe.sessionContextSnapshotLedgerPath
+            let contextProvider = RemoteUnlockSessionContextFileProvider(path: contextPath)
             let handler = PrivilegedInputDispatchHandler(
                 auditSocketLabel: socketPath,
-                keyboard: keyboard
+                keyboard: keyboard,
+                sessionContextProvider: contextProvider.context
             )
             let server = try PrivilegedInputExecutionSocketServer(socketPath: socketPath) { envelope in
                 try handler.handle(envelope: envelope)

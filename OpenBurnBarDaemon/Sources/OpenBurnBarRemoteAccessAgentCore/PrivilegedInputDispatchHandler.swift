@@ -26,14 +26,14 @@ public final class PrivilegedInputDispatchHandler: Sendable {
     public let auditSocketLabel: String
     private let keyboard: VirtualHIDKeyboardEngine
     private let capabilityVerifier: CapabilityTokenLeafVerifier
-    private let sessionContextProvider: @Sendable () -> RemoteUnlockSessionContext
+    private let sessionContextProvider: @Sendable (CapabilityToken?) -> RemoteUnlockSessionContext
     private let maximumCredentialUTF8Bytes = 1_024
 
     public init(
         auditSocketLabel: String,
         keyboard: VirtualHIDKeyboardEngine,
         capabilityVerifier: CapabilityTokenLeafVerifier? = nil,
-        sessionContextProvider: @escaping @Sendable () -> RemoteUnlockSessionContext = { .none }
+        sessionContextProvider: @escaping @Sendable (CapabilityToken?) -> RemoteUnlockSessionContext = { _ in .none }
     ) {
         self.auditSocketLabel = auditSocketLabel
         self.keyboard = keyboard
@@ -140,11 +140,11 @@ public final class PrivilegedInputDispatchHandler: Sendable {
     }
 
     private func sessionContext(for envelope: PrivilegedInputDispatchEnvelope) -> RemoteUnlockSessionContext {
-        let fallback = sessionContextProvider()
+        let context = sessionContextProvider(envelope.capabilityToken)
         return RemoteUnlockSessionContext(
-            escrowDeviceId: fallback.escrowDeviceId ?? normalizedBinding(envelope.presentingEscrowDeviceId),
-            attestationHashBlake3: fallback.attestationHashBlake3 ?? normalizedBinding(envelope.requiredAttestationHashBlake3),
-            scopeHash: fallback.scopeHash
+            escrowDeviceId: normalizedBinding(context.escrowDeviceId),
+            attestationHashBlake3: normalizedBinding(context.attestationHashBlake3),
+            scopeHash: normalizedBinding(context.scopeHash)
         )
     }
 

@@ -14,13 +14,19 @@ public final class RemoteUnlockCapabilityTokenBroker {
     private let issuer = CapabilityTokenIssuer()
     private let readiness: MacRemoteUnlockReadinessService
     private let signingKeyStore: RemoteUnlockCapabilitySigningKeyStore
+    private let sessionContextStore: RemoteUnlockSessionContextSnapshotStore
+    private let sessionContextSigner: RemoteUnlockSessionContextSnapshotSigner
 
     init(
         readiness: MacRemoteUnlockReadinessService,
-        signingKeyStore: RemoteUnlockCapabilitySigningKeyStore
+        signingKeyStore: RemoteUnlockCapabilitySigningKeyStore,
+        sessionContextStore: RemoteUnlockSessionContextSnapshotStore = RemoteUnlockSessionContextSnapshotStore(),
+        sessionContextSigner: RemoteUnlockSessionContextSnapshotSigner = RemoteUnlockSessionContextSnapshotSigner()
     ) {
         self.readiness = readiness
         self.signingKeyStore = signingKeyStore
+        self.sessionContextStore = sessionContextStore
+        self.sessionContextSigner = sessionContextSigner
     }
 
     /// Call after certification or first unlock setup so the bridge can verify tokens offline.
@@ -59,13 +65,29 @@ public final class RemoteUnlockCapabilityTokenBroker {
             now: now
         )
         let keyMaterial = try signingKeyStore.copyOrCreateKeyMaterial()
-        return try issuer.mintRemoteUnlockToken(
+        let token = try issuer.mintRemoteUnlockToken(
             privateKey: keyMaterial.privateKey,
             scopeHash: scopeHash,
             actionKind: actionKind,
             boundEscrowDeviceId: boundEscrowDeviceId ?? activeBinding?.viewerDeviceId,
             attestationHashBlake3: attestationHashBlake3 ?? activeBinding?.attestationHashBlake3
         )
+        let snapshot = RemoteUnlockSessionContextSnapshot(
+            sessionId: sessionId,
+            peerNodeId: peerNodeId,
+            scopeHash: token.scopeHash,
+            escrowDeviceId: token.boundEscrowDeviceId,
+            attestationHashBlake3: token.attestationHashBlake3,
+            issuedAt: token.issuedAt,
+            expiresAt: token.expiresAt,
+            issuerKeyId: keyMaterial.keyId
+        )
+        let signedSnapshot = try sessionContextSigner.sign(
+            snapshot: snapshot,
+            privateKey: keyMaterial.privateKey
+        )
+        try sessionContextStore.save(signedSnapshot, now: now)
+        return token
     }
 }
 #endif
