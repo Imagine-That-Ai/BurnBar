@@ -7,14 +7,21 @@ import OpenBurnBarCore
 // Hermes gateway settings store (pairing/connection state machine).
 // Extracted from HermesSettingsView.swift (god-file decomposition) — same module, verbatim.
 
+struct HermesGatewayApprovalDetailKey: Hashable, Sendable {
+    let clientId: String
+    let actionId: String
+}
+
 enum HermesGatewayApprovalDetailIndex {
-    static func keyedByActionId(from messages: [HermesGatewayMessageRecord]) -> [String: String] {
+    static func keyedByApprovalTarget(from messages: [HermesGatewayMessageRecord]) -> [HermesGatewayApprovalDetailKey: String] {
         messages.reduce(into: [:]) { acc, record in
             if record.resolvedKind == "approval",
                let actionId = record.resolvedActionId,
                let detail = record.resolvedText,
+               !record.clientId.isEmpty,
+               !actionId.isEmpty,
                !detail.isEmpty {
-                acc[actionId] = detail
+                acc[HermesGatewayApprovalDetailKey(clientId: record.clientId, actionId: actionId)] = detail
             }
         }
     }
@@ -42,12 +49,12 @@ final class HermesGatewaySettingsStore {
     private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
     private(set) var latestReply: HermesGatewayMessageRecord?
     private(set) var approvals: [HermesGatewayApprovalRecord] = []
-    /// MP-6: end-to-end-encrypted approval detail text, keyed by the sealed
-    /// payload's `actionId`, so the phone can bind the decrypted detail to the
-    /// correct oversight gate (informed consent). Populated from opened gateway
-    /// messages whose `kind == "approval"`; the /approvals control-plane record
-    /// itself never carries this text.
-    private(set) var sealedApprovalDetails: [String: String] = [:]
+    /// MP-6: end-to-end-encrypted approval detail text, keyed by the approval's
+    /// client/action pair so two gateway clients cannot collide on the same
+    /// sealed action id. Populated from opened gateway messages whose
+    /// `kind == "approval"`; the /approvals control-plane record itself never
+    /// carries this text.
+    private(set) var sealedApprovalDetails: [HermesGatewayApprovalDetailKey: String] = [:]
     private(set) var respondingApprovalId: String?
     private(set) var settingOversightClientId: String?
     private(set) var statusNow = Date()
@@ -88,6 +95,10 @@ final class HermesGatewaySettingsStore {
 
     var hiddenDuplicateClientCount: Int {
         hiddenDuplicateClients.count
+    }
+
+    func sealedApprovalDetail(for approval: HermesGatewayApprovalRecord) -> String? {
+        sealedApprovalDetails[HermesGatewayApprovalDetailKey(clientId: approval.clientId, actionId: approval.actionId)]
     }
 
     var connectedClientCountText: String {
@@ -837,10 +848,10 @@ final class HermesGatewaySettingsStore {
             return record.decodedText(using: keypair, uid: uid, targetClient: targetClient, pinStore: agentKeyPinStore)
         }
 
-        let approvalDetails = HermesGatewayApprovalDetailIndex.keyedByActionId(from: messages)
+        let approvalDetails = HermesGatewayApprovalDetailIndex.keyedByApprovalTarget(from: messages)
         // handleMessagesSnapshot already runs on the MainActor, so write the keyed
-        // map inline (no redundant Task hop); keyed by the sealed payload's actionId.
-        for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
+        // map inline (no redundant Task hop); keyed by the approval client/action.
+        for (key, detail) in approvalDetails { sealedApprovalDetails[key] = detail }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(
