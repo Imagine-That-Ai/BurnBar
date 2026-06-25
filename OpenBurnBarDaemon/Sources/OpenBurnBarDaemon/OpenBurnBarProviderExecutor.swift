@@ -911,7 +911,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                     // service so subsequent reads don't depend on the legacy
                     // service being readable. Best-effort — the routed secret is
                     // still returned even if promotion fails.
-                    try? await setSecret(secret, for: providerID)
+                    if !Self.isExpiredClaudeOAuthSecret(secret, providerID: providerID) {
+                        try? await setSecret(secret, for: providerID)
+                    }
                     return routed
                 }
                 storedAnthropicCredentialRefreshFailed = storedAnthropicCredentialRefreshFailed
