@@ -324,6 +324,9 @@ jobs:
           bash scripts/ci/verify-no-local-agent-config-symlinks.test.sh
           bash scripts/ci/verify-no-local-agent-config-symlinks.sh
 
+      - name: Dev macOS tmux launcher boundary
+        run: bash scripts/ci/verify-dev-mac-tmux-boundary.sh
+
   # ── Python scripts: Ruff defect floor + formatter gate ───────────────────
   python-lint:
     name: Python lint (ruff)
