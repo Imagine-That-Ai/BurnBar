@@ -78,7 +78,7 @@ class SystemPermissionInboxStore {
             SystemPermissionItem(
                 id = java.util.UUID.randomUUID().toString(),
                 threadId = threadId,
-                kind = PhoneControlSystemPermissionKind.valueOf(status.kind.name),
+                kind = PhoneControlSystemPermissionKind.fromRelayKind(status.kind),
                 bundleId = status.bundleId,
                 status = SystemPermissionStatus.from(status.status),
                 originatingToolCallId = status.originatingToolCallId,
@@ -146,6 +146,8 @@ class SystemPermissionInboxStore {
     private fun systemSettingsDeepLink(kind: PhoneControlSystemPermissionKind): String? = when (kind) {
         PhoneControlSystemPermissionKind.SCREEN_RECORDING -> "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         PhoneControlSystemPermissionKind.ACCESSIBILITY -> "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        PhoneControlSystemPermissionKind.REMOTE_DESKTOP -> "x-apple.systempreferences:com.apple.preference.security?Privacy_RemoteDesktop"
+        PhoneControlSystemPermissionKind.SYSTEM_EXTENSION -> "x-apple.systempreferences:com.apple.preference.security?Privacy_Extensions"
         PhoneControlSystemPermissionKind.CAMERA -> "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
         PhoneControlSystemPermissionKind.MICROPHONE -> "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
         PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"

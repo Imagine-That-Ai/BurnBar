@@ -299,6 +299,8 @@ private suspend fun dispatch(
 private fun displayTitle(kind: PhoneControlSystemPermissionKind): String = when (kind) {
     PhoneControlSystemPermissionKind.SCREEN_RECORDING -> "Screen Recording"
     PhoneControlSystemPermissionKind.ACCESSIBILITY -> "Accessibility"
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP -> "Remote Desktop"
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION -> "System Extensions"
     PhoneControlSystemPermissionKind.CAMERA -> "Camera"
     PhoneControlSystemPermissionKind.MICROPHONE -> "Microphone"
     PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> "Full Disk Access"
@@ -308,6 +310,8 @@ private fun displayTitle(kind: PhoneControlSystemPermissionKind): String = when 
 private fun displaySubtitle(kind: PhoneControlSystemPermissionKind): String = when (kind) {
     PhoneControlSystemPermissionKind.SCREEN_RECORDING -> "on your Mac"
     PhoneControlSystemPermissionKind.ACCESSIBILITY -> "for OpenBurnBar"
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP -> "on your Mac"
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION -> "on your Mac"
     PhoneControlSystemPermissionKind.CAMERA -> "on your Mac"
     PhoneControlSystemPermissionKind.MICROPHONE -> "on your Mac"
     PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> "for OpenBurnBar"
@@ -317,6 +321,8 @@ private fun displaySubtitle(kind: PhoneControlSystemPermissionKind): String = wh
 private fun heroExplanation(kind: PhoneControlSystemPermissionKind): String = when (kind) {
     PhoneControlSystemPermissionKind.SCREEN_RECORDING -> "Your Mac needs Screen Recording so OpenBurnBar can grab the screen for this agent."
     PhoneControlSystemPermissionKind.ACCESSIBILITY -> "Your Mac needs Accessibility so OpenBurnBar can drive clicks and keystrokes for this agent."
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP -> "Your Mac needs Remote Desktop so OpenBurnBar can share the locked login screen with trusted devices."
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION -> "Your Mac needs System Extensions so OpenBurnBar can install its trusted desktop helper."
     PhoneControlSystemPermissionKind.CAMERA -> "Your Mac needs Camera access so OpenBurnBar can read the camera for this agent."
     PhoneControlSystemPermissionKind.MICROPHONE -> "Your Mac needs Microphone access so OpenBurnBar can capture audio for this agent."
     PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> "Your Mac needs Full Disk Access so OpenBurnBar can reach this folder for the agent."
@@ -326,14 +332,17 @@ private fun heroExplanation(kind: PhoneControlSystemPermissionKind): String = wh
 private fun defaultActionFor(kind: PhoneControlSystemPermissionKind): PhoneControlSystemPermissionAction = when (kind) {
     PhoneControlSystemPermissionKind.SCREEN_RECORDING,
     PhoneControlSystemPermissionKind.ACCESSIBILITY,
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP,
     PhoneControlSystemPermissionKind.AUTOMATION,
     -> PhoneControlSystemPermissionAction.PROMPT_AND_OPEN_SETTINGS
+
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION,
+    PhoneControlSystemPermissionKind.FULL_DISK_ACCESS,
+    -> PhoneControlSystemPermissionAction.OPEN_SETTINGS
 
     PhoneControlSystemPermissionKind.CAMERA,
     PhoneControlSystemPermissionKind.MICROPHONE,
     -> PhoneControlSystemPermissionAction.PROMPT
-
-    PhoneControlSystemPermissionKind.FULL_DISK_ACCESS -> PhoneControlSystemPermissionAction.OPEN_SETTINGS
 }
 
 private fun statusHeadline(status: SystemPermissionStatus): String = when (status) {
@@ -372,6 +381,18 @@ private fun numberedInstructions(kind: PhoneControlSystemPermissionKind, bundleN
             "Open System Settings on your Mac",
             "Go to Privacy & Security → Accessibility",
             "Toggle OpenBurnBar on",
+        )
+    PhoneControlSystemPermissionKind.REMOTE_DESKTOP ->
+        listOf(
+            "Open System Settings on your Mac",
+            "Go to Privacy & Security → Remote Desktop",
+            "Toggle OpenBurnBar on",
+        )
+    PhoneControlSystemPermissionKind.SYSTEM_EXTENSION ->
+        listOf(
+            "Open System Settings on your Mac",
+            "Go to Privacy & Security → Extensions",
+            "Allow OpenBurnBar's system extension",
         )
     PhoneControlSystemPermissionKind.CAMERA ->
         listOf(

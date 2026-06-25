@@ -37,4 +37,24 @@ class SystemPermissionInboxStoreTest {
         )
         assertEquals(1, store.itemsForThread("t2").size)
     }
+
+    @Test
+    fun `ingest accepts every relay system permission kind without name-based crashes`() {
+        val store = SystemPermissionInboxStore()
+
+        for (kind in HermesRealtimeRelaySystemPermissionKind.values()) {
+            store.ingest(
+                HermesRealtimeRelaySystemPermissionStatus(
+                    kind = kind,
+                    status = HermesRealtimeRelaySystemPermissionStatusKind.NEEDS_ACCESS,
+                    lastChangedAt = "2023-11-14T22:13:20.000Z",
+                ),
+                threadId = "thread-${kind.name}",
+            )
+            assertEquals(
+                PhoneControlSystemPermissionKind.fromRelayKind(kind),
+                store.itemsForThread("thread-${kind.name}").single().kind,
+            )
+        }
+    }
 }

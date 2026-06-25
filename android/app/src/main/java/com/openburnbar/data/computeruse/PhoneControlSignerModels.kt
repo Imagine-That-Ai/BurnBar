@@ -68,6 +68,8 @@ data class PhoneControlAgentContextTarget(
 enum class PhoneControlSystemPermissionKind(val wireValue: String) {
     SCREEN_RECORDING("screen_recording"),
     ACCESSIBILITY("accessibility"),
+    REMOTE_DESKTOP("remote_desktop"),
+    SYSTEM_EXTENSION("system_extension"),
     CAMERA("camera"),
     MICROPHONE("microphone"),
     FULL_DISK_ACCESS("full_disk_access"),
@@ -77,10 +79,25 @@ enum class PhoneControlSystemPermissionKind(val wireValue: String) {
     fun toRelayKind(): com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind = when (this) {
         SCREEN_RECORDING -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.SCREEN_RECORDING
         ACCESSIBILITY -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.ACCESSIBILITY
+        REMOTE_DESKTOP -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.REMOTE_DESKTOP
+        SYSTEM_EXTENSION -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.SYSTEM_EXTENSION
         CAMERA -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.CAMERA
         MICROPHONE -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.MICROPHONE
         FULL_DISK_ACCESS -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.FULL_DISK_ACCESS
         AUTOMATION -> com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.AUTOMATION
+    }
+
+    companion object {
+        fun fromRelayKind(kind: com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind): PhoneControlSystemPermissionKind = when (kind) {
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.SCREEN_RECORDING -> SCREEN_RECORDING
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.ACCESSIBILITY -> ACCESSIBILITY
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.REMOTE_DESKTOP -> REMOTE_DESKTOP
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.SYSTEM_EXTENSION -> SYSTEM_EXTENSION
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.CAMERA -> CAMERA
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.MICROPHONE -> MICROPHONE
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.FULL_DISK_ACCESS -> FULL_DISK_ACCESS
+            com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind.AUTOMATION -> AUTOMATION
+        }
     }
 }
 
