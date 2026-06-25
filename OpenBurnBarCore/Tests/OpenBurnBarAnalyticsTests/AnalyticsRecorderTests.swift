@@ -74,6 +74,30 @@ final class AnalyticsRecorderTests: XCTestCase {
         XCTAssertEqual(transport.sent.count, before, "No sends after revoke")
     }
 
+    func test_track_afterSharedStorageRevocation_dropsWithoutConsentCallback() {
+        let defaults = makeIsolatedAnalyticsDefaults()
+        let consent = AnalyticsConsentStore(defaults: defaults)
+        consent.grant()
+        let transport = FakeAnalyticsTransport()
+        let analytics = Analytics(
+            consent: consent,
+            transport: transport,
+            superProperties: { ["platform": "ios"] }
+        )
+
+        analytics.track(.widgetRendered, ["family": "burnbar"])
+        XCTAssertEqual(transport.sent.count, 1)
+
+        defaults.set(AnalyticsConsent.declined.rawValue, forKey: AnalyticsConsentStore.key)
+
+        analytics.track(.widgetRendered, ["family": "burnbar"])
+        XCTAssertEqual(
+            transport.sent.count,
+            1,
+            "Long-lived widget/keyboard analytics instances must observe host revocation before another byte is sent"
+        )
+    }
+
     func test_revoke_emitsNoRevokedEvent() {
         let (analytics, transport, consent) = makeRecorder(granted: true)
         analytics.startIfConsented()

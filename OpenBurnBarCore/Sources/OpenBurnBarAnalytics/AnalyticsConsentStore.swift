@@ -58,11 +58,18 @@ public final class AnalyticsConsentStore: ObservableObject {
         self.consent = raw.flatMap(AnalyticsConsent.init(rawValue:)) ?? .unset
     }
 
-    /// The single check the Amplitude wrapper reads on every call.
-    public var isGranted: Bool { consent == .granted }
+    private var persistedConsent: AnalyticsConsent {
+        let raw = defaults.string(forKey: Self.key)
+        return raw.flatMap(AnalyticsConsent.init(rawValue:)) ?? .unset
+    }
+
+    /// The single check the Amplitude wrapper reads on every call. This re-reads
+    /// the shared App Group value so long-lived extension processes observe host
+    /// revocation immediately instead of trusting launch-time cached state.
+    public var isGranted: Bool { persistedConsent == .granted }
 
     /// Whether the user has answered the opt-in prompt yet (drives first-run UI).
-    public var hasDecided: Bool { consent != .unset }
+    public var hasDecided: Bool { persistedConsent != .unset }
 
     public func grant() { consent = .granted }
     public func decline() { consent = .declined }
