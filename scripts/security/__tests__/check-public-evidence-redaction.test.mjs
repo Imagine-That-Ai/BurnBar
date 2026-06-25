@@ -39,6 +39,25 @@ test("blocks concrete launch evidence identifiers", () => {
   assert.ok(violations.some((violation) => violation.ruleId === "secret-env-name-in-evidence"));
 });
 
+test("blocks concrete Firebase evidence artifact identifiers", () => {
+  const text = [
+    "{",
+    '  "projectId": "prod-project-123",',
+    '  "url": "https://api-us-central1.a.run.app",',
+    '  "storageBucket": "prod-project-123.firebasestorage.app",',
+    '  "serviceAccountEmail": "release-bot@prod-project-123.iam.gserviceaccount.com"',
+    "}",
+  ].join("\n");
+
+  const violations = scanText("firebase-security-evidence.json", text);
+
+  assert.ok(violations.length >= 4);
+  assert.ok(violations.some((violation) => violation.ruleId === "concrete-operational-value"));
+  assert.ok(violations.some((violation) => violation.ruleId === "cloud-run-url"));
+  assert.ok(violations.some((violation) => violation.ruleId === "firebase-storage-bucket"));
+  assert.ok(violations.some((violation) => violation.ruleId === "service-account-email"));
+});
+
 test("blocks physical device ids in operational runbooks", () => {
   const text = [
     "| Device | Identifier |",
