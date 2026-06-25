@@ -717,6 +717,21 @@ final class ChatSessionController {
         return LocalLLMEndpointPolicy.isLoopbackHost(host)
     }
 
+    nonisolated static func allowsElderWandHostedSearchAuthGateway(_ baseURL: URL) -> Bool {
+        guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              components.user == nil,
+              components.password == nil,
+              components.path.isEmpty || components.path == "/",
+              components.query == nil,
+              components.fragment == nil else {
+            return false
+        }
+        return LocalLLMEndpointPolicy.isLoopbackHost(host)
+    }
+
     static func resolvedHermesModelSelection(
         panelSelection: String,
         settingsOverride: String,
@@ -1467,7 +1482,8 @@ final class ChatSessionController {
         }
     }
 
-    static func elderWandHostedSearchHeaders() async -> [String: String] {
+    static func elderWandHostedSearchHeaders(for gatewayBaseURL: URL) async -> [String: String] {
+        guard allowsElderWandHostedSearchAuthGateway(gatewayBaseURL) else { return [:] }
         guard let provider = MacFirebaseTokenProvider.shared else { return [:] }
         async let idToken = provider.idToken()
         async let appCheckToken = provider.appCheckToken()

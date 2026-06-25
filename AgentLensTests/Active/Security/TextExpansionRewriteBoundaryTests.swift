@@ -15,6 +15,20 @@ final class TextExpansionRewriteBoundaryTests: XCTestCase {
         XCTAssertFalse(ChatSessionController.allowsTextExpansionRewriteGateway(URL(string: "http://user:pass@127.0.0.1:8642")!))
     }
 
+    func test_elderWandHostedSearchAuthGatewaysArePlainLoopbackOriginsOnly() {
+        XCTAssertTrue(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://127.0.0.1:8317")!))
+        XCTAssertTrue(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "https://localhost:8317/")!))
+        XCTAssertTrue(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://[::1]:8317")!))
+
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "https://gateway.example.com")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://10.0.0.5:8317")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://localhost.attacker.example:8317")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://user:pass@127.0.0.1:8317")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://127.0.0.1:8317/v1/chat/completions")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://127.0.0.1:8317?next=https://gateway.example.com")!))
+        XCTAssertFalse(ChatSessionController.allowsElderWandHostedSearchAuthGateway(URL(string: "http://127.0.0.1:8317/#token")!))
+    }
+
     func test_textExpansionRewriteRejectsCLIAssistantBackendsBeforeGatewayUse() async throws {
         for backend in ChatBackendID.allCases where backend.requiresCLIAssistantConsent {
             let controller = try makeController()

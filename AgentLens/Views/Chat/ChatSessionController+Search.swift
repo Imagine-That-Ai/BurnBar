@@ -618,9 +618,15 @@ extension ChatSessionController {
                 }
                 let fusionActive = elderWandPlugins != nil
                 didRouteThroughFusion = fusionActive
-                let hostedSearchHeaders = fusionActive
-                    ? await Self.elderWandHostedSearchHeaders()
-                    : [:]
+                let fusionGatewayBaseURL = fusionActive
+                    ? await MainActor.run { self.burnBarGatewayBaseURL }
+                    : nil
+                let hostedSearchHeaders: [String: String]
+                if let fusionGatewayBaseURL {
+                    hostedSearchHeaders = await Self.elderWandHostedSearchHeaders(for: fusionGatewayBaseURL)
+                } else {
+                    hostedSearchHeaders = [:]
+                }
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
                     // The Elder Wand: when a model-fusion preset is active, the
                     // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
@@ -634,7 +640,7 @@ extension ChatSessionController {
                             includesAtomDirective: true
                         ).build()
                         return self.cliBridge.chatHermes(
-                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.hermesGatewayBaseURL,
+                            baseURL: fusionGatewayBaseURL ?? self.hermesGatewayBaseURL,
                             systemPrompt: hermesPrompt,
                             history: multiTurnHistory,
                             bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.hermesBearerToken,
@@ -650,7 +656,7 @@ extension ChatSessionController {
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
                             ?? URL(string: "http://127.0.0.1:18789")!
                         return self.cliBridge.chatOpenClaw(
-                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : base,
+                            baseURL: fusionGatewayBaseURL ?? base,
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
                             bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.openClawBearerToken,
@@ -669,7 +675,7 @@ extension ChatSessionController {
                             instanceID: self.settingsManager.piAgentSelectedInstanceID
                         )
                         return self.cliBridge.chatPiAgent(
-                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.piAgentGatewayBaseURL,
+                            baseURL: fusionGatewayBaseURL ?? self.piAgentGatewayBaseURL,
                             systemPrompt: piPrompt,
                             history: multiTurnHistory,
                             bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.piAgentBearerToken,
