@@ -14,9 +14,9 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
+import { MODEL_LANDSCAPE_SECRETS, resolveModelLandscapeEnv } from "./modelLandscapeSecrets.js";
 import { processRollupUserRebuild } from "./rollups.js";
 import {
   enqueueRollupUserRebuildTasks,
@@ -32,7 +32,6 @@ import { logError } from "./logging.js";
 import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 type RollupUserRebuildQueueJob = NonNullable<ReturnType<typeof parseRollupUserRebuildTaskData>>;
 
 /**
@@ -216,7 +215,7 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
   {
     schedule: "every 24 hours",
     region: FUNCTIONS_REGION,
-    secrets: [ARTIFICIAL_ANALYSIS_API_KEY],
+    secrets: MODEL_LANDSCAPE_SECRETS,
     // The bench fetch (AA + HF + Design Arena) plus retry/backoff can take
     // 30-60 s; the rundown re-score adds a few more reads/writes. Give the
     // function 5 minutes of headroom so a single transient 429 doesn't
@@ -227,13 +226,7 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
     runScheduledJob("refreshModelLandscapeBenchmarks", async () => {
       const db = getFirestore();
       const now = new Date();
-      const result = await collectModelLandscapeBenchmarks(
-        {
-          ...process.env,
-          ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value() || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
-        },
-        now,
-      );
+      const result = await collectModelLandscapeBenchmarks(resolveModelLandscapeEnv(process.env), now);
       await scheduledFirestore("model_landscape.write", () => writeModelLandscapeBenchmarks(db, result));
       await scheduledFirestore("router_rundown.build", () => buildAndPersistRouterRundown(db, now));
     }),

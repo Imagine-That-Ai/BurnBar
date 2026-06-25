@@ -52,11 +52,12 @@ Attribution is stored with each normalized source. No raw provider keys, cookies
 bearer tokens, or auth material are written to benchmark snapshots or routing
 decision events.
 
-Production deploys bind `ARTIFICIAL_ANALYSIS_API_KEY` through Firebase Secret
-Manager on the scheduled function. Operators can set optional non-bound source
-inputs such as `DESIGN_ARENA_API_KEY`, `DESIGN_ARENA_FIXTURE_JSON`, and
-`MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON` through the normal Cloud Functions
-runtime environment when those sources are approved for the project.
+Production deploys bind `ARTIFICIAL_ANALYSIS_API_KEY` and
+`DESIGN_ARENA_API_KEY` through Firebase Secret Manager on the scheduled
+function. Operators can set optional non-secret source inputs such as
+`DESIGN_ARENA_FIXTURE_JSON` and `MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON` through
+the normal Cloud Functions runtime environment when those sources are approved
+for the project.
 
 ## Wire-format pools and advertised bridge endpoints
 
