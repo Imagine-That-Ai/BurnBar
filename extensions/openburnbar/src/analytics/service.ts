@@ -8,8 +8,9 @@
  * recorder's gate, not by anything here.
  *
  * Gate (all three required for any event):
- *   1. `openburnbar.analytics.enabled` — the extension's own opt-in setting
- *      (default false). Surfaced as the consent grant.
+ *   1. `openburnbar.analytics.enabled` — the extension's own global opt-in
+ *      setting (default false). Surfaced as the consent grant. Workspace/folder
+ *      settings are ignored for consent so a repository cannot opt a user in.
  *   2. `vscode.env.isTelemetryEnabled` — VS Code's global telemetry switch.
  *   3. A non-empty injected/env API key.
  *
@@ -220,10 +221,7 @@ export class OpenBurnBarAnalyticsService {
 
   /** Mirror the opt-in SETTING into the consent store and (de)activate. */
   private syncSettingToConsent(context: AnalyticsServiceHostContext): void {
-    const enabled =
-      typeof vscode.workspace.getConfiguration === 'function'
-        ? vscode.workspace.getConfiguration().get<boolean>(PROMPT_SETTING, false)
-        : false;
+    const enabled = readGlobalAnalyticsOptIn();
 
     if (enabled && !this.graph.consent.isGranted) {
       grantAnalyticsConsent(this.graph, {
@@ -246,4 +244,12 @@ export class OpenBurnBarAnalyticsService {
     logger.debug('analytics: minted a new anonymous device id');
     return next;
   }
+}
+
+function readGlobalAnalyticsOptIn(): boolean {
+  if (typeof vscode.workspace.getConfiguration !== 'function') return false;
+  const config = vscode.workspace.getConfiguration();
+  const inspected = typeof config.inspect === 'function' ? config.inspect<boolean>(PROMPT_SETTING) : undefined;
+  if (inspected) return inspected.globalValue === true;
+  return false;
 }
