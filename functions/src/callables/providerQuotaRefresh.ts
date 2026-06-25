@@ -19,6 +19,26 @@ import { isDemoProviderAccountRecord } from "../providerAccountIsolation.js";
 // Callable: refreshProviderAccountQuota
 // ---------------------------------------------------------------------------
 
+async function rateLimitProviderForAccountRefresh(uid: string, accountID: string): Promise<void> {
+  const accountSnap = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+  if (!accountSnap.exists) {
+    throw new Error(`No provider account doc found for ${accountID}`);
+  }
+
+  const accountData = accountSnap.data();
+  if (isDemoProviderAccountRecord(accountData, accountID)) {
+    return;
+  }
+
+  const account = requireProviderAccountDoc(accountData);
+  if (account.id !== accountID) {
+    throw new Error(`Provider account ID mismatch for ${accountID}`);
+  }
+
+  assertProvider(account.providerID);
+  await checkRefreshRateLimit(db, uid, account.providerID);
+}
+
 export const refreshProviderAccountQuota = onCall(
   {
     region: FUNCTIONS_REGION,
@@ -34,6 +54,7 @@ export const refreshProviderAccountQuota = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const accountID = accountIDFor("account", request.data.accountID);
+    await rateLimitProviderForAccountRefresh(uid, accountID);
     const snapshot = await refreshUserProviderAccountQuota(db, uid, accountID);
     if (!snapshot) {
       throw new Error("failed-precondition: quota refresh returned no snapshot.");
