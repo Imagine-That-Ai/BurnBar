@@ -67,6 +67,20 @@ final class AnalyticsConsentStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.consent, .declined)
     }
 
+    func test_isGrantedReflectsSharedStorageRevocationAfterStoreCreation() {
+        let defaults = makeDefaults("shared-revoke")
+        let store = AnalyticsConsentStore(defaults: defaults)
+        store.grant()
+        XCTAssertEqual(store.consent, .granted)
+        XCTAssertTrue(store.isGranted)
+
+        defaults.set(AnalyticsConsent.declined.rawValue, forKey: AnalyticsConsentStore.key)
+
+        XCTAssertEqual(store.consent, .granted, "The published property remains the local snapshot until the host mutates it")
+        XCTAssertFalse(store.isGranted, "The send gate must read the shared value every time, including cross-process revocation")
+        XCTAssertTrue(store.hasDecided)
+    }
+
     // MARK: - App Group reader (widget + keyboard extensions read host consent)
 
     func test_consentReader_isDark_whenSuiteValueUnset() {
