@@ -10,6 +10,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EVIDENCE_AND_RUNBOOK_PATHS = [
+  /^firebase-security-evidence\.json$/,
+  /^security\/evidence\/firebase-security-evidence.*\.json$/,
   /^launch-evidence\//,
   /^docs\/runbooks\/computer-use-device-matrix\//,
   /^docs\/runbooks\/computer-use-master-plan-audit\.md$/,
@@ -198,9 +200,10 @@ function printViolations(violations) {
   }
 }
 
-function main() {
+function main(argv = process.argv.slice(2)) {
   const root = repoRoot();
-  const violations = scanFiles(root, trackedFiles(root));
+  const files = argv.length > 0 ? argv : trackedFiles(root);
+  const violations = scanFiles(root, files);
   printViolations(violations);
   return violations.length === 0 ? 0 : 1;
 }

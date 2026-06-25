@@ -39,6 +39,7 @@ Options:
   --region <region>          Cloud Functions region to collect. Repeatable.
   --kms-location <location>  KMS location to inspect. Repeatable.
   --app-check-service <svc>  Firebase App Check service to inspect. Repeatable.
+  --raw-output               Write raw inventory details. Refuse in GitHub Actions.
   --help                     Show this help.
 `);
 }
@@ -52,6 +53,7 @@ function parseArgs(argv) {
       "burnbar",
     output: "",
     strict: false,
+    rawOutput: false,
     regions: [],
     kmsLocations: [],
     appCheckServices: [],
@@ -65,6 +67,10 @@ function parseArgs(argv) {
     }
     if (arg === "--strict") {
       options.strict = true;
+      continue;
+    }
+    if (arg === "--raw-output") {
+      options.rawOutput = true;
       continue;
     }
     if (arg === "--project") {
@@ -123,6 +129,9 @@ function parseArgs(argv) {
     );
   } else {
     options.output = resolve(repoRoot, options.output);
+  }
+  if (options.rawOutput && process.env.GITHUB_ACTIONS === "true") {
+    throw new Error("--raw-output is not allowed in GitHub Actions artifacts");
   }
 
   return options;
@@ -552,6 +561,267 @@ function summarizePolicy(policy) {
   };
 }
 
+function summarizePolicyForArtifact(policy) {
+  if (!policy) return null;
+  const bindings = Array.isArray(policy.bindings) ? policy.bindings : [];
+  return {
+    version: policy.version ?? null,
+    bindingCount: bindings.length,
+    bindings: bindings.map((binding) => {
+      const members = Array.isArray(binding.members) ? binding.members : [];
+      return {
+        role: binding.role || null,
+        memberCount: members.length,
+        memberTypes: [...new Set(members.map(memberType).filter(Boolean))].sort(),
+        hasCondition: Boolean(binding.condition),
+      };
+    }),
+  };
+}
+
+function memberType(member) {
+  const value = String(member || "");
+  const index = value.indexOf(":");
+  if (index <= 0) return value ? "unknown" : null;
+  return value.slice(0, index);
+}
+
+function redactOperationalString(value) {
+  return redactString(String(value))
+    .replace(/https:\/\/[a-z0-9][a-z0-9-]*-[a-z0-9-]+\.a\.run\.app\b/gi, "[REDACTED_CLOUD_RUN_URL]")
+    .replace(/\bgs:\/\/[a-z0-9][a-z0-9._-]+/gi, "gs://[REDACTED_BUCKET]")
+    .replace(/\b[a-z0-9][a-z0-9.-]+\.firebasestorage\.app\b/gi, "[REDACTED_FIREBASE_STORAGE_BUCKET]")
+    .replace(/\bprojects\/(?:\d{6,}|[a-z][a-z0-9-]{2,})\//gi, "projects/[REDACTED_PROJECT]/")
+    .replace(/\/buckets\/[^/\s",}\]]+/gi, "/buckets/[REDACTED_BUCKET]");
+}
+
+function commandProbeForArtifact(probe) {
+  if (!probe || typeof probe !== "object") return probe;
+  return {
+    ok: probe.ok === true,
+    command: Array.isArray(probe.command)
+      ? probe.command.map((part) => redactOperationalString(part))
+      : undefined,
+    exitCode: probe.exitCode ?? undefined,
+    error: probe.error ? redactOperationalString(probe.error) : undefined,
+  };
+}
+
+function sanitizeFunctionsForArtifact(functions) {
+  if (!functions || typeof functions !== "object") return functions;
+  return {
+    ok: functions.ok === true,
+    regions: Object.fromEntries(
+      Object.entries(functions.regions || {}).map(([region, result]) => [
+        region,
+        {
+          ok: result.ok === true,
+          count: result.count ?? 0,
+          functions: Array.isArray(result.functions)
+            ? result.functions.map((fn, index) => ({
+                inventoryIndex: index + 1,
+                state: fn.state || null,
+                updateTime: fn.updateTime || null,
+                ingressSettings: fn.ingressSettings || null,
+                availableMemory: fn.availableMemory || null,
+                timeoutSeconds: fn.timeoutSeconds || null,
+                minInstanceCount: fn.minInstanceCount ?? null,
+                maxInstanceCount: fn.maxInstanceCount ?? null,
+                allTrafficOnLatestRevision: fn.allTrafficOnLatestRevision ?? null,
+                secretEnvironmentVariableCount: Array.isArray(fn.secretEnvironmentVariableNames)
+                  ? fn.secretEnvironmentVariableNames.length
+                  : 0,
+                labelKeys: Object.keys(fn.labels || {}).sort(),
+              }))
+            : [],
+          error: result.error ? redactOperationalString(result.error) : undefined,
+        },
+      ]),
+    ),
+  };
+}
+
+function sanitizeStorageForArtifact(storageBuckets) {
+  if (!storageBuckets || typeof storageBuckets !== "object") return storageBuckets;
+  return {
+    ok: storageBuckets.ok === true,
+    bucketCount: storageBuckets.bucketCount ?? 0,
+    buckets: Array.isArray(storageBuckets.buckets)
+      ? storageBuckets.buckets.map((bucket, index) => ({
+          inventoryIndex: index + 1,
+          ok: bucket.ok === true,
+          location: bucket.location || null,
+          storageClass: bucket.storageClass || null,
+          uniformBucketLevelAccess: bucket.uniformBucketLevelAccess ?? null,
+          publicAccessPrevention: bucket.publicAccessPrevention || null,
+          hasRetentionPolicy: Boolean(bucket.retentionPolicy),
+          hasEncryptionConfig: Boolean(bucket.encryption),
+          hasLifecyclePolicy: Boolean(bucket.lifecycle),
+          iamPolicy: summarizePolicyForArtifact(bucket.iamPolicy),
+          error: bucket.error ? redactOperationalString(bucket.error) : undefined,
+        }))
+      : [],
+  };
+}
+
+function sanitizeSecretsForArtifact(secrets) {
+  if (!secrets || typeof secrets !== "object") return secrets;
+  return {
+    ok: secrets.ok === true,
+    secretCount: secrets.secretCount ?? 0,
+    secrets: Array.isArray(secrets.secrets)
+      ? secrets.secrets.map((secret, index) => ({
+          inventoryIndex: index + 1,
+          ok: secret.ok === true,
+          replicationPolicy: summarizeSecretReplication(secret.replication),
+          hasExpireTime: Boolean(secret.expireTime),
+          topicCount: Array.isArray(secret.topics) ? secret.topics.length : 0,
+          labelKeys: Object.keys(secret.labels || {}).sort(),
+          iamPolicy: summarizePolicyForArtifact(secret.iamPolicy),
+          error: secret.error ? redactOperationalString(secret.error) : undefined,
+        }))
+      : [],
+  };
+}
+
+function summarizeSecretReplication(replication) {
+  if (!replication || typeof replication !== "object") return null;
+  if (replication.automatic) return "automatic";
+  if (replication.userManaged) {
+    const replicas = Array.isArray(replication.userManaged.replicas)
+      ? replication.userManaged.replicas
+      : [];
+    return {
+      mode: "userManaged",
+      replicaCount: replicas.length,
+    };
+  }
+  return "configured";
+}
+
+function sanitizeKmsForArtifact(kms) {
+  if (!kms || typeof kms !== "object") return kms;
+  return {
+    ok: kms.ok === true,
+    locations: Object.fromEntries(
+      Object.entries(kms.locations || {}).map(([location, result]) => [
+        location,
+        {
+          ok: result.ok === true,
+          keyRingCount: result.keyRingCount ?? 0,
+          keyCount: result.keyCount ?? 0,
+          keyRings: Array.isArray(result.keyRings)
+            ? result.keyRings.map((ring, ringIndex) => ({
+                inventoryIndex: ringIndex + 1,
+                ok: ring.ok === true,
+                keyCount: ring.keyCount ?? 0,
+                keys: Array.isArray(ring.keys)
+                  ? ring.keys.map((key, keyIndex) => ({
+                      inventoryIndex: keyIndex + 1,
+                      ok: key.ok === true,
+                      purpose: key.purpose || null,
+                      rotationPeriod: key.rotationPeriod || null,
+                      protectionLevel: key.protectionLevel || null,
+                      primaryState: key.primaryState || null,
+                      primaryAlgorithm: key.primaryAlgorithm || null,
+                      labelKeys: Object.keys(key.labels || {}).sort(),
+                      iamPolicy: summarizePolicyForArtifact(key.iamPolicy),
+                      error: key.error ? redactOperationalString(key.error) : undefined,
+                    }))
+                  : [],
+                error: ring.error ? redactOperationalString(ring.error) : undefined,
+              }))
+            : [],
+          error: result.error ? redactOperationalString(result.error) : undefined,
+        },
+      ]),
+    ),
+  };
+}
+
+export function sanitizeEvidenceArtifact(evidence) {
+  const redacted = redact(evidence);
+  return {
+    schemaVersion: redacted.schemaVersion,
+    collectedAt: redacted.collectedAt,
+    collector: redacted.collector,
+    publicationMode: "sanitized-operational-evidence",
+    mode: redacted.mode,
+    ok: redacted.ok === true,
+    summary: redacted.summary || {},
+    project: redacted.project
+      ? {
+          ok: redacted.project.ok === true,
+          lifecycleState: redacted.project.lifecycleState || null,
+          labelKeys: Object.keys(redacted.project.labels || {}).sort(),
+          error: redacted.project.error ? redactOperationalString(redacted.project.error) : undefined,
+        }
+      : undefined,
+    authContext: redacted.authContext
+      ? {
+          gcloudProject: commandProbeForArtifact(redacted.authContext.gcloudProject),
+          activeAccount: commandProbeForArtifact(redacted.authContext.activeAccount),
+          firebaseProjects: commandProbeForArtifact(redacted.authContext.firebaseProjects),
+        }
+      : undefined,
+    tokenProbe: redacted.tokenProbe
+      ? {
+          ok: redacted.tokenProbe.ok === true,
+          source: redacted.tokenProbe.source || undefined,
+          error: redacted.tokenProbe.error ? redactOperationalString(redacted.tokenProbe.error) : undefined,
+        }
+      : undefined,
+    rules: redacted.rules
+      ? {
+          ok: redacted.rules.ok === true,
+          firestore: redacted.rules.firestore
+            ? {
+                updateTime: redacted.rules.firestore.updateTime || null,
+                localSha256: redacted.rules.firestore.localSha256 || null,
+                deployedSha256: redacted.rules.firestore.deployedSha256 || null,
+                drift: redacted.rules.firestore.drift ?? null,
+              }
+            : undefined,
+          firestoreIndexes: redacted.rules.firestoreIndexes || undefined,
+          storage: Array.isArray(redacted.rules.storage)
+            ? redacted.rules.storage.map((entry, index) => ({
+                inventoryIndex: index + 1,
+                updateTime: entry.updateTime || null,
+                localSha256: entry.localSha256 || null,
+                deployedSha256: entry.deployedSha256 || null,
+                drift: entry.drift ?? null,
+              }))
+            : [],
+        }
+      : undefined,
+    appCheck: redacted.appCheck
+      ? {
+          ok: redacted.appCheck.ok === true,
+          services: Array.isArray(redacted.appCheck.services)
+            ? redacted.appCheck.services.map((service) => ({
+                ok: service.ok === true,
+                service: service.service || null,
+                enforcementMode: service.enforcementMode || null,
+                probe: service.probe || null,
+                error: service.error ? redactOperationalString(service.error) : undefined,
+              }))
+            : [],
+        }
+      : undefined,
+    iam: redacted.iam
+      ? {
+          ok: redacted.iam.ok === true,
+          project: summarizePolicyForArtifact(redacted.iam.project),
+          error: redacted.iam.error ? redactOperationalString(redacted.iam.error) : undefined,
+        }
+      : undefined,
+    functions: sanitizeFunctionsForArtifact(redacted.functions),
+    storageBuckets: sanitizeStorageForArtifact(redacted.storageBuckets),
+    secrets: sanitizeSecretsForArtifact(redacted.secrets),
+    kms: sanitizeKmsForArtifact(redacted.kms),
+  };
+}
+
 function collectIam(project) {
   const policy = gcloudJson(["projects", "get-iam-policy", project], {
     timeout: 90_000,
@@ -874,26 +1144,37 @@ async function collect(options) {
 
   evidence.summary = deriveSummary(evidence);
   evidence.ok = Object.values(evidence.summary).every(Boolean);
-  return redact(evidence);
+  return options.rawOutput ? redact(evidence) : sanitizeEvidenceArtifact(evidence);
 }
 
-const options = parseArgs(process.argv);
-const evidence = await collect(options);
-mkdirSync(dirname(options.output), { recursive: true });
-writeFileSync(options.output, `${JSON.stringify(evidence, null, 2)}\n`);
+async function main() {
+  const options = parseArgs(process.argv);
+  const evidence = await collect(options);
+  mkdirSync(dirname(options.output), { recursive: true });
+  writeFileSync(options.output, `${JSON.stringify(evidence, null, 2)}\n`);
 
-console.log(
-  JSON.stringify(
-    {
-      ok: evidence.ok,
-      output: options.output,
-      summary: evidence.summary,
-    },
-    null,
-    2,
-  ),
-);
+  console.log(
+    JSON.stringify(
+      {
+        ok: evidence.ok,
+        output: options.output,
+        summary: evidence.summary,
+        publicationMode: evidence.publicationMode || "raw",
+      },
+      null,
+      2,
+    ),
+  );
 
-if (options.strict && !evidence.ok) {
-  process.exitCode = 1;
+  if (options.strict && !evidence.ok) {
+    process.exitCode = 1;
+  }
+}
+
+const isMain =
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMain) {
+  await main();
 }
