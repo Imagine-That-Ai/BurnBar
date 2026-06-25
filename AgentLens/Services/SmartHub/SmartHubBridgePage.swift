@@ -965,6 +965,13 @@ enum SmartHubBridgePage {
         let identifyOnRefresh = false;
         let audioContext = null;
         let displayMode = localStorage.getItem('obb_displayMode') || 'currency';
+        const bridgeToken = new URLSearchParams(window.location.search).get('bridgeToken') || '';
+
+        function bridgePath(path) {
+          const url = new URL(path, window.location.origin);
+          if (bridgeToken) url.searchParams.set('bridgeToken', bridgeToken);
+          return url.pathname + url.search;
+        }
 
         // Reliability: count consecutive /state.json failures so we can
         // (1) surface a visible diagnostic before the user thinks the
@@ -1026,7 +1033,7 @@ enum SmartHubBridgePage {
 
         async function poll() {
           try {
-            const r = await fetch('/state.json', { cache: 'no-store' });
+            const r = await fetch(bridgePath('/state.json'), { cache: 'no-store' });
             if (!r.ok) throw new Error('bad status ' + r.status);
             const state = await r.json();
             render(state);
@@ -1764,7 +1771,7 @@ enum SmartHubBridgePage {
             btn.setAttribute('aria-selected', btn.dataset.value === value ? 'true' : 'false');
           }
           try {
-            await fetch('/period?p=' + encodeURIComponent(value), { method: 'POST' });
+            await fetch(bridgePath('/period?p=' + encodeURIComponent(value)), { method: 'POST' });
           } catch (e) { /* poll() will reconcile */ }
           poll();
         }
@@ -1774,7 +1781,7 @@ enum SmartHubBridgePage {
           inFlightRefresh = true;
           renderRefreshState({ isRefreshing: true });
           try {
-            const r = await fetch('/refresh', { method: 'POST' });
+            const r = await fetch(bridgePath('/refresh'), { method: 'POST' });
             if (!r.ok) throw new Error('bad status ' + r.status);
           } catch (e) {
             subEl.textContent = 'Refresh failed — retry?';

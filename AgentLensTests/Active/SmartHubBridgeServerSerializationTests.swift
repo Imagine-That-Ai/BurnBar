@@ -57,6 +57,54 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         )
     }
 
+    func test_renderPageCarriesBridgeTokenToPollingAndMutationRequests() throws {
+        XCTAssertTrue(SmartHubBridgePage.html.contains("const bridgeToken = new URLSearchParams"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("function bridgePath(path)"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/state.json')"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/period?p=' + encodeURIComponent(value))"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/refresh')"))
+    }
+
+    func test_bridgeSecuredURLCarriesRuntimeAccessTokenWithoutDroppingExistingQuery() throws {
+        let raw = try XCTUnwrap(URL(string: "http://127.0.0.1:8787/render.html?display=nest"))
+        let secured = SmartHubBridgeServer.shared.securedBridgeURL(raw)
+        let components = try XCTUnwrap(URLComponents(url: secured, resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(components.path, "/render.html")
+        XCTAssertEqual(query["display"], "nest")
+        XCTAssertEqual(query["bridgeToken"], SmartHubBridgeServer.shared.bridgeAccessToken)
+        XCTAssertFalse(SmartHubBridgeServer.shared.bridgeAccessToken.isEmpty)
+    }
+
+    func test_bridgeAuthorizationRequiresRuntimeAccessToken() throws {
+        let token = SmartHubBridgeServer.shared.bridgeAccessToken
+
+        XCTAssertFalse(SmartHubBridgeServer.shared.isAuthorizedBridgeRequestForTesting(path: "/state.json"))
+        XCTAssertFalse(
+            SmartHubBridgeServer.shared.isAuthorizedBridgeRequestForTesting(
+                path: "/state.json?bridgeToken=wrong"
+            )
+        )
+        XCTAssertTrue(
+            SmartHubBridgeServer.shared.isAuthorizedBridgeRequestForTesting(
+                path: "/state.json?bridgeToken=\(token)"
+            )
+        )
+        XCTAssertTrue(
+            SmartHubBridgeServer.shared.isAuthorizedBridgeRequestForTesting(
+                path: "/state.json",
+                authorizationHeader: "Bearer \(token)"
+            )
+        )
+    }
+
+    func test_jsonResponsesDoNotExposeWildcardCORS() throws {
+        let header = SmartHubBridgeServer.shared.renderJSONHeaderForTesting(contentLength: 2)
+        XCTAssertFalse(header.contains("Access-Control-Allow-Origin: *"))
+        XCTAssertTrue(header.contains("Cache-Control: no-store"))
+    }
+
     func test_stateJSONContainsDisplayBlockWithPaletteAndTheme() throws {
         var config = SmartHubDisplayConfig.default
         config.palette = .mercury
