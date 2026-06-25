@@ -171,6 +171,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     ]
     static let defaultProjectStorageBudgetBytes = 512 * 1_024 * 1_024
     static let maximumProjectStorageBudgetBytes = 10 * 1_024 * 1_024 * 1_024
+    static let minimumSemanticCodeCosineScore = 0.20
     /// Bump when the code-store schema changes; surfaced by operator diagnostics so an
     /// operator can confirm which schema generation a daemon's index DB is running.
     static let schemaVersion = 1
@@ -1500,6 +1501,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             return (row.string(0), BurnBarCodeVectorCodec.cosine(queryVector, vector))
         }
         return scored
+            .filter { $0.score >= Self.minimumSemanticCodeCosineScore }
             .sorted { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
             .prefix(limit)
             .map { $0.id }

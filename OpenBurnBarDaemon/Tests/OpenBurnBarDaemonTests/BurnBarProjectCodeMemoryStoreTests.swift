@@ -1361,6 +1361,25 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         func embed(_ text: String) -> [Float]? { nil }
     }
 
+    private struct ControlledSemanticFloorEmbeddingProvider: BurnBarCodeEmbeddingProvider {
+        let versionID = "test-semantic-floor-1"
+        let dimension = 4
+
+        func embed(_ text: String) -> [Float]? {
+            let lowercased = text.lowercased()
+            if lowercased.contains("floor probe query") {
+                return [1, 0, 0, 0]
+            }
+            if lowercased.contains("strong semantic fixture") {
+                return [0.90, 0.4358899, 0, 0]
+            }
+            if lowercased.contains("weak semantic fixture") {
+                return [0.19, 0.981784, 0, 0]
+            }
+            return nil
+        }
+    }
+
     func testHybridSemanticSearchFindsCodeByMeaningNotJustKeywords() throws {
         // Function named/commented so NONE of the query words appear literally in it.
         let body = "func resilientFetch() {\n  // reattempt the connection, waiting longer after each failure\n  connect()\n}\n"
@@ -1386,6 +1405,47 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         _ = try noEmbeddings.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: f2.project.path, maxFiles: 20))
         let lexicalHits = try noEmbeddings.searchCode(BurnBarProjectCodeSearchRequest(query: query, projectPath: f2.project.path, limit: 10)).hits
         XCTAssertTrue(lexicalHits.isEmpty)
+    }
+
+    func testSemanticSearchDropsLowConfidenceOnlyCandidates() throws {
+        let fixture = try makeFixture()
+        try write(
+            "func colorPaletteRotor() {}\n// weak semantic fixture\n",
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Weak.swift")
+        )
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: ControlledSemanticFloorEmbeddingProvider()
+        )
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        let hits = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "floor probe query", projectPath: fixture.project.path, limit: 10)).hits
+
+        XCTAssertTrue(hits.isEmpty)
+    }
+
+    func testSemanticSearchKeepsCandidatesAboveRelevanceFloor() throws {
+        let fixture = try makeFixture()
+        let sources = fixture.project.appendingPathComponent("Sources")
+        try write(
+            "func colorPaletteRotor() {}\n// weak semantic fixture\n",
+            to: sources.appendingPathComponent("Weak.swift")
+        )
+        try write(
+            "func durableRouteGate() {}\n// strong semantic fixture\n",
+            to: sources.appendingPathComponent("Strong.swift")
+        )
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test"),
+            embeddingProvider: ControlledSemanticFloorEmbeddingProvider()
+        )
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        let hits = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "floor probe query", projectPath: fixture.project.path, limit: 10)).hits
+
+        XCTAssertEqual(hits.map(\.filePath), ["Sources/Strong.swift"])
     }
 
     func testSemanticSearchRespectsEmbeddingVersionFloor() throws {
