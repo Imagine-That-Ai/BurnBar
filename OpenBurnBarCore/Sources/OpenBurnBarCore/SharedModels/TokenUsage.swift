@@ -85,6 +85,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let endTime: Date
     public let createdAt: Date
     public let usageSource: UsageSource
+    public let deviceId: String?
     public let sourceDeviceId: String?
     public let sourceDeviceName: String?
     public let isRemote: Bool
@@ -92,6 +93,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let providerAccountID: String?
     public let providerAccountLabel: String?
     public let providerAccountSource: ProviderAccountStorageScope?
+    public let currency: String?
+    public let recordedAt: String?
+    public let eventKind: String?
+    public let idempotencyKey: String?
     public let provenanceMethod: UsageProvenanceMethod
     public let provenanceConfidence: UsageProvenanceConfidence
     public let estimatorVersion: String
@@ -104,6 +109,8 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let parentRequestID: String?
 
     public var costUSD: Double { cost }
+
+    public var cacheWriteTokens: Int { cacheCreationTokens }
 
     /// Whether this row belongs to an Elder Wand fusion run.
     public var isFusionRow: Bool {
@@ -126,6 +133,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         endTime: Date,
         createdAt: Date = Date(),
         usageSource: UsageSource = .providerLog,
+        deviceId: String? = nil,
         sourceDeviceId: String? = nil,
         sourceDeviceName: String? = nil,
         isRemote: Bool = false,
@@ -133,6 +141,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         providerAccountID: String? = nil,
         providerAccountLabel: String? = nil,
         providerAccountSource: ProviderAccountStorageScope? = nil,
+        currency: String? = nil,
+        recordedAt: String? = nil,
+        eventKind: String? = nil,
+        idempotencyKey: String? = nil,
         provenanceMethod: UsageProvenanceMethod = .unknown,
         provenanceConfidence: UsageProvenanceConfidence = .unknown,
         estimatorVersion: String = "",
@@ -160,6 +172,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.endTime = endTime
         self.createdAt = createdAt
         self.usageSource = usageSource
+        self.deviceId = deviceId
         self.sourceDeviceId = sourceDeviceId
         self.sourceDeviceName = sourceDeviceName
         self.isRemote = isRemote
@@ -167,6 +180,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.providerAccountID = providerAccountID
         self.providerAccountLabel = providerAccountLabel
         self.providerAccountSource = providerAccountSource
+        self.currency = currency
+        self.recordedAt = recordedAt
+        self.eventKind = eventKind
+        self.idempotencyKey = idempotencyKey
         self.provenanceMethod = provenanceMethod
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
@@ -185,10 +202,11 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, provider, sessionId, projectName, model
-        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens
+        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens
         case totalTokens, cost, costUsd, startTime, endTime, createdAt, usageSource
-        case sourceDeviceId, sourceDeviceName, isRemote
+        case deviceId, sourceDeviceId, sourceDeviceName, isRemote
         case providerID, providerAccountID, providerAccountLabel, providerAccountSource
+        case currency, recordedAt, eventKind, idempotencyKey
         case provenanceMethod, provenanceConfidence, estimatorVersion
         case parentRequestID
     }
@@ -202,7 +220,9 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         model = try c.decode(String.self, forKey: .model)
         inputTokens = try c.decode(Int.self, forKey: .inputTokens)
         outputTokens = try c.decode(Int.self, forKey: .outputTokens)
-        cacheCreationTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationTokens) ?? 0
+        cacheCreationTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationTokens)
+            ?? c.decodeIfPresent(Int.self, forKey: .cacheWriteTokens)
+            ?? 0
         cacheReadTokens = try c.decodeIfPresent(Int.self, forKey: .cacheReadTokens) ?? 0
         reasoningTokens = try c.decodeIfPresent(Int.self, forKey: .reasoningTokens) ?? 0
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens)
@@ -220,6 +240,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         endTime = try c.decode(Date.self, forKey: .endTime)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         usageSource = try c.decodeIfPresent(UsageSource.self, forKey: .usageSource) ?? .unknown
+        deviceId = try c.decodeIfPresent(String.self, forKey: .deviceId)
         sourceDeviceId = try c.decodeIfPresent(String.self, forKey: .sourceDeviceId)
         sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
         isRemote = try c.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
@@ -227,6 +248,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         providerAccountID = try c.decodeIfPresent(String.self, forKey: .providerAccountID)
         providerAccountLabel = try c.decodeIfPresent(String.self, forKey: .providerAccountLabel)
         providerAccountSource = try c.decodeIfPresent(ProviderAccountStorageScope.self, forKey: .providerAccountSource)
+        currency = try c.decodeIfPresent(String.self, forKey: .currency)
+        recordedAt = try c.decodeIfPresent(String.self, forKey: .recordedAt)
+        eventKind = try c.decodeIfPresent(String.self, forKey: .eventKind)
+        idempotencyKey = try c.decodeIfPresent(String.self, forKey: .idempotencyKey)
         provenanceMethod = try c.decodeIfPresent(UsageProvenanceMethod.self, forKey: .provenanceMethod) ?? .unknown
         provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
         estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
@@ -244,6 +269,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(outputTokens, forKey: .outputTokens)
         try c.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
         try c.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        try c.encode(cacheWriteTokens, forKey: .cacheWriteTokens)
         try c.encode(reasoningTokens, forKey: .reasoningTokens)
         try c.encode(totalTokens, forKey: .totalTokens)
         try c.encode(cost, forKey: .cost)
@@ -251,6 +277,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(endTime, forKey: .endTime)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(usageSource, forKey: .usageSource)
+        try c.encodeIfPresent(deviceId, forKey: .deviceId)
         try c.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
         try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)
         try c.encode(isRemote, forKey: .isRemote)
@@ -258,6 +285,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encodeIfPresent(providerAccountID, forKey: .providerAccountID)
         try c.encodeIfPresent(providerAccountLabel, forKey: .providerAccountLabel)
         try c.encodeIfPresent(providerAccountSource, forKey: .providerAccountSource)
+        try c.encodeIfPresent(currency, forKey: .currency)
+        try c.encodeIfPresent(recordedAt, forKey: .recordedAt)
+        try c.encodeIfPresent(eventKind, forKey: .eventKind)
+        try c.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
         try c.encode(provenanceMethod, forKey: .provenanceMethod)
         try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
         try c.encode(estimatorVersion, forKey: .estimatorVersion)
@@ -287,28 +318,4 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         let e = max(startTime, endTime)
         return s <= dateRange.upperBound && e >= dateRange.lowerBound
     }
-}
-
-// Schema-sync usage-quota canon field pins for check-hand-mirror.mjs (manifest usage-quota).
-private enum UsageQuotaFirestoreFieldMirror {
-    static let deviceId = "deviceId"
-    static let cacheWriteTokens = "cacheWriteTokens"
-    static let currency = "currency"
-    static let recordedAt = "recordedAt"
-    static let eventKind = "eventKind"
-    static let idempotencyKey = "idempotencyKey"
-    static let sourceKind = "sourceKind"
-    static let sourceId = "sourceId"
-    static let accountID = "accountID"
-    static let accountLabel = "accountLabel"
-    static let accountStorageScope = "accountStorageScope"
-    static let fetchedAt = "fetchedAt"
-    static let sourceLabel = "sourceLabel"
-    static let buckets = "buckets"
-    static let resetAt = "resetAt"
-    static let planTier = "planTier"
-    static let bucketName = "name"
-    static let bucketUsed = "used"
-    static let bucketLimit = "limit"
-    static let bucketUnit = "unit"
 }

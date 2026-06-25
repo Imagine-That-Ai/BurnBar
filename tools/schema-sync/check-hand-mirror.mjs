@@ -31,9 +31,162 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
-const manifest = JSON.parse(
-  readFileSync(join(__dirname, "manifest.json"), "utf8")
-);
+
+function loadManifest() {
+  return JSON.parse(readFileSync(join(__dirname, "manifest.json"), "utf8"));
+}
+
+function countChar(source, char) {
+  let count = 0;
+  for (const candidate of source) {
+    if (candidate === char) count += 1;
+  }
+  return count;
+}
+
+function stripComments(source) {
+  let output = "";
+  let state = "code";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] ?? "";
+
+    if (state === "lineComment") {
+      if (char === "\n") {
+        output += "\n";
+        state = "code";
+      } else {
+        output += " ";
+      }
+      continue;
+    }
+
+    if (state === "blockComment") {
+      if (char === "*" && next === "/") {
+        output += "  ";
+        index += 1;
+        state = "code";
+      } else {
+        output += char === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (state === "doubleString") {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === "\"") {
+        state = "code";
+      }
+      continue;
+    }
+
+    if (state === "singleString") {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === "'") {
+        state = "code";
+      }
+      continue;
+    }
+
+    if (state === "templateString") {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === "`") {
+        state = "code";
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      output += "  ";
+      index += 1;
+      state = "lineComment";
+    } else if (char === "/" && next === "*") {
+      output += "  ";
+      index += 1;
+      state = "blockComment";
+    } else if (char === "\"") {
+      output += char;
+      state = "doubleString";
+    } else if (char === "'") {
+      output += char;
+      state = "singleString";
+    } else if (char === "`") {
+      output += char;
+      state = "templateString";
+    } else {
+      output += char;
+    }
+  }
+  return output;
+}
+
+function stripCommentsAndStrings(source) {
+  let output = "";
+  let state = "code";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] ?? "";
+
+    if (state === "lineComment") {
+      if (char === "\n") {
+        output += "\n";
+        state = "code";
+      } else {
+        output += " ";
+      }
+      continue;
+    }
+
+    if (state === "blockComment") {
+      if (char === "*" && next === "/") {
+        output += "  ";
+        index += 1;
+        state = "code";
+      } else {
+        output += char === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (typeof state === "object") {
+      if (char === "\\" && next) {
+        output += "  ";
+        index += 1;
+      } else if (char === state.quote) {
+        output += " ";
+        state = "code";
+      } else {
+        output += char === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      output += "  ";
+      index += 1;
+      state = "lineComment";
+    } else if (char === "/" && next === "*") {
+      output += "  ";
+      index += 1;
+      state = "blockComment";
+    } else if (char === "\"" || char === "'" || char === "`") {
+      output += " ";
+      state = { quote: char };
+    } else {
+      output += char;
+    }
+  }
+  return output;
+}
 
 /**
  * Parse an exported TS interface into an ordered map of fieldName -> isOptional.
@@ -41,11 +194,12 @@ const manifest = JSON.parse(
  * (e.g. derived `export type X = Omit<...>`, or simply absent).
  */
 function extractInterfaceFields(tsSource, interfaceName) {
+  const searchable = stripComments(tsSource);
   const pattern = new RegExp(
     `export interface ${interfaceName}\\s*\\{([\\s\\S]*?)\\n\\}`,
     "m"
   );
-  const match = tsSource.match(pattern);
+  const match = searchable.match(pattern);
   if (!match) return null;
   const body = match[1];
   const fields = new Map();
@@ -64,6 +218,78 @@ function generatedInterfaceNames(generated) {
   return [...generated.matchAll(/^export interface (\w+)/gm)].map((m) => m[1]);
 }
 
+function extractSwiftMirrorFields(swiftSource) {
+  const fields = new Set();
+  const source = stripCommentsAndStrings(swiftSource);
+  let braceDepth = 0;
+
+  for (const line of source.split("\n")) {
+    if (braceDepth === 1) {
+      const match = line.match(
+        /^\s*(?:(?:open|public|package|internal|fileprivate|private)\s+)?(?:private\(set\)\s+)?(?:let|var)\s+([A-Za-z_]\w*)\b/
+      );
+      if (match) fields.add(match[1]);
+    }
+    braceDepth += countChar(line, "{") - countChar(line, "}");
+    if (braceDepth < 0) braceDepth = 0;
+  }
+
+  return fields;
+}
+
+function extractKotlinMirrorFields(kotlinSource) {
+  const fields = new Set();
+  const source = stripComments(kotlinSource);
+  let braceDepth = 0;
+  let constructorParenDepth = 0;
+  let pendingPropertyName = null;
+
+  for (const line of source.split("\n")) {
+    const propertyNameMatch = line.match(
+      /@(?:get:|set:)?PropertyName\s*\(\s*"([^"]+)"\s*\)/
+    );
+    if (propertyNameMatch) {
+      pendingPropertyName = propertyNameMatch[1];
+    }
+
+    if (/^\s*(?:data\s+)?class\s+\w+\s*\(/.test(line)) {
+      constructorParenDepth += countChar(line, "(") - countChar(line, ")");
+    }
+
+    const inConstructor = constructorParenDepth > 0;
+    const inClassBody = braceDepth === 1;
+    if (inConstructor || inClassBody) {
+      const propertyMatch = line.match(/^\s*(?:@[^\n]+\s*)*(?:val|var)\s+([A-Za-z_]\w*)\b/);
+      if (propertyMatch) {
+        fields.add(propertyMatch[1]);
+        if (pendingPropertyName) {
+          fields.add(pendingPropertyName);
+          pendingPropertyName = null;
+        }
+      }
+    }
+
+    if (constructorParenDepth > 0 && !/^\s*(?:data\s+)?class\s+\w+\s*\(/.test(line)) {
+      constructorParenDepth += countChar(line, "(") - countChar(line, ")");
+      if (constructorParenDepth <= 0) {
+        constructorParenDepth = 0;
+        pendingPropertyName = null;
+      }
+    }
+
+    braceDepth += countChar(line, "{") - countChar(line, "}");
+    if (braceDepth < 0) braceDepth = 0;
+  }
+
+  return fields;
+}
+
+function extractNativeMirrorFields(mirrorSource, language) {
+  if (language === "swift") return extractSwiftMirrorFields(mirrorSource);
+  if (language === "kotlin") return extractKotlinMirrorFields(mirrorSource);
+  throw new Error(`unsupported native mirror language: ${language}`);
+}
+
 function normalizeMirror(entry) {
   if (typeof entry === "string") return { path: entry };
   return entry;
@@ -74,8 +300,11 @@ function normalizeMirror(entry) {
  * @returns {string[]} drift tokens — `Interface.field` for a missing field,
  *   `Interface.field#opt` for an optionality mismatch (TS mirrors only).
  */
-function diffMirror({ generated, mirrorSource, interfaces, compareOptionality }) {
+function diffMirror({ generated, mirrorSource, interfaces, compareOptionality, language }) {
   const drift = [];
+  const nativeFields = compareOptionality
+    ? null
+    : extractNativeMirrorFields(mirrorSource, language);
   for (const interfaceName of interfaces) {
     const genFields = extractInterfaceFields(generated, interfaceName);
     if (!genFields) {
@@ -98,7 +327,7 @@ function diffMirror({ generated, mirrorSource, interfaces, compareOptionality })
         } else if (mirrorFields.get(field) !== optional) {
           drift.push(`${interfaceName}.${field}#opt`);
         }
-      } else if (!mirrorSource.includes(field)) {
+      } else if (!nativeFields.has(field)) {
         drift.push(`${interfaceName}.${field}`);
       }
     }
@@ -119,7 +348,7 @@ function resolveInterfaces(entry, generated, mirrorSource, compareOptionality) {
   return all.filter((name) => extractInterfaceFields(mirrorSource, name));
 }
 
-function checkMirror({ domain, generated, entry, compareOptionality }) {
+function checkMirror({ domain, generated, entry, compareOptionality, language }) {
   const mirror = normalizeMirror(entry);
   const mirrorSource = readFileSync(join(repoRoot, mirror.path), "utf8");
   const interfaces = resolveInterfaces(
@@ -135,6 +364,7 @@ function checkMirror({ domain, generated, entry, compareOptionality }) {
     mirrorSource,
     interfaces,
     compareOptionality,
+    language,
   });
   const known = new Set(mirror.knownDrift ?? []);
   const liveDrift = new Set(drift);
@@ -155,50 +385,71 @@ function checkMirror({ domain, generated, entry, compareOptionality }) {
   }
 }
 
-let failures = 0;
-let checked = 0;
-for (const domain of manifest.domains) {
-  let generated;
-  try {
-    generated = readGenerated(domain);
-  } catch (error) {
-    failures += 1;
-    console.error(`[${domain.id}] ${String(error.message ?? error)}`);
-    continue;
-  }
-
-  const mirrors = [
-    ...(domain.swiftHandMirror ?? []).map((entry) => ({
-      entry,
-      compareOptionality: false,
-    })),
-    ...(domain.kotlinHandMirror ?? []).map((entry) => ({
-      entry,
-      compareOptionality: false,
-    })),
-    ...(domain.tsHandMirror ?? []).map((entry) => ({
-      entry,
-      compareOptionality: true,
-    })),
-  ];
-
-  for (const { entry, compareOptionality } of mirrors) {
-    checked += 1;
+function main() {
+  const manifest = loadManifest();
+  let failures = 0;
+  let checked = 0;
+  for (const domain of manifest.domains) {
+    let generated;
+    const failuresBeforeDomain = failures;
     try {
-      checkMirror({ domain, generated, entry, compareOptionality });
+      generated = readGenerated(domain);
     } catch (error) {
       failures += 1;
-      console.error(String(error.message ?? error));
+      console.error(`[${domain.id}] ${String(error.message ?? error)}`);
+      continue;
+    }
+
+    const mirrors = [
+      ...(domain.swiftHandMirror ?? []).map((entry) => ({
+        entry,
+        compareOptionality: false,
+        language: "swift",
+      })),
+      ...(domain.kotlinHandMirror ?? []).map((entry) => ({
+        entry,
+        compareOptionality: false,
+        language: "kotlin",
+      })),
+      ...(domain.tsHandMirror ?? []).map((entry) => ({
+        entry,
+        compareOptionality: true,
+        language: "typescript",
+      })),
+    ];
+
+    for (const { entry, compareOptionality, language } of mirrors) {
+      checked += 1;
+      try {
+        checkMirror({ domain, generated, entry, compareOptionality, language });
+      } catch (error) {
+        failures += 1;
+        console.error(String(error.message ?? error));
+      }
+    }
+
+    if (mirrors.length > 0 && failures === failuresBeforeDomain) {
+      console.log(`hand-mirror check passed: ${domain.id} (${mirrors.length} mirror(s))`);
     }
   }
 
-  if (mirrors.length > 0 && failures === 0) {
-    console.log(`hand-mirror check passed: ${domain.id} (${mirrors.length} mirror(s))`);
+  console.log(`hand-mirror check: ${checked} mirror(s) across all manifest domains`);
+  return failures;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const failures = main();
+  if (failures > 0) {
+    process.exit(1);
   }
 }
 
-console.log(`hand-mirror check: ${checked} mirror(s) across all manifest domains`);
-
-if (failures > 0) {
-  process.exit(1);
-}
+export {
+  diffMirror,
+  extractInterfaceFields,
+  extractKotlinMirrorFields,
+  extractNativeMirrorFields,
+  extractSwiftMirrorFields,
+  stripComments,
+  stripCommentsAndStrings,
+};
