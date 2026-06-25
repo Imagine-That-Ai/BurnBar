@@ -50,9 +50,13 @@ final class PetPanel: NSPanel {
         isReleasedWhenClosed = false
     }
 
-    // A borderless panel returns false by default; allow key only when content
-    // explicitly needs text input (the chat bubble), but the pet idle does not.
-    override var canBecomeKey: Bool { true }
+    // The pet panel never carries text input (the chat bubble is a SEPARATE
+    // panel, PetBubblePanel, which is the only one allowed to become key). The
+    // pet idle must NEVER steal key focus from the user's frontmost app —
+    // returning true here let a pet click grab the keyboard, intercepting
+    // typing for legitimate OS/computer requests. Return false so the user's
+    // real app keeps key focus even while clicking/interacting with the pet.
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
     // MARK: Placement

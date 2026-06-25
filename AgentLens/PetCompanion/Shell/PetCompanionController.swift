@@ -34,6 +34,9 @@ final class PetCompanionController: ObservableObject {
     private var definition: PetDefinition?
     private var interpreter: BehaviorInterpreter?
     private var form: PetForm?
+    /// Observes the pet panel's move/resize notifications so the chat bubble
+    /// follows the pet as it is dragged around the screen.
+    private var panelFrameObserver: NSObjectProtocol?
 
     // MARK: Chat bubble wiring (C5/C7)
 
@@ -120,6 +123,7 @@ final class PetCompanionController: ObservableObject {
     /// cached for a fast `start()` again.
     func stop() {
         stopAmbientLoop()
+        stopObservingPanelFrame()
         renderer?.unmount()
         renderer = nil
         interpreter = nil
@@ -143,6 +147,7 @@ final class PetCompanionController: ObservableObject {
         panel.orderFrontRegardless()
         isVisible = true
         setPaused(false)
+        startObservingPanelFrame()
     }
 
     func hide() {
@@ -311,12 +316,27 @@ final class PetCompanionController: ObservableObject {
 
     // MARK: Chat bubble (C5/C7)
 
+    /// Whether the pet persona voice override is enabled (per-app UserDefaults,
+    /// default ON). The chat controller gates both the cloud persona override AND
+    /// the local fallback voice-lines behind this so a user can turn the in-
+    /// character voice off without changing pets.
+    var personaVoiceEnabled: Bool {
+        PetCompanionFeature.personaVoiceEnabled
+    }
+
+    /// Toggle the persona voice override on/off and persist it.
+    func setPersonaVoiceEnabled(_ enabled: Bool) {
+        PetCompanionFeature.setPersonaVoiceEnabled(enabled)
+    }
+
     /// The active pet's chat voice (`agent.persona`), or `nil` when the loaded
-    /// definition carries none. The bubble's ``PetChatController`` reads this at
-    /// send time and overrides the shared controller's trusted persona block so
-    /// answers land in this pet's voice; a `nil` keeps the default prompt.
+    /// definition carries none OR when the persona voice override is toggled off.
+    /// The bubble's ``PetChatController`` reads this at send time and overrides
+    /// the shared controller's trusted persona block so answers land in this
+    /// pet's voice; a `nil` keeps the default prompt.
     var activeChatPersona: String? {
-        definition?.agent?.persona
+        guard personaVoiceEnabled else { return nil }
+        return definition?.agent?.persona
     }
 
     /// The chosen pet's human name (e.g. "Sam Altman"), for chat chrome that should
@@ -329,7 +349,10 @@ final class PetCompanionController: ObservableObject {
     /// The pet's BurnBar persona voice-lines (enter/work/cheer/exit), decoded from
     /// the petdef `agent.voiceLines` JSON string. The local chat floor uses these
     /// to answer IN CHARACTER (and on BurnBar's domain) when no AI provider replies.
+    /// Returns `nil` when the persona voice override is toggled off so the local
+    /// floor falls back to the generic guide voice.
     var voiceLines: [String: [String]]? {
+        guard personaVoiceEnabled else { return nil }
         guard let raw = definition?.agent?.voiceLines,
               let data = raw.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String: [String]].self, from: data),
@@ -377,6 +400,193 @@ final class PetCompanionController: ObservableObject {
         }
     }
 
+    // MARK: Right-click context menu
+
+    /// Build the elegant pet context menu (emotes / chat / size / persona / reset).
+    /// Uses a native `NSMenu` so it reads as AppKit chrome, not a SwiftUI popover.
+    private func buildPetContextMenu(at point: CGPoint, in view: NSView) -> NSMenu {
+        let menu = NSMenu(title: "Pet")
+        menu.autoenablesItems = false
+
+        // Emote submenu — pick from the pet's available reaction clips.
+        if let emotes = availableEmotes(), !emotes.isEmpty {
+            let emoteItem = menu.addItem(withTitle: "Emote", action: nil, keyEquivalent: "")
+            emoteItem.submenu = emoteMenu(emotes)
+        } else {
+            let wave = menu.addItem(withTitle: "Wave", action: #selector(petMenuWave), keyEquivalent: "")
+            wave.target = self
+        }
+
+        menu.addItem(.separator())
+
+        let chatItem = menu.addItem(
+            withTitle: (chat?.isOpen ?? false) ? "Close Chat" : "Open Chat",
+            action: #selector(petMenuToggleChat),
+            keyEquivalent: ""
+        )
+        chatItem.target = self
+
+        menu.addItem(.separator())
+
+        let grow = menu.addItem(withTitle: "Grow Pet", action: #selector(petMenuGrowPet), keyEquivalent: "+")
+        grow.target = self
+        let shrink = menu.addItem(withTitle: "Shrink Pet", action: #selector(petMenuShrinkPet), keyEquivalent: "-")
+        shrink.target = self
+
+        let growChat = menu.addItem(withTitle: "Grow Chat", action: #selector(petMenuGrowChat), keyEquivalent: "=")
+        growChat.target = self
+        let shrinkChat = menu.addItem(withTitle: "Shrink Chat", action: #selector(petMenuShrinkChat), keyEquivalent: "_")
+        shrinkChat.target = self
+
+        menu.addItem(.separator())
+
+        let personaTitle = personaVoiceEnabled ? "Pet Voice: On" : "Pet Voice: Off"
+        let persona = menu.addItem(
+            withTitle: personaTitle,
+            action: #selector(petMenuTogglePersona),
+            keyEquivalent: ""
+        )
+        persona.target = self
+
+        let reset = menu.addItem(withTitle: "Reset View", action: #selector(petMenuReset), keyEquivalent: "")
+        reset.target = self
+
+        return menu
+    }
+
+    /// The pet's available emote/reaction clip names (semantic-first, fallback to
+    /// raw clip names). Used to populate the Emote submenu.
+    private func availableEmotes() -> [String]? {
+        let names = availableReactionNames()
+        let emoteOrder = ["wave", "cheer", "clap", "dance", "jump", "nod", "think", "surprised", "shrug", "sleep"]
+        let ordered = emoteOrder.filter { names.contains($0) }
+        if ordered.isEmpty { return nil }
+        return ordered
+    }
+
+    private func emoteMenu(_ emotes: [String]) -> NSMenu {
+        let sub = NSMenu(title: "Emote")
+        sub.autoenablesItems = false
+        for name in emotes {
+            let item = sub.addItem(withTitle: name.capitalized, action: #selector(petMenuEmote(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+        }
+        return sub
+    }
+
+    // MARK: Context menu actions
+
+    @objc private func petMenuWave() {
+        drive(to: "greeting")
+    }
+
+    @objc private func petMenuEmote(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        drive(to: name, force: true)
+    }
+
+    @objc private func petMenuToggleChat() {
+        guard let chat else { drive(to: .react); return }
+        if chat.isOpen { closeBubble() } else { openBubble() }
+    }
+
+    @objc private func petMenuGrowPet() {
+        resizePetPanel(by: 1.12)
+    }
+
+    @objc private func petMenuShrinkPet() {
+        resizePetPanel(by: 1 / 1.12)
+    }
+
+    @objc private func petMenuGrowChat() {
+        resizeChatBubble(by: 1.12)
+    }
+
+    @objc private func petMenuShrinkChat() {
+        resizeChatBubble(by: 1 / 1.12)
+    }
+
+    @objc private func petMenuTogglePersona() {
+        let next = !personaVoiceEnabled
+        setPersonaVoiceEnabled(next)
+    }
+
+    @objc private func petMenuReset() {
+        resetPetView()
+    }
+
+    /// Resize the floating pet panel by `factor` (works for both 2D and 3D
+    /// forms — it scales the host window, which the renderer view fills).
+    func resizePetPanel(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0, let panel else { return }
+        let frame = panel.frame
+        let aspect = frame.height / max(frame.width, 1)
+        let minW: CGFloat = 110, maxW: CGFloat = 560
+        let newWidth = min(maxW, max(minW, frame.width * factor))
+        let newHeight = newWidth * aspect
+        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
+        panel.clamp(to: panel.bestScreen)
+        if let id = definition?.id {
+            PetWindowState.store(panel.frame, for: id)
+        }
+        // Re-anchor the bubble so it tracks the resized pet.
+        reanchorBubble()
+    }
+
+    /// Resize the chat bubble by `factor` (scales the bubble panel width/height,
+    /// clamped, re-anchored above the pet).
+    func resizeChatBubble(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0, let bubble = bubblePanel else { return }
+        let frame = bubble.frame
+        let minW: CGFloat = 240, maxW: CGFloat = 520
+        let aspect = frame.height / max(frame.width, 1)
+        let newWidth = min(maxW, max(minW, frame.width * factor))
+        let newHeight = newWidth * aspect
+        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
+        bubble.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
+        bubble.clamp(to: panel?.bestScreen)
+        reanchorBubble()
+    }
+
+    /// Reset the pet's view transform (yaw/scale for 3D; no-op for 2D).
+    func resetPetView() {
+        if let scn = renderer as? SceneKitPetRenderer {
+            scn.resetModelView()
+        }
+        // 2D SpriteKit pets have no user view transform to reset.
+        reanchorBubble()
+    }
+
+    /// Re-anchor the bubble to the (possibly moved/resized) pet. No-op if closed.
+    func reanchorBubble() {
+        guard let bubble = bubblePanel, bubble.isVisible, chat?.isOpen == true else { return }
+        anchorBubble(bubble)
+    }
+
+    /// Observe the pet panel's move + resize notifications so the chat bubble
+    /// tracks the pet as it is dragged around the screen (and re-anchors after a
+    /// resize). Throttled via `DispatchQueue.main.async` so a rapid drag doesn't
+    /// re-anchor on every single frame event.
+    private func startObservingPanelFrame() {
+        guard let panel, panelFrameObserver == nil else { return }
+        let center = NotificationCenter.default
+        let update: (Notification) -> Void = { [weak self] _ in
+            DispatchQueue.main.async { self?.reanchorBubble() }
+        }
+        let move = center.addObserver(forName: NSWindow.didMoveNotification, object: panel, queue: .main, using: update)
+        let resize = center.addObserver(forName: NSWindow.didResizeNotification, object: panel, queue: .main, using: update)
+        panelFrameObserver = TokenBox(tokens: [move, resize])
+    }
+
+    private func stopObservingPanelFrame() {
+        guard let box = panelFrameObserver as? TokenBox else { return }
+        let center = NotificationCenter.default
+        box.tokens.forEach { center.removeObserver($0) }
+        panelFrameObserver = nil
+    }
+
     private func installClickGesture(on view: NSView) {
         // Replace any prior recognizer (renderer view may have been swapped).
         if let old = clickGesture { old.view?.removeGestureRecognizer(old) }
@@ -399,6 +609,33 @@ final class PetCompanionController: ObservableObject {
         // that conform to PetDropHostingView (the SceneKit/SpriteKit renderer
         // subclasses) accept drops; a plain NSView (the placeholder) is skipped.
         installDropTarget(on: view)
+        // Wire the elegant right-click context menu (emote / open-close chat /
+        // resize pet +/- / resize chat / persona toggle / reset) on the same
+        // view. Only renderer views that adopt PetDropHostingView get it.
+        installRightClickMenu(on: view)
+    }
+
+    /// Install the right-click handler that builds the pet context menu. No-op
+    /// for renderer views that do not adopt ``PetDropHostingView`` (the
+    /// placeholder), so an ambient-only pet still right-clicks through.
+    private func installRightClickMenu(on view: NSView) {
+        guard let host = view as? PetDropHostingView else { return }
+        host.rightClickHandler = { [weak self] clickedView, event in
+            guard let self else { return }
+            // Only show the menu when the right-click hits visible pet content,
+            // so empty panel padding stays click-through.
+            let point = clickedView.convert(event.locationInWindow, from: nil)
+            if let renderer = self.renderer, renderer.view === clickedView,
+               !renderer.containsVisibleContent(at: point) {
+                return
+            }
+            let menu = self.buildPetContextMenu(at: point, in: clickedView)
+            if let event = NSApp.currentEvent {
+                menu.popUp(positioning: nil, at: event.locationInWindow, in: nil)
+            } else {
+                menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            }
+        }
     }
 
     /// Install (or re-install) the file drop delegate on the renderer view. The
@@ -461,9 +698,18 @@ final class PetCompanionController: ObservableObject {
     private func presentBubble(for chat: PetChatController) {
         let bubble = bubblePanel ?? PetBubblePanel()
         bubblePanel = bubble
-        bubble.host(chat: chat)
+        let anchor = bubbleTailAnchor()
+        bubble.host(chat: chat, tailAnchorX: anchor)
         anchorBubble(bubble)
         bubble.makeKeyAndOrderFront(nil)
+        // The pet's projected top-of-head moves once the one-shot presentation
+        // framing lands (it can fire a moment after open). Re-anchor shortly
+        // after so the bubble tracks the framed head instead of sitting on it.
+        Task { @MainActor [weak self, weak bubble] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard let self, let bubble, self.chat?.isOpen == true else { return }
+            self.anchorBubble(bubble)
+        }
     }
 
     /// The on-screen point (screen coords) the bubble tail should aim at: the pet
@@ -476,18 +722,44 @@ final class PetCompanionController: ObservableObject {
         return panel.convertPoint(toScreen: windowPoint)
     }
 
+    /// The tail's horizontal anchor (0…1 across the bubble width) so it points
+    /// at the pet's contact socket x rather than the bubble centre. Re-evaluated
+    /// on each anchor so the tail tracks the pet as it moves.
+    private func bubbleTailAnchor() -> CGFloat {
+        guard let panel, let renderer else { return 0.5 }
+        let viewPoint = renderer.socketPoint("contact") ?? CGPoint(x: renderer.view.bounds.midX, y: 0)
+        let windowPoint = renderer.view.convert(viewPoint, to: nil)
+        let screenX = panel.convertPoint(toScreen: windowPoint).x
+        // The bubble is centered over the anchor in `anchorBubble`, so the tail
+        // points at the bubble centre → 0.5. When the bubble is clamped off-centre
+        // by the screen edge, re-derive the anchor against the live bubble frame.
+        if let bubble = bubblePanel, bubble.frame.width > 0 {
+            let frac = (screenX - bubble.frame.minX) / bubble.frame.width
+            return min(0.85, max(0.15, frac))
+        }
+        return 0.5
+    }
+
     /// Position the bubble panel just above the pet's contact socket.
     private func anchorBubble(_ bubble: PetBubblePanel) {
         guard let anchor = bubbleAnchorPoint() else { return }
         bubble.resizeToContent()
         let size = bubble.frame.size
-        // Center the bubble horizontally over the anchor, sit it above with a gap.
+        // Center the bubble horizontally over the anchor, sit it above with a
+        // generous gap so the tail clears the pet's head (was 12px → overlapped
+        // the skull; the anchor now points at the projected top-of-head, so the
+        // gap is pure breathing room above the head).
+        let gap: CGFloat = 28
         let origin = CGPoint(
             x: anchor.x - size.width / 2,
-            y: anchor.y + 12
+            y: anchor.y + gap
         )
         bubble.setFrameOrigin(origin)
         bubble.clamp(to: panel?.bestScreen)
+        // Re-point the tail at the (possibly clamped) anchor so the bubble's tail
+        // tracks the pet even when the bubble itself was nudged on-screen.
+        let anchor2 = bubbleTailAnchor()
+        if let chat { bubble.host(chat: chat, tailAnchorX: anchor2) }
     }
 
     // MARK: Private
@@ -675,6 +947,15 @@ final class PetClickTarget: NSObject {
     private let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     @objc func fire() { action() }
+}
+
+/// Holds an array of notification observer tokens so the controller can remove
+/// them together when the panel tears down. A plain `NSObject` box keeps the
+/// tokens (untyped `NSObjectProtocol`) alive without exposing them.
+@MainActor
+final class TokenBox: NSObject {
+    let tokens: [NSObjectProtocol]
+    init(tokens: [NSObjectProtocol]) { self.tokens = tokens }
 }
 
 @MainActor

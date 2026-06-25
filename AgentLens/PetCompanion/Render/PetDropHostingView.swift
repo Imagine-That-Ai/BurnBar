@@ -26,6 +26,12 @@ protocol PetDropHostingView: AnyObject {
     /// concrete view subclasses (`InteractivePetSceneView`, `InteractivePetSKView`)
     /// which forward to `registerForDraggedTypes`.
     func registerPetDropTypes()
+
+    /// The right-click handler installed by ``PetCompanionController``; `nil`
+    /// until the controller wires it so an unconfigured view ignores right-
+    /// clicks. Implemented as a closure so the non-NSObject controller can drive
+    /// an elegant context menu without the view owning AppKit menu state.
+    var rightClickHandler: ((NSView, NSEvent) -> Void)? { get set }
 }
 
 // MARK: - NSDraggingDestination forwarding
