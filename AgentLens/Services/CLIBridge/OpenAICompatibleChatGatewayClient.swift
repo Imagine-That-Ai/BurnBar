@@ -775,6 +775,65 @@ final class AgentToolBroker: Sendable {
         "/.config/configstore/firebase-tools.json"
     ]
 
+    /// Absolute system/toolchain read roots needed for restricted-shell startup
+    /// and common developer CLIs. The restricted shell must not use a broad
+    /// "read any non-home path" rule because that exposes arbitrary files from
+    /// `/private`, removable volumes, sibling repos, and host-local state.
+    static let restrictedShellSystemReadAllowlistSubpaths: [String] = [
+        "/bin",
+        "/sbin",
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/lib",
+        "/usr/libexec",
+        "/usr/share",
+        "/System",
+        "/Library/Apple",
+        "/Library/Developer",
+        "/Library/Frameworks",
+        "/Applications/Xcode.app",
+        "/Applications/Xcode-beta.app",
+        "/Applications/Xcode-26.6.0-Release.Candidate.app",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/opt/homebrew/Cellar",
+        "/opt/homebrew/Library/Homebrew",
+        "/opt/homebrew/lib",
+        "/opt/homebrew/opt",
+        "/opt/homebrew/share",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/local/Cellar",
+        "/usr/local/Homebrew",
+        "/usr/local/lib",
+        "/usr/local/opt",
+        "/usr/local/share"
+    ]
+
+    /// zsh reads `/etc/zshenv` before user rc files. Allow only that system
+    /// literal rather than opening the whole `/private/etc` tree.
+    static let restrictedShellSystemReadAllowlistLiterals: [String] = [
+        "/private/etc/zshenv"
+    ]
+
+    /// Non-system roots where the restricted shell should not read arbitrary
+    /// file data. Each deny is emitted with explicit exceptions for the active
+    /// workspace and the allowlisted system/home toolchain roots.
+    static let restrictedShellNonHomeReadDenyRegexes: [String] = [
+        "^/Applications/",
+        "^/Library/",
+        "^/Users/",
+        "^/Volumes/",
+        "^/cores/",
+        "^/etc/",
+        "^/home/",
+        "^/opt/",
+        "^/private/",
+        "^/tmp/",
+        "^/usr/local/",
+        "^/var/"
+    ]
+
     /// Clean environment for the restricted shell. `Process` inherits the parent
     /// environment by default, which can expose API tokens even when Seatbelt
     /// blocks home-directory file reads. Keep only deterministic execution basics.
@@ -817,10 +876,10 @@ final class AgentToolBroker: Sendable {
     ///   * no network operation family is allowed, so ordinary exfiltration paths
     ///     fail before connecting.
     ///   * writes stay confined to the workspace.
-    ///   * file data outside the user's home directory remains readable so dyld
-    ///     and system tooling can start reliably on modern macOS; file data under
-    ///     home is denied by default and re-opened only for the active workspace
-    ///     plus narrowly scoped toolchain/cache roots.
+    ///   * file data keeps the broad macOS launch grant required by dyld and
+    ///     system tooling, then regex deny rules carve user/writable/non-system
+    ///     roots back down to the active workspace plus explicit system/home
+    ///     toolchain roots.
     static func restrictedShellSandboxProfile(
         workspacePath: String,
         homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
@@ -844,6 +903,28 @@ final class AgentToolBroker: Sendable {
             "(allow file-read* (subpath \"\(ws)\"))",
             "(allow file-write* (subpath \"\(ws)\"))"
         ]
+        var nonHomeReadDenyAllowedSubpaths = [canonicalWorkspacePath]
+        for subpath in restrictedShellSystemReadAllowlistSubpaths {
+            let canonicalSubpath = canonicalSandboxPath(subpath)
+            nonHomeReadDenyAllowedSubpaths.append(canonicalSubpath)
+            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(canonicalSubpath))\"))")
+        }
+        for subpath in restrictedShellHomeReadAllowlistSubpaths {
+            nonHomeReadDenyAllowedSubpaths.append(canonicalHomePath + subpath)
+        }
+        var nonHomeReadDenyAllowedLiterals: [String] = []
+        for literal in restrictedShellSystemReadAllowlistLiterals {
+            let canonicalLiteral = canonicalSandboxPath(literal)
+            nonHomeReadDenyAllowedLiterals.append(canonicalLiteral)
+            lines.append("(allow file-read* (literal \"\(escapeSandboxProfileString(canonicalLiteral))\"))")
+        }
+        for regex in restrictedShellNonHomeReadDenyRegexes {
+            lines.append(restrictedShellReadDenyRule(
+                regex: regex,
+                allowedSubpaths: nonHomeReadDenyAllowedSubpaths,
+                allowedLiterals: nonHomeReadDenyAllowedLiterals
+            ))
+        }
         for subpath in restrictedShellHomeReadDenySubpaths {
             let homeSubpath = canonicalHomePath + subpath
             lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
@@ -868,6 +949,21 @@ final class AgentToolBroker: Sendable {
             lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private static func restrictedShellReadDenyRule(
+        regex: String,
+        allowedSubpaths: [String],
+        allowedLiterals: [String]
+    ) -> String {
+        var clauses = ["(regex \"\(escapeSandboxProfileString(regex))\")"]
+        clauses += allowedSubpaths.map {
+            "(require-not (subpath \"\(escapeSandboxProfileString($0))\"))"
+        }
+        clauses += allowedLiterals.map {
+            "(require-not (literal \"\(escapeSandboxProfileString($0))\"))"
+        }
+        return "(deny file-read-data (require-all \(clauses.joined(separator: " "))))"
     }
 
     private static func canonicalSandboxPath(_ path: String) -> String {

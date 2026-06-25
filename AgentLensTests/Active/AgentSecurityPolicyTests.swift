@@ -197,6 +197,8 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertTrue(profile.contains("(deny default)"))
         XCTAssertFalse(profile.contains("(allow default)"))
         XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"/Users/probe\")))"))
+        XCTAssertTrue(profile.contains("(deny file-read-data (require-all (regex \"^/private/\")"))
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/usr/bin\"))"))
         XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/Users/probe/project\"))"))
         XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/Users/probe/.cargo/bin\"))"))
         XCTAssertFalse(profile.contains("(allow file-read* (subpath \"/Users/probe\"))"))

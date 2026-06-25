@@ -1848,6 +1848,8 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(profile.contains("(allow process*)"))
         XCTAssertTrue(profile.contains("(allow mach*)"))
         XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
+        XCTAssertTrue(profile.contains("(deny file-read-data (require-all (regex \"^/private/\")"))
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/usr/bin\"))"))
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
         XCTAssertTrue(profile.contains("(allow file-write* (literal \"/dev/null\"))"))
         XCTAssertTrue(profile.contains("(allow file-read* (subpath \"\(homePath)/.cargo/bin\"))"))
@@ -1870,7 +1872,9 @@ final class CLIBridgeTests: XCTestCase {
         let workspacePath = realpathString(workspace)
         let homePath = realpathString(home)
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"\(workspacePath)\"))"))
         XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
+        XCTAssertTrue(profile.contains("(require-not (subpath \"\(workspacePath)\"))"))
     }
 
     func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {
@@ -1881,11 +1885,14 @@ final class CLIBridgeTests: XCTestCase {
             .appendingPathComponent("obb-sbx-\(UUID().uuidString)", isDirectory: true)
         let home = base.appendingPathComponent("home", isDirectory: true)
         let ws = base.appendingPathComponent("ws", isDirectory: true)
+        let outside = base.appendingPathComponent("outside", isDirectory: true)
         let ssh = home.appendingPathComponent(".ssh", isDirectory: true)
         try FileManager.default.createDirectory(at: ssh, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
         try Data("TOPSECRET".utf8).write(to: ssh.appendingPathComponent("id_secret"))
+        try Data("NONHOMESECRET".utf8).write(to: outside.appendingPathComponent("secret.txt"))
 
         let wsPath = ws.path
         let homePath = home.path
@@ -1895,6 +1902,8 @@ final class CLIBridgeTests: XCTestCase {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
             process.arguments = ["-p", profile, "/bin/zsh", "-f", "-lc", cmd]
+            process.currentDirectoryURL = ws
+            process.environment = AgentToolBroker.restrictedShellEnvironment(workspacePath: wsPath, homePath: homePath)
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             do { try process.run() } catch { return -1 }
@@ -1906,6 +1915,9 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(run("echo ok > '\(wsPath)/in.txt'"), 0)
         // Reading a secret store is denied.
         XCTAssertNotEqual(run("cat '\(homePath)/.ssh/id_secret'"), 0)
+        // Arbitrary non-home file data is denied unless it is an explicit
+        // system/toolchain root or the active workspace.
+        XCTAssertNotEqual(run("cat '\(outside.path)/secret.txt'"), 0)
         // Writing outside the workspace (persistence) is denied.
         XCTAssertNotEqual(run("echo x > '\(homePath)/.zshrc'"), 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".zshrc").path))
