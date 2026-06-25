@@ -78,6 +78,46 @@ private final class InMemoryMobileChatLocalStore: MobileChatLocalStoring {
 }
 
 @MainActor
+private final class DataVaultRecoveryFakeService: DataVaultServicing {
+    private(set) var setupRecoveryCalls: [(method: String, payload: [String: Any])] = []
+
+    func getDataDomainUsage() async throws -> DataDomainUsageResponse {
+        throw DataVaultError.malformedResponse
+    }
+
+    func deleteDomainData(domainId: String) async throws -> (firestoreDocs: Int, storageObjects: Int) {
+        throw DataVaultError.malformedResponse
+    }
+
+    func getAuditLog(cursor: String?, limit: Int) async throws -> AuditLogPage {
+        throw DataVaultError.malformedResponse
+    }
+
+    func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?) {
+        throw DataVaultError.malformedResponse
+    }
+
+    func listRecovery() async throws -> [RecoveryMethod] {
+        []
+    }
+
+    func setupRecovery(method: String, payload: [String: Any]) async throws -> String {
+        setupRecoveryCalls.append((method, payload))
+        return "rec_contact_test"
+    }
+
+    func confirmRecovery(recoveryId: String, verificationHash: String?) async throws {}
+
+    func revokeAllAccess(scope: String) async throws -> RevokeAllResult {
+        throw DataVaultError.malformedResponse
+    }
+
+    func syncKnowledgeNow() async throws -> Int? {
+        nil
+    }
+}
+
+@MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -90,6 +130,44 @@ final class OpenBurnBarMobileTests: XCTestCase {
     }
 
     // MARK: - Shared Model Compatibility
+
+    func testRecoveryContactEnvelopeUsesBackendSealedShareContract() throws {
+        let sealedShare = Data(repeating: 0x42, count: 48).base64EncodedString()
+        let payload = try RecoveryContactEnvelope.payload(
+            contactID: "  trusted-contact-1  ",
+            sealedShare: "  \(sealedShare)  ",
+            contactHint: "  Alice  "
+        )
+
+        XCTAssertEqual(payload["threshold"] as? Int, 1)
+        let contacts = try XCTUnwrap(payload["contacts"] as? [[String: Any]])
+        XCTAssertEqual(contacts.count, 1)
+        XCTAssertEqual(contacts[0]["contactId"] as? String, "trusted-contact-1")
+        XCTAssertEqual(contacts[0]["sealedShare"] as? String, sealedShare)
+        XCTAssertEqual(contacts[0]["contactHint"] as? String, "Alice")
+        XCTAssertNil(contacts[0]["share"])
+        XCTAssertNil(contacts[0]["contactName"])
+    }
+
+    func testRecoveryContactEnvelopeRejectsPlaintextShareBeforeCallable() async throws {
+        XCTAssertThrowsError(
+            try RecoveryContactEnvelope.payload(
+                contactID: "trusted-contact-1",
+                sealedShare: "raw secret words from a person"
+            )
+        )
+
+        let service = DataVaultRecoveryFakeService()
+        let store = DataVaultStore(service: service)
+        let saved = await store.setupRecoveryContact(
+            contactID: "trusted-contact-1",
+            sealedShare: "raw secret words from a person"
+        )
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(service.setupRecoveryCalls.isEmpty)
+        XCTAssertEqual(store.error, "Recovery-contact shares must be sealed envelopes, not plaintext.")
+    }
 
     func testAgentProviderRoundTrip() {
         let provider = AgentProvider.minimax
