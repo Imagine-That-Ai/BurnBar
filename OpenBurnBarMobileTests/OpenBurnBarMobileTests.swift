@@ -2412,6 +2412,47 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(store.hiddenDuplicateClientCount, 0)
     }
 
+    func testHermesGatewaySettingsStoreKeepsSamePhoneGatewayClientsVisibleAndRoutable() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set("hgw_first_agent", forKey: "hermesGateway.selectedClientId")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let phoneKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(
+                id: "hgw_first_agent",
+                displayName: "Hermes Agent",
+                lastSeenAt: now,
+                phoneRelayPublicKey: phoneKey
+            ),
+            hermesGatewayClient(
+                id: "hgw_second_agent",
+                displayName: "Hermes Agent",
+                lastSeenAt: now,
+                phoneRelayPublicKey: phoneKey
+            )
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+
+        XCTAssertEqual(Set(store.displayClients.map(\.id)), ["hgw_first_agent", "hgw_second_agent"])
+        XCTAssertEqual(store.hiddenDuplicateClientCount, 0)
+        XCTAssertEqual(store.selectedClient?.id, "hgw_first_agent")
+
+        let sent = await store.sendGatewayMessage(
+            text: "Stay on the selected gateway",
+            senderDisplayName: "OpenBurnBar iPhone",
+            threadId: HermesGatewayMessageResolver.defaultThreadID
+        )
+
+        XCTAssertEqual(sent?.targetClientId, "hgw_first_agent")
+        XCTAssertEqual(repository.enqueuedEvents.last?.targetClientId, "hgw_first_agent")
+    }
+
     func testHermesGatewaySettingsStoreRepairsSelectionAfterRevokingSelectedClient() async {
         let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
