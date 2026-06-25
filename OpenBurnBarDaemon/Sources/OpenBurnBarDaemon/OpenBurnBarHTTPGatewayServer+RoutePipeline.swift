@@ -215,7 +215,7 @@ extension BurnBarHTTPGatewayServer {
                 route: route,
                 status: .failed,
                 httpStatus: Self.httpStatus(from: error),
-                failureMessage: error.localizedDescription
+                failureMessage: Self.routeLogFailureMessage(from: error)
             ))
             await modelHealthStore.recordFailure(
                 modelID: requestedModel.originalID,
@@ -484,7 +484,7 @@ extension BurnBarHTTPGatewayServer {
                         finalStatus: .failed,
                         httpStatus: Self.httpStatus(from: lastError),
                         attempts: routeLogAttempts.attempts,
-                        failureMessage: lastError.localizedDescription
+                        failureMessage: Self.routeLogFailureMessage(from: lastError)
                     )
                     return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
                 }
@@ -498,7 +498,7 @@ extension BurnBarHTTPGatewayServer {
                     finalStatus: .failed,
                     httpStatus: Self.httpStatus(from: lastError),
                     attempts: routeLogAttempts.attempts,
-                    failureMessage: lastError.localizedDescription
+                    failureMessage: Self.routeLogFailureMessage(from: lastError)
                 )
                 return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
             }

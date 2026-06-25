@@ -16,6 +16,19 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         super.tearDown()
     }
 
+    func testRouteLogFailureMessageDoesNotPersistUpstreamBody() {
+        let error = BurnBarProviderExecutorError.upstreamError(
+            429,
+            #"{"error":{"message":"PRIVATE_UPSTREAM_BODY_MARKER budget details"}}"#
+        )
+
+        let message = BurnBarHTTPGatewayServer.routeLogFailureMessage(from: error)
+
+        XCTAssertEqual(message, "OpenBurnBar provider request failed with status 429.")
+        XCTAssertFalse(message.contains("PRIVATE_UPSTREAM_BODY_MARKER"))
+        XCTAssertFalse(message.contains("budget details"))
+    }
+
     private func enqueueOpenAIModelCatalog(_ modelIDs: [String], times: Int = 1) {
         let rows = modelIDs.map { id in
             #"{"id":"\#(id)","display_name":"\#(id)"}"#
@@ -2769,7 +2782,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         enqueueOpenAIModelCatalog(["shared-code-model"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 400,
-            body: #"{"error":{"message":"invalid request payload"}}"#
+            body: #"{"error":{"message":"PRIVATE_UPSTREAM_BODY_MARKER invalid request payload"}}"#
         )
 
         let harness = try GatewayHarness(
@@ -2800,6 +2813,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             1,
             "Gateway should surface the original fatal provider error instead of reporting downgrade blocking."
         )
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.finalStatus, .failed)
+        XCTAssertEqual(entry.httpStatus, 400)
+        XCTAssertEqual(entry.failureMessage, "OpenBurnBar provider request failed with status 400.")
+        XCTAssertEqual(entry.attempts.first?.failureMessage, "OpenBurnBar provider request failed with status 400.")
+        XCTAssertFalse(entry.failureMessage?.contains("PRIVATE_UPSTREAM_BODY_MARKER") ?? false)
+        XCTAssertFalse(entry.attempts.first?.failureMessage?.contains("PRIVATE_UPSTREAM_BODY_MARKER") ?? false)
     }
 
     func testGatewayAnthropicDoesNotDowngradeAcrossCapabilityClassesDuringFailover() async throws {
