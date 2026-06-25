@@ -52,6 +52,13 @@ public struct AppLogger: Sendable {
         "cert", "certificate", "session_log", "log_path", "db_path", "database_path"
     ]
 
+    /// Generic error-description keys often carry provider payloads, SQL text,
+    /// file paths, or quota details. Keep these exact keys out of Sentry data;
+    /// callers that need diagnostics should use `publicErrorMetadata(_:)`.
+    private static let rawErrorKeys: Set<String> = [
+        "error", "localizeddescription", "debugdescription", "failurereason", "failure_reason"
+    ]
+
     private static let truncatedValueSuffix = "...[TRUNCATED]"
     private static let maxSanitizedValueLength = 513
     
@@ -73,6 +80,11 @@ public struct AppLogger: Sendable {
         metadata.reduce(into: [String: String]()) { result, entry in
             let key = entry.key.lowercased()
             let value = entry.value
+
+            if rawErrorKeys.contains(key) {
+                result[entry.key] = "[REDACTED]"
+                return
+            }
             
             // Full redaction for known sensitive keys
             if sensitiveKeys.contains(key) {
@@ -100,6 +112,29 @@ public struct AppLogger: Sendable {
                 result[entry.key] = value
             }
         }
+    }
+
+    static func publicErrorMetadata(_ error: Error) -> [String: String] {
+        let nsError = error as NSError
+        return [
+            "errorType": sanitizedDiagnosticToken(String(describing: type(of: error))),
+            "errorDomain": sanitizedDiagnosticToken(nsError.domain),
+            "errorCode": String(nsError.code)
+        ]
+    }
+
+    private static func sanitizedDiagnosticToken(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        var output = ""
+        for scalar in value.unicodeScalars {
+            if output.count >= 96 { break }
+            if allowed.contains(scalar) {
+                output.unicodeScalars.append(scalar)
+            } else {
+                output.append("_")
+            }
+        }
+        return output.isEmpty ? "unknown" : output
     }
     
     // MARK: - Logging Methods
@@ -146,7 +181,9 @@ public struct AppLogger: Sendable {
         context: [String: String] = [:]
     ) {
         var metadata = context
-        metadata["error"] = String(describing: error)
+        for (key, value) in Self.publicErrorMetadata(error) {
+            metadata[key] = value
+        }
         logger.warning("Silent failure: event=\(operation, privacy: .public)")
         logMetadata(metadata, at: .default)
         #if canImport(Sentry)
