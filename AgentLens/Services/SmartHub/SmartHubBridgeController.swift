@@ -1227,7 +1227,7 @@ final class SmartHubBridgeController {
             return
         }
 
-        Self.log.info("watchdog tick host=\(device.host, privacy: .public) url=\(url.absoluteString, privacy: .public)")
+        Self.log.info("watchdog tick host=\(device.host, privacy: .public) url=\(self.redactedBridgeURLForLogging(url), privacy: .public)")
 
         // Cheap liveness probe — if we can't even open the Cast channel,
         // the Hub is unreachable and re-casting won't help. Skip and
@@ -1371,20 +1371,21 @@ final class SmartHubBridgeController {
     }
 
     private func persistPublishedBridgeURLsIfChanged(dashboardURL: URL) {
-        let dashboard = dashboardURL.absoluteString
-        let refresh = companionBridgeURL(from: dashboardURL, path: "/refresh")?.absoluteString
-            ?? settingsManager.smartHubQuotaRefreshURL
-        let voiceRefresh = companionBridgeURL(from: dashboardURL, path: "/voice-refresh")?.absoluteString
-            ?? settingsManager.smartHubQuotaVoiceRefreshURL
-        guard settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines) != dashboard
-            || settingsManager.smartHubQuotaRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != refresh
-            || settingsManager.smartHubQuotaVoiceRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != voiceRefresh else {
+        let persistentDashboardURL = SmartHubBridgeServer.shared.securedBridgeURL(dashboardURL)
+        let dashboard = persistentDashboardURL.absoluteString
+        let refresh = companionBridgeURL(from: persistentDashboardURL, path: "/refresh")?.absoluteString
+            ?? self.settingsManager.smartHubQuotaRefreshURL
+        let voiceRefresh = companionBridgeURL(from: persistentDashboardURL, path: "/voice-refresh")?.absoluteString
+            ?? self.settingsManager.smartHubQuotaVoiceRefreshURL
+        guard self.settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines) != dashboard
+            || self.settingsManager.smartHubQuotaRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != refresh
+            || self.settingsManager.smartHubQuotaVoiceRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != voiceRefresh else {
             return
         }
         Self.log.info("preferredCastURL: refreshed Smart Hub bridge URLs for the current listener")
-        settingsManager.smartHubQuotaDashboardURL = dashboard
-        settingsManager.smartHubQuotaRefreshURL = refresh
-        settingsManager.smartHubQuotaVoiceRefreshURL = voiceRefresh
+        self.settingsManager.smartHubQuotaDashboardURL = dashboard
+        self.settingsManager.smartHubQuotaRefreshURL = refresh
+        self.settingsManager.smartHubQuotaVoiceRefreshURL = voiceRefresh
     }
 
     private func companionBridgeURL(from dashboardURL: URL, path: String) -> URL? {
@@ -1394,6 +1395,16 @@ final class SmartHubBridgeController {
         components.path = path
         return components.url
     }
+
+    private func redactedBridgeURLForLogging(_ url: URL) -> String {
+        SmartHubBridgeServer.shared.redactedBridgeURL(url).absoluteString
+    }
+
+    #if DEBUG
+    func persistPublishedBridgeURLsForTesting(dashboardURL: URL) {
+        persistPublishedBridgeURLsIfChanged(dashboardURL: dashboardURL)
+    }
+    #endif
 }
 
 private extension NSImage {

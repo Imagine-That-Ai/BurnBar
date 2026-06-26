@@ -447,7 +447,13 @@ final class MobileProviderWizardModel {
                     )
                     savedRunnerAccountID = created.id
                 } catch {
-                    runnerSaver.delete(accountID: created.id)
+                    do {
+                        try runnerSaver.delete(accountID: created.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        advance(to: .failed)
+                        return
+                    }
                     await connectionStore.delete(account: created)
                     errorMessage = error.localizedDescription
                     advance(to: .failed)
@@ -475,7 +481,13 @@ final class MobileProviderWizardModel {
     ) async -> Bool {
         guard Task.isCancelled else { return false }
         if let savedRunnerAccountID {
-            runnerSaver.delete(accountID: savedRunnerAccountID)
+            do {
+                try runnerSaver.delete(accountID: savedRunnerAccountID)
+            } catch {
+                errorMessage = error.localizedDescription
+                advance(to: .failed)
+                return true
+            }
         }
         if let account {
             await connectionStore.delete(account: account)

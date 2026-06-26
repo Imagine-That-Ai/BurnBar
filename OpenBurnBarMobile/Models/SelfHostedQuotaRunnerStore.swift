@@ -32,9 +32,9 @@ final class SelfHostedQuotaRunnerStore {
         defaults.set(url.absoluteString, forKey: urlKey(accountID))
     }
 
-    func delete(accountID: String) {
+    func delete(accountID: String) throws {
+        try secrets.delete(accountID: accountID)
         defaults.removeObject(forKey: urlKey(accountID))
-        try? secrets.delete(accountID: accountID)
     }
 
     func refresh(account: ProviderAccountDoc) async throws -> ProviderQuotaSnapshot {

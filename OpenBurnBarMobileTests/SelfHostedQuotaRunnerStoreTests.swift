@@ -57,7 +57,7 @@ final class SelfHostedQuotaRunnerStoreTests: XCTestCase {
         XCTAssertEqual(secrets.deletedAccounts, ["codex_default"])
     }
 
-    func testDeleteRemovesURLAndBestEffortDeletesSecret() throws {
+    func testDeleteRemovesURLAndDeletesSecret() throws {
         let defaults = makeDefaults()
         let secrets = FakeRunnerSecrets()
         let store = SelfHostedQuotaRunnerStore(defaults: defaults, secrets: secrets)
@@ -67,7 +67,7 @@ final class SelfHostedQuotaRunnerStoreTests: XCTestCase {
             accessSecret: "runner-secret"
         )
 
-        store.delete(accountID: "codex_default")
+        try store.delete(accountID: "codex_default")
 
         XCTAssertNil(defaults.string(forKey: "selfHostedQuotaRunnerURL.codex_default"))
         XCTAssertNil(secrets.savedByAccount["codex_default"])

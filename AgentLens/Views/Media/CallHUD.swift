@@ -66,7 +66,8 @@ struct CallHUD: View {
                     )
                     controlButton(
                         systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle",
-                        label: state.isSharingScreen ? "Stop screen sharing" : "Screen sharing stopping",
+                        label: state.isSharingScreen ? "Stop screen sharing" : "Screen sharing stopped",
+                        isDisabled: !state.isSharingScreen,
                         action: onStopScreenShare
                     )
                     controlButton(
@@ -153,15 +154,17 @@ struct CallHUD: View {
         systemImage: String,
         label: String,
         tint: Color = Color(red: 0.63, green: 0.67, blue: 0.73),
+        isDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(isDisabled ? tint.opacity(0.42) : tint)
                 .liquidGlassCircleButton(diameter: 44)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
         .accessibilityLabel(label)
         .help(label)
     }
@@ -212,7 +215,7 @@ enum MercuryScreenShareHUDActions {
         stopMirror: @MainActor () async -> Void
     ) async {
         guard state.isSharingScreen else { return }
-        state.isSharingScreen = false
         await stopMirror()
+        state.isSharingScreen = false
     }
 }

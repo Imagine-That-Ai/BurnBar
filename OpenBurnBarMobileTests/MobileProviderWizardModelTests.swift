@@ -375,6 +375,28 @@ final class MobileProviderWizardModelTests: XCTestCase {
         XCTAssertEqual(saver.deleteCalls.map(\.accountID), [account.id])
     }
 
+    func test_connect_selfHostedCancellationAfterRunnerSaveSurfacesRunnerDeleteFailure() async {
+        let conn = FakeProviderConnectionStore()
+        let account = makeAccount(provider: .codex)
+        conn.configure(connectResult: account)
+        let saver = FakeSelfHostedRunnerSaver()
+        let model = makeModel(preselectedProvider: .codex, connectionStore: conn, runnerSaver: saver)
+        saver.onSave = {
+            saver.configureDeleteError(NSError(domain: "test", code: 2, userInfo: [NSLocalizedDescriptionKey: "Delete failed"]))
+            model.connectTask?.cancel()
+        }
+        model.credential = "unused"
+        model.syncMode = .selfHosted
+        model.runnerURL = "https://runner.example.com"
+
+        model.startConnect()
+        await model.connectTask?.value
+
+        XCTAssertEqual(model.step, .failed)
+        XCTAssertEqual(model.errorMessage, "Delete failed")
+        XCTAssertTrue(conn.deleteCalls.isEmpty)
+    }
+
     // MARK: - Credential kind resolution
 
     func test_resolvedCredentialKind_apiKey_isToken() {

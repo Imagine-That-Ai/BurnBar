@@ -813,7 +813,13 @@ struct OnboardingProviderConnectStep: View {
                         accessSecret: runnerSecret.isEmpty ? nil : runnerSecret
                     )
                 } catch {
-                    SelfHostedQuotaRunnerStore.shared.delete(accountID: created.id)
+                    do {
+                        try SelfHostedQuotaRunnerStore.shared.delete(accountID: created.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        advance(to: .failed)
+                        return
+                    }
                     await connectionStore.delete(account: created)
                     errorMessage = error.localizedDescription
                     advance(to: .failed)

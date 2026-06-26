@@ -569,7 +569,7 @@ public struct BurnBarProviderRouter: Sendable {
                 providerID: configuration.provider.id,
                 reason: unavailableCredentialReason(
                     prefix: "configured credential slots are not ready",
-                    slots: slotsWithSecret
+                    slots: routeEligibleSlots
                 )
             )
         }

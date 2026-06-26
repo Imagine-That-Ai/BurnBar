@@ -2067,6 +2067,7 @@ service cloud.firestore {
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
         && (!("sourceSkillID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSkillID, 80))
         && (!("sourceSurface" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSurface, 80))
+        && (!("requestedModelID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.requestedModelID, 160))
         && (!("parentHermesThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentHermesThreadID, 160))
         && (!("clientThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.clientThreadID, 160))
         && (!("parentSessionID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentSessionID, 160))

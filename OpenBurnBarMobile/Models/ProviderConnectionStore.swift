@@ -181,12 +181,20 @@ final class ProviderConnectionStore {
 
         do {
             try await functions.deleteProviderAccount(accountID: account.id)
+            var localCleanupError: Error?
             if account.storageScope == .localOnly,
                account.providerID == .claudeCode || account.providerID == .codex {
                 // Clean up locally-stored runner config when deleting a self-hosted account.
-                SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
+                do {
+                    try SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
+                } catch {
+                    localCleanupError = error
+                }
             }
             await load()
+            if let localCleanupError {
+                self.error = localCleanupError.localizedDescription
+            }
         } catch {
             self.error = error.localizedDescription
         }

@@ -1,11 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -162,34 +158,33 @@ function sha256(text) {
 }
 
 function redactString(value) {
-  return value
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer [REDACTED]")
-    .replace(/ya29\.[A-Za-z0-9._~+/=-]+/g, "[REDACTED_GOOGLE_TOKEN]")
-    .replace(
-      /(AIza[0-9A-Za-z_-]{20,})/g,
-      "[REDACTED_FIREBASE_WEB_API_KEY]",
-    )
-    // IAM members (user:/serviceAccount:/group:/domain:) — redact the principal,
-    // keep the member type so the policy shape stays auditable without leaking PII.
-    .replace(
-      /\b(user|serviceAccount|group|domain):[^"\s,\]}]+/gi,
-      "$1:[REDACTED_PRINCIPAL]",
-    )
-    // Google service-account emails encountered outside an IAM member prefix.
-    .replace(
-      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*gserviceaccount\.com/g,
-      "[REDACTED_SERVICE_ACCOUNT]",
-    )
-    // Any remaining email address (human/owner PII).
-    .replace(
-      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-      "[REDACTED_EMAIL]",
-    )
-    // Secret Manager resource names — the secret ID can encode UIDs/tenant data.
-    .replace(
-      /projects\/[^/\s"]+\/secrets\/[^/\s",}\]]+/g,
-      "projects/[REDACTED]/secrets/[REDACTED]",
-    );
+  return (
+    value
+      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer [REDACTED]")
+      .replace(/ya29\.[A-Za-z0-9._~+/=-]+/g, "[REDACTED_GOOGLE_TOKEN]")
+      .replace(/(AIza[0-9A-Za-z_-]{20,})/g, "[REDACTED_FIREBASE_WEB_API_KEY]")
+      // IAM members (user:/serviceAccount:/group:/domain:) — redact the principal,
+      // keep the member type so the policy shape stays auditable without leaking PII.
+      .replace(
+        /\b(user|serviceAccount|group|domain):[^"\s,\]}]+/gi,
+        "$1:[REDACTED_PRINCIPAL]",
+      )
+      // Google service-account emails encountered outside an IAM member prefix.
+      .replace(
+        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*gserviceaccount\.com/g,
+        "[REDACTED_SERVICE_ACCOUNT]",
+      )
+      // Any remaining email address (human/owner PII).
+      .replace(
+        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+        "[REDACTED_EMAIL]",
+      )
+      // Secret Manager resource names — the secret ID can encode UIDs/tenant data.
+      .replace(
+        /projects\/[^/\s"]+\/secrets\/[^/\s",}\]]+/g,
+        "projects/[REDACTED]/secrets/[REDACTED]",
+      )
+  );
 }
 
 function isSensitiveKey(key) {
@@ -225,7 +220,9 @@ function run(command, args, options = {}) {
     return {
       ok: true,
       command: [command, ...args],
-      stdout: options.json ? JSON.parse(trimmed || "null") : redactString(trimmed),
+      stdout: options.json
+        ? JSON.parse(trimmed || "null")
+        : redactString(trimmed),
     };
   } catch (error) {
     const stdout =
@@ -246,7 +243,9 @@ function run(command, args, options = {}) {
 }
 
 function commandJson(command, args, options) {
-  return redact(run(command, [...args, "--format=json"], { ...options, json: true }));
+  return redact(
+    run(command, [...args, "--format=json"], { ...options, json: true }),
+  );
 }
 
 function gcloudJson(args, options) {
@@ -257,7 +256,15 @@ function firebaseJson(args, options) {
   return redact(
     run(
       "npx",
-      ["--prefix", "functions", "firebase", "--project", options.project, "--json", ...args],
+      [
+        "--prefix",
+        "functions",
+        "firebase",
+        "--project",
+        options.project,
+        "--json",
+        ...args,
+      ],
       { ...options, json: true },
     ),
   );
@@ -290,7 +297,9 @@ function accessToken() {
       typeof error.stderr === "string"
         ? error.stderr
         : error.stderr?.toString?.() || "";
-    throw new Error(redactString(stderr || stdout || error.message || String(error)));
+    throw new Error(
+      redactString(stderr || stdout || error.message || String(error)),
+    );
   }
 }
 
@@ -309,7 +318,11 @@ async function apiJson(url, token, project) {
 }
 
 async function firebaseRulesGet(path, token, project) {
-  return apiJson(`https://firebaserules.googleapis.com/v1/${path}`, token, project);
+  return apiJson(
+    `https://firebaserules.googleapis.com/v1/${path}`,
+    token,
+    project,
+  );
 }
 
 async function deployedRulesForRelease(releasePath, fileName, token, project) {
@@ -338,13 +351,18 @@ async function deployedRulesForRelease(releasePath, fileName, token, project) {
 }
 
 async function storageReleasePaths(token, project) {
-  const listing = await firebaseRulesGet(`projects/${project}/releases`, token, project);
+  const listing = await firebaseRulesGet(
+    `projects/${project}/releases`,
+    token,
+    project,
+  );
   const releases = Array.isArray(listing.releases) ? listing.releases : [];
   return releases
     .map((release) => release?.name)
     .filter(
       (name) =>
-        typeof name === "string" && name.includes("/releases/firebase.storage/"),
+        typeof name === "string" &&
+        name.includes("/releases/firebase.storage/"),
     );
 }
 
@@ -420,7 +438,9 @@ async function collectRules(project, token) {
   firestore.drift = firestore.localSha256 !== firestore.deployedSha256;
 
   const localIndexes = normalizedIndexSpec(
-    JSON.parse(readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8")),
+    JSON.parse(
+      readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8"),
+    ),
   );
   const deployedIndexesResult = firebaseJson(["firestore:indexes"], {
     project,
@@ -448,7 +468,10 @@ async function collectRules(project, token) {
     };
   }
 
-  const localStorageRules = readFileSync(resolve(repoRoot, "storage.rules"), "utf8");
+  const localStorageRules = readFileSync(
+    resolve(repoRoot, "storage.rules"),
+    "utf8",
+  );
   const storageLocalSha256 = sha256(localStorageRules.trimEnd());
   const storageReleases = await storageReleasePaths(token, project);
   const storage = [];
@@ -555,7 +578,9 @@ function summarizePolicy(policy) {
     bindingCount: bindings.length,
     bindings: bindings.map((binding) => ({
       role: binding.role || null,
-      members: Array.isArray(binding.members) ? binding.members.slice().sort() : [],
+      members: Array.isArray(binding.members)
+        ? binding.members.slice().sort()
+        : [],
       condition: binding.condition || null,
     })),
   };
@@ -572,7 +597,9 @@ function summarizePolicyForArtifact(policy) {
       return {
         role: binding.role || null,
         memberCount: members.length,
-        memberTypes: [...new Set(members.map(memberType).filter(Boolean))].sort(),
+        memberTypes: [
+          ...new Set(members.map(memberType).filter(Boolean)),
+        ].sort(),
         hasCondition: Boolean(binding.condition),
       };
     }),
@@ -588,10 +615,19 @@ function memberType(member) {
 
 function redactOperationalString(value) {
   return redactString(String(value))
-    .replace(/https:\/\/[a-z0-9][a-z0-9-]*-[a-z0-9-]+\.a\.run\.app\b/gi, "[REDACTED_CLOUD_RUN_URL]")
+    .replace(
+      /https:\/\/[a-z0-9][a-z0-9-]*-[a-z0-9-]+\.a\.run\.app\b/gi,
+      "[REDACTED_CLOUD_RUN_URL]",
+    )
     .replace(/\bgs:\/\/[a-z0-9][a-z0-9._-]+/gi, "gs://[REDACTED_BUCKET]")
-    .replace(/\b[a-z0-9][a-z0-9.-]+\.firebasestorage\.app\b/gi, "[REDACTED_FIREBASE_STORAGE_BUCKET]")
-    .replace(/\bprojects\/(?:\d{6,}|[a-z][a-z0-9-]{2,})\//gi, "projects/[REDACTED_PROJECT]/")
+    .replace(
+      /\b[a-z0-9][a-z0-9.-]+\.firebasestorage\.app\b/gi,
+      "[REDACTED_FIREBASE_STORAGE_BUCKET]",
+    )
+    .replace(
+      /\bprojects\/(?:\d{6,}|[a-z][a-z0-9-]{2,})\//gi,
+      "projects/[REDACTED_PROJECT]/",
+    )
     .replace(/\/buckets\/[^/\s",}\]]+/gi, "/buckets/[REDACTED_BUCKET]");
 }
 
@@ -600,10 +636,21 @@ function commandProbeForArtifact(probe) {
   return {
     ok: probe.ok === true,
     command: Array.isArray(probe.command)
-      ? probe.command.map((part) => redactOperationalString(part))
+      ? probe.command.slice(0, 1).map((part) => redactOperationalString(part))
       : undefined,
     exitCode: probe.exitCode ?? undefined,
-    error: probe.error ? redactOperationalString(probe.error) : undefined,
+    error: probe.error ? "[REDACTED_ERROR]" : undefined,
+  };
+}
+
+function firestoreIndexesForArtifact(indexes) {
+  if (!indexes || typeof indexes !== "object") return undefined;
+  return {
+    ok: indexes.ok === true,
+    localSha256: indexes.localSha256 || null,
+    deployedSha256: indexes.deployedSha256 || null,
+    drift: indexes.drift ?? null,
+    error: indexes.error ? "[REDACTED_ERROR]" : undefined,
   };
 }
 
@@ -627,14 +674,19 @@ function sanitizeFunctionsForArtifact(functions) {
                 timeoutSeconds: fn.timeoutSeconds || null,
                 minInstanceCount: fn.minInstanceCount ?? null,
                 maxInstanceCount: fn.maxInstanceCount ?? null,
-                allTrafficOnLatestRevision: fn.allTrafficOnLatestRevision ?? null,
-                secretEnvironmentVariableCount: Array.isArray(fn.secretEnvironmentVariableNames)
+                allTrafficOnLatestRevision:
+                  fn.allTrafficOnLatestRevision ?? null,
+                secretEnvironmentVariableCount: Array.isArray(
+                  fn.secretEnvironmentVariableNames,
+                )
                   ? fn.secretEnvironmentVariableNames.length
                   : 0,
                 labelKeys: Object.keys(fn.labels || {}).sort(),
               }))
             : [],
-          error: result.error ? redactOperationalString(result.error) : undefined,
+          error: result.error
+            ? redactOperationalString(result.error)
+            : undefined,
         },
       ]),
     ),
@@ -642,7 +694,8 @@ function sanitizeFunctionsForArtifact(functions) {
 }
 
 function sanitizeStorageForArtifact(storageBuckets) {
-  if (!storageBuckets || typeof storageBuckets !== "object") return storageBuckets;
+  if (!storageBuckets || typeof storageBuckets !== "object")
+    return storageBuckets;
   return {
     ok: storageBuckets.ok === true,
     bucketCount: storageBuckets.bucketCount ?? 0,
@@ -658,7 +711,9 @@ function sanitizeStorageForArtifact(storageBuckets) {
           hasEncryptionConfig: Boolean(bucket.encryption),
           hasLifecyclePolicy: Boolean(bucket.lifecycle),
           iamPolicy: summarizePolicyForArtifact(bucket.iamPolicy),
-          error: bucket.error ? redactOperationalString(bucket.error) : undefined,
+          error: bucket.error
+            ? redactOperationalString(bucket.error)
+            : undefined,
         }))
       : [],
   };
@@ -678,7 +733,9 @@ function sanitizeSecretsForArtifact(secrets) {
           topicCount: Array.isArray(secret.topics) ? secret.topics.length : 0,
           labelKeys: Object.keys(secret.labels || {}).sort(),
           iamPolicy: summarizePolicyForArtifact(secret.iamPolicy),
-          error: secret.error ? redactOperationalString(secret.error) : undefined,
+          error: secret.error
+            ? redactOperationalString(secret.error)
+            : undefined,
         }))
       : [],
   };
@@ -726,13 +783,19 @@ function sanitizeKmsForArtifact(kms) {
                       primaryAlgorithm: key.primaryAlgorithm || null,
                       labelKeys: Object.keys(key.labels || {}).sort(),
                       iamPolicy: summarizePolicyForArtifact(key.iamPolicy),
-                      error: key.error ? redactOperationalString(key.error) : undefined,
+                      error: key.error
+                        ? redactOperationalString(key.error)
+                        : undefined,
                     }))
                   : [],
-                error: ring.error ? redactOperationalString(ring.error) : undefined,
+                error: ring.error
+                  ? redactOperationalString(ring.error)
+                  : undefined,
               }))
             : [],
-          error: result.error ? redactOperationalString(result.error) : undefined,
+          error: result.error
+            ? redactOperationalString(result.error)
+            : undefined,
         },
       ]),
     ),
@@ -754,21 +817,31 @@ export function sanitizeEvidenceArtifact(evidence) {
           ok: redacted.project.ok === true,
           lifecycleState: redacted.project.lifecycleState || null,
           labelKeys: Object.keys(redacted.project.labels || {}).sort(),
-          error: redacted.project.error ? redactOperationalString(redacted.project.error) : undefined,
+          error: redacted.project.error
+            ? redactOperationalString(redacted.project.error)
+            : undefined,
         }
       : undefined,
     authContext: redacted.authContext
       ? {
-          gcloudProject: commandProbeForArtifact(redacted.authContext.gcloudProject),
-          activeAccount: commandProbeForArtifact(redacted.authContext.activeAccount),
-          firebaseProjects: commandProbeForArtifact(redacted.authContext.firebaseProjects),
+          gcloudProject: commandProbeForArtifact(
+            redacted.authContext.gcloudProject,
+          ),
+          activeAccount: commandProbeForArtifact(
+            redacted.authContext.activeAccount,
+          ),
+          firebaseProjects: commandProbeForArtifact(
+            redacted.authContext.firebaseProjects,
+          ),
         }
       : undefined,
     tokenProbe: redacted.tokenProbe
       ? {
           ok: redacted.tokenProbe.ok === true,
           source: redacted.tokenProbe.source || undefined,
-          error: redacted.tokenProbe.error ? redactOperationalString(redacted.tokenProbe.error) : undefined,
+          error: redacted.tokenProbe.error
+            ? redactOperationalString(redacted.tokenProbe.error)
+            : undefined,
         }
       : undefined,
     rules: redacted.rules
@@ -782,7 +855,9 @@ export function sanitizeEvidenceArtifact(evidence) {
                 drift: redacted.rules.firestore.drift ?? null,
               }
             : undefined,
-          firestoreIndexes: redacted.rules.firestoreIndexes || undefined,
+          firestoreIndexes: firestoreIndexesForArtifact(
+            redacted.rules.firestoreIndexes,
+          ),
           storage: Array.isArray(redacted.rules.storage)
             ? redacted.rules.storage.map((entry, index) => ({
                 inventoryIndex: index + 1,
@@ -803,7 +878,9 @@ export function sanitizeEvidenceArtifact(evidence) {
                 service: service.service || null,
                 enforcementMode: service.enforcementMode || null,
                 probe: service.probe || null,
-                error: service.error ? redactOperationalString(service.error) : undefined,
+                error: service.error
+                  ? redactOperationalString(service.error)
+                  : undefined,
               }))
             : [],
         }
@@ -812,7 +889,9 @@ export function sanitizeEvidenceArtifact(evidence) {
       ? {
           ok: redacted.iam.ok === true,
           project: summarizePolicyForArtifact(redacted.iam.project),
-          error: redacted.iam.error ? redactOperationalString(redacted.iam.error) : undefined,
+          error: redacted.iam.error
+            ? redactOperationalString(redacted.iam.error)
+            : undefined,
         }
       : undefined,
     functions: sanitizeFunctionsForArtifact(redacted.functions),
@@ -842,31 +921,33 @@ function collectFunctions(project, regions) {
           ["functions", "list", "--v2", "--regions", region],
           { timeout: 120_000 },
         );
-        const functions = result.ok && Array.isArray(result.stdout)
-          ? result.stdout.map((fn) => ({
-              name: fn.name || null,
-              state: fn.state || null,
-              updateTime: fn.updateTime || null,
-              url: fn.serviceConfig?.uri || fn.url || null,
-              ingressSettings: fn.serviceConfig?.ingressSettings || null,
-              serviceAccountEmail: fn.serviceConfig?.serviceAccountEmail || null,
-              availableMemory: fn.serviceConfig?.availableMemory || null,
-              timeoutSeconds: fn.serviceConfig?.timeoutSeconds || null,
-              minInstanceCount: fn.serviceConfig?.minInstanceCount || null,
-              maxInstanceCount: fn.serviceConfig?.maxInstanceCount || null,
-              allTrafficOnLatestRevision:
-                fn.serviceConfig?.allTrafficOnLatestRevision ?? null,
-              secretEnvironmentVariableNames: Array.isArray(
-                fn.serviceConfig?.secretEnvironmentVariables,
-              )
-                ? fn.serviceConfig.secretEnvironmentVariables
-                    .map((item) => item.key || item.secret || item.projectId)
-                    .filter(Boolean)
-                    .sort()
-                : [],
-              labels: fn.labels || {},
-            }))
-          : [];
+        const functions =
+          result.ok && Array.isArray(result.stdout)
+            ? result.stdout.map((fn) => ({
+                name: fn.name || null,
+                state: fn.state || null,
+                updateTime: fn.updateTime || null,
+                url: fn.serviceConfig?.uri || fn.url || null,
+                ingressSettings: fn.serviceConfig?.ingressSettings || null,
+                serviceAccountEmail:
+                  fn.serviceConfig?.serviceAccountEmail || null,
+                availableMemory: fn.serviceConfig?.availableMemory || null,
+                timeoutSeconds: fn.serviceConfig?.timeoutSeconds || null,
+                minInstanceCount: fn.serviceConfig?.minInstanceCount || null,
+                maxInstanceCount: fn.serviceConfig?.maxInstanceCount || null,
+                allTrafficOnLatestRevision:
+                  fn.serviceConfig?.allTrafficOnLatestRevision ?? null,
+                secretEnvironmentVariableNames: Array.isArray(
+                  fn.serviceConfig?.secretEnvironmentVariables,
+                )
+                  ? fn.serviceConfig.secretEnvironmentVariables
+                      .map((item) => item.key || item.secret || item.projectId)
+                      .filter(Boolean)
+                      .sort()
+                  : [],
+                labels: fn.labels || {},
+              }))
+            : [];
         return [
           region,
           {
@@ -888,14 +969,20 @@ function bucketNameFromUrl(url) {
 }
 
 function collectStorageBuckets(project) {
-  const list = gcloudJson(["storage", "buckets", "list", "--project", project], {
-    timeout: 120_000,
-  });
+  const list = gcloudJson(
+    ["storage", "buckets", "list", "--project", project],
+    {
+      timeout: 120_000,
+    },
+  );
   if (!list.ok) return { ok: false, error: list.error, buckets: [] };
 
   const buckets = Array.isArray(list.stdout) ? list.stdout : [];
   const results = buckets.map((bucket) => {
-    const url = bucket.storageUrl || bucket.url || `gs://${bucketNameFromUrl(bucket.name || "")}`;
+    const url =
+      bucket.storageUrl ||
+      bucket.url ||
+      `gs://${bucketNameFromUrl(bucket.name || "")}`;
     const describe = gcloudJson(["storage", "buckets", "describe", url], {
       timeout: 90_000,
     });
@@ -911,12 +998,14 @@ function collectStorageBuckets(project) {
       storageClass: detail.storageClass || null,
       uniformBucketLevelAccess:
         detail.iamConfiguration?.uniformBucketLevelAccess?.enabled ?? null,
-      publicAccessPrevention: detail.iamConfiguration?.publicAccessPrevention || null,
+      publicAccessPrevention:
+        detail.iamConfiguration?.publicAccessPrevention || null,
       retentionPolicy: detail.retentionPolicy || null,
       encryption: detail.encryption || null,
       lifecycle: detail.lifecycle || null,
       iamPolicy: iam.ok ? summarizePolicy(iam.stdout) : null,
-      error: [describe.error, iam.error].filter(Boolean).join("; ") || undefined,
+      error:
+        [describe.error, iam.error].filter(Boolean).join("; ") || undefined,
     };
   });
 
@@ -938,9 +1027,12 @@ function collectSecrets(project) {
     const name = secret.name || "";
     const secretId = name.split("/").pop();
     const iam = secretId
-      ? gcloudJson(["secrets", "get-iam-policy", secretId, "--project", project], {
-          timeout: 90_000,
-        })
+      ? gcloudJson(
+          ["secrets", "get-iam-policy", secretId, "--project", project],
+          {
+            timeout: 90_000,
+          },
+        )
       : { ok: false, error: "secret id missing" };
     return {
       ok: iam.ok,
@@ -963,7 +1055,9 @@ function collectSecrets(project) {
 }
 
 function keyRingId(keyRing) {
-  return String(keyRing.name || "").split("/keyRings/").pop();
+  return String(keyRing.name || "")
+    .split("/keyRings/")
+    .pop();
 }
 
 function collectKms(project, locations) {
@@ -1002,7 +1096,9 @@ function collectKms(project, locations) {
       );
       const keyEntries = Array.isArray(keys.stdout) ? keys.stdout : [];
       const keyResults = keyEntries.map((key) => {
-        const keyId = String(key.name || "").split("/cryptoKeys/").pop();
+        const keyId = String(key.name || "")
+          .split("/cryptoKeys/")
+          .pop();
         const iam = gcloudJson(
           [
             "kms",
@@ -1113,7 +1209,10 @@ async function collect(options) {
     evidence.ok = false;
     return evidence;
   }
-  evidence.tokenProbe = { ok: true, source: process.env.GOOGLE_OAUTH_ACCESS_TOKEN ? "env" : "gcloud" };
+  evidence.tokenProbe = {
+    ok: true,
+    source: process.env.GOOGLE_OAUTH_ACCESS_TOKEN ? "env" : "gcloud",
+  };
 
   const collectors = [
     ["rules", () => collectRules(options.project, token)],
@@ -1144,7 +1243,9 @@ async function collect(options) {
 
   evidence.summary = deriveSummary(evidence);
   evidence.ok = Object.values(evidence.summary).every(Boolean);
-  return options.rawOutput ? redact(evidence) : sanitizeEvidenceArtifact(evidence);
+  return options.rawOutput
+    ? redact(evidence)
+    : sanitizeEvidenceArtifact(evidence);
 }
 
 async function main() {

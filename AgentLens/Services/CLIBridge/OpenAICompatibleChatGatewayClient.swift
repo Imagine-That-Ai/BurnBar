@@ -745,7 +745,7 @@ final class AgentToolBroker: Sendable {
     /// managers, package caches). Everything else under home is denied unless it
     /// is the active workspace.
     static let restrictedShellHomeReadAllowlistSubpaths: [String] = [
-        "/.rustup", "/.cargo/bin", "/.cargo/registry", "/.rbenv", "/.rbenv",
+        "/.rustup", "/.cargo/bin", "/.cargo/registry", "/.rbenv",
         "/.pyenv", "/.nvm", "/.nodenv", "/.asdf", "/.local/share/mise",
         "/.swiftpm", "/.cache", "/Library/Developer", "/.gradle/caches",
         "/.m2/repository", "/.npm", "/.bun/bin", "/.deno", "/go/pkg",
