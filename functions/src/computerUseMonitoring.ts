@@ -23,6 +23,7 @@ import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 const MAX_ROLLUP_SESSIONS_PER_USER_PER_DAY = 4;
 const MAX_ROLLUP_ACTIONS_PER_USER_PER_DAY = 200;
 const MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY = 5;
+const MAX_ROLLUP_VISION_SPEND_USD_PER_ACTION = 25;
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -56,19 +57,27 @@ function shouldIncludeUserScopedRollupDoc(
   return userId;
 }
 
-function boundedVisionSpendContribution(currentUserTotal: number, rawCost: number | undefined): number {
+function sanitizedVisionSpendContribution(rawCost: number | undefined): number {
   if (typeof rawCost !== "number" || !Number.isFinite(rawCost) || rawCost <= 0) return 0;
+  return Math.min(rawCost, MAX_ROLLUP_VISION_SPEND_USD_PER_ACTION);
+}
+
+function boundedVisionSpendContribution(currentUserTotal: number, rawCost: number | undefined): number {
+  const sanitizedCost = sanitizedVisionSpendContribution(rawCost);
+  if (sanitizedCost <= 0) return 0;
   const remaining = Math.max(0, MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY - currentUserTotal);
-  return Math.min(rawCost, remaining);
+  return Math.min(sanitizedCost, remaining);
 }
 
 export const __testing__ = {
   boundedVisionSpendContribution,
+  sanitizedVisionSpendContribution,
   uidFromComputerUseCollectionPath,
   limits: {
     maxRollupActionsPerUserPerDay: MAX_ROLLUP_ACTIONS_PER_USER_PER_DAY,
     maxRollupSessionsPerUserPerDay: MAX_ROLLUP_SESSIONS_PER_USER_PER_DAY,
     maxRollupVisionSpendUSDPerUserPerDay: MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY,
+    maxRollupVisionSpendUSDPerAction: MAX_ROLLUP_VISION_SPEND_USD_PER_ACTION,
   },
 };
 
@@ -116,6 +125,7 @@ export const rollupComputerUseDaily = onSchedule(
       status: string | undefined;
       denyReason: string | undefined;
       visionTokensCostUSD: number | undefined;
+      cappedVisionTokensCostUSD: number | undefined;
       toolKind: string;
       approvedBy: string | undefined;
     }> = [];
@@ -131,16 +141,15 @@ export const rollupComputerUseDaily = onSchedule(
       if (!userId) return;
       const data = d.data();
       const currentVisionSpend = visionSpendByUser.get(userId) ?? 0;
-      const visionTokensCostUSD = boundedVisionSpendContribution(
-        currentVisionSpend,
-        numberField(data, "visionTokensCostUSD"),
-      );
-      visionSpendByUser.set(userId, currentVisionSpend + visionTokensCostUSD);
+      const visionTokensCostUSD = sanitizedVisionSpendContribution(numberField(data, "visionTokensCostUSD"));
+      const cappedVisionTokensCostUSD = boundedVisionSpendContribution(currentVisionSpend, visionTokensCostUSD);
+      visionSpendByUser.set(userId, currentVisionSpend + cappedVisionTokensCostUSD);
       actions.push({
         approvalLatencyMillis: numberField(data, "approvalLatencyMillis"),
         status: stringField(data, "status"),
         denyReason: stringField(data, "denyReason"),
         visionTokensCostUSD,
+        cappedVisionTokensCostUSD,
         toolKind: stringField(data, "toolKind") ?? "",
         approvedBy: stringField(data, "approvedBy"),
       });
@@ -154,6 +163,7 @@ export const rollupComputerUseDaily = onSchedule(
     const scopeViolations = actions.filter((a) => a.status === "denied" && a.denyReason === "scope_denied").length;
     const panicHalts = sessions.filter((s) => (s.endReason ?? "").startsWith("panic_")).length;
     const visionSpend = actions.reduce((acc, a) => acc + (a.visionTokensCostUSD ?? 0), 0);
+    const cappedVisionSpend = actions.reduce((acc, a) => acc + (a.cappedVisionTokensCostUSD ?? 0), 0);
 
     const rollup: ComputerUseSessionDailyRollupDoc = {
       dayKey,
@@ -180,6 +190,7 @@ export const rollupComputerUseDaily = onSchedule(
       approvalLatencyP95Millis: percentile(latencyMs, 0.95),
       approvalLatencyP99Millis: percentile(latencyMs, 0.99),
       visionModelSpendUSD: Math.round(visionSpend * 100) / 100,
+      cappedVisionModelSpendUSD: Math.round(cappedVisionSpend * 100) / 100,
       updatedAt: Timestamp.fromDate(now),
     };
 

@@ -235,7 +235,7 @@ service cloud.firestore {
         && request.resource.data.parentEntryHashHex is string
         && request.resource.data.parentEntryHashHex.matches("^[A-Fa-f0-9]{64}$")
         && (!("approvalLatencyMillis" in request.resource.data) || (request.resource.data.approvalLatencyMillis is int && request.resource.data.approvalLatencyMillis >= 0))
-        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0))
+        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0 && request.resource.data.visionTokensCostUSD <= 25))
         && request.resource.data.recordedAt is timestamp
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1

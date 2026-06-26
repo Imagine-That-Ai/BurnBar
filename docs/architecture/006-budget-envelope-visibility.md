@@ -16,14 +16,16 @@ The same change inadvertently hid the **operability envelope** (level + per-sess
 
 Split each budget topic into two documents:
 
-| Path | Fields | Read rule |
-|------|--------|-----------|
-| `ops/computer_use_budget_status/state/current` | `level`, action/session caps, `perUserDailySpendCeilingUSD`, `updatedAt` | `isSignedIn()` |
-| `ops/computer_use_budget_status/metrics/current` | `projectedMonthEndUSD`, `monthToDateUSD`, `level`, `updatedAt` | `isOperator()` |
-| `ops/media_budget_status/state/current` | `level`, `activeEnvelope`, `lastEvaluatedAt`, `schemaVersion` | `isSignedIn()` |
-| `ops/media_budget_status/metrics/current` | `projectedMonthEndUSD`, `monthToDateUSD`, `level`, `lastEvaluatedAt` | `isOperator()` |
+| Path                                             | Fields                                                                   | Read rule      |
+| ------------------------------------------------ | ------------------------------------------------------------------------ | -------------- |
+| `ops/computer_use_budget_status/state/current`   | `level`, action/session caps, `perUserDailySpendCeilingUSD`, `updatedAt` | `isSignedIn()` |
+| `ops/computer_use_budget_status/metrics/current` | `projectedMonthEndUSD`, `monthToDateUSD`, `level`, `updatedAt`           | `isOperator()` |
+| `ops/media_budget_status/state/current`          | `level`, `activeEnvelope`, `lastEvaluatedAt`, `schemaVersion`            | `isSignedIn()` |
+| `ops/media_budget_status/metrics/current`        | `projectedMonthEndUSD`, `monthToDateUSD`, `level`, `lastEvaluatedAt`     | `isOperator()` |
 
 Daily rollups (`ops/computer_use_session_daily_rollups/**`, `ops/media_session_daily_rollups/**`) remain operator-only. Transition audit rows stay at `ops/*_budget_status/events/{eventId}` (operator read, server write).
+
+For Computer Use, `visionModelSpendUSD` in the operator rollup is the actual sanitized spend for visibility and cost analysis. `cappedVisionModelSpendUSD` is the per-user daily-envelope-bounded spend used by `evaluateComputerUseBudget` for global soft/hard-cap projection. The global kill-switch projection must not let one user's client-reported action costs dominate the month-end estimate.
 
 Cloud Functions (`evaluateComputerUseBudget`, `evaluateMediaBudget`) write **both** documents atomically in sequence. Clients listen only to the public envelope path.
 

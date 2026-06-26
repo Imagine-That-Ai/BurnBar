@@ -374,6 +374,37 @@ async function main() {
       );
     });
 
+    await step("action spend headers are bounded", async () => {
+      await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-zero`), {
+          ...validActionDoc,
+          id: "action-cost-zero",
+          visionTokensCostUSD: 0,
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-ok`), {
+          ...validActionDoc,
+          id: "action-cost-ok",
+          visionTokensCostUSD: 25,
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-negative`), {
+          ...validActionDoc,
+          id: "action-cost-negative",
+          visionTokensCostUSD: -1,
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-too-high`), {
+          ...validActionDoc,
+          id: "action-cost-too-high",
+          visionTokensCostUSD: 25.01,
+        })
+      );
+    });
+
     await step("quota_usage write with the right shape succeeds", async () => {
       await assertSucceeds(
         setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_quota_usage/2026-05-17`), {
