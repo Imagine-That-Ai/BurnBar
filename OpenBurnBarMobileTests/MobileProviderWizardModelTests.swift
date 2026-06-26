@@ -355,6 +355,27 @@ final class MobileProviderWizardModelTests: XCTestCase {
         XCTAssertEqual(saver.deleteCalls.count, 1, "Runner should be deleted after save failure")
     }
 
+    func test_connect_selfHostedSaveFailureStillDeletesAccountWhenRunnerCleanupFails() async {
+        let conn = FakeProviderConnectionStore()
+        let account = makeAccount(provider: .codex)
+        conn.configure(connectResult: account)
+        let saver = FakeSelfHostedRunnerSaver()
+        saver.configureSaveError(NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Write failed"]))
+        saver.configureDeleteError(NSError(domain: "test", code: 2, userInfo: [NSLocalizedDescriptionKey: "Delete failed"]))
+        let model = makeModel(preselectedProvider: .codex, connectionStore: conn, runnerSaver: saver)
+        model.credential = "unused"
+        model.syncMode = .selfHosted
+        model.runnerURL = "https://runner.example.com"
+
+        model.startConnect()
+        await model.connectTask?.value
+
+        XCTAssertEqual(model.step, .failed)
+        XCTAssertEqual(model.errorMessage, "Delete failed")
+        XCTAssertEqual(conn.deleteCalls.map(\.account.id), [account.id])
+        XCTAssertTrue(saver.deleteCalls.isEmpty, "The fake throws before recording the failed cleanup call.")
+    }
+
     func test_connect_selfHostedCancellationAfterRunnerSave_rollsBackAccountAndRunner() async {
         let conn = FakeProviderConnectionStore()
         let account = makeAccount(provider: .codex)
@@ -375,7 +396,7 @@ final class MobileProviderWizardModelTests: XCTestCase {
         XCTAssertEqual(saver.deleteCalls.map(\.accountID), [account.id])
     }
 
-    func test_connect_selfHostedCancellationAfterRunnerSaveSurfacesRunnerDeleteFailure() async {
+    func test_connect_selfHostedCancellationAfterRunnerSaveSurfacesRunnerDeleteFailureAndDeletesAccount() async {
         let conn = FakeProviderConnectionStore()
         let account = makeAccount(provider: .codex)
         conn.configure(connectResult: account)
@@ -394,7 +415,7 @@ final class MobileProviderWizardModelTests: XCTestCase {
 
         XCTAssertEqual(model.step, .failed)
         XCTAssertEqual(model.errorMessage, "Delete failed")
-        XCTAssertTrue(conn.deleteCalls.isEmpty)
+        XCTAssertEqual(conn.deleteCalls.map(\.account.id), [account.id])
     }
 
     // MARK: - Credential kind resolution

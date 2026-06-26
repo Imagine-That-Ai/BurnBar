@@ -438,6 +438,24 @@ extension ConversationStore {
                 try db.execute(sql: "DELETE FROM conversations")
                 try db.execute(sql: "DELETE FROM summary_runs")
                 try db.execute(sql: "DELETE FROM project_memory_snapshots")
+                try db.execute(
+                    sql: """
+                    DELETE FROM chunk_embeddings
+                    WHERE chunkID IN (
+                        SELECT id FROM search_chunks WHERE sourceKind = 'conversation'
+                    )
+                    """
+                )
+                try db.execute(
+                    sql: """
+                    DELETE FROM search_chunks_fts
+                    WHERE chunkID IN (
+                        SELECT id FROM search_chunks WHERE sourceKind = 'conversation'
+                    )
+                    """
+                )
+                try db.execute(sql: "DELETE FROM search_chunks WHERE sourceKind = 'conversation'")
+                try db.execute(sql: "DELETE FROM search_documents WHERE sourceKind = 'conversation'")
             }
         }
 

@@ -815,8 +815,9 @@ struct OnboardingProviderConnectStep: View {
                 } catch {
                     do {
                         try SelfHostedQuotaRunnerStore.shared.delete(accountID: created.id)
-                    } catch {
-                        errorMessage = error.localizedDescription
+                    } catch let cleanupError {
+                        errorMessage = cleanupError.localizedDescription
+                        await connectionStore.delete(account: created)
                         advance(to: .failed)
                         return
                     }
