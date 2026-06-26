@@ -493,7 +493,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "firestorePaths": [
       "entitlements",
       "entitlement_events",
-      "entitlement_bindings"
+      "entitlement_bindings",
+      "billing"
     ],
     "storagePaths": [],
     "countSource": "entitlements",

@@ -481,3 +481,115 @@ body::after {
   backdrop-filter: blur(7px) saturate(1.15);
   -webkit-backdrop-filter: blur(7px) saturate(1.15);
 }
+
+/* ============================================================================
+   Liquid Glass dashboard (/dashboard)
+   Frosted glass cards floating over the full-bleed WebGL kernel backdrop. The
+   plates are translucent vellum (same family as .signin-card) so the living
+   backdrop reads through them; --lg-frost (0 frost .. 1 clear) modulates blur +
+   plate opacity. Token-driven; the only literals are the white sheen/hairline
+   that *make* the glass read as glass.
+   ========================================================================== */
+.lg-dashboard {
+  --lg-frost: 0.5;
+  --lg-blur: calc((1 - var(--lg-frost)) * 12px + 6px);
+  /* Plate stays predominantly opaque even at "clear" so dark ink stays legible
+     over the near-black kernel — the backdrop reads through the blur + edges,
+     not by thinning the plate into illegibility (see review: WCAG at frost=1). */
+  --lg-plate: calc(0.92 - var(--lg-frost) * 0.16);
+  position: relative;
+}
+
+.lg-card,
+.lg-bar {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.5) 0%, transparent 40%),
+    radial-gradient(130% 130% at 100% 0%, var(--accent-wash), transparent 56%),
+    rgba(255, 254, 251, var(--lg-plate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    inset 0 0 0 0.8px rgba(255, 255, 255, 0.16),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.5),
+    0 18px 40px -18px rgba(8, 10, 18, 0.55);
+  /* The page ink tokens are tuned for opaque paper; on the translucent plate
+     over a dark backdrop the muted/dim tiers need to be darker to clear AA.
+     Scoped to the glass so the rest of the console is unaffected. */
+  --color-text-base: #2a251e;
+  --color-text-mute: #443e36;
+  --color-text-dim: #4e483f;
+  color: var(--color-text-base);
+}
+
+.lg-bar {
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  gap: var(--space-4);
+}
+
+.lg-card {
+  overflow: hidden;
+}
+
+.lg-card__header {
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+  min-height: 2.25rem;
+}
+
+.lg-card__grip {
+  display: inline-grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  cursor: grab;
+  touch-action: none; /* let the pointer drag own the gesture on touch */
+}
+.lg-card__grip:active {
+  cursor: grabbing;
+}
+.lg-card__grip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lg-card__remove {
+  display: inline-grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  transition: color 0.15s var(--motion-ease-standard);
+}
+.lg-card__remove:hover {
+  color: var(--color-seal-crimson);
+}
+.lg-card__remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lg-card__resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: inline-grid;
+  place-items: center;
+  padding: 3px;
+  color: var(--color-text-dim);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.6;
+  transition: opacity 0.15s var(--motion-ease-standard);
+}
+.lg-card__resize:hover {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-card {
+    transition: none !important;
+  }
+}

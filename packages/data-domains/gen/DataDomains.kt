@@ -134,7 +134,7 @@ object DataDomains {
             id = "entitlements_billing", title = "Plan & Billing", icon = "creditcard.fill",
             encryptionTier = EncryptionTier.SERVER_READABLE, summary = "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
             serverSees = listOf("entitlement ids", "product ids", "active state", "expiry", "purchase source"), deviceOnly = listOf(),
-            firestorePaths = listOf("entitlements", "entitlement_events", "entitlement_bindings"), storagePaths = listOf(),
+            firestorePaths = listOf("entitlements", "entitlement_events", "entitlement_bindings", "billing"), storagePaths = listOf(),
             countSource = "entitlements", byteSource = null,
             retention = "permanent", actions = listOf("view"),
             entitlementGate = null, suspensionSurface = null,

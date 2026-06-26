@@ -183,7 +183,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
   },
   entitlements_billing: {
     encryptionTier: "server_readable",
-    firestoreCollections: ["entitlements", "entitlement_events", "entitlement_bindings"],
+    firestoreCollections: ["entitlements", "entitlement_events", "entitlement_bindings", "billing"],
     storagePrefixes: [],
   },
   device_trust_keys: {

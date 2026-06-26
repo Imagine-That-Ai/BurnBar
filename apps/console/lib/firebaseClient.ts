@@ -19,6 +19,7 @@ import {
   type Auth,
 } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator, type Functions } from "firebase/functions";
+import { getFirestore, connectFirestoreEmulator, type Firestore } from "firebase/firestore";
 import {
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
@@ -47,6 +48,7 @@ const isBrowser = typeof window !== "undefined";
 let _app: FirebaseApp | undefined;
 let _auth: Auth | undefined;
 let _functions: Functions | undefined;
+let _db: Firestore | undefined;
 let _appCheck: AppCheck | undefined;
 
 export function firebaseApp(): FirebaseApp {
@@ -100,6 +102,19 @@ export function functions(): Functions {
     }
   }
   return _functions;
+}
+
+export function db(): Firestore {
+  if (_db) return _db;
+  _db = getFirestore(firebaseApp());
+  if (process.env.NODE_ENV !== "production" && isBrowser) {
+    try {
+      connectFirestoreEmulator(_db, "localhost", 8080);
+    } catch {
+      /* HMR reconnect */
+    }
+  }
+  return _db;
 }
 
 export function googleProvider(): GoogleAuthProvider {

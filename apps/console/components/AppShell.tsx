@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Basin" },
+  { href: "/dashboard", label: "Studio" },
   { href: "/inventory", label: "Inventory" },
   { href: "/pensieve", label: "Pensieve" },
   { href: "/escrow", label: "Trust" },
@@ -101,7 +102,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-5xl px-token-6 py-token-12">{children}</main>
+      <main
+        className={cn(
+          "mx-auto px-token-6",
+          // The Studio dashboard is a full-bleed glass surface; every other
+          // route keeps the centered reading column.
+          pathname === "/dashboard" ? "max-w-none py-token-6" : "max-w-5xl py-token-12",
+        )}
+      >
+        {children}
+      </main>
 
       <footer className="mx-auto max-w-5xl px-token-6 pb-token-8">
         <hr className="rule mb-token-4" />

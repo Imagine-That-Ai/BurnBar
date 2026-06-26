@@ -3987,6 +3987,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The
+    // owner reads their own meter for the console dashboard ("The Wand" card);
+    // all writes are server-only (admin SDK, which bypasses rules).
+    match /users/{userId}/billing/allowances/months/{monthKey} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
     match /users/{userId}/projects/{projectId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
