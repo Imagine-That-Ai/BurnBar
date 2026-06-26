@@ -12,6 +12,10 @@ import OpenBurnBarMedia
 // Extracted from ComputerUseSessionCoordinator.swift (god-type decomposition) — same module, same isolation, verbatim.
 
 extension ComputerUseSessionCoordinator {
+    private struct PreparedControlFrame {
+        var frame: HermesRealtimeRelayFrame
+        var pendingSealSession: (peerNodeId: String, key: SymmetricKey)?
+    }
 
     func shouldUseVirtualHIDForLockedInput() -> Bool {
         let readiness = MacRemoteUnlockReadinessService.shared
@@ -37,16 +41,19 @@ extension ComputerUseSessionCoordinator {
 
     /// F10 — control-seal interception, the single chokepoint every control
     /// frame passes before dispatch:
-    ///  1. `control.classify` carrying a `controlSealKey` envelope establishes
+    ///  1. `control.classify` carrying a `controlSealKey` envelope prepares
     ///     the per-connection session (sealKeyV3 open under the Mac relay key,
     ///     sender authenticated against the SAME pinned relay-sender-key source
-    ///     the chat opener uses). Establishment failure refuses the classify.
+    ///     the chat opener uses). The prepared session is committed only after
+    ///     the normal classify admission checks pass. Establishment failure
+    ///     refuses the classify.
     ///  2. Any frame carrying `sealedFrameBase64` is opened (AAD: controller
     ///     peerNodeId + frame type) and the inner payload substituted. A sealed
     ///     frame with no session, or one that fails to open, is dropped with a
     ///     `controlDenied` — never dispatched (fail closed).
     /// Legacy unsealed frames pass through untouched.
-    func unsealedControlFrame(_ frame: HermesRealtimeRelayFrame) async -> HermesRealtimeRelayFrame? {
+    private func unsealedControlFrame(_ frame: HermesRealtimeRelayFrame) async -> PreparedControlFrame? {
+        var pendingSealSession: (peerNodeId: String, key: SymmetricKey)?
         if frame.type == .controlClassify,
            let envelope = frame.control?.controlSealKey {
             guard let peerNodeId = frame.control?.authorityPeerNodeId else {
@@ -60,9 +67,9 @@ extension ComputerUseSessionCoordinator {
                     connectionId: frame.connectionId,
                     peerNodeId: peerNodeId
                 )
-                controlSealSessions[frame.connectionId] = (peerNodeId, key)
+                pendingSealSession = (peerNodeId, key)
                 recordE2EProofEvent([
-                    "event": "mac_control_seal_established",
+                    "event": "mac_control_seal_prepared",
                     "peerNodeId": peerNodeId,
                     "connectionId": frame.connectionId
                 ])
@@ -78,9 +85,9 @@ extension ComputerUseSessionCoordinator {
             }
         }
         guard let control = frame.control, control.sealedFrameBase64 != nil else {
-            return frame
+            return PreparedControlFrame(frame: frame, pendingSealSession: pendingSealSession)
         }
-        guard let session = controlSealSessions[frame.connectionId] else {
+        guard let session = pendingSealSession ?? controlSealSessions[frame.connectionId] else {
             emitControlSealDenied(detail: "control_seal_no_session", frame: frame)
             return nil
         }
@@ -91,7 +98,7 @@ extension ComputerUseSessionCoordinator {
                 peerNodeId: session.peerNodeId,
                 frameType: frame.type.rawValue
             )
-            return HermesRealtimeRelayFrame(
+            let unsealed = HermesRealtimeRelayFrame(
                 type: frame.type,
                 uid: frame.uid,
                 connectionId: frame.connectionId,
@@ -100,6 +107,7 @@ extension ComputerUseSessionCoordinator {
                 media: frame.media,
                 control: inner
             )
+            return PreparedControlFrame(frame: unsealed, pendingSealSession: pendingSealSession)
         } catch {
             recordE2EProofEvent([
                 "event": "mac_control_seal_open_failed",
@@ -171,7 +179,8 @@ extension ComputerUseSessionCoordinator {
         latestControlUID = rawFrame.uid
         latestControlConnectionID = rawFrame.connectionId
         Self.debugTrace("computer_use_control_frame_received type=\(rawFrame.type.rawValue) requestID=\(rawFrame.requestId ?? "") connectionID=\(rawFrame.connectionId)")
-        guard let frame = await unsealedControlFrame(rawFrame) else { return }
+        guard let prepared = await unsealedControlFrame(rawFrame) else { return }
+        let frame = prepared.frame
         switch frame.type {
         case .controlClassify:
             guard let peerNodeId = frame.control?.authorityPeerNodeId else { return }
@@ -236,6 +245,14 @@ extension ComputerUseSessionCoordinator {
                         sessionTimeoutSeconds: 1800,
                         clientID: BurnBarClientID(rawValue: "phone-control-\(peerNodeId)")
                     ))
+                }
+                if let pendingSealSession = prepared.pendingSealSession {
+                    controlSealSessions[frame.connectionId] = pendingSealSession
+                    recordE2EProofEvent([
+                        "event": "mac_control_seal_established",
+                        "peerNodeId": pendingSealSession.peerNodeId,
+                        "connectionId": frame.connectionId
+                    ])
                 }
                 recordE2EProofEvent([
                     "event": "mac_control_classified",
