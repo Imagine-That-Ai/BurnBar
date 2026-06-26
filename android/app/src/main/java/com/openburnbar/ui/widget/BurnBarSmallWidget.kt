@@ -10,7 +10,7 @@ import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 object BurnBarSmallWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         BurnBarWidgetSnapshotStore.bind(context)
-        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.preview
+        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.unavailable
         provideContent { SmallContent(snap) }
     }
 }

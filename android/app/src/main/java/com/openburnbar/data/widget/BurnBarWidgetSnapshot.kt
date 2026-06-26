@@ -30,11 +30,31 @@ data class BurnBarWidgetSnapshot(
     /** Millis since epoch when this snapshot was minted. */
     val lastSyncMs: Long = 0L,
 ) {
+    val hasSyncedUserData: Boolean
+        get() {
+            val hasUsage = heroTotalCost > 0.0 || heroTotalTokens > 0L || heroTotalRequests > 0
+            val hasBreakdown = topProviders.isNotEmpty() || topModels.isNotEmpty() || dailyPoints.isNotEmpty()
+            return lastSyncMs > 0L && (hasUsage || hasBreakdown)
+        }
+
+    fun lockScreenPresentation(): BurnBarLockScreenPresentation = BurnBarLockScreenPresentation(
+        title = "BurnBar",
+        detail = if (hasSyncedUserData) "Usage private" else "Open to sync",
+        ringProgress = if (hasSyncedUserData) 1.0f else 0.0f,
+        hasSyncedUserData = hasSyncedUserData,
+    )
+
     companion object {
+        val unavailable: BurnBarWidgetSnapshot =
+            BurnBarWidgetSnapshot(
+                windowKey = "unavailable",
+                lastSyncMs = 0L,
+            )
+
         /**
          * Placeholder snapshot used by Glance previews and the WidgetSyncWorker
-         * fallback when the persisted file is missing. Shape mirrors the iOS
-         * `.preview` Codable instance.
+         * design previews only. Runtime widget fallbacks must use [unavailable]
+         * so signed-out or unsynced users never see fake spend.
          */
         val preview: BurnBarWidgetSnapshot =
             BurnBarWidgetSnapshot(
@@ -52,3 +72,10 @@ data class BurnBarWidgetSnapshot(
         const val FILENAME = "widget_snapshot.json"
     }
 }
+
+data class BurnBarLockScreenPresentation(
+    val title: String,
+    val detail: String,
+    val ringProgress: Float,
+    val hasSyncedUserData: Boolean,
+)

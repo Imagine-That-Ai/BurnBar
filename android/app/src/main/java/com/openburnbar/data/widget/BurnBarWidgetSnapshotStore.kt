@@ -58,14 +58,23 @@ object BurnBarWidgetSnapshotStore {
 
     /** Persist and notify all in-process consumers. */
     fun write(context: Context, snapshot: BurnBarWidgetSnapshot) {
-        scope.launch {
-            mutex.withLock {
-                _snapshot.value = snapshot
-                runCatching {
-                    File(context.filesDir, BurnBarWidgetSnapshot.FILENAME)
-                        .writeText(json.encodeToString(snapshot))
-                }
+        scope.launch { writeNow(context, snapshot) }
+    }
+
+    suspend fun writeNow(context: Context, snapshot: BurnBarWidgetSnapshot) {
+        mutex.withLock {
+            _snapshot.value = snapshot
+            runCatching {
+                File(context.filesDir, BurnBarWidgetSnapshot.FILENAME)
+                    .writeText(json.encodeToString(snapshot))
             }
+        }
+    }
+
+    suspend fun clear(context: Context) {
+        mutex.withLock {
+            _snapshot.value = null
+            runCatching { File(context.filesDir, BurnBarWidgetSnapshot.FILENAME).delete() }
         }
     }
 

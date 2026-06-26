@@ -32,7 +32,7 @@ import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 object BurnBarLockCircularWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         BurnBarWidgetSnapshotStore.bind(context)
-        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.preview
+        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.unavailable
         provideContent { CircularContent(snap) }
     }
 }
@@ -43,7 +43,7 @@ class BurnBarLockCircularWidgetReceiver : GlanceAppWidgetReceiver() {
 
 @Composable
 private fun CircularContent(snap: BurnBarWidgetSnapshot) {
-    val progress = (snap.heroTotalCost / REFERENCE_DAILY_BUDGET).toFloat().coerceIn(0f, 1f)
+    val presentation = snap.lockScreenPresentation()
     Box(
         modifier =
         GlanceModifier
@@ -51,7 +51,7 @@ private fun CircularContent(snap: BurnBarWidgetSnapshot) {
             .clickable(openDashboardAction()),
         contentAlignment = Alignment.Center,
     ) {
-        val ring = renderRingBitmap(progress = progress, sizePx = 200)
+        val ring = renderRingBitmap(progress = presentation.ringProgress, sizePx = 200)
         Image(
             provider = ImageProvider(ring),
             contentDescription = null,
@@ -60,7 +60,7 @@ private fun CircularContent(snap: BurnBarWidgetSnapshot) {
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = formatCostCompact(snap.heroTotalCost),
+                text = presentation.title,
                 style =
                 TextStyle(
                     fontSize = 13.sp,
@@ -70,7 +70,7 @@ private fun CircularContent(snap: BurnBarWidgetSnapshot) {
                 maxLines = 1,
             )
             Text(
-                text = formatTokensCompact(snap.heroTotalTokens),
+                text = presentation.detail,
                 style =
                 TextStyle(
                     fontSize = 9.sp,
@@ -82,10 +82,3 @@ private fun CircularContent(snap: BurnBarWidgetSnapshot) {
         }
     }
 }
-
-/**
- * Soft reference value used to fill the lock-screen ring. iOS uses `cost/10`
- * with no real budget; matching the same heuristic so the visual fills look
- * the same across platforms.
- */
-private const val REFERENCE_DAILY_BUDGET = 10.0
