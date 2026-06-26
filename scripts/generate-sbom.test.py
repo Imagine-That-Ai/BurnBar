@@ -72,5 +72,75 @@ dependencies {
             self.assertNotIn("com.comment:ignored", by_name)
 
 
+class PackageOriginPreservationTests(unittest.TestCase):
+    def test_dedupe_keeps_same_package_version_from_distinct_origins(self) -> None:
+        deps = generate_sbom.dedupe_packages(
+            [
+                {
+                    "type": "cargo",
+                    "name": "shared-lib",
+                    "version": "1.2.3",
+                    "url": "https://mirror.example/shared-lib-1.2.3.tar.gz",
+                    "source": "Cargo.lock",
+                },
+                {
+                    "type": "cargo",
+                    "name": "shared-lib",
+                    "version": "1.2.3",
+                    "url": "https://crates.io/crates/shared-lib",
+                    "source": "crates/tool/Cargo.lock",
+                },
+                {
+                    "type": "cargo",
+                    "name": "shared-lib",
+                    "version": "1.2.3",
+                    "url": "https://crates.io/crates/shared-lib",
+                    "source": "duplicate/Cargo.lock",
+                },
+            ]
+        )
+
+        self.assertEqual(len(deps), 2)
+        self.assertEqual(
+            {dep["url"] for dep in deps},
+            {
+                "https://crates.io/crates/shared-lib",
+                "https://mirror.example/shared-lib-1.2.3.tar.gz",
+            },
+        )
+
+    def test_spdx_document_emits_each_preserved_origin_download_location(self) -> None:
+        deps = generate_sbom.dedupe_packages(
+            [
+                {
+                    "type": "npm",
+                    "name": "@openburnbar/example",
+                    "version": "4.5.6",
+                    "url": "https://registry.npmjs.org/@openburnbar/example/-/example-4.5.6.tgz",
+                    "source": "package-lock.json",
+                },
+                {
+                    "type": "npm",
+                    "name": "@openburnbar/example",
+                    "version": "4.5.6",
+                    "url": "https://mirror.example/npm/@openburnbar/example-4.5.6.tgz",
+                    "source": "tools/package-lock.json",
+                },
+            ]
+        )
+
+        doc = generate_sbom.build_spdx_document("test", REPO_ROOT, [], deps, [], [])
+        packages = [pkg for pkg in doc["packages"] if pkg["name"] == "@openburnbar/example"]
+
+        self.assertEqual(len(packages), 2)
+        self.assertEqual(
+            {pkg["downloadLocation"] for pkg in packages},
+            {
+                "https://registry.npmjs.org/@openburnbar/example/-/example-4.5.6.tgz",
+                "https://mirror.example/npm/@openburnbar/example-4.5.6.tgz",
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
