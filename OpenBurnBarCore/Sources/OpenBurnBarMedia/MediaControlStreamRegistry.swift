@@ -161,9 +161,9 @@ public actor MediaControlStreamRegistry {
     }
 
     /// Most recently registered stream for a given user, regardless of
-    /// connectionID. `MacFileTransferService.sendFile` uses this when the
-    /// caller doesn't have a known connectionID — common during ad-hoc
-    /// pair-debug from the Mac chat input.
+    /// connectionID. This is a best-effort fallback for ad-hoc diagnostics;
+    /// production media sends that already know their connection must use the
+    /// connection-scoped lookup below.
     public func latestStream(uid: String) -> (key: Key, stream: any IrohRelayStream)? {
         let candidates = streams.compactMap { key, entries -> (key: Key, entry: Entry)? in
             guard key.uid == uid,
@@ -193,6 +193,28 @@ public actor MediaControlStreamRegistry {
             try? await Task.sleep(nanoseconds: pollInterval)
             if let existing = latestStream(uid: uid) {
                 return existing.stream
+            }
+        }
+        return nil
+    }
+
+    /// Wait up to `timeout` seconds for the exact media-control stream bound
+    /// to `(uid, connectionID)`. Outbound file-transfer advertise frames carry
+    /// a connection-scoped ticket, so they must not fall back to another live
+    /// sibling stream for the same user.
+    public func awaitStream(
+        uid: String,
+        connectionID: String,
+        timeout: TimeInterval
+    ) async -> (any IrohRelayStream)? {
+        if let existing = stream(uid: uid, connectionID: connectionID) {
+            return existing
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: pollInterval)
+            if let existing = stream(uid: uid, connectionID: connectionID) {
+                return existing
             }
         }
         return nil

@@ -15,10 +15,8 @@ import OSLog
 /// Outbound flow (Mac → iOS):
 ///   1. UI calls `sendFile(_:peerDeviceID:)`.
 ///   2. Service publishes the file to its blob store, gets a ticket.
-///   3. Service emits a `media.blob.advertise` frame on whichever inbound
-///      chat stream is currently bound to that peer (the chat connection
-///      is iOS-dialed; we piggyback on the same connection by opening a
-///      new media-control stream).
+///   3. Service emits a `media.blob.advertise` frame on the media-control
+///      stream bound to the same connection that owns the ticket.
 ///   4. iOS sees the advertise on the chat side, calls back
 ///      `IrohBlobBackend.fetchBlob` on its own blob endpoint.
 ///   5. iOS emits `media.blob.ack` once the bytes land.
@@ -181,7 +179,7 @@ final class MacFileTransferService: ObservableObject {
     /// Publish a file from the Mac and emit an advertise frame to the
     /// paired iPhone. Resolution order for the advertise send:
     ///   1. Explicit override (`setAdvertiseSender`) — tests only.
-    ///   2. Persistent media control stream via
+    ///   2. Persistent media control stream via connection-scoped
     ///      `MediaControlStreamRegistry.awaitStream`, blocking up to
     ///      `advertiseTimeout` seconds so a freshly-typed attachment
     ///      doesn't race iOS's control-stream dial.
@@ -258,7 +256,7 @@ final class MacFileTransferService: ObservableObject {
         )
 
         do {
-            try await emitAdvertise(frame: frame, uid: uid)
+            try await emitAdvertise(frame: frame, uid: uid, connectionID: connectionID)
         } catch {
             let failure = Failure.publishFailed("advertise emit: \(error.localizedDescription)")
             lastError = failure
@@ -271,7 +269,8 @@ final class MacFileTransferService: ObservableObject {
 
     private func emitAdvertise(
         frame: HermesRealtimeRelayFrame,
-        uid: String
+        uid: String,
+        connectionID: String
     ) async throws {
         if let advertiseSenderOverride {
             try await advertiseSenderOverride(frame)
@@ -281,7 +280,11 @@ final class MacFileTransferService: ObservableObject {
             lastError = .dispatchUnavailable
             throw Failure.dispatchUnavailable
         }
-        guard let stream = await registry.awaitStream(uid: uid, timeout: advertiseTimeout) else {
+        guard let stream = await registry.awaitStream(
+            uid: uid,
+            connectionID: connectionID,
+            timeout: advertiseTimeout
+        ) else {
             lastError = .dispatchUnavailable
             throw Failure.dispatchUnavailable
         }
