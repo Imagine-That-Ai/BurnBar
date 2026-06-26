@@ -79,12 +79,13 @@ extension HermesService {
         }
         return HermesInsightHTTPConfiguration(
             baseURL: selectedEndpoint,
-            authorizationHeader: insightsAuthorizationHeader
+            authorizationHeader: insightsAuthorizationHeader(for: selectedEndpoint)
         )
     }
 
-    private var insightsAuthorizationHeader: String? {
-        guard let rawToken = try? secretStore.load(connectionID: selectedConnection.id) else {
+    private func insightsAuthorizationHeader(for endpoint: URL) -> String? {
+        guard Self.canSendAuthorizationHeader(to: endpoint),
+              let rawToken = try? secretStore.load(connectionID: selectedConnection.id) else {
             return nil
         }
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,6 +93,27 @@ extension HermesService {
             return nil
         }
         return "Bearer \(token)"
+    }
+
+    private static func canSendAuthorizationHeader(to endpoint: URL) -> Bool {
+        guard let components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased() else {
+            return false
+        }
+        if scheme == "https" {
+            return true
+        }
+        if scheme == "http" {
+            return isLoopbackHost(host)
+        }
+        return false
+    }
+
+    private static func isLoopbackHost(_ host: String) -> Bool {
+        let normalized = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+        return normalized == "localhost" || normalized == "127.0.0.1"
+            || normalized == "::1" || normalized == "0:0:0:0:0:0:0:1"
     }
 
     private static func sameInsightEndpoint(_ lhs: URL, _ rhs: URL) -> Bool {
