@@ -319,6 +319,8 @@ public enum CLIAgentChatPresentationMode: String, Codable, Sendable, Equatable, 
 
 public enum CLIAgentRelayTranscriptPieceKind: String, Codable, Sendable, Equatable, CaseIterable {
     case text
+    case reasoning
+    case refusal
     case toolUse
     case toolResult
 }

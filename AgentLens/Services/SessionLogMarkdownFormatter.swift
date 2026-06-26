@@ -71,6 +71,12 @@ enum SessionLogMarkdownFormatter {
                             if piece.value.isEmpty == false {
                                 lines.append(piece.value)
                             }
+                        case .reasoning, .refusal:
+                            lines.append("")
+                            lines.append(piece.kind == .reasoning ? "```reasoning" : "```refusal")
+                            lines.append(piece.value)
+                            lines.append("```")
+                            lines.append("")
                         case .toolUse, .toolResult:
                             lines.append("")
                             lines.append(piece.kind == .toolResult ? "```tool-result" : "```tool-use")

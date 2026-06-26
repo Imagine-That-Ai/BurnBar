@@ -4,14 +4,20 @@ import OpenBurnBarCore
 /// Parsed from Claude `stream-json` lines (and Codex text deltas).
 enum CLIChatStreamEvent: Hashable {
     case text(String)
+    case reasoning(String)
+    case refusal(String)
     case toolUse(name: String, detail: String?)
     case toolResult(name: String, detail: String?)
     case usage(CLIUsageSnapshot)
 
     init?(_ event: HermesStreamEvent) {
         switch event {
-        case .messageChunk(let text), .reasoningChunk(let text), .refusalChunk(let text):
+        case .messageChunk(let text):
             self = .text(text)
+        case .reasoningChunk(let text):
+            self = .reasoning(text)
+        case .refusalChunk(let text):
+            self = .refusal(text)
         case .toolCallChunk(_, _, let name, let argumentsDelta):
             self = .toolUse(
                 name: Self.nonEmpty(name) ?? "tool",
@@ -47,6 +53,10 @@ enum CLIChatStreamEvent: Hashable {
         switch self {
         case .text(let text):
             return .messageChunk(text: text)
+        case .reasoning(let text):
+            return .reasoningChunk(text: text)
+        case .refusal(let text):
+            return .refusalChunk(text: text)
         case .toolUse(let name, let detail):
             return .toolCallChunk(id: name, index: 0, name: name, argumentsDelta: detail ?? "")
         case .toolResult(let name, let detail):

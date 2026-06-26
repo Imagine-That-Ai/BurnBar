@@ -601,6 +601,10 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
         switch piece.kind {
         case .text:
             kind = .text
+        case .reasoning:
+            kind = .reasoning
+        case .refusal:
+            kind = .refusal
         case .toolUse:
             kind = .toolUse
         case .toolResult:

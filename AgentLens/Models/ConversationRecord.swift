@@ -140,13 +140,15 @@ enum ChatMessageRole: String, Codable {
 struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case text
+        case reasoning
+        case refusal
         case toolUse
         case toolResult
     }
 
     let id: String
     let kind: Kind
-    /// Prose for `.text`; tool label (e.g. Read, Bash) for tool events.
+    /// Prose for `.text` / `.reasoning` / `.refusal`; tool label (e.g. Read, Bash) for tool events.
     var value: String
     let detail: String?
 
@@ -217,7 +219,9 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         return [ChatTranscriptPiece(id: "\(id)-legacy", kind: .text, value: content, detail: nil)]
     }
 
-    /// Joined text segments for persistence / search parity.
+    /// Joined answer text for persistence / search parity. Reasoning and
+    /// refusal chunks remain labeled transcript pieces instead of becoming
+    /// anonymous assistant answer text.
     static func joinedText(from pieces: [ChatTranscriptPiece]) -> String {
         pieces.filter { $0.kind == .text }.map(\.value).joined()
     }
@@ -239,7 +243,7 @@ enum TranscriptGroup: Identifiable {
     }
 
     /// Partitions transcript pieces into groups: consecutive tool pieces
-    /// become `.toolGroup`, individual `.text` pieces become `.single`.
+    /// become `.toolGroup`, individual prose/safety-labeled pieces become `.single`.
     static func group(_ transcript: [ChatTranscriptPiece]) -> [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
         var pendingTools: [ChatTranscriptPiece] = []
@@ -248,7 +252,7 @@ enum TranscriptGroup: Identifiable {
             switch piece.kind {
             case .toolUse, .toolResult:
                 pendingTools.append(piece)
-            case .text:
+            case .text, .reasoning, .refusal:
                 if !pendingTools.isEmpty {
                     groups.append(.toolGroup(pendingTools))
                     pendingTools = []

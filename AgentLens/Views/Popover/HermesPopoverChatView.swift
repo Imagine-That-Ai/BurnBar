@@ -655,6 +655,8 @@ private struct HermesPopoverBubble: View {
         return pieces.map { piece in
             switch piece.kind {
             case .text: return piece.value
+            case .reasoning: return "Reasoning\n\(piece.value)"
+            case .refusal: return "Refusal\n\(piece.value)"
             case .toolUse: return "⟨\(piece.value)\(piece.detail.map { ": \($0)" } ?? "")⟩"
             case .toolResult: return piece.detail ?? piece.value
             }
@@ -715,50 +717,73 @@ private struct HermesPopoverBubble: View {
                     case .toolGroup(let pieces):
                         popoverToolGroupStrip(pieces)
                     case .single(let piece):
-                        let isLast = piece.id == transcript.last(where: { $0.kind == .text })?.id
-                        let display = piece.value + (isStreaming && isLast ? "▍" : "")
-                        // Keep popover rendering in lockstep with the full chat
-                        // surface: atom chips should appear while the text streams.
-                        let useAtomRendering = !display.isEmpty
-                        if !display.isEmpty {
-                            Group {
-                                if useAtomRendering {
-                                    HermesRichBubble(text: display, baseSize: 12)
-                                        .frame(maxWidth: 260, alignment: .leading)
-                                } else {
-                                    Text(display)
-                                        .font(DesignSystem.Typography.caption)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                        .textSelection(.enabled)
-                                }
-                            }
-                            .padding(.horizontal, DesignSystem.Spacing.sm + 2)
-                            .padding(.vertical, DesignSystem.Spacing.xs + 3)
-                            .background {
-                                ZStack {
-                                    UnevenRoundedRectangle(
-                                        topLeadingRadius: 4,
-                                        bottomLeadingRadius: 14,
-                                        bottomTrailingRadius: 14,
-                                        topTrailingRadius: 14,
-                                        style: .continuous
-                                    )
-                                    .fill(DesignSystem.Colors.surface)
-
-                                    UnevenRoundedRectangle(
-                                        topLeadingRadius: 4,
-                                        bottomLeadingRadius: 14,
-                                        bottomTrailingRadius: 14,
-                                        topTrailingRadius: 14,
-                                        style: .continuous
-                                    )
-                                    .strokeBorder(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
-                                }
-                            }
+                        let lastProseID = transcript.last { item in
+                            item.kind == .text || item.kind == .reasoning || item.kind == .refusal
+                        }?.id
+                        let display = piece.value + (isStreaming && piece.id == lastProseID ? "▍" : "")
+                        switch piece.kind {
+                        case .text:
+                            popoverProseBubble(display)
+                        case .reasoning, .refusal:
+                            popoverSafetyLabeledBubble(kind: piece.kind, text: display)
+                        case .toolUse, .toolResult:
+                            EmptyView()
                         }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func popoverProseBubble(_ display: String) -> some View {
+        if !display.isEmpty {
+            HermesRichBubble(text: display, baseSize: 12)
+                .frame(maxWidth: 260, alignment: .leading)
+                .padding(.horizontal, DesignSystem.Spacing.sm + 2)
+                .padding(.vertical, DesignSystem.Spacing.xs + 3)
+                .background {
+                    ZStack {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 4,
+                            bottomLeadingRadius: 14,
+                            bottomTrailingRadius: 14,
+                            topTrailingRadius: 14,
+                            style: .continuous
+                        )
+                        .fill(DesignSystem.Colors.surface)
+
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 4,
+                            bottomLeadingRadius: 14,
+                            bottomTrailingRadius: 14,
+                            topTrailingRadius: 14,
+                            style: .continuous
+                        )
+                        .strokeBorder(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func popoverSafetyLabeledBubble(kind: ChatTranscriptPiece.Kind, text: String) -> some View {
+        if !text.isEmpty {
+            let title = kind == .reasoning ? "Reasoning" : "Refusal"
+            let accent = kind == .reasoning ? DesignSystem.Colors.textMuted : DesignSystem.Colors.warning
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(accent)
+                Text(text)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .textSelection(.enabled)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.sm + 2)
+            .padding(.vertical, DesignSystem.Spacing.xs + 3)
+            .background(accent.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
         }
     }
 
@@ -810,7 +835,7 @@ private struct HermesPopoverBubble: View {
                     result: resultText,
                     isRunning: isStreaming && piece.id == lastUnpairedToolUseID
                 ))
-            case .toolResult, .text:
+            case .toolResult, .text, .reasoning, .refusal:
                 break
             }
             index += 1

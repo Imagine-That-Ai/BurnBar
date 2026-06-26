@@ -463,8 +463,12 @@ struct OpenAICompatibleSSEParser {
 
         for event in result.events {
             switch event {
-            case .messageChunk(let text), .reasoningChunk(let text), .refusalChunk(let text):
+            case .messageChunk(let text):
                 events.append(.text(text))
+            case .reasoningChunk(let text):
+                events.append(.reasoning(text))
+            case .refusalChunk(let text):
+                events.append(.refusal(text))
             case .toolCallFinished(_, let name, let arguments):
                 events.append(.toolUse(name: name, detail: summarizeToolArguments(arguments)))
             case .toolResult(_, let name, let detail):

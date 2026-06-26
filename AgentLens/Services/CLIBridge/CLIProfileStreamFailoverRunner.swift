@@ -192,7 +192,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
 
     private static func blocksFailoverReplay(_ event: CLIChatStreamEvent) -> Bool {
         switch event {
-        case .text(let chunk):
+        case .text(let chunk), .reasoning(let chunk), .refusal(let chunk):
             return chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         case .toolUse(let name, let detail):
             return !(name == "Codex" && detail == "Thinking…")

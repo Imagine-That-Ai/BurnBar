@@ -16,6 +16,35 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         XCTAssertEqual(record.transcriptPieces.count, 2)
     }
 
+    func testChatMessageRecord_joinedTextExcludesLabeledReasoningAndRefusal() {
+        let pieces = [
+            ChatTranscriptPiece(kind: .reasoning, value: "private chain scratchpad"),
+            ChatTranscriptPiece(kind: .text, value: "Safe answer."),
+            ChatTranscriptPiece(kind: .refusal, value: "I cannot help with that.")
+        ]
+
+        XCTAssertEqual(ChatMessageRecord.joinedText(from: pieces), "Safe answer.")
+    }
+
+    func testChatMessageRecord_codablePreservesLabeledTranscriptPieces() throws {
+        let record = ChatMessageRecord(
+            id: "assistant-labeled",
+            role: .assistant,
+            content: "Safe answer.",
+            transcriptPieces: [
+                ChatTranscriptPiece(id: "r1", kind: .reasoning, value: "thinking"),
+                ChatTranscriptPiece(id: "t1", kind: .text, value: "Safe answer."),
+                ChatTranscriptPiece(id: "f1", kind: .refusal, value: "No.")
+            ]
+        )
+
+        let data = try JSONEncoder().encode(record)
+        let decoded = try JSONDecoder().decode(ChatMessageRecord.self, from: data)
+
+        XCTAssertEqual(decoded.transcriptPieces.map(\.kind), [.reasoning, .text, .refusal])
+        XCTAssertEqual(decoded.displayTranscript[0].value, "thinking")
+    }
+
     func testChatMessageRecord_arrayMutationInPlace() {
         var records: [ChatMessageRecord] = [
             ChatMessageRecord(role: .user, content: "Q"),
