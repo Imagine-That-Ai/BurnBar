@@ -103,6 +103,37 @@ final class InsightBriefStartupTests: XCTestCase {
         XCTAssertEqual(preference.explicitModel?.egressTier, .localOnly)
     }
 
+    func test_hermesInsightAdapterRequiresBearerToken() {
+        let adapter = InsightsMacEnvironment.makeHermesInsightAdapter(
+            environment: [:],
+            bearerToken: "   "
+        )
+
+        XCTAssertNil(adapter)
+    }
+
+    func test_hermesInsightAdapterAddsBearerAuthorizationHeader() throws {
+        let adapter = try XCTUnwrap(InsightsMacEnvironment.makeHermesInsightAdapter(
+            environment: [:],
+            bearerToken: "  local-relay-token  "
+        ))
+        let transport = try XCTUnwrap(adapter.transport as? HermesInsightHTTPTransport)
+
+        XCTAssertEqual(transport.baseURL.absoluteString, "http://127.0.0.1:8642")
+        XCTAssertEqual(transport.authorizationHeader, "Bearer local-relay-token")
+    }
+
+    func test_hermesInsightAdapterKeepsAuthorizationForEnvironmentBaseURL() throws {
+        let adapter = try XCTUnwrap(InsightsMacEnvironment.makeHermesInsightAdapter(
+            environment: ["HERMES_BASE_URL": " http://127.0.0.1:9753 "],
+            bearerToken: "relay-token"
+        ))
+        let transport = try XCTUnwrap(adapter.transport as? HermesInsightHTTPTransport)
+
+        XCTAssertEqual(transport.baseURL.absoluteString, "http://127.0.0.1:9753")
+        XCTAssertEqual(transport.authorizationHeader, "Bearer relay-token")
+    }
+
     func test_fetchSessionLogSummaries_omitsTranscriptBodies() async throws {
         let store = try makeInMemoryStore()
         try await store.upsertConversation(
