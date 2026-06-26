@@ -1,6 +1,7 @@
 package com.openburnbar.data.hermes
 
 import com.openburnbar.irohrelay.HermesStreamEvent
+import java.net.URI
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -28,7 +29,6 @@ import org.json.JSONObject
  *   - trailing `/v1` paths and `/health` stripped so callers can append them safely
  */
 object HermesProtocol {
-    private const val URL_SCHEME_SUFFIX_LENGTH = 3
     private const val IPV4_OCTET_COUNT = 4
     private const val RFC1918_CLASS_A_FIRST_OCTET = 10
     private const val RFC1918_CLASS_B_FIRST_OCTET = 172
@@ -63,39 +63,42 @@ object HermesProtocol {
      */
     fun validatedBaseURL(raw: String?): String? {
         val normalized = normalizeBaseURL(raw) ?: return null
-        val schemeEnd = normalized.indexOf("://")
-        if (schemeEnd < 0) return null
-        val scheme = normalized.substring(0, schemeEnd).lowercase()
-        val rest = normalized.substring(schemeEnd + URL_SCHEME_SUFFIX_LENGTH)
-        val hostPart = rest.substringBefore('/').substringBefore(':').lowercase()
-        if (rest.isEmpty() || hostPart.isEmpty()) return null
-        return when (scheme) {
+        val endpoint = parseEndpointAuthority(normalized) ?: return null
+        return when (endpoint.scheme) {
             "https" -> normalized
-            "http" -> normalized.takeIf { isLocalOrPrivateHost(hostPart) }
+            "http" -> normalized.takeIf { isLocalOrPrivateHost(endpoint.host) }
             else -> null
         }
     }
 
     fun validatedLocalOrPrivateBaseURL(raw: String?): String? {
         val normalized = normalizeBaseURL(raw) ?: return null
-        val schemeEnd = normalized.indexOf("://")
-        if (schemeEnd < 0) return null
-        val scheme = normalized.substring(0, schemeEnd).lowercase()
-        val rest = normalized.substring(schemeEnd + URL_SCHEME_SUFFIX_LENGTH)
-        val hostPart = rest.substringBefore('/').substringBefore(':').lowercase()
-        if (rest.isEmpty() || hostPart.isEmpty() || !isLocalOrPrivateHost(hostPart)) return null
-        return when (scheme) {
+        val endpoint = parseEndpointAuthority(normalized) ?: return null
+        if (!isLocalOrPrivateHost(endpoint.host)) return null
+        return when (endpoint.scheme) {
             "http", "https" -> normalized
             else -> null
         }
+    }
+
+    private data class ParsedEndpointAuthority(val scheme: String, val host: String)
+
+    private fun parseEndpointAuthority(normalized: String): ParsedEndpointAuthority? {
+        val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
+        val scheme = uri.scheme?.lowercase() ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        if (uri.rawUserInfo != null || uri.rawAuthority.isNullOrBlank() || host.isBlank()) return null
+        return ParsedEndpointAuthority(scheme = scheme, host = host)
     }
 
     /** True when [host] is `localhost`, an IPv4 loopback, or an RFC1918 LAN address. */
     fun isLocalOrPrivateHost(host: String): Boolean {
         if (host == "localhost") return true
         if (host == "127.0.0.1" || host == "::1") return true
-        val parts = host.split('.').mapNotNull { it.toIntOrNull() }
-        if (parts.size != IPV4_OCTET_COUNT || parts.any { it !in 0..MAX_IPV4_OCTET }) return false
+        val labels = host.split('.')
+        if (labels.size != IPV4_OCTET_COUNT) return false
+        val parts = labels.map { it.toIntOrNull() ?: return false }
+        if (parts.any { it !in 0..MAX_IPV4_OCTET }) return false
         return parts[0] == RFC1918_CLASS_A_FIRST_OCTET ||
             parts[0] == RFC1918_CLASS_B_FIRST_OCTET && parts[1] in RFC172_SUBNET_MIN..RFC172_SUBNET_MAX ||
             parts[0] == RFC1918_CLASS_C_FIRST_OCTET && parts[1] == RFC1918_CLASS_C_SECOND_OCTET
