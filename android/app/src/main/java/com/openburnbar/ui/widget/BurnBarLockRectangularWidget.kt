@@ -13,10 +13,8 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.padding
-import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -31,7 +29,7 @@ import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 object BurnBarLockRectangularWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         BurnBarWidgetSnapshotStore.bind(context)
-        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.preview
+        val snap = BurnBarWidgetSnapshotStore.read(context) ?: BurnBarWidgetSnapshot.unavailable
         provideContent { RectangularContent(snap) }
     }
 }
@@ -42,6 +40,7 @@ class BurnBarLockRectangularWidgetReceiver : GlanceAppWidgetReceiver() {
 
 @Composable
 private fun RectangularContent(snap: BurnBarWidgetSnapshot) {
+    val presentation = snap.lockScreenPresentation()
     Row(
         modifier =
         GlanceModifier
@@ -52,7 +51,7 @@ private fun RectangularContent(snap: BurnBarWidgetSnapshot) {
     ) {
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
-                text = formatCost(snap.heroTotalCost),
+                text = presentation.title,
                 style =
                 TextStyle(
                     fontSize = 19.sp,
@@ -62,7 +61,7 @@ private fun RectangularContent(snap: BurnBarWidgetSnapshot) {
                 maxLines = 1,
             )
             Text(
-                text = "${formatTokensCompact(snap.heroTotalTokens)} tokens",
+                text = presentation.detail,
                 style =
                 TextStyle(
                     fontSize = 10.sp,
@@ -71,11 +70,6 @@ private fun RectangularContent(snap: BurnBarWidgetSnapshot) {
                 ),
                 maxLines = 1,
             )
-        }
-        Spacer(modifier = GlanceModifier.width(6.dp))
-        val top = snap.topProviders.firstOrNull()
-        if (!top.isNullOrBlank()) {
-            WidgetProviderPill(name = top, tokens = snap.topProviderTokens.firstOrNull())
         }
     }
 }

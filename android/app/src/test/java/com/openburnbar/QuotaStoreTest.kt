@@ -87,6 +87,20 @@ class QuotaStoreTest {
     }
 
     @Test
+    fun `load clears quota state when auth user is signed out`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws FirestoreRepository.NotSignedInException()
+
+        val store = QuotaStore(mockRepo)
+        store.load()
+        advanceUntilIdle()
+
+        assertEquals("Sign in required to load your dashboard.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+        assertEquals(emptyList<com.openburnbar.data.models.ProviderAccount>(), store.accounts.value)
+    }
+
+    @Test
     fun `refresh surfaces Firestore permission errors instead of crashing main dispatcher`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
         coEvery { mockRepo.fetchQuotaSnapshots() } throws firestorePermissionDenied()
@@ -97,6 +111,20 @@ class QuotaStoreTest {
 
         assertEquals("Missing or insufficient permissions.", store.error.value)
         assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+    }
+
+    @Test
+    fun `refresh clears quota state when auth user is signed out`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws FirestoreRepository.NotSignedInException()
+
+        val store = QuotaStore(mockRepo)
+        store.refresh()
+        advanceUntilIdle()
+
+        assertEquals("Sign in required to load your dashboard.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+        assertEquals(emptyList<com.openburnbar.data.models.ProviderAccount>(), store.accounts.value)
     }
 
     private fun firestorePermissionDenied(): FirebaseException = mockk {

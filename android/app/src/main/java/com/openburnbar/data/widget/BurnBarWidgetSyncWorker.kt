@@ -44,7 +44,8 @@ class BurnBarWidgetSyncWorker(
     override suspend fun doWork(): Result {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
-            // Not signed in — leave the placeholder showing.
+            BurnBarWidgetSnapshotStore.clear(applicationContext)
+            refreshAllReceivers(applicationContext)
             return Result.success()
         }
 
@@ -52,7 +53,7 @@ class BurnBarWidgetSyncWorker(
         val rollups = runCatching { repo.fetchRollups() }.getOrNull() ?: UsageRollups()
         val snap = buildSnapshot(rollups)
 
-        BurnBarWidgetSnapshotStore.write(applicationContext, snap)
+        BurnBarWidgetSnapshotStore.writeNow(applicationContext, snap)
         refreshAllReceivers(applicationContext)
         return Result.success()
     }

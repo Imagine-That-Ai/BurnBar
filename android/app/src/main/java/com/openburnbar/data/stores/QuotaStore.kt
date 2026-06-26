@@ -67,6 +67,10 @@ class QuotaStore(
                 _error.value = null
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: FirestoreRepository.NotSignedInException) {
+                _snapshots.value = emptyList()
+                _accounts.value = emptyList()
+                _error.value = e.message ?: "Sign in required."
             } catch (e: FirebaseException) {
                 _error.value = e.message ?: e::class.simpleName
             } finally {
@@ -85,6 +89,10 @@ class QuotaStore(
                 _error.value = null
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: FirestoreRepository.NotSignedInException) {
+                _snapshots.value = emptyList()
+                _accounts.value = emptyList()
+                _error.value = e.message ?: "Sign in required."
             } catch (e: FirebaseException) {
                 _error.value = e.message ?: e::class.simpleName
             } finally {
@@ -102,7 +110,13 @@ class QuotaStore(
                 // Firestore listener errors must NEVER reach
                 // Dispatchers.Main.immediate as unhandled exceptions.
                 repo.listenToQuotaSnapshotUpdates()
-                    .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                    .catch { e ->
+                        if (e is FirestoreRepository.NotSignedInException) {
+                            _snapshots.value = emptyList()
+                            _accounts.value = emptyList()
+                        }
+                        _error.value = e.message ?: e::class.simpleName
+                    }
                     .collect { update ->
                         val incoming = update.snapshots.dedupeFresh()
                         _snapshots.value =
