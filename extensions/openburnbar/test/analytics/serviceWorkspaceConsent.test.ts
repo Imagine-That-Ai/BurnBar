@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 interface ConfigurationChangeEvent {
   affectsConfiguration(setting: string): boolean;
@@ -22,6 +25,24 @@ const vscodeState = vi.hoisted(() => {
   };
   return state;
 });
+
+function objectProperty(value: unknown, key: string): unknown {
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
+}
+
+function analyticsConsentScopeFromManifest(): unknown {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const manifestPath = join(here, '..', '..', 'package.json');
+  const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const contributes = objectProperty(manifest, 'contributes');
+  const configuration = objectProperty(contributes, 'configuration');
+  const properties = objectProperty(configuration, 'properties');
+  const analyticsSetting = objectProperty(properties, PROMPT_SETTING);
+  return objectProperty(analyticsSetting, 'scope');
+}
 
 vi.mock(
   'vscode',
@@ -142,5 +163,9 @@ describe('OpenBurnBarAnalyticsService global opt-in boundary', () => {
 
     expect(storage.get(CONSENT_STORAGE_KEY)).toBeUndefined();
     expect(storage.get(PROMPT_SEEN_KEY)).toBeUndefined();
+  });
+
+  it('declares the analytics opt-in as user-scoped in the extension manifest', () => {
+    expect(analyticsConsentScopeFromManifest()).toBe('application');
   });
 });
