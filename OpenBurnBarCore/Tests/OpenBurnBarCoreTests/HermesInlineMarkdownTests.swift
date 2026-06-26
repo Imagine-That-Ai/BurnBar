@@ -104,6 +104,33 @@ final class HermesInlineMarkdownTests: XCTestCase {
         XCTAssertEqual(runs.map(\.text).joined(), "dangling **bold\nnever closes**")
     }
 
+    func testMarkerHeavyLineFallsBackLiteral() {
+        let adversarial = String(repeating: "*a", count: 600)
+        let runs = bodyRuns(adversarial)
+
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].text, adversarial)
+        XCTAssertEqual(runs[0].style, [])
+    }
+
+    func testOversizedInlineLineFallsBackLiteral() {
+        let prefix = "**"
+        let body = String(repeating: "a", count: 8_200)
+        let oversized = "\(prefix)\(body)\(prefix)"
+        let runs = bodyRuns(oversized)
+
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].text, oversized)
+        XCTAssertEqual(runs[0].style, [])
+    }
+
+    func testBoundedParserStillStylesNormalMarkdown() {
+        let runs = bodyRuns("Normal **bold** and *italic* text")
+
+        XCTAssertEqual(runs.map(\.text), ["Normal ", "bold", " and ", "italic", " text"])
+        XCTAssertEqual(runs.map(\.style), [[], .bold, [], .italic, []])
+    }
+
     // MARK: - Headings
 
     func testHeadingLineRendersBoldWithoutHashes() {
