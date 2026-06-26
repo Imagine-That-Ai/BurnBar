@@ -21,6 +21,7 @@ extension BurnBarHTTPGatewayServer {
     func attemptCrossVendorDegradeForChat(
         bodyData: Data,
         requestSignature: String,
+        accountingRequestID: String,
         requestedModelID: String,
         routeLogStartedAt: Date,
         requestPath: String,
@@ -75,6 +76,7 @@ extension BurnBarHTTPGatewayServer {
                 requestedCanonicalModelID: requestedCanonicalModelID,
                 bodyData: bodyData,
                 requestSignature: requestSignature,
+                accountingRequestID: accountingRequestID,
                 logContext: logContext,
                 priorAttempts: priorAttempts,
                 attempts: &attempts
@@ -97,11 +99,12 @@ extension BurnBarHTTPGatewayServer {
         requestedCanonicalModelID: String?,
         bodyData: Data,
         requestSignature: String,
+        accountingRequestID: String,
         logContext: GatewayRequestContext,
         priorAttempts: [BurnBarProxyRouteAttempt],
         attempts: inout [BurnBarProxyRouteAttempt]
     ) async -> GatewayDegradeAttemptResult? {
-        let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+        let idempotencyKey = usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
         let attemptStartedAt = Date()
         do {
             logger.notice(

@@ -134,6 +134,7 @@ extension BurnBarHTTPGatewayServer {
     struct GatewayDegradeRequest {
         let bodyData: Data
         let requestSignature: String
+        let accountingRequestID: String
         let modelID: String
         let startedAt: Date
         let requestPath: String
@@ -178,6 +179,7 @@ extension BurnBarHTTPGatewayServer {
         let wantsStream: Bool
         let resolvedVariant: BurnBarModelVariant?
         let requestSignature: String
+        let accountingRequestID: String
         let requestedModel: GatewayRequestedModel
         let logContext: GatewayRequestContext
     }

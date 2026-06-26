@@ -281,7 +281,7 @@ extension BurnBarHTTPGatewayServer {
         requestSignature: String,
         route: BurnBarProviderRoute
     ) -> String {
-        usageIdempotencyKey(requestSignature: requestSignature, route: route)
+        usageIdempotencyKey(accountingRequestID: requestSignature, route: route)
     }
 
     /// Record one usage event + one route-log row for a panel/judge sub-call,
