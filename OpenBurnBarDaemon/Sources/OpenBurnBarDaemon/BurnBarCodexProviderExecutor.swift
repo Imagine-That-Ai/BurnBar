@@ -57,66 +57,59 @@ public struct BurnBarCodexSystemProcessRunner: BurnBarCodexProcessRunning {
         }.value
     }
 
-    private static func defaultCodexExecutableURL() -> URL {
-        var candidates = userCLIPathEntries()
-            .map { URL(fileURLWithPath: $0).appendingPathComponent("codex").path }
-        candidates.append(contentsOf: [
-            "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
-            "/usr/bin/codex"
-        ])
-        let pathCandidates = (ProcessInfo.processInfo.environment["PATH"] ?? "")
-            .split(separator: ":")
-            .map { URL(fileURLWithPath: String($0)).appendingPathComponent("codex").path }
-        candidates.append(contentsOf: pathCandidates)
-        for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
-            return URL(fileURLWithPath: candidate)
+    private static func defaultCodexExecutableURL() -> URL? {
+        for directory in trustedCLIPathEntries() {
+            let candidate = URL(fileURLWithPath: directory).appendingPathComponent("codex")
+            guard FileManager.default.isExecutableFile(atPath: candidate.path) else { continue }
+            let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
+            if isTrustedExecutablePath(resolved.path) {
+                return candidate
+            }
         }
-        return URL(fileURLWithPath: "/usr/bin/env")
+        return nil
     }
 
-    fileprivate static func userCLIPathEntries() -> [String] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        var entries = [
-            home.appendingPathComponent(".local/bin").path
-        ]
-        entries.append(contentsOf: nvmNodeBinDirectories(home: home))
-        entries.append(contentsOf: [
+    static func trustedCLIPathEntries(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String] {
+        let entries = [
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
             "/bin"
-        ])
+        ]
         var seen = Set<String>()
-        return entries.filter { seen.insert($0).inserted }
+        return entries
+            .filter { !isDescendantOrEqual(path: $0, root: home.path) }
+            .filter { seen.insert($0).inserted }
     }
 
-    private static func nvmNodeBinDirectories(home: URL) -> [String] {
-        let versionsURL = home.appendingPathComponent(".nvm/versions/node", isDirectory: true)
-        guard let names = try? FileManager.default.contentsOfDirectory(
-            atPath: versionsURL.path
-        ) else { return [] }
-        return names
-            .filter { !$0.hasPrefix(".") }
-            .sorted { $0.localizedStandardCompare($1) == .orderedDescending }
-            .map { versionsURL.appendingPathComponent($0).appendingPathComponent("bin").path }
+    private static func isTrustedExecutablePath(_ path: String) -> Bool {
+        trustedCLIPathEntries().contains { isDescendantOrEqual(path: path, root: $0) }
+    }
+
+    private static func isDescendantOrEqual(path: String, root: String) -> Bool {
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let normalizedRoot = URL(fileURLWithPath: root).standardizedFileURL.path
+        return normalizedPath == normalizedRoot || normalizedPath.hasPrefix(normalizedRoot + "/")
     }
 
     private static func runSynchronously(
-        executableURL: URL,
+        executableURL: URL?,
         arguments: [String],
         environment: [String: String],
         workingDirectory: URL,
         timeout: TimeInterval
     ) throws -> BurnBarCodexProcessResult {
-        let process = Process()
-        if executableURL.lastPathComponent == "env" {
-            process.executableURL = executableURL
-            process.arguments = ["codex"] + arguments
-        } else {
-            process.executableURL = executableURL
-            process.arguments = arguments
+        guard let executableURL else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                503,
+                "Codex executable was not found in trusted install locations."
+            )
         }
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
         process.environment = environment
         process.currentDirectoryURL = workingDirectory
 
@@ -346,8 +339,8 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             }
         }
         environment["PATH"] = mergedSearchPath(
-            preferredEntries: BurnBarCodexSystemProcessRunner.userCLIPathEntries(),
-            existingPath: environment["PATH"]
+            preferredEntries: BurnBarCodexSystemProcessRunner.trustedCLIPathEntries(),
+            existingPath: nil
         )
         environment["HOME"] = NSHomeDirectory()
         // Codex authenticates from its local login (`~/.codex/auth.json`) when no
