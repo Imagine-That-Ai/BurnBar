@@ -78,6 +78,23 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertFalse(SmartHubBridgeServer.shared.bridgeAccessToken.isEmpty)
     }
 
+    func test_controllerPersistsBridgeURLsWithRuntimeAccessToken() throws {
+        let suiteName = "SmartHubBridgeControllerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        let controller = SmartHubBridgeController(settingsManager: settings, quotaService: nil)
+        let staleTokenURL = try XCTUnwrap(
+            URL(string: "http://127.0.0.1:8787/render.html?display=nest&bridgeToken=stale")
+        )
+
+        controller.persistPublishedBridgeURLsForTesting(dashboardURL: staleTokenURL)
+
+        try assertPersistedBridgeURL(settings.smartHubQuotaDashboardURL, path: "/render.html")
+        try assertPersistedBridgeURL(settings.smartHubQuotaRefreshURL, path: "/refresh")
+        try assertPersistedBridgeURL(settings.smartHubQuotaVoiceRefreshURL, path: "/voice-refresh")
+    }
+
     func testRedactedBridgeURLRemovesAccessToken() throws {
         let raw = URL(string: "http://127.0.0.1:8787/render.html?bridgeToken=secret&x=1")!
         let redacted = SmartHubBridgeServer.shared.redactedBridgeURL(raw)
@@ -382,5 +399,14 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertNil(decoded.displayConfig)
         XCTAssertNil(decoded.displayOrder)
         XCTAssertEqual(decoded.schemaVersion, 2)
+    }
+
+    private func assertPersistedBridgeURL(_ rawURL: String, path: String) throws {
+        let url = try XCTUnwrap(URL(string: rawURL))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(components.path, path)
+        XCTAssertEqual(query["display"], "nest")
+        XCTAssertEqual(query["bridgeToken"], SmartHubBridgeServer.shared.bridgeAccessToken)
     }
 }
