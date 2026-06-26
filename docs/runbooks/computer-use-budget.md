@@ -6,18 +6,20 @@ This runbook fires when the hourly `evaluateComputerUseBudget` Cloud Function fl
 
 ## Thresholds
 
-| Level | Projected month-end | Active envelope |
-|---|---|---|
-| Normal | < $1500 | 50 actions/run · 200/day · 4 sessions/day · $5/user/day |
-| Soft cap | ≥ $1500 | 25 actions/run · 100/day · 2 sessions/day · $2.50/user/day |
-| Hard cap | ≥ $2500 | 0 (active sessions terminate within 60 s) |
+| Level    | Projected month-end | Active envelope                                            |
+| -------- | ------------------- | ---------------------------------------------------------- |
+| Normal   | < $1500             | 50 actions/run · 200/day · 4 sessions/day · $5/user/day    |
+| Soft cap | ≥ $1500             | 25 actions/run · 100/day · 2 sessions/day · $2.50/user/day |
+| Hard cap | ≥ $2500             | 0 (active sessions terminate within 60 s)                  |
 
 The live Remote Config keys are `computer_use_budget_soft_usd=1500`, `computer_use_budget_hard_usd=2500`, and `computer_use_kill_switch=false`. Older `_soft_cap_usd` / `_hard_cap_usd` parameter names are still accepted as compatibility aliases, but the commercial launch gate requires the shorter `*_usd` names.
+
+`evaluateComputerUseBudget` projects month-end from `ops/computer_use_session_daily_rollups/days/*`. In those rollups, `visionModelSpendUSD` is the actual sanitized operator spend used for the monthly budget, while `cappedVisionModelSpendUSD` is only the per-user daily-envelope view. Do not use the capped field for global budget decisions.
 
 ## On soft cap fire
 
 1. Confirm the firing in Firestore: read `ops/computer_use_budget_status/events/` (newest docs by `updatedAt`) and operator metrics at `ops/computer_use_budget_status/metrics/current`.
-2. Read `ops/computer_use_daily_rollups/days/<yesterday>` for the per-tool counts that drove the projection.
+2. Read `ops/computer_use_session_daily_rollups/days/<yesterday>` for the per-tool counts and actual spend that drove the projection.
 3. Identify any abusive user(s) via `users/*/computer_use_actions/*` aggregation.
 4. If the projection is driven by genuine demand, expand the SKU price or add an `additional_computer_use_actions` IAP. If it is driven by a single user, downgrade their entitlement to inactive and contact them.
 5. Soft cap is transparent to the user — they see a sidebar notice "Computer Use ran tight today; we lowered today's cap to keep the lights on" but their session does not interrupt.

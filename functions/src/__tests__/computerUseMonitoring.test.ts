@@ -45,4 +45,13 @@ describe("computer use monitoring rollup guards", () => {
     expect(__testing__.boundedVisionSpendContribution(0, Number.POSITIVE_INFINITY)).toBe(0);
     expect(__testing__.boundedVisionSpendContribution(0, -1)).toBe(0);
   });
+
+  it("keeps actual operator spend separate from the capped per-user envelope", () => {
+    const perUserCap = __testing__.limits.maxRollupVisionSpendUSDPerUserPerDay;
+    const perActionCap = __testing__.limits.maxRollupVisionSpendUSDPerAction;
+
+    expect(__testing__.sanitizedVisionSpendContribution(perUserCap + 7)).toBe(perUserCap + 7);
+    expect(__testing__.boundedVisionSpendContribution(0, perUserCap + 7)).toBe(perUserCap);
+    expect(__testing__.sanitizedVisionSpendContribution(perActionCap + 100)).toBe(perActionCap);
+  });
 });

@@ -87,11 +87,20 @@ async function sumMonthToDate(now: Date): Promise<MonthSpend> {
 
   let total = 0;
   for (const doc of snap.docs) {
-    const data = doc.data();
-    total += numberField(data, "visionModelSpendUSD") ?? 0;
+    total += budgetedRollupVisionSpendUSD(doc.data());
   }
   const elapsed = Math.max(1, Math.min(now.getUTCDate(), daysTotal));
   return { monthToDateUSD: total, daysElapsed: elapsed, daysInMonth: daysTotal };
+}
+
+function budgetedRollupVisionSpendUSD(data: Record<string, unknown>): number {
+  const actualSpend = numberField(data, "visionModelSpendUSD");
+  if (actualSpend != null && actualSpend >= 0) return actualSpend;
+
+  const legacyCappedSpend = numberField(data, "cappedVisionModelSpendUSD");
+  if (legacyCappedSpend != null && legacyCappedSpend >= 0) return legacyCappedSpend;
+
+  return 0;
 }
 
 function envelope(
@@ -127,6 +136,11 @@ function pickLevel(projected: number, tunings: BudgetTunings): ComputerUseBudget
   if (projected >= tunings.softCapUSD) return "soft_cap";
   return "normal";
 }
+
+export const __testing__ = {
+  budgetedRollupVisionSpendUSD,
+  pickLevel,
+};
 
 export const evaluateComputerUseBudget = onSchedule(
   {
