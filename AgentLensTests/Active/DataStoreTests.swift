@@ -337,6 +337,61 @@ final class DataStoreTests: XCTestCase {
         XCTAssertNil(deletedSnapshot)
     }
 
+    func test_deleteAllIndexedConversationsClearsDerivedProjectMemorySnapshots() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date()
+        let snapshot = ProjectMemorySnapshot(
+            projectSlug: "privacy-reset",
+            projectDisplayName: "Privacy Reset",
+            generatedAt: now,
+            sourceSessionIDs: ["session-sensitive"],
+            sourceConversationIDs: ["conversation-sensitive"],
+            sourceWindowStart: now.addingTimeInterval(-600),
+            sourceWindowEnd: now,
+            keyFiles: ["Sources/Private.swift"],
+            keyCommands: ["private command"],
+            usageSummary: "transcript-derived private usage summary",
+            freshness: .fresh,
+            contentHash: "privacy-reset-hash",
+            schemaVersion: ProjectMemorySnapshot.currentSchemaVersion,
+            pages: [
+                ProjectMemoryPage(
+                    title: "Derived Memory",
+                    summary: "Transcript-derived summary",
+                    sections: [
+                        ProjectMemorySection(
+                            title: "Sensitive Context",
+                            body: "Transcript-derived detail that must not survive the indexed-data wipe.",
+                            citations: [
+                                ProjectMemoryCitation(
+                                    sourceID: "conversation-sensitive",
+                                    sourceKind: .conversation,
+                                    title: "Conversation source",
+                                    snippet: "Private transcript snippet",
+                                    createdAt: now
+                                )
+                            ]
+                        )
+                    ],
+                    visualIDs: []
+                )
+            ],
+            visuals: []
+        )
+
+        try await store.upsertProjectMemorySnapshot(snapshot)
+        let seededSnapshot = try await store.fetchProjectMemorySnapshot(projectSlug: "privacy-reset")
+        XCTAssertNotNil(seededSnapshot)
+
+        try await store.deleteAllIndexedConversations()
+
+        let deletedSnapshot = try await store.fetchProjectMemorySnapshot(projectSlug: "privacy-reset")
+        XCTAssertNil(deletedSnapshot)
+        let remainingSnapshots = try await store.fetchProjectMemorySnapshots()
+        XCTAssertTrue(remainingSnapshots.isEmpty)
+    }
+
     // MARK: - Helper Methods
 
     private var pastDayUsage: TokenUsage {
