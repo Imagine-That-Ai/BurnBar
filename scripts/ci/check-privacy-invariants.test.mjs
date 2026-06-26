@@ -261,6 +261,35 @@ expect(
   0,
 );
 
+expect(
+  "I5 — braced return type still scans executable body",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
+      "buildFcmCallPayload(args: { callId: string; isVideo: boolean; correlationId: string }): Record<string, string>",
+      "buildFcmCallPayload(args: { callId: string; isVideo: boolean; correlationId: string }): { payload: Record<string, string> }",
+    );
+    return f;
+  }),
+  0,
+);
+
+expect(
+  "I5 — banned key after braced return type fails",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"]
+      .replace(
+        "buildFcmCallPayload(args: { callId: string; isVideo: boolean; correlationId: string }): Record<string, string>",
+        "buildFcmCallPayload(args: { callId: string; isVideo: boolean; correlationId: string }): { payload: Record<string, string> }",
+      )
+      .replace(
+        "call_id: args.callId, correlation_id: args.correlationId",
+        "call_id: args.callId, connection_id: args.connectionId, correlation_id: args.correlationId",
+      );
+    return f;
+  }),
+  1,
+);
+
 // I5: an object spread in a payload builder can forward a banned key past the
 // literal check, so it must FAIL.
 expect(
