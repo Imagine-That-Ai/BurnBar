@@ -196,8 +196,11 @@ function req(data: Record<string, unknown>) {
 }
 
 function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
-  const runnable = callable as { run: (request: unknown) => Promise<TRes> };
-  return runnable.run(req(data));
+  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  if (typeof run !== "function") {
+    throw new Error("callable test target is missing run()");
+  }
+  return run.call(callable, req(data));
 }
 
 function ed25519Key(): { base64: string; peerNodeId: string } {

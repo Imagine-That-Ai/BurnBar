@@ -625,7 +625,7 @@ export const validateOpenTimestampsProof = onCall(
       await enforceHighRiskComputerUseCallableWithNonce(
         request,
         parsed.uid,
-        (request.data as { nonce?: unknown })?.nonce,
+        isRecord(request.data) ? request.data.nonce : undefined,
       );
       return validateComputerUseOpenTimestampsProofForRequest(parsed);
     },

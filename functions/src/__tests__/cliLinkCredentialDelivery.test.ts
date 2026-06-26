@@ -204,8 +204,9 @@ describe("CLI link credential delivery", () => {
     expect(res.getHeader("cache-control")).toBe("no-store, max-age=0");
     expect(res.getHeader("pragma")).toBe("no-cache");
     expect(res.getHeader("expires")).toBe("0");
-    const response = res.body as { deviceCode: string };
-    const stored = cliLinkStore.get(`cli_link_sessions/${response.deviceCode}`);
+    const deviceCode = res.body && typeof res.body === "object" ? Reflect.get(res.body, "deviceCode") : undefined;
+    expect(typeof deviceCode).toBe("string");
+    const stored = cliLinkStore.get(`cli_link_sessions/${deviceCode}`);
     expect(stored).toBeTruthy();
     expect(stored.deviceSecretHash).toBeUndefined();
     expect(stored.deviceSecretVerifierHash).toBe(sha256Hex(deviceSecretHash));

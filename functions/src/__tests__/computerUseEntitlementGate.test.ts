@@ -120,7 +120,11 @@ function request(data: Record<string, unknown> = {}) {
 }
 
 function run(callable: unknown, data?: Record<string, unknown>): Promise<unknown> {
-  return (callable as { run: (request: unknown) => Promise<unknown> }).run(request(data));
+  const runner = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  if (typeof runner !== "function") {
+    throw new Error("callable test target is missing run()");
+  }
+  return runner.call(callable, request(data));
 }
 
 describe("Computer Use callables require hosted Agent Control entitlement", () => {

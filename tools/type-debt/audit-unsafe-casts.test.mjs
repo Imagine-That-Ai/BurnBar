@@ -30,6 +30,26 @@ test("TypeScript scanner ignores const assertions, import aliases, comments, str
   assert.equal(report.total, 3);
 });
 
+test("TypeScript fallback scanner counts structural object and tuple assertions", async () => {
+  const repo = await fixtureRepo({
+    "src/example.ts": `
+      declare const payload: unknown;
+      const objectAssertion = payload as { id: string };
+      const tupleAssertion = payload as [string, number];
+      const literal = { ok: true } as const;
+      import { original as renamed } from "./module";
+      // const ignored = payload as { id: string };
+      const text = "payload as [string, number]";
+    `,
+  });
+
+  const report = await auditUnsafeCasts({ repoRoot: repo, tsParser: null });
+
+  assert.equal(report.scanner.tsMode, "token-fallback");
+  assert.equal(report.byKind.ts_type_assertion, 2);
+  assert.equal(report.total, 2);
+});
+
 test("Swift scanner counts force casts and force tries outside comments and strings", async () => {
   const repo = await fixtureRepo({
     "App/Example.swift": `

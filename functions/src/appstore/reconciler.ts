@@ -47,6 +47,7 @@ import { type AppleJWSVerifier, type DecodedTransaction, getAppleJWSVerifier } f
 import { getConfig } from "../config.js";
 import {
   errorMessage,
+  isRecord,
   parseEntitlementBindingDoc,
   parseHostedQuotaEntitlementDoc,
   stripUndefinedObject,
@@ -475,8 +476,8 @@ async function claimedUidHasMatchingEntitlement(
 function entitlementOriginalTransactionId(raw: unknown): string | undefined {
   const parsed = parseHostedQuotaEntitlementDoc(raw);
   if (parsed) return parsed.originalTransactionID;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !("originalTransactionID" in raw)) return undefined;
-  const original = (raw as { originalTransactionID?: unknown }).originalTransactionID;
+  if (!isRecord(raw)) return undefined;
+  const original = raw.originalTransactionID;
   return typeof original === "string" && original ? original : undefined;
 }
 

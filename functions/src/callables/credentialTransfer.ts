@@ -99,8 +99,10 @@ function requireClaimId(raw: unknown): string {
 
 function timestampMillis(raw: unknown): number | undefined {
   if (raw instanceof Timestamp) return raw.toMillis();
-  if (raw && typeof raw === "object" && typeof (raw as { toMillis?: unknown }).toMillis === "function") {
-    return (raw as { toMillis: () => number }).toMillis();
+  const toMillis = raw && typeof raw === "object" ? Reflect.get(raw, "toMillis") : undefined;
+  if (typeof toMillis === "function") {
+    const millis = toMillis.call(raw);
+    return typeof millis === "number" ? millis : undefined;
   }
   return undefined;
 }

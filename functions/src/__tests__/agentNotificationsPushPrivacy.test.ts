@@ -73,7 +73,8 @@ describe("buildFcmMessage — push privacy", () => {
 
   it("does not include thread-id in the APNs payload", () => {
     const msg = buildFcmMessage({ event: makeEvent(), device: makeDevice() });
-    const aps = (msg.apns?.payload as { aps?: Record<string, unknown> } | undefined)?.aps ?? {};
+    const payload = msg.apns?.payload;
+    const aps = payload && typeof payload === "object" ? Reflect.get(payload, "aps") : {};
     expect(aps).not.toHaveProperty("thread-id");
   });
 

@@ -76,14 +76,12 @@ vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-/**
- * Single typed seam for driving the real callables through `.run(request)`.
- * Funnelling every invocation through this helper keeps the unavoidable
- * mock-request widening to exactly one cast instead of one per call site.
- */
 function invokeCallable<TRes = unknown>(callable: unknown, request: unknown): Promise<TRes> {
-  const runnable = callable as { run: (request: unknown) => Promise<TRes> };
-  return runnable.run(request);
+  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  if (typeof run !== "function") {
+    throw new Error("callable test target is missing run()");
+  }
+  return run.call(callable, request);
 }
 
 // A vault-key-derived opaque doc id (matches projectMemoryDocID's shape:

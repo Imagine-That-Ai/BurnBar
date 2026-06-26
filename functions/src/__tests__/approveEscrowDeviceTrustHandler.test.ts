@@ -301,13 +301,13 @@ describe("approveEscrowDeviceTrust — B1 signature verification", () => {
 
   it("ACCEPTS a genuine libsignal signature and promotes the device (non-bootstrap)", async () => {
     seedNonBootstrap();
-    const result = (await approveEscrowDeviceTrust.run(
+    const result = await approveEscrowDeviceTrust.run(
       callRequest(NB.uid, {
         deviceId: NB.targetDeviceId,
         approverDeviceId: NB.approverDeviceId,
         trustChain: nbTrustChain(NB.signatureB64),
       }),
-    )) as { ok: boolean; trustState: string };
+    );
     expect(result).toMatchObject({ ok: true, trustState: "trusted" });
     const after = store.get(`users/${NB.uid}/escrow_devices/${NB.targetDeviceId}`);
     expect(after?.trustState).toBe("trusted");
@@ -361,13 +361,13 @@ describe("approveEscrowDeviceTrust — B2 bootstrap nonce hardening", () => {
   it("ACCEPTS bootstrap self-approval WITH a valid single-use nonce + genuine signature", async () => {
     seedBootstrap();
     const { nonce } = await issueHighRiskNonceForUid(BOOT.uid, Date.now());
-    const result = (await approveEscrowDeviceTrust.run(
+    const result = await approveEscrowDeviceTrust.run(
       callRequest(BOOT.uid, {
         deviceId: BOOT.deviceId,
         trustChain: bootTrustChain(BOOT.signatureB64),
         nonce,
       }),
-    )) as { ok: boolean; trustState: string };
+    );
     expect(result).toMatchObject({ ok: true, trustState: "trusted" });
     expect(store.get(`users/${BOOT.uid}/escrow_devices/${BOOT.deviceId}`)?.trustState).toBe("trusted");
   });

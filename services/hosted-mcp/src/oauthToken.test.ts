@@ -62,13 +62,12 @@ function makeDb(opts: {
   };
   const applyGrantSet = (value: unknown): void => {
     grantState.sets.push(value);
+    const refreshTokenHash =
+      value && typeof value === "object" ? Reflect.get(value, "refreshTokenHash") : undefined;
     if (
-      value &&
-      typeof value === "object" &&
-      "refreshTokenHash" in value &&
-      typeof (value as { refreshTokenHash?: unknown }).refreshTokenHash === "string"
+      typeof refreshTokenHash === "string"
     ) {
-      grantState.refreshTokenHash = (value as { refreshTokenHash: string }).refreshTokenHash;
+      grantState.refreshTokenHash = refreshTokenHash;
     }
   };
   const grantRef = {

@@ -191,8 +191,9 @@ export const verifyPasskeyRegistration = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Firebase Auth is required.");
 
-    const response = requireRegistrationResponse((request.data as { response?: unknown } | undefined)?.response);
-    const challenge = requireString((request.data as { challenge?: unknown } | undefined)?.challenge, "challenge");
+    const requestData = isRecord(request.data) ? request.data : {};
+    const response = requireRegistrationResponse(requestData.response);
+    const challenge = requireString(requestData.challenge, "challenge");
     const challengeRef = db.doc(`users/${uid}/passkey_challenges/${challenge}`);
 
     const challengeSnap = await challengeRef.get();
@@ -262,8 +263,9 @@ export const verifyPasskeyAssertion = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler("verifyPasskeyAssertion", async (request: CallableRequest) => {
     assertAppCheck(request);
-    const assertion = requireAuthenticationResponse((request.data as { assertion?: unknown } | undefined)?.assertion);
-    const challenge = requireString((request.data as { challenge?: unknown } | undefined)?.challenge, "challenge");
+    const requestData = isRecord(request.data) ? request.data : {};
+    const assertion = requireAuthenticationResponse(requestData.assertion);
+    const challenge = requireString(requestData.challenge, "challenge");
     const credentialId = assertion.id;
 
     const credentialSnap = await db

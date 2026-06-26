@@ -395,15 +395,14 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     const run = callableRun(configureKnowledgeSource);
     const sourceManifestId = "ab".repeat(32);
 
-    const result = (await run(
+    const result = await run(
       callableRequest("userConfig", { sourceKind: "repo_docs", sourceSlug: sourceManifestId }),
-    )) as {
-      sourceManifestId: string;
-      sourceSlug: string;
-    };
+    );
+    const resultSourceManifestId = Reflect.get(Object(result), "sourceManifestId");
+    const resultSourceSlug = Reflect.get(Object(result), "sourceSlug");
 
-    expect(result.sourceManifestId).toBe(sourceManifestId);
-    expect(result.sourceSlug).toBe(sourceManifestId);
+    expect(resultSourceManifestId).toBe(sourceManifestId);
+    expect(resultSourceSlug).toBe(sourceManifestId);
     const manifest = manifestRecord("userConfig", sourceManifestId);
     expect(manifest.sourceManifestId).toBe(sourceManifestId);
     expect(manifest).not.toHaveProperty("sourceSlug");

@@ -82,8 +82,8 @@ describe("chat memory provenance validators", () => {
   });
 
   it("rejects approved provenance without approvedAt", () => {
-    const missing = { ...approved };
-    delete (missing as { approvedAt?: string }).approvedAt;
+    const missing: Record<string, unknown> = { ...approved };
+    delete missing.approvedAt;
     expect(() => requireChatMemoryProvenance(missing, "provenance", "approved")).toThrow(/approvedAt/);
   });
 });

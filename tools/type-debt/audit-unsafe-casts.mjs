@@ -161,7 +161,7 @@ function typeAnnotationText(source, node) { return node?.range ? source.slice(no
 function scanTypeScriptTokens(source, filePath, reason) {
   const scrubbed = stripCommentsAndStrings(source);
   const violations = [];
-  const asPattern = /\bas\s+([A-Za-z_$][\w$]*|any|unknown|never|object)\b/g;
+  const asPattern = /\bas\s+([A-Za-z_$][\w$]*|any|unknown|never|object|\{|\[)/g;
   let match;
   while ((match = asPattern.exec(scrubbed)) !== null) {
     if (match[1] === "const" || isInsideTypeScriptImport(scrubbed, match.index)) continue;

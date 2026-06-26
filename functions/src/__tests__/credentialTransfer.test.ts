@@ -31,6 +31,12 @@ async function runCallable(exported: "createCredentialTransfer" | "consumeCreden
   return callableRunner(mod[exported])(callableRequest(uid, data));
 }
 
+function stringField(value: unknown, key: string): string {
+  const field = value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+  expect(typeof field).toBe("string");
+  return field;
+}
+
 async function expectHttpsCode(promise: Promise<unknown>, code: string): Promise<void> {
   await expect(promise).rejects.toMatchObject({ code });
 }
@@ -104,24 +110,23 @@ describe("credential transfer v2 callables", () => {
   it("claims, completes, and idempotently re-completes after local decrypt succeeds", async () => {
     await runCallable("createCredentialTransfer", { transferId: TRANSFER_ID, payload: PAYLOAD });
 
-    const claim = (await runCallable("consumeCredentialTransfer", { transferId: TRANSFER_ID })) as {
-      payload: string;
-      claimId: string;
-    };
-    expect(claim.payload).toBe(PAYLOAD);
-    expect(claim.claimId).toMatch(/^[0-9a-f-]{36}$/u);
+    const claim = await runCallable("consumeCredentialTransfer", { transferId: TRANSFER_ID });
+    const payload = stringField(claim, "payload");
+    const claimId = stringField(claim, "claimId");
+    expect(payload).toBe(PAYLOAD);
+    expect(claimId).toMatch(/^[0-9a-f-]{36}$/u);
     const claimed = store.get(path());
     expect(claimed).toMatchObject({
       state: "claimed",
       claimedByUid: ALICE_UID,
     });
-    expect(claimed?.claimIdHash).not.toBe(claim.claimId);
+    expect(claimed?.claimIdHash).not.toBe(claimId);
 
-    await expect(runCallable("completeCredentialTransfer", { transferId: TRANSFER_ID, claimId: claim.claimId })).resolves.toEqual({
+    await expect(runCallable("completeCredentialTransfer", { transferId: TRANSFER_ID, claimId })).resolves.toEqual({
       ok: true,
       state: "consumed",
     });
-    await expect(runCallable("completeCredentialTransfer", { transferId: TRANSFER_ID, claimId: claim.claimId })).resolves.toEqual({
+    await expect(runCallable("completeCredentialTransfer", { transferId: TRANSFER_ID, claimId })).resolves.toEqual({
       ok: true,
       state: "consumed",
     });
@@ -159,29 +164,27 @@ describe("credential transfer v2 callables", () => {
       claimIdHash: "old-claim",
     });
 
-    const claim = (await runCallable("consumeCredentialTransfer", { transferId: TRANSFER_ID })) as { claimId: string };
-    expect(claim.claimId).toMatch(/^[0-9a-f-]{36}$/u);
+    const claim = await runCallable("consumeCredentialTransfer", { transferId: TRANSFER_ID });
+    const claimId = stringField(claim, "claimId");
+    expect(claimId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(store.get(path())?.claimIdHash).not.toBe("old-claim");
     expect(store.get(path())).toMatchObject({ state: "claimed", claimedByUid: ALICE_UID });
   });
 
   it("cancel releases a failed decrypt claim so the transfer can be retried", async () => {
     await runCallable("createCredentialTransfer", { transferId: OTHER_TRANSFER_ID, payload: PAYLOAD });
-    const firstClaim = (await runCallable("consumeCredentialTransfer", { transferId: OTHER_TRANSFER_ID })) as {
-      claimId: string;
-    };
+    const firstClaim = await runCallable("consumeCredentialTransfer", { transferId: OTHER_TRANSFER_ID });
+    const firstClaimId = stringField(firstClaim, "claimId");
 
     await expect(
       runCallable("cancelCredentialTransfer", {
         transferId: OTHER_TRANSFER_ID,
-        claimId: firstClaim.claimId,
+        claimId: firstClaimId,
       }),
     ).resolves.toEqual({ ok: true, state: "ready" });
     expect(store.get(path(OTHER_TRANSFER_ID))).toMatchObject({ state: "ready", consumed: false });
 
-    const secondClaim = (await runCallable("consumeCredentialTransfer", { transferId: OTHER_TRANSFER_ID })) as {
-      claimId: string;
-    };
-    expect(secondClaim.claimId).not.toBe(firstClaim.claimId);
+    const secondClaim = await runCallable("consumeCredentialTransfer", { transferId: OTHER_TRANSFER_ID });
+    expect(stringField(secondClaim, "claimId")).not.toBe(firstClaimId);
   });
 });

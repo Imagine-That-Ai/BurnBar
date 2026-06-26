@@ -74,8 +74,11 @@ function invokeCallable<TRes = unknown>(
   data: Record<string, unknown>,
   uid: string | null = UID,
 ): Promise<TRes> {
-  const runnable = callable as { run: (request: unknown) => Promise<TRes> };
-  return runnable.run(req(data, uid));
+  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  if (typeof run !== "function") {
+    throw new Error("callable test target is missing run()");
+  }
+  return run.call(callable, req(data, uid));
 }
 
 beforeEach(() => {

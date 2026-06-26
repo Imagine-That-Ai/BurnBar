@@ -93,7 +93,7 @@ export function callableRunner(candidate: unknown): (request: unknown) => Promis
   ) {
     throw new Error("callable test target is missing run()");
   }
-  const { run } = candidate as { run: (request: unknown) => Promise<unknown> };
+  const run = Reflect.get(candidate, "run");
   if (typeof run !== "function") {
     throw new Error("callable test target run property is not callable");
   }
@@ -153,10 +153,8 @@ export async function expectCallableDenial(
     if (isHarnessAssertionFailure(error)) {
       throw error;
     }
-    const code =
-      error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
-        ? (error as { code: string }).code
-        : undefined;
+    const rawCode = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
+    const code = typeof rawCode === "string" ? rawCode : undefined;
     if (strictCode) {
       if (code === expectedCode || (code && DENIAL_HTTPS_CODES[expectedCode].has(code))) {
         return;
@@ -203,17 +201,15 @@ function emptyQuery(): EmptyQuery {
 
 function isFirestoreDeleteSentinel(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as {
-    _methodName?: unknown;
-    methodName?: unknown;
-    constructor?: { name?: string };
-  };
+  const constructorValue = Reflect.get(value, "constructor");
+  const constructorName =
+    constructorValue && typeof constructorValue === "object" ? Reflect.get(constructorValue, "name") : undefined;
   return (
-    candidate._methodName === "FieldValue.delete" ||
-    candidate.methodName === "FieldValue.delete" ||
-    candidate.constructor?.name === "DeleteTransform" ||
-    candidate.constructor?.name === "DeleteFieldValueImpl" ||
-    candidate.constructor?.name === "DeleteSentinel"
+    Reflect.get(value, "_methodName") === "FieldValue.delete" ||
+    Reflect.get(value, "methodName") === "FieldValue.delete" ||
+    constructorName === "DeleteTransform" ||
+    constructorName === "DeleteFieldValueImpl" ||
+    constructorName === "DeleteSentinel"
   );
 }
 
