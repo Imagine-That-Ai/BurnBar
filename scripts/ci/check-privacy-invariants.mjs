@@ -271,6 +271,138 @@ function functionBodyCalls(body, callee) {
   );
 }
 
+function skipJsCommentOrString(source, index) {
+  const c = source[index];
+  const next = source[index + 1];
+
+  if (c === "/" && next === "/") {
+    let i = index + 2;
+    while (i < source.length && source[i] !== "\n") i += 1;
+    return i;
+  }
+
+  if (c === "/" && next === "*") {
+    let i = index + 2;
+    while (i < source.length) {
+      if (source[i] === "*" && source[i + 1] === "/") return i + 2;
+      i += 1;
+    }
+    return source.length;
+  }
+
+  if (c === '"' || c === "'" || c === "`") {
+    const quote = c;
+    let i = index + 1;
+    while (i < source.length) {
+      const ch = source[i];
+      if (ch === "\\") {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) return i + 1;
+      i += 1;
+    }
+    return source.length;
+  }
+
+  return index;
+}
+
+function skipTrivia(source, index) {
+  let i = index;
+  while (i < source.length) {
+    if (/\s/.test(source[i])) {
+      i += 1;
+      continue;
+    }
+    const skipped = skipJsCommentOrString(source, i);
+    if (
+      skipped !== i &&
+      (source[i] === "/" ||
+        source[i] === '"' ||
+        source[i] === "'" ||
+        source[i] === "`")
+    ) {
+      i = skipped;
+      continue;
+    }
+    return i;
+  }
+  return i;
+}
+
+function findMatchingBrace(source, open) {
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    const skipped = skipJsCommentOrString(source, i);
+    if (skipped !== i) {
+      i = skipped - 1;
+      continue;
+    }
+
+    const c = source[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function findFunctionBodyOpen(source, paramClose) {
+  let i = skipTrivia(source, paramClose + 1);
+  if (source[i] !== ":") return source.indexOf("{", paramClose);
+
+  i += 1;
+  let angleDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  while (i < source.length) {
+    const skipped = skipJsCommentOrString(source, i);
+    if (skipped !== i) {
+      i = skipped;
+      continue;
+    }
+
+    const c = source[i];
+    if (c === "(") parenDepth += 1;
+    else if (c === ")" && parenDepth > 0) parenDepth -= 1;
+    else if (c === "[") bracketDepth += 1;
+    else if (c === "]" && bracketDepth > 0) bracketDepth -= 1;
+    else if (c === "<") angleDepth += 1;
+    else if (c === ">" && angleDepth > 0) angleDepth -= 1;
+    else if (
+      c === "{" &&
+      angleDepth === 0 &&
+      bracketDepth === 0 &&
+      parenDepth === 0
+    ) {
+      const close = findMatchingBrace(source, i);
+      if (close === -1) return i;
+      const next = skipTrivia(source, close + 1);
+      if (
+        source[next] === "{" ||
+        source[next] === "|" ||
+        source[next] === "&"
+      ) {
+        i = next;
+        continue;
+      }
+      return i;
+    } else if (c === "{" || c === "}") {
+      const close = c === "{" ? findMatchingBrace(source, i) : -1;
+      if (close !== -1) {
+        i = close + 1;
+        continue;
+      }
+    }
+
+    i += 1;
+  }
+  return -1;
+}
+
 /**
  * Extract a `function NAME(...): T { ... }` body via brace matching.
  *
@@ -278,8 +410,9 @@ function functionBodyCalls(body, callee) {
  * `args: { callId: string }` contain braces, and a naive "first `{` after the
  * name" grabs the PARAM TYPE, not the body — which would make the I5 payload
  * check inspect the wrong block (a real false-negative we guard against here and
- * in the self-test). We paren-match the param list, then take the first brace
- * after the closing `)` (which also skips a `: ReturnType` annotation).
+ * in the self-test). Braced return annotations need the same treatment:
+ * `): { ok: boolean } { ... }` must scan the executable body, not the return
+ * type object.
  */
 function extractFunctionBody(source, name) {
   const sig = source.indexOf(`function ${name}`);
@@ -300,18 +433,10 @@ function extractFunctionBody(source, name) {
     }
   }
   if (paramClose === -1) return null;
-  const open = source.indexOf("{", paramClose);
+  const open = findFunctionBodyOpen(source, paramClose);
   if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    const c = source[i];
-    if (c === "{") depth += 1;
-    else if (c === "}") {
-      depth -= 1;
-      if (depth === 0) return source.slice(open, i + 1);
-    }
-  }
-  return null;
+  const close = findMatchingBrace(source, open);
+  return close === -1 ? null : source.slice(open, close + 1);
 }
 
 console.log("Privacy invariants gate (run-09)\n");
