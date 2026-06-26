@@ -99,7 +99,9 @@ jobs:
 
       - name: Verify Firebase evidence redaction
         if: always()
-        run: node scripts/security/check-public-evidence-redaction.mjs firebase-security-evidence.json
+        run: |
+          test -f firebase-security-evidence.json
+          node scripts/security/check-public-evidence-redaction.mjs firebase-security-evidence.json
 
       - name: Upload verification summary
         if: always()

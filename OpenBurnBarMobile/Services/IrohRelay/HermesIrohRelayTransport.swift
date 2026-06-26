@@ -620,7 +620,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 try onChunk(chunk)
                 if chunk.kind == .sse,
                    Self.isTerminalSSEEvent(chunk.data ?? chunk.text) {
-                    try chunkValidator.validateComplete(declaredChunkCount: receivedChunkCount)
+                    try chunkValidator.validateComplete(declaredChunkCount: chunkValidator.distinctChunkCount)
                     let rtt = Int(Date().timeIntervalSince(started) * 1000)
                     await auditLogger.record(
                         event: .streamClosed,
@@ -724,8 +724,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("data:") else { continue }
             let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-            guard payload != "[DONE]",
-                  let data = payload.data(using: .utf8),
+            if payload == "[DONE]" { return true }
+            guard let data = payload.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = object["choices"] as? [[String: Any]] else {
                 continue

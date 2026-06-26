@@ -449,8 +449,9 @@ final class MobileProviderWizardModel {
                 } catch {
                     do {
                         try runnerSaver.delete(accountID: created.id)
-                    } catch {
-                        errorMessage = error.localizedDescription
+                    } catch let cleanupError {
+                        errorMessage = cleanupError.localizedDescription
+                        await connectionStore.delete(account: created)
                         advance(to: .failed)
                         return
                     }
@@ -483,8 +484,11 @@ final class MobileProviderWizardModel {
         if let savedRunnerAccountID {
             do {
                 try runnerSaver.delete(accountID: savedRunnerAccountID)
-            } catch {
-                errorMessage = error.localizedDescription
+            } catch let cleanupError {
+                errorMessage = cleanupError.localizedDescription
+                if let account {
+                    await connectionStore.delete(account: account)
+                }
                 advance(to: .failed)
                 return true
             }

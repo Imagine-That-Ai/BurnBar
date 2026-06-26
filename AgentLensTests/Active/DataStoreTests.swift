@@ -383,6 +383,101 @@ final class DataStoreTests: XCTestCase {
         try await store.upsertProjectMemorySnapshot(snapshot)
         let seededSnapshot = try await store.fetchProjectMemorySnapshot(projectSlug: "privacy-reset")
         XCTAssertNotNil(seededSnapshot)
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO search_documents (
+                    id, sourceKind, sourceID, sourceVersionID, provider, projectName, title,
+                    bodyPreview, indexedAt, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "doc-conversation-sensitive",
+                    "conversation",
+                    "conversation-sensitive",
+                    "v1",
+                    "codex",
+                    "BurnBar",
+                    "Private conversation",
+                    "private body preview",
+                    now,
+                    now,
+                    now
+                ]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO search_chunks (
+                    id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
+                    startOffset, endOffset, text, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "chunk-conversation-sensitive",
+                    "doc-conversation-sensitive",
+                    "conversation",
+                    "conversation-sensitive",
+                    "v1",
+                    0,
+                    0,
+                    29,
+                    "private transcript chunk text",
+                    now,
+                    now
+                ]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText)
+                VALUES (?, ?, ?, ?)
+                """,
+                arguments: [
+                    "chunk-conversation-sensitive",
+                    "doc-conversation-sensitive",
+                    "Private conversation",
+                    "private transcript chunk text"
+                ]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_models (id, provider, modelName, dimensions, distanceMetric, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: ["model-conversation-sensitive", "test", "test-embedding", 1, "cosine", now, now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_versions (
+                    id, modelID, versionTag, chunkerVersion, normalizationVersion, promptVersion,
+                    isActive, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "version-conversation-sensitive",
+                    "model-conversation-sensitive",
+                    "v1",
+                    "chunker",
+                    "normalizer",
+                    "prompt",
+                    true,
+                    now,
+                    now
+                ]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO chunk_embeddings (chunkID, embeddingVersionID, vectorBlob, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "chunk-conversation-sensitive",
+                    "version-conversation-sensitive",
+                    Data([0, 0, 0, 0]),
+                    now,
+                    now
+                ]
+            )
+        }
 
         try await store.deleteAllIndexedConversations()
 
@@ -390,6 +485,17 @@ final class DataStoreTests: XCTestCase {
         XCTAssertNil(deletedSnapshot)
         let remainingSnapshots = try await store.fetchProjectMemorySnapshots()
         XCTAssertTrue(remainingSnapshots.isEmpty)
+        try await queue.read { db in
+            let tableCounts = try [
+                "search_documents",
+                "search_chunks",
+                "search_chunks_fts",
+                "chunk_embeddings"
+            ].map { table in
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)") ?? 0
+            }
+            XCTAssertEqual(tableCounts, [0, 0, 0, 0])
+        }
     }
 
     // MARK: - Helper Methods
