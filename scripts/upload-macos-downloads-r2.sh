@@ -20,7 +20,10 @@ fi
 
 bucket="${OPENBURNBAR_R2_BUCKET:-openburnbar-downloads}"
 downloads_dir="${OPENBURNBAR_DOWNLOADS_DIR:-website/public/downloads}"
-public_base_url="${OPENBURNBAR_R2_PUBLIC_BASE_URL:-}"
+site_mac_download_base_url="$(
+  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macDownloadBaseUrl:\s*"([^"]+)"/); console.log(match?.[1] ?? "");'
+)"
+public_base_url="${OPENBURNBAR_R2_PUBLIC_BASE_URL:-$site_mac_download_base_url}"
 
 if [[ -d "$HOME/.homebrew/opt/node@22/bin" ]]; then
   export PATH="$HOME/.homebrew/opt/node@22/bin:$PATH"
