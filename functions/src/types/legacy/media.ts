@@ -296,7 +296,7 @@ export interface ComputerUseSessionDailyRollupDoc {
   approvalLatencyP50Millis: number;
   approvalLatencyP95Millis: number;
   approvalLatencyP99Millis: number;
-  cappedVisionModelSpendUSD: number;
+  cappedVisionModelSpendUSD?: number;
   visionModelSpendUSD: number;
   updatedAt: import("firebase-admin/firestore").Timestamp;
 }

@@ -376,10 +376,24 @@ async function main() {
 
     await step("action spend headers are bounded", async () => {
       await assertSucceeds(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-zero`), {
+          ...validActionDoc,
+          id: "action-cost-zero",
+          visionTokensCostUSD: 0,
+        })
+      );
+      await assertSucceeds(
         setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-ok`), {
           ...validActionDoc,
           id: "action-cost-ok",
           visionTokensCostUSD: 25,
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-cost-negative`), {
+          ...validActionDoc,
+          id: "action-cost-negative",
+          visionTokensCostUSD: -1,
         })
       );
       await assertFails(
