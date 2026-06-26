@@ -277,17 +277,11 @@ export interface ProjectMemorySnapshotDoc {
 
 export interface KnowledgeRepoDoc {
   uid: string;
-  /** Opaque doc id derived from `repoMatchToken` (not the repo name). */
   repoId: string;
-  /** Server-keyed HMAC of the normalized repo full name — the webhook match key. */
   repoMatchToken: string;
-  /** Server-keyed HMAC of normalized repo full name plus verified GitHub App installation id. */
   repoInstallationMatchToken: string;
-  /** Vault-sealed display name supplied by the authed client (optional). */
   sealedRepoFullName?: CloudVaultSealedTextDoc;
-  /** Opaque source manifest id this repo feeds. Legacy rows may still carry sourceSlug during lazy migration. */
   sourceManifestId?: string;
-  /** Legacy read-only fallback; not written by current connectKnowledgeRepo. */
   sourceSlug?: string;
   installId?: string;
   connectedAt: import("firebase-admin/firestore").Timestamp | string;

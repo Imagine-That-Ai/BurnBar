@@ -135,11 +135,10 @@ function expectedInstallationToken(fullName: string, installId: string): string 
 }
 
 function githubJson(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: async () => body,
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function mockGitHubRepoAccess(fullName = REPO): void {
