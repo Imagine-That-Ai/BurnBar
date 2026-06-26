@@ -515,6 +515,15 @@ final class LiveEscrowGateway: EscrowGateway {
             await writeAudit(uid: uid, type: "import_ciphertext_missing", envelopeId: envelope.id, providerId: pid, error: "ciphertext field missing or invalid")
             return
         }
+        guard let metadataBinding = Self.metadataBinding(
+            from: data,
+            expectedEnvelope: envelope,
+            currentDeviceId: deviceId
+        ) else {
+            onStage(.failed(.decryptionFailed))
+            await writeAudit(uid: uid, type: "import_metadata_binding_failed", envelopeId: envelope.id, providerId: pid)
+            return
+        }
 
         // Check grant
         if let gid = data["grantId"] as? String {
@@ -530,9 +539,9 @@ final class LiveEscrowGateway: EscrowGateway {
         onStage(.decrypting)
         let plain: Data
         do {
-            if let kv = data["keyVersion"] as? Int, kv != keypair.keyVersion {
-                plain = try keypair.decryptWithOldVersion(ct, version: kv)
-            } else { plain = try keypair.decrypt(ct) }
+            if let kv = Self.intValue(data["keyVersion"]), kv != keypair.keyVersion {
+                plain = try keypair.decryptWithOldVersion(ct, version: kv, authenticating: metadataBinding)
+            } else { plain = try keypair.decrypt(ct, authenticating: metadataBinding) }
         } catch {
             onStage(.failed(.decryptionFailed))
             await writeAudit(uid: uid, type: "import_decryption_failed", envelopeId: envelope.id, providerId: pid, error: error.localizedDescription)
@@ -566,6 +575,51 @@ final class LiveEscrowGateway: EscrowGateway {
         // Success: write audit event
         await writeAudit(uid: uid, type: "envelope_imported", envelopeId: envelope.id, providerId: pid)
         onStage(.validated)
+    }
+
+    static func metadataBinding(
+        from data: [String: Any],
+        expectedEnvelope: AvailableEnvelope,
+        currentDeviceId: String
+    ) -> Data? {
+        let envelopeVersion = intValue(data["envelopeVersion"]) ?? 1
+        guard envelopeVersion >= EscrowCredentialMetadataBinding.envelopeVersion else {
+            return Data()
+        }
+        guard (data["metadataBinding"] as? String) == EscrowCredentialMetadataBinding.metadataBinding,
+              let grantId = data["grantId"] as? String,
+              let sourceDeviceId = data["sourceDeviceId"] as? String,
+              let targetDeviceId = data["targetDeviceId"] as? String,
+              targetDeviceId == currentDeviceId,
+              let providerId = data["providerId"] as? String,
+              providerId == expectedEnvelope.provider.persistedToken,
+              let credentialKindRaw = data["credentialKind"] as? String,
+              let credentialKind = EscrowCredentialKind(rawValue: credentialKindRaw),
+              credentialKind == expectedEnvelope.credentialKind,
+              let keyVersion = intValue(data["keyVersion"]) else {
+            return nil
+        }
+        let accountLabel = (data["accountLabel"] as? String) ?? expectedEnvelope.provider.displayName
+        guard accountLabel.trimmingCharacters(in: .whitespacesAndNewlines) == expectedEnvelope.accountLabel.trimmingCharacters(in: .whitespacesAndNewlines),
+              sourceDeviceId == expectedEnvelope.sourceDeviceID else {
+            return nil
+        }
+        return EscrowCredentialMetadataBinding(
+            grantId: grantId,
+            sourceDeviceId: sourceDeviceId,
+            targetDeviceId: targetDeviceId,
+            providerId: providerId,
+            credentialKind: credentialKind,
+            accountLabel: accountLabel,
+            keyVersion: keyVersion,
+            envelopeVersion: envelopeVersion
+        ).associatedData
+    }
+
+    private static func intValue(_ raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? NSNumber { return value.intValue }
+        return nil
     }
 
     // MARK: - Keychain

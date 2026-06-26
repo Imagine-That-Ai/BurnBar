@@ -1,6 +1,7 @@
 import XCTest
 import CryptoKit
 import Security
+import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -25,6 +26,37 @@ final class EscrowCryptoRoundTripTests: XCTestCase {
         let decrypted = try keypair2.decrypt(ciphertext)
         XCTAssertEqual(decrypted, plaintext)
         XCTAssertEqual(String(data: decrypted, encoding: .utf8), secret)
+    }
+
+    func testDecryptRequiresMatchingEnvelopeMetadata() throws {
+        let secret = Data("metadata-bound-secret".utf8)
+        let binding = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: "minimax",
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: keypair1.keyVersion
+        )
+        let ciphertext = try keypair1.encrypt(
+            secret,
+            for: keypair1.publicKeyData,
+            authenticating: binding.associatedData
+        )
+
+        XCTAssertEqual(try keypair1.decrypt(ciphertext, authenticating: binding.associatedData), secret)
+
+        let tampered = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: "openai",
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: keypair1.keyVersion
+        )
+        XCTAssertThrowsError(try keypair1.decrypt(ciphertext, authenticating: tampered.associatedData))
     }
 
     func testWrongDeviceDecryptionFails() throws {
@@ -54,5 +86,76 @@ final class EscrowCryptoRoundTripTests: XCTestCase {
         let ciphertext = try keypair1.encrypt(secret, for: keypair1.publicKeyData)
         let decrypted = try keypair1.decrypt(ciphertext)
         XCTAssertEqual(decrypted, secret)
+    }
+}
+
+@MainActor
+final class EscrowMetadataBindingTests: XCTestCase {
+    private func envelope(provider: AgentProvider = .minimax) -> AvailableEnvelope {
+        AvailableEnvelope(
+            id: "env-1",
+            provider: provider,
+            accountLabel: "primary",
+            credentialKind: .apiKey,
+            sourceDeviceID: "mac-1",
+            sourceDeviceName: "mac-1",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+    }
+
+    private func v2Document(providerId: String = AgentProvider.minimax.persistedToken) -> [String: Any] {
+        [
+            "grantId": "grant-1",
+            "sourceDeviceId": "mac-1",
+            "targetDeviceId": "iphone-1",
+            "providerId": providerId,
+            "credentialKind": EscrowCredentialKind.apiKey.rawValue,
+            "accountLabel": "primary",
+            "keyVersion": 3,
+            "envelopeVersion": EscrowCredentialMetadataBinding.envelopeVersion,
+            "metadataBinding": EscrowCredentialMetadataBinding.metadataBinding
+        ]
+    }
+
+    func testMetadataBindingMatchesCanonicalAADForV2Envelope() throws {
+        let aad = try XCTUnwrap(
+            LiveEscrowGateway.metadataBinding(
+                from: v2Document(),
+                expectedEnvelope: envelope(),
+                currentDeviceId: "iphone-1"
+            )
+        )
+        let expected = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: AgentProvider.minimax.persistedToken,
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: 3
+        ).associatedData
+
+        XCTAssertEqual(aad, expected)
+    }
+
+    func testMetadataBindingRejectsProviderSwap() {
+        XCTAssertNil(
+            LiveEscrowGateway.metadataBinding(
+                from: v2Document(providerId: AgentProvider.openAI.persistedToken),
+                expectedEnvelope: envelope(),
+                currentDeviceId: "iphone-1"
+            )
+        )
+    }
+
+    func testMetadataBindingKeepsLegacyV1EnvelopeImportCompatible() {
+        XCTAssertEqual(
+            LiveEscrowGateway.metadataBinding(
+                from: ["envelopeVersion": 1],
+                expectedEnvelope: envelope(),
+                currentDeviceId: "iphone-1"
+            ),
+            Data()
+        )
     }
 }

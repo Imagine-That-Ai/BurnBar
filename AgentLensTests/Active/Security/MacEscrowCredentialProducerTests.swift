@@ -18,7 +18,11 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
     /// Mac test target does not need the iOS module): ephemeral pub (65 bytes)
     /// || AES.GCM sealed box, HKDF-SHA256 over the shared secret with an empty
     /// salt and `"OpenBurnBar-Escrow-v1"` info, 32-byte key.
-    private func importDecrypt(_ ciphertext: Data, recipientPrivateKey: P256.KeyAgreement.PrivateKey) throws -> Data {
+    private func importDecrypt(
+        _ ciphertext: Data,
+        recipientPrivateKey: P256.KeyAgreement.PrivateKey,
+        associatedData: Data = Data()
+    ) throws -> Data {
         XCTAssertGreaterThan(ciphertext.count, 65, "ciphertext must carry the 65-byte ephemeral key prefix")
         let ephemeralPubKeyData = ciphertext.prefix(65)
         let sealedBoxData = ciphertext.suffix(from: 65)
@@ -31,7 +35,7 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
             outputByteCount: 32
         )
         let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: symmetricKey)
+        return try AES.GCM.open(sealedBox, using: symmetricKey, authenticating: associatedData)
     }
 
     private func recipientKey(_ priv: P256.KeyAgreement.PrivateKey, keyVersion: Int = 1) -> MacEscrowRecipientKey {
@@ -78,6 +82,48 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
         XCTAssertEqual(try importDecrypt(a, recipientPrivateKey: recipientPriv), try importDecrypt(b, recipientPrivateKey: recipientPriv))
     }
 
+    func test_sealAuthenticatesCredentialMetadata() throws {
+        let recipientPriv = P256.KeyAgreement.PrivateKey()
+        let binding = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: AgentProvider.minimax.persistedToken,
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: 3
+        )
+        let ciphertext = try MacEscrowSeal.seal(
+            Data("secret-token".utf8),
+            recipientPublicKey: recipientPriv.publicKey.x963Representation,
+            associatedData: binding.associatedData
+        )
+
+        let plain = try importDecrypt(
+            ciphertext,
+            recipientPrivateKey: recipientPriv,
+            associatedData: binding.associatedData
+        )
+        XCTAssertEqual(String(data: plain, encoding: .utf8), "secret-token")
+
+        let tampered = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: AgentProvider.openAI.persistedToken,
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: 3
+        )
+        XCTAssertThrowsError(
+            try importDecrypt(
+                ciphertext,
+                recipientPrivateKey: recipientPriv,
+                associatedData: tampered.associatedData
+            )
+        )
+    }
+
     // MARK: - Envelope shape
 
     func test_buildEnvelopePlan_matchesImportExpectations() throws {
@@ -110,14 +156,25 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
         XCTAssertEqual(envelope["credentialKind"] as? String, EscrowCredentialKind.apiKey.rawValue)
         XCTAssertEqual(envelope["accountLabel"] as? String, "primary")
         XCTAssertEqual(envelope["keyVersion"] as? Int, 3)
-        XCTAssertEqual(envelope["envelopeVersion"] as? Int, 1)
+        XCTAssertEqual(envelope["envelopeVersion"] as? Int, EscrowCredentialMetadataBinding.envelopeVersion)
+        XCTAssertEqual(envelope["metadataBinding"] as? String, EscrowCredentialMetadataBinding.metadataBinding)
         XCTAssertNotNil(envelope["ciphertext"] as? String)
         XCTAssertNotNil(envelope["createdAt"])
 
-        // The ciphertext must decrypt to the original secret on the phone.
+        // The ciphertext must decrypt to the original secret on the phone only
+        // when the envelope metadata matches the authenticated binding.
         let ctB64 = try XCTUnwrap(envelope["ciphertext"] as? String)
         let ct = try XCTUnwrap(Data(base64Encoded: ctB64))
-        let plain = try importDecrypt(ct, recipientPrivateKey: recipientPriv)
+        let binding = EscrowCredentialMetadataBinding(
+            grantId: "grant-1",
+            sourceDeviceId: "mac-1",
+            targetDeviceId: "iphone-1",
+            providerId: AgentProvider.minimax.persistedToken,
+            credentialKind: .apiKey,
+            accountLabel: "primary",
+            keyVersion: 3
+        )
+        let plain = try importDecrypt(ct, recipientPrivateKey: recipientPriv, associatedData: binding.associatedData)
         XCTAssertEqual(String(data: plain, encoding: .utf8), "secret-token")
     }
 
@@ -134,6 +191,7 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
         )
         XCTAssertEqual(plan.envelope["accountLabel"] as? String, AgentProvider.claudeCode.displayName)
         XCTAssertEqual(plan.envelope["credentialKind"] as? String, EscrowCredentialKind.oauthToken.rawValue)
+        XCTAssertEqual(plan.envelope["metadataBinding"] as? String, EscrowCredentialMetadataBinding.metadataBinding)
     }
 
     func test_liveWriterUsesEscrowCollectionsNeverAndroidCredentialTransfers() throws {
@@ -142,6 +200,7 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
             .deletingLastPathComponent() // Security
             .deletingLastPathComponent() // Active
             .deletingLastPathComponent() // AgentLensTests
+            .deletingLastPathComponent() // repo root
         let producerURL = repoRoot
             .appendingPathComponent("AgentLens")
             .appendingPathComponent("Services")
