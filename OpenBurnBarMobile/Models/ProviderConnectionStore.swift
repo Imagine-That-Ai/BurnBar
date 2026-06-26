@@ -184,7 +184,7 @@ final class ProviderConnectionStore {
             if account.storageScope == .localOnly,
                account.providerID == .claudeCode || account.providerID == .codex {
                 // Clean up locally-stored runner config when deleting a self-hosted account.
-                SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
+                try SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
             }
             await load()
         } catch {

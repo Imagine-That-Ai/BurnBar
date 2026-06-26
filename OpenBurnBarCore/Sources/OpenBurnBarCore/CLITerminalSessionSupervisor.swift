@@ -177,7 +177,7 @@ public enum CLIQuotaExhaustionClassifier {
                 || normalized.contains("usage limit")
                 || normalized.contains("credit")
                 || cliSpecificPatterns.contains(where: normalized.contains)
-                || cliIdentityPatterns.contains(where: normalized.contains)
+                || cliIdentityPatterns.contains(where: { containsIdentity($0, in: normalized) })
             if anchoredToQuotaSource {
                 return trimmed
             }
@@ -192,6 +192,25 @@ public enum CLIQuotaExhaustionClassifier {
         }
 
         return nil
+    }
+
+    private static func containsIdentity(_ identity: String, in normalized: String) -> Bool {
+        var searchRange = normalized.startIndex..<normalized.endIndex
+        while let range = normalized.range(of: identity, options: [], range: searchRange) {
+            let beforeOK = range.lowerBound == normalized.startIndex
+                || !isIdentityCharacter(normalized[normalized.index(before: range.lowerBound)])
+            let afterOK = range.upperBound == normalized.endIndex
+                || !isIdentityCharacter(normalized[range.upperBound])
+            if beforeOK && afterOK {
+                return true
+            }
+            searchRange = range.upperBound..<normalized.endIndex
+        }
+        return false
+    }
+
+    private static func isIdentityCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == "_" || character == "-"
     }
 }
 

@@ -1083,7 +1083,7 @@ enum SmartHubBridgePage {
           if (lastVersion >= 0 && state.version !== lastVersion) {
             if (state.display && state.display.audibleCue) playChime();
             if (identifyOnRefresh) {
-              fetch('/voice-refresh', { method: 'POST' }).catch(() => {});
+              fetch(bridgePath('/voice-refresh'), { method: 'POST' }).catch(() => {});
             }
           }
 

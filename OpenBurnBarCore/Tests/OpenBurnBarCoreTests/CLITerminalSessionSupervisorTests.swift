@@ -73,6 +73,20 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
 
         XCTAssertTrue(recorder.snapshot().isEmpty)
     }
+
+    func test_piClassifierDoesNotTreatSubstringAsQuotaIdentity() {
+        XCTAssertNil(
+            CLIQuotaExhaustionClassifier.classify(
+                for: .pi,
+                in: "The pipeline output is out of limits for this layout, but the run continues."
+            )
+        )
+    }
+
+    func test_piClassifierStillAcceptsBoundedIdentity() {
+        let detail = "Pi is out of limits for this account."
+        XCTAssertEqual(CLIQuotaExhaustionClassifier.classify(for: .pi, in: detail), detail)
+    }
 }
 
 private final class SupervisorEventRecorder: Sendable {

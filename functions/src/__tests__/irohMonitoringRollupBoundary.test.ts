@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseIrohAuditEventForRollup, summarizeIrohAuditEvents, utcDayWindow } from "../irohMonitoring.js";
+import {
+  markIrohAuditEventRollupEligible,
+  parseIrohAuditEventForRollup,
+  summarizeIrohAuditEvents,
+  utcDayWindow,
+} from "../irohMonitoring.js";
 
 const EVENT_PATH = "users/user-1/iroh_audit_events/event-1";
 
@@ -49,5 +54,9 @@ describe("iroh transport rollup trust boundary", () => {
     expect(rollup.uniqueUsers).toBe(1);
     expect(rollup.eventCounts.iroh_stream_closed).toBe(1);
     expect(rollup.transportCounts["iroh-direct"]).toBe(1);
+  });
+
+  it("exports the server-side eligibility marker", () => {
+    expect(markIrohAuditEventRollupEligible).toBeDefined();
   });
 });

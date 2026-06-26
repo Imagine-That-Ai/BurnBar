@@ -63,6 +63,7 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/state.json')"))
         XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/period?p=' + encodeURIComponent(value))"))
         XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/refresh')"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("fetch(bridgePath('/voice-refresh')"))
     }
 
     func test_bridgeSecuredURLCarriesRuntimeAccessTokenWithoutDroppingExistingQuery() throws {
@@ -75,6 +76,14 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertEqual(query["display"], "nest")
         XCTAssertEqual(query["bridgeToken"], SmartHubBridgeServer.shared.bridgeAccessToken)
         XCTAssertFalse(SmartHubBridgeServer.shared.bridgeAccessToken.isEmpty)
+    }
+
+    func testRedactedBridgeURLRemovesAccessToken() throws {
+        let raw = URL(string: "http://127.0.0.1:8787/render.html?bridgeToken=secret&x=1")!
+        let redacted = SmartHubBridgeServer.shared.redactedBridgeURL(raw)
+        let query = try XCTUnwrap(URLComponents(url: redacted, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertNil(query.first { $0.name == "bridgeToken" })
+        XCTAssertEqual(query.first { $0.name == "x" }?.value, "1")
     }
 
     func test_bridgeAuthorizationRequiresRuntimeAccessToken() throws {

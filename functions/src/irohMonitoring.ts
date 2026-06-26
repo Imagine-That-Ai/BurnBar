@@ -7,6 +7,7 @@
  */
 
 import { getFirestore } from "firebase-admin/firestore";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { IrohTransportAuditEventDoc, IrohTransportDailyRollupDoc } from "./types.js";
@@ -202,6 +203,14 @@ function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | n
   return parseIrohAuditEventForRollup(doc.data(), doc.ref.path);
 }
 
+function isRollupEligibleAuditEvent(data: Record<string, unknown>): boolean {
+  return (
+    Boolean(stringField(data, "connectionId")) &&
+    isIrohAuditEventType(recordField(data, "eventType")) &&
+    (recordField(data, "transport") === undefined || isIrohTransport(recordField(data, "transport")))
+  );
+}
+
 async function buildAndPersistIrohDailyRollup(
   db: Firestore,
   day: Date = previousUtcDay(new Date()),
@@ -238,5 +247,21 @@ export const rollupIrohTransportDaily = onSchedule(
   },
   async (_event) => {
     await buildAndPersistIrohDailyRollup(getFirestore());
+  },
+);
+
+export const markIrohAuditEventRollupEligible = onDocumentCreated(
+  {
+    document: "users/{uid}/iroh_audit_events/{eventId}",
+    region: FUNCTIONS_REGION,
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+    const data = snapshot.data();
+    if (data.rollupEligible === true || !isRollupEligibleAuditEvent(data)) return;
+    await snapshot.ref.set({ rollupEligible: true }, { merge: true });
   },
 );

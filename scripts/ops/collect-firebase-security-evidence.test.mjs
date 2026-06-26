@@ -33,6 +33,11 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
         command: ["gcloud", "config", "get-value", "project"],
         stdout: "prod-project-123",
       },
+      firebaseProjects: {
+        ok: false,
+        command: ["firebase", "projects:list", "--project", "prod-project-123"],
+        error: "projects/prod-project-123 failed",
+      },
     },
     iam: {
       ok: true,
@@ -62,7 +67,8 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
               updateTime: "2026-06-25T18:00:00Z",
               url: "https://api-us-central1.a.run.app",
               ingressSettings: "ALLOW_INTERNAL_AND_GCLB",
-              serviceAccountEmail: "release-bot@prod-project-123.iam.gserviceaccount.com",
+              serviceAccountEmail:
+                "release-bot@prod-project-123.iam.gserviceaccount.com",
               secretEnvironmentVariableNames: ["PAYMENT_WEBHOOK_SECRET"],
               labels: { runtime: "node" },
             },
@@ -83,18 +89,33 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
           uniformBucketLevelAccess: true,
           publicAccessPrevention: "enforced",
           retentionPolicy: { retentionPeriod: "604800s" },
-          encryption: { defaultKmsKeyName: "projects/prod-project-123/locations/global/keyRings/ring/cryptoKeys/key" },
+          encryption: {
+            defaultKmsKeyName:
+              "projects/prod-project-123/locations/global/keyRings/ring/cryptoKeys/key",
+          },
           lifecycle: { rule: [] },
           iamPolicy: {
             bindings: [
               {
                 role: "roles/storage.objectViewer",
-                members: ["serviceAccount:release-bot@prod-project-123.iam.gserviceaccount.com"],
+                members: [
+                  "serviceAccount:release-bot@prod-project-123.iam.gserviceaccount.com",
+                ],
               },
             ],
           },
         },
       ],
+    },
+    rules: {
+      ok: false,
+      firestoreIndexes: {
+        ok: false,
+        localSha256: "local-indexes",
+        deployedSha256: "deployed-indexes",
+        drift: true,
+        error: "firestore indexes for prod-project-123 failed",
+      },
     },
     secrets: {
       ok: true,
@@ -110,7 +131,8 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
                 {
                   location: "us-central1",
                   customerManagedEncryption: {
-                    kmsKeyName: "projects/prod-project-123/locations/us-central1/keyRings/secrets/cryptoKeys/main",
+                    kmsKeyName:
+                      "projects/prod-project-123/locations/us-central1/keyRings/secrets/cryptoKeys/main",
                   },
                 },
               ],
@@ -158,8 +180,18 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
   assert.equal(sanitized.functions.regions["us-central1"].count, 1);
   assert.equal(sanitized.storageBuckets.bucketCount, 1);
   assert.equal(sanitized.storageBuckets.buckets[0].hasEncryptionConfig, true);
-  assert.deepEqual(sanitized.secrets.secrets[0].replicationPolicy, { mode: "userManaged", replicaCount: 1 });
-  assert.deepEqual(sanitized.iam.project.bindings[0].memberTypes, ["serviceAccount", "user"]);
+  assert.deepEqual(sanitized.secrets.secrets[0].replicationPolicy, {
+    mode: "userManaged",
+    replicaCount: 1,
+  });
+  assert.deepEqual(sanitized.iam.project.bindings[0].memberTypes, [
+    "serviceAccount",
+    "user",
+  ]);
+  assert.deepEqual(sanitized.authContext.firebaseProjects.command, [
+    "firebase",
+  ]);
+  assert.match(sanitized.rules.firestoreIndexes.error, /REDACTED/);
 
   assert.doesNotMatch(encoded, /prod-project-123/);
   assert.doesNotMatch(encoded, /123456789012/);

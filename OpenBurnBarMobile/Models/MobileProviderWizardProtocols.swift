@@ -29,7 +29,7 @@ protocol HostedQuotaSubscriptionProviding: AnyObject {
 @MainActor
 protocol SelfHostedRunnerSaving: AnyObject {
     func save(accountID: String, runnerURL: String, accessSecret: String?) throws
-    func delete(accountID: String)
+    func delete(accountID: String) throws
 }
 
 // MARK: - Haptics

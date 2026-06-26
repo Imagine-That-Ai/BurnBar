@@ -618,6 +618,24 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     )
                 }
                 try onChunk(chunk)
+                if chunk.kind == .sse,
+                   Self.isTerminalSSEEvent(chunk.data ?? chunk.text) {
+                    try chunkValidator.validateComplete(declaredChunkCount: receivedChunkCount)
+                    let rtt = Int(Date().timeIntervalSince(started) * 1000)
+                    await auditLogger.record(
+                        event: .streamClosed,
+                        uid: uid,
+                        connectionId: payload.connectionID,
+                        transport: .irohDirect,
+                        rttMillis: rtt,
+                        detail: auditDetail([
+                            "stage": "ios_terminal_sse",
+                            "requestId": requestID,
+                            "chunks": "\(receivedChunkCount)"
+                        ], networkAuditDetail)
+                    )
+                    return
+                }
             case .responseComplete:
                 // F4: refuse a truncated response — a relay that dropped a sealed
                 // chunk leaves a gap below the declared `chunkCount`. The declared
@@ -698,6 +716,32 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
              .remoteUnlockDenied:
             return .ignore
         }
+    }
+
+    private nonisolated static func isTerminalSSEEvent(_ event: String?) -> Bool {
+        guard let event else { return false }
+        for rawLine in event.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("data:") else { continue }
+            let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            guard payload != "[DONE]",
+                  let data = payload.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = object["choices"] as? [[String: Any]] else {
+                continue
+            }
+            if choices.contains(where: { choice in
+                guard let finishReason = choice["finish_reason"] else { return false }
+                if finishReason is NSNull { return false }
+                if let text = finishReason as? String {
+                    return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                return true
+            }) {
+                return true
+            }
+        }
+        return false
     }
 
     #if DEBUG

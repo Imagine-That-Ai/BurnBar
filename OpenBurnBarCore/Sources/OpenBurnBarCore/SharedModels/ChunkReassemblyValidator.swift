@@ -56,7 +56,11 @@ public struct ChunkReassemblyValidator: Sendable, Equatable {
     /// - Parameter declaredChunkCount: the count from the `response.complete`
     ///   frame. A non-positive count is only accepted for an empty response. Once
     ///   chunks have arrived, the terminal boundary must declare a positive total.
-    /// - Throws: ``ValidationError/incompleteResponse(declaredChunkCount:distinctReceived:firstMissing:)``
+    /// - Throws: ``ValidationError/missingDeclaredChunkCount(declaredChunkCount:distinctReceived:)``
+    ///   when chunks arrived but the terminal boundary omitted a positive total,
+    ///   ``ValidationError/chunkAfterDeclaredEnd(declaredChunkCount:sequence:distinctReceived:)``
+    ///   when a received sequence sits beyond the declared total, or
+    ///   ``ValidationError/incompleteResponse(declaredChunkCount:distinctReceived:firstMissing:)``
     ///   when an in-range sequence is missing (a dropped/withheld chunk).
     public func validateComplete(declaredChunkCount: Int) throws {
         guard declaredChunkCount > 0 else {

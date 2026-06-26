@@ -433,6 +433,14 @@ final class SmartHubBridgeServer {
         return components.url ?? url
     }
 
+    func redactedBridgeURL(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.queryItems = components.queryItems?.filter { $0.name != Self.bridgeAccessTokenQueryName }
+        return components.url ?? url
+    }
+
     private func securedPath(_ path: String) -> String {
         guard var components = URLComponents(string: path) else { return path }
         components.queryItems = securedQueryItems(from: components.queryItems)
@@ -447,11 +455,24 @@ final class SmartHubBridgeServer {
 
     private func isAuthorizedBridgeRequest(rawPath: String, authorizationHeader: String?) -> Bool {
         guard !bridgeAccessToken.isEmpty else { return false }
-        if Self.queryValue(in: rawPath, key: Self.bridgeAccessTokenQueryName) == bridgeAccessToken {
+        if Self.constantTimeEquals(Self.queryValue(in: rawPath, key: Self.bridgeAccessTokenQueryName), bridgeAccessToken) {
             return true
         }
         let header = authorizationHeader?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return header == "Bearer \(bridgeAccessToken)"
+        return Self.constantTimeEquals(header, "Bearer \(bridgeAccessToken)")
+    }
+
+    private static func constantTimeEquals(_ lhs: String?, _ rhs: String) -> Bool {
+        guard let lhs else { return false }
+        let lhsBytes = Array(lhs.utf8)
+        let rhsBytes = Array(rhs.utf8)
+        var diff = lhsBytes.count ^ rhsBytes.count
+        for index in 0..<max(lhsBytes.count, rhsBytes.count) {
+            let lhsByte = index < lhsBytes.count ? lhsBytes[index] : 0
+            let rhsByte = index < rhsBytes.count ? rhsBytes[index] : 0
+            diff |= Int(lhsByte ^ rhsByte)
+        }
+        return diff == 0
     }
 
     private static func headerValue(in request: String, name: String) -> String? {

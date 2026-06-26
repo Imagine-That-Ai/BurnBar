@@ -15,9 +15,14 @@ final class FakeSelfHostedRunnerSaver: SelfHostedRunnerSaving {
     var onSave: (() -> Void)?
 
     private var _saveError: Error?
+    private var _deleteError: Error?
 
     func configureSaveError(_ error: Error?) {
         _saveError = error
+    }
+
+    func configureDeleteError(_ error: Error?) {
+        _deleteError = error
     }
 
     func save(accountID: String, runnerURL: String, accessSecret: String?) throws {
@@ -26,7 +31,8 @@ final class FakeSelfHostedRunnerSaver: SelfHostedRunnerSaving {
         onSave?()
     }
 
-    func delete(accountID: String) {
+    func delete(accountID: String) throws {
+        if let error = _deleteError { throw error }
         deleteCalls.append(DeleteCall(accountID: accountID))
     }
 }

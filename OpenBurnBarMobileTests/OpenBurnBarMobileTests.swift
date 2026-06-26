@@ -3791,7 +3791,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("https://runner.example.com"))
         XCTAssertEqual(secrets.savedByAccount["cleanup-test"], "secret123")
 
-        store.delete(accountID: "cleanup-test")
+        try store.delete(accountID: "cleanup-test")
         XCTAssertNil(defaults.string(forKey: "selfHostedQuotaRunnerURL.cleanup-test"))
         XCTAssertNil(secrets.savedByAccount["cleanup-test"])
     }
