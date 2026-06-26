@@ -415,6 +415,7 @@ describe("sealAwareSerializeDoc default-deny allowlist", () => {
       slugHmac: "f".repeat(64),
       dedupHash: "a".repeat(64),
       repoMatchToken: "b".repeat(64),
+      repoInstallationMatchToken: "d".repeat(64),
       docID: "pm_0123456789abcdef0123456789abcdef",
       projectKeyHash: "c".repeat(32),
       embeddingModelVersion: "bge-small-en-v1.5",
@@ -435,6 +436,7 @@ describe("sealAwareSerializeDoc default-deny allowlist", () => {
     expect(out.sealedProjectName).toEqual(sealedText);
     expect(out.slugHmac).toBe("f".repeat(64));
     expect(out.repoMatchToken).toBe("b".repeat(64));
+    expect(out.repoInstallationMatchToken).toBe("d".repeat(64));
     expect(out.docID).toBe("pm_0123456789abcdef0123456789abcdef");
     expect(out.byteCount).toBe(128);
     expect(out.schemaVersion).toBe(2);

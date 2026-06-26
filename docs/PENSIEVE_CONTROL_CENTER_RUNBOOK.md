@@ -314,13 +314,18 @@ npx --prefix functions firebase use burnbar
    `true`).
    **Verify:** App Check → Apps shows the web app provider = reCAPTCHA Enterprise.
 
-### C2. Webhook secret (set before deploying functions, so the first deploy binds it)
+### C2. GitHub App verifier + webhook secrets (set before deploying functions)
 ```bash
 printf '%s' "$(openssl rand -hex 32)" | \
   npx --prefix functions firebase functions:secrets:set KNOWLEDGE_GITHUB_WEBHOOK_SECRET --project burnbar
 # keep this value — you paste the identical string into the GitHub App in Stream D2
+
+printf '%s' "$GITHUB_APP_ID" | \
+  npx --prefix functions firebase functions:secrets:set KNOWLEDGE_GITHUB_APP_ID --project burnbar
+printf '%s' "$GITHUB_APP_PRIVATE_KEY_PEM" | \
+  npx --prefix functions firebase functions:secrets:set KNOWLEDGE_GITHUB_APP_PRIVATE_KEY --project burnbar
 ```
-**Verify:** `firebase functions:secrets:access KNOWLEDGE_GITHUB_WEBHOOK_SECRET --project burnbar` returns 64 hex chars.
+**Verify:** `firebase functions:secrets:access KNOWLEDGE_GITHUB_WEBHOOK_SECRET --project burnbar` returns 64 hex chars, `KNOWLEDGE_GITHUB_APP_ID` is numeric, and `KNOWLEDGE_GITHUB_APP_PRIVATE_KEY` is the GitHub App private key PEM.
 
 ### C3. Deploy Cloud Functions (13 new deployables)
 ```bash
@@ -478,11 +483,15 @@ The webhook URL is whatever C3's deploy printed (gen-1:
 3. Install on the Pensieve repo (Only select repositories); note the installation id.
 4. Register in BurnBar from a signed-in Cloud Pro client/test:
    `connectKnowledgeRepo({ repoFullName, sourceSlug, installId })`.
+   The callable verifies that the configured GitHub App installation can read
+   that exact `owner/repo` before it stores the dirty-signal registration; the
+   webhook later matches on the same repo+installation binding.
 **Verify:** the GitHub "ping" delivery shows **200 "pong"**; a real push to a
 *registered* repo returns **200 `{ok:true, flagged:1}`** and sets
-`users/{uid}/knowledge_sync_manifests/{sourceSlug}.needsResync = true`. (A push to
-an *unregistered* repo returns 200 `{flagged:0}` — looks healthy but flags nothing;
-always test with a connected repo.)
+`users/{uid}/knowledge_sync_manifests/{sourceManifestId}.needsResync = true`. (A
+push to an *unregistered* repo or a different installation returns 200
+`{flagged:0}` — looks healthy but flags nothing; always test with a connected
+repo.)
 
 ---
 

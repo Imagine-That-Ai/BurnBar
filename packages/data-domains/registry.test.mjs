@@ -202,10 +202,10 @@ test("HONEST CLAIMS: usage_spend hides project names behind an opaque hash", () 
   );
 });
 
-// pensieve: a connected repo stores only an opaque keyed match token + a sealed
-// repo name; the cleartext repo name is observed transiently for webhook routing
-// only (never stored). The registry must name that caveat and keep repo names
-// off the server-readable facet list.
+// pensieve: a connected repo stores only opaque keyed repo/install match tokens
+// + a sealed repo name; the cleartext repo name is observed transiently for
+// webhook routing only (never stored). The registry must name that caveat and
+// keep repo names off the server-readable facet list.
 
 test("HONEST CLAIMS: pensieve repo names are device-only with a webhook caveat", () => {
   const pensieve = registry.domains.find((d) => d.id === "pensieve");
@@ -217,10 +217,10 @@ test("HONEST CLAIMS: pensieve repo names are device-only with a webhook caveat",
     !serverLower.some((v) => v.includes("repo name") || v.includes("repofullname") || v.includes("repo full name")),
     "pensieve serverSees must not claim it reads the cleartext repo name",
   );
-  // It DOES hold an opaque match token + keyed hashes, named honestly.
+  // It DOES hold opaque repo/install match tokens + keyed hashes, named honestly.
   assert.ok(
-    serverLower.some((v) => v.includes("opaque") && v.includes("match token")),
-    "pensieve serverSees must declare the opaque repo match token",
+    serverLower.some((v) => v.includes("opaque") && v.includes("match token") && v.includes("installation")),
+    "pensieve serverSees must declare the opaque repo and installation match tokens",
   );
   // Repo names are sealed/device-only.
   assert.ok(

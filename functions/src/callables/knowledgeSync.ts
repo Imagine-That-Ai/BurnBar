@@ -12,7 +12,7 @@
  *   re-syncs (it cannot re-embed server-side — no plaintext).
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createSign, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
@@ -24,6 +24,7 @@ import { getConfig } from "../config.js";
 import { stripUndefinedObject } from "../guards.js";
 import { wrapCallableHandler } from "../logging.js";
 import { runScheduledJob } from "../scheduledOps.js";
+import { providerFetch } from "../providers/httpClient.js";
 import {
   assertActiveBurnBarCloudProEntitlement,
   boundedTrimmedString,
@@ -33,6 +34,8 @@ import {
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WEBHOOK_SECRET");
+const KNOWLEDGE_GITHUB_APP_ID = defineSecret("KNOWLEDGE_GITHUB_APP_ID");
+const KNOWLEDGE_GITHUB_APP_PRIVATE_KEY = defineSecret("KNOWLEDGE_GITHUB_APP_PRIVATE_KEY");
 /**
  * Server-held HMAC key for the opaque repo MATCH token (privacy-leak-
  * remediation-2026-06-02 §4). The GitHub-push webhook has no vault key and no
@@ -64,6 +67,145 @@ function repoMatchTokenFor(repoFullName: string): string {
     throw new HttpsError("failed-precondition", "Knowledge repo match key is not configured.");
   }
   return createHmac("sha256", secret).update(normalizeRepoFullName(repoFullName), "utf8").digest("hex");
+}
+
+function repoInstallationMatchTokenFor(repoFullName: string, installId: string): string {
+  const secret = KNOWLEDGE_REPO_MATCH_KEY.value();
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "Knowledge repo match key is not configured.");
+  }
+  return createHmac("sha256", secret)
+    .update(`repo-installation|${installId}|${normalizeRepoFullName(repoFullName)}`, "utf8")
+    .digest("hex");
+}
+
+function requiredGitHubInstallationId(raw: unknown): string {
+  const value =
+    typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0
+      ? String(raw)
+      : boundedTrimmedString(raw, "installId", 128, true);
+  if (!/^[1-9][0-9]{0,127}$/u.test(value)) {
+    throw new HttpsError("invalid-argument", "installId must be a positive GitHub installation id.");
+  }
+  return value;
+}
+
+function splitGitHubRepoFullName(repoFullName: string): { owner: string; repo: string; normalized: string } {
+  const normalized = normalizeRepoFullName(repoFullName);
+  const [owner, repo, extra] = normalized.split("/");
+  if (!owner || !repo || extra) {
+    throw new HttpsError("invalid-argument", "repoFullName must be an owner/repo GitHub full name.");
+  }
+  return { owner, repo, normalized };
+}
+
+function base64Url(data: string | Buffer): string {
+  return Buffer.from(data).toString("base64").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+}
+
+function normalizeGitHubPrivateKey(raw: string): string {
+  const trimmed = raw.trim();
+  const withNewlines = trimmed.replace(/\\n/gu, "\n");
+  if (withNewlines.includes("BEGIN") && withNewlines.includes("PRIVATE KEY")) {
+    return withNewlines;
+  }
+  try {
+    const decoded = Buffer.from(trimmed, "base64").toString("utf8").trim();
+    if (decoded.includes("BEGIN") && decoded.includes("PRIVATE KEY")) {
+      return decoded.replace(/\\n/gu, "\n");
+    }
+  } catch {
+    // Fall through to the explicit config error below.
+  }
+  throw new HttpsError("failed-precondition", "Knowledge GitHub App private key is not configured.");
+}
+
+function requireGitHubAppConfig(): { appId: string; privateKey: string } {
+  const appId = KNOWLEDGE_GITHUB_APP_ID.value()?.trim();
+  const privateKeyRaw = KNOWLEDGE_GITHUB_APP_PRIVATE_KEY.value()?.trim();
+  if (!appId || !/^[0-9]+$/u.test(appId)) {
+    throw new HttpsError("failed-precondition", "Knowledge GitHub App id is not configured.");
+  }
+  if (!privateKeyRaw) {
+    throw new HttpsError("failed-precondition", "Knowledge GitHub App private key is not configured.");
+  }
+  return { appId, privateKey: normalizeGitHubPrivateKey(privateKeyRaw) };
+}
+
+function githubAppJwt(nowMs = Date.now()): string {
+  const { appId, privateKey } = requireGitHubAppConfig();
+  const nowSeconds = Math.floor(nowMs / 1000);
+  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64Url(
+    JSON.stringify({
+      iat: nowSeconds - 60,
+      exp: nowSeconds + 9 * 60,
+      iss: appId,
+    }),
+  );
+  const signable = `${header}.${payload}`;
+  const signature = createSign("RSA-SHA256").update(signable).end().sign(privateKey);
+  return `${signable}.${base64Url(signature)}`;
+}
+
+async function responseJsonField(response: Response, field: string): Promise<unknown> {
+  const body = await response.json().catch(() => undefined);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return undefined;
+  }
+  return Reflect.get(body, field);
+}
+
+async function assertGitHubInstallationRepoAccess(installId: string, repoFullName: string): Promise<void> {
+  const { owner, repo, normalized } = splitGitHubRepoFullName(repoFullName);
+  const jwt = githubAppJwt();
+  const accessTokenResponse = await providerFetch(
+    "github",
+    "knowledge_repo_installation_token",
+    `https://api.github.com/app/installations/${encodeURIComponent(installId)}/access_tokens`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${jwt}`,
+        "content-type": "application/json",
+        "user-agent": "OpenBurnBar-KnowledgeRepoVerifier",
+        "x-github-api-version": "2022-11-28",
+      },
+      body: JSON.stringify({ repositories: [repo] }),
+    },
+  );
+  if (!accessTokenResponse.ok) {
+    throw new HttpsError("permission-denied", "GitHub App installation does not grant access to this repo.");
+  }
+  const tokenValue = await responseJsonField(accessTokenResponse, "token");
+  const installationToken = typeof tokenValue === "string" ? tokenValue : "";
+  if (!installationToken) {
+    throw new HttpsError("failed-precondition", "GitHub App installation token response was invalid.");
+  }
+
+  const repoResponse = await providerFetch(
+    "github",
+    "knowledge_repo_verify",
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+    {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${installationToken}`,
+        "user-agent": "OpenBurnBar-KnowledgeRepoVerifier",
+        "x-github-api-version": "2022-11-28",
+      },
+    },
+  );
+  if (!repoResponse.ok) {
+    throw new HttpsError("permission-denied", "GitHub App installation does not grant access to this repo.");
+  }
+  const fullNameValue = await responseJsonField(repoResponse, "full_name");
+  const verifiedFullName = typeof fullNameValue === "string" ? normalizeRepoFullName(fullNameValue) : "";
+  if (verifiedFullName !== normalized) {
+    throw new HttpsError("permission-denied", "GitHub App installation resolved a different repo.");
+  }
 }
 
 /**
@@ -176,17 +318,40 @@ export const onKnowledgeRepoPush = onRequest(
       res.status(202).send("No repository in payload; nothing to enqueue.");
       return;
     }
+    let installId: string;
+    try {
+      installId = requiredGitHubInstallationId(req.body?.installation?.id);
+    } catch {
+      res.status(202).send("No GitHub installation in payload; nothing to enqueue.");
+      return;
+    }
 
-    // Map repo → owner(s) via the collection-group of connected repos. The rows
-    // store only an opaque `repoMatchToken` (no cleartext repo name); the webhook
-    // recomputes the same server-keyed token from the GitHub-signed `full_name`
-    // and matches on it, so a Firestore-only adversary never sees the repo
-    // identity (privacy-leak-remediation-2026-06-02 §4).
+    // Map repo+installation → owner(s) via the collection-group of connected
+    // repos. Registration is server-verified against the GitHub App installation
+    // before this token is stored; the webhook then matches the GitHub-signed
+    // repo full name AND trusted installation id, so arbitrary repo names cannot
+    // be subscribed as dirty-signal triggers. A transitional repo-token query
+    // keeps pre-existing rows live only when their stored installation id matches
+    // the signed webhook installation id.
     const now = Timestamp.now();
+    const repoInstallationMatchToken = repoInstallationMatchTokenFor(repoFullName, installId);
     const repoMatchToken = repoMatchTokenFor(repoFullName);
-    const repos = await db.collectionGroup("knowledge_repos").where("repoMatchToken", "==", repoMatchToken).get();
+    const installationRepos = await db
+      .collectionGroup("knowledge_repos")
+      .where("repoInstallationMatchToken", "==", repoInstallationMatchToken)
+      .get();
+    const legacyRepos = await db.collectionGroup("knowledge_repos").where("repoMatchToken", "==", repoMatchToken).get();
+    const reposByPath = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+    for (const repoDoc of installationRepos.docs) {
+      reposByPath.set(repoDoc.ref.path, repoDoc);
+    }
+    for (const repoDoc of legacyRepos.docs) {
+      if (repoDoc.get("repoInstallationMatchToken")) continue;
+      if (repoDoc.get("installId") !== installId) continue;
+      reposByPath.set(repoDoc.ref.path, repoDoc);
+    }
     let flagged = 0;
-    for (const repoDoc of repos.docs) {
+    for (const repoDoc of reposByPath.values()) {
       const uid = repoDoc.ref.parent.parent?.id;
       // Manifest is keyed by the canonical opaque `sourceManifestId` (new rows),
       // with read-only fallbacks to transitional `sourceSlugToken` and legacy
@@ -213,7 +378,7 @@ export const connectKnowledgeRepo = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [KNOWLEDGE_REPO_MATCH_KEY],
+    secrets: [KNOWLEDGE_REPO_MATCH_KEY, KNOWLEDGE_GITHUB_APP_ID, KNOWLEDGE_GITHUB_APP_PRIVATE_KEY],
   },
   wrapCallableHandler(
     "connectKnowledgeRepo",
@@ -248,8 +413,10 @@ export const connectKnowledgeRepo = onCall(
       // `sourceSlug`); the Admin-SDK callable formerly broke that promise (§4).
       const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
       const sourceManifestId = sourceManifestIdFor(uid, sourceSlug);
-      const installId = boundedTrimmedString(request.data.installId, "installId", 128, false);
+      const installId = requiredGitHubInstallationId(request.data.installId);
+      await assertGitHubInstallationRepoAccess(installId, repoFullName);
       const repoMatchToken = repoMatchTokenFor(repoFullName);
+      const repoInstallationMatchToken = repoInstallationMatchTokenFor(repoFullName, installId);
       // Doc id derived from the opaque token (never the repo name).
       const repoId = safeCloudDocumentID(repoMatchToken, "repoId");
 
@@ -258,6 +425,7 @@ export const connectKnowledgeRepo = onCall(
           uid,
           repoId,
           repoMatchToken,
+          repoInstallationMatchToken,
           sealedRepoFullName,
           // Canonical opaque, server-keyed source manifest id. MIGRATION: legacy
           // rows that still hold `sourceSlugToken` or `sourceSlug` are read via
@@ -423,7 +591,9 @@ export const reconcileKnowledgeMemoryDaily = onSchedule(
   },
 );
 
-const __testing__ = {
+export const __testing__ = {
+  githubAppJwt,
+  repoInstallationMatchTokenFor,
   sourceManifestIdFor,
   manifestKeyForRepoRow,
   opaqueSourceManifestIdForRepoRow,
