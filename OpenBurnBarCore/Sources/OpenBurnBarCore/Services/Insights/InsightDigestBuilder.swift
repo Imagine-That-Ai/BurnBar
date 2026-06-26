@@ -551,6 +551,7 @@ public struct InsightDigestBuilder: Sendable {
         let usedModels = Set(models.map { Self.normalizedModelID($0.id) })
         let preferredCategories = ["coding", "design", "terminal", "agent", "analysis", "general"]
         return Array(benchmarks
+            .compactMap(Self.sanitizedModelBenchmarkSummary(_:))
             .filter { benchmark in
                 guard benchmark.score != nil || benchmark.rank != nil || benchmark.costSignal != nil else { return false }
                 return usedModels.isEmpty || usedModels.contains(Self.normalizedModelID(benchmark.modelID))
@@ -569,6 +570,101 @@ public struct InsightDigestBuilder: Sendable {
                 return lhs.modelID < rhs.modelID
             }
             .prefix(limit))
+    }
+
+    private static let allowedBenchmarkSources: Set<String> = [
+        "artificial_analysis",
+        "terminal_bench",
+        "design_arena",
+        "huggingface",
+        "manual_fixture",
+        "cached_fixture"
+    ]
+
+    private static let allowedBenchmarkTaskCategories: Set<String> = [
+        "general",
+        "coding",
+        "terminal",
+        "design",
+        "agent",
+        "analysis",
+        "unknown"
+    ]
+
+    private static let allowedBenchmarkFreshness: Set<String> = [
+        "fresh",
+        "stale",
+        "unavailable",
+        "cached",
+        "manual"
+    ]
+
+    private static func sanitizedModelBenchmarkSummary(
+        _ benchmark: InsightDigest.ModelBenchmarkSummary
+    ) -> InsightDigest.ModelBenchmarkSummary? {
+        guard
+            let source = canonicalBenchmarkToken(benchmark.source, allowed: allowedBenchmarkSources),
+            let taskCategory = canonicalBenchmarkToken(benchmark.taskCategory, allowed: allowedBenchmarkTaskCategories),
+            let modelID = sanitizedBenchmarkIdentifier(benchmark.modelID, maxLength: 96)
+        else {
+            return nil
+        }
+        let freshness = canonicalBenchmarkToken(benchmark.freshness, allowed: allowedBenchmarkFreshness) ?? "unavailable"
+        let providerID = benchmark.providerID.flatMap { sanitizedBenchmarkIdentifier($0, maxLength: 64) }
+        let idSeed = "\(source)|\(modelID)|\(taskCategory)|\(benchmark.fetchedAt.timeIntervalSince1970)"
+
+        return InsightDigest.ModelBenchmarkSummary(
+            id: "benchmark_" + shortHash(idSeed, salt: "benchmark"),
+            source: source,
+            sourceURL: nil,
+            attribution: nil,
+            fetchedAt: benchmark.fetchedAt,
+            modelID: modelID,
+            providerID: providerID,
+            taskCategory: taskCategory,
+            score: clampedUnitInterval(benchmark.score),
+            rank: positiveBoundedInt(benchmark.rank, max: 100_000),
+            costSignal: clampedUnitInterval(benchmark.costSignal),
+            latencySignal: clampedUnitInterval(benchmark.latencySignal),
+            contextWindowTokens: positiveBoundedInt(benchmark.contextWindowTokens, max: 10_000_000),
+            reliabilitySignal: clampedUnitInterval(benchmark.reliabilitySignal),
+            confidence: clampedUnitInterval(benchmark.confidence),
+            freshness: freshness,
+            inputCostPerMtoken: nonNegativeFinite(benchmark.inputCostPerMtoken, max: 1_000_000),
+            outputCostPerMtoken: nonNegativeFinite(benchmark.outputCostPerMtoken, max: 1_000_000),
+            blendedCostPerMtoken: nonNegativeFinite(benchmark.blendedCostPerMtoken, max: 1_000_000)
+        )
+    }
+
+    private static func canonicalBenchmarkToken(_ value: String, allowed: Set<String>) -> String? {
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        return allowed.contains(token) ? token : nil
+    }
+
+    private static func sanitizedBenchmarkIdentifier(_ value: String, maxLength: Int) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= maxLength else { return nil }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:/+-")
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+
+    private static func clampedUnitInterval(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return min(max(value, 0), 1)
+    }
+
+    private static func positiveBoundedInt(_ value: Int?, max: Int) -> Int? {
+        guard let value, value > 0 else { return nil }
+        return min(value, max)
+    }
+
+    private static func nonNegativeFinite(_ value: Double?, max: Double) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return min(value, max)
     }
 
     private func makeAnomalies(daily: [InsightDigest.DailyPoint], limit: Int) -> [InsightDigest.PrecomputedAnomaly] {
