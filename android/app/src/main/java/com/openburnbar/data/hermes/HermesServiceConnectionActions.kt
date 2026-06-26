@@ -279,10 +279,11 @@ internal object HermesServiceEndpointSupport {
 
     private fun String.isLoopbackHost(): Boolean {
         val host = trim().trim('[', ']').trimEnd('.').lowercase()
-        return host == "localhost" ||
-            host == "::1" ||
-            host == "0:0:0:0:0:0:0:1" ||
-            host.startsWith("127.")
+        if (host == "localhost" || host == "::1" || host == "0:0:0:0:0:0:0:1") return true
+        val octets = host.split('.')
+        return octets.size == 4 &&
+            octets.all { octet -> octet.toIntOrNull()?.let { it in 0..255 } == true } &&
+            octets.first().toIntOrNull() == 127
     }
 }
 

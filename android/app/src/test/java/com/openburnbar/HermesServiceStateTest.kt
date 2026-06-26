@@ -84,6 +84,19 @@ class HermesServiceStateTest {
     }
 
     @Test
+    fun `addDirectConnection rejects plaintext hostname that starts like loopback`() = runTest {
+        val service = HermesService()
+        try {
+            val record = service.addDirectConnection("Spoofed loopback", "http://127.evil.com:8642")
+            assertNull(record)
+            assertEquals(HermesConnectionRecord.localDefault.id, service.selectedConnection.value.id)
+            assertEquals(HermesServiceEndpointSupport.UNTRUSTED_DIRECT_ENDPOINT_MESSAGE, service.runtimeErrorText.value)
+        } finally {
+            service.destroy()
+        }
+    }
+
+    @Test
     fun `addDirectConnection rejects plaintext websocket endpoints off loopback`() = runTest {
         val service = HermesService()
         try {
