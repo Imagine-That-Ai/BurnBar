@@ -9,13 +9,11 @@ import OpenBurnBarCore
 /// the service into the protocol so `InsightsStore` can register a
 /// Hermes adapter conditionally on `service.isReachable`.
 ///
-/// Two registration paths:
-/// - Local LAN session: hits `http://127.0.0.1:8642` (or whatever the
-///   user re-routed `HermesService.insightsBaseURL` to). No auth header.
-/// - Relay session: hits the relay URL with the user's relay credential
-///   surfaced via the existing `HermesService.insightsAuthorizationHeader`
-///   accessor. The Insights call goes through the same plumbing as the
-///   chat surface — there's only one Hermes wire.
+/// Registration is intentionally limited to the direct HTTP path until
+/// mobile has a relay-native Insights transport. Relay chat can be
+/// reachable while `HermesService.baseURL` still points at an old direct
+/// endpoint; registering that stale URL would send Insights traffic to
+/// the wrong unauthenticated target.
 ///
 /// The bridge is intentionally a simple struct. Lifecycle is owned by
 /// `InsightsStore.registerAvailableAnalysisGateways(via:)` which builds
@@ -46,6 +44,11 @@ public struct HermesInsightServiceBridge {
     }
 }
 
+struct HermesInsightHTTPConfiguration {
+    let baseURL: URL
+    let authorizationHeader: String?
+}
+
 @MainActor
 extension HermesService {
     /// Build a Hermes Insights provider closure for
@@ -53,18 +56,59 @@ extension HermesService {
     ///
     /// The closure is `@Sendable` so it can run off-actor when the
     /// registry refreshes the catalog. It captures only the current
-    /// connection's URL + auth, not a live `HermesService` reference,
+    /// direct HTTP connection's URL + auth, not a live `HermesService` reference,
     /// to keep cross-actor lifecycle clean.
     func makeInsightProvider() -> InsightProviderGatewayRegistry.HermesProvider {
-        let url = insightsBaseURL
-        let auth = insightsAuthorizationHeader
+        let configuration = insightsHTTPConfiguration
         let reachable = isReachable
         return { @Sendable in
-            guard reachable else { return nil }
+            guard reachable, let configuration else { return nil }
             return HermesInsightServiceBridge(
-                baseURL: url,
-                authorizationHeader: auth
+                baseURL: configuration.baseURL,
+                authorizationHeader: configuration.authorizationHeader
             ).makeAdapter()
         }
+    }
+
+    var insightsHTTPConfiguration: HermesInsightHTTPConfiguration? {
+        guard selectedConnection.mode == .directURL,
+              let endpointURL = selectedConnection.endpointURL,
+              let selectedEndpoint = HermesService.validatedEndpointURL(endpointURL),
+              HermesService.sameInsightEndpoint(baseURL, selectedEndpoint) else {
+            return nil
+        }
+        return HermesInsightHTTPConfiguration(
+            baseURL: selectedEndpoint,
+            authorizationHeader: insightsAuthorizationHeader
+        )
+    }
+
+    private var insightsAuthorizationHeader: String? {
+        guard let rawToken = try? secretStore.load(connectionID: selectedConnection.id) else {
+            return nil
+        }
+        let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            return nil
+        }
+        return "Bearer \(token)"
+    }
+
+    private static func sameInsightEndpoint(_ lhs: URL, _ rhs: URL) -> Bool {
+        normalizedInsightEndpoint(lhs) == normalizedInsightEndpoint(rhs)
+    }
+
+    private static func normalizedInsightEndpoint(_ url: URL) -> String? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            return nil
+        }
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return [scheme, host, components.port.map(String.init) ?? "", path].joined(separator: "|")
     }
 }

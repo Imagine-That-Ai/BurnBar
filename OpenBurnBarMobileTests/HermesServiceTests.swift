@@ -1570,6 +1570,45 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "local-qwen" })?.providerName, "LM Studio Local")
     }
 
+    func testInsightProviderUsesValidatedDirectEndpointAndBearerToken() throws {
+        let secretStore = FakeHermesSecretStore()
+        try secretStore.save("  mobile-relay-token  ", connectionID: "direct-secure")
+        let service = HermesService(secretStore: secretStore)
+        let connection = HermesConnectionRecord(
+            id: "direct-secure",
+            displayName: "Secure Hermes",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "https://hermes.example.com"
+        )
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.isReachable = true
+
+        XCTAssertNotNil(service.makeInsightProvider()())
+        let configuration = try XCTUnwrap(service.insightsHTTPConfiguration)
+
+        XCTAssertEqual(configuration.baseURL.absoluteString, "https://hermes.example.com")
+        XCTAssertEqual(configuration.authorizationHeader, "Bearer mobile-relay-token")
+    }
+
+    func testInsightProviderDoesNotRegisterRelayModeWithStaleDirectBaseURL() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.baseURL = URL(string: "http://8.8.8.8:8642")!
+        service.isReachable = true
+
+        XCTAssertNil(service.makeInsightProvider()())
+    }
+
+    func testInsightProviderRejectsDirectConnectionWhenBaseURLDriftsFromSelection() {
+        let service = HermesService()
+        XCTAssertTrue(service.selectConnection(directConnection(), refresh: false))
+        service.baseURL = URL(string: "http://8.8.8.8:8642")!
+        service.isReachable = true
+
+        XCTAssertNil(service.makeInsightProvider()())
+    }
+
     func testRelayStreamingParsesAggregatedCRLFSSEPayload() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingEvents = [
