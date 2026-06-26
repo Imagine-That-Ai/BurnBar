@@ -87,33 +87,13 @@ jobs:
           fi
 
       - name: Validate internal links in AGENTS.md
-        run: |
-          set -euo pipefail
-          echo "==> Checking internal file links in AGENTS.md..."
-          python3 - <<'PY'
-          import pathlib
-          import re
-
-          errors = 0
-          text = pathlib.Path("AGENTS.md").read_text(encoding="utf-8")
-          for _label, raw_path in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text):
-              if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw_path):
-                  continue
-              path = raw_path.split("#", 1)[0]
-              if not path:
-                  continue
-              if pathlib.Path(path).exists():
-                  print(f"OK: {path}")
-              else:
-                  print(f"FAIL: Broken link target: '{path}'")
-                  errors += 1
-
-          if errors:
-              print(f"::warning::{errors} broken internal link(s) found in AGENTS.md.")
-          PY
+        run: node scripts/ci/validate-agents-md-links.mjs AGENTS.md
 
       - name: Self-test agent memory source policy
         run: node scripts/ci/verify-agent-memory-source-policy.test.mjs
+
+      - name: Self-test AGENTS.md link validation
+        run: node --test scripts/ci/validate-agents-md-links.test.mjs
 
       - name: Verify agent memory source policy
         run: node scripts/ci/verify-agent-memory-source-policy.mjs
