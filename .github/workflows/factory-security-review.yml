@@ -149,7 +149,9 @@ jobs:
           gh_bin="/usr/bin/gh"
           jq_bin="/usr/bin/jq"
           curl_bin="/usr/bin/curl"
-          for tool in gh jq curl; do
+          gpg_bin="/usr/bin/gpg"
+          tar_bin="/usr/bin/tar"
+          for tool in gh jq curl gpg tar; do
             bin_var="${tool}_bin"
             if [[ ! -x "${!bin_var}" ]]; then
               echo "::error::Required routing tool ${tool} was not found at the expected system path"
@@ -161,13 +163,15 @@ jobs:
           tmp_files=()
           cleanup() {
             for f in "${tmp_files[@]}"; do
-              rm -f "${f}"
+              rm -rf -- "${f}"
             done
           }
           trap cleanup EXIT
 
           # Concatenate every file the mission produced into a single buffer.
           report_tmp="$(mktemp)"
+          evidence_archive="${RUNNER_TEMP}/factory-security-review-encrypted-evidence.tgz.gpg"
+          evidence_retained=false
           tmp_files+=("${report_tmp}")
           find "${audit_dir}" -type f -print0 | sort -z | while IFS= read -r -d '' f; do
             rel="${f#"${audit_dir}"/}"
@@ -205,6 +209,39 @@ jobs:
               printf '\n\n'
               printf '... (report truncated at %s bytes; full audit retained only on the runner)\n' "${max_chars}"
             } >> "${description_tmp}"
+          fi
+
+          if [[ -n "${SECURITY_REVIEW_EVIDENCE_KEY:-}" ]]; then
+            evidence_dir="$(mktemp -d)"
+            tmp_files+=("${evidence_dir}")
+            chmod 700 "${evidence_dir}"
+            cp "${report_tmp}" "${evidence_dir}/report.txt"
+            "${jq_bin}" -n \
+              --arg run_url "${run_url}" \
+              --arg repository "${GITHUB_REPOSITORY}" \
+              --arg run_id "${GITHUB_RUN_ID}" \
+              --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              "{
+                repository: \$repository,
+                run_id: \$run_id,
+                run_url: \$run_url,
+                created_at: \$created_at,
+                contents: \"encrypted factory security review evidence\"
+              }" > "${evidence_dir}/metadata.json"
+            (
+              cd "${evidence_dir}"
+              "${tar_bin}" -czf - report.txt metadata.json
+            ) | "${gpg_bin}" --batch --yes --pinentry-mode loopback \
+              --symmetric --cipher-algo AES256 \
+              --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+              --passphrase-fd 3 \
+              --output "${evidence_archive}" \
+              3<<<"${SECURITY_REVIEW_EVIDENCE_KEY}"
+            chmod 600 "${evidence_archive}"
+            evidence_retained=true
+            echo "Encrypted security review evidence retained for this run."
+          else
+            echo "::warning::SECURITY_REVIEW_EVIDENCE_KEY is not configured; encrypted evidence artifact cannot be retained."
           fi
 
           "${jq_bin}" -n \
@@ -253,6 +290,8 @@ jobs:
             critical_count="$(grep -ciE '\b(critical|P0)\b' "${report_tmp}" || true)"
             if [[ "${advisory_created}" == "true" ]]; then
               slack_text="🚨 *${GITHUB_REPOSITORY}* — ${critical_count} critical finding(s) from weekly security review. Private advisory created (${today}). Run: ${run_url}"
+            elif [[ "${evidence_retained}" == "true" ]]; then
+              slack_text="🚨 *${GITHUB_REPOSITORY}* — ${critical_count} critical finding(s) from weekly security review. Advisory creation failed; encrypted evidence artifact retained and workflow failed closed. Run: ${run_url}"
             else
               slack_text="🚨 *${GITHUB_REPOSITORY}* — ${critical_count} critical finding(s) from weekly security review. Advisory creation failed; workflow failed closed without printing the report. Run: ${run_url}"
             fi
@@ -273,9 +312,23 @@ jobs:
           # Critical reports must land in the private advisory channel. Slack is
           # only an alert, never a substitute for the confidential report body.
           if [[ "${advisory_created}" == "false" ]]; then
-            echo "::error::Critical findings detected but private advisory routing failed. Raw report intentionally not printed to CI logs."
+            if [[ "${evidence_retained}" == "true" ]]; then
+              echo "::error::Critical findings detected but private advisory routing failed. Encrypted evidence artifact retained; raw report intentionally not printed to CI logs."
+            else
+              echo "::error::Critical findings detected but private advisory routing failed, and encrypted evidence retention is unavailable. Raw report intentionally not printed to CI logs."
+            fi
             exit 1
           fi
         env:
           GH_TOKEN: ${{ secrets.SECURITY_ADVISORY_TOKEN }}
+          SECURITY_REVIEW_EVIDENCE_KEY: ${{ secrets.SECURITY_REVIEW_EVIDENCE_KEY }}
           SLACK_SECURITY_WEBHOOK: ${{ secrets.SLACK_SECURITY_WEBHOOK }}
+
+      - name: Upload encrypted security review evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: factory-security-review-encrypted-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/factory-security-review-encrypted-evidence.tgz.gpg
+          if-no-files-found: ignore
+          retention-days: 30
