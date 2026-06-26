@@ -311,7 +311,9 @@ extension ChatSessionController {
         let attachmentsToSend = pendingAttachments
         guard !trimmed.isEmpty || !attachmentsToSend.isEmpty else { return }
         guard !isSendBusy else {
-            streamError = "A chat response is already in progress. Wait for it to finish, then send again."
+            // A rejected duplicate send is not the terminal result of the
+            // active stream. Relay/mission finalizers consume streamError as
+            // the active stream's outcome, so keep busy rejections out of it.
             return
         }
 
