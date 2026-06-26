@@ -564,6 +564,12 @@ jobs:
           fi
           echo "All AGENTS.md script references valid."
 
+      - name: Self-test agent memory source policy
+        run: node scripts/ci/verify-agent-memory-source-policy.test.mjs
+
+      - name: Verify agent memory source policy
+        run: node scripts/ci/verify-agent-memory-source-policy.mjs
+
   # ── Path filter: skip expensive legs when their surfaces are untouched ────
   fast-feedback-path-filter:
     name: Fast Feedback path filter

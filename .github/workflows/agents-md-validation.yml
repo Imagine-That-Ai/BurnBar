@@ -10,6 +10,8 @@ on:
     paths:
       - "AGENTS.md"
       - "CLAUDE.md"
+      - "scripts/ci/verify-agent-memory-source-policy.mjs"
+      - "scripts/ci/verify-agent-memory-source-policy.test.mjs"
       - "scripts/**"
       - "Makefile"
       - ".github/workflows/agents-md-validation.yml"
@@ -109,6 +111,12 @@ jobs:
           if errors:
               print(f"::warning::{errors} broken internal link(s) found in AGENTS.md.")
           PY
+
+      - name: Self-test agent memory source policy
+        run: node scripts/ci/verify-agent-memory-source-policy.test.mjs
+
+      - name: Verify agent memory source policy
+        run: node scripts/ci/verify-agent-memory-source-policy.mjs
 
       - name: Check AGENTS.md freshness relative to key scripts
         run: |
