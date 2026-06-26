@@ -100,15 +100,73 @@ final class VerdictCacheTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: tempDir) }
 
         let now = Date()
+        let key = Data(repeating: 0x42, count: 32)
         do {
-            let cache = VerdictCache(storage: .onDisk(directory: tempDir))
+            let cache = VerdictCache(storage: .onDisk(directory: tempDir, encryptionKey: key))
             await cache.write(makeVerdict(generatedAt: now), deviceID: "dev", now: now)
         }
         do {
-            let cache2 = VerdictCache(storage: .onDisk(directory: tempDir))
+            let cache2 = VerdictCache(storage: .onDisk(directory: tempDir, encryptionKey: key))
             let read = await cache2.read(window: .today, deviceID: "dev", now: now)
             XCTAssertNotNil(read, "cache should rehydrate from disk on new instance")
         }
+    }
+
+    func testDiskPersistenceDoesNotWriteReadableVerdictJSON() async throws {
+        let tempDir = try FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true
+        )
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDir) }
+
+        let now = Date()
+        let secretHeadline = "Sensitive local verdict headline"
+        var verdict = makeVerdict(generatedAt: now)
+        verdict.headline = secretHeadline
+        let cache = VerdictCache(storage: .onDisk(directory: tempDir, encryptionKey: Data(repeating: 0x24, count: 32)))
+        await cache.write(verdict, deviceID: "dev", now: now)
+
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: tempDir, includingPropertiesForKeys: nil))
+            .compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "sealed" }
+        let sealedURL = try XCTUnwrap(files.first)
+        let raw = try Data(contentsOf: sealedURL)
+        let rendered = String(data: raw, encoding: .utf8) ?? ""
+        XCTAssertFalse(rendered.contains(secretHeadline))
+        XCTAssertThrowsError(try JSONDecoder().decode([String: InsightVerdict].self, from: raw))
+    }
+
+    func testLegacyPlaintextDiskCacheMigratesToSealedStorage() async throws {
+        let tempDir = try FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true
+        )
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDir) }
+
+        let now = Date()
+        let verdict = makeVerdict(generatedAt: now)
+        let deviceDir = tempDir.appendingPathComponent("dev", isDirectory: true)
+        try FileManager.default.createDirectory(at: deviceDir, withIntermediateDirectories: true)
+        let legacyURL = deviceDir.appendingPathComponent("\(VerdictWindow.today.rawValue).json")
+        let bucket = VerdictWindow.today.dayBucketKey(for: verdict.generatedAt, calendar: .current)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode([bucket: verdict]).write(to: legacyURL, options: [.atomic])
+
+        let cache = VerdictCache(storage: .onDisk(directory: tempDir, encryptionKey: Data(repeating: 0x25, count: 32)))
+        let read = await cache.read(window: .today, deviceID: "dev", now: now)
+
+        XCTAssertNotNil(read)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: deviceDir.appendingPathComponent("\(VerdictWindow.today.rawValue).sealed").path
+            )
+        )
     }
 
     func testCountReturnsBucketSize() async {
