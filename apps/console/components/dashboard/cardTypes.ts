@@ -1,7 +1,6 @@
-import type { DashboardSource, DashboardWindow } from "@/lib/dashboard/types";
+import type { DashboardData } from "@/lib/dashboard/useDashboardUsage";
 
-/** Every dashboard card body receives the resolved window + its provenance. */
+/** Every dashboard card body receives the resolved live usage data. */
 export interface CardProps {
-  window: DashboardWindow;
-  source: DashboardSource;
+  data: DashboardData;
 }

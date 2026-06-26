@@ -7,7 +7,6 @@
  */
 
 import * as React from "react";
-import type { CostSample } from "@/lib/dashboard/types";
 
 function withThousands(intPart: string): string {
   return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -62,26 +61,23 @@ export function Stat({
 }
 
 /**
- * A filled area sparkline rendered from cumulative cost samples. Uses a 0..100
- * viewBox so it scales fluidly to any card size (preserveAspectRatio none).
+ * A filled-area sparkline over an arbitrary numeric series (e.g. daily tokens).
+ * Uses a 0..100 viewBox so it scales fluidly to any card size
+ * (preserveAspectRatio none). Renders flat when there are <2 points.
  */
 export function Sparkline({
-  samples,
+  values,
   className,
 }: {
-  samples: CostSample[];
+  values: number[];
   className?: string;
 }) {
-  const pts = samples.length
-    ? samples
-    : [
-        { t: 0, cumulativeUsd: 0 },
-        { t: 1, cumulativeUsd: 0 },
-      ];
-  const max = Math.max(...pts.map((p) => p.cumulativeUsd), 1);
-  const coords = pts.map((p) => {
-    const x = p.t * 100;
-    const y = 100 - (p.cumulativeUsd / max) * 92 - 4;
+  const pts = values.length >= 2 ? values : [0, 0];
+  const max = Math.max(...pts, 1);
+  const lastIndex = pts.length - 1;
+  const coords = pts.map((v, i) => {
+    const x = lastIndex > 0 ? (i / lastIndex) * 100 : 0;
+    const y = 100 - (v / max) * 92 - 4;
     return [x, y] as const;
   });
   const line = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
@@ -127,15 +123,14 @@ export function ProportionBar({ value }: { value: number }) {
   );
 }
 
-/** "demo data" pill — shown when a card is backed by the mock seam. */
-export function DemoBadge() {
+/** A card's empty state — the eyebrow plus a quiet "no data in this window" line. */
+export function EmptyHint({ label, hint }: { label: string; hint?: string }) {
   return (
-    <span
-      className="rounded-pill px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-[0.14em] text-content-dim"
-      style={{ border: "1px solid var(--color-glass-line)" }}
-      title="Synthetic demo data — no live usage feed is wired yet."
-    >
-      demo data
-    </span>
+    <div className="flex h-full flex-col">
+      <span className="eyebrow">{label}</span>
+      <div className="flex flex-1 items-center justify-center">
+        <span className="text-sm text-content-dim">{hint ?? "Nothing in this window yet."}</span>
+      </div>
+    </div>
   );
 }

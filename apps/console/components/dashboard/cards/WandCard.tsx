@@ -1,61 +1,33 @@
 import type { CardProps } from "../cardTypes";
-import { Stat, formatUsd } from "./primitives";
+import { EmptyHint, Stat, formatCompact } from "./primitives";
 
-export function WandCard({ window: w }: CardProps) {
-  const { fusion } = w;
-  const baseline = Math.max(fusion.baselineCostUsd, fusion.fusionCostUsd, 0.0001);
+export function WandCard({ data }: CardProps) {
+  const fusion = data.fusion;
+  if (!fusion) {
+    return <EmptyHint label="The Wand" hint="Fusion allowance unavailable." />;
+  }
+  const usedFrac = fusion.available > 0 ? Math.min(1, fusion.used / fusion.available) : 0;
   return (
     <div className="flex h-full flex-col">
       <Stat
         value={
-          <span className="text-tier-end-to-end">{formatUsd(fusion.savedUsd)}</span>
+          <span className="text-tier-end-to-end">{formatCompact(fusion.remaining)}</span>
         }
-        label="The Wand · saved"
-        sub={`${fusion.fusionRuns} fusion runs`}
+        label="The Wand · searches left"
+        sub={`${formatCompact(fusion.used)} of ${formatCompact(fusion.available)} used · ${fusion.monthKey}`}
       />
-      <div className="mt-3 space-y-2">
-        <Bar
-          label="fusion"
-          value={formatUsd(fusion.fusionCostUsd)}
-          frac={fusion.fusionCostUsd / baseline}
-          accent
-        />
-        <Bar
-          label="baseline"
-          value={formatUsd(fusion.baselineCostUsd)}
-          frac={fusion.baselineCostUsd / baseline}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Bar({
-  label,
-  value,
-  frac,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  frac: number;
-  accent?: boolean;
-}) {
-  const pct = Math.min(100, Math.max(2, frac * 100));
-  return (
-    <div>
-      <div className="flex justify-between font-mono text-[0.62rem] uppercase tracking-[0.12em] text-content-dim">
-        <span>{label}</span>
-        <span className="tabular-nums">{value}</span>
-      </div>
-      <div className="mt-1 h-2 w-full overflow-hidden rounded-pill bg-mercury-wash">
-        <div
-          className="h-full rounded-pill"
-          style={{
-            width: pct + "%",
-            background: accent ? "var(--accent)" : "var(--color-mercury-deep)",
-          }}
-        />
+      <div className="mt-3">
+        <div className="h-2 w-full overflow-hidden rounded-pill bg-mercury-wash">
+          <div
+            className="h-full rounded-pill"
+            style={{ width: Math.max(2, usedFrac * 100) + "%", background: "var(--accent)" }}
+          />
+        </div>
+        {fusion.purchased > 0 && (
+          <p className="mt-2 text-xs text-content-mute">
+            includes {formatCompact(fusion.purchased)} purchased this month
+          </p>
+        )}
       </div>
     </div>
   );

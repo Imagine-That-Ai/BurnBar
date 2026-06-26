@@ -1,65 +1,130 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMockWindow } from "@/lib/dashboard/mockUsage";
-import type { DashboardRange } from "@/lib/dashboard/types";
+import {
+  currentMonthKey,
+  emptyRollup,
+  normalizeAllowance,
+  normalizeQuotaSnapshot,
+  normalizeRollup,
+} from "@/lib/usage";
 
-const RANGES: DashboardRange[] = ["today", "7d", "30d"];
-
-describe("buildMockWindow", () => {
-  it("is deterministic (same seed → identical window)", () => {
-    for (const r of RANGES) {
-      expect(buildMockWindow(r)).toEqual(buildMockWindow(r));
-    }
+describe("normalizeRollup", () => {
+  it("returns a zeroed rollup for non-object input", () => {
+    expect(normalizeRollup(null, "30d")).toEqual(emptyRollup("30d"));
+    expect(normalizeRollup("garbage", "7d")).toEqual(emptyRollup("7d"));
   });
 
-  it("produces a well-formed, internally consistent window", () => {
-    for (const r of RANGES) {
-      const w = buildMockWindow(r);
-      expect(w.range).toBe(r);
-      expect(w.totalCostUsd).toBeGreaterThan(0);
-      expect(w.providers.length).toBeGreaterThan(0);
-
-      // Provider costs sum to ~the total (rounding tolerance).
-      const sum = w.providers.reduce((s, p) => s + p.costUsd, 0);
-      expect(Math.abs(sum - w.totalCostUsd)).toBeLessThanOrEqual(0.05 * w.totalCostUsd + 0.5);
-
-      // Providers are sorted by cost desc.
-      for (let i = 1; i < w.providers.length; i++) {
-        expect(w.providers[i - 1]!.costUsd).toBeGreaterThanOrEqual(w.providers[i]!.costUsd);
-      }
-
-      // Rates are within [0,1].
-      expect(w.cacheHitRate).toBeGreaterThanOrEqual(0);
-      expect(w.cacheHitRate).toBeLessThanOrEqual(1);
-      for (const p of w.providers) {
-        expect(p.cacheHitRate).toBeGreaterThanOrEqual(0);
-        expect(p.cacheHitRate).toBeLessThanOrEqual(1);
-      }
-    }
+  it("coerces totals defensively (missing / non-numeric → 0)", () => {
+    const r = normalizeRollup({ totals: { requests: 5, tokens: "x", costUsd: NaN } }, "today");
+    expect(r.totals.requests).toBe(5);
+    expect(r.totals.tokens).toBe(0);
+    expect(r.totals.costUsd).toBe(0);
   });
 
-  it("cost curve is monotonic non-decreasing, normalized, ending at total", () => {
-    const w = buildMockWindow("7d");
-    expect(w.costCurve[0]!.t).toBe(0);
-    expect(w.costCurve[w.costCurve.length - 1]!.t).toBe(1);
-    for (let i = 1; i < w.costCurve.length; i++) {
-      expect(w.costCurve[i]!.cumulativeUsd).toBeGreaterThanOrEqual(
-        w.costCurve[i - 1]!.cumulativeUsd,
-      );
-    }
-    expect(w.costCurve[w.costCurve.length - 1]!.cumulativeUsd).toBeCloseTo(w.totalCostUsd, 1);
+  it("sorts provider summaries by cost desc and fills defaults", () => {
+    const r = normalizeRollup(
+      {
+        providerSummaries: [
+          { provider: "openai", totalCost: 2, totalTokens: 10, totalRequests: 1 },
+          { provider: "anthropic", totalCost: 9, totalTokens: 99 },
+          { notAProvider: true },
+        ],
+      },
+      "30d",
+    );
+    expect(r.providerSummaries.map((p) => p.provider)).toEqual(["anthropic", "openai", "unknown"]);
+    expect(r.providerSummaries[1]!.totalRequests).toBe(1);
+    expect(r.providerSummaries[2]!.totalCost).toBe(0);
   });
 
-  it("fusion savings are non-negative", () => {
-    const w = buildMockWindow("30d");
-    expect(w.fusion.savedUsd).toBeGreaterThanOrEqual(0);
-    expect(w.fusion.fusionRuns).toBeGreaterThan(0);
+  it("flattens the dailyPoints map into an ascending-by-day series", () => {
+    const r = normalizeRollup(
+      { dailyPoints: { "2026-06-03": 30, "2026-06-01": 10, "2026-06-02": 20 } },
+      "7d",
+    );
+    expect(r.dailyPoints.map((p) => p.day)).toEqual(["2026-06-01", "2026-06-02", "2026-06-03"]);
+    expect(r.dailyPoints.map((p) => p.tokens)).toEqual([10, 20, 30]);
   });
 
-  it("provider ids match brand-logo / swarm convention (kebab-ish)", () => {
-    const w = buildMockWindow("today");
-    for (const p of w.providers) {
-      expect(p.id).toMatch(/^[a-z0-9-]+$/);
-    }
+  it("normalizes a Firestore-Timestamp computedAt to ISO", () => {
+    const r1 = normalizeRollup({ computedAt: "2026-06-01T00:00:00.000Z" }, "30d");
+    expect(r1.computedAt).toBe("2026-06-01T00:00:00.000Z");
+    const r2 = normalizeRollup({ computedAt: { seconds: 1750000000, nanoseconds: 0 } }, "30d");
+    expect(typeof r2.computedAt).toBe("string");
+    const r3 = normalizeRollup({}, "30d");
+    expect(r3.computedAt).toBeNull();
+  });
+});
+
+describe("normalizeQuotaSnapshot", () => {
+  it("returns null for junk", () => {
+    expect(normalizeQuotaSnapshot(null)).toBeNull();
+  });
+
+  it("computes remaining from limit-used when remaining is absent", () => {
+    const q = normalizeQuotaSnapshot({
+      provider: "anthropic",
+      confidence: "high",
+      buckets: [{ name: "tokens", used: 30, limit: 100 }],
+    });
+    expect(q).not.toBeNull();
+    expect(q!.buckets[0]!.remaining).toBe(70);
+    expect(q!.confidence).toBe("high");
+  });
+
+  it("marks unbounded buckets with remaining -1 and defaults bad confidence to stale", () => {
+    const q = normalizeQuotaSnapshot({
+      provider: "ollama",
+      confidence: "bogus",
+      buckets: [{ name: "requests", used: 5, limit: -1 }],
+    });
+    expect(q!.buckets[0]!.remaining).toBe(-1);
+    expect(q!.confidence).toBe("stale");
+  });
+});
+
+describe("normalizeAllowance", () => {
+  it("derives available/remaining and applies plan defaults", () => {
+    const a = normalizeAllowance(
+      {
+        includedFusionSearches: 100,
+        topupFusionSearchesPurchased: 50,
+        fusionSearchesUsed: 120,
+        monthlyFusionSearchCap: 1000,
+      },
+      "2026-06",
+    );
+    expect(a.available).toBe(150);
+    expect(a.remaining).toBe(30);
+    expect(a.monthlyCap).toBe(1000);
+  });
+
+  it("falls back to plan defaults when the doc is empty", () => {
+    const a = normalizeAllowance({}, "2026-06");
+    expect(a.included).toBe(100);
+    expect(a.used).toBe(0);
+    expect(a.remaining).toBe(100);
+    expect(a.monthlyCap).toBe(1000);
+  });
+
+  it("clamps available to the monthly cap when top-ups exceed it (mirrors server)", () => {
+    const a = normalizeAllowance(
+      {
+        includedFusionSearches: 300,
+        topupFusionSearchesPurchased: 5000, // pushes included+purchased past the cap
+        fusionSearchesUsed: 100,
+        monthlyFusionSearchCap: 2000,
+      },
+      "2026-06",
+    );
+    expect(a.available).toBe(2000); // min(2000, 5300), NOT 5300
+    expect(a.remaining).toBe(1900);
+  });
+});
+
+describe("currentMonthKey", () => {
+  it("formats YYYY-MM in UTC", () => {
+    expect(currentMonthKey(new Date(Date.UTC(2026, 5, 26)))).toBe("2026-06");
+    expect(currentMonthKey(new Date(Date.UTC(2026, 0, 1)))).toBe("2026-01");
   });
 });

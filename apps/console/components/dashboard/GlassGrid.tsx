@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import type { DashboardSource, DashboardWindow } from "@/lib/dashboard/types";
+import type { DashboardData } from "@/lib/dashboard/useDashboardUsage";
 import { CARD_DEF_BY_ID, isCardId, type CardId } from "./cardRegistry";
 import {
   GRID,
@@ -17,8 +17,7 @@ import type { DashboardLayoutItem } from "./layoutStore";
 export interface GlassGridProps {
   items: DashboardLayoutItem[];
   editable: boolean;
-  window: DashboardWindow;
-  source: DashboardSource;
+  data: DashboardData;
   onCommitRect: (cardId: string, rect: GridRect) => void;
   onRemove: (cardId: string) => void;
 }
@@ -26,8 +25,7 @@ export interface GlassGridProps {
 export function GlassGrid({
   items,
   editable,
-  window: usage,
-  source,
+  data,
   onCommitRect,
   onRemove,
 }: GlassGridProps) {
@@ -67,7 +65,7 @@ export function GlassGrid({
               onCommit={(rect) => onCommitRect(item.cardId, rect)}
               onRemove={() => onRemove(item.cardId)}
             >
-              <Body window={usage} source={source} />
+              <Body data={data} />
             </GlassGridItem>
           );
         })}

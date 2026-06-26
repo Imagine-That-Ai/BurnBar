@@ -11,9 +11,9 @@ import {
 import { GRID, rectsOverlap } from "@/components/dashboard/gridMath";
 
 describe("card registry", () => {
-  it("declares the nine §7 cards with unique ids", () => {
-    expect(CARD_DEFS).toHaveLength(9);
-    expect(new Set(CARD_IDS).size).toBe(9);
+  it("declares the live cards with unique ids", () => {
+    expect(CARD_DEFS.length).toBe(10);
+    expect(new Set(CARD_IDS).size).toBe(CARD_DEFS.length);
   });
 
   it("every card has a component, icon, and a valid default size", () => {
@@ -32,9 +32,10 @@ describe("card registry", () => {
     expect(isCardId(42)).toBe(false);
   });
 
-  it("default layout places every card without overlaps", () => {
-    expect(DEFAULT_DASHBOARD_ITEMS).toHaveLength(9);
-    expect(new Set(DEFAULT_DASHBOARD_ITEMS.map((i) => i.cardId)).size).toBe(9);
+  it("default layout places every registered card without overlaps", () => {
+    expect(DEFAULT_DASHBOARD_ITEMS).toHaveLength(CARD_DEFS.length);
+    // Every registered card appears exactly once in the default layout.
+    expect(new Set(DEFAULT_DASHBOARD_ITEMS.map((i) => i.cardId))).toEqual(new Set(CARD_IDS));
     for (const it of DEFAULT_DASHBOARD_ITEMS) {
       expect(isCardId(it.cardId)).toBe(true);
       expect(it.rect.x + it.rect.w).toBeLessThanOrEqual(GRID.cols);
@@ -50,7 +51,7 @@ describe("card registry", () => {
 
   it("fallback state is internally consistent", () => {
     const s = buildFallbackState();
-    expect(s.items).toHaveLength(9);
+    expect(s.items).toHaveLength(CARD_DEFS.length);
     expect(KERNEL_ID_SET.has(s.appearance.kernelId)).toBe(true);
     expect(s.appearance.frost).toBeGreaterThanOrEqual(0);
     expect(s.appearance.frost).toBeLessThanOrEqual(1);

@@ -56,6 +56,16 @@ export interface DataDomainUsageResponse {
 export const getDataDomainUsage = () =>
   call<void, DataDomainUsageResponse>("getDataDomainUsage");
 
+// ── rebuildUsageRollups ─────────────────────────────────────────────────────
+// Recomputes the member's usage_rollups server-side before a fresh read.
+// `force: true` rebuilds even when the rollup job reports clean.
+export interface RebuildUsageRollupsResponse {
+  ok?: boolean;
+  computedAt?: string;
+}
+export const rebuildUsageRollups = (force = false) =>
+  call<{ force?: boolean }, RebuildUsageRollupsResponse>("rebuildUsageRollups", { force });
+
 // ── Pensieve connected repos ────────────────────────────────────────────────
 // A connected repo stores only an opaque keyed match token + a vault-sealed
 // `sealedRepoFullName`; the cleartext name is observed transiently server-side

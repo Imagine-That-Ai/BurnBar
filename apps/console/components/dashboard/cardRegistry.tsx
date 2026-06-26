@@ -1,17 +1,19 @@
 /**
  * The catalog of dashboard cards: id → title, blurb, icon, default size, and
- * the body component. This is the single source the wizard lists, the grid
- * renders, and the persistence layer validates against.
+ * the body component. Single source the wizard lists, the grid renders, and the
+ * persistence layer validates against. Every card binds to live Firestore
+ * usage (users/{uid}/usage_rollups + quota_snapshots + billing/allowances).
  */
 
 import {
+  Activity,
   Boxes,
   Coins,
-  Database,
+  Cpu,
   Flame,
   Gauge,
-  Layers,
   LineChart,
+  MonitorSmartphone,
   Orbit,
   Wand2,
   type LucideIcon,
@@ -28,24 +30,26 @@ import {
   type DashboardState,
 } from "./layoutStore";
 import { BurnTotalCard } from "./cards/BurnTotalCard";
-import { CacheHitCard } from "./cards/CacheHitCard";
-import { CostCurveCard } from "./cards/CostCurveCard";
+import { DevicesCard } from "./cards/DevicesCard";
 import { FormationCard } from "./cards/FormationCard";
+import { ModelsCard } from "./cards/ModelsCard";
+import { ProviderLimitsCard } from "./cards/ProviderLimitsCard";
 import { ProviderListCard } from "./cards/ProviderListCard";
-import { SessionsCard } from "./cards/SessionsCard";
+import { RequestsCard } from "./cards/RequestsCard";
 import { TokensCard } from "./cards/TokensCard";
-import { TpsCard } from "./cards/TpsCard";
+import { UsageTrendCard } from "./cards/UsageTrendCard";
 import { WandCard } from "./cards/WandCard";
 
 export type CardId =
   | "burn"
+  | "usage-trend"
   | "tokens"
-  | "sessions"
-  | "cost-curve"
-  | "providers"
-  | "cache"
+  | "requests"
   | "wand"
-  | "tps"
+  | "providers"
+  | "models"
+  | "limits"
+  | "devices"
   | "formation";
 
 export interface CardDef {
@@ -62,18 +66,18 @@ export const CARD_DEFS: CardDef[] = [
   {
     id: "burn",
     title: "Burn total",
-    blurb: "Total spend for the window, with a trend.",
+    blurb: "Total spend for the window, with a usage trend.",
     icon: Flame,
     defaultSize: { w: 4, h: 3 },
     component: BurnTotalCard,
   },
   {
-    id: "cost-curve",
-    title: "Cost curve",
-    blurb: "Cumulative spend over the window.",
+    id: "usage-trend",
+    title: "Tokens / day",
+    blurb: "Daily token usage across the window.",
     icon: LineChart,
     defaultSize: { w: 8, h: 3 },
-    component: CostCurveCard,
+    component: UsageTrendCard,
   },
   {
     id: "tokens",
@@ -84,51 +88,59 @@ export const CARD_DEFS: CardDef[] = [
     component: TokensCard,
   },
   {
-    id: "sessions",
-    title: "Sessions",
-    blurb: "Conversation count and average size.",
-    icon: Layers,
+    id: "requests",
+    title: "Requests",
+    blurb: "Total API requests and average size.",
+    icon: Activity,
     defaultSize: { w: 3, h: 2 },
-    component: SessionsCard,
-  },
-  {
-    id: "cache",
-    title: "Cache hit",
-    blurb: "Prompt-cache reuse rate.",
-    icon: Database,
-    defaultSize: { w: 3, h: 2 },
-    component: CacheHitCard,
-  },
-  {
-    id: "tps",
-    title: "Throughput",
-    blurb: "Most-recent tokens / second.",
-    icon: Gauge,
-    defaultSize: { w: 3, h: 2 },
-    component: TpsCard,
-  },
-  {
-    id: "providers",
-    title: "Provider list",
-    blurb: "Spend by provider, ranked.",
-    icon: Boxes,
-    defaultSize: { w: 5, h: 4 },
-    component: ProviderListCard,
+    component: RequestsCard,
   },
   {
     id: "wand",
     title: "The Wand",
-    blurb: "Fusion routing savings vs baseline.",
+    blurb: "Fusion search allowance this month.",
     icon: Wand2,
-    defaultSize: { w: 4, h: 3 },
+    defaultSize: { w: 6, h: 2 },
     component: WandCard,
+  },
+  {
+    id: "providers",
+    title: "Provider spend",
+    blurb: "Spend by provider, ranked.",
+    icon: Boxes,
+    defaultSize: { w: 4, h: 4 },
+    component: ProviderListCard,
+  },
+  {
+    id: "models",
+    title: "Models",
+    blurb: "Spend by model, ranked.",
+    icon: Cpu,
+    defaultSize: { w: 4, h: 4 },
+    component: ModelsCard,
+  },
+  {
+    id: "limits",
+    title: "Provider limits",
+    blurb: "Live provider quota — used vs limit.",
+    icon: Gauge,
+    defaultSize: { w: 4, h: 4 },
+    component: ProviderLimitsCard,
+  },
+  {
+    id: "devices",
+    title: "Devices",
+    blurb: "Token usage by device.",
+    icon: MonitorSmartphone,
+    defaultSize: { w: 6, h: 3 },
+    component: DevicesCard,
   },
   {
     id: "formation",
     title: "Formation field",
     blurb: "The provider swarm forming on the backdrop.",
     icon: Orbit,
-    defaultSize: { w: 3, h: 3 },
+    defaultSize: { w: 6, h: 3 },
     component: FormationCard,
   },
 ];
@@ -153,17 +165,18 @@ export const KERNEL_ID_SET: ReadonlySet<string> = new Set(
   KERNEL_SPECS.map((k) => k.id),
 );
 
-/** A sensible starting board — all nine cards, no overlaps, in a 12-col grid. */
+/** A sensible starting board — all cards, no overlaps, in a 12-col grid. */
 export const DEFAULT_DASHBOARD_ITEMS: DashboardLayoutItem[] = [
   { cardId: "burn", rect: { x: 0, y: 0, w: 4, h: 3 } },
-  { cardId: "cost-curve", rect: { x: 4, y: 0, w: 8, h: 3 } },
+  { cardId: "usage-trend", rect: { x: 4, y: 0, w: 8, h: 3 } },
   { cardId: "tokens", rect: { x: 0, y: 3, w: 3, h: 2 } },
-  { cardId: "sessions", rect: { x: 3, y: 3, w: 3, h: 2 } },
-  { cardId: "cache", rect: { x: 6, y: 3, w: 3, h: 2 } },
-  { cardId: "tps", rect: { x: 9, y: 3, w: 3, h: 2 } },
-  { cardId: "providers", rect: { x: 0, y: 5, w: 5, h: 4 } },
-  { cardId: "wand", rect: { x: 5, y: 5, w: 4, h: 3 } },
-  { cardId: "formation", rect: { x: 9, y: 5, w: 3, h: 3 } },
+  { cardId: "requests", rect: { x: 3, y: 3, w: 3, h: 2 } },
+  { cardId: "wand", rect: { x: 6, y: 3, w: 6, h: 2 } },
+  { cardId: "providers", rect: { x: 0, y: 5, w: 4, h: 4 } },
+  { cardId: "models", rect: { x: 4, y: 5, w: 4, h: 4 } },
+  { cardId: "limits", rect: { x: 8, y: 5, w: 4, h: 4 } },
+  { cardId: "devices", rect: { x: 0, y: 9, w: 6, h: 3 } },
+  { cardId: "formation", rect: { x: 6, y: 9, w: 6, h: 3 } },
 ];
 
 export const DEFAULT_APPEARANCE: DashboardAppearance = {

@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, Pencil, Plus, RotateCcw, Sparkles } from "lucide-react";
+import { Check, Pencil, Plus, RotateCcw, RotateCw, Sparkles } from "lucide-react";
 
 import { KERNEL_SPECS, type KernelId } from "@/lib/gl/kernels";
-import type { DashboardRange, DashboardSource } from "@/lib/dashboard/types";
+import { USAGE_WINDOWS, type UsageWindowKey } from "@/lib/usage";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,21 +13,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CARD_DEFS } from "./cardRegistry";
-import { DemoBadge } from "./cards/primitives";
+import { CARD_DEFS, type CardId } from "./cardRegistry";
 
-const RANGES: { id: DashboardRange; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "7d", label: "7d" },
-  { id: "30d", label: "30d" },
-];
+const WINDOW_SHORT: Record<UsageWindowKey, string> = {
+  today: "Today",
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "90d",
+  all_time: "All",
+};
+
+/** Coarse "updated 3m ago" from an ISO timestamp (client-only; never SSR). */
+function relativeTime(iso: string, now: number): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "";
+  const secs = Math.max(0, Math.round((now - then) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
 
 export interface DashboardToolbarProps {
-  range: DashboardRange;
-  setRange: (r: DashboardRange) => void;
-  source: DashboardSource;
+  window: UsageWindowKey;
+  setWindow: (w: UsageWindowKey) => void;
+  source: "live" | "empty";
+  computedAt: string | null;
+  loading: boolean;
+  onRefresh: () => void;
   placedIds: ReadonlySet<string>;
-  addCard: (id: import("./cardRegistry").CardId) => void;
+  addCard: (id: CardId) => void;
   removeCard: (id: string) => void;
   editable: boolean;
   setEditable: (v: boolean) => void;
@@ -44,20 +61,20 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-token-2">
-      {/* Range segmented control */}
+      {/* Usage window segmented control */}
       <div
         className="flex items-center gap-0.5 rounded-pill p-0.5"
         style={{ border: "1px solid var(--color-glass-line)" }}
         role="group"
-        aria-label="Time range"
+        aria-label="Usage window"
       >
-        {RANGES.map((r) => {
-          const active = props.range === r.id;
+        {USAGE_WINDOWS.map((w) => {
+          const active = props.window === w;
           return (
             <button
-              key={r.id}
+              key={w}
               type="button"
-              onClick={() => props.setRange(r.id)}
+              onClick={() => props.setWindow(w)}
               aria-pressed={active}
               className="rounded-pill px-3 py-1 text-xs font-medium transition-colors"
               style={{
@@ -65,7 +82,7 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
                 background: active ? "var(--accent)" : "transparent",
               }}
             >
-              {r.label}
+              {WINDOW_SHORT[w]}
             </button>
           );
         })}
@@ -73,8 +90,17 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
 
       <div className="flex-1" />
 
-      {props.source === "mock" && <DemoBadge />}
+      <FreshnessLabel source={props.source} computedAt={props.computedAt} loading={props.loading} />
 
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={props.onRefresh}
+        disabled={props.loading}
+        aria-label="Refresh usage"
+      >
+        <RotateCw aria-hidden className={props.loading ? "animate-spin" : undefined} /> Refresh
+      </Button>
       <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
         <Plus aria-hidden /> Add cards
       </Button>
@@ -200,5 +226,38 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function FreshnessLabel({
+  source,
+  computedAt,
+  loading,
+}: {
+  source: "live" | "empty";
+  computedAt: string | null;
+  loading: boolean;
+}) {
+  // Recompute the relative label on a 30s tick (client-only).
+  const [now, setNow] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  let text: string;
+  if (loading) text = "Loading…";
+  else if (source === "empty") text = "No usage synced yet";
+  else if (computedAt && now != null) text = `Updated ${relativeTime(computedAt, now)}`;
+  else text = "Live";
+
+  return (
+    <span
+      className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-content-dim"
+      title={computedAt ?? undefined}
+    >
+      {text}
+    </span>
   );
 }

@@ -1,12 +1,13 @@
 import type { CardProps } from "../cardTypes";
 import { Stat, formatCompact } from "./primitives";
 
-export function TokensCard({ window: w }: CardProps) {
+export function TokensCard({ data }: CardProps) {
+  const { totals } = data.rollup;
   return (
     <Stat
-      value={formatCompact(w.totalTokens)}
+      value={formatCompact(totals.tokens)}
       label="Tokens"
-      sub={`across ${w.sessionCount} sessions · ${w.rangeLabel.toLowerCase()}`}
+      sub={`${formatCompact(totals.requests)} requests`}
     />
   );
 }
