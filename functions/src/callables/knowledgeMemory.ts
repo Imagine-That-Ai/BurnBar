@@ -481,12 +481,13 @@ export const commitKnowledgeBatch = onCall(
         // 2026-06-02 §3).
         const priorDedupHash = priorExists ? prior?.get("dedupHash") : undefined;
         const priorVersion = priorExists ? Number(prior?.get("dedupHashVersion") ?? 0) : 0;
+        const priorCountsTowardQuota = priorExists && priorVersion === DEDUP_HASH_VERSION_VAULT_HMAC;
         if (priorExists && priorVersion === DEDUP_HASH_VERSION_VAULT_HMAC && priorDedupHash === v.dedupHash) {
           skipped += 1; // unchanged chunk — idempotent no-op
           continue;
         }
-        if (!priorExists) creates += 1;
-        bytesDelta += v.byteCount - (priorExists ? Number(prior?.get("byteCount") ?? 0) : 0);
+        if (!priorCountsTowardQuota) creates += 1;
+        bytesDelta += v.byteCount - (priorCountsTowardQuota ? Number(prior?.get("byteCount") ?? 0) : 0);
         const docData = {
           uid,
           vectorId: v.vectorId,
