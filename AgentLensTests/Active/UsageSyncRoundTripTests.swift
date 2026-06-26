@@ -577,21 +577,21 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
     }
 
-    func test_iCloudOnlyMirrorStateMerge_preservesPriorRecords() {
+    func test_iCloudOnlyMirrorStateMerge_prunesMissingSourceRecords() {
         let existing = ICloudSessionMirrorFileRecord(modificationTime: 1, size: 10)
         let incoming = ICloudSessionMirrorFileRecord(modificationTime: 2, size: 20)
 
-        let merged = ICloudSessionMirrorEngine.appendSafeMergedRecords(
+        let merged = ICloudSessionMirrorEngine.mirrorRecordsAfterSync(
             previous: ["/local/session-a.jsonl": existing],
             incoming: ["/local/session-b.jsonl": incoming]
         )
 
-        XCTAssertEqual(merged["/local/session-a.jsonl"], existing)
+        XCTAssertNil(merged["/local/session-a.jsonl"])
         XCTAssertEqual(merged["/local/session-b.jsonl"], incoming)
-        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged.count, 1)
     }
 
-    func test_iCloudOnlyMirrorPerform_preservesPriorMirrorWhenSourceDisappears() async throws {
+    func test_iCloudOnlyMirrorPerform_removesPriorMirrorWhenSourceDisappears() async throws {
         let fm = FileManager.default
         let tempRoot = fm.temporaryDirectory.appendingPathComponent("OpenBurnBarICloudMirror-\(UUID().uuidString)", isDirectory: true)
         defer { try? fm.removeItem(at: tempRoot) }
@@ -622,14 +622,49 @@ final class UsageSyncRoundTripTests: XCTestCase {
         ))
 
         XCTAssertNil(result.errorMessage)
-        XCTAssertEqual(result.removedCount, 0)
-        XCTAssertTrue(fm.fileExists(atPath: priorMirror.path))
+        XCTAssertEqual(result.removedCount, 1)
+        XCTAssertFalse(fm.fileExists(atPath: priorMirror.path))
         XCTAssertTrue(fm.fileExists(atPath: mirrorURL(base: containerBase, slug: "Codex", relative: "current.jsonl").path))
 
         let state = try readMirrorState(from: stateURL)
-        XCTAssertEqual(state.files[missingSourcePath], priorRecord)
+        XCTAssertNil(state.files[missingSourcePath])
         XCTAssertNotNil(state.files[newSource.standardizedFileURL.path])
-        XCTAssertEqual(state.files.count, 2)
+        XCTAssertEqual(state.files.count, 1)
+    }
+
+    func test_iCloudOnlyMirrorPerform_doesNotDeletePathPrefixSiblingFromStaleState() async throws {
+        let fm = FileManager.default
+        let tempRoot = fm.temporaryDirectory.appendingPathComponent("OpenBurnBarICloudMirror-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: tempRoot) }
+
+        let sourceRoot = tempRoot.appendingPathComponent("source", isDirectory: true)
+        let containerBase = tempRoot.appendingPathComponent("container", isDirectory: true)
+        let stateURL = tempRoot.appendingPathComponent("state.json")
+        try fm.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+
+        let siblingSourcePath = tempRoot
+            .appendingPathComponent("source-sibling", isDirectory: true)
+            .appendingPathComponent("missing.jsonl")
+            .standardizedFileURL
+            .path
+        try writeMirrorState([
+            siblingSourcePath: ICloudSessionMirrorFileRecord(modificationTime: 1, size: 3)
+        ], to: stateURL)
+
+        let siblingMirror = mirrorURL(base: containerBase, slug: "Codex", relative: "-sibling/missing.jsonl")
+        try fm.createDirectory(at: siblingMirror.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("do not remove".utf8).write(to: siblingMirror)
+
+        let result = await ICloudSessionMirrorEngine.perform(makeMirrorSnapshot(
+            sourceRoot: sourceRoot,
+            containerBase: containerBase,
+            stateURL: stateURL
+        ))
+
+        XCTAssertNil(result.errorMessage)
+        XCTAssertEqual(result.removedCount, 0)
+        XCTAssertTrue(fm.fileExists(atPath: siblingMirror.path))
+        XCTAssertNil(try readMirrorState(from: stateURL).files[siblingSourcePath])
     }
 
     func test_iCloudOnlyMirrorPerform_recopiesUnchangedSourceWhenMirrorFileIsMissing() async throws {
@@ -672,7 +707,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     func test_dualSyncMode_keepsICloudMirrorHistoryIndependentFromFirestoreWrites() async throws {
         let existingMirrorRecord = ICloudSessionMirrorFileRecord(modificationTime: 1, size: 10)
         let newMirrorRecord = ICloudSessionMirrorFileRecord(modificationTime: 3, size: 30)
-        let mergedMirrorState = ICloudSessionMirrorEngine.appendSafeMergedRecords(
+        let mergedMirrorState = ICloudSessionMirrorEngine.mirrorRecordsAfterSync(
             previous: ["/mirror/session-a.jsonl": existingMirrorRecord],
             incoming: ["/mirror/session-c.jsonl": newMirrorRecord]
         )
@@ -690,7 +725,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         try await dataStore.insert(usage)
         await usageSync.sync()
 
-        XCTAssertEqual(mergedMirrorState["/mirror/session-a.jsonl"], existingMirrorRecord)
+        XCTAssertNil(mergedMirrorState["/mirror/session-a.jsonl"])
         XCTAssertEqual(mergedMirrorState["/mirror/session-c.jsonl"], newMirrorRecord)
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
         let localUsageAfterMirrorMergeCount = try await dataStore.fetchAllUsage().count

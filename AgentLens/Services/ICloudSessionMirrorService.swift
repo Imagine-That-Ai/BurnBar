@@ -92,6 +92,7 @@ enum ICloudSessionMirrorEngine {
         let previousSnapshot = state.files
         var newRecords: [String: ICloudSessionMirrorFileRecord] = [:]
         var updatedCount = 0
+        var removedCount = 0
         var fileIndex = 0
 
         do {
@@ -132,30 +133,120 @@ enum ICloudSessionMirrorEngine {
                 }
             }
 
-            state.files = appendSafeMergedRecords(previous: previousSnapshot, incoming: newRecords)
+            removedCount = try removeStaleMirrors(
+                previous: previousSnapshot,
+                incoming: newRecords,
+                snapshot: snapshot,
+                mirrorRoot: mirrorRoot,
+                fm: fm
+            )
+            state.files = mirrorRecordsAfterSync(previous: previousSnapshot, incoming: newRecords)
             try saveState(state, path: snapshot.stateFilePath, fm: fm)
 
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: Date(),
                 errorMessage: nil,
                 updatedCount: updatedCount,
-                removedCount: 0
+                removedCount: removedCount
             )
         } catch {
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: nil,
                 errorMessage: userFacingMirrorError(error),
                 updatedCount: updatedCount,
-                removedCount: 0
+                removedCount: removedCount
             )
         }
     }
 
-    static func appendSafeMergedRecords(
-        previous: [String: ICloudSessionMirrorFileRecord],
+    static func mirrorRecordsAfterSync(
+        previous _: [String: ICloudSessionMirrorFileRecord],
         incoming: [String: ICloudSessionMirrorFileRecord]
     ) -> [String: ICloudSessionMirrorFileRecord] {
-        previous.merging(incoming) { _, incoming in incoming }
+        return incoming
+    }
+
+    private static func removeStaleMirrors(
+        previous: [String: ICloudSessionMirrorFileRecord],
+        incoming: [String: ICloudSessionMirrorFileRecord],
+        snapshot: ICloudSessionMirrorSnapshot,
+        mirrorRoot: URL,
+        fm: FileManager
+    ) throws -> Int {
+        var removedCount = 0
+
+        for sourcePath in previous.keys where incoming[sourcePath] == nil {
+            guard let destination = try mirrorDestination(
+                forPersistedSourcePath: sourcePath,
+                snapshot: snapshot,
+                mirrorRoot: mirrorRoot
+            ) else {
+                continue
+            }
+
+            guard fm.fileExists(atPath: destination.path) else { continue }
+            try removeMirroredItem(at: destination, fm: fm)
+            removedCount += 1
+            try pruneEmptyDirectories(from: destination.deletingLastPathComponent(), stoppingAt: mirrorRoot, fm: fm)
+        }
+
+        return removedCount
+    }
+
+    private static func mirrorDestination(
+        forPersistedSourcePath sourcePath: String,
+        snapshot: ICloudSessionMirrorSnapshot,
+        mirrorRoot: URL
+    ) throws -> URL? {
+        let source = URL(fileURLWithPath: sourcePath).standardizedFileURL
+
+        for spec in snapshot.providers {
+            let root = URL(fileURLWithPath: spec.rootPath, isDirectory: true).standardizedFileURL
+            guard isDescendantOrEqual(source, of: root) else { continue }
+
+            let relative = try relativePath(from: root, to: source)
+            let destination = mirrorRoot
+                .appendingPathComponent(spec.slug, isDirectory: true)
+                .appendingPathComponent(relative, isDirectory: false)
+                .standardizedFileURL
+            guard isDescendantOrEqual(destination, of: mirrorRoot.standardizedFileURL) else {
+                throw ICloudSessionMirrorError.pathOutsideRoot
+            }
+            return destination
+        }
+
+        return nil
+    }
+
+    private static func removeMirroredItem(at url: URL, fm: FileManager) throws {
+        var coordinationError: NSError?
+        var innerError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &coordinationError) { deleteURL in
+            do {
+                if fm.fileExists(atPath: deleteURL.path) {
+                    try fm.removeItem(at: deleteURL)
+                }
+            } catch {
+                innerError = error
+            }
+        }
+
+        if coordinationError != nil || innerError != nil, fm.fileExists(atPath: url.path) {
+            try fm.removeItem(at: url)
+        }
+    }
+
+    private static func pruneEmptyDirectories(from start: URL, stoppingAt stop: URL, fm: FileManager) throws {
+        var current = start.standardizedFileURL
+        let boundary = stop.standardizedFileURL
+
+        while isDescendantOrEqual(current, of: boundary), current.path != boundary.path {
+            let contents = try fm.contentsOfDirectory(atPath: current.path)
+            guard contents.isEmpty else { return }
+            try fm.removeItem(at: current)
+            current = current.deletingLastPathComponent().standardizedFileURL
+        }
     }
 
     private static func fallbackContainerURL(for identifier: String, fm: FileManager) -> URL? {
@@ -304,15 +395,23 @@ enum ICloudSessionMirrorEngine {
     }
 
     private static func relativePath(from root: URL, to file: URL) throws -> String {
-        let rootPath = root.standardizedFileURL.path
-        let filePath = file.standardizedFileURL.path
-        guard filePath.hasPrefix(rootPath) else {
+        let rootURL = root.standardizedFileURL
+        let fileURL = file.standardizedFileURL
+        guard isDescendantOrEqual(fileURL, of: rootURL) else {
             throw ICloudSessionMirrorError.pathOutsideRoot
         }
+        let rootPath = rootURL.path
+        let filePath = fileURL.path
         var sub = String(filePath.dropFirst(rootPath.count))
         if sub.hasPrefix("/") { sub.removeFirst() }
         if sub.isEmpty { return file.lastPathComponent }
         return sub
+    }
+
+    private static func isDescendantOrEqual(_ url: URL, of root: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        let rootPath = root.standardizedFileURL.path
+        return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     private static func loadState(path: String, fm: FileManager) -> ICloudSessionMirrorStateFile {
@@ -345,8 +444,8 @@ final class ICloudSessionMirrorService {
     private(set) var lastSyncError: String?
     /// Files copied or updated in the last completed sync.
     private(set) var lastSyncUpdatedCount: Int = 0
-    /// Files removed by explicit mirror delete operations. Incremental sync never
-    /// treats a missing local source as an implicit delete.
+    /// Files removed from the mirror because their tracked local source no longer
+    /// exists in the current provider snapshot.
     private(set) var lastSyncRemovedCount: Int = 0
 
     private let settingsManager: SettingsManager
