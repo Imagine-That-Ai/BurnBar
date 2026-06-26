@@ -263,11 +263,12 @@ extension BurnBarHTTPGatewayServer {
         await appendProxyRouteLog(entry)
     }
 
-    /// Build a stable idempotency key from the request content and the route
-    /// it was served on. Identical retries of the same completion on the same
-    /// account collapse to one recorded usage event (see A2).
-    func usageIdempotencyKey(requestSignature: String, route: BurnBarProviderRoute) -> String {
+    /// Build a per-dispatch idempotency key from the gateway request instance
+    /// and the route it was served on. The recorder still protects a single
+    /// gateway attempt from double-appending, but separate upstream dispatches
+    /// with identical request bodies remain separately accountable.
+    func usageIdempotencyKey(accountingRequestID: String, route: BurnBarProviderRoute) -> String {
         let routePart = "\(route.providerID)#\(route.credentialSlotID ?? "legacy")#\(route.resolvedModelID)"
-        return "gateway:\(Self.stableDigest("\(requestSignature)|\(routePart)"))"
+        return "gateway:\(Self.stableDigest("\(accountingRequestID)|\(routePart)"))"
     }
 }

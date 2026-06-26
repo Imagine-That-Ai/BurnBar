@@ -106,7 +106,7 @@ extension BurnBarHTTPGatewayServer {
         if let slotID = route.credentialSlotID {
             try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
         }
-        let idempotencyKey = usageIdempotencyKey(requestSignature: pipeline.requestSignature, route: route)
+        let idempotencyKey = usageIdempotencyKey(accountingRequestID: pipeline.accountingRequestID, route: route)
         let attemptStartedAt = Date()
         let attemptContext = GatewayRouteAttemptContext(
             bodyData: pipeline.bodyData,
@@ -263,6 +263,7 @@ extension BurnBarHTTPGatewayServer {
         let modelID = resolved.modelID
         let wantsStream = resolved.wantsStream
         let requestSignature = resolved.requestSignature
+        let accountingRequestID = UUID().uuidString
         var routeLogAttempts = RouteAttemptRecorder()
         var requestedModel = resolved.requestedModel
         var advertisedRequestedModel = resolved.advertisedRequestedModel
@@ -275,6 +276,7 @@ extension BurnBarHTTPGatewayServer {
             GatewayDegradeRequest(
                 bodyData: bodyData,
                 requestSignature: requestSignature,
+                accountingRequestID: accountingRequestID,
                 modelID: modelID,
                 startedAt: routeLogStartedAt,
                 requestPath: descriptor.requestPath,
@@ -436,6 +438,7 @@ extension BurnBarHTTPGatewayServer {
                             wantsStream: wantsStream,
                             resolvedVariant: resolvedVariant,
                             requestSignature: requestSignature,
+                            accountingRequestID: accountingRequestID,
                             requestedModel: requestedModel,
                             logContext: logContext
                         ),

@@ -797,6 +797,75 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.first?.providerLogoKey, "ZaiProviderLogo")
     }
 
+    func testGatewayRecordsEachRepeatedUpstreamDispatchInUsageLedger() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-repeat-1","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"first"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+            path: "/v1/chat/completions"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-repeat-2","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"second"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+            path: "/v1/chat/completions"
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let requestBody = Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        let headers = [
+            "Content-Type": "application/json",
+            "Idempotency-Key": "retry-window-1"
+        ]
+
+        let (firstResponse, firstBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: headers,
+            body: requestBody
+        )
+        let (secondResponse, secondBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: headers,
+            body: requestBody
+        )
+
+        XCTAssertEqual(firstResponse.statusCode, 200, String(decoding: firstBody, as: UTF8.self))
+        XCTAssertEqual(secondResponse.statusCode, 200, String(decoding: secondBody, as: UTF8.self))
+        XCTAssertEqual(
+            GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }.count,
+            2
+        )
+
+        let records = try await harness.usageRecorder.records()
+        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(Set(records.map(\.idempotencyKey)).count, 2)
+        XCTAssertTrue(records.allSatisfy { $0.event.providerID == "zai" })
+        XCTAssertTrue(records.allSatisfy { $0.event.modelID == "glm-5-turbo" })
+        XCTAssertEqual(records.map(\.event.inputTokens).reduce(0, +), 6)
+        XCTAssertEqual(records.map(\.event.outputTokens).reduce(0, +), 4)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
+        XCTAssertEqual(routeLog.filter { $0.requestPath == "/v1/chat/completions" }.count, 2)
+    }
+
     func testGatewayCrossVendorDegradeOffByDefaultReturnsNoEligibleRoute() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
