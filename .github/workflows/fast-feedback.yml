@@ -818,6 +818,9 @@ jobs:
       - name: Verify factory security-review boundary
         run: node scripts/ci/verify-factory-security-review-boundary.mjs
 
+      - name: Self-test launch evidence capture permissions
+        run: node scripts/test-capture-commercial-launch-evidence.mjs
+
       - name: Self-test production deploy auth boundary
         run: bash scripts/ci/verify-production-deploy-auth.test.sh
 
