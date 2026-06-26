@@ -121,7 +121,32 @@ class PhoneControlAuthorityPublisher(
     }
 }
 
-class PhoneControlSigningKeyStore(context: Context) {
+internal object PhoneControlSigningIdentityResolver {
+    fun resolve(
+        secureEnclaveEnabled: Boolean,
+        hardwareSigningStore: PhoneControlHardwareSigningIdentityStore,
+        legacyIdentity: () -> PhoneControlSigningIdentity.Ed25519,
+    ): PhoneControlSigningIdentity {
+        if (secureEnclaveEnabled) {
+            hardwareSigningStore.loadIdentity()?.let { return it }
+            hardwareSigningStore.mintIdentity()?.let { return it }
+        }
+        return legacyIdentity()
+    }
+}
+
+class PhoneControlSigningKeyStore private constructor(
+    context: Context,
+    private val hardwareSigningStore: PhoneControlHardwareSigningIdentityStore,
+    _constructorMarker: Unit,
+) {
+    constructor(context: Context) : this(context, PhoneControlSecureEnclaveKeystore, Unit)
+
+    internal constructor(
+        context: Context,
+        hardwareSigningStore: PhoneControlHardwareSigningIdentityStore,
+    ) : this(context, hardwareSigningStore, Unit)
+
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun privateKeySeed(): ByteArray {
@@ -145,25 +170,25 @@ class PhoneControlSigningKeyStore(context: Context) {
     fun signingIdentity(): PhoneControlSigningIdentity = signingIdentity(secureEnclaveEnabled = PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
 
     /**
-     * Resolution order (identical to iOS):
-     *  1. An already-minted StrongBox/TEE key always wins (its peerNodeId is
-     *     the published controller identity — never silently downgrade).
-     *  2. With the gate on and the keystore available, mint a biometry-gated
+     * Resolution order:
+     *  1. With the Android hardware-signing ramp on, an already-minted
+     *     StrongBox/TEE key wins. The ramp is intentionally default-off until
+     *     every signing surface can provide a prompt-bound CryptoObject signer.
+     *  2. With the ramp on and the keystore available, mint a biometry-gated
      *     hardware P-256 key (StrongBox preferred, TEE fallback).
-     *  3. Otherwise the legacy software Ed25519 key (wire-identical to pre-F2).
+     *  3. Otherwise the legacy software Ed25519 key (wire-identical to pre-F2),
+     *     even if a stale P-256 alias exists from an earlier canary.
      */
-    fun signingIdentity(secureEnclaveEnabled: Boolean): PhoneControlSigningIdentity {
-        PhoneControlSecureEnclaveKeystore.loadIdentity()?.let { return it }
-        if (secureEnclaveEnabled) {
-            PhoneControlSecureEnclaveKeystore.mintIdentity()?.let { return it }
-        }
-        return PhoneControlSigningIdentity.Ed25519(privateKeySeed())
-    }
+    fun signingIdentity(secureEnclaveEnabled: Boolean): PhoneControlSigningIdentity = PhoneControlSigningIdentityResolver.resolve(
+        secureEnclaveEnabled = secureEnclaveEnabled,
+        hardwareSigningStore = hardwareSigningStore,
+        legacyIdentity = { PhoneControlSigningIdentity.Ed25519(privateKeySeed()) },
+    )
 
     fun reset() {
         prefs.edit().clear().apply()
         runCatching { keystore().deleteEntry(KEY_ALIAS) }
-        PhoneControlSecureEnclaveKeystore.deleteKey()
+        hardwareSigningStore.deleteKey()
     }
 
     private fun loadFromStore(): ByteArray? {

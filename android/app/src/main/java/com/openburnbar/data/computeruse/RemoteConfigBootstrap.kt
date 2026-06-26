@@ -8,23 +8,24 @@ import com.google.firebase.remoteconfig.remoteConfigSettings
  * F2/F7/F10 — make the protection-flag kill switches actually reachable on
  * Android.
  *
- * The protection flags ([PhoneControlSecureEnclaveKeyPolicy] and the seal
- * negotiations) default ON via [remoteConfigProtectionFlag]'s
- * `VALUE_SOURCE_STATIC ⇒ true` rule. But "the operator's Remote Config value
- * is the kill switch and always wins" is only true if a fetch has actually
+ * The seal protection flags default ON via [remoteConfigProtectionFlag]'s
+ * `VALUE_SOURCE_STATIC ⇒ true` rule. Android hardware signing is a separate
+ * default-off ramp in [PhoneControlSecureEnclaveKeyPolicy] until a
+ * prompt-bound signer exists for every send surface. In both cases, "the
+ * operator's Remote Config value wins" is only true if a fetch has actually
  * landed a remote value — and Android never fetched Remote Config at all, so
- * the source stayed permanently `STATIC` and an operator-set `false` could
- * never reach the device. This bootstrap closes that: it kicks a one-time
+ * the source stayed permanently `STATIC` and an operator-set value could never
+ * reach the device. This bootstrap closes that: it kicks a one-time
  * `fetchAndActivate()` at startup (with a kill-switch-appropriate minimum
  * fetch interval) so a remotely-set value flips `source` to `REMOTE` and the
- * helper honors it. iOS already does this through
+ * helpers honor it. iOS already does this through
  * `MobileMediaBudgetStatusStore.refreshRemoteConfigKillSwitch()`.
  *
  * Deliberately registers NO in-app defaults: the source-aware helper already
- * supplies the default-ON behavior, so leaving the keys absent keeps `source`
- * at `STATIC` (⇒ ON) until — and only until — a real remote value arrives.
- * That way an operator who never touches the console gets the secure default,
- * and one who sets `false` gets an honored kill switch.
+ * supplies the default behavior, so leaving the keys absent keeps `source`
+ * at `STATIC` until — and only until — a real remote value arrives. That way
+ * an operator who never touches the console gets the intended platform
+ * default, and one who sets a value gets an honored ramp/kill switch.
  */
 object RemoteConfigBootstrap {
     // / Refresh at most hourly: responsive enough for a security kill switch
