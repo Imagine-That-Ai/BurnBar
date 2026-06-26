@@ -322,15 +322,28 @@ export const onKnowledgeRepoPush = onRequest(
     // repos. Registration is server-verified against the GitHub App installation
     // before this token is stored; the webhook then matches the GitHub-signed
     // repo full name AND trusted installation id, so arbitrary repo names cannot
-    // be subscribed as dirty-signal triggers.
+    // be subscribed as dirty-signal triggers. A transitional repo-token query
+    // keeps pre-existing rows live only when their stored installation id matches
+    // the signed webhook installation id.
     const now = Timestamp.now();
     const repoInstallationMatchToken = repoInstallationMatchTokenFor(repoFullName, installId);
-    const repos = await db
+    const repoMatchToken = repoMatchTokenFor(repoFullName);
+    const installationRepos = await db
       .collectionGroup("knowledge_repos")
       .where("repoInstallationMatchToken", "==", repoInstallationMatchToken)
       .get();
+    const legacyRepos = await db.collectionGroup("knowledge_repos").where("repoMatchToken", "==", repoMatchToken).get();
+    const reposByPath = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+    for (const repoDoc of installationRepos.docs) {
+      reposByPath.set(repoDoc.ref.path, repoDoc);
+    }
+    for (const repoDoc of legacyRepos.docs) {
+      if (repoDoc.get("repoInstallationMatchToken")) continue;
+      if (repoDoc.get("installId") !== installId) continue;
+      reposByPath.set(repoDoc.ref.path, repoDoc);
+    }
     let flagged = 0;
-    for (const repoDoc of repos.docs) {
+    for (const repoDoc of reposByPath.values()) {
       const uid = repoDoc.ref.parent.parent?.id;
       // Manifest is keyed by the canonical opaque `sourceManifestId` (new rows),
       // with read-only fallbacks to transitional `sourceSlugToken` and legacy
@@ -570,7 +583,7 @@ export const reconcileKnowledgeMemoryDaily = onSchedule(
   },
 );
 
-const __testing__ = {
+export const __testing__ = {
   githubAppJwt,
   repoInstallationMatchTokenFor,
   sourceManifestIdFor,

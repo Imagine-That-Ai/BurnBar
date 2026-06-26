@@ -52,7 +52,7 @@ function makeDb() {
     const parts = path.split("/");
     const collectionId = parts.at(-2);
     const parentDocId = parts.at(-3);
-    return { __path: path, parent: { id: collectionId, parent: parentDocId ? { id: parentDocId } : undefined } };
+    return { __path: path, path, parent: { id: collectionId, parent: parentDocId ? { id: parentDocId } : undefined } };
   };
   const snapshotForPath = (path: string) => ({
     id: path.split("/").pop(),
@@ -403,6 +403,41 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     expect(res._body).toEqual({ ok: true, flagged: 1 });
     expect(stored.get(`users/userA/knowledge_sync_manifests/${matchingManifest}`)?.needsResync).toBe(true);
     expect(stored.get(`users/userB/knowledge_sync_manifests/${otherManifest}`)).toBeUndefined();
+  });
+
+  it("webhook keeps legacy repo-token rows live only when their stored installation matches", async () => {
+    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const repoToken = expectedToken(REPO);
+    const matchingManifest = "ef".repeat(32);
+    const wrongInstallManifest = "12".repeat(32);
+    const missingInstallManifest = "34".repeat(32);
+    stored.set(`users/userA/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      installId: "98765",
+      sourceManifestId: matchingManifest,
+    });
+    stored.set(`users/userB/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      installId: "11111",
+      sourceManifestId: wrongInstallManifest,
+    });
+    stored.set(`users/userC/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      sourceManifestId: missingInstallManifest,
+    });
+
+    const res = new FakeRes();
+    await runHttpHandler(
+      onKnowledgeRepoPush,
+      signedWebhookRequest({ repository: { full_name: REPO }, installation: { id: 98765 } }),
+      res,
+    );
+
+    expect(res._status).toBe(200);
+    expect(res._body).toEqual({ ok: true, flagged: 1 });
+    expect(stored.get(`users/userA/knowledge_sync_manifests/${matchingManifest}`)?.needsResync).toBe(true);
+    expect(stored.get(`users/userB/knowledge_sync_manifests/${wrongInstallManifest}`)).toBeUndefined();
+    expect(stored.get(`users/userC/knowledge_sync_manifests/${missingInstallManifest}`)).toBeUndefined();
   });
 
   it("webhook does not fall back to repo-name-only matching when installation is missing", async () => {
