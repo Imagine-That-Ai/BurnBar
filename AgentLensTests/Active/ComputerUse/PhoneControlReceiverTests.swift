@@ -34,6 +34,125 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testSpoofedPhoneControlRequesterDoesNotBecomePhoneOrigin() async throws {
+        let gate = CapturingComputerUseCapabilityGate()
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-phone-spoof",
+                macHostNodeId: "mac-phone-spoof",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-06-26"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-phone-spoof-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test"
+            ),
+            gate: gate,
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        _ = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "agent-session")
+            )
+        )
+
+        let response = await coordinator.invoke(BurnBarToolInvocation(
+            callID: "spoofed-phone-label",
+            runID: BurnBarRunID(rawValue: "run-spoofed-phone-label"),
+            tool: .macInputClick,
+            arguments: .object([
+                "kind": .string(MacInputAction.Kind.pointerClick.rawValue),
+                "displayX": .number(10),
+                "displayY": .number(10)
+            ]),
+            requestedBy: BurnBarClientID(rawValue: "phone-control"),
+            requestedAt: Date()
+        ))
+
+        XCTAssertEqual(response.status, .denied)
+        let record = try XCTUnwrap(gate.latestRecord())
+        XCTAssertFalse(record.context.originatedFromPhone)
+        guard case .macInput(let action) = record.action else {
+            XCTFail("Expected mac input action")
+            return
+        }
+        XCTAssertEqual(action.kind, .click)
+    }
+
+    @MainActor
+    func testTrustedPhoneDispatchSetsPhoneOriginAndPointerClick() async throws {
+        let gate = CapturingComputerUseCapabilityGate()
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-phone-origin",
+                macHostNodeId: "mac-phone-origin",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-06-26"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-phone-origin-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test"
+            ),
+            gate: gate,
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        _ = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                phoneViewerNodeId: "phone-peer-origin",
+                clientID: BurnBarClientID(rawValue: "phone-control-phone-peer-origin")
+            )
+        )
+
+        let response = await coordinator.invokeTrustedPhoneControlAction(BurnBarToolInvocation(
+            callID: "trusted-phone-label",
+            runID: BurnBarRunID(rawValue: "run-trusted-phone-label"),
+            tool: .macInputClick,
+            arguments: .object([
+                "kind": .string(MacInputAction.Kind.pointerClick.rawValue),
+                "displayX": .number(10),
+                "displayY": .number(10)
+            ]),
+            requestedBy: BurnBarClientID(rawValue: "phone-control"),
+            requestedAt: Date()
+        ))
+
+        XCTAssertEqual(response.status, .denied)
+        let record = try XCTUnwrap(gate.latestRecord())
+        XCTAssertTrue(record.context.originatedFromPhone)
+        guard case .macInput(let action) = record.action else {
+            XCTFail("Expected mac input action")
+            return
+        }
+        XCTAssertEqual(action.kind, .pointerClick)
+    }
+
+    @MainActor
     func testMobileLocalAuthProofDoesNotBypassMacApprovalForHighRiskGrants() {
         let now = Date(timeIntervalSince1970: 1_000)
         let threadID = "thread-\(UUID().uuidString)"
@@ -2630,6 +2749,34 @@ private actor StaticPhoneControlAuthorityProvider: PhoneControlAuthorityPublicKe
     }
 }
 
+private final class CapturingComputerUseCapabilityGate: ComputerUseCapabilityGate, @unchecked Sendable {
+    struct Record {
+        let action: ComputerUseAction
+        let context: ComputerUseCapabilityContext
+    }
+
+    private let lock = NSLock()
+    private var records: [Record] = []
+
+    func check(
+        action: ComputerUseAction,
+        scopeOutcome: ComputerUseScopeOutcome,
+        accessibilityDeny: ComputerUseAccessibilityDenyReason?,
+        context: ComputerUseCapabilityContext
+    ) -> ComputerUseCapabilityCheck {
+        lock.lock()
+        records.append(Record(action: action, context: context))
+        lock.unlock()
+        return .denied(.entitlement)
+    }
+
+    func latestRecord() -> Record? {
+        lock.lock()
+        defer { lock.unlock() }
+        return records.last
+    }
+}
+
 private func confirmedPhoneValidator(
     uid: String,
     peerNodeId: String,
@@ -2670,14 +2817,17 @@ final class ControlFrameSealCoordinatorTests: XCTestCase {
     private final class ReplyBox: @unchecked Sendable {
         private let lock = NSLock()
         private var frames: [HermesRealtimeRelayFrame] = []
+
         func append(_ frame: HermesRealtimeRelayFrame) {
             lock.lock(); defer { lock.unlock() }
             frames.append(frame)
         }
+
         var deniedDetails: [String] {
             lock.lock(); defer { lock.unlock() }
             return frames.compactMap { $0.control?.denied?.detail }
         }
+
         func deniedDetailCount(_ detail: String) -> Int {
             lock.lock(); defer { lock.unlock() }
             return frames.filter { $0.control?.denied?.detail == detail }.count
