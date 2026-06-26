@@ -147,11 +147,11 @@ interface AssistantChatCloudMirror {
     val isAvailable: Boolean
     val currentUserID: String?
 
-    suspend fun upsert(thread: AssistantChatThread)
+    suspend fun upsert(uid: String, thread: AssistantChatThread)
 
-    suspend fun delete(threadID: String)
+    suspend fun delete(uid: String, threadID: String)
 
-    suspend fun fetchAll(): List<AssistantChatThread>
+    suspend fun fetchAll(uid: String): List<AssistantChatThread>
 }
 
 /**
@@ -180,6 +180,8 @@ class AssistantChatHistoryStore internal constructor(
     private var tombstones: MutableMap<String, Long> = mutableMapOf()
     private var didLoadFromDisk = false
     private var activePartition: String = ""
+    private var activeCloudUserID: String? = null
+    private var partitionGeneration: Long = 0
 
     private val pendingMirrors = mutableMapOf<String, Job>()
     private val pendingMirrorsLock = Any()
@@ -215,11 +217,13 @@ class AssistantChatHistoryStore internal constructor(
 
     suspend fun refreshFromCloud() {
         val cloud = cloud ?: return
-        if (!cloud.isAvailable) return
+        val uid = activeCloudUserID ?: return
+        val generation = partitionGeneration
+        if (!isCurrentCloudUser(cloud, uid, generation)) return
 
         val remote: List<AssistantChatThread> =
             try {
-                cloud.fetchAll()
+                cloud.fetchAll(uid)
             } catch (e: IllegalStateException) {
                 _lastSyncError.value = e.message
                 Log.w(tag, "Refresh from cloud failed", e)
@@ -227,6 +231,7 @@ class AssistantChatHistoryStore internal constructor(
             }
 
         mutex.withLock {
+            if (!isCurrentCloudUser(cloud, uid, generation)) return@withLock
             val filteredRemote = remote.filter { it.id !in tombstones }
             val merged = merge(local = _threads.value, remote = filteredRemote)
             _threads.value = merged
@@ -242,8 +247,9 @@ class AssistantChatHistoryStore internal constructor(
             for (id in tombstonedRemote) {
                 scope.launch {
                     try {
-                        cloud.delete(id)
-                        clearTombstone(id)
+                        if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
+                        cloud.delete(uid, id)
+                        clearTombstone(id, generation)
                     } catch (_: Exception) {
                         // Stays in the tombstone set; retried next refresh.
                     }
@@ -274,10 +280,14 @@ class AssistantChatHistoryStore internal constructor(
         saveLocally()
 
         val cloud = cloud ?: return
+        val uid = activeCloudUserID ?: return
+        val generation = partitionGeneration
+        if (!isCurrentCloudUser(cloud, uid, generation)) return
         scope.launch {
             try {
-                cloud.delete(threadID)
-                clearTombstone(threadID)
+                if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
+                cloud.delete(uid, threadID)
+                clearTombstone(threadID, generation)
             } catch (_: Exception) {
                 // Tombstone retried on next bootstrap.
             }
@@ -305,6 +315,9 @@ class AssistantChatHistoryStore internal constructor(
         val raw = if (uid.isNullOrEmpty()) "local" else uid
         val sanitized = sanitizePartitionKey(raw)
         if (sanitized == activePartition) return
+        cancelPendingMirrors()
+        activeCloudUserID = uid?.takeIf { it.isNotBlank() }
+        partitionGeneration += 1
         activePartition = sanitized
         local.setActivePartition(sanitized)
         didLoadFromDisk = false
@@ -324,8 +337,19 @@ class AssistantChatHistoryStore internal constructor(
 
     // MARK: - Internals
 
-    private fun clearTombstone(id: String) {
+    private fun isCurrentCloudUser(cloud: AssistantChatCloudMirror, uid: String, generation: Long): Boolean =
+        cloud.isAvailable && activeCloudUserID == uid && partitionGeneration == generation && cloud.currentUserID == uid
+
+    private fun clearTombstone(id: String, generation: Long) {
+        if (partitionGeneration != generation) return
         if (tombstones.remove(id) != null) saveLocally()
+    }
+
+    private fun cancelPendingMirrors() {
+        synchronized(pendingMirrorsLock) {
+            for (job in pendingMirrors.values) job.cancel()
+            pendingMirrors.clear()
+        }
     }
 
     private fun saveLocally() {
@@ -337,17 +361,25 @@ class AssistantChatHistoryStore internal constructor(
     // Cloud-mirror coroutine converts any producer/Firestore failure into _lastSyncError.
     private fun scheduleCloudMirror(thread: AssistantChatThread, immediate: Boolean = false) {
         val cloud = cloud ?: return
-        val job =
+        val uid = activeCloudUserID ?: return
+        val generation = partitionGeneration
+        if (!isCurrentCloudUser(cloud, uid, generation)) return
+        lateinit var job: Job
+        job =
             scope.launch {
                 if (!immediate) delay(CLOUD_MIRROR_DEBOUNCE_MS.toLong())
                 try {
-                    cloud.upsert(thread)
-                    synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
+                    if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
+                    cloud.upsert(uid, thread)
                 } catch (e: Exception) {
                     // Surface (not crash) any cloud-mirror error — incl. Signal producer throws
                     // (atRestRecipients fail-closed) and Firestore exceptions — on this
                     // SupervisorJob IO coroutine. Matches the delete/tombstone coroutines.
                     _lastSyncError.value = e.message
+                } finally {
+                    synchronized(pendingMirrorsLock) {
+                        if (pendingMirrors[thread.id] == job) pendingMirrors.remove(thread.id)
+                    }
                 }
             }
         synchronized(pendingMirrorsLock) {
@@ -659,10 +691,14 @@ internal class AssistantChatFirestoreMirror(
 
     private fun collection(uid: String) = firestore.collection("users").document(uid).collection("mobile_assistant_chats")
 
-    private fun requireUID(): String = auth.currentUser?.uid ?: error("Not signed in")
+    private fun requireCurrentUID(expectedUID: String): String {
+        val current = auth.currentUser?.uid ?: error("Not signed in")
+        check(current == expectedUID) { "Signed-in user changed before chat sync completed" }
+        return current
+    }
 
-    override suspend fun upsert(thread: AssistantChatThread) {
-        val uid = requireUID()
+    override suspend fun upsert(uid: String, thread: AssistantChatThread) {
+        requireCurrentUID(uid)
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val plaintextBytes = json.encodeToString(thread).toByteArray(Charsets.UTF_8)
         // RR-8 cross-platform parity: bind the payload to its Firestore path with the SAME AAD
@@ -747,13 +783,13 @@ internal class AssistantChatFirestoreMirror(
         }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
     }
 
-    override suspend fun delete(threadID: String) {
-        val uid = requireUID()
+    override suspend fun delete(uid: String, threadID: String) {
+        requireCurrentUID(uid)
         collection(uid).document(threadID).delete().await()
     }
 
-    override suspend fun fetchAll(): List<AssistantChatThread> {
-        val uid = requireUID()
+    override suspend fun fetchAll(uid: String): List<AssistantChatThread> {
+        requireCurrentUID(uid)
         val key = AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)
         // Local-only (no network): null until the device has generated a Signal identity,
         // which only happens once at-rest Signal sealing is activated.

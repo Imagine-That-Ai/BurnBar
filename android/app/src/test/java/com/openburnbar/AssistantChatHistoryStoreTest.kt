@@ -13,6 +13,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
@@ -122,6 +123,51 @@ class AssistantChatHistoryStoreTest {
             "local-only thread must backfill once online",
             cloud.upserts.any { it.id == "local-only" },
         )
+        assertEquals(listOf("test-uid"), cloud.upsertUserIDs)
+    }
+
+    @Test
+    fun `pending cloud mirror is canceled when account switches`() = runTest {
+        val local = InMemoryLocalStore()
+        val cloud =
+            MockCloud().apply {
+                currentUserIDValue = "userA"
+                isAvailableValue = true
+            }
+        val store = AssistantChatHistoryStore(local, cloud, scope = CoroutineScope(StandardTestDispatcher(testScheduler)))
+
+        store.upsert(makeThread("user-a-thread", "pi", "Alice"))
+        cloud.currentUserIDValue = "userB"
+        store.switchPartition("userB")
+        advanceTimeBy(1_000)
+        advanceUntilIdle()
+
+        assertTrue("stale userA mirror must not write after userB becomes active", cloud.upserts.isEmpty())
+        assertTrue(cloud.upsertUserIDs.isEmpty())
+    }
+
+    @Test
+    fun `refreshFromCloud drops stale result when account switches during fetch`() = runTest {
+        lateinit var store: AssistantChatHistoryStore
+        val local = InMemoryLocalStore()
+        val cloud =
+            MockCloud().apply {
+                currentUserIDValue = "userA"
+                isAvailableValue = true
+                remote = mutableListOf(makeThread("user-a-remote", "pi", "Alice remote"))
+                onFetch = {
+                    currentUserIDValue = "userB"
+                    store.switchPartition("userB")
+                }
+            }
+        store = AssistantChatHistoryStore(local, cloud, scope = CoroutineScope(StandardTestDispatcher(testScheduler)))
+
+        store.refreshFromCloud()
+        advanceUntilIdle()
+
+        assertEquals(listOf("userA"), cloud.fetchUserIDs)
+        assertTrue("stale userA refresh must not merge into userB partition", store.threads.value.isEmpty())
+        assertFalse("stale userA refresh must not save into userB partition", local.partitions.containsKey("userB"))
     }
 
     @Test
@@ -309,22 +355,32 @@ private class MockCloud : AssistantChatCloudMirror {
     var isAvailableValue: Boolean = false
     var currentUserIDValue: String? = "test-uid"
     var remote: MutableList<AssistantChatThread> = mutableListOf()
+    var onFetch: suspend (String) -> Unit = {}
     val upserts: MutableList<AssistantChatThread> = mutableListOf()
+    val upsertUserIDs: MutableList<String> = mutableListOf()
     val deletes: MutableList<String> = mutableListOf()
+    val deleteUserIDs: MutableList<String> = mutableListOf()
+    val fetchUserIDs: MutableList<String> = mutableListOf()
 
     override val isAvailable: Boolean get() = isAvailableValue
     override val currentUserID: String? get() = currentUserIDValue
 
-    override suspend fun upsert(thread: AssistantChatThread) {
+    override suspend fun upsert(uid: String, thread: AssistantChatThread) {
+        upsertUserIDs.add(uid)
         upserts.add(thread)
         val idx = remote.indexOfFirst { it.id == thread.id }
         if (idx >= 0) remote[idx] = thread else remote.add(thread)
     }
 
-    override suspend fun delete(threadID: String) {
+    override suspend fun delete(uid: String, threadID: String) {
+        deleteUserIDs.add(uid)
         deletes.add(threadID)
         remote.removeAll { it.id == threadID }
     }
 
-    override suspend fun fetchAll(): List<AssistantChatThread> = remote.toList()
+    override suspend fun fetchAll(uid: String): List<AssistantChatThread> {
+        fetchUserIDs.add(uid)
+        onFetch(uid)
+        return remote.toList()
+    }
 }
