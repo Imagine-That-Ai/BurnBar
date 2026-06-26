@@ -8,12 +8,22 @@
 
 export const ALERT_DRILL_LOG_NAME = "openburnbar-alert-delivery-drill";
 export const ALERT_DRILL_EVENT = "alert_delivery_drill";
+const RUN_ID_PATTERN = /^alert-delivery-drill-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u;
 
 export function alertDeliveryRunId(triggeredAt) {
   if (typeof triggeredAt !== "string" || triggeredAt.trim() === "") {
     throw new Error("triggeredAt is required");
   }
-  return `alert-delivery-drill-${triggeredAt.replace(/[:.]/g, "-")}`;
+  const runId = `alert-delivery-drill-${triggeredAt.replace(/[:.]/g, "-")}`;
+  assertAlertDeliveryRunId(runId);
+  return runId;
+}
+
+export function assertAlertDeliveryRunId(runId) {
+  if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId)) {
+    throw new Error("runId must be a canonical alert-delivery drill id");
+  }
+  return runId;
 }
 
 function normalizedChannels(channels) {
@@ -47,9 +57,7 @@ export function buildPendingAlertDeliveryTrigger({
   if (typeof project !== "string" || project.trim() === "") {
     throw new Error("project is required");
   }
-  if (typeof runId !== "string" || runId.trim() === "") {
-    throw new Error("runId is required");
-  }
+  assertAlertDeliveryRunId(runId);
   if (typeof triggeredAt !== "string" || triggeredAt.trim() === "") {
     throw new Error("triggeredAt is required");
   }
@@ -121,7 +129,7 @@ export function buildAlertDeliveryEvidence({
   return {
     generatedAt,
     project: pending.project,
-    runId: pending.runId,
+    runId: assertAlertDeliveryRunId(pending.runId),
     canary: {
       logName: pending.canary?.logName || ALERT_DRILL_LOG_NAME,
       event: pending.canary?.event || ALERT_DRILL_EVENT,

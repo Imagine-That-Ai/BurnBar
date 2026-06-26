@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   alertDeliveryChannelDrift,
   alertDeliveryRunId,
+  assertAlertDeliveryRunId,
   buildAlertDeliveryEvidence,
   buildPendingAlertDeliveryTrigger,
 } from "./alert-delivery-drill.mjs";
@@ -57,6 +58,54 @@ test("alert delivery evidence refuses skipped triggers and blank operators", () 
     }),
     /skipped canary trigger/,
   );
+});
+
+test("alert delivery run ids must remain canonical and filename-safe", () => {
+  const runId = alertDeliveryRunId("2026-06-17T15:00:00.000Z");
+  assert.equal(assertAlertDeliveryRunId(runId), "alert-delivery-drill-2026-06-17T15-00-00-000Z");
+
+  for (const unsafeRunId of [
+    "../alert-delivery-drill-2026-06-17T15-00-00-000Z",
+    "alert-delivery-drill-2026-06-17T15-00-00-000Z/escape",
+    "alert-delivery-drill-2026-06-17T15-00-00-000Z.json",
+    "alert-delivery-drill-2026-06-17T15-00-00Z",
+    "",
+  ]) {
+    assert.throws(
+      () => assertAlertDeliveryRunId(unsafeRunId),
+      /canonical alert-delivery drill id/,
+      unsafeRunId,
+    );
+    assert.throws(
+      () => buildPendingAlertDeliveryTrigger({
+        project: "burnbar",
+        runId: unsafeRunId,
+        triggeredAt: "2026-06-17T15:00:00.000Z",
+        channels: [channel],
+      }),
+      /canonical alert-delivery drill id/,
+      unsafeRunId,
+    );
+    assert.throws(
+      () => buildAlertDeliveryEvidence({
+        pending: {
+          schemaVersion: 1,
+          project: "burnbar",
+          runId: unsafeRunId,
+          canary: {
+            logName: "openburnbar-alert-delivery-drill",
+            event: "alert_delivery_drill",
+            triggeredAt: "2026-06-17T15:00:00.000Z",
+            triggerSkipped: false,
+          },
+          channels: [channel],
+        },
+        operator: "operator",
+      }),
+      /canonical alert-delivery drill id/,
+      unsafeRunId,
+    );
+  }
 });
 
 test("alert delivery pending channel drift catches stale and missing channels", () => {
