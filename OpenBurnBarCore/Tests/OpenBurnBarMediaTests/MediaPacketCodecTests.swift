@@ -62,6 +62,34 @@ final class MediaPacketCodecTests: XCTestCase {
         XCTAssertEqual(cursorSize - bareSize, MediaFrame.cursorMetadataByteCount)
     }
 
+    func testCursorMetadataFlagWithoutCursorStillAccountsForExtensionBytes() throws {
+        let codec = MediaPacketCodec()
+        let payload = Data([0xCA, 0xFE, 0xBA, 0xBE])
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe, .hasCursorMetadata],
+            gopID: 51,
+            frameIndex: 9,
+            presentationTimestampMillis: 2_000,
+            cursor: nil,
+            payload: payload
+        )
+
+        let encoded = try codec.encode(frame)
+        let declaredPayloadLength = encoded.prefix(4).reduce(0) { partial, byte in
+            (partial << 8) | Int(byte)
+        }
+        let (decoded, consumed) = try codec.decode(encoded)
+
+        XCTAssertEqual(consumed, encoded.count)
+        XCTAssertEqual(
+            declaredPayloadLength,
+            MediaFrame.headerByteCount + MediaFrame.cursorMetadataByteCount + payload.count
+        )
+        XCTAssertEqual(decoded.cursor, MediaFrame.CursorMetadata(x: 0, y: 0))
+        XCTAssertEqual(decoded.payload, payload)
+    }
+
     func testDecoderIgnoresTrailingBytesWhenFlagAbsent() throws {
         // Producer omits the bit ⇒ decoder must not try to read cursor
         // bytes. Even if 4 trailing bytes happen to be present in the
