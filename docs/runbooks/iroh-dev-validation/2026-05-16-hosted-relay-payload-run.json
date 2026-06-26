@@ -27,7 +27,7 @@
   },
   "physicalIphoneRun": {
     "bundleId": "com.openburnbar.app",
-    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "deviceId": "<IOS_DEVICE_ID>",
     "launchResult": "success",
     "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-sse-done-launch-final.json",
     "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-sse-done-launch-final.log",
@@ -40,7 +40,7 @@
   "modelFidelityTimeoutRun": {
     "runId": "07",
     "bundleId": "com.openburnbar.app",
-    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "deviceId": "<IOS_DEVICE_ID>",
     "launchResult": "success",
     "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-run-07-launch.json",
     "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-run-07-launch.log",
@@ -146,7 +146,7 @@
   "latestModelFidelityRun": {
     "runId": "08",
     "bundleId": "com.openburnbar.app",
-    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "deviceId": "<IOS_DEVICE_ID>",
     "launchResult": "success",
     "launchJson": "/tmp/openburnbar-mobile-hermes-e2e-run-08-launch.json",
     "launchLog": "/tmp/openburnbar-mobile-hermes-e2e-run-08-launch.log",
@@ -417,7 +417,7 @@
   "finalHostedRelayRun": {
     "requestId": "iroh_27bc1c83-677a-43a4-9e9a-7cbbc061f8d9",
     "launchedAt": "2026-05-16T07:40:49Z",
-    "device": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "device": "<IOS_DEVICE_ID>",
     "hostedRelayUrl": "https://use1-1.relay.alberto8793.burnbar.iroh.link/",
     "requestedModel": "gpt-5.5",
     "auditEvidence": {
@@ -732,7 +732,7 @@
   "postStreakTopologyPreflight": {
     "capturedAt": "2026-05-16T09:54:22Z",
     "bundleId": "com.openburnbar.app",
-    "deviceId": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "deviceId": "<IOS_DEVICE_ID>",
     "launchResult": "success",
     "launchJson": "/tmp/openburnbar-mobile-hermes-cellular-attempt-launch.json",
     "launchLog": "/tmp/openburnbar-mobile-hermes-cellular-attempt-launch.log",
@@ -832,8 +832,8 @@
     "summary": "The iOS iroh transport now adds NWPath-derived networkPathStatus, networkInterfaces, networkIsExpensive, and networkIsConstrained fields to iOS-side iroh audit details. This makes the remaining different-network/cellular proof auditable from Firestore instead of relying on external phone state.",
     "buildCommand": "xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData-ios -skipPackagePluginValidation -skipMacroValidation",
     "buildResult": "passed",
-    "installCommand": "xcrun devicectl device install app --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
-    "installResult": "passed: com.openburnbar.app installed on physical iPhone AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "installCommand": "xcrun devicectl device install app --device <IOS_DEVICE_ID> build/DerivedData-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app",
+    "installResult": "passed: com.openburnbar.app installed on physical iPhone <IOS_DEVICE_ID>",
     "topologyRunStatus": "pending: no different-network/cellular Hermes iroh completion has been captured with these fields yet"
   },
   "remainingGate": {

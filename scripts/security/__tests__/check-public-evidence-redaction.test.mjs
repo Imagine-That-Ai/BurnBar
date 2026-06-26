@@ -59,10 +59,11 @@ test("blocks concrete Firebase evidence artifact identifiers", () => {
 });
 
 test("blocks physical device ids in operational runbooks", () => {
+  const appleDeviceUdid = ["00008120", "001234567890ABCD"].join("-");
   const text = [
     "| Device | Identifier |",
     "| --- | --- |",
-    "| iPhone | 00008120-001234567890ABCD |",
+    `| iPhone | ${appleDeviceUdid} |`,
   ].join("\n");
 
   const violations = scanText(

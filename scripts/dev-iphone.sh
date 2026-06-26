@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build + install + launch OpenBurnBarMobile on Alberto's iPhone 17 Pro Max.
+# Build + install + launch OpenBurnBarMobile on a local physical iPhone.
 # Usage:  scripts/dev-iphone.sh
 #
-# To target a different device, override DEVICE_ID before running:
-#   DEVICE_ID=<UDID> scripts/dev-iphone.sh
+# Set DEVICE_ID (or OPENBURNBAR_IOS_DEVICE_ID) before running:
+#   DEVICE_ID=<coredevice-id> scripts/dev-iphone.sh
 #
 # CoreDevice and Xcode sometimes expose different identifiers for the same
 # phone. DEVICE_ID is the CoreDevice id used by devicectl; IOS_DEPLOY_ID is
@@ -11,14 +11,20 @@
 
 set -euo pipefail
 
-DEVICE_ID="${DEVICE_ID:-AFB07C15-AD18-5EFA-AD1C-CADB4F286797}"   # iPhone 17 Pro Max
-IOS_DEPLOY_ID="${IOS_DEPLOY_ID:-00008150-00180C661EF0401C}"
+DEVICE_ID="${DEVICE_ID:-${OPENBURNBAR_IOS_DEVICE_ID:-}}"
+IOS_DEPLOY_ID="${IOS_DEPLOY_ID:-${OPENBURNBAR_IOS_USB_UDID:-}}"
 BUNDLE_ID="${BUNDLE_ID:-com.openburnbar.app}"
 SCHEME="${SCHEME:-OpenBurnBarMobile}"
 DERIVED="${DERIVED:-build/DerivedData}"
 XCODE_DESTINATION="${XCODE_DESTINATION:-generic/platform=iOS}"
 
 cd "$(dirname "$0")/.."
+
+if [[ -z "${DEVICE_ID}" ]]; then
+  echo "Set DEVICE_ID or OPENBURNBAR_IOS_DEVICE_ID to the local CoreDevice identifier." >&2
+  echo "Find it with: xcrun devicectl list devices" >&2
+  exit 2
+fi
 
 if [[ -x "tools/qa/inject-app-check-debug-token.sh" ]]; then
   echo "▶ Ensuring local App Check debug token is stamped…"
@@ -48,6 +54,11 @@ if xcrun devicectl device install app --device "${DEVICE_ID}" "${APP_PATH}"; the
   xcrun devicectl device process launch --device "${DEVICE_ID}" "${BUNDLE_ID}"
   echo "✅ Done."
   exit 0
+fi
+
+if [[ -z "${IOS_DEPLOY_ID}" ]]; then
+  echo "devicectl install failed and IOS_DEPLOY_ID/OPENBURNBAR_IOS_USB_UDID is not set for ios-deploy fallback." >&2
+  exit 1
 fi
 
 echo "⚠️  devicectl install failed; trying ios-deploy over USB (${IOS_DEPLOY_ID})..."

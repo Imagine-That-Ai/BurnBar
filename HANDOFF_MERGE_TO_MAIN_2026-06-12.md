@@ -68,7 +68,7 @@ Re-pull these and confirm they're environment/pre-existing, not a real regressio
 
 A real build works here (Xcode 26.6, booted iPhone-17 sim). The CI script defaults to a *physical* device; target the simulator UDID directly:
 ```bash
-SIM=3C4750DB-72A2-4018-9A44-9E79A0CEF604   # booted "iPhone 17 Pro Max" sim; re-check with: xcrun simctl list devices booted
+SIM=<BOOTED_SIMULATOR_UDID>   # booted "iPhone 17 Pro Max" sim; re-check with: xcrun simctl list devices booted
 # iOS app build
 xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile \
   -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath .build-verify \

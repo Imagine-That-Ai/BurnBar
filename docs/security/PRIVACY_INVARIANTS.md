@@ -27,11 +27,12 @@ of uid+token docs, and no unscrubbed client crash egress.
 | **I4** | `functions/src/logging.ts` defines and applies `redactUidPaths()` so a UID embedded in any path/message/error string value is redacted. | F-RR09-002 | static gate + `loggingScrubber.test.ts` |
 | **I5** | The outbound push payload builders (`buildVoipApnsPayload`, `buildFcmCallPayload`) never include `connection_id` / `pairedDeviceId` / a real display name. | F-RR09-008 | static gate + `voipPushMetadata.test.ts` |
 | **I6** | Every declared `ttl:true` override is a **live** Firestore TTL policy (ACTIVE/CREATING) in the deployed project. | F-RR09-001 / F-RR09-007 | deploy gate (`verify-firestore-ttl-state.mjs`) |
+| **I7** | Public docs, scripts, and tests do not commit personal physical-device identifiers; local iOS/Android device selection must use placeholders, CLI args, or environment variables. | device-id privacy hygiene | static gate |
 
 ## Where they run
 
-- **Per-PR (fast):** `.github/workflows/fast-feedback.yml` → `no-suppressions` job self-tests then runs `check-privacy-invariants.mjs` (I1–I5).
-- **Ops meta-gate:** `scripts/ci/verify-ops-readiness.sh` (run by `ops-confidence.yml`) self-tests then runs the gate (I1–I5).
+- **Per-PR (fast):** `.github/workflows/fast-feedback.yml` → `no-suppressions` job self-tests then runs `check-privacy-invariants.mjs` (I1–I5, I7).
+- **Ops meta-gate:** `scripts/ci/verify-ops-readiness.sh` (run by `ops-confidence.yml`) self-tests then runs the gate (I1–I5, I7).
 - **On deploy:** `.github/workflows/deploy-firestore.yml` runs `verify-firestore-ttl-state.mjs` after the index deploy (I6) — the automated form of the "B3 deploy readback".
 
 ## Extending the gate
@@ -42,6 +43,9 @@ Adding coverage is a one-line edit in `scripts/ci/check-privacy-invariants.mjs`:
   (forces I1 + I2 + I6 for it automatically).
 - A new banned push-payload key → add to `BANNED_PUSH_KEYS`.
 - A new push payload builder → add to `PUSH_PAYLOAD_BUILDERS`.
+- A new public path that can carry local device validation evidence → add to
+  `PERSONAL_DEVICE_SCAN_ROOTS` and use placeholders such as `<IOS_DEVICE_ID>`,
+  `<IOS_USB_UDID>`, or `<ANDROID_SERIAL>` in committed examples.
 
 Always add a matching positive control in `check-privacy-invariants.test.mjs`
 so the gate is proven to catch the regression (it must never pass vacuously).

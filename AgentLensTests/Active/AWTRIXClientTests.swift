@@ -456,7 +456,7 @@ final class AWTRIXClientTests: XCTestCase {
         +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
           {
             "USB Product Name" = "SAMSUNG_Android"
-            "kUSBSerialNumberString" = "R3CXB0CNS0J"
+            "kUSBSerialNumberString" = "SYNTHETIC_ANDROID_SERIAL"
             "USB Vendor Name" = "SAMSUNG"
             "UsbExclusiveOwner" = "pid 19693, adb"
           }
@@ -464,7 +464,7 @@ final class AWTRIXClientTests: XCTestCase {
 
         XCTAssertFalse(
             PixelClockFirmwareFlasher.shouldTrySerialDevice(
-                "/dev/cu.usbmodemR3CXB0CNS0J2",
+                "/dev/cu.usbmodemSYNTHETIC_ANDROID_SERIAL",
                 usbRegistry: usbRegistry
             )
         )
@@ -494,7 +494,7 @@ final class AWTRIXClientTests: XCTestCase {
         +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
           {
             "USB Product Name" = "SAMSUNG_Android"
-            "kUSBSerialNumberString" = "R3CXB0CNS0J"
+            "kUSBSerialNumberString" = "SYNTHETIC_ANDROID_SERIAL"
             "USB Vendor Name" = "SAMSUNG"
           }
         +-o USB JTAG_serial debug unit@00200000  <class IOUSBHostDevice>
@@ -508,24 +508,24 @@ final class AWTRIXClientTests: XCTestCase {
         let diagnostics = PixelClockFirmwareFlasher.serialDiagnostics(
             serialDevices: [
                 "/dev/cu.Bluetooth-Incoming-Port",
-                "/dev/cu.usbmodemR3CXB0CNS0J2",
+                "/dev/cu.usbmodemSYNTHETIC_ANDROID_SERIAL",
                 "/dev/cu.usbmodem3C84AB1234561"
             ],
             usbRegistry: usbRegistry
         )
 
         XCTAssertEqual(diagnostics.clockCandidateDevices, ["/dev/cu.usbmodem3C84AB1234561"])
-        XCTAssertEqual(diagnostics.ignoredSerialDevices, ["/dev/cu.usbmodemR3CXB0CNS0J2"])
+        XCTAssertEqual(diagnostics.ignoredSerialDevices, ["/dev/cu.usbmodemSYNTHETIC_ANDROID_SERIAL"])
     }
 
     func testFirmwareFlasherDiagnosticsExplainsNonClockUsbSerialOnly() {
         let diagnostics = PixelClockFirmwareFlasher.serialDiagnostics(
-            serialDevices: ["/dev/cu.usbmodemR3CXB0CNS0J2"],
+            serialDevices: ["/dev/cu.usbmodemSYNTHETIC_ANDROID_SERIAL"],
             usbRegistry: """
             +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
               {
                 "USB Product Name" = "SAMSUNG_Android"
-                "kUSBSerialNumberString" = "R3CXB0CNS0J"
+                "kUSBSerialNumberString" = "SYNTHETIC_ANDROID_SERIAL"
                 "USB Vendor Name" = "SAMSUNG"
               }
             """
@@ -533,7 +533,7 @@ final class AWTRIXClientTests: XCTestCase {
 
         XCTAssertFalse(diagnostics.hasClockCandidate)
         XCTAssertTrue(diagnostics.setupGuidance.contains("only non-clock serial devices"), diagnostics.setupGuidance)
-        XCTAssertTrue(diagnostics.setupGuidance.contains("cu.usbmodemR3CXB0CNS0J2"), diagnostics.setupGuidance)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("cu.usbmodemSYNTHETIC_ANDROID_SERIAL"), diagnostics.setupGuidance)
     }
 
     func testFirmwareFlasherDiagnosticsExplainsBatteryCanHideMissingUsbData() {

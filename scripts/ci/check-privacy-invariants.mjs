@@ -19,6 +19,8 @@
  *   I5  Outbound push payload builders omit stable cross-processor correlators
  *       (F-RR09-008 — connection_id / paired_device_id / real display name must
  *       never ride to APNs/FCM).
+ *   I7  Public docs/scripts/tests do not commit personal physical-device
+ *       identifiers; local device selection must come from env or CLI args.
  *
  * Extending this gate is intentionally a one-line edit: add a collection to
  * EPHEMERAL_PII_COLLECTIONS, a banned key to BANNED_PUSH_KEYS, etc.
@@ -28,7 +30,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Root defaults to the repo; PRIVACY_GATE_ROOT lets the self-test point the
@@ -74,6 +76,63 @@ const BANNED_PUSH_KEYS = [
 /** Push payload builders to scan for BANNED_PUSH_KEYS. */
 const PUSH_PAYLOAD_BUILDERS = ["buildVoipApnsPayload", "buildFcmCallPayload", "buildFcmMessage"];
 
+/** Public files where local physical-device identifiers most often creep in. */
+const PERSONAL_DEVICE_SCAN_ROOTS = [
+  "scripts",
+  "docs",
+  "AgentLensTests",
+  "OpenBurnBarMobileTests",
+  "OpenBurnBarMobileUITests",
+  "android/app/src/test",
+  "HANDOFF_MERGE_TO_MAIN_2026-06-12.md",
+];
+
+const DEVICE_SCAN_EXTENSIONS = new Set([
+  ".json",
+  ".kt",
+  ".md",
+  ".mjs",
+  ".sh",
+  ".swift",
+  ".ts",
+  ".txt",
+  ".yml",
+  ".yaml",
+]);
+
+const DEVICE_IDENTIFIER_PATTERNS = [
+  {
+    kind: "physical iOS CoreDevice identifier",
+    context: /\b(?:iPhone|iOS|CoreDevice|devicectl|physical device)\b/i,
+    token: /\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b/i,
+  },
+  {
+    kind: "physical iOS CoreDevice identifier",
+    pattern: /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
+  },
+  {
+    kind: "physical iOS USB UDID",
+    context: /\b(?:iPhone|iOS|USB|UDID|ios-deploy)\b/i,
+    token: /\b[0-9A-F]{8}-[0-9A-F]{16}\b/i,
+  },
+  {
+    kind: "physical iOS USB UDID",
+    pattern: /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{16})\b/i,
+  },
+  {
+    kind: "physical Android serial",
+    pattern: /\b(?:adb\s+-s|ANDROID_SERIAL=)\s*["']?([A-Z0-9]{10,})\b/,
+  },
+  {
+    kind: "physical Android serial",
+    pattern: /\b(?:Physical Android|Samsung)\b[^\n`]*`([A-Z0-9]{10,})`/,
+  },
+  {
+    kind: "physical Android serial",
+    pattern: /\b(?:Physical Android|Samsung Android)\s+([A-Z0-9]{10,})\b/,
+  },
+];
+
 const failures = [];
 const fail = (invariant, msg) => failures.push(`  ✗ [${invariant}] ${msg}`);
 const ok = (invariant, msg) => console.log(`  ✓ [${invariant}] ${msg}`);
@@ -93,6 +152,22 @@ function productionTsFiles(dir) {
     ) {
       out.push(full);
     }
+  }
+  return out;
+}
+
+function hasScannableExtension(path) {
+  return DEVICE_SCAN_EXTENSIONS.has(path.slice(path.lastIndexOf(".")));
+}
+
+function recursivelyCollectFiles(path) {
+  if (!existsSync(path)) return [];
+  const stats = statSync(path);
+  if (!stats.isDirectory()) return hasScannableExtension(path) ? [path] : [];
+  const out = [];
+  for (const entry of readdirSync(path)) {
+    if (entry === ".git" || entry === "node_modules" || entry === "build") continue;
+    out.push(...recursivelyCollectFiles(join(path, entry)));
   }
   return out;
 }
@@ -333,6 +408,48 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
     ok(
       "I5",
       `${builder}() in ${fileName} omits stable correlators and uses no spread (F-RR09-008)`,
+    );
+  }
+}
+
+// === I7: public tree omits personal physical-device identifiers ============
+const deviceIdentifierViolations = [];
+for (const root of PERSONAL_DEVICE_SCAN_ROOTS) {
+  const fullRoot = join(REPO_ROOT, root);
+  for (const file of recursivelyCollectFiles(fullRoot)) {
+    const text = readOrDie(file);
+    const lines = text.split(/\r?\n/);
+    for (const [lineIndex, line] of lines.entries()) {
+      for (const { kind, context, token, pattern } of DEVICE_IDENTIFIER_PATTERNS) {
+        let redacted = null;
+        if (pattern) {
+          const match = line.match(pattern);
+          if (match) {
+            redacted = line.replace(match[1] ?? match[0], "<redacted-device-id>").trim();
+          }
+        } else if (context.test(line) && token.test(line)) {
+          redacted = line.replace(token, "<redacted-device-id>").trim();
+        }
+        if (redacted === null) continue;
+        deviceIdentifierViolations.push({
+          kind,
+          location: `${relative(REPO_ROOT, file)}:${lineIndex + 1}`,
+          redacted,
+        });
+      }
+    }
+  }
+}
+if (deviceIdentifierViolations.length === 0) {
+  ok(
+    "I7",
+    "public docs/scripts/tests use placeholders or env-driven physical-device ids",
+  );
+} else {
+  for (const violation of deviceIdentifierViolations) {
+    fail(
+      "I7",
+      `${violation.location} contains a ${violation.kind}; use <IOS_DEVICE_ID>, <IOS_USB_UDID>, <ANDROID_SERIAL>, or an env/CLI override instead. Offending line: ${violation.redacted}`,
     );
   }
 }

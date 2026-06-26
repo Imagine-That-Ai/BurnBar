@@ -644,7 +644,7 @@ Physical iPad build:
 ```bash
 xcodebuild -project OpenBurnBar.xcodeproj \
   -scheme OpenBurnBarMobile \
-  -destination 'id=00008132-001158191E9A401C' \
+  -destination 'id=<IOS_USB_UDID>' \
   -derivedDataPath .derived-data-hosted-quota-device \
   build
 ```
@@ -654,7 +654,7 @@ Physical iPad tests:
 ```bash
 xcodebuild -project OpenBurnBar.xcodeproj \
   -scheme OpenBurnBarMobile \
-  -destination 'id=00008132-001158191E9A401C' \
+  -destination 'id=<IOS_USB_UDID>' \
   -derivedDataPath .derived-data-hosted-quota-device \
   test
 ```
