@@ -10,6 +10,7 @@ import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlSealKeyEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
@@ -28,6 +29,7 @@ class AgentCapabilityGrantController(
     private val senderMutex = Mutex()
     private var phoneControlSender: PhoneControlSender? = null
     private var phoneControlConnectionID: String? = null
+    private var phoneControlSenderSealed: Boolean = false
 
     sealed class GrantError(message: String) : RuntimeException(message) {
         object NotSignedIn : GrantError("Sign in before granting desktop permissions.")
@@ -116,8 +118,10 @@ class AgentCapabilityGrantController(
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
             ?.let { sender ->
-                sendPhoneControlClassify(coordinator, pair, peerNodeId)
-                return@withLock sender
+                val sealSession = currentOrEstablishControlSealAndClassify(coordinator, pair, peerNodeId)
+                if (phoneControlSenderSealed == (sealSession != null)) {
+                    return@withLock sender
+                }
             }
 
         val authority =
@@ -130,7 +134,8 @@ class AgentCapabilityGrantController(
         val publisher = PhoneControlAuthorityPublisher(firestore)
         publisher.publish(uid = pair.uid, authority = authority)
         publisher.publishAgentGrantAuthority(uid = uid, sourceDeviceId = sourceDeviceId, authority = authority)
-        sendPhoneControlClassify(coordinator, pair, peerNodeId)
+        val sealSession = currentOrEstablishControlSealAndClassify(coordinator, pair, peerNodeId)
+        val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frame -> coordinator.send(frame) }
 
         PhoneControlSender(
             uid = pair.uid,
@@ -141,17 +146,52 @@ class AgentCapabilityGrantController(
             attestationDigestProvider = { AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope() },
             // RR-7c: fail-closed attestation gate under the strict ramp (the agent-grant path enforces, mirror iOS).
             attestationEnforcer = { AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow() },
-            frameSink = { frame -> coordinator.send(frame) },
+            frameSink = sealSession
+                ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
+                ?: baseSink,
         ).also {
             phoneControlSender = it
             phoneControlConnectionID = pair.connectionID
+            phoneControlSenderSealed = sealSession != null
         }
+    }
+
+    private suspend fun currentOrEstablishControlSealAndClassify(
+        coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
+        pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
+        peerNodeId: String,
+    ): ControlSealSessionEstablisher.Session? {
+        val activeSealSession = ControlSealSessionEstablisher.activeSession(pair.connectionID)
+        if (activeSealSession != null) {
+            sendPhoneControlClassify(coordinator, pair, peerNodeId, activeSealSession.envelope)
+            return activeSealSession
+        }
+        return establishControlSealAndClassify(coordinator, pair, peerNodeId)
+    }
+
+    private suspend fun establishControlSealAndClassify(
+        coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
+        pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
+        peerNodeId: String,
+    ): ControlSealSessionEstablisher.Session? {
+        AndroidAppCheckAttestationReader.ensureAttestationBoundIfRequired()
+        val sealSession =
+            ControlSealSessionEstablisher.establishIfNegotiated(
+                uid = pair.uid,
+                connectionId = pair.connectionID,
+                controllerPeerNodeId = peerNodeId,
+                macCapabilities = coordinator.lastPeerCapabilities.value,
+            )
+        sendPhoneControlClassify(coordinator, pair, peerNodeId, sealSession?.envelope)
+        sealSession?.let { ControlSealSessionEstablisher.register(it, pair.connectionID) }
+        return sealSession
     }
 
     private suspend fun sendPhoneControlClassify(
         coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
         pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
         peerNodeId: String,
+        controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
     ) {
         coordinator.send(
             HermesRealtimeRelayFrame(
@@ -162,6 +202,7 @@ class AgentCapabilityGrantController(
                 HermesRealtimeRelayControlPayload(
                     streamClass = MediaStreamClass.CONTROL_INPUT.raw,
                     authorityPeerNodeId = peerNodeId,
+                    controlSealKey = controlSealKey,
                 ),
             ),
         )
