@@ -28,12 +28,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.openburnbar.analytics.AnalyticsEvent
 import com.openburnbar.analytics.AnalyticsManager
 import com.openburnbar.analytics.AnalyticsValue
+import com.openburnbar.diagnostics.CrashReportingConsentStore
 
 /**
  * Revisitable privacy / analytics control. Lets the user grant or revoke the
@@ -49,8 +52,10 @@ import com.openburnbar.analytics.AnalyticsValue
  */
 @Composable
 fun AnalyticsPrivacyScreen(onBack: () -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val crashReportingConsent = remember(context) { CrashReportingConsentStore.fromContext(context) }
     var granted by remember { mutableStateOf(AnalyticsManager.isGranted) }
-    val isDark = isSystemInDarkTheme()
+    var crashReportsEnabled by remember { mutableStateOf(crashReportingConsent.isEnabled) }
 
     Column(
         modifier = Modifier
@@ -92,16 +97,58 @@ fun AnalyticsPrivacyScreen(onBack: () -> Unit) {
             },
         )
 
+        CrashReportingConsentToggleRow(
+            checked = crashReportsEnabled,
+            onCheckedChange = { wantOn ->
+                crashReportingConsent.setEnabled(wantOn)
+                FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(wantOn)
+                AnalyticsManager.track(
+                    AnalyticsEvent.SETTINGS_CHANGED,
+                    mapOf(
+                        "setting_key" to AnalyticsValue.Str("crash_reporting_consent"),
+                        "new_value" to AnalyticsValue.Bool(wantOn),
+                    ),
+                )
+                crashReportsEnabled = wantOn
+            },
+        )
+
         Text(
             "When enabled, BurnBar sends privacy-preserving, opt-in usage analytics " +
                 "(Amplitude) to improve the app. We never send message content, prompts, " +
                 "responses, file paths, API keys, or personal data — only feature usage, " +
-                "outcomes, and coarse, bucketed counts and durations. Turning this off stops " +
-                "all analytics immediately.",
+                "outcomes, and coarse, bucketed counts and durations. Crash reports are a " +
+                "separate diagnostics toggle and stay off until you enable them.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
+    }
+}
+
+@Composable
+private fun CrashReportingConsentToggleRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val isDark = isSystemInDarkTheme()
+    val border = MaterialTheme.colorScheme.outlineVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.4f else 0.6f))
+            .border(1.dp, border, RoundedCornerShape(12.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Crash reports", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Optional diagnostics (Firebase Crashlytics)",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

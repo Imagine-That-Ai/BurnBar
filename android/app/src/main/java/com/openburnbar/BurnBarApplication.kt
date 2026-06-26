@@ -27,6 +27,7 @@ import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
+import com.openburnbar.diagnostics.CrashReportingConsentStore
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.IrohRelayStream
@@ -182,14 +183,10 @@ class BurnBarApplication : Application() {
                 }
             }.getOrDefault(false)
         }
-        // Crashlytics consent defaults ON: with the previous `false` default no
-        // setting ever wrote `crashlytics_enabled`, so collection stayed
-        // permanently disabled and Android crash reporting was dark. Default-on
-        // mirrors the macOS/iOS posture (crash reporting active for distribution
-        // builds); a user who opts out via the diagnostics toggle persists
-        // `false` and that choice is honored on every subsequent launch.
-        val crashlyticsEnabled = getSharedPreferences("burnbar.diagnostics", MODE_PRIVATE)
-            .getBoolean("crashlytics_enabled", true)
+        // Crash reports are a separate diagnostics consent surface from opt-in
+        // usage analytics. Default dark: a fresh install must not start
+        // Crashlytics until the user turns on diagnostic crash reports.
+        val crashlyticsEnabled = CrashReportingConsentStore.fromContext(this).isEnabled
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
         // Opt-in analytics: construct the consent-gated recorder and resume a
         // previously-consented session (no grant re-emit). Stays fully dark

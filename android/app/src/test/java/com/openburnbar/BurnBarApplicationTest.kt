@@ -4,6 +4,8 @@ package com.openburnbar
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.diagnostics.BooleanPreferenceStorage
+import com.openburnbar.diagnostics.CrashReportingConsentStore
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
@@ -20,6 +22,16 @@ import org.junit.Test
  * [IrohPairingSelectionTest] does not cover.
  */
 class BurnBarApplicationTest {
+    private class InMemoryBooleanPreferenceStorage : BooleanPreferenceStorage {
+        private val values = mutableMapOf<String, Boolean>()
+
+        override fun getBoolean(key: String, defaultValue: Boolean): Boolean = values[key] ?: defaultValue
+
+        override fun putBoolean(key: String, value: Boolean) {
+            values[key] = value
+        }
+    }
+
     private fun document(documentId: String, connectionId: String? = null, legacyId: String? = null, publishedAtMillis: Long? = null): DocumentSnapshot {
         val snapshot = mockk<DocumentSnapshot>()
         every { snapshot.getString("connectionId") } returns connectionId
@@ -27,6 +39,15 @@ class BurnBarApplicationTest {
         every { snapshot.id } returns documentId
         every { snapshot.getLong("publishedAtMillis") } returns publishedAtMillis
         return snapshot
+    }
+
+    // ── crash-reporting consent policy ──
+
+    @Test
+    fun `crash reporting consent defaults dark until explicitly enabled`() {
+        val store = CrashReportingConsentStore(InMemoryBooleanPreferenceStorage())
+
+        assertFalse(store.isEnabled)
     }
 
     // ── document → candidate mapping ──
