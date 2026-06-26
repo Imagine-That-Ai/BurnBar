@@ -119,8 +119,31 @@ if (/exec --mission[\s\S]*?\/security-review[\s\S]*?(?<!>)\n/u.test(source)) {
   }
 }
 
-if (/actions\/upload-artifact@/u.test(source) && /security-audits|report_tmp|factory-security-review-output/u.test(source)) {
-  fail("raw security review outputs must not be uploaded as artifacts");
+const artifactUploadBlocks = Array.from(
+  source.matchAll(/uses:\s*actions\/upload-artifact@[^\n]*(?:\n(?!\s*-\s+name:)[^\n]*)*/gu),
+  (match) => match[0],
+);
+for (const uploadBlock of artifactUploadBlocks) {
+  if (/security-audits|report_tmp|description_tmp|payload_tmp|factory-security-review-output/u.test(uploadBlock)) {
+    fail("raw security review outputs must not be uploaded as artifacts");
+  }
+}
+
+const encryptedEvidenceUpload = artifactUploadBlocks.find((block) =>
+  block.includes("factory-security-review-encrypted-evidence"),
+);
+if (!encryptedEvidenceUpload) {
+  fail("critical review evidence must be retained through the encrypted evidence artifact path");
+} else {
+  for (const marker of [
+    "path: ${{ runner.temp }}/factory-security-review-encrypted-evidence.tgz.gpg",
+    "if-no-files-found: ignore",
+    "retention-days: 30",
+  ]) {
+    if (!encryptedEvidenceUpload.includes(marker)) {
+      fail(`encrypted evidence upload is missing ${marker}`);
+    }
+  }
 }
 
 const sourceWithoutDescriptionBlock = source.replace(
@@ -179,6 +202,14 @@ if (!/curl_bin="\/usr\/bin\/curl"/u.test(source)) {
   fail("secret-bearing routing step must use the fixed system curl binary");
 }
 
+if (!/gpg_bin="\/usr\/bin\/gpg"/u.test(source)) {
+  fail("secret-bearing routing step must use the fixed system gpg binary");
+}
+
+if (!/tar_bin="\/usr\/bin\/tar"/u.test(source)) {
+  fail("secret-bearing routing step must use the fixed system tar binary");
+}
+
 if (!/"\$\{gh_bin\}" api --silent --method POST/u.test(source)) {
   fail("GitHub advisory API call must suppress the response body");
 }
@@ -187,12 +218,42 @@ if (!/"\$\{jq_bin\}" -n\s/u.test(source) || !/"\$\{jq_bin\}" -nc\s/u.test(source
   fail("secret-bearing routing step must invoke jq through the trusted resolved path");
 }
 
+if (/^\s*jq\s+-n[ c]?/mu.test(source) || /\$\(\s*jq\s+-n[ c]?/mu.test(source)) {
+  fail("secret-bearing routing step must not resolve jq through PATH");
+}
+
 if (!/"\$\{curl_bin\}" -fsS -X POST/u.test(source)) {
   fail("secret-bearing routing step must invoke curl through the trusted resolved path");
 }
 
+if (/^\s*curl\s+-/mu.test(source)) {
+  fail("secret-bearing routing step must not resolve curl through PATH");
+}
+
+if (!/"\$\{gpg_bin\}" --batch --yes --pinentry-mode loopback[\s\S]*--symmetric --cipher-algo AES256[\s\S]*--s2k-digest-algo SHA512[\s\S]*--passphrase-fd 3[\s\S]*3<<<"\$\{SECURITY_REVIEW_EVIDENCE_KEY\}"/u.test(
+  source,
+)) {
+  fail("encrypted evidence retention must use trusted gpg with passphrase-fd, not shell argv");
+}
+
+if (/^\s*gpg\s+--/mu.test(source)) {
+  fail("encrypted evidence retention must not resolve gpg through PATH");
+}
+
+if (!/"\$\{tar_bin\}" -czf - report\.txt metadata\.json/u.test(source)) {
+  fail("encrypted evidence retention must package only the report and metadata");
+}
+
+if (/^\s*tar\s+-/mu.test(source)) {
+  fail("encrypted evidence retention must not resolve tar through PATH");
+}
+
 if (!/GH_TOKEN:\s*\$\{\{\s*secrets\.SECURITY_ADVISORY_TOKEN\s*\}\}/u.test(source)) {
   fail("GitHub advisory API call must use an advisory-capable token secret");
+}
+
+if (!/SECURITY_REVIEW_EVIDENCE_KEY:\s*\$\{\{\s*secrets\.SECURITY_REVIEW_EVIDENCE_KEY\s*\}\}/u.test(source)) {
+  fail("encrypted evidence retention must use the dedicated evidence key secret");
 }
 
 if (!/confidential: true/u.test(source)) {
@@ -233,4 +294,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: Factory security review keeps raw findings out of CI logs and shell argv.");
+console.log("PASS: Factory security review keeps raw findings out of CI logs, shell argv, and unencrypted artifacts.");
