@@ -74,7 +74,11 @@ const BANNED_PUSH_KEYS = [
 ];
 
 /** Push payload builders to scan for BANNED_PUSH_KEYS. */
-const PUSH_PAYLOAD_BUILDERS = ["buildVoipApnsPayload", "buildFcmCallPayload", "buildFcmMessage"];
+const PUSH_PAYLOAD_BUILDERS = [
+  "buildVoipApnsPayload",
+  "buildFcmCallPayload",
+  "buildFcmMessage",
+];
 
 /** Public files where local physical-device identifiers most often creep in. */
 const PERSONAL_DEVICE_SCAN_ROOTS = [
@@ -108,7 +112,8 @@ const DEVICE_IDENTIFIER_PATTERNS = [
   },
   {
     kind: "physical iOS CoreDevice identifier",
-    pattern: /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
+    pattern:
+      /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
   },
   {
     kind: "physical iOS USB UDID",
@@ -166,7 +171,8 @@ function recursivelyCollectFiles(path) {
   if (!stats.isDirectory()) return hasScannableExtension(path) ? [path] : [];
   const out = [];
   for (const entry of readdirSync(path)) {
-    if (entry === ".git" || entry === "node_modules" || entry === "build") continue;
+    if (entry === ".git" || entry === "node_modules" || entry === "build")
+      continue;
     out.push(...recursivelyCollectFiles(join(path, entry)));
   }
   return out;
@@ -191,6 +197,78 @@ function readOrDie(path) {
     console.error(`MISCONFIGURED: cannot read ${path}: ${err.message}`);
     process.exit(2);
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Remove comments and string/template literal bodies while preserving executable
+ * punctuation. The privacy gate is intentionally dependency-free, so this is a
+ * small scanner instead of a TypeScript parser. It is enough for the invariants
+ * here: comments and string literals must never satisfy a structural pin, while
+ * real call/spread punctuation should remain visible.
+ */
+function stripJsCommentsAndStrings(source) {
+  let out = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (c === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      if (i < source.length) out += "\n";
+      continue;
+    }
+
+    if (c === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        if (source[i] === "*" && source[i + 1] === "/") {
+          out += "  ";
+          i += 1;
+          break;
+        }
+        out += source[i] === "\n" ? "\n" : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      out += " ";
+      i += 1;
+      while (i < source.length) {
+        const ch = source[i];
+        out += ch === "\n" ? "\n" : " ";
+        if (ch === "\\") {
+          i += 1;
+          if (i < source.length) out += source[i] === "\n" ? "\n" : " ";
+        } else if (ch === quote) {
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+
+    out += c;
+  }
+  return out;
+}
+
+function functionBodyCalls(body, callee) {
+  return new RegExp(`(?:^|[^A-Za-z0-9_$])${escapeRegExp(callee)}\\s*\\(`).test(
+    stripJsCommentsAndStrings(body),
+  );
 }
 
 /**
@@ -346,15 +424,24 @@ if (rawLoggerImporters.length === 0) {
 // === I4: structured logger keeps UID-path redaction =========================
 const loggingPath = join(FUNCTIONS_SRC, "logging.ts");
 const loggingText = readOrDie(loggingPath);
+const redactUidPathsBody = extractFunctionBody(loggingText, "redactUidPaths");
+const scrubStringBody = extractFunctionBody(loggingText, "scrubString");
+const redactorCode = redactUidPathsBody
+  ? stripJsCommentsAndStrings(redactUidPathsBody)
+  : "";
 if (
-  /function\s+redactUidPaths\b/.test(loggingText) &&
-  /redactUidPaths\s*\(/.test(loggingText)
+  redactUidPathsBody &&
+  scrubStringBody &&
+  /\breplace\s*\(/.test(redactorCode) &&
+  (redactorCode.includes("users\\/") || redactorCode.includes("users/")) &&
+  redactorCode.includes("workspace-") &&
+  functionBodyCalls(scrubStringBody, "redactUidPaths")
 ) {
   ok("I4", "logging.ts retains redactUidPaths and applies it (F-RR09-002)");
 } else {
   fail(
     "I4",
-    "logging.ts must define and apply redactUidPaths() so UIDs embedded in path/message/error string values are redacted (F-RR09-002)",
+    "logging.ts must define a real redactUidPaths() implementation and call it from scrubString() so UIDs embedded in path/message/error string values are redacted (F-RR09-002)",
   );
 }
 
@@ -376,7 +463,10 @@ function pushSourceText(fileName) {
 for (const builder of PUSH_PAYLOAD_BUILDERS) {
   const fileName = PUSH_BUILDER_FILES[builder];
   if (!fileName) {
-    fail("I5", `${builder}() is not mapped to a source file in PUSH_BUILDER_FILES`);
+    fail(
+      "I5",
+      `${builder}() is not mapped to a source file in PUSH_BUILDER_FILES`,
+    );
     continue;
   }
   const body = extractFunctionBody(pushSourceText(fileName), builder);
@@ -387,13 +477,14 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
     );
     continue;
   }
+  const scannableBody = stripJsCommentsAndStrings(body);
   const offending = BANNED_PUSH_KEYS.filter((k) =>
-    new RegExp(`\\b${k}\\b`).test(body),
+    new RegExp(`\\b${escapeRegExp(k)}\\b`).test(scannableBody),
   );
   // An object spread (`return { ...args }`) can forward arbitrary keys past the
   // literal-key check above, silently re-introducing a correlator. Payload
   // builders must enumerate fields explicitly, never spread.
-  const spreads = /\{[\s\S]*\.\.\.[A-Za-z_$]/.test(body);
+  const spreads = /\.\.\./.test(scannableBody);
   if (offending.length > 0) {
     fail(
       "I5",
@@ -420,12 +511,19 @@ for (const root of PERSONAL_DEVICE_SCAN_ROOTS) {
     const text = readOrDie(file);
     const lines = text.split(/\r?\n/);
     for (const [lineIndex, line] of lines.entries()) {
-      for (const { kind, context, token, pattern } of DEVICE_IDENTIFIER_PATTERNS) {
+      for (const {
+        kind,
+        context,
+        token,
+        pattern,
+      } of DEVICE_IDENTIFIER_PATTERNS) {
         let redacted = null;
         if (pattern) {
           const match = line.match(pattern);
           if (match) {
-            redacted = line.replace(match[1] ?? match[0], "<redacted-device-id>").trim();
+            redacted = line
+              .replace(match[1] ?? match[0], "<redacted-device-id>")
+              .trim();
           }
         } else if (context.test(line) && token.test(line)) {
           redacted = line.replace(token, "<redacted-device-id>").trim();

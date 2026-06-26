@@ -101,8 +101,15 @@ export function buildFcmMessage(args: { event: { id: string; runtime: string; pr
     apns: { payload: { aps: { category: "AGENT_REPLY", sound: "default" } }, headers: { "apns-push-type": "alert", "apns-priority": "10" } },
   };
 }`;
-const GOOD_CREDENTIAL_TRANSFER = "const ref = db.doc(`credential_transfers/${id}`); const doc = { expiresAt: Timestamp.fromMillis(Date.now() + 86400000) };";
-const GOOD_LOGGING = `function redactUidPaths(v){return v;} function scrubString(v){return redactUidPaths(v);}`;
+const GOOD_CREDENTIAL_TRANSFER =
+  "const ref = db.doc(`credential_transfers/${id}`); const doc = { expiresAt: Timestamp.fromMillis(Date.now() + 86400000) };";
+const GOOD_UID_REDACTOR = `function redactUidPaths(v){
+  let result = v;
+  result = result.replace(/\\busers\\/([A-Za-z0-9_-]{9,})/g, (_m, id) => "users/" + id.slice(0, 8) + "...");
+  result = result.replace(/\\bworkspace-([A-Za-z0-9_-]{9,})/g, (_m, id) => "workspace-" + id.slice(0, 8) + "...");
+  return result;
+}`;
+const GOOD_LOGGING = `${GOOD_UID_REDACTOR} function scrubString(v){return redactUidPaths(v);}`;
 
 /** Write a fixture tree under a fresh temp dir; `mut` may mutate the files map. */
 function buildTree(mut = (f) => f) {
@@ -204,6 +211,26 @@ expect(
   1,
 );
 
+expect(
+  "I4 — redactUidPaths only mentioned in a comment fails",
+  buildTree((f) => {
+    f["functions/src/logging.ts"] =
+      `${GOOD_UID_REDACTOR} function scrubString(v){ /* redactUidPaths(v); */ return v; }`;
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I4 — no-op redactUidPaths implementation fails",
+  buildTree((f) => {
+    f["functions/src/logging.ts"] =
+      `function redactUidPaths(v){ return v; } function scrubString(v){ return redactUidPaths(v); }`;
+    return f;
+  }),
+  1,
+);
+
 // I5: re-adding a stable correlator to a push payload must FAIL. Critically,
 // this injects into the BODY of an inline-typed builder — with the pre-review
 // extractFunctionBody (which grabbed the param TYPE) the gate would have missed
@@ -248,13 +275,38 @@ expect(
   1,
 );
 
+expect(
+  "I5 — whitespace object spread in payload builder fails",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
+      'aps: { "content-available": 1 }, type: "media_incoming_call", callId: args.callId, correlationId: args.correlationId, isVideo: args.isVideo',
+      '... args, type: "media_incoming_call"',
+    );
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I5 — object spread only in a comment still passes",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
+      "return { aps:",
+      "/* return { ...args }; */\n  return { aps:",
+    );
+    return f;
+  }),
+  0,
+);
+
 // I7: personal physical-device identifiers must not be committed to public
 // docs/scripts/tests. The samples are assembled above so this self-test source
 // does not itself carry a real-looking device token.
 expect(
   "I7 — physical iOS device id in docs fails",
   buildTree((f) => {
-    f["docs/local-device.md"] = `Physical iPhone ${IOS_COREDEVICE_SAMPLE} passed local validation.`;
+    f["docs/local-device.md"] =
+      `Physical iPhone ${IOS_COREDEVICE_SAMPLE} passed local validation.`;
     return f;
   }),
   1,
@@ -263,7 +315,8 @@ expect(
 expect(
   "I7 — physical Android serial in docs fails",
   buildTree((f) => {
-    f["docs/local-device.md"] = `Samsung Android ${ANDROID_SERIAL_SAMPLE} passed local validation.`;
+    f["docs/local-device.md"] =
+      `Samsung Android ${ANDROID_SERIAL_SAMPLE} passed local validation.`;
     return f;
   }),
   1,
