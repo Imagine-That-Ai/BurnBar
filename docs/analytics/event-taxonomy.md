@@ -98,6 +98,7 @@ helper (`AnalyticsBuckets` in the wrapper, mirrored per platform). Boundaries ar
 | `amount_usd_bucket`     | `0`, `<1`, `1-10`, `10-50`, `50-100`, `100-500`, `>500`                         |
 | `size_bytes_bucket`     | `<1KB`, `1-100KB`, `100KB-1MB`, `1-10MB`, `10-100MB`, `>100MB`                  |
 | `percent_bucket`        | `0-10`, `10-25`, `25-50`, `50-75`, `75-90`, `90-100`                            |
+| `tool_name`             | `file_read`, `file_write`, `file_edit`, `terminal`, `search`, `web`, `memory`, `browser`, `clipboard`, `todo`, `other`, `unknown` |
 
 ---
 

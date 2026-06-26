@@ -68,10 +68,15 @@ final class AnalyticsBucketsTests: XCTestCase {
 
     func test_toolName_knownToolsUseClosedBuckets() {
         XCTAssertEqual(AnalyticsBuckets.toolName("Read"), "file_read")
+        XCTAssertEqual(AnalyticsBuckets.toolName("Write"), "file_write")
         XCTAssertEqual(AnalyticsBuckets.toolName("EditFile"), "file_edit")
+        XCTAssertEqual(AnalyticsBuckets.toolName("bash"), "terminal")
         XCTAssertEqual(AnalyticsBuckets.toolName("grep-search"), "search")
         XCTAssertEqual(AnalyticsBuckets.toolName("WebFetch"), "web")
+        XCTAssertEqual(AnalyticsBuckets.toolName("memory"), "memory")
         XCTAssertEqual(AnalyticsBuckets.toolName("browser_screenshot"), "browser")
+        XCTAssertEqual(AnalyticsBuckets.toolName("clipboard_read"), "clipboard")
+        XCTAssertEqual(AnalyticsBuckets.toolName("todo_write"), "todo")
     }
 
     func test_toolName_unknownOrSensitiveValuesDoNotReachAnalytics() {
