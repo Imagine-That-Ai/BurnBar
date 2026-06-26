@@ -228,6 +228,18 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertEqual(parser.provider, .zai)
     }
 
+    func testParserRegistryKeepsMimoQuotaApiOnly() {
+        let parsers = ParserRegistry.defaultParsers()
+
+        XCTAssertNotNil(parsers[.factory], "Factory sessions must remain parsed by the Factory parser.")
+        XCTAssertNotNil(parsers[.zai], "Z.ai model-filter sessions must remain locally parsed.")
+        XCTAssertNotNil(parsers[.minimax], "MiniMax model-filter sessions must remain locally parsed.")
+        XCTAssertNil(
+            parsers[.mimo],
+            "MiMo quota is refreshed via Token Plan API, not the shared Factory sessions tree."
+        )
+    }
+
     private func seedParserCache(at cacheURL: URL, marker: String) throws {
         let json: [String: Any] = [
             "schemaVersion": 2,

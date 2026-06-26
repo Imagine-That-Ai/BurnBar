@@ -549,8 +549,7 @@ struct PrivacyIndexingSettingsView: View {
             for parser in [
                 (pattern: "zai", provider: AgentProvider.zai),
                 (pattern: "minimax", provider: .minimax),
-                (pattern: "ollama", provider: .ollama),
-                (pattern: "mimo", provider: .mimo)
+                (pattern: "ollama", provider: .ollama)
             ] {
                 _ = try? await ModelFilterParser(
                     modelPattern: parser.pattern,
