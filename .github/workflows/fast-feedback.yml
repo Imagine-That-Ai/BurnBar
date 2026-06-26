@@ -818,6 +818,12 @@ jobs:
       - name: Verify factory security-review boundary
         run: node scripts/ci/verify-factory-security-review-boundary.mjs
 
+      - name: Self-test ops-plane workflow boundary
+        run: node scripts/ci/verify-ops-plane-workflow-boundary.test.mjs
+
+      - name: Verify ops-plane workflow boundary
+        run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
+
       - name: Self-test launch evidence capture permissions
         run: node scripts/test-capture-commercial-launch-evidence.mjs
 

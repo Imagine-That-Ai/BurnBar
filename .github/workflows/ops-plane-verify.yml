@@ -2,7 +2,6 @@ name: Ops plane verify (production)
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   schedule:
@@ -22,6 +21,7 @@ concurrency:
 jobs:
   detect-secrets:
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       has-gcp-sa-key: ${{ steps.detect.outputs.has-gcp-sa-key }}
     steps:
@@ -42,6 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
