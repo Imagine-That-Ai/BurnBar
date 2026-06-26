@@ -1,5 +1,6 @@
 import XCTest
 import Security
+import Darwin
 @testable import OpenBurnBar
 
 @MainActor
@@ -293,6 +294,83 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertTrue(script.contains("call_id"))
     }
 
+    func test_proxyScript_keepsPublicHealthChecksOutOfTunnelRateLimit() async throws {
+        let directory = try makeTemporaryHome()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let scriptURL = directory.appendingPathComponent("cursor_connector_proxy.py")
+        let configURL = directory.appendingPathComponent("cursor_connector_proxy_config.json")
+        let usageLogURL = directory.appendingPathComponent("usage.jsonl")
+        let port = try availableLoopbackPort()
+        let bearerToken = "test-token-\(UUID().uuidString)"
+
+        try CursorConnectorManager.proxyScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        let config: [String: Any] = [
+            "port": port,
+            "session_token": "session-token",
+            "tunnel_rotation_token": bearerToken,
+            "secret_broker_url": "",
+            "secret_broker_token": "",
+            "rate_limit_requests": 1,
+            "rate_limit_window": 60,
+            "usage_log": usageLogURL.path,
+            "routes": [
+                "glm-5": [
+                    "provider": "zai",
+                    "base_url": "https://example.invalid/v1",
+                    "route_id": "route-zai"
+                ]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
+            .write(to: configURL, options: .atomic)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [scriptURL.path, configURL.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        defer {
+            process.terminate()
+            process.waitUntilExit()
+        }
+
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2
+        let session = URLSession(configuration: sessionConfig)
+        defer { session.invalidateAndCancel() }
+        let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
+        try await waitForProxyHealth(baseURL: baseURL, session: session)
+
+        for _ in 0..<3 {
+            let healthStatus = try await proxyResponseStatus(baseURL.appendingPathComponent("health"), session: session)
+            XCTAssertEqual(healthStatus, 200)
+        }
+
+        let authHeaders = ["Authorization": "Bearer \(bearerToken)"]
+        let firstModelStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: authHeaders,
+            session: session
+        )
+        XCTAssertEqual(
+            firstModelStatus,
+            200,
+            "Public health checks must not consume the authenticated tunnel request budget."
+        )
+        let secondModelStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: authHeaders,
+            session: session
+        )
+        XCTAssertEqual(
+            secondModelStatus,
+            429,
+            "Authenticated API requests should still consume and enforce the configured tunnel quota."
+        )
+    }
+
     func test_routedClientSync_updatesBothFactoryConfigShapesAndPreservesExistingModels() throws {
         let home = try makeTemporaryHome()
         let factoryDirectory = home.appendingPathComponent(".factory", isDirectory: true)
@@ -395,6 +473,72 @@ final class CursorConnectorTests: XCTestCase {
     private func readJSON(_ url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func availableLoopbackPort() throws -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { close(fd) }
+
+        var reuse: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(0).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let bindResult = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let nameResult = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getsockname(fd, $0, &length)
+            }
+        }
+        guard nameResult == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        return Int(UInt16(bigEndian: address.sin_port))
+    }
+
+    private func waitForProxyHealth(baseURL: URL, session: URLSession) async throws {
+        let healthURL = baseURL.appendingPathComponent("health")
+        var lastError: Error?
+        for _ in 0..<50 {
+            do {
+                if try await proxyResponseStatus(healthURL, session: session) == 200 {
+                    return
+                }
+            } catch {
+                lastError = error
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw lastError ?? NSError(domain: "CursorConnectorTests", code: 1)
+    }
+
+    private func proxyResponseStatus(
+        _ url: URL,
+        headers: [String: String] = [:],
+        session: URLSession
+    ) async throws -> Int {
+        var request = URLRequest(url: url)
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        let (_, response) = try await session.data(for: request)
+        return try XCTUnwrap(response as? HTTPURLResponse).statusCode
     }
 }
 

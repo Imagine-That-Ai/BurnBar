@@ -1705,6 +1705,9 @@ final class CursorConnectorManager {
             t = threading.current_thread()
             return getattr(t, 'client_ip', "unknown")
 
+        def _is_health_path(path):
+            return path in ("/health", "/healthz")
+
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
@@ -1721,7 +1724,7 @@ final class CursorConnectorManager {
 
             def check_auth(self):
                 # Always allow health checks without auth (needed for startup verification).
-                if self.path in ("/health", "/healthz"):
+                if _is_health_path(self.path):
                     return True
 
                 # Enforce bearer token auth for all other endpoints.
@@ -1732,7 +1735,8 @@ final class CursorConnectorManager {
                         self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
                         return False
 
-                # Rate limiting on all requests (including health checks).
+                # Rate limiting on authenticated API requests only. Public
+                # health probes must not consume the user-visible tunnel quota.
                 client_ip = self.client_address[0] if self.client_address else "unknown"
                 allowed, current = _rate_limit_check(client_ip)
                 if not allowed:
@@ -1749,14 +1753,14 @@ final class CursorConnectorManager {
                 return True
 
             def do_GET(self):
+                if _is_health_path(self.path):
+                    self.send_json(HTTPStatus.OK, {"ok": True})
+                    return
                 if not self.check_auth():
                     return
                 # Record request for rate limiting after successful auth.
                 _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
                 config = load_config()
-                if self.path in ("/health", "/healthz"):
-                    self.send_json(HTTPStatus.OK, {"ok": True})
-                    return
                 if self.path.startswith("/v1/models"):
                     data = [{"id": mid, "object": "model", "created": 0, "owned_by": "openburnbar"} for mid in sorted(config["routes"].keys())]
                     self.send_json(HTTPStatus.OK, {"object": "list", "data": data})
