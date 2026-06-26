@@ -30,12 +30,10 @@ public struct MediaPacketCodec: Sendable {
     }
 
     public func encode(_ frame: MediaFrame) throws -> Data {
-        let cursorBytes: Int
-        if frame.flags.contains(.hasCursorMetadata) && frame.cursor != nil {
-            cursorBytes = MediaFrame.cursorMetadataByteCount
-        } else {
-            cursorBytes = 0
-        }
+        let cursorBytes =
+            frame.flags.contains(.hasCursorMetadata)
+                ? MediaFrame.cursorMetadataByteCount
+                : 0
         let totalPayloadCount = MediaFrame.headerByteCount + cursorBytes + frame.payload.count
         guard totalPayloadCount <= maxPayloadBytes else {
             throw CodecError.payloadTooLarge(actual: totalPayloadCount, max: maxPayloadBytes)

@@ -54,6 +54,37 @@ class MediaPacketCodecTest {
     }
 
     @Test
+    fun cursor_metadata_flag_without_cursor_still_accounts_for_extension_bytes() {
+        val codec = MediaPacketCodec()
+        val payload = byteArrayOf(0x0A, 0x0B, 0x0C)
+        val frame =
+            MediaFrame(
+                kind = MediaFrame.Kind.VIDEO_NAL,
+                flags = MediaFrame.Flags.KEYFRAME.or(MediaFrame.Flags.HAS_CURSOR_METADATA),
+                gopID = 51u,
+                frameIndex = 9u,
+                presentationTimestampMillis = 2_000uL,
+                cursor = null,
+                payload = payload,
+            )
+
+        val encoded = codec.encode(frame)
+        val declaredPayloadLength =
+            java.nio.ByteBuffer.wrap(encoded, 0, 4)
+                .order(java.nio.ByteOrder.BIG_ENDIAN)
+                .int
+        val decoded = codec.decode(encoded)
+
+        assertEquals(encoded.size, decoded.consumed)
+        assertEquals(
+            MediaFrame.HEADER_BYTE_COUNT + MediaFrame.CURSOR_METADATA_BYTE_COUNT + payload.size,
+            declaredPayloadLength,
+        )
+        assertEquals(MediaFrame.CursorMetadata(x = 0, y = 0), decoded.frame.cursor)
+        assertArrayEquals(payload, decoded.frame.payload)
+    }
+
+    @Test
     fun computer_use_stream_classes_are_phase_eight_feature_bucket() {
         assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_SURFACE_FRAME.feature)
         assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_ACTION_LOG.feature)
