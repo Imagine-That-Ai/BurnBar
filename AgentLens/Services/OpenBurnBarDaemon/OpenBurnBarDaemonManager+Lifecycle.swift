@@ -387,12 +387,11 @@ extension OpenBurnBarDaemonManager {
         environmentVariables["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
         environmentVariables["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
 
-        // Propagate Sentry DSN to the daemon so crash reports are captured.
+        // Propagate Sentry DSN only when crash reporting consent allows it.
         // Uses the same resolution helper as the app: Info.plist first, then
         // GoogleService-Info.plist fallback (F-RR09-003).
         #if canImport(Sentry)
-        if let sentryDSN = OpenBurnBarApp.resolveSentryDSN(),
-           !sentryDSN.trimmingCharacters(in: .whitespaces).isEmpty {
+        if let sentryDSN = Self.daemonSentryDSNForLaunch(resolvedDSN: OpenBurnBarApp.resolveSentryDSN()) {
             environmentVariables["OPENBURNBAR_SENTRY_DSN"] = sentryDSN
         }
         #endif
@@ -452,6 +451,22 @@ extension OpenBurnBarDaemonManager {
             )
         }
     }
+
+    #if canImport(Sentry)
+    nonisolated static func daemonSentryDSNForLaunch(
+        resolvedDSN: String?,
+        defaults: UserDefaults = .standard
+    ) -> String? {
+        guard MacCrashReportingConsent.isEnabled(defaults: defaults) else {
+            return nil
+        }
+        guard let trimmedDSN = resolvedDSN?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmedDSN.isEmpty else {
+            return nil
+        }
+        return trimmedDSN
+    }
+    #endif
 
     private func launchAgentPlistStep<T>(_ name: String, _ operation: () throws -> T) throws -> T {
         AppLogger.daemon.info("daemon_launch_agent_\(name)_started")

@@ -64,6 +64,12 @@ final class ClientTelemetrySanitizerTests: XCTestCase {
     func testSanitizeStringRedactsSensitiveValuePatterns() {
         XCTAssertEqual(ClientTelemetrySanitizer.sanitizeString("sk-live-deadbeef", key: nil), ClientTelemetrySanitizer.redacted)
         XCTAssertEqual(ClientTelemetrySanitizer.sanitizeString("/Users/alice/secret.txt", key: nil), ClientTelemetrySanitizer.redacted)
+        XCTAssertEqual(ClientTelemetrySanitizer.sanitizeString("/private/var/tmp/openburnbar.trace", key: nil), ClientTelemetrySanitizer.redacted)
+        XCTAssertEqual(ClientTelemetrySanitizer.sanitizeString("contact alice@example.com", key: nil), ClientTelemetrySanitizer.redacted)
+        XCTAssertEqual(
+            ClientTelemetrySanitizer.sanitizeString("opaque ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", key: nil),
+            ClientTelemetrySanitizer.redacted
+        )
         XCTAssertEqual(ClientTelemetrySanitizer.sanitizeString("hello world", key: "greeting"), "hello world")
         let long = String(repeating: "a", count: 900)
         XCTAssertTrue(
