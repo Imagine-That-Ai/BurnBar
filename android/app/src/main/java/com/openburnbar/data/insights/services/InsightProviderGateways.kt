@@ -1,10 +1,15 @@
 package com.openburnbar.data.insights.services
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTokenUsage
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -21,28 +26,158 @@ private const val READ_TIMEOUT_SECONDS = 120
 private const val CONNECT_TIMEOUT_SECONDS = 15
 private const val ANALYSIS_TEMPERATURE = 0.2
 private const val ANALYSIS_MAX_TOKENS = 1400
+private const val INSIGHT_PROVIDER_LEGACY_PREFS = "insights_provider_credentials"
+private const val INSIGHT_PROVIDER_ENCRYPTED_PREFS = "insights_provider_credentials_encrypted"
+private const val INSIGHT_CREDENTIAL_PREFIX = "credential."
+private const val INSIGHT_ENDPOINT_PREFIX = "endpoint."
 
-class AndroidInsightCredentialStore(context: Context) {
-    private val prefs = context.getSharedPreferences("insights_provider_credentials", Context.MODE_PRIVATE)
+class AndroidInsightCredentialStore internal constructor(
+    private val credentials: AndroidInsightStringStorage,
+    private val endpoints: AndroidInsightStringStorage,
+    private val legacyCredentials: AndroidInsightStringStorage?,
+) {
+    constructor(context: Context) : this(
+        credentials =
+        EncryptedAndroidInsightStringStorage(
+            context = context.applicationContext,
+            prefsName = INSIGHT_PROVIDER_ENCRYPTED_PREFS,
+        ),
+        endpoints =
+        SharedPreferencesAndroidInsightStringStorage(
+            context.applicationContext.getSharedPreferences(INSIGHT_PROVIDER_LEGACY_PREFS, Context.MODE_PRIVATE),
+        ),
+        legacyCredentials =
+        SharedPreferencesAndroidInsightStringStorage(
+            context.applicationContext.getSharedPreferences(INSIGHT_PROVIDER_LEGACY_PREFS, Context.MODE_PRIVATE),
+        ),
+    )
+
+    init {
+        migrateLegacyCredentials()
+    }
 
     fun credential(provider: String, aliases: List<String> = emptyList()): String? = (listOf(provider) + aliases)
         .firstNotNullOfOrNull { candidate ->
-            prefs.getString("credential.$candidate", null)
+            credentials.getString(credentialKey(candidate))
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
         }
 
-    fun endpoint(key: String): String? = prefs.getString("endpoint.$key", null)
+    fun endpoint(key: String): String? = endpoints.getString(endpointKey(key))
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
 
     fun saveCredential(provider: String, credential: String) {
-        prefs.edit().putString("credential.$provider", credential.trim()).apply()
+        val key = credentialKey(provider)
+        val normalized = credential.trim()
+        if (normalized.isEmpty()) {
+            credentials.remove(key)
+            legacyCredentials?.remove(key)
+            return
+        }
+        check(credentials.putString(key, normalized)) { "Unable to persist insight provider credential securely." }
+        legacyCredentials?.remove(key)
     }
 
     fun saveEndpoint(key: String, endpoint: String) {
-        prefs.edit().putString("endpoint.$key", endpoint.trim()).apply()
+        val storageKey = endpointKey(key)
+        val normalized = endpoint.trim()
+        if (normalized.isEmpty()) {
+            endpoints.remove(storageKey)
+            return
+        }
+        check(endpoints.putString(storageKey, normalized)) { "Unable to persist insight provider endpoint." }
     }
+
+    private fun migrateLegacyCredentials() {
+        val legacy = legacyCredentials ?: return
+        legacy.keys()
+            .filter { it.startsWith(INSIGHT_CREDENTIAL_PREFIX) }
+            .forEach { key ->
+                val currentEncrypted = credentials.getString(key)?.trim()?.takeIf { it.isNotEmpty() }
+                if (currentEncrypted != null) {
+                    legacy.remove(key)
+                    return@forEach
+                }
+                val normalized = legacy.getString(key)?.trim()
+                if (normalized.isNullOrEmpty()) {
+                    legacy.remove(key)
+                    return@forEach
+                }
+                check(credentials.putString(key, normalized)) { "Unable to migrate insight provider credential securely." }
+                legacy.remove(key)
+            }
+    }
+}
+
+private fun credentialKey(provider: String): String = INSIGHT_CREDENTIAL_PREFIX + provider
+
+private fun endpointKey(key: String): String = INSIGHT_ENDPOINT_PREFIX + key
+
+internal interface AndroidInsightStringStorage {
+    fun getString(key: String): String?
+    fun putString(key: String, value: String): Boolean
+    fun remove(key: String): Boolean
+    fun keys(): Set<String>
+}
+
+internal class SharedPreferencesAndroidInsightStringStorage(
+    private val prefs: SharedPreferences,
+) : AndroidInsightStringStorage {
+    override fun getString(key: String): String? = prefs.getString(key, null)
+
+    override fun putString(key: String, value: String): Boolean = prefs.edit()
+        .putString(key, value)
+        .commit()
+
+    override fun remove(key: String): Boolean = prefs.edit()
+        .remove(key)
+        .commit()
+
+    override fun keys(): Set<String> = prefs.all.keys
+}
+
+internal class EncryptedAndroidInsightStringStorage(
+    private val context: Context,
+    private val prefsName: String,
+) : AndroidInsightStringStorage {
+    private val prefs: SharedPreferences by lazy { openEncryptedPrefs() }
+
+    override fun getString(key: String): String? = prefs.getString(key, null)
+
+    override fun putString(key: String, value: String): Boolean = prefs.edit()
+        .putString(key, value)
+        .commit()
+
+    override fun remove(key: String): Boolean = prefs.edit()
+        .remove(key)
+        .commit()
+
+    override fun keys(): Set<String> = prefs.all.keys
+
+    private fun openEncryptedPrefs(): SharedPreferences {
+        val masterKey =
+            MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+        return try {
+            createEncryptedPrefs(masterKey)
+        } catch (_: GeneralSecurityException) {
+            context.deleteSharedPreferences(prefsName)
+            createEncryptedPrefs(masterKey)
+        } catch (_: IOException) {
+            context.deleteSharedPreferences(prefsName)
+            createEncryptedPrefs(masterKey)
+        }
+    }
+
+    private fun createEncryptedPrefs(masterKey: MasterKey): SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        prefsName,
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
 }
 
 object AndroidInsightGatewayRegistry {
