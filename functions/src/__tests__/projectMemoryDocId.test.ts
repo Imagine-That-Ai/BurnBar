@@ -43,17 +43,23 @@ type FakeRef = {
 };
 
 function makeDb() {
-  const docRef = (path: string): FakeRef => ({
-    __path: path,
-    get: async () => ({
-      id: path.split("/").pop(),
-      exists: stored.has(path),
-      data: () => stored.get(path),
-      get: (field: string) => stored.get(path)?.[field],
-    }),
-    set: async (data: Record<string, unknown>) => void stored.set(path, { ...stored.get(path), ...data }),
-    delete: async () => void stored.delete(path),
-  });
+  const docRef = (path: string): FakeRef => {
+    const segments = path.split("/");
+    if (segments.some((segment) => segment.length === 0) || segments.length % 2 !== 0) {
+      throw new Error(`invalid Firestore document path: ${path}`);
+    }
+    return {
+      __path: path,
+      get: async () => ({
+        id: path.split("/").pop(),
+        exists: stored.has(path),
+        data: () => stored.get(path),
+        get: (field: string) => stored.get(path)?.[field],
+      }),
+      set: async (data: Record<string, unknown>) => void stored.set(path, { ...stored.get(path), ...data }),
+      delete: async () => void stored.delete(path),
+    };
+  };
   return {
     doc: (path: string) => docRef(path),
     collection: (base: string) => ({
@@ -164,6 +170,40 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
     const req = commitRequest();
     delete req.data.docID;
     await expect(invokeCallable(commitEncryptedProjectMemorySnapshot, req)).rejects.toThrow(/docID/);
+  });
+
+  it("commit normalizes legacy cleanup ids before deleting old plaintext rows", async () => {
+    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const req = commitRequest();
+    req.data.legacyDocID = "Legacy/Plaintext Project";
+    stored.set("users/userA/project_memory_snapshots/legacy-plaintext-project", {
+      projectDisplayName: PLAINTEXT_NAME,
+    });
+
+    const res = await invokeCallable<{ ok: boolean; docID: string }>(
+      commitEncryptedProjectMemorySnapshot,
+      req,
+    );
+
+    expect(res.ok).toBe(true);
+    expect(res.docID).toBe(DOC_ID);
+    expect(stored.has(`users/userA/project_memory_snapshots/${DOC_ID}`)).toBe(true);
+    expect(stored.has("users/userA/project_memory_snapshots/legacy-plaintext-project")).toBe(false);
+  });
+
+  it("commit ignores unusable legacy cleanup ids instead of failing the snapshot write", async () => {
+    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const req = commitRequest();
+    req.data.legacyDocID = "///";
+
+    const res = await invokeCallable<{ ok: boolean; docID: string }>(
+      commitEncryptedProjectMemorySnapshot,
+      req,
+    );
+
+    expect(res.ok).toBe(true);
+    expect(res.docID).toBe(DOC_ID);
+    expect(stored.has(`users/userA/project_memory_snapshots/${DOC_ID}`)).toBe(true);
   });
 
   it("get round-trips by docID and echoes no plaintext name/slug", async () => {
