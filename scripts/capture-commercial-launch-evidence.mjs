@@ -8,13 +8,15 @@
  * and App Store transaction identifiers.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
 const DEFAULT_DIR = "launch-evidence";
 const DEFAULT_KIND = "commercial-launch-gate";
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
 
 function usage() {
   console.log(`Usage:
@@ -120,6 +122,23 @@ function statusSuffix(kind, payload) {
   return "captured";
 }
 
+function ensurePrivateDirectory(path) {
+  mkdirSync(path, { recursive: true, mode: PRIVATE_DIR_MODE });
+  chmodSync(path, PRIVATE_DIR_MODE);
+}
+
+function writePrivateFile(path, body, options = {}) {
+  if (options.flag !== "wx") {
+    try {
+      chmodSync(path, PRIVATE_FILE_MODE);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  writeFileSync(path, body, { ...options, mode: PRIVATE_FILE_MODE });
+  chmodSync(path, PRIVATE_FILE_MODE);
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
@@ -133,7 +152,7 @@ function main() {
   const capturedAt = new Date().toISOString();
   const stamp = capturedAt.replace(/[:.]/g, "-");
   const outputDir = resolve(options.dir);
-  mkdirSync(outputDir, { recursive: true });
+  ensurePrivateDirectory(outputDir);
 
   const record = {
     capturedAt,
@@ -148,8 +167,8 @@ function main() {
   const outputPath = join(outputDir, filename);
   const latestPath = join(outputDir, `latest-${kind}.json`);
   const body = `${JSON.stringify(record, null, 2)}\n`;
-  writeFileSync(outputPath, body, { flag: "wx" });
-  writeFileSync(latestPath, body);
+  writePrivateFile(outputPath, body, { flag: "wx" });
+  writePrivateFile(latestPath, body);
 
   const verdict = payload?.verdict?.status || (payload?.ok === true ? "ok" : payload?.ok === false ? "not-ok" : "captured");
   console.log(JSON.stringify({
