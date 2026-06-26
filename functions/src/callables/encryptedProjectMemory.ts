@@ -124,10 +124,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       // slug) when it differs from the opaque `docID`. Delete the stranded legacy
       // doc so its cleartext `projectDisplayName` field and name-revealing doc id
       // do not linger server-readable (privacy-leak-remediation-2026-06-02 §2).
-      const legacyDocID =
-        typeof request.data.legacyDocID === "string" && request.data.legacyDocID.length > 0
-          ? request.data.legacyDocID
-          : undefined;
+      const legacyDocID = optionalLegacyProjectMemoryDocID(request.data.legacyDocID);
       if (legacyDocID && legacyDocID !== docID) {
         await db
           .doc(`users/${uid}/project_memory_snapshots/${legacyDocID}`)
@@ -146,6 +143,19 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
     },
   ),
 );
+
+function optionalLegacyProjectMemoryDocID(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return undefined;
+  }
+  const safe = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return safe.length > 0 ? safe : undefined;
+}
 
 export const getEncryptedProjectMemorySnapshot = onCall(
   {
