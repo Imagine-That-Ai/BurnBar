@@ -25,7 +25,7 @@ Split each budget topic into two documents:
 
 Daily rollups (`ops/computer_use_session_daily_rollups/**`, `ops/media_session_daily_rollups/**`) remain operator-only. Transition audit rows stay at `ops/*_budget_status/events/{eventId}` (operator read, server write).
 
-For Computer Use, `visionModelSpendUSD` in the operator rollup is the actual sanitized spend used by `evaluateComputerUseBudget`; `cappedVisionModelSpendUSD` is retained separately for the per-user daily-envelope view. The global budget projection must never read the capped field when actual spend is present.
+For Computer Use, `visionModelSpendUSD` in the operator rollup is the actual sanitized spend for visibility and cost analysis. `cappedVisionModelSpendUSD` is the per-user daily-envelope-bounded spend used by `evaluateComputerUseBudget` for global soft/hard-cap projection. The global kill-switch projection must not let one user's client-reported action costs dominate the month-end estimate.
 
 Cloud Functions (`evaluateComputerUseBudget`, `evaluateMediaBudget`) write **both** documents atomically in sequence. Clients listen only to the public envelope path.
 

@@ -94,11 +94,13 @@ async function sumMonthToDate(now: Date): Promise<MonthSpend> {
 }
 
 function budgetedRollupVisionSpendUSD(data: Record<string, unknown>): number {
-  const actualSpend = numberField(data, "visionModelSpendUSD");
-  if (actualSpend != null && actualSpend >= 0) return actualSpend;
+  const hasCappedSpend = Object.prototype.hasOwnProperty.call(data, "cappedVisionModelSpendUSD");
+  const cappedSpend = numberField(data, "cappedVisionModelSpendUSD");
+  if (cappedSpend != null && cappedSpend >= 0) return cappedSpend;
+  if (hasCappedSpend) return 0;
 
-  const legacyCappedSpend = numberField(data, "cappedVisionModelSpendUSD");
-  if (legacyCappedSpend != null && legacyCappedSpend >= 0) return legacyCappedSpend;
+  const legacyActualSpend = numberField(data, "visionModelSpendUSD");
+  if (legacyActualSpend != null && legacyActualSpend >= 0) return legacyActualSpend;
 
   return 0;
 }

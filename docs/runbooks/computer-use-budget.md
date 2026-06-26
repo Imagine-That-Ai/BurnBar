@@ -14,12 +14,12 @@ This runbook fires when the hourly `evaluateComputerUseBudget` Cloud Function fl
 
 The live Remote Config keys are `computer_use_budget_soft_usd=1500`, `computer_use_budget_hard_usd=2500`, and `computer_use_kill_switch=false`. Older `_soft_cap_usd` / `_hard_cap_usd` parameter names are still accepted as compatibility aliases, but the commercial launch gate requires the shorter `*_usd` names.
 
-`evaluateComputerUseBudget` projects month-end from `ops/computer_use_session_daily_rollups/days/*`. In those rollups, `visionModelSpendUSD` is the actual sanitized operator spend used for the monthly budget, while `cappedVisionModelSpendUSD` is only the per-user daily-envelope view. Do not use the capped field for global budget decisions.
+`evaluateComputerUseBudget` projects month-end from `ops/computer_use_session_daily_rollups/days/*`. In those rollups, `visionModelSpendUSD` is the actual sanitized operator spend for visibility, while `cappedVisionModelSpendUSD` is the per-user daily-envelope-bounded spend used for the monthly budget projection. Do not feed the global kill switch from uncapped per-action client-reported spend.
 
 ## On soft cap fire
 
 1. Confirm the firing in Firestore: read `ops/computer_use_budget_status/events/` (newest docs by `updatedAt`) and operator metrics at `ops/computer_use_budget_status/metrics/current`.
-2. Read `ops/computer_use_session_daily_rollups/days/<yesterday>` for the per-tool counts and actual spend that drove the projection.
+2. Read `ops/computer_use_session_daily_rollups/days/<yesterday>` for the per-tool counts, capped spend that drove the projection, and actual spend visibility.
 3. Identify any abusive user(s) via `users/*/computer_use_actions/*` aggregation.
 4. If the projection is driven by genuine demand, expand the SKU price or add an `additional_computer_use_actions` IAP. If it is driven by a single user, downgrade their entitlement to inactive and contact them.
 5. Soft cap is transparent to the user — they see a sidebar notice "Computer Use ran tight today; we lowered today's cap to keep the lights on" but their session does not interrupt.
