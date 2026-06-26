@@ -16,6 +16,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
@@ -27,22 +28,52 @@ import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } fro
 import { resilientFetch } from "./resilienceHelpers.js";
 import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, jsonObject, stringField } from "./guards.js";
-import type {
-  ComputerUseOpenTimestampsValidationRequest,
-  ComputerUseOpenTimestampsValidationResponse,
-  ComputerUseOpenTimestampsValidationStatus,
-} from "./types.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_MAX_PROOF_BYTES = 256 * 1024;
+const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 const DEFAULT_MAX_CHAIN_BYTES = 10 * 1024 * 1024;
 const OPENBURNBAR_OTS_VERIFY_URL_PARAM = defineString("OPENBURNBAR_OTS_VERIFY_URL", {
   default: "",
 });
 const OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM = defineString("OPENBURNBAR_OTS_VERIFY_AUDIENCE", { default: "" });
 const OPENBURNBAR_OTS_STAMP_URL_PARAM = defineString("OPENBURNBAR_OTS_STAMP_URL", { default: "" });
+
+interface ComputerUseOpenTimestampsValidationRequest {
+  uid: string;
+  sessionId: string;
+  auditHeadHashHex: string;
+  proofBase64: string;
+  manifestFileBase64?: string;
+  chainFileBase64?: string;
+}
+
+type ComputerUseOpenTimestampsValidationStatus =
+  | "verified"
+  | "ots_verifier_unavailable"
+  | "ots_verify_failed"
+  | "session_not_found"
+  | "server_head_missing"
+  | "head_mismatch"
+  | "manifest_file_required"
+  | "manifest_mismatch"
+  | "chain_file_required"
+  | "chain_head_mismatch";
+
+interface ComputerUseOpenTimestampsValidationResponse {
+  status: ComputerUseOpenTimestampsValidationStatus;
+  verified: boolean;
+  sessionId: string;
+  auditHeadHashHex: string;
+  serverAuditHeadHashHex?: string;
+  manifestHashHex?: string;
+  chainHeadHashHex?: string;
+  proofSizeBytes: number;
+  checkedAt: string;
+  otsVerifierOutput?: string;
+}
 
 /** A 32-byte SHA-256 digest is what OpenTimestamps stamps; reject anything else. */
 const OTS_DIGEST_BYTES = 32;
@@ -74,6 +105,14 @@ interface ComputerUseOpenTimestampsValidationDependencies {
   now?: () => Date;
 }
 
+interface ChainHeadValidationResult {
+  valid: boolean;
+  manifestHashHex?: string;
+  headHashHex?: string;
+  entryCount?: number;
+  reason?: string;
+}
+
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new HttpsError("invalid-argument", `${field} is required.`);
@@ -101,6 +140,80 @@ function decodeBase64(value: string, field: string, maxBytes: number): Buffer {
   return decoded;
 }
 
+function sha256Hex(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function deriveComputerUseAuditChainHead(
+  manifestBytes: Buffer,
+  chainBytes: Buffer,
+  sessionId: string,
+): ChainHeadValidationResult {
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = jsonObject(JSON.parse(manifestBytes.toString("utf8")));
+  } catch {
+    return { valid: false, reason: "manifest_decode_failed" };
+  }
+  if (manifest.sessionId !== sessionId) {
+    return { valid: false, reason: "manifest_session_mismatch" };
+  }
+
+  const manifestHashHex = sha256Hex(manifestBytes);
+  const lines = chainBytes
+    .toString("utf8")
+    .split("\n")
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return { valid: false, manifestHashHex, reason: "chain_file_empty" };
+  }
+
+  let expectedIndex = 0;
+  let parentHashHex = manifestHashHex;
+  for (const line of lines) {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = jsonObject(JSON.parse(line));
+    } catch {
+      return { valid: false, manifestHashHex, entryCount: expectedIndex, reason: "chain_decode_failed" };
+    }
+
+    if (parsed.schemaVersion !== 1) {
+      return { valid: false, manifestHashHex, entryCount: expectedIndex, reason: "unsupported_schema" };
+    }
+    if (parsed.sessionId !== sessionId) {
+      return { valid: false, manifestHashHex, entryCount: expectedIndex, reason: "session_mismatch" };
+    }
+    if (parsed.entryIndex !== expectedIndex) {
+      return { valid: false, manifestHashHex, entryCount: expectedIndex, reason: "unexpected_entry_index" };
+    }
+    const entryParent = typeof parsed.parentEntryHashHex === "string" ? parsed.parentEntryHashHex : "";
+    if (!/^[a-f0-9]{64}$/i.test(entryParent)) {
+      return { valid: false, manifestHashHex, entryCount: expectedIndex, reason: "bad_parent_hash" };
+    }
+    if (entryParent !== parentHashHex) {
+      return {
+        valid: false,
+        manifestHashHex,
+        entryCount: expectedIndex,
+        headHashHex: parentHashHex,
+        reason: "parent_hash_mismatch",
+      };
+    }
+
+    parentHashHex = sha256Hex(Buffer.from(line, "utf8"));
+    expectedIndex += 1;
+  }
+
+  return {
+    valid: true,
+    manifestHashHex,
+    headHashHex: parentHashHex,
+    entryCount: expectedIndex,
+  };
+}
+
 export function parseComputerUseOpenTimestampsValidationRequest(
   raw: unknown,
 ): ComputerUseOpenTimestampsValidationRequest {
@@ -110,6 +223,7 @@ export function parseComputerUseOpenTimestampsValidationRequest(
     sessionId: requiredString(data.sessionId, "sessionId"),
     auditHeadHashHex: requiredString(data.auditHeadHashHex, "auditHeadHashHex"),
     proofBase64: requiredString(data.proofBase64, "proofBase64"),
+    manifestFileBase64: optionalString(data.manifestFileBase64, "manifestFileBase64"),
     chainFileBase64: optionalString(data.chainFileBase64, "chainFileBase64"),
   };
 }
@@ -415,6 +529,10 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
   dependencies: ComputerUseOpenTimestampsValidationDependencies = {},
 ): Promise<ComputerUseOpenTimestampsValidationResponse> {
   const proofBytes = decodeBase64(request.proofBase64, "proofBase64", DEFAULT_MAX_PROOF_BYTES);
+  const manifestBytes =
+    request.manifestFileBase64 == null
+      ? undefined
+      : decodeBase64(request.manifestFileBase64, "manifestFileBase64", DEFAULT_MAX_MANIFEST_BYTES);
   const chainBytes =
     request.chainFileBase64 == null
       ? undefined
@@ -437,12 +555,56 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
     };
   }
 
+  if (chainBytes == null) {
+    return {
+      status: "chain_file_required",
+      verified: false,
+      sessionId: request.sessionId,
+      auditHeadHashHex: request.auditHeadHashHex,
+      serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+      proofSizeBytes: proofBytes.length,
+      checkedAt,
+      otsVerifierOutput: "chainFileBase64 is required to bind the OpenTimestamps proof to the audit chain head.",
+    };
+  }
+
+  if (manifestBytes == null) {
+    return {
+      status: "manifest_file_required",
+      verified: false,
+      sessionId: request.sessionId,
+      auditHeadHashHex: request.auditHeadHashHex,
+      serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+      proofSizeBytes: proofBytes.length,
+      checkedAt,
+      otsVerifierOutput: "manifestFileBase64 is required to bind the audit chain to the session manifest.",
+    };
+  }
+
+  const chainHead = deriveComputerUseAuditChainHead(manifestBytes, chainBytes, request.sessionId);
+  if (!chainHead.valid || chainHead.headHashHex !== request.auditHeadHashHex) {
+    return {
+      status: chainHead.reason?.startsWith("manifest_") ? "manifest_mismatch" : "chain_head_mismatch",
+      verified: false,
+      sessionId: request.sessionId,
+      auditHeadHashHex: request.auditHeadHashHex,
+      serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+      manifestHashHex: chainHead.manifestHashHex,
+      chainHeadHashHex: chainHead.headHashHex,
+      proofSizeBytes: proofBytes.length,
+      checkedAt,
+      otsVerifierOutput: chainHead.reason ?? "chain head does not match auditHeadHashHex",
+    };
+  }
+
   const otsResult = await verifyProof(proofBytes, chainBytes);
   return {
     ...otsResult,
     sessionId: request.sessionId,
     auditHeadHashHex: request.auditHeadHashHex,
     serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+    manifestHashHex: chainHead.manifestHashHex,
+    chainHeadHashHex: chainHead.headHashHex,
     proofSizeBytes: proofBytes.length,
     checkedAt,
   };

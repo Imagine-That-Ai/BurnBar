@@ -28,10 +28,10 @@
 
 ## OpenTimestamps notarization (Phase 13)
 
-For high-stakes disputes the user may opt-in to OpenTimestamps notarization. After Phase 13 ships, the SHA-256 digest of the local `chain.jsonl` audit file is submitted to a public Bitcoin timestamping service. To verify externally, keep `chain.jsonl` next to `chain.jsonl.ots` and run:
+For high-stakes disputes the user may opt in to OpenTimestamps notarization. The exported session must be verified as one bundle: `manifest.json` seeds the audit chain, `chain.jsonl` links each entry by parent hash, `signed_head.json` signs the terminal chain head, and `chain.jsonl.ots` proves the stamped file existed at a Bitcoin block time. To verify the timestamp proof locally, keep `chain.jsonl` next to `chain.jsonl.ots` and run:
 
 ```bash
 ots verify chain.jsonl.ots
 ```
 
-A confirmed OpenTimestamps proof guarantees the audit chain file existed at a specific Bitcoin block time. Combined with the SHA-256 parent-hash links and `head.json`, this is non-repudiable.
+A confirmed OpenTimestamps proof only proves the stamped chain file existed at a specific Bitcoin block time. Treat it as dispute-grade evidence only after `manifest.json`, `chain.jsonl`, `head.json`, and `signed_head.json` all validate to the same terminal audit head.

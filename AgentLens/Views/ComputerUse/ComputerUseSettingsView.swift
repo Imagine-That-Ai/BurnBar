@@ -1008,7 +1008,9 @@ struct ComputerUseSettingsView: View {
                 let proofURL = try ComputerUseOpenTimestampsArchive.writeProof(
                     proofBytes: proof,
                     sourceChainURL: chainURL,
-                    calendarURL: configuration.calendarURL
+                    calendarURL: configuration.calendarURL,
+                    auditHeadHashHex: headHash,
+                    sessionId: sessionId
                 )
                 NSWorkspace.shared.activateFileViewerSelecting([proofURL])
                 auditStatus = AuditOperationStatus(

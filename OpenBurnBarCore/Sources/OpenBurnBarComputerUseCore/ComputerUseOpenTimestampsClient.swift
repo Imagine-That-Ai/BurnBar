@@ -117,6 +117,8 @@ public enum ComputerUseOpenTimestampsArchive {
         proofBytes: Data,
         sourceChainURL: URL,
         calendarURL: URL,
+        auditHeadHashHex: String? = nil,
+        sessionId: String? = nil,
         notarizedAt: Date = Date(),
         fileManager: FileManager = .default
     ) throws -> URL {
@@ -125,12 +127,28 @@ public enum ComputerUseOpenTimestampsArchive {
 
         struct ProofSidecar: Encodable {
             let chainFile: String
+            let chainSHA256Hex: String
+            let manifestSHA256Hex: String?
+            let auditHeadHashHex: String?
+            let sessionId: String?
             let calendar: String
             let notarizedAt: Date
             let proofSizeBytes: Int
         }
+        let chainBytes = try Data(contentsOf: sourceChainURL)
+        let manifestURL = sourceChainURL.deletingLastPathComponent().appendingPathComponent("manifest.json")
+        let manifestHash: String?
+        if let manifestBytes = try? Data(contentsOf: manifestURL) {
+            manifestHash = ComputerUseAuditHasher.current.hash(data: manifestBytes)
+        } else {
+            manifestHash = nil
+        }
         let sidecar = ProofSidecar(
             chainFile: sourceChainURL.lastPathComponent,
+            chainSHA256Hex: ComputerUseAuditHasher.current.hash(data: chainBytes),
+            manifestSHA256Hex: manifestHash,
+            auditHeadHashHex: auditHeadHashHex,
+            sessionId: sessionId,
             calendar: calendarURL.absoluteString,
             notarizedAt: notarizedAt,
             proofSizeBytes: proofBytes.count
