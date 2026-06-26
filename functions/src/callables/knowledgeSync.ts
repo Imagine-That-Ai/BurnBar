@@ -148,6 +148,14 @@ function githubAppJwt(nowMs = Date.now()): string {
   return `${signable}.${base64Url(signature)}`;
 }
 
+async function responseJsonField(response: Response, field: string): Promise<unknown> {
+  const body = await response.json().catch(() => undefined);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return undefined;
+  }
+  return Reflect.get(body, field);
+}
+
 async function assertGitHubInstallationRepoAccess(installId: string, repoFullName: string): Promise<void> {
   const { owner, repo, normalized } = splitGitHubRepoFullName(repoFullName);
   const jwt = githubAppJwt();
@@ -170,8 +178,8 @@ async function assertGitHubInstallationRepoAccess(installId: string, repoFullNam
   if (!accessTokenResponse.ok) {
     throw new HttpsError("permission-denied", "GitHub App installation does not grant access to this repo.");
   }
-  const tokenBody = (await accessTokenResponse.json().catch(() => undefined)) as { token?: unknown } | undefined;
-  const installationToken = typeof tokenBody?.token === "string" ? tokenBody.token : "";
+  const tokenValue = await responseJsonField(accessTokenResponse, "token");
+  const installationToken = typeof tokenValue === "string" ? tokenValue : "";
   if (!installationToken) {
     throw new HttpsError("failed-precondition", "GitHub App installation token response was invalid.");
   }
@@ -193,8 +201,8 @@ async function assertGitHubInstallationRepoAccess(installId: string, repoFullNam
   if (!repoResponse.ok) {
     throw new HttpsError("permission-denied", "GitHub App installation does not grant access to this repo.");
   }
-  const repoBody = (await repoResponse.json().catch(() => undefined)) as { full_name?: unknown } | undefined;
-  const verifiedFullName = typeof repoBody?.full_name === "string" ? normalizeRepoFullName(repoBody.full_name) : "";
+  const fullNameValue = await responseJsonField(repoResponse, "full_name");
+  const verifiedFullName = typeof fullNameValue === "string" ? normalizeRepoFullName(fullNameValue) : "";
   if (verifiedFullName !== normalized) {
     throw new HttpsError("permission-denied", "GitHub App installation resolved a different repo.");
   }
