@@ -1,10 +1,12 @@
-
 package com.openburnbar
 
+import com.openburnbar.data.hermes.ConnectionType
+import com.openburnbar.data.hermes.HermesConnection
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
 import com.openburnbar.data.hermes.HermesRelayCapability
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.hermes.HermesServiceEndpointSupport
 import com.openburnbar.data.hermes.addDirectConnection
 import com.openburnbar.data.hermes.clearMessages
 import com.openburnbar.data.hermes.refreshRelayConnections
@@ -42,16 +44,78 @@ class HermesServiceStateTest {
     }
 
     @Test
-    fun `addDirectConnection appends and selects on valid URL`() = runTest {
+    fun `addDirectConnection appends and selects on trusted HTTPS URL`() = runTest {
         val service = HermesService()
         try {
-            val record = requireNotNull(service.addDirectConnection("Test", "http://192.168.1.10:8642"))
+            val record = requireNotNull(service.addDirectConnection("Test", "https://192.168.1.10:8642"))
             assertEquals(HermesConnectionMode.DIRECT_URL, record.mode)
+            assertEquals("https://192.168.1.10:8642", record.endpointURL)
             assertTrue(service.connections.value.any { it.id == record.id })
             assertEquals(record.id, service.selectedConnection.value.id)
         } finally {
             service.destroy()
         }
+    }
+
+    @Test
+    fun `addDirectConnection accepts loopback HTTP for local development`() = runTest {
+        val service = HermesService()
+        try {
+            val record = requireNotNull(service.addDirectConnection("Local", "localhost:8642"))
+            assertEquals(HermesConnectionMode.DIRECT_URL, record.mode)
+            assertEquals("http://localhost:8642", record.endpointURL)
+            assertEquals(record.id, service.selectedConnection.value.id)
+        } finally {
+            service.destroy()
+        }
+    }
+
+    @Test
+    fun `addDirectConnection rejects plaintext LAN endpoints`() = runTest {
+        val service = HermesService()
+        try {
+            val record = service.addDirectConnection("LAN", "http://192.168.1.10:8642")
+            assertNull(record)
+            assertEquals(HermesConnectionRecord.localDefault.id, service.selectedConnection.value.id)
+            assertEquals(HermesServiceEndpointSupport.UNTRUSTED_DIRECT_ENDPOINT_MESSAGE, service.runtimeErrorText.value)
+        } finally {
+            service.destroy()
+        }
+    }
+
+    @Test
+    fun `addDirectConnection rejects plaintext websocket endpoints off loopback`() = runTest {
+        val service = HermesService()
+        try {
+            val record = service.addDirectConnection("LAN socket", "ws://192.168.1.10:8642")
+            assertNull(record)
+            assertEquals(HermesConnectionRecord.localDefault.id, service.selectedConnection.value.id)
+            assertEquals(HermesServiceEndpointSupport.UNTRUSTED_DIRECT_ENDPOINT_MESSAGE, service.runtimeErrorText.value)
+        } finally {
+            service.destroy()
+        }
+    }
+
+    @Test
+    fun `endpoint policy rejects unsafe preexisting and legacy LAN endpoints`() {
+        val unsafeDirect =
+            HermesConnectionRecord(
+                id = "unsafe-direct",
+                displayName = "Unsafe Direct",
+                mode = HermesConnectionMode.DIRECT_URL,
+                endpointURL = "http://192.168.1.10:8642",
+            )
+
+        assertNull(HermesServiceEndpointSupport.selectedEndpointURL(unsafeDirect))
+        assertNull(
+            HermesServiceEndpointSupport.legacyEndpointURL(
+                HermesConnection(type = ConnectionType.LAN, host = "192.168.1.10", port = 8642),
+            ),
+        )
+        assertEquals(
+            "http://127.0.0.1:8642",
+            HermesServiceEndpointSupport.selectedEndpointURL(HermesConnectionRecord.localDefault),
+        )
     }
 
     @Test
@@ -96,7 +160,7 @@ class HermesServiceStateTest {
     fun `revokeConnection removes a direct connection and falls back to local default`() = runTest {
         val service = HermesService()
         try {
-            val record = requireNotNull(service.addDirectConnection("Drop", "http://192.168.1.20:8642"))
+            val record = requireNotNull(service.addDirectConnection("Drop", "https://192.168.1.20:8642"))
             service.revokeConnection(record)
             assertFalse(service.connections.value.any { it.id == record.id })
             assertEquals(HermesConnectionRecord.localDefault.id, service.selectedConnection.value.id)

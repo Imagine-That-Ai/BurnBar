@@ -377,7 +377,7 @@ private fun HermesSettingsAddDirectDialog(fields: HermesDirectDialogFields, call
                 OutlinedTextField(
                     value = fields.url,
                     onValueChange = callbacks.onUrlChange,
-                    label = { Text("URL (e.g. http://192.168.1.42:8642)") },
+                    label = { Text("URL (HTTPS or localhost)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )

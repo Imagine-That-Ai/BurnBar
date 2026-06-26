@@ -8,6 +8,7 @@ import com.openburnbar.data.hermes.relay.HermesRelayException
 import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import java.io.IOException
 import java.util.UUID
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
 private const val SESSION_TITLE_MAX = 64
@@ -23,7 +24,11 @@ internal class HermesServiceConnectionActions(
     }
 
     fun addDirectConnection(name: String, url: String): HermesConnectionRecord? {
-        val endpoint = HermesServiceEndpointSupport.normalizeHTTPBaseURL(url) ?: return null
+        val endpoint =
+            HermesServiceEndpointSupport.normalizeTrustedHTTPBaseURL(url) ?: run {
+                service.runtimeErrorTextInternal.value = HermesServiceEndpointSupport.UNTRUSTED_DIRECT_ENDPOINT_MESSAGE
+                return null
+            }
         val connection =
             HermesConnectionRecord(
                 id = "android-${UUID.randomUUID()}",
@@ -196,7 +201,7 @@ internal class HermesServiceSessionActions(
 
     private fun fetchSessionsDirect(connection: HermesConnectionRecord): String {
         val endpoint =
-            HermesServiceEndpointSupport.normalizeHTTPBaseURL(connection.endpointURL ?: "")
+            HermesServiceEndpointSupport.selectedEndpointURL(connection)
                 ?: error("This Hermes host has no valid endpoint URL.")
         val request = Request.Builder().url("$endpoint/api/sessions").get().build()
         service.httpClientInternal.newCall(request).execute().use { response ->
@@ -220,7 +225,7 @@ internal class HermesServiceSessionActions(
     }
 
     private fun fetchSessionDetailDirect(connection: HermesConnectionRecord, sessionId: String): String? {
-        val endpoint = HermesServiceEndpointSupport.normalizeHTTPBaseURL(connection.endpointURL ?: "") ?: return null
+        val endpoint = HermesServiceEndpointSupport.selectedEndpointURL(connection) ?: return null
         val request = Request.Builder().url("$endpoint/api/sessions/$sessionId").get().build()
         service.httpClientInternal.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
@@ -230,6 +235,9 @@ internal class HermesServiceSessionActions(
 }
 
 internal object HermesServiceEndpointSupport {
+    const val UNTRUSTED_DIRECT_ENDPOINT_MESSAGE =
+        "Direct Hermes URLs must use HTTPS, except localhost or loopback development endpoints. Use the paired relay for Mac connections."
+
     fun normalizeHTTPBaseURL(raw: String): String? {
         val trimmed = raw.trim().trimEnd('/')
         if (trimmed.isBlank()) return null
@@ -247,18 +255,34 @@ internal object HermesServiceEndpointSupport {
             .trimEnd('/')
     }
 
+    fun normalizeTrustedHTTPBaseURL(raw: String): String? {
+        val normalized = normalizeHTTPBaseURL(raw) ?: return null
+        val url = normalized.toHttpUrlOrNull() ?: return null
+        if (url.scheme == "https") return normalized
+        if (url.scheme == "http" && url.host.isLoopbackHost()) return normalized
+        return null
+    }
+
     fun selectedEndpointURL(connection: HermesConnectionRecord): String? {
         return when (connection.mode) {
             HermesConnectionMode.LOCAL, HermesConnectionMode.DIRECT_URL -> connection.endpointURL
             HermesConnectionMode.RELAY_LINK -> connection.endpointURL
-        }?.let(::normalizeHTTPBaseURL)
+        }?.let(::normalizeTrustedHTTPBaseURL)
     }
 
     fun legacyEndpointURL(connection: HermesConnection): String? {
         return when (connection.type) {
             ConnectionType.LOCAL, ConnectionType.LAN -> "http://${connection.host}:${connection.port}"
             ConnectionType.REMOTE_RELAY -> connection.relayUrl
-        }?.let(::normalizeHTTPBaseURL)
+        }?.let(::normalizeTrustedHTTPBaseURL)
+    }
+
+    private fun String.isLoopbackHost(): Boolean {
+        val host = trim().trim('[', ']').trimEnd('.').lowercase()
+        return host == "localhost" ||
+            host == "::1" ||
+            host == "0:0:0:0:0:0:0:1" ||
+            host.startsWith("127.")
     }
 }
 
