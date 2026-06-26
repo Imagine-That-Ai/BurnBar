@@ -265,10 +265,62 @@ function stripJsCommentsAndStrings(source) {
   return out;
 }
 
+function stripJsComments(source) {
+  let out = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (c === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      if (i < source.length) out += "\n";
+      continue;
+    }
+
+    if (c === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        if (source[i] === "*" && source[i + 1] === "/") {
+          out += "  ";
+          i += 1;
+          break;
+        }
+        out += source[i] === "\n" ? "\n" : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    out += c;
+  }
+  return out;
+}
+
 function functionBodyCalls(body, callee) {
   return new RegExp(`(?:^|[^A-Za-z0-9_$])${escapeRegExp(callee)}\\s*\\(`).test(
     stripJsCommentsAndStrings(body),
   );
+}
+
+function bodyContainsBannedPushKey(body, key) {
+  const executableBody = stripJsCommentsAndStrings(body);
+  const executableIdentifier = new RegExp(
+    `(?:^|[^A-Za-z0-9_$])${escapeRegExp(key)}\\b`,
+  );
+  if (executableIdentifier.test(executableBody)) return true;
+
+  const commentlessBody = stripJsComments(body);
+  const quotedKey = new RegExp(String.raw`["'\`]${escapeRegExp(key)}["'\`]\s*:`);
+  const computedKey = new RegExp(
+    String.raw`\[\s*["'\`]${escapeRegExp(key)}["'\`]\s*\]\s*:`,
+  );
+  return quotedKey.test(commentlessBody) || computedKey.test(commentlessBody);
 }
 
 function skipJsCommentOrString(source, index) {
@@ -603,9 +655,7 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
     continue;
   }
   const scannableBody = stripJsCommentsAndStrings(body);
-  const offending = BANNED_PUSH_KEYS.filter((k) =>
-    new RegExp(`\\b${escapeRegExp(k)}\\b`).test(scannableBody),
-  );
+  const offending = BANNED_PUSH_KEYS.filter((k) => bodyContainsBannedPushKey(body, k));
   // An object spread (`return { ...args }`) can forward arbitrary keys past the
   // literal-key check above, silently re-introducing a correlator. Payload
   // builders must enumerate fields explicitly, never spread.
