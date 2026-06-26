@@ -211,6 +211,55 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testOutboundSendAdvertisesOnMatchingConnectionStreamOnly() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let backend = QuarantineBlobBackend()
+        let registry = MediaControlStreamRegistry(pollIntervalNanoseconds: 10_000_000)
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-send-stream-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let outboundURL = temp.appendingPathComponent("outbound.txt")
+        try Data("bound".utf8).write(to: outboundURL)
+
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let targetStream = FileTransferRecordingIrohStream()
+        let siblingStream = FileTransferRecordingIrohStream()
+        await registry.register(stream: targetStream, uid: "uid-1", connectionID: "connection-1")
+        await registry.register(stream: siblingStream, uid: "uid-1", connectionID: "connection-2")
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            controlStreams: registry,
+            advertiseTimeout: 0.2
+        )
+
+        _ = try await adapter.sendFile(
+            at: outboundURL,
+            uid: "uid-1",
+            connectionID: "connection-1",
+            peerDeviceID: "iphone-1"
+        )
+
+        let targetFrames = await targetStream.sentFrames()
+        let siblingFrames = await siblingStream.sentFrames()
+        XCTAssertEqual(targetFrames.count, 1)
+        XCTAssertTrue(siblingFrames.isEmpty)
+        XCTAssertEqual(targetFrames.first?.connectionId, "connection-1")
+        XCTAssertEqual(targetFrames.first?.type, .mediaBlobAdvertise)
+        XCTAssertNotNil(targetFrames.first?.media?.blobTicket)
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testInboundAdvertiseSealsReceivedBytesAtRestWhenSessionKeyAvailable() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -398,6 +447,25 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
     }
 
     func shutdown() async {}
+}
+
+private actor FileTransferRecordingIrohStream: IrohRelayStream {
+    nonisolated let remotePeerNodeId: String? = nil
+    private var storedFrames: [HermesRealtimeRelayFrame] = []
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {
+        storedFrames.append(frame)
+    }
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        nil
+    }
+
+    func close() async {}
+
+    func sentFrames() -> [HermesRealtimeRelayFrame] {
+        storedFrames
+    }
 }
 
 private final class MutatingAllowGate: MediaCapabilityGate, @unchecked Sendable {

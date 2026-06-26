@@ -134,6 +134,30 @@ final class MediaControlStreamRegistryTests: XCTestCase {
         XCTAssertNotNil(observed)
     }
 
+    func testAwaitStreamForConnectionIgnoresSiblingConnection() async {
+        let registry = MediaControlStreamRegistry(pollIntervalNanoseconds: 20_000_000)
+        let sibling = RecordingStream()
+        await registry.register(stream: sibling, uid: "u", connectionID: "c2")
+
+        let resolved = await registry.awaitStream(uid: "u", connectionID: "c1", timeout: 0.2)
+
+        XCTAssertNil(resolved)
+    }
+
+    func testAwaitStreamForConnectionResolvesExactDelayedRegister() async {
+        let registry = MediaControlStreamRegistry(pollIntervalNanoseconds: 20_000_000)
+        let sibling = RecordingStream()
+        let target = RecordingStream()
+        await registry.register(stream: sibling, uid: "u", connectionID: "c2")
+
+        async let resolved = registry.awaitStream(uid: "u", connectionID: "c1", timeout: 2.0)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        await registry.register(stream: target, uid: "u", connectionID: "c1")
+
+        let observed = await resolved
+        XCTAssertNotNil(observed)
+    }
+
     func testAwaitStreamIgnoresOtherUid() async {
         let registry = MediaControlStreamRegistry(pollIntervalNanoseconds: 20_000_000)
         let stream = RecordingStream()
