@@ -36,6 +36,10 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
     }
 
     func encrypt(_ plaintext: Data, for recipientPublicKey: Data) throws -> Data {
+        try encrypt(plaintext, for: recipientPublicKey, authenticating: Data())
+    }
+
+    func encrypt(_ plaintext: Data, for recipientPublicKey: Data, authenticating associatedData: Data) throws -> Data {
         guard let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey) else {
             throw EscrowCryptoError.invalidPublicKey
         }
@@ -48,7 +52,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
             sharedInfo: "OpenBurnBar-Escrow-v1".data(using: .utf8)!,
             outputByteCount: 32
         )
-        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey)
+        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey, authenticating: associatedData)
         guard let combined = sealed.combined else {
             throw EscrowCryptoError.encryptionFailed
         }
@@ -57,6 +61,10 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
     }
 
     func decrypt(_ ciphertext: Data) throws -> Data {
+        try decrypt(ciphertext, authenticating: Data())
+    }
+
+    func decrypt(_ ciphertext: Data, authenticating associatedData: Data) throws -> Data {
         // Format: ephemeralPublicKey (65 bytes) || AES.GCM sealed box
         guard ciphertext.count > 65 else {
             throw EscrowCryptoError.invalidCiphertext
@@ -75,7 +83,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
             outputByteCount: 32
         )
         let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: symmetricKey)
+        return try AES.GCM.open(sealedBox, using: symmetricKey, authenticating: associatedData)
     }
 
     func rotateKey() throws {
@@ -90,10 +98,15 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
 
     /// Attempt to decrypt with an old key version.
     func decryptWithOldVersion(_ ciphertext: Data, version: Int) throws -> Data {
+        try decryptWithOldVersion(ciphertext, version: version, authenticating: Data())
+    }
+
+    /// Attempt to decrypt with an old key version and bound envelope metadata.
+    func decryptWithOldVersion(_ ciphertext: Data, version: Int, authenticating associatedData: Data) throws -> Data {
         guard let oldKey = try Self.loadOldKey(version: version) else {
             throw EscrowCryptoError.privateKeyUnavailable
         }
-        return try decryptWithKey(ciphertext, privateKey: oldKey)
+        return try decryptWithKey(ciphertext, privateKey: oldKey, authenticating: associatedData)
     }
 
     // MARK: - Keychain
@@ -170,7 +183,11 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
         return key
     }
 
-    private func decryptWithKey(_ ciphertext: Data, privateKey: P256.KeyAgreement.PrivateKey) throws -> Data {
+    private func decryptWithKey(
+        _ ciphertext: Data,
+        privateKey: P256.KeyAgreement.PrivateKey,
+        authenticating associatedData: Data
+    ) throws -> Data {
         guard ciphertext.count > 65 else {
             throw EscrowCryptoError.invalidCiphertext
         }
@@ -188,7 +205,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
             outputByteCount: 32
         )
         let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: symmetricKey)
+        return try AES.GCM.open(sealedBox, using: symmetricKey, authenticating: associatedData)
     }
 }
 

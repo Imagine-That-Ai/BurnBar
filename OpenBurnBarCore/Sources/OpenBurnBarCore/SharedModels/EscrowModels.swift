@@ -138,6 +138,60 @@ public enum EscrowCredentialKind: String, Codable, Sendable {
     }
 }
 
+public struct EscrowCredentialMetadataBinding: Sendable, Equatable {
+    public static let envelopeVersion = 2
+    public static let metadataBinding = "escrow-credential-aad-v1"
+
+    public let grantId: String
+    public let sourceDeviceId: String
+    public let targetDeviceId: String
+    public let providerId: String
+    public let credentialKind: EscrowCredentialKind
+    public let accountLabel: String
+    public let keyVersion: Int
+    public let envelopeVersion: Int
+
+    public init(
+        grantId: String,
+        sourceDeviceId: String,
+        targetDeviceId: String,
+        providerId: String,
+        credentialKind: EscrowCredentialKind,
+        accountLabel: String?,
+        keyVersion: Int,
+        envelopeVersion: Int = Self.envelopeVersion
+    ) {
+        self.grantId = grantId
+        self.sourceDeviceId = sourceDeviceId
+        self.targetDeviceId = targetDeviceId
+        self.providerId = providerId
+        self.credentialKind = credentialKind
+        self.accountLabel = accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.keyVersion = keyVersion
+        self.envelopeVersion = envelopeVersion
+    }
+
+    public var associatedData: Data {
+        [
+            "OpenBurnBar-Escrow-Credential-Binding-v1",
+            field("grant", grantId),
+            field("source", sourceDeviceId),
+            field("target", targetDeviceId),
+            field("provider", providerId),
+            field("kind", credentialKind.rawValue),
+            field("account", accountLabel),
+            field("keyVersion", String(keyVersion)),
+            field("envelopeVersion", String(envelopeVersion))
+        ]
+        .joined(separator: "\n")
+        .data(using: .utf8)!
+    }
+
+    private func field(_ name: String, _ value: String) -> String {
+        "\(name):\(value.utf8.count):\(value)"
+    }
+}
+
 public struct EscrowSecretMetadata: Codable, Sendable, Equatable {
     public let providerId: String
     public let accountLabel: String?

@@ -23,7 +23,11 @@ import OpenBurnBarCore
 /// `iOSDeviceKeypair.decrypt` reads it back byte-for-byte.
 enum MacEscrowSeal {
     /// Seals `plaintext` to the recipient's escrow public key (raw X9.63 bytes).
-    static func seal(_ plaintext: Data, recipientPublicKey: Data) throws -> Data {
+    static func seal(
+        _ plaintext: Data,
+        recipientPublicKey: Data,
+        associatedData: Data = Data()
+    ) throws -> Data {
         let recipientKey: P256.KeyAgreement.PublicKey
         do {
             recipientKey = try P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey)
@@ -39,7 +43,7 @@ enum MacEscrowSeal {
             sharedInfo: Data("OpenBurnBar-Escrow-v1".utf8),
             outputByteCount: 32
         )
-        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey)
+        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey, authenticating: associatedData)
         guard let combined = sealed.combined else {
             throw MacEscrowProducerError.encryptionFailed
         }
@@ -234,11 +238,24 @@ struct MacEscrowCredentialProducer {
         envelopeId: String,
         createdAt: Date
     ) throws -> MacEscrowEnvelopePlan {
+        let providerId = provider.persistedToken
+        let accountLabel = credential.accountLabel ?? provider.displayName
+        let envelopeVersion = EscrowCredentialMetadataBinding.envelopeVersion
+        let binding = EscrowCredentialMetadataBinding(
+            grantId: grantId,
+            sourceDeviceId: sourceDeviceID,
+            targetDeviceId: recipient.deviceId,
+            providerId: providerId,
+            credentialKind: credential.credentialKind,
+            accountLabel: accountLabel,
+            keyVersion: recipient.keyVersion,
+            envelopeVersion: envelopeVersion
+        )
         let ciphertext = try MacEscrowSeal.seal(
             Data(credential.secret.utf8),
-            recipientPublicKey: recipient.publicKeyData
+            recipientPublicKey: recipient.publicKeyData,
+            associatedData: binding.associatedData
         )
-        let providerId = provider.persistedToken
         let timestamp = Timestamp(date: createdAt)
 
         let grant: [String: Any] = [
@@ -256,10 +273,11 @@ struct MacEscrowCredentialProducer {
             "targetDeviceId": recipient.deviceId,
             "providerId": providerId,
             "credentialKind": credential.credentialKind.rawValue,
-            "accountLabel": credential.accountLabel ?? provider.displayName,
+            "accountLabel": accountLabel,
             "ciphertext": ciphertext.base64EncodedString(),
             "keyVersion": recipient.keyVersion,
-            "envelopeVersion": 1,
+            "envelopeVersion": envelopeVersion,
+            "metadataBinding": EscrowCredentialMetadataBinding.metadataBinding,
             "createdAt": timestamp
         ]
 
