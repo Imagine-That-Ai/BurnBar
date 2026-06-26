@@ -216,16 +216,142 @@ def collect_cargo_dependencies(repo_root: Path) -> list[dict]:
     return dedupe_packages(packages)
 
 
+def strip_gradle_comments(text: str) -> str:
+    """Remove Gradle/Kotlin comments while preserving quoted coordinates."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        next_c = text[i + 1] if i + 1 < len(text) else ""
+        if c == "/" and next_c == "/":
+            i += 2
+            while i < len(text) and text[i] != "\n":
+                i += 1
+            if i < len(text):
+                out.append("\n")
+                i += 1
+            continue
+        if c == "/" and next_c == "*":
+            i += 2
+            while i < len(text):
+                if text[i] == "*" and i + 1 < len(text) and text[i + 1] == "/":
+                    i += 2
+                    break
+                out.append("\n" if text[i] == "\n" else " ")
+                i += 1
+            continue
+        if c in {'"', "'"}:
+            quote_char = c
+            out.append(c)
+            i += 1
+            while i < len(text):
+                out.append(text[i])
+                if text[i] == "\\":
+                    i += 1
+                    if i < len(text):
+                        out.append(text[i])
+                elif text[i] == quote_char:
+                    i += 1
+                    break
+                i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def gradle_string_variables(text: str) -> dict[str, str]:
+    """Return simple Gradle Kotlin `val name = "value"` string constants."""
+    return {
+        name: value
+        for name, value in re.findall(
+            r"\b(?:const\s+)?val\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\"([^\"]+)\"",
+            strip_gradle_comments(text),
+        )
+    }
+
+
+def resolve_gradle_interpolation(value: str, variables: dict[str, str]) -> str:
+    """Resolve `$name` and `${name}` fragments using local Gradle string constants."""
+
+    def replace_braced(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return variables.get(name, match.group(0))
+
+    def replace_plain(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return variables.get(name, match.group(0))
+
+    value = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", replace_braced, value)
+    return re.sub(r"\$([A-Za-z_][A-Za-z0-9_]*)", replace_plain, value)
+
+
+def parse_gradle_coordinate(raw: str, variables: dict[str, str]) -> tuple[str, str, str] | None:
+    """Parse `group:artifact[:version]`, resolving local version variables."""
+    parts = raw.split(":")
+    if len(parts) not in {2, 3}:
+        return None
+    group, artifact = parts[0].strip(), parts[1].strip()
+    if not group or not artifact:
+        return None
+    version = parts[2].strip() if len(parts) == 3 else ""
+    version = resolve_gradle_interpolation(version, variables)
+    if "@" in version:
+        version = version.split("@", 1)[0]
+    return group, artifact, version
+
+
+def managed_gradle_version(group: str, boms: list[dict]) -> str:
+    """Return a deterministic placeholder for versionless dependencies managed by a BOM."""
+    for bom in boms:
+        bom_group = bom["group"]
+        if group == bom_group or group.startswith(f"{bom_group}."):
+            return f"managed-by-bom:{bom_group}:{bom['artifact']}@{bom['version']}"
+    return "NOASSERTION"
+
+
 def collect_gradle_dependencies(repo_root: Path) -> list[dict]:
     """Collect Android/Gradle dependency coordinates from tracked Kotlin build files."""
     packages = []
-    coordinate_re = re.compile(r'"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):([^"@]+)(?:@[^"]+)?"')
     plugin_re = re.compile(r'id\("([^"]+)"\)\s+version\s+"([^"]+)"')
+    dependency_re = re.compile(
+        r"\b(?:api|implementation|compileOnly|runtimeOnly|testImplementation|androidTestImplementation|debugImplementation|releaseImplementation|ksp|annotationProcessor)\s*"
+        r"\(\s*(?:(?:platform|enforcedPlatform)\s*\(\s*)?\"([^\"]+)\""
+    )
+    platform_re = re.compile(r"\b(?:platform|enforcedPlatform)\s*\(\s*\"([^\"]+)\"")
 
     for gradle_file in git_tracked_files(repo_root, "android/**/*.gradle.kts"):
         rel = str(gradle_file.relative_to(repo_root))
         text = gradle_file.read_text()
-        for group, artifact, version in coordinate_re.findall(text):
+        scannable_text = strip_gradle_comments(text)
+        variables = gradle_string_variables(text)
+        boms = []
+
+        for raw_coordinate in platform_re.findall(scannable_text):
+            parsed = parse_gradle_coordinate(raw_coordinate, variables)
+            if not parsed:
+                continue
+            group, artifact, version = parsed
+            if not version:
+                continue
+            boms.append({"group": group, "artifact": artifact, "version": version})
+            packages.append(
+                {
+                    "name": f"{group}:{artifact}",
+                    "version": version,
+                    "url": f"https://mvnrepository.com/artifact/{group}/{artifact}",
+                    "type": "gradle",
+                    "source": rel,
+                }
+            )
+
+        for raw_coordinate in dependency_re.findall(scannable_text):
+            parsed = parse_gradle_coordinate(raw_coordinate, variables)
+            if not parsed:
+                continue
+            group, artifact, version = parsed
+            if not version:
+                version = managed_gradle_version(group, boms)
             packages.append(
                 {
                     "name": f"{group}:{artifact}",
