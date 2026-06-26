@@ -1889,6 +1889,16 @@
     },
     {
       "collectionGroup": "knowledge_repos",
+      "fieldPath": "repoInstallationMatchToken",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "knowledge_repos",
       "fieldPath": "repoFullName",
       "indexes": []
     },

@@ -267,10 +267,12 @@ export interface ProjectMemorySnapshotDoc {
 // key, no user context) can only equality-MATCH the incoming repo, never needs
 // the name back, so the row carries a SERVER-keyed `repoMatchToken =
 // HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, normalize(full_name))` the webhook
-// recomputes from the GitHub-signed payload. The user-visible display name lives
-// only in `sealedRepoFullName`, sealed by the authed web client with the vault
-// key and decrypted client-side. `repoId` is derived from the opaque token, not
-// the name.
+// recomputes from the GitHub-signed payload. Webhook routing additionally uses
+// `repoInstallationMatchToken`, which binds that repo token to the GitHub App
+// installation id that the server verified during registration. The user-visible
+// display name lives only in `sealedRepoFullName`, sealed by the authed web
+// client with the vault key and decrypted client-side. `repoId` is derived from
+// the opaque token, not the name.
 // ---------------------------------------------------------------------------
 
 export interface KnowledgeRepoDoc {
@@ -279,10 +281,14 @@ export interface KnowledgeRepoDoc {
   repoId: string;
   /** Server-keyed HMAC of the normalized repo full name — the webhook match key. */
   repoMatchToken: string;
+  /** Server-keyed HMAC of normalized repo full name plus verified GitHub App installation id. */
+  repoInstallationMatchToken: string;
   /** Vault-sealed display name supplied by the authed client (optional). */
   sealedRepoFullName?: CloudVaultSealedTextDoc;
-  /** The user's own knowledge-source doc id this repo feeds (slug, accepted leakage). */
-  sourceSlug: string;
+  /** Opaque source manifest id this repo feeds. Legacy rows may still carry sourceSlug during lazy migration. */
+  sourceManifestId?: string;
+  /** Legacy read-only fallback; not written by current connectKnowledgeRepo. */
+  sourceSlug?: string;
   installId?: string;
   connectedAt: import("firebase-admin/firestore").Timestamp | string;
   schemaVersion: number;

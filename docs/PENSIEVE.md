@@ -278,9 +278,10 @@ gitignored build output):
 computer-use allowlists), `firestore.indexes.json` (4× 384-dim COSINE vector
 indexes on `cloud_search_knowledge`). A `knowledge_repos` row stores only an
 opaque server-keyed `repoMatchToken` + a vault-sealed `sealedRepoFullName` (no
-cleartext `repoFullName`); the webhook recomputes the match token from the
-GitHub-signed `full_name` to route, and the rules reject a client-supplied
-cleartext `repoFullName`.
+cleartext `repoFullName`) plus a `repoInstallationMatchToken` bound to the
+server-verified GitHub App installation; the webhook recomputes the
+installation-bound token from the GitHub-signed payload to route, and the rules
+reject a client-supplied cleartext `repoFullName`.
 
 **Security/docs** — `scripts/test-hosted-mcp-security.sh` (+8 cases), this file.
 

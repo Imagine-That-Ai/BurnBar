@@ -9,10 +9,12 @@
  * GitHub-signed full name (the webhook's match key), which the determinism check
  * below mirrors.
  */
-import { createHmac } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { createHmac, generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const assertCloudProMock = vi.hoisted(() => vi.fn(async () => undefined));
+const providerFetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock("firebase-functions/logger", () => ({
 }));
 vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
 vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../providers/httpClient.js", () => ({ providerFetch: providerFetchMock }));
 
 vi.mock("../callables/shared.js", async () => {
   const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
@@ -45,9 +48,15 @@ vi.mock("firebase-admin/firestore", () => ({
 const stored = new Map<string, Record<string, unknown>>();
 
 function makeDb() {
+  const refForPath = (path: string) => {
+    const parts = path.split("/");
+    const collectionId = parts.at(-2);
+    const parentDocId = parts.at(-3);
+    return { __path: path, parent: { id: collectionId, parent: parentDocId ? { id: parentDocId } : undefined } };
+  };
   const snapshotForPath = (path: string) => ({
     id: path.split("/").pop(),
-    ref: { __path: path },
+    ref: refForPath(path),
     exists: stored.has(path),
     data: () => stored.get(path),
     get: (field: string) => stored.get(path)?.[field],
@@ -75,13 +84,33 @@ function makeDb() {
       },
     }),
   });
-  return { doc: (path: string) => docRef(path), collection: (path: string) => collectionRef(path) };
+  const collectionGroupRef = (collectionId: string) => ({
+    where: (field: string, op: string, value: unknown) => ({
+      get: async () => {
+        if (op !== "==") throw new Error(`Unsupported fake collectionGroup op ${op}`);
+        const docs = [...stored.entries()]
+          .filter(([storedPath, record]) => storedPath.split("/").at(-2) === collectionId && record[field] === value)
+          .map(([storedPath]) => snapshotForPath(storedPath));
+        return { empty: docs.length === 0, size: docs.length, docs };
+      },
+    }),
+  });
+  return {
+    doc: (path: string) => docRef(path),
+    collection: (path: string) => collectionRef(path),
+    collectionGroup: (collectionId: string) => collectionGroupRef(collectionId),
+  };
 }
 
 vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 const MATCH_KEY = "test-repo-match-secret-0123456789";
+const WEBHOOK_SECRET = "test-github-webhook-secret";
+const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 process.env.KNOWLEDGE_REPO_MATCH_KEY = MATCH_KEY;
+process.env.KNOWLEDGE_GITHUB_WEBHOOK_SECRET = WEBHOOK_SECRET;
+process.env.KNOWLEDGE_GITHUB_APP_ID = "123456";
+process.env.KNOWLEDGE_GITHUB_APP_PRIVATE_KEY = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 process.env.ENFORCE_APP_CHECK = "false";
 
 type RepoResponse = { ok?: boolean; repoId: string };
@@ -97,6 +126,25 @@ const sealedName = {
 
 function expectedToken(fullName: string): string {
   return createHmac("sha256", MATCH_KEY).update(fullName.trim().toLowerCase(), "utf8").digest("hex");
+}
+
+function expectedInstallationToken(fullName: string, installId: string): string {
+  return createHmac("sha256", MATCH_KEY)
+    .update(`repo-installation|${installId}|${fullName.trim().toLowerCase()}`, "utf8")
+    .digest("hex");
+}
+
+function githubJson(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response;
+}
+
+function mockGitHubRepoAccess(fullName = REPO): void {
+  providerFetchMock.mockResolvedValueOnce(githubJson({ token: "installation-token" }));
+  providerFetchMock.mockResolvedValueOnce(githubJson({ full_name: fullName }));
 }
 
 async function runTestCallable<TResponse>(
@@ -124,6 +172,64 @@ function expectStoredRecord(path: string): Record<string, unknown> {
   return record;
 }
 
+class FakeRes extends EventEmitter {
+  _status = 0;
+  _body: unknown = undefined;
+  status(code: number): this {
+    this._status = code;
+    return this;
+  }
+  json(body: unknown): void {
+    this._body = body;
+    this.emit("finish");
+  }
+  send(body?: unknown): void {
+    if (body !== undefined) this._body = body;
+    this.emit("finish");
+  }
+  end(): void {
+    this.emit("finish");
+  }
+  set(): void {
+    // no-op: enough for the firebase-functions wrapper in this test.
+  }
+  setHeader(): void {
+    // no-op: enough for the firebase-functions wrapper in this test.
+  }
+  getHeader(): undefined {
+    return undefined;
+  }
+}
+
+async function runHttpHandler(handler: unknown, req: unknown, res: FakeRes): Promise<void> {
+  const run = Reflect.get(Object(handler), "run");
+  const callable = typeof run === "function" ? run : handler;
+  if (typeof callable !== "function") {
+    throw new Error("Expected HTTP handler to be callable");
+  }
+  await callable(req, res);
+}
+
+function signedWebhookRequest(body: Record<string, unknown>) {
+  const rawBody = Buffer.from(JSON.stringify(body));
+  const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(rawBody).digest("hex")}`;
+  const headers: Record<string, string> = {
+    "x-github-event": "push",
+    "x-hub-signature-256": signature,
+  };
+  return {
+    method: "POST",
+    body,
+    rawBody,
+    header(name: string): string | undefined {
+      return headers[name.toLowerCase()];
+    },
+    get(name: string): string | undefined {
+      return headers[name.toLowerCase()];
+    },
+  };
+}
+
 describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext repo name", () => {
   beforeEach(() => stored.clear());
   afterEach(() => {
@@ -133,13 +239,19 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
   it("stores repoMatchToken + sealed name, never the cleartext repoFullName", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    mockGitHubRepoAccess();
 
     const res = expectRepoResponse(
       await runTestCallable(connectKnowledgeRepo.run, {
         auth: { uid: "userA", token: {} },
         app: { appId: "test-app" },
         rawRequest: { headers: {} },
-        data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret" },
+        data: {
+          repoFullName: REPO,
+          sealedRepoFullName: sealedName,
+          sourceSlug: "repo-docs-secret",
+          installId: "98765",
+        },
       }),
     );
 
@@ -149,6 +261,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
     const record = expectStoredRecord(`users/userA/knowledge_repos/${token}`);
     expect(record.repoMatchToken).toBe(token);
+    expect(record.repoInstallationMatchToken).toBe(expectedInstallationToken(REPO, "98765"));
     expect(record.sealedRepoFullName).toEqual(sealedName);
     // The cleartext repo name is GONE from the stored row.
     expect(record).not.toHaveProperty("repoFullName");
@@ -177,13 +290,15 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
   it("is case-insensitive: differently-cased full names map to the SAME token", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    mockGitHubRepoAccess("Owner/Repo");
+    mockGitHubRepoAccess("owner/repo");
 
     const a = expectRepoResponse(
       await runTestCallable(connectKnowledgeRepo.run, {
         auth: { uid: "userA", token: {} },
         app: { appId: "x" },
         rawRequest: { headers: {} },
-        data: { repoFullName: "Owner/Repo", sourceSlug: "s1" },
+        data: { repoFullName: "Owner/Repo", sourceSlug: "s1", installId: "98765" },
       }),
     );
     const b = expectRepoResponse(
@@ -191,7 +306,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
         auth: { uid: "userA", token: {} },
         app: { appId: "x" },
         rawRequest: { headers: {} },
-        data: { repoFullName: "owner/repo", sourceSlug: "s1" },
+        data: { repoFullName: "owner/repo", sourceSlug: "s1", installId: "98765" },
       }),
     );
 
@@ -201,6 +316,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
   it("re-connect strips pre-existing sourceSlug/sourceSlugToken and re-keys to sourceManifestId", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    mockGitHubRepoAccess();
 
     const token = expectedToken(REPO);
     // Seed a LEGACY row in the realistic intermediate state: the repo name was
@@ -219,7 +335,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
       auth: { uid: "userA", token: {} },
       app: { appId: "test-app" },
       rawRequest: { headers: {} },
-      data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret" },
+      data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret", installId: "98765" },
     });
 
     const record = expectStoredRecord(`users/userA/knowledge_repos/${token}`);
@@ -238,6 +354,72 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     };
     walk(record);
     expect(leaves).not.toContain("repo-docs-secret");
+  });
+
+  it("rejects repo registration when the GitHub App installation cannot access the repo", async () => {
+    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    providerFetchMock.mockResolvedValueOnce(githubJson({ message: "not found" }, 404));
+
+    await expect(
+      runTestCallable(connectKnowledgeRepo.run, {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "test-app" },
+        rawRequest: { headers: {} },
+        data: {
+          repoFullName: REPO,
+          sealedRepoFullName: sealedName,
+          sourceSlug: "repo-docs-secret",
+          installId: "98765",
+        },
+      }),
+    ).rejects.toThrow("GitHub App installation does not grant access to this repo");
+
+    expect(stored.size).toBe(0);
+  });
+
+  it("webhook flags only repos bound to the GitHub installation in the signed payload", async () => {
+    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const repoToken = expectedToken(REPO);
+    const matchingManifest = "ab".repeat(32);
+    const otherManifest = "cd".repeat(32);
+    stored.set(`users/userA/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      repoInstallationMatchToken: expectedInstallationToken(REPO, "98765"),
+      sourceManifestId: matchingManifest,
+    });
+    stored.set(`users/userB/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      repoInstallationMatchToken: expectedInstallationToken(REPO, "11111"),
+      sourceManifestId: otherManifest,
+    });
+
+    const res = new FakeRes();
+    await runHttpHandler(
+      onKnowledgeRepoPush,
+      signedWebhookRequest({ repository: { full_name: REPO }, installation: { id: 98765 } }),
+      res,
+    );
+
+    expect(res._status).toBe(200);
+    expect(res._body).toEqual({ ok: true, flagged: 1 });
+    expect(stored.get(`users/userA/knowledge_sync_manifests/${matchingManifest}`)?.needsResync).toBe(true);
+    expect(stored.get(`users/userB/knowledge_sync_manifests/${otherManifest}`)).toBeUndefined();
+  });
+
+  it("webhook does not fall back to repo-name-only matching when installation is missing", async () => {
+    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const repoToken = expectedToken(REPO);
+    stored.set(`users/userA/knowledge_repos/${repoToken}`, {
+      repoMatchToken: repoToken,
+      repoInstallationMatchToken: expectedInstallationToken(REPO, "98765"),
+      sourceManifestId: "ab".repeat(32),
+    });
+
+    const res = new FakeRes();
+    await runHttpHandler(onKnowledgeRepoPush, signedWebhookRequest({ repository: { full_name: REPO } }), res);
+
+    expect(res._status).toBe(202);
+    expect(stored.get(`users/userA/knowledge_sync_manifests/${"ab".repeat(32)}`)).toBeUndefined();
   });
 
   it("requires the Cloud Pro gate before queueing repo resync work", async () => {

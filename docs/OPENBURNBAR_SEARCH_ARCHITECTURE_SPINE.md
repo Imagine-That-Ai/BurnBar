@@ -91,12 +91,15 @@ field or a name-derived document id. Both are now opaque:
 - **`knowledge_repos`** stores only an opaque server-keyed `repoMatchToken`
   (`HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, normalize(full_name))`) plus a
   vault-sealed `sealedRepoFullName`; the cleartext `repoFullName` is no longer
-  persisted. The one place the server reads a cleartext repo name is the GitHub
-  push webhook (`onKnowledgeRepoPush`), which receives `full_name` out-of-band
-  in GitHub's HMAC-signed payload, recomputes the same match token, and
-  equality-matches it against stored rows. That cleartext is observed
-  **transiently for routing only and never stored** — it is the single
-  server-readable repo-identity touchpoint in the Pensieve surface, and the web
+  persisted. Registration verifies that the configured GitHub App installation
+  can read the requested repo, then stores an opaque
+  `repoInstallationMatchToken` bound to both the normalized repo and that
+  installation id. The one place the server reads a cleartext repo name is the
+  GitHub push webhook (`onKnowledgeRepoPush`), which receives `full_name`
+  out-of-band in GitHub's HMAC-signed payload, recomputes the same
+  installation-bound match token, and equality-matches it against stored rows.
+  That cleartext is observed **transiently for routing only and never stored** —
+  it is the single server-readable repo-identity touchpoint in the Pensieve surface, and the web
   console renders the repo name from the sealed copy, decrypted client-side.
 
 ### Streams cockpit faceted query (`queryConversations`)
