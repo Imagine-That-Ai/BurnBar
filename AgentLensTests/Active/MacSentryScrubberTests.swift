@@ -24,6 +24,40 @@ final class MacSentryScrubberTests: XCTestCase {
         XCTAssertFalse(MacCrashReportingConsent.isEnabled(defaults: defaults))
     }
 
+    #if canImport(Sentry)
+    func testDaemonSentryDSNForLaunchRespectsCrashReportingOptOut() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: MacCrashReportingConsent.defaultsKey)
+
+        XCTAssertNil(
+            OpenBurnBarDaemonManager.daemonSentryDSNForLaunch(
+                resolvedDSN: " https://examplePublicKey@o0.ingest.sentry.io/1 ",
+                defaults: defaults
+            )
+        )
+    }
+
+    func testDaemonSentryDSNForLaunchTrimsWhenConsentEnabled() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: MacCrashReportingConsent.defaultsKey)
+
+        XCTAssertEqual(
+            OpenBurnBarDaemonManager.daemonSentryDSNForLaunch(
+                resolvedDSN: " https://examplePublicKey@o0.ingest.sentry.io/1\n",
+                defaults: defaults
+            ),
+            "https://examplePublicKey@o0.ingest.sentry.io/1"
+        )
+    }
+
+    func testDaemonSentryDSNForLaunchIgnoresBlankDSN() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: MacCrashReportingConsent.defaultsKey)
+
+        XCTAssertNil(OpenBurnBarDaemonManager.daemonSentryDSNForLaunch(resolvedDSN: " \n\t ", defaults: defaults))
+    }
+    #endif
+
     // MARK: Per-install anonymized ID
 
     func testPerInstallIDIsStable() {

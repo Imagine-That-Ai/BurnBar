@@ -19,8 +19,14 @@ public enum ClientTelemetrySanitizer {
 
     private static let sensitiveValuePatterns: [String] = [
         "sk-", "bearer ", "token=", "apikey=", "secret=", "password=",
-        "/Users/", "~", ".ssh", ".aws", ".env", "keychain", "BEGIN RSA",
+        "/Users/", "/private/var/", "~", ".ssh", ".aws", ".env", "keychain", "BEGIN RSA",
         "BEGIN OPENSSH", "-----BEGIN", "firebase:"
+    ]
+
+    private static let sensitiveRegexPatterns: [String] = [
+        #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#,
+        #"(?i)\bbearer\s+[A-Za-z0-9._-]+"#,
+        #"\b(?=[A-Za-z0-9._-]{32,}\b)(?=[A-Za-z0-9._-]*[A-Za-z])(?=[A-Za-z0-9._-]*[0-9])[A-Za-z0-9._-]+\b"#
     ]
 
     public static func sanitizeStringMetadata(_ metadata: [String: String]) -> [String: String] {
@@ -77,6 +83,9 @@ public enum ClientTelemetrySanitizer {
         }
         let lowerValue = value.lowercased()
         if sensitiveValuePatterns.contains(where: { lowerValue.contains($0.lowercased()) }) {
+            return redacted
+        }
+        if sensitiveRegexPatterns.contains(where: { value.range(of: $0, options: .regularExpression) != nil }) {
             return redacted
         }
         if value.count > maxSanitizedValueLength - truncatedValueSuffix.count {

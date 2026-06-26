@@ -421,9 +421,45 @@ private func configureSentryIfAvailable(environment: [String: String]) throws {
         options.environment = "daemon"
         options.releaseName = "openburnbar-daemon@\(BurnBarDaemonVersion.current)"
         options.tracesSampleRate = 0.0
+        options.sendDefaultPii = false
+        options.beforeSend = { event in
+            BurnBarDaemonSentryScrubber.scrub(event)
+        }
+        options.beforeBreadcrumb = { breadcrumb in
+            BurnBarDaemonSentryScrubber.scrub(breadcrumb)
+        }
         #if DEBUG
         options.debug = false
         #endif
+    }
+}
+
+/// Mirrors the app Sentry privacy posture for daemon events: keep crash signal,
+/// strip identity, request metadata, user text, paths, and credentials.
+private enum BurnBarDaemonSentryScrubber {
+    static func scrub(_ event: Event) -> Event? {
+        event.user = nil
+        if let message = event.message?.formatted {
+            event.message = SentryMessage(formatted: ClientTelemetrySanitizer.sanitizeString(message, key: nil))
+        }
+        if let extra = event.extra {
+            event.extra = ClientTelemetrySanitizer.sanitizeJSONDictionary(extra)
+        }
+        event.request = nil
+        if let crumbs = event.breadcrumbs {
+            event.breadcrumbs = crumbs.compactMap { scrub($0) }
+        }
+        return event
+    }
+
+    static func scrub(_ breadcrumb: Breadcrumb) -> Breadcrumb? {
+        if let message = breadcrumb.message {
+            breadcrumb.message = ClientTelemetrySanitizer.sanitizeString(message, key: nil)
+        }
+        if let data = breadcrumb.data {
+            breadcrumb.data = ClientTelemetrySanitizer.sanitizeJSONDictionary(data)
+        }
+        return breadcrumb
     }
 }
 
