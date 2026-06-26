@@ -260,6 +260,9 @@ timestamp, and authority counter. Mac-local presenter responses remain
 local-only and do not need this envelope. Remote responses without an authority
 envelope, or with the wrong session/request hash/counter, are ignored with
 `approval_signature_required`.
+iOS/iPadOS Live Activity approval and rejection intents require local device
+authentication before they can resolve a pending action; the Live Activity halt
+intent remains always available as an immediate safety stop.
 
 Agent capability grants reuse the same authority envelope and signing payload,
 but the authority-free hash is computed over `AgentCapabilityGrantRequest`.

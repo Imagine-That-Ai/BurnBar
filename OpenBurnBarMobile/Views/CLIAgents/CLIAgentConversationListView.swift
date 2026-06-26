@@ -982,7 +982,7 @@ final class CLIAgentMobileChatService {
     private static func mobileToolCalls(from pieces: [CLIAgentRelayTranscriptPiece]) -> [MobileChatToolCall] {
         pieces.compactMap { piece in
             switch piece.kind {
-            case .text:
+            case .text, .reasoning, .refusal:
                 return nil
             case .toolUse:
                 return MobileChatToolCall(

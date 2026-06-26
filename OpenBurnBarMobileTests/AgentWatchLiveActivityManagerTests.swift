@@ -1,4 +1,5 @@
-#if canImport(ActivityKit) && canImport(UIKit)
+#if canImport(ActivityKit) && canImport(AppIntents) && canImport(UIKit)
+import AppIntents
 import XCTest
 @testable import OpenBurnBarMobile
 import OpenBurnBarCore
@@ -107,6 +108,23 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
 
         await fulfillment(of: [routed], timeout: 1.0)
         XCTAssertEqual(received, [.approve, .halt])
+    }
+
+    func test_liveActivityIntentAuthenticationPolicyRequiresUnlockForDecisionsOnly() throws {
+        guard #available(iOS 17.0, *) else { throw XCTSkip("Live Activity intents require iOS 17+") }
+
+        XCTAssertEqual(
+            AgentApproveIntent.authenticationPolicy,
+            .requiresLocalDeviceAuthentication
+        )
+        XCTAssertEqual(
+            AgentRejectIntent.authenticationPolicy,
+            .requiresLocalDeviceAuthentication
+        )
+        XCTAssertEqual(
+            AgentHaltIntent.authenticationPolicy,
+            .alwaysAllowed
+        )
     }
 }
 
