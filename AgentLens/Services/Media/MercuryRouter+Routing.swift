@@ -718,16 +718,6 @@ extension MercuryRouter {
         }
     }
 
-    func refuseLaneIfSealingNotEstablished(
-        mirrorRequest: HermesRealtimeRelayMirrorRequest,
-        frame: HermesRealtimeRelayFrame
-    ) async throws {
-        _ = try await resolvedMediaFrameSealEstablished(
-            mirrorRequest: mirrorRequest,
-            frame: frame
-        )
-    }
-
     func mediaFrameSealEstablished(
         for mirrorRequest: HermesRealtimeRelayMirrorRequest,
         frame: HermesRealtimeRelayFrame
