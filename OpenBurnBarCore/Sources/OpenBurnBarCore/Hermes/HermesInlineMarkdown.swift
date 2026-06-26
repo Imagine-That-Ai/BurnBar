@@ -43,6 +43,9 @@ public struct HermesInlineStyle: OptionSet, Hashable, Sendable {
 // cross lines, and unmatched markers stay literal.
 
 public enum HermesInlineMarkdown {
+    private static let maxInlineMarkupLineCharacters = 8_192
+    private static let maxInlineDelimiterCandidatesPerLine = 512
+    private static let maxInlineNestingDepth = 8
 
     // MARK: Run-stream expansion
 
@@ -131,7 +134,7 @@ public enum HermesInlineMarkdown {
             if atLineStart {
                 (line, lineStyle) = stripBlockMarkers(line, into: &emitter)
             }
-            scanInline(line, baseStyle: lineStyle, into: &emitter)
+            scanInline(line, baseStyle: lineStyle, depth: 0, into: &emitter)
             if lineEnd < source.endIndex {
                 emitter.emit("\n", [])
                 i = source.index(after: lineEnd)
@@ -192,8 +195,14 @@ public enum HermesInlineMarkdown {
     private static func scanInline(
         _ source: Substring,
         baseStyle: HermesInlineStyle,
+        depth: Int,
         into emitter: inout Emitter
     ) {
+        guard depth < maxInlineNestingDepth, shouldScanInlineMarkup(in: source) else {
+            emitter.emit(source, baseStyle)
+            return
+        }
+
         var plain = ""
         var i = source.startIndex
 
@@ -203,7 +212,12 @@ public enum HermesInlineMarkdown {
                let span = matchSpan(source, at: i, delimiter: ch, previous: plain.last) {
                 emitter.emit(plain, baseStyle)
                 plain = ""
-                scanInline(span.content, baseStyle: baseStyle.union(span.style), into: &emitter)
+                scanInline(
+                    span.content,
+                    baseStyle: baseStyle.union(span.style),
+                    depth: depth + 1,
+                    into: &emitter
+                )
                 i = span.end
                 continue
             }
@@ -211,6 +225,24 @@ public enum HermesInlineMarkdown {
             i = source.index(after: i)
         }
         emitter.emit(plain, baseStyle)
+    }
+
+    private static func shouldScanInlineMarkup(in source: Substring) -> Bool {
+        var characters = 0
+        var candidates = 0
+        for ch in source {
+            characters += 1
+            if characters > maxInlineMarkupLineCharacters {
+                return false
+            }
+            if ch == "*" || ch == "_" || ch == "~" {
+                candidates += 1
+                if candidates > maxInlineDelimiterCandidatesPerLine {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     private struct Span {
