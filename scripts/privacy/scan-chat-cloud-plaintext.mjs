@@ -12,6 +12,95 @@ function readRel(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripCodeCommentsAndStrings(source) {
+  let out = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (c === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      if (i < source.length) out += "\n";
+      continue;
+    }
+
+    if (c === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        if (source[i] === "*" && source[i + 1] === "/") {
+          out += "  ";
+          i += 1;
+          break;
+        }
+        out += source[i] === "\n" ? "\n" : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      out += " ";
+      i += 1;
+      while (i < source.length) {
+        const ch = source[i];
+        out += ch === "\n" ? "\n" : " ";
+        if (ch === "\\") {
+          i += 1;
+          if (i < source.length) out += source[i] === "\n" ? "\n" : " ";
+        } else if (ch === quote) {
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+
+    out += c;
+  }
+  return out;
+}
+
+function executableIncludes(text, needle) {
+  return stripCodeCommentsAndStrings(text).includes(needle);
+}
+
+function rulesReturnContains(section, pattern) {
+  return new RegExp(`\\breturn\\b[\\s\\S]*${pattern}`).test(
+    stripCodeCommentsAndStrings(section),
+  );
+}
+
+function rulesSectionReturnsHasOnly(section) {
+  return rulesReturnContains(
+    section,
+    String.raw`\brequest\.resource\.data\.keys\(\)\.hasOnly\s*\(`,
+  );
+}
+
+function rulesSectionReturnsHelper(section, helperName) {
+  return rulesReturnContains(
+    section,
+    String.raw`\b${escapeRegExp(helperName)}\s*\(\s*\)`,
+  );
+}
+
+function rulesSectionDeniesClientWrites(section) {
+  return /\ballow\s+write\s*:\s*if\s+false\s*;/u.test(
+    stripCodeCommentsAndStrings(section),
+  );
+}
+
 function fail(message) {
   failures.push(message);
 }
@@ -23,17 +112,30 @@ function assertIncludes(relativePath, needle, note) {
   }
 }
 
+function assertIncludesExecutable(relativePath, needle, note) {
+  const text = readRel(relativePath);
+  if (!executableIncludes(text, needle)) {
+    fail(
+      `${relativePath}: missing executable ${note ?? JSON.stringify(needle)}`,
+    );
+  }
+}
+
 function assertIncludesAny(relativePath, needles, note) {
   const text = readRel(relativePath);
   if (!needles.some((needle) => text.includes(needle))) {
-    fail(`${relativePath}: missing ${note ?? needles.map((needle) => JSON.stringify(needle)).join(" or ")}`);
+    fail(
+      `${relativePath}: missing ${note ?? needles.map((needle) => JSON.stringify(needle)).join(" or ")}`,
+    );
   }
 }
 
 function assertNotIncludes(relativePath, needle, note) {
   const text = readRel(relativePath);
   if (text.includes(needle)) {
-    fail(`${relativePath}: contains forbidden ${note ?? JSON.stringify(needle)}`);
+    fail(
+      `${relativePath}: contains forbidden ${note ?? JSON.stringify(needle)}`,
+    );
   }
 }
 
@@ -44,38 +146,92 @@ function assertNotMatches(relativePath, pattern, note) {
   }
 }
 
-function assertSectionIncludes(relativePath, startNeedle, endNeedle, needle, note) {
+function assertSectionIncludes(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  needle,
+  note,
+) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (!section.includes(needle)) {
     fail(`${relativePath}: ${note ?? "section assertion failed"}`);
   }
 }
 
-function assertSectionIncludesAny(relativePath, startNeedle, endNeedle, needles, note) {
+function assertSectionRejectsFieldOrDeniesWrite(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  field,
+  note,
+) {
+  const section = sectionBetween(relativePath, startNeedle, endNeedle);
+  if (rulesSectionDeniesClientWrites(section)) {
+    return;
+  }
+  if (!section.includes(`!("${field}" in request.resource.data)`)) {
+    fail(
+      `${relativePath}: ${note ?? `section must reject ${field} or deny client writes`}`,
+    );
+  }
+}
+
+function assertSectionIncludesAny(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  needles,
+  note,
+) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (!needles.some((needle) => section.includes(needle))) {
     fail(`${relativePath}: ${note ?? "section assertion failed"}`);
   }
 }
 
-function assertSectionNotIncludes(relativePath, startNeedle, endNeedle, needle, note) {
+function assertSectionNotIncludes(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  needle,
+  note,
+) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (section.includes(needle)) {
-    fail(`${relativePath}: ${note ?? `section contains forbidden ${JSON.stringify(needle)}`}`);
+    fail(
+      `${relativePath}: ${note ?? `section contains forbidden ${JSON.stringify(needle)}`}`,
+    );
   }
 }
 
-function assertSectionNotMatches(relativePath, startNeedle, endNeedle, pattern, note) {
+function assertSectionNotMatches(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  pattern,
+  note,
+) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (pattern.test(section)) {
-    fail(`${relativePath}: ${note ?? `section matches forbidden ${pattern.toString()}`}`);
+    fail(
+      `${relativePath}: ${note ?? `section matches forbidden ${pattern.toString()}`}`,
+    );
   }
 }
 
-function assertSectionMatches(relativePath, startNeedle, endNeedle, pattern, note) {
+function assertSectionMatches(
+  relativePath,
+  startNeedle,
+  endNeedle,
+  pattern,
+  note,
+) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (!pattern.test(section)) {
-    fail(`${relativePath}: ${note ?? `section missing required ${pattern.toString()}`}`);
+    fail(
+      `${relativePath}: ${note ?? `section missing required ${pattern.toString()}`}`,
+    );
   }
 }
 
@@ -83,7 +239,9 @@ function sectionBetween(relativePath, startNeedle, endNeedle) {
   const text = readRel(relativePath);
   const start = text.indexOf(startNeedle);
   if (start < 0) {
-    fail(`${relativePath}: missing section start ${JSON.stringify(startNeedle)}`);
+    fail(
+      `${relativePath}: missing section start ${JSON.stringify(startNeedle)}`,
+    );
     return "";
   }
   const end = text.indexOf(endNeedle, start + startNeedle.length);
@@ -104,11 +262,15 @@ function assertRulesRejectFields(sectionName, fields) {
   const section = rules.slice(start, Math.min(rules.length, start + 7000));
   for (const field of fields) {
     if (!section.includes(`"${field}"`)) {
-      fail(`firestore.rules: ${sectionName} does not mention plaintext field ${field}`);
+      fail(
+        `firestore.rules: ${sectionName} does not mention plaintext field ${field}`,
+      );
     }
   }
   if (!section.includes("!request.resource.data.keys().hasAny")) {
-    fail(`firestore.rules: ${sectionName} does not reject plaintext fields with hasAny`);
+    fail(
+      `firestore.rules: ${sectionName} does not reject plaintext fields with hasAny`,
+    );
   }
 }
 
@@ -117,7 +279,12 @@ function assertRulesRejectFields(sectionName, fields) {
 // handful of known plaintext fields with `!hasAny`. A pure denylist drifts open
 // the moment a new plaintext field is added; an allowlist fails closed. This
 // closes the "allowlist drift" gap the recon flagged.
-function assertRulesSectionHasOnly(sectionName, note, span = 7000, allowlistHelperName = null) {
+function assertRulesSectionHasOnly(
+  sectionName,
+  note,
+  span = 7000,
+  allowlistHelperName = null,
+) {
   const rules = readRel("firestore.rules");
   const start = rules.indexOf(sectionName);
   if (start < 0) {
@@ -125,14 +292,99 @@ function assertRulesSectionHasOnly(sectionName, note, span = 7000, allowlistHelp
     return;
   }
   const section = rules.slice(start, Math.min(rules.length, start + span));
-  if (section.includes("request.resource.data.keys().hasOnly([")) {
+  if (rulesSectionReturnsHasOnly(section)) {
     return;
   }
-  if (allowlistHelperName && section.includes(`${allowlistHelperName}()`)) {
+  if (
+    allowlistHelperName &&
+    rulesSectionReturnsHelper(section, allowlistHelperName)
+  ) {
     assertRulesSectionHasOnly(`function ${allowlistHelperName}()`, note, span);
     return;
   }
-  fail(`firestore.rules: ${note ?? `${sectionName} lacks a keys().hasOnly([ allowlist`}`);
+  fail(
+    `firestore.rules: ${note ?? `${sectionName} lacks a keys().hasOnly([ allowlist`}`,
+  );
+}
+
+function runSelfTest() {
+  const checks = [
+    [
+      "executableIncludes ignores comment-only needles",
+      () =>
+        !executableIncludes(
+          "// decodedRatchetText(\nfunc other() {}",
+          "decodedRatchetText(",
+        ),
+    ],
+    [
+      "executableIncludes sees real function needles",
+      () =>
+        executableIncludes(
+          "private func decodedRatchetText(uid: String) {}",
+          "decodedRatchetText(",
+        ),
+    ],
+    [
+      "rules hasOnly must be in a return expression",
+      () =>
+        rulesSectionReturnsHasOnly(
+          'function ok() { return request.resource.data.keys().hasOnly(["id"]); }',
+        ),
+    ],
+    [
+      "rules hasOnly in comments does not satisfy",
+      () =>
+        !rulesSectionReturnsHasOnly(
+          'function bad() { // return request.resource.data.keys().hasOnly(["id"]);\n return true; }',
+        ),
+    ],
+    [
+      "helper must be returned, not merely mentioned",
+      () =>
+        !rulesSectionReturnsHelper(
+          "function bad() { validSessionLogManifestKeys(); return true; }",
+          "validSessionLogManifestKeys",
+        ),
+    ],
+    [
+      "returned helper satisfies helper detection",
+      () =>
+        rulesSectionReturnsHelper(
+          "function ok() { return validSessionLogManifestKeys() && other(); }",
+          "validSessionLogManifestKeys",
+        ),
+    ],
+    [
+      "helper mention in comments does not satisfy",
+      () =>
+        !rulesSectionReturnsHelper(
+          "function bad() { // return validSessionLogManifestKeys()\n return other(); }",
+          "validSessionLogManifestKeys",
+        ),
+    ],
+    [
+      "deny-all rules section satisfies field rejection",
+      () =>
+        rulesSectionDeniesClientWrites(
+          "match /x { allow read: if true; allow write: if false; }",
+        ),
+    ],
+  ];
+  const failed = checks.filter(([, check]) => !check()).map(([name]) => name);
+  if (failed.length > 0) {
+    console.error("Cloud plaintext scanner self-test failed:");
+    for (const name of failed) console.error(`- ${name}`);
+    process.exit(1);
+  }
+  console.log(
+    `Cloud plaintext scanner self-test passed (${checks.length} cases).`,
+  );
+  process.exit(0);
+}
+
+if (process.argv.includes("--self-test")) {
+  runSelfTest();
 }
 
 // Assert a match block bounded by its own `match /…` start and the next `match `
@@ -150,11 +402,17 @@ function assertRulesBlockDeniesClientWrite(matchNeedle, note) {
   const next = rules.indexOf("    match /", start + matchNeedle.length);
   const block = rules.slice(start, next < 0 ? rules.length : next);
   if (!block.includes("allow write: if false")) {
-    fail(`firestore.rules: ${note ?? `${matchNeedle} must deny client writes (allow write: if false)`}`);
+    fail(
+      `firestore.rules: ${note ?? `${matchNeedle} must deny client writes (allow write: if false)`}`,
+    );
   }
 }
 
-function assertRulesAllowlistExcludes(sectionName, fields, endNeedle = "allow read:") {
+function assertRulesAllowlistExcludes(
+  sectionName,
+  fields,
+  endNeedle = "allow read:",
+) {
   const rules = readRel("firestore.rules");
   const start = rules.indexOf(sectionName);
   if (start < 0) {
@@ -162,23 +420,34 @@ function assertRulesAllowlistExcludes(sectionName, fields, endNeedle = "allow re
     return;
   }
   const end = rules.indexOf(endNeedle, start + sectionName.length);
-  const section = end < 0 ? rules.slice(start, Math.min(rules.length, start + 4500)) : rules.slice(start, end);
+  const section =
+    end < 0
+      ? rules.slice(start, Math.min(rules.length, start + 4500))
+      : rules.slice(start, end);
   for (const field of fields) {
     if (section.includes(`"${field}"`)) {
-      fail(`firestore.rules: ${sectionName} allowlist still contains plaintext field ${field}`);
+      fail(
+        `firestore.rules: ${sectionName} allowlist still contains plaintext field ${field}`,
+      );
     }
   }
 }
 
 function assertRegistryEndToEnd() {
   const registry = JSON.parse(readRel("packages/data-domains/registry.json"));
-  const domain = registry.domains.find((entry) => entry.id === "conversations_chat");
+  const domain = registry.domains.find(
+    (entry) => entry.id === "conversations_chat",
+  );
   if (!domain) {
-    fail("packages/data-domains/registry.json: missing conversations_chat domain");
+    fail(
+      "packages/data-domains/registry.json: missing conversations_chat domain",
+    );
     return;
   }
   if (domain.encryptionTier !== "end_to_end") {
-    fail(`packages/data-domains/registry.json: conversations_chat tier is ${domain.encryptionTier}`);
+    fail(
+      `packages/data-domains/registry.json: conversations_chat tier is ${domain.encryptionTier}`,
+    );
   }
   const requiredPaths = [
     "conversations",
@@ -190,21 +459,37 @@ function assertRegistryEndToEnd() {
   ];
   for (const requiredPath of requiredPaths) {
     if (!domain.firestorePaths.includes(requiredPath)) {
-      fail(`packages/data-domains/registry.json: conversations_chat missing ${requiredPath}`);
+      fail(
+        `packages/data-domains/registry.json: conversations_chat missing ${requiredPath}`,
+      );
     }
   }
-  const sessionLogs = registry.domains.find((entry) => entry.id === "session_logs");
+  const sessionLogs = registry.domains.find(
+    (entry) => entry.id === "session_logs",
+  );
   if (!sessionLogs) {
     fail("packages/data-domains/registry.json: missing session_logs domain");
     return;
   }
   for (const forbidden of ["project", "working directory", "path text"]) {
-    if (sessionLogs.serverSees.some((value) => value.toLowerCase().includes(forbidden))) {
-      fail(`packages/data-domains/registry.json: session_logs serverSees includes ${forbidden}`);
+    if (
+      sessionLogs.serverSees.some((value) =>
+        value.toLowerCase().includes(forbidden),
+      )
+    ) {
+      fail(
+        `packages/data-domains/registry.json: session_logs serverSees includes ${forbidden}`,
+      );
     }
   }
-  if (!sessionLogs.deviceOnly.some((value) => value.toLowerCase().includes("project/path text"))) {
-    fail("packages/data-domains/registry.json: session_logs deviceOnly missing project/path text");
+  if (
+    !sessionLogs.deviceOnly.some((value) =>
+      value.toLowerCase().includes("project/path text"),
+    )
+  ) {
+    fail(
+      "packages/data-domains/registry.json: session_logs deviceOnly missing project/path text",
+    );
   }
 }
 
@@ -224,9 +509,17 @@ assertRulesRejectFields("function validConversationMirror()", [
   "summaryModel",
 ]);
 
-assertIncludes("firestore.rules", "function chatThreadHasPlaintextContent()", "chat thread plaintext-content helper");
+assertIncludes(
+  "firestore.rules",
+  "function chatThreadHasPlaintextContent()",
+  "chat thread plaintext-content helper",
+);
 for (const field of ["messages", "title", "preview"]) {
-  assertIncludes("firestore.rules", `"${field}"`, `chat thread plaintext field ${field}`);
+  assertIncludes(
+    "firestore.rules",
+    `"${field}"`,
+    `chat thread plaintext field ${field}`,
+  );
 }
 
 assertRulesAllowlistExcludes("function validMobileAssistantChatMirror()", [
@@ -277,9 +570,19 @@ assertRulesRejectFields("match /events/{eventId}", [
   "changedFilePath",
 ]);
 
-assertRulesAllowlistExcludes("match /users/{userId}/agent_notification_replies", ["replyText"], "allow update:");
+assertRulesAllowlistExcludes(
+  "match /users/{userId}/agent_notification_replies",
+  ["replyText"],
+  "allow update:",
+);
 
-for (const field of ["title", "snippet", "terms", "projectName", "workingDirectory"]) {
+for (const field of [
+  "title",
+  "snippet",
+  "terms",
+  "projectName",
+  "workingDirectory",
+]) {
   assertSectionIncludes(
     "firestore.rules",
     "function sessionLogPostWriteHasNoPlaintextFields(data)",
@@ -334,7 +637,11 @@ assertIncludes(
   'const semanticHashes = requireOptionalSearchHashes(raw.semanticHashes, "chunk.semanticHashes");',
   "commitEncryptedSearchIndexBatch must validate semantic hash arrays in trusted code",
 );
-for (const collection of ["cloud_search_documents", "cloud_search_chunks", "cloud_search_postings"]) {
+for (const collection of [
+  "cloud_search_documents",
+  "cloud_search_chunks",
+  "cloud_search_postings",
+]) {
   assertIncludes(
     "AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift",
     collection,
@@ -345,12 +652,32 @@ for (const script of [
   "functions/scripts/backfill-legacy-session-log-cloud-search-v3.mjs",
   "functions/scripts/upload-local-sqlite-session-logs-v4.mjs",
 ]) {
-  assertIncludes(script, "const CHUNK_MAX_BYTES = 16_000;", `${script} preserves encrypted search chunk capacity`);
-  assertIncludes(script, "const CHUNK_TOKEN_HASH_LIMIT = 1_024;", `${script} preserves encrypted search hash capacity`);
+  assertIncludes(
+    script,
+    "const CHUNK_MAX_BYTES = 16_000;",
+    `${script} preserves encrypted search chunk capacity`,
+  );
+  assertIncludes(
+    script,
+    "const CHUNK_TOKEN_HASH_LIMIT = 1_024;",
+    `${script} preserves encrypted search hash capacity`,
+  );
 }
-assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_documents/{documentId}", ["projectName"], "allow delete:");
-assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_chunks/{chunkId}", ["projectName"], "allow delete:");
-assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_postings/{postingId}", ["projectName"], "allow delete:");
+assertRulesAllowlistExcludes(
+  "match /users/{userId}/cloud_search_documents/{documentId}",
+  ["projectName"],
+  "allow delete:",
+);
+assertRulesAllowlistExcludes(
+  "match /users/{userId}/cloud_search_chunks/{chunkId}",
+  ["projectName"],
+  "allow delete:",
+);
+assertRulesAllowlistExcludes(
+  "match /users/{userId}/cloud_search_postings/{postingId}",
+  ["projectName"],
+  "allow delete:",
+);
 
 assertSectionIncludes(
   "firestore.rules",
@@ -574,7 +901,14 @@ assertSectionNotIncludes(
   '"title"',
   "CLI sealed payload top-level contains title",
 );
-for (const field of ['"preview"', '"messages"', '"modelName"', '"workspaceLabel"', '"resumeHandle"', '"customTitle"']) {
+for (const field of [
+  '"preview"',
+  '"messages"',
+  '"modelName"',
+  '"workspaceLabel"',
+  '"resumeHandle"',
+  '"customTitle"',
+]) {
   assertSectionNotIncludes(
     "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift",
     "public static func encodeSealed(",
@@ -598,7 +932,13 @@ assertSectionIncludes(
   '"sealedPayload": CloudVaultCrypto.sealedPayloadDictionary',
   "mobile assistant writer sealed payload",
 );
-for (const field of ['"title"', '"preview"', '"messages"', '"modelName"', '"customTitle"']) {
+for (const field of [
+  '"title"',
+  '"preview"',
+  '"messages"',
+  '"modelName"',
+  '"customTitle"',
+]) {
   assertSectionNotIncludes(
     "OpenBurnBarMobile/Services/MobileChatHistoryStore.swift",
     "func upsert(_ thread: MobileChatThread)",
@@ -652,10 +992,26 @@ assertIncludes(
   'const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply."',
   "generic notification preview",
 );
-assertNotIncludes("functions/src/agentNotifications.ts", "createHash", "notification content hashing");
-assertNotIncludes("functions/src/agentNotifications.ts", "truncatePreview", "notification text preview truncation");
-assertNotIncludes("functions/src/agentNotifications.ts", "messageText", "notification message text event id input");
-assertNotIncludes("functions/src/agentNotifications.ts", "preview: reply.text", "notification plaintext preview");
+assertNotIncludes(
+  "functions/src/agentNotifications.ts",
+  "createHash",
+  "notification content hashing",
+);
+assertNotIncludes(
+  "functions/src/agentNotifications.ts",
+  "truncatePreview",
+  "notification text preview truncation",
+);
+assertNotIncludes(
+  "functions/src/agentNotifications.ts",
+  "messageText",
+  "notification message text event id input",
+);
+assertNotIncludes(
+  "functions/src/agentNotifications.ts",
+  "preview: reply.text",
+  "notification plaintext preview",
+);
 assertNotIncludes(
   "packages/data-domains/registry.json",
   '"agent_notification_events": "Ephemeral notification queue."',
@@ -666,7 +1022,11 @@ assertIncludes(
   "sealedReplyPayload",
   "notification reply sealed payload",
 );
-assertNotIncludes("functions/src/callables/agentNotifications.ts", "replyText", "notification reply plaintext field");
+assertNotIncludes(
+  "functions/src/callables/agentNotifications.ts",
+  "replyText",
+  "notification reply plaintext field",
+);
 
 assertIncludes(
   "AgentLens/Services/ICloudSessionMirrorService.swift",
@@ -689,22 +1049,55 @@ assertIncludes(
 // deny known plaintext fields. (assertRulesRejectFields above only checks the
 // hasAny denylist; this asserts the fail-closed allowlist is present too.)
 for (const [section, note, allowlistHelperName] of [
-  ["function validConversationMirror()", "validConversationMirror lacks keys().hasOnly allowlist"],
-  ["function validMobileAssistantChatMirror()", "validMobileAssistantChatMirror lacks keys().hasOnly allowlist"],
-  ["function validCliSessionMirror()", "validCliSessionMirror lacks keys().hasOnly allowlist"],
-  ["function validCliAgentMissionRequest()", "validCliAgentMissionRequest lacks keys().hasOnly allowlist"],
-  ["function relayRequestWrite(", "relayRequestWrite lacks keys().hasOnly allowlist"],
-  ["function relayChunkWrite(", "relayChunkWrite lacks keys().hasOnly allowlist"],
+  [
+    "function validConversationMirror()",
+    "validConversationMirror lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validMobileAssistantChatMirror()",
+    "validMobileAssistantChatMirror lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validCliSessionMirror()",
+    "validCliSessionMirror lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validCliAgentMissionRequest()",
+    "validCliAgentMissionRequest lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function relayRequestWrite(",
+    "relayRequestWrite lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function relayChunkWrite(",
+    "relayChunkWrite lacks keys().hasOnly allowlist",
+  ],
   [
     "function validSessionLogManifestCore(",
     "session-log manifest lacks keys().hasOnly allowlist",
     "validSessionLogManifestKeys",
   ],
-  ["function validProjectMemorySnapshotKeys()", "project_memory_snapshots lacks keys().hasOnly allowlist"],
-  ["function validMemoryFactKeys()", "memory_facts lacks keys().hasOnly allowlist"],
-  ["function validMemoryForgetReceiptKeys()", "memory_forget_receipts lacks keys().hasOnly allowlist"],
-  ["function validMediaSessionEventKeys()", "media_session_events lacks keys().hasOnly allowlist"],
-  ["function validMediaAttachmentManifestKeys()", "media_attachment_manifests lacks keys().hasOnly allowlist"],
+  [
+    "function validProjectMemorySnapshotKeys()",
+    "project_memory_snapshots lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validMemoryFactKeys()",
+    "memory_facts lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validMemoryForgetReceiptKeys()",
+    "memory_forget_receipts lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validMediaSessionEventKeys()",
+    "media_session_events lacks keys().hasOnly allowlist",
+  ],
+  [
+    "function validMediaAttachmentManifestKeys()",
+    "media_attachment_manifests lacks keys().hasOnly allowlist",
+  ],
 ]) {
   assertRulesSectionHasOnly(section, note, 7000, allowlistHelperName);
 }
@@ -730,7 +1123,7 @@ assertIncludes(
 );
 assertIncludes(
   "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
-  "public static let sealedPayloadAADContext = \"OpenBurnBar-CloudVaultSealedPayload-v2\"",
+  'public static let sealedPayloadAADContext = "OpenBurnBar-CloudVaultSealedPayload-v2"',
   "Swift CloudVault must publish the sealedPayload v2 AAD context",
 );
 assertIncludes(
@@ -761,7 +1154,7 @@ assertIncludes(
 );
 assertIncludes(
   "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
-  "private const val SEALED_PAYLOAD_AAD_CONTEXT = \"OpenBurnBar-CloudVaultSealedPayload-v2\"",
+  'private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"',
   "Android CloudVault must publish the sealedPayload v2 AAD context",
 );
 assertIncludes(
@@ -829,18 +1222,18 @@ assertSectionIncludes(
 // A connected repo stores only repoMatchToken + sealedRepoFullName; the rules
 // must reject a client-supplied cleartext repoFullName (the cleartext name is
 // observed server-side only transiently for webhook routing, never stored).
-assertSectionIncludes(
+assertSectionRejectsFieldOrDeniesWrite(
   "firestore.rules",
   "match /users/{userId}/knowledge_repos/{repoId}",
   "match /users/{userId}/unified_audit_log",
-  '!("repoFullName" in request.resource.data)',
+  "repoFullName",
   "knowledge_repos must reject client-supplied cleartext repoFullName",
 );
-assertSectionIncludes(
+assertSectionRejectsFieldOrDeniesWrite(
   "firestore.rules",
   "match /users/{userId}/knowledge_repos/{repoId}",
   "match /users/{userId}/unified_audit_log",
-  '!("sourceSlug" in request.resource.data)',
+  "sourceSlug",
   "knowledge_repos must reject client-supplied cleartext sourceSlug",
 );
 
@@ -852,7 +1245,14 @@ assertSectionIncludes(
   "validCloudSealedBlob(",
   "memory_facts must require a CloudVault sealed fact envelope",
 );
-for (const field of ["text", "body", "citations", "vector", "cloakedVector", "embedding"]) {
+for (const field of [
+  "text",
+  "body",
+  "citations",
+  "vector",
+  "cloakedVector",
+  "embedding",
+]) {
   assertSectionIncludes(
     "firestore.rules",
     "match /users/{userId}/memory_facts/{memoryDocId}",
@@ -861,7 +1261,13 @@ for (const field of ["text", "body", "citations", "vector", "cloakedVector", "em
     `memory_facts must reject plaintext/raw-vector field ${field}`,
   );
 }
-for (const field of ["threadLogicalID", "messageID", "contentHash", "text", "body"]) {
+for (const field of [
+  "threadLogicalID",
+  "messageID",
+  "contentHash",
+  "text",
+  "body",
+]) {
   assertSectionIncludes(
     "firestore.rules",
     "match /users/{userId}/memory_forget_receipts/{receiptId}",
@@ -996,9 +1402,11 @@ assertRulesBlockDeniesClientWrite(
 // enforced in the callable. Pin the gate so a regression that drops it (lets a
 // relay-capable client smuggle plaintext, or hardcodes the legacy protocol)
 // fails red here. (F8 — close the scanner's server-source blind spot.)
-const HERMES_GATEWAY_WRITE_BODY = "functions/src/callables/hermesGatewayResolve.ts";
+const HERMES_GATEWAY_WRITE_BODY =
+  "functions/src/callables/hermesGatewayResolve.ts";
 const HERMES_GATEWAY_STATE = "functions/src/callables/hermesGatewayRoutes.ts";
-const HERMES_GATEWAY_OVERSIGHT = "functions/src/callables/hermesGatewayAttachmentRoutes.ts";
+const HERMES_GATEWAY_OVERSIGHT =
+  "functions/src/callables/hermesGatewayAttachmentRoutes.ts";
 assertIncludes(
   HERMES_GATEWAY_WRITE_BODY,
   "requireProductionGatewayRelayEnvelope(",
@@ -1216,7 +1624,7 @@ assertIncludes(
   "sealGatewayEventRatchetPayload(",
   "iOS gateway must prefer ratchetEnvelope for capable phone events",
 );
-assertIncludes(
+assertIncludesExecutable(
   "OpenBurnBarMobile/Services/HermesGatewayAPI.swift",
   "decodedRatchetText(",
   "iOS gateway must open ratchetEnvelope agent replies",
@@ -1405,7 +1813,13 @@ assertSectionNotIncludes(
 //    key-only opaque columns. They pass only when the value is structurally
 //    recognized by isSealedEnvelope(), so a bad cleartext value under a trusted
 //    key name is still dropped.
-for (const sealedKey of ["sealedFilename", "sealedAgentURI", "sealedTopicID", "relayEnvelope", "ratchetEnvelope"]) {
+for (const sealedKey of [
+  "sealedFilename",
+  "sealedAgentURI",
+  "sealedTopicID",
+  "relayEnvelope",
+  "ratchetEnvelope",
+]) {
   assertSectionNotIncludes(
     DATA_EXPORT,
     "const OPAQUE_EXPORT_COLUMNS",
@@ -1414,7 +1828,12 @@ for (const sealedKey of ["sealedFilename", "sealedAgentURI", "sealedTopicID", "r
     `dataExport OPAQUE_EXPORT_COLUMNS must not key-allowlist sealed envelope key ${sealedKey}`,
   );
 }
-for (const plaintextKey of ["text", "senderDisplayName", "fileName", "filename"]) {
+for (const plaintextKey of [
+  "text",
+  "senderDisplayName",
+  "fileName",
+  "filename",
+]) {
   assertSectionNotIncludes(
     DATA_EXPORT,
     "const OPAQUE_EXPORT_COLUMNS",
@@ -1431,7 +1850,7 @@ assertSectionIncludes(
   "firestore.rules",
   "function validMediaAttachmentManifestKeys()",
   "match /users/{userId}/pi_agent_connections",
-  "validCloudSealedTextAt(userId, \"media_attachment_manifests\", manifestId, \"sealedFilename\", request.resource.data.sealedFilename)",
+  'validCloudSealedTextAt(userId, "media_attachment_manifests", manifestId, "sealedFilename", request.resource.data.sealedFilename)',
   "media_attachment_manifests must validate sealedFilename as a sealed envelope",
 );
 assertSectionIncludes(
@@ -1479,9 +1898,14 @@ const W3_SEALED_SURFACES = [
   },
   {
     label: "cli_sessions/*/snapshots",
-    start: "match /users/{userId}/cli_sessions/{sessionId}/snapshots/{snapshotId}",
+    start:
+      "match /users/{userId}/cli_sessions/{sessionId}/snapshots/{snapshotId}",
     end: "match /users/{userId}/agent_identities",
-    sealed: ["sealedActionLabel", "sealedTouchedFiles", "sealedMacSnapshotPath"],
+    sealed: [
+      "sealedActionLabel",
+      "sealedTouchedFiles",
+      "sealedMacSnapshotPath",
+    ],
     requiredSealed: ["sealedActionLabel"],
     plaintext: ["actionLabel", "touchedFiles", "macSnapshotPath"],
     rejectMode: "absentFromAllowlist",
@@ -1499,8 +1923,18 @@ const W3_SEALED_SURFACES = [
     label: "subscription_topics",
     start: "match /users/{userId}/subscription_topics/{topicId}",
     end: "match /users/{userId}/session_logs",
-    sealed: ["sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription"],
-    requiredSealed: ["sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription"],
+    sealed: [
+      "sealedAgentURI",
+      "sealedTopicID",
+      "sealedDisplayName",
+      "sealedDescription",
+    ],
+    requiredSealed: [
+      "sealedAgentURI",
+      "sealedTopicID",
+      "sealedDisplayName",
+      "sealedDescription",
+    ],
     plaintext: ["agentURI", "topicID", "displayName", "description"],
     rejectMode: "absentFromAllowlist",
   },
@@ -1516,18 +1950,18 @@ for (const surface of W3_SEALED_SURFACES) {
     `${surface.label} must allowlist its keys with keys().hasOnly([ (fail closed)`,
   );
   // (b) Each private field must be sealed and validated as a sealed envelope.
-	  for (const sealedField of surface.sealed) {
-	    assertSectionIncludesAny(
-	      "firestore.rules",
-	      surface.start,
-	      surface.end,
-	      [
-	        `validCloudSealedText(request.resource.data.${sealedField})`,
-	        `"${sealedField}", request.resource.data.${sealedField}`,
-	      ],
-	      `${surface.label} must validate ${sealedField} as a sealed envelope`,
-	    );
-	  }
+  for (const sealedField of surface.sealed) {
+    assertSectionIncludesAny(
+      "firestore.rules",
+      surface.start,
+      surface.end,
+      [
+        `validCloudSealedText(request.resource.data.${sealedField})`,
+        `"${sealedField}", request.resource.data.${sealedField}`,
+      ],
+      `${surface.label} must validate ${sealedField} as a sealed envelope`,
+    );
+  }
   // Required sealed fields must not be optional migration gates. This prevents
   // plaintext-only create windows from passing the scan.
   for (const sealedField of surface.requiredSealed ?? []) {
@@ -1577,13 +2011,21 @@ function assertRegistryPrivacyHonesty() {
     fail("packages/data-domains/registry.json: missing usage_spend domain");
   } else {
     if (usage.serverSees.map((v) => v.toLowerCase()).includes("project")) {
-      fail("packages/data-domains/registry.json: usage_spend serverSees still claims plaintext project");
+      fail(
+        "packages/data-domains/registry.json: usage_spend serverSees still claims plaintext project",
+      );
     }
     if (!usage.serverSees.some((v) => /opaque/i.test(v) && /hash/i.test(v))) {
-      fail("packages/data-domains/registry.json: usage_spend must declare the opaque project hash");
+      fail(
+        "packages/data-domains/registry.json: usage_spend must declare the opaque project hash",
+      );
     }
-    if (!usage.deviceOnly.some((v) => v.toLowerCase().includes("project name"))) {
-      fail("packages/data-domains/registry.json: usage_spend deviceOnly must list project names");
+    if (
+      !usage.deviceOnly.some((v) => v.toLowerCase().includes("project name"))
+    ) {
+      fail(
+        "packages/data-domains/registry.json: usage_spend deviceOnly must list project names",
+      );
     }
   }
 
@@ -1591,48 +2033,84 @@ function assertRegistryPrivacyHonesty() {
   if (!pensieve) {
     fail("packages/data-domains/registry.json: missing pensieve domain");
   } else {
-    if (pensieve.serverSees.some((v) => /repo\s*name|repofullname|repo full name/i.test(v))) {
-      fail("packages/data-domains/registry.json: pensieve serverSees must not claim it reads the cleartext repo name");
+    if (
+      pensieve.serverSees.some((v) =>
+        /repo\s*name|repofullname|repo full name/i.test(v),
+      )
+    ) {
+      fail(
+        "packages/data-domains/registry.json: pensieve serverSees must not claim it reads the cleartext repo name",
+      );
     }
-    if (!pensieve.serverSees.some((v) => /opaque/i.test(v) && /match token/i.test(v))) {
-      fail("packages/data-domains/registry.json: pensieve must declare the opaque repo match token");
+    if (
+      !pensieve.serverSees.some(
+        (v) => /opaque/i.test(v) && /match token/i.test(v),
+      )
+    ) {
+      fail(
+        "packages/data-domains/registry.json: pensieve must declare the opaque repo match token",
+      );
     }
     for (const name of ["memory_facts", "memory_forget_receipts"]) {
       if (!pensieve.firestorePaths.includes(name)) {
-        fail(`packages/data-domains/registry.json: pensieve must own the ${name} path`);
+        fail(
+          `packages/data-domains/registry.json: pensieve must own the ${name} path`,
+        );
       }
     }
     if (!pensieve.serverSees.some((v) => /forget receipt hashes/i.test(v))) {
-      fail("packages/data-domains/registry.json: pensieve serverSees must describe memory forget receipt hashes");
+      fail(
+        "packages/data-domains/registry.json: pensieve serverSees must describe memory forget receipt hashes",
+      );
     }
     if (!pensieve.deviceOnly.some((v) => /chat memory fact bodies/i.test(v))) {
-      fail("packages/data-domains/registry.json: pensieve deviceOnly must list chat memory fact bodies");
+      fail(
+        "packages/data-domains/registry.json: pensieve deviceOnly must list chat memory fact bodies",
+      );
     }
     if (!/NOTE:/.test(pensieve.summary) || !/webhook/i.test(pensieve.summary)) {
-      fail("packages/data-domains/registry.json: pensieve summary must carry the webhook-routing caveat");
+      fail(
+        "packages/data-domains/registry.json: pensieve summary must carry the webhook-routing caveat",
+      );
     }
   }
 
   const devices = domain("connected_devices");
   if (!devices) {
-    fail("packages/data-domains/registry.json: missing connected_devices domain");
+    fail(
+      "packages/data-domains/registry.json: missing connected_devices domain",
+    );
   } else {
     // Gateway-e2e Wave 4: the hosted chat gateway is now sealed end-to-end
     // (HermesRelayCrypto), so the server must NOT claim it reads gateway message
     // text / sender names / attachment file names anymore.
     for (const leak of [/message text/i, /sender name/i, /file name/i]) {
       if (devices.serverSees.some((v) => /gateway/i.test(v) && leak.test(v))) {
-        fail(`packages/data-domains/registry.json: connected_devices serverSees must not claim the server reads gateway ${leak.source} (the gateway is sealed)`);
+        fail(
+          `packages/data-domains/registry.json: connected_devices serverSees must not claim the server reads gateway ${leak.source} (the gateway is sealed)`,
+        );
       }
     }
-    if (!devices.serverSees.some((v) => /opaque/i.test(v) && /key material/i.test(v))) {
-      fail("packages/data-domains/registry.json: connected_devices serverSees must declare the opaque relay public-key material");
+    if (
+      !devices.serverSees.some(
+        (v) => /opaque/i.test(v) && /key material/i.test(v),
+      )
+    ) {
+      fail(
+        "packages/data-domains/registry.json: connected_devices serverSees must declare the opaque relay public-key material",
+      );
     }
-    if (!devices.deviceOnly.some((v) => /gateway/i.test(v) && /sealed/i.test(v))) {
-      fail("packages/data-domains/registry.json: connected_devices deviceOnly must state the gateway frame contents are sealed");
+    if (
+      !devices.deviceOnly.some((v) => /gateway/i.test(v) && /sealed/i.test(v))
+    ) {
+      fail(
+        "packages/data-domains/registry.json: connected_devices deviceOnly must state the gateway frame contents are sealed",
+      );
     }
     if (/server can read/i.test(devices.summary)) {
-      fail("packages/data-domains/registry.json: connected_devices summary must not say the server can read the gateway");
+      fail(
+        "packages/data-domains/registry.json: connected_devices summary must not say the server can read the gateway",
+      );
     }
   }
 
@@ -1643,10 +2121,16 @@ function assertRegistryPrivacyHonesty() {
     // Media-filename seal (gateway-e2e Wave 4): the human-readable attachment
     // file name moves to deviceOnly; serverSees keeps only opaque manifest facets.
     if (media.serverSees.some((v) => /file ?name/i.test(v))) {
-      fail("packages/data-domains/registry.json: media serverSees must not claim it reads attachment file names (sealedFilename)");
+      fail(
+        "packages/data-domains/registry.json: media serverSees must not claim it reads attachment file names (sealedFilename)",
+      );
     }
-    if (!media.deviceOnly.some((v) => /file ?name/i.test(v) && /seal/i.test(v))) {
-      fail("packages/data-domains/registry.json: media deviceOnly must list attachment file names as sealed/device-only");
+    if (
+      !media.deviceOnly.some((v) => /file ?name/i.test(v) && /seal/i.test(v))
+    ) {
+      fail(
+        "packages/data-domains/registry.json: media deviceOnly must list attachment file names as sealed/device-only",
+      );
     }
   }
 
@@ -1656,32 +2140,63 @@ function assertRegistryPrivacyHonesty() {
   // text, and subscription graph edges.
   const chat = domain("conversations_chat");
   if (!chat) {
-    fail("packages/data-domains/registry.json: missing conversations_chat domain");
+    fail(
+      "packages/data-domains/registry.json: missing conversations_chat domain",
+    );
   } else {
-    for (const name of ["rollback_requests", "approval_policies", "agent_identities", "subscription_topics"]) {
+    for (const name of [
+      "rollback_requests",
+      "approval_policies",
+      "agent_identities",
+      "subscription_topics",
+    ]) {
       if (!chat.firestorePaths.includes(name)) {
-        fail(`packages/data-domains/registry.json: conversations_chat must own the ${name} path`);
+        fail(
+          `packages/data-domains/registry.json: conversations_chat must own the ${name} path`,
+        );
       }
     }
     if (!chat.deviceOnly.some((v) => /rollback scope/i.test(v))) {
-      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback scope paths");
+      fail(
+        "packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback scope paths",
+      );
     }
     if (!chat.deviceOnly.some((v) => /rollback error/i.test(v))) {
-      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback error diagnostics");
+      fail(
+        "packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback error diagnostics",
+      );
     }
     if (!chat.deviceOnly.some((v) => /approval policy/i.test(v))) {
-      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list approval policy private text");
+      fail(
+        "packages/data-domains/registry.json: conversations_chat deviceOnly must list approval policy private text",
+      );
     }
     if (!chat.deviceOnly.some((v) => /agent persona/i.test(v))) {
-      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list agent persona text");
+      fail(
+        "packages/data-domains/registry.json: conversations_chat deviceOnly must list agent persona text",
+      );
     }
     if (!chat.deviceOnly.some((v) => /subscription graph/i.test(v))) {
-      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list subscription graph edges");
+      fail(
+        "packages/data-domains/registry.json: conversations_chat deviceOnly must list subscription graph edges",
+      );
     }
   }
-  for (const name of ["rollback_requests", "approval_policies", "agent_identities", "subscription_topics"]) {
-    if (Object.prototype.hasOwnProperty.call(registry.excludedCollections ?? {}, name)) {
-      fail(`packages/data-domains/registry.json: ${name} must be removed from excludedCollections once folded into conversations_chat`);
+  for (const name of [
+    "rollback_requests",
+    "approval_policies",
+    "agent_identities",
+    "subscription_topics",
+  ]) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        registry.excludedCollections ?? {},
+        name,
+      )
+    ) {
+      fail(
+        `packages/data-domains/registry.json: ${name} must be removed from excludedCollections once folded into conversations_chat`,
+      );
     }
   }
 }
