@@ -84,7 +84,7 @@ The repeatable drill runner performs these steps and writes the same evidence fi
 bash scripts/ops/run-firestore-restore-drill.sh
 ```
 
-Set `FIRESTORE_DRILL_MODE=backup` to exercise the newest READY scheduled backup instead of the PITR clone path. Set `FIRESTORE_DRILL_CLEANUP=0` only during incident response when the restored database must remain available for manual inspection.
+Set `FIRESTORE_DRILL_MODE=backup` to exercise the newest READY scheduled backup for the configured source database instead of the PITR clone path. The runner refuses backups whose `database` field does not match `projects/${PROJECT}/databases/${DATABASE_ID}`. Set `FIRESTORE_DRILL_CLEANUP=0` only during incident response when the restored database must remain available for manual inspection.
 
 Spot-check commands:
 

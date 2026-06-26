@@ -63,6 +63,76 @@ SOURCE_DATABASE_RESOURCE="projects/${PROJECT}/databases/${DATABASE_ID}"
 SNAPSHOT_TIME="${FIRESTORE_DRILL_SNAPSHOT_TIME:-}"
 BACKUP_NAME="${FIRESTORE_DRILL_BACKUP_NAME:-}"
 
+list_firestore_backups_json() {
+  if [[ -n "${FIRESTORE_DRILL_BACKUP_LIST_JSON:-}" ]]; then
+    printf '%s\n' "$FIRESTORE_DRILL_BACKUP_LIST_JSON"
+    return
+  fi
+  gcloud firestore backups list \
+    --project="$PROJECT" \
+    --format=json
+}
+
+select_ready_backup_for_source_database() {
+  local requested_backup_name="${1:-}"
+  local backups_json
+  backups_json="$(list_firestore_backups_json)"
+  BACKUPS_JSON="$backups_json" \
+    SOURCE_DATABASE_RESOURCE="$SOURCE_DATABASE_RESOURCE" \
+    REQUESTED_BACKUP_NAME="$requested_backup_name" \
+    node - <<'NODE'
+const sourceDatabase = process.env.SOURCE_DATABASE_RESOURCE;
+const requested = process.env.REQUESTED_BACKUP_NAME || "";
+let backups;
+try {
+  backups = JSON.parse(process.env.BACKUPS_JSON || "");
+} catch (error) {
+  console.error(`FAIL: invalid Firestore backup list JSON: ${error.message}`);
+  process.exit(2);
+}
+if (!Array.isArray(backups)) {
+  console.error("FAIL: Firestore backup list JSON must be an array.");
+  process.exit(2);
+}
+const backupDatabase = (backup) => (typeof backup.database === "string" ? backup.database : "");
+const backupName = (backup) => (typeof backup.name === "string" ? backup.name : "");
+const readyForSource = (backup) => backup.state === "READY" && backupDatabase(backup) === sourceDatabase;
+if (requested) {
+  const match = backups.find((backup) => backupName(backup) === requested);
+  if (!match) {
+    console.error(`FAIL: requested Firestore backup was not found: ${requested}`);
+    process.exit(2);
+  }
+  if (match.state !== "READY") {
+    console.error(`FAIL: requested Firestore backup is ${match.state || "UNKNOWN"}, not READY: ${requested}`);
+    process.exit(2);
+  }
+  if (backupDatabase(match) !== sourceDatabase) {
+    console.error(
+      `FAIL: requested Firestore backup belongs to ${backupDatabase(match) || "<missing database>"}, expected ${sourceDatabase}.`,
+    );
+    process.exit(2);
+  }
+  console.log(requested);
+  process.exit(0);
+}
+const candidates = backups
+  .filter(readyForSource)
+  .sort((a, b) => String(b.snapshotTime || "").localeCompare(String(a.snapshotTime || ""))
+    || backupName(b).localeCompare(backupName(a)));
+if (candidates.length === 0) {
+  console.error(`FAIL: no READY Firestore backup found for ${sourceDatabase}.`);
+  process.exit(2);
+}
+console.log(backupName(candidates[0]));
+NODE
+}
+
+if [[ "${FIRESTORE_DRILL_VALIDATE_BACKUP_SELECTION_ONLY:-0}" == "1" ]]; then
+  select_ready_backup_for_source_database "$BACKUP_NAME" >/dev/null
+  exit 0
+fi
+
 portable_snapshot_time() {
   date -u -v-5M +%Y-%m-%dT%H:%M:00Z 2>/dev/null || date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:00Z
 }
@@ -180,12 +250,9 @@ case "$MODE" in
     ;;
   backup)
     if [[ -z "$BACKUP_NAME" ]]; then
-      BACKUP_NAME="$(
-        gcloud firestore backups list \
-          --project="$PROJECT" \
-          --format=json |
-          node -e 'const fs=require("fs"); const backups=JSON.parse(fs.readFileSync(0,"utf8")).filter((b)=>b.state==="READY").sort((a,b)=>String(b.snapshotTime).localeCompare(String(a.snapshotTime))); if (!backups.length) process.exit(2); console.log(backups[0].name);'
-      )"
+      BACKUP_NAME="$(select_ready_backup_for_source_database)"
+    else
+      BACKUP_NAME="$(select_ready_backup_for_source_database "$BACKUP_NAME")"
     fi
     echo "==> backup restore ${BACKUP_NAME} -> ${RESTORE_DATABASE_ID}"
     gcloud firestore databases restore \
