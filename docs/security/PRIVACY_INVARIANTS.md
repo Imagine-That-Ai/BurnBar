@@ -6,7 +6,7 @@ deterministically in CI by `scripts/ci/check-privacy-invariants.mjs` (with a
 self-test, `check-privacy-invariants.test.mjs`) so the entire finding class
 cannot silently regress in a future refactor.
 
-The point-in-time fixes live in code + tests; *this* layer makes them permanent.
+The point-in-time fixes live in code + tests; _this_ layer makes them permanent.
 
 ## Threat-model anchor
 
@@ -19,15 +19,15 @@ of uid+token docs, and no unscrubbed client crash egress.
 
 ## The invariants (gate IDs)
 
-| ID | Invariant | Finding | Enforced by |
-|---|---|---|---|
-| **I1** | Every ephemeral PII/token collection (`voip_outbound`, `fcm_outbound`, `agent_notification_events`) declares a `ttl:true` field override in `firestore.indexes.json`. | F-RR09-001 / F-RR09-007 | static gate |
-| **I2** | Every `ttl:true` override is backed by a Cloud Functions writer that stamps the field (no dead index; no writer without an index). | F-RR09-001 / F-RR09-007 | static gate |
-| **I3** | No production Cloud Functions source imports the raw `firebase-functions/logger` (it bypasses the PII scrubber). | F-RR09-002 | static gate + eslint `no-restricted-imports` |
-| **I4** | `functions/src/logging.ts` defines and applies `redactUidPaths()` so a UID embedded in any path/message/error string value is redacted. | F-RR09-002 | static gate + `loggingScrubber.test.ts` |
-| **I5** | The outbound push payload builders (`buildVoipApnsPayload`, `buildFcmCallPayload`) never include `connection_id` / `pairedDeviceId` / a real display name. | F-RR09-008 | static gate + `voipPushMetadata.test.ts` |
-| **I6** | Every declared `ttl:true` override is a **live** Firestore TTL policy (ACTIVE/CREATING) in the deployed project. | F-RR09-001 / F-RR09-007 | deploy gate (`verify-firestore-ttl-state.mjs`) |
-| **I7** | Public docs, scripts, and tests do not commit personal physical-device identifiers; local iOS/Android device selection must use placeholders, CLI args, or environment variables. | device-id privacy hygiene | static gate |
+| ID     | Invariant                                                                                                                                                                         | Finding                   | Enforced by                                    |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
+| **I1** | Every ephemeral PII/token collection (`voip_outbound`, `fcm_outbound`, `agent_notification_events`) declares a `ttl:true` field override in `firestore.indexes.json`.             | F-RR09-001 / F-RR09-007   | static gate                                    |
+| **I2** | Every `ttl:true` override is backed by a Cloud Functions writer that stamps the field (no dead index; no writer without an index).                                                | F-RR09-001 / F-RR09-007   | static gate                                    |
+| **I3** | No production Cloud Functions source imports the raw `firebase-functions/logger` (it bypasses the PII scrubber).                                                                  | F-RR09-002                | static gate + eslint `no-restricted-imports`   |
+| **I4** | `functions/src/logging.ts` defines and applies `redactUidPaths()` so a UID embedded in any path/message/error string value is redacted.                                           | F-RR09-002                | static gate + `loggingScrubber.test.ts`        |
+| **I5** | The outbound push payload builders (`buildVoipApnsPayload`, `buildFcmCallPayload`) never include `connection_id` / `pairedDeviceId` / a real display name.                        | F-RR09-008                | static gate + `voipPushMetadata.test.ts`       |
+| **I6** | Every declared `ttl:true` override is a **live** Firestore TTL policy (ACTIVE/CREATING) in the deployed project.                                                                  | F-RR09-001 / F-RR09-007   | deploy gate (`verify-firestore-ttl-state.mjs`) |
+| **I7** | Public docs, scripts, and tests do not commit personal physical-device identifiers; local iOS/Android device selection must use placeholders, CLI args, or environment variables. | device-id privacy hygiene | static gate                                    |
 
 ## Where they run
 
@@ -49,6 +49,9 @@ Adding coverage is a one-line edit in `scripts/ci/check-privacy-invariants.mjs`:
 
 Always add a matching positive control in `check-privacy-invariants.test.mjs`
 so the gate is proven to catch the regression (it must never pass vacuously).
+The static gate strips comments and string/template literal bodies before
+checking executable call/spread structure, so comments cannot satisfy a required
+privacy pin and quoted examples cannot create false failures.
 
 ## Firestore TTL: a two-part contract
 
