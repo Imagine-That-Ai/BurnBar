@@ -1570,6 +1570,87 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "local-qwen" })?.providerName, "LM Studio Local")
     }
 
+    func testInsightProviderUsesValidatedDirectEndpointAndBearerToken() throws {
+        let secretStore = FakeHermesSecretStore()
+        try secretStore.save("  mobile-relay-token  ", connectionID: "direct-secure")
+        let service = HermesService(secretStore: secretStore)
+        let connection = HermesConnectionRecord(
+            id: "direct-secure",
+            displayName: "Secure Hermes",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "https://hermes.example.com"
+        )
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.isReachable = true
+
+        XCTAssertNotNil(service.makeInsightProvider()())
+        let configuration = try XCTUnwrap(service.insightsHTTPConfiguration)
+
+        XCTAssertEqual(configuration.baseURL.absoluteString, "https://hermes.example.com")
+        XCTAssertEqual(configuration.authorizationHeader, "Bearer mobile-relay-token")
+    }
+
+    func testInsightProviderAllowsBearerTokenForLoopbackHTTP() throws {
+        let secretStore = FakeHermesSecretStore()
+        try secretStore.save("  loopback-token  ", connectionID: "direct-loopback")
+        let service = HermesService(secretStore: secretStore)
+        let connection = HermesConnectionRecord(
+            id: "direct-loopback",
+            displayName: "Loopback Hermes",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "http://127.0.0.1:8642"
+        )
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.isReachable = true
+
+        XCTAssertNotNil(service.makeInsightProvider()())
+        let configuration = try XCTUnwrap(service.insightsHTTPConfiguration)
+
+        XCTAssertEqual(configuration.baseURL.absoluteString, "http://127.0.0.1:8642")
+        XCTAssertEqual(configuration.authorizationHeader, "Bearer loopback-token")
+    }
+
+    func testInsightProviderOmitsBearerTokenForPrivateLANHTTP() throws {
+        let secretStore = FakeHermesSecretStore()
+        try secretStore.save("  lan-token  ", connectionID: "direct-lan")
+        let service = HermesService(secretStore: secretStore)
+        let connection = HermesConnectionRecord(
+            id: "direct-lan",
+            displayName: "LAN Hermes",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "http://192.168.1.42:8642"
+        )
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.isReachable = true
+
+        XCTAssertNotNil(service.makeInsightProvider()())
+        let configuration = try XCTUnwrap(service.insightsHTTPConfiguration)
+
+        XCTAssertEqual(configuration.baseURL.absoluteString, "http://192.168.1.42:8642")
+        XCTAssertNil(configuration.authorizationHeader)
+    }
+
+    func testInsightProviderDoesNotRegisterRelayModeWithStaleDirectBaseURL() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.baseURL = URL(string: "http://8.8.8.8:8642")!
+        service.isReachable = true
+
+        XCTAssertNil(service.makeInsightProvider()())
+    }
+
+    func testInsightProviderRejectsDirectConnectionWhenBaseURLDriftsFromSelection() {
+        let service = HermesService()
+        XCTAssertTrue(service.selectConnection(directConnection(), refresh: false))
+        service.baseURL = URL(string: "http://8.8.8.8:8642")!
+        service.isReachable = true
+
+        XCTAssertNil(service.makeInsightProvider()())
+    }
+
     func testRelayStreamingParsesAggregatedCRLFSSEPayload() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingEvents = [
