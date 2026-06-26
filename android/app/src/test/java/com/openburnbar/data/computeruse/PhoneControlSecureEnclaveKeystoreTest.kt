@@ -4,17 +4,16 @@ package com.openburnbar.data.computeruse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * F2 fail-closed tests for the Remote Config gate and the AndroidKeyStore
  * custody object. A plain JVM has neither a `FirebaseApp` nor the
  * `AndroidKeyStore` provider, which is exactly the documented fail-closed
- * environment: the gate must resolve to `false` and every keystore operation
- * must resolve to "no hardware key" (`null`/`false`) without throwing —
- * callers then keep the legacy Ed25519 identity instead of crashing or
- * half-minting a hardware one.
+ * environment: the Android hardware-signing ramp must resolve to `false` and
+ * every keystore operation must resolve to "no hardware key" (`null`/`false`)
+ * without throwing — callers then keep the legacy Ed25519 identity instead of
+ * crashing or half-minting a hardware one.
  */
 class PhoneControlSecureEnclaveKeystoreTest {
     @Test
@@ -28,12 +27,21 @@ class PhoneControlSecureEnclaveKeystoreTest {
     }
 
     @Test
-    fun `gate defaults ON when firebase is unavailable`() {
-        // Default-ON posture: with no FirebaseApp (so no fetched remote value
-        // — the operator kill switch — can exist) the protection flag resolves
-        // ON. Safety holds because the keystore mint itself falls back to the
-        // legacy software key on any hardware/keystore failure.
-        assertTrue(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
+    fun `gate defaults off until prompt bound signing is available`() {
+        // Android per-use biometric signing keys must be used with a
+        // BiometricPrompt CryptoObject. Until a caller can supply that
+        // prompt-bound signing path, the default production policy must keep
+        // the legacy Ed25519 signer selected.
+        assertFalse(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
+        assertFalse(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled(promptBoundSigningAvailable = false))
+    }
+
+    @Test
+    fun `explicit prompt bound path still fails closed without a fetched remote value`() {
+        // No FirebaseApp in JVM tests means no fetched Remote Config value can
+        // exist. Unlike the seal protections, this hardware-signing ramp is
+        // default-off even when a future prompt-bound signer is available.
+        assertFalse(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled(promptBoundSigningAvailable = true))
     }
 
     @Test

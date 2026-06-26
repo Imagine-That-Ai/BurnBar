@@ -8,9 +8,13 @@ cross-language KATs). The **one thing automation cannot cover** is a live phone
 pass a scripted ~25-minute checklist with exact pass/fail signals, not a vague
 "try it and see."
 
-All three protection flags ship **default-ON** (the strong protocol IS the
-launch protocol). So the primary validation is *"the default path works end to
-end,"* and the secondary is *"the operator kill switch disengages it."*
+The control/media seal protections ship **default-ON** (the strong protocol IS
+the launch protocol). F2 hardware signing is platform-staged: iOS hardware
+signing is the default validation path; Android keeps the legacy Ed25519
+signer by default until the phone-control sender has an explicit
+BiometricPrompt `CryptoObject` signing path for every control surface. So the
+primary validation is *"the default path works end to end,"* and the secondary
+is *"the operator kill switch disengages it."*
 
 **Cross-language wire parity — verified statically (2026-06-10).** The new wire
 types (`HermesRealtimeRelayControlSealKeyEnvelope`,
@@ -28,15 +32,16 @@ protocol.
 
 | Key | Finding | Default | Role |
 |---|---|---|---|
-| `computer_use_phone_control_secure_enclave_key` | F2 | ON | hardware (SE/StrongBox) signing key |
+| `computer_use_phone_control_secure_enclave_key` | F2 | iOS ON / Android OFF | hardware (SE/StrongBox) signing key |
 | `computer_use_control_seal_enabled` | F10 | ON | sealed control frames |
 | `computer_use_media_frame_aead_enabled` | F7 | ON | sealed screen-share frames |
 | `computer_use_phone_control_attestation_required` | F2 attest | OFF | *rejection* rule — leave OFF until §6 |
 
-> The flags default ON via a source-aware read: with no Remote Config value set,
-> the in-app default is ON; **any** value you set in the console wins. To test
-> the kill switch you set a key to `false`; to test the default you simply leave
-> it unset.
+> The seal flags default ON via a source-aware read: with no Remote Config value
+> set, the in-app default is ON; **any** value you set in the console wins. To
+> test the kill switch you set a key to `false`; to test the default you simply
+> leave it unset. Android F2 hardware signing is intentionally default-OFF and
+> should remain unset/false until prompt-bound hardware signing is fielded.
 
 ## Devices
 
@@ -45,8 +50,10 @@ protocol.
   the notarized direct build for control validation).
 - 1 iPhone **with Face ID / Touch ID enrolled** (the SE step-up needs a real
   biometric) signed into the same account.
-- 1 Android phone **API ≥ 30 with a biometric enrolled** (below API 30 the app
-  deliberately uses the legacy key — see §5).
+- 1 Android phone **with a biometric enrolled**. Android validates the default
+  legacy-key + explicit local-auth-proof path today; API ≥ 30 is only needed
+  when explicitly canarying Android hardware signing after prompt-bound signing
+  support is available.
 - Both phones paired to the Mac (Hermes Remote Relay enabled, an
   `iroh_pairing` record exists).
 
@@ -130,18 +137,24 @@ protocol.
      published and a fetch window has elapsed, `RemoteConfigBootstrap` is not
      landing the value — the kill switch is inert (the exact bug fixed in the
      audit pass; re-verify it shipped).
-4. Repeat for `computer_use_media_frame_aead_enabled` and
-   `computer_use_phone_control_secure_enclave_key`. **Re-set all three to unset
-   (or true) when done** so the secure default is restored.
+4. Repeat for `computer_use_media_frame_aead_enabled`. For
+   `computer_use_phone_control_secure_enclave_key`, validate iOS only unless an
+   Android prompt-bound signing canary is explicitly in progress. **Re-set the
+   seal flags to unset (or true) when done** so the secure default is restored;
+   keep Android hardware signing unset/false.
 
-## 5. Android API < 30 (legacy-key correctness)
+## 5. Android default signing path
 
-On an Android device with **API 26–29**:
+On Android with the default Remote Config state:
 - **PASS:** the controller record publishes `ed25519` / `android-phone-…`
-  (NOT `se-p256`) even with the SE flag ON, and a sensitive action requires the
-  explicit local-auth proof. This proves the API-30 guard
-  (`PhoneControlSecureEnclaveKeystore.mintIdentity` refuses below R) — an
-  API-29 SE key would be PIN-unlockable, so it must not advertise `se-p256`.
+  (NOT `se-p256`) and a sensitive action requires the explicit local-auth proof.
+  This proves the default Android path does not select a per-use biometric
+  hardware key before the sender can sign through a BiometricPrompt
+  `CryptoObject`.
+- **PASS on API 26–29:** the app still publishes `ed25519` / `android-phone-…`
+  if an Android hardware-signing canary is attempted. `se-p256` must never be
+  advertised below Android R because that generation path cannot enforce
+  `AUTH_BIOMETRIC_STRONG` without device-credential downgrade.
 
 ## 6. Attestation ramp (do LAST, post-launch)
 
@@ -162,7 +175,7 @@ iOS and Android attach a digest, but confirm via telemetry first).
 | §2 control seal established + works | iPhone/Android | ☐ |
 | §3 media seal established + clean mirror | iPhone/Android | ☐ |
 | §4 kill switch disengages (both platforms) | iPhone **and** Android | ☐ |
-| §5 API<30 uses legacy + forces proof | Android 26–29 | ☐ |
+| §5 Android default uses legacy + forces proof | Android | ☐ |
 | §6 attestation ramp | post-launch | ☐ (deferred) |
 
 When §1–§5 are checked, the protection layers are field-validated and the

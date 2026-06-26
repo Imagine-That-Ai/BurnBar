@@ -17,31 +17,45 @@ import java.security.spec.ECGenParameterSpec
  * phone-control signing keys. Android mirror of the Swift
  * `PhoneControlSecureEnclaveKeyPolicy` + `MobileComputerUseRemoteConfig`.
  *
- * Default-ON (pre-launch posture: the strong protocol is the launch
- * protocol) — a device with hardware key support mints `keyKind: "se-p256"`
- * from first run. A fetched Remote Config value is the operator's kill
- * switch and always wins in either direction; devices without usable
- * keystore hardware fall back to the legacy software key on their own.
+ * Android hardware signing is an explicit ramp, not the default controller
+ * identity. Per-use biometric AndroidKeyStore signing keys must sign through a
+ * BiometricPrompt `CryptoObject`; until every phone-control signing surface has
+ * that prompt-bound signer, the production policy resolves OFF and the legacy
+ * Ed25519 key remains the reachability-preserving default.
  */
 object PhoneControlSecureEnclaveKeyPolicy {
     /** Same key the iOS client reads (`PhoneControlSecureEnclaveKeyPolicy.remoteConfigKey`). */
     const val REMOTE_CONFIG_KEY = "computer_use_phone_control_secure_enclave_key"
 
-    fun secureEnclaveKeyEnabled(): Boolean = remoteConfigProtectionFlag(REMOTE_CONFIG_KEY)
+    fun secureEnclaveKeyEnabled(): Boolean = secureEnclaveKeyEnabled(promptBoundSigningAvailable = false)
+
+    internal fun secureEnclaveKeyEnabled(promptBoundSigningAvailable: Boolean): Boolean {
+        if (!promptBoundSigningAvailable) return false
+        return remoteConfigRampFlag(REMOTE_CONFIG_KEY, defaultValue = false)
+    }
 }
 
 /**
- * Default-ON protection-flag read shared by the F2/F7/F10 gates:
+ * Default-ON protection-flag read shared by the F7/F10 seal gates:
  * `VALUE_SOURCE_STATIC` means no remote value has ever been fetched and no
  * in-app default is registered ⇒ ON; a fetched remote value — the operator's
  * kill switch — always wins; a Firebase initialization failure also resolves
  * ON (each caller already falls back to the legacy lane on any establishment
  * or keystore failure, so this never breaks functionality).
  */
-internal fun remoteConfigProtectionFlag(key: String): Boolean = runCatching {
+internal fun remoteConfigProtectionFlag(key: String): Boolean = remoteConfigRampFlag(key, defaultValue = true)
+
+internal fun remoteConfigRampFlag(key: String, defaultValue: Boolean): Boolean = runCatching {
     val value = FirebaseRemoteConfig.getInstance().getValue(key)
-    if (value.source == FirebaseRemoteConfig.VALUE_SOURCE_STATIC) true else value.asBoolean()
-}.getOrDefault(true)
+    if (value.source == FirebaseRemoteConfig.VALUE_SOURCE_STATIC) defaultValue else value.asBoolean()
+}.getOrDefault(defaultValue)
+
+internal interface PhoneControlHardwareSigningIdentityStore {
+    fun loadIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256?
+    fun hasKey(): Boolean
+    fun mintIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256?
+    fun deleteKey()
+}
 
 /**
  * F2 — AndroidKeyStore custody for the non-exportable P-256 phone-control
@@ -56,7 +70,7 @@ internal fun remoteConfigProtectionFlag(key: String): Boolean = runCatching {
  * biometric step-up — the OS refuses to sign without a live biometric match,
  * mirroring the iOS `.biometryCurrentSet` access control.
  */
-internal object PhoneControlSecureEnclaveKeystore {
+internal object PhoneControlSecureEnclaveKeystore : PhoneControlHardwareSigningIdentityStore {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "ai.openburnbar.computer-use-phone-control.se-p256"
 
@@ -66,7 +80,7 @@ internal object PhoneControlSecureEnclaveKeystore {
      * back to the legacy key rather than silently re-minting a new identity —
      * the published peerNodeId pins this key).
      */
-    fun loadIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
+    override fun loadIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
         val store = keystore()
         val entry = store.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry ?: return@runCatching null
         val publicKey = entry.certificate.publicKey as? ECPublicKey ?: return@runCatching null
@@ -74,7 +88,7 @@ internal object PhoneControlSecureEnclaveKeystore {
     }.getOrNull()
 
     /** Whether a hardware key has already been minted under the alias. */
-    fun hasKey(): Boolean = runCatching { keystore().containsAlias(KEY_ALIAS) }.getOrDefault(false)
+    override fun hasKey(): Boolean = runCatching { keystore().containsAlias(KEY_ALIAS) }.getOrDefault(false)
 
     /**
      * Mint the biometry-gated hardware key. Returns `null` when the keystore
@@ -82,7 +96,7 @@ internal object PhoneControlSecureEnclaveKeystore {
      * Ed25519 identity, never a partially-minted one. Never overwrites an
      * existing alias.
      */
-    fun mintIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
+    override fun mintIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
         // F2 SECURITY INVARIANT: an `se-p256` signature is treated by the Mac
         // as a *biometric* step-up proof, so it must be biometric-only.
         // `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` — the API
@@ -101,7 +115,7 @@ internal object PhoneControlSecureEnclaveKeystore {
     }.getOrNull()
 
     /** Remove the hardware key (pairing reset). */
-    fun deleteKey() {
+    override fun deleteKey() {
         runCatching { keystore().deleteEntry(KEY_ALIAS) }
     }
 
