@@ -368,8 +368,8 @@ type Tier2CallableProofOptions = {
 
 /**
  * Tier-2 BOLA proof: seed victim tenant, invoke as attacker, assert victim isolation.
- * Throws endpoints also deny when handler enforces ownership; auth-scoped handlers may
- * succeed while victim paths remain unchanged.
+ * Throws endpoints must reject; auth-scoped endpoints that may succeed without touching
+ * victim rows must opt into `expectedOutcome: "no-side-effect"` explicitly.
  */
 export async function tier2CallableProof(
   store: Map<string, Record<string, unknown>>,
@@ -390,14 +390,7 @@ export async function tier2CallableProof(
   const request = callableRequest(ALICE_UID, payload ?? bolaCrossUserData());
 
   if (expectedOutcome === "throws") {
-    try {
-      await expectCallableDenial(run, request, expectedCode, { strictCode });
-    } catch (error) {
-      if (strictCode || !isHarnessAssertionFailure(error)) {
-        throw error;
-      }
-      // Auth-scoped handler succeeded — tier-2 isolation is proven via victim snapshot below.
-    }
+    await expectCallableDenial(run, request, expectedCode, { strictCode });
   } else {
     await run(request);
   }
