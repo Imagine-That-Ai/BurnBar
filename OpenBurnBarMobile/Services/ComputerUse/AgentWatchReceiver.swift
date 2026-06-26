@@ -59,12 +59,8 @@ public final class AgentWatchReceiver: ObservableObject {
                   let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }
             MobileAgentPermissionGrantController.shared.apply(receipt: receipt)
         case .controlSystemPermissionStatus:
-            guard let wireStatus = frame.control?.systemPermissionStatus else { return }
-            // Key the permission inbox by the thread the *bound* chat surface
-            // is showing. `.shared` carries no conversation state, so the old
-            // read was always nil and the entry landed under the raw control
-            // session id, where the chat pill lookup never found it.
-            let threadID = (HermesService.mainSurface ?? .shared).selectedSessionID ?? frame.control?.sessionId ?? "unknown"
+            guard let wireStatus = frame.control?.systemPermissionStatus,
+                  let threadID = Self.boundSystemPermissionThreadID(frame.control?.sessionId) else { return }
             SystemPermissionInboxStore.shared.ingest(wireStatus: wireStatus, threadID: threadID)
             if wireStatus.status == .granted,
                let item = SystemPermissionInboxStore.shared.latestItem(forThread: threadID),
@@ -81,6 +77,14 @@ public final class AgentWatchReceiver: ObservableObject {
         default:
             break
         }
+    }
+
+    private static func boundSystemPermissionThreadID(_ controlSessionID: String?) -> String? {
+        guard let threadID = controlSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !threadID.isEmpty else {
+            return nil
+        }
+        return threadID
     }
 
     public func ingestSurfaceFrame(_ frame: MediaFrame) {
