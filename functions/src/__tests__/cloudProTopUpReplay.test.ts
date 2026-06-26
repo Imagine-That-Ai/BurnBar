@@ -131,7 +131,11 @@ function callableRequest(data: Record<string, unknown>) {
 }
 
 function runCallable<T>(callable: unknown, data: Record<string, unknown>): Promise<T> {
-  return (callable as { run: (request: unknown) => Promise<T> }).run(callableRequest(data));
+  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  if (typeof run !== "function") {
+    throw new Error("callable test target is missing run()");
+  }
+  return run.call(callable, callableRequest(data));
 }
 
 describe("Cloud Pro top-up replay accounting", () => {

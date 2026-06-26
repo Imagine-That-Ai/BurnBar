@@ -228,7 +228,12 @@ describe("latestRouterRundown cost hardening", () => {
   });
 
   it("declares a required maxInstances cap on invocation spend", async () => {
-    const handler = (await loadEndpoint()) as { __endpoint?: { maxInstances?: number } };
-    expect(handler.__endpoint?.maxInstances).toBe(10);
+    const handler = await loadEndpoint();
+    const endpoint =
+      handler && (typeof handler === "object" || typeof handler === "function")
+        ? Reflect.get(handler, "__endpoint")
+        : undefined;
+    const maxInstances = endpoint && typeof endpoint === "object" ? Reflect.get(endpoint, "maxInstances") : undefined;
+    expect(maxInstances).toBe(10);
   });
 });

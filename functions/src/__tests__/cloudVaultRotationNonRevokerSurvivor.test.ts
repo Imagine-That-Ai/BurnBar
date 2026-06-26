@@ -14,6 +14,12 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { CallableRequest } from "firebase-functions/v2/https";
 
+function stringField(value: unknown, key: string): string {
+  const field = value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+  expect(typeof field).toBe("string");
+  return field;
+}
+
 const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
 
@@ -211,7 +217,7 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
 
     // SURVIVOR_B (NOT the revoker) drives the rotation, wrapping the next key to
     // both surviving devices and including its own wrapper.
-    const result = (await rotateCloudVaultKey.run(
+    const result = await rotateCloudVaultKey.run(
       callRequest(UID, {
         callerDeviceId: SURVIVOR_B,
         currentVaultKeyID: CURRENT_KEY,
@@ -223,7 +229,7 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
         actionProof: { signature: "proof-success" },
         survivorWrappers: [survivorWrapper(SURVIVOR_A, SURVIVOR_B), survivorWrapper(SURVIVOR_B, SURVIVOR_B)],
       }),
-    )) as { ok: boolean; status: string; vaultGeneration: number };
+    );
 
     expect(result).toMatchObject({ ok: true, status: "queued", vaultGeneration: 2 });
     // State advanced to the new key, rotated by the non-revoker survivor.
@@ -367,7 +373,7 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
       status: "active",
     });
 
-    const result = (await rotateCloudVaultKey.run(
+    const result = await rotateCloudVaultKey.run(
       callRequest(UID, {
         callerDeviceId: SURVIVOR_B,
         currentVaultKeyID: CURRENT_KEY,
@@ -378,10 +384,10 @@ describe("rotateCloudVaultKey — accepts a non-revoker survivor", () => {
         actionProof: { signature: "proof-manual-complete" },
         survivorWrappers: [survivorWrapper(SURVIVOR_A, SURVIVOR_B), survivorWrapper(SURVIVOR_B, SURVIVOR_B)],
       }),
-    )) as { ok: boolean; jobId: string; status: string; vaultGeneration: number };
+    );
 
     expect(result).toMatchObject({ ok: true, status: "queued", vaultGeneration: 2 });
-    const job = store.get(`users/${UID}/cloud_vault_rotation_jobs/${result.jobId}`);
+    const job = store.get(`users/${UID}/cloud_vault_rotation_jobs/${stringField(result, "jobId")}`);
     expect(job?.survivorDeviceIds).toEqual([SURVIVOR_A, SURVIVOR_B].sort());
     expect(requireTrustedDeviceActionProof).toHaveBeenCalledWith(
       expect.objectContaining({

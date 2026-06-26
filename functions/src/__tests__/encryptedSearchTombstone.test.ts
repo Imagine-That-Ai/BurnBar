@@ -155,6 +155,14 @@ function callableRequest(uid: string, data: Record<string, unknown>): unknown {
   };
 }
 
+function recordArrayField(value: unknown, key: string): Array<Record<string, unknown>> {
+  const field = value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+  expect(Array.isArray(field)).toBe(true);
+  return Array.isArray(field)
+    ? field.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+    : [];
+}
+
 describe("searchEncryptedConversationIndex tombstone filtering", () => {
   it("fills a conversation page after tombstones consume the first raw read", async () => {
     store.clear();
@@ -174,16 +182,17 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
 
     const mod = await import("../callables/encryptedSearch.js");
     const target = asRunnable(mod.queryConversations);
-    const result = (await target.run(
+    const result = await target.run(
       callableRequest("alice", {
         limit: 1,
         includeAggregates: true,
       }),
-    )) as { rows: Array<Record<string, unknown>>; aggregates: Record<string, unknown> | null };
+    );
 
-    expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]?.id).toBe("doc-live");
-    expect(result.aggregates).toEqual({ count: 1, totalCostUSD: 0.42, totalTokens: 123 });
+    const rows = recordArrayField(result, "rows");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe("doc-live");
+    expect(Reflect.get(Object(result), "aggregates")).toEqual({ count: 1, totalCostUSD: 0.42, totalTokens: 123 });
   });
 
   it("rejects encrypted blob downloads when the backing manifest is tombstoned", async () => {
@@ -261,17 +270,18 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
 
     const mod = await import("../callables/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
-    const result = (await target.run(
+    const result = await target.run(
       callableRequest("alice", {
         tokenHashes: [tokenHash],
         semanticHashes: [],
         provider: "codex",
         limit: 1,
       }),
-    )) as { hits: Array<Record<string, unknown>> };
+    );
 
-    expect(result.hits).toHaveLength(1);
-    expect(result.hits[0]?.documentID).toBe("doc-live");
+    const hits = recordArrayField(result, "hits");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.documentID).toBe("doc-live");
   });
 
   it("skips scored index rows whose backing session manifest is tombstoned", async () => {
@@ -325,16 +335,17 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
 
     const mod = await import("../callables/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
-    const result = (await target.run(
+    const result = await target.run(
       callableRequest("alice", {
         tokenHashes: [tokenHash],
         semanticHashes: [],
         provider: "codex",
         limit: 1,
       }),
-    )) as { hits: Array<Record<string, unknown>> };
+    );
 
-    expect(result.hits).toHaveLength(1);
-    expect(result.hits[0]?.documentID).toBe("doc-live");
+    const hits = recordArrayField(result, "hits");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.documentID).toBe("doc-live");
   });
 });

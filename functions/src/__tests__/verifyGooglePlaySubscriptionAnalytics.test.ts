@@ -289,10 +289,13 @@ describe("verifyGooglePlayBurnBarProSubscription — consent-gated analytics", (
 
   it("never lets an analytics failure break the verified-purchase response", async () => {
     // A transport that throws must not surface from the callable.
+    let throwingStarted = false;
     const throwing: ServerAnalyticsTransport = {
-      isStarted: false,
+      get isStarted() {
+        return throwingStarted;
+      },
       start() {
-        (this as { isStarted: boolean }).isStarted = true;
+        throwingStarted = true;
       },
       async track() {
         throw new Error("amplitude exploded");

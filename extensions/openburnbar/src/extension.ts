@@ -65,9 +65,12 @@ export interface OpenBurnBarActivationHostContext {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const pkg = context.extension.packageJSON as { version?: string };
+  const packageVersion =
+    context.extension.packageJSON && typeof context.extension.packageJSON === 'object'
+      ? Reflect.get(context.extension.packageJSON, 'version')
+      : undefined;
   const isDev = context.extensionMode === vscode.ExtensionMode.Development;
-  await initSentry(pkg.version ?? '0.0.0', isDev ? 'development' : 'production');
+  await initSentry(typeof packageVersion === 'string' ? packageVersion : '0.0.0', isDev ? 'development' : 'production');
 
   // Opt-in, consent-gated analytics (fans out ALONGSIDE Sentry; reuses VS Code's
   // telemetry switch). Initialize fires the lifecycle spine ONLY if already

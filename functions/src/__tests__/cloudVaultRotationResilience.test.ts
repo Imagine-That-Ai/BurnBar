@@ -288,12 +288,14 @@ describe("listPendingCloudVaultRotationRequirements — survivor eligibility", (
     // Already queued — not pending, must be excluded.
     seedRequirement("req-queued", { status: "queued", survivorDeviceIds: ["mac-survivor"] });
 
-    const result = (await listPendingCloudVaultRotationRequirements.run(
+    const result = await listPendingCloudVaultRotationRequirements.run(
       callRequest(UID, { callerDeviceId: "mac-survivor" }),
-    )) as { ok: boolean; requirements: Array<{ requirementId: string }> };
+    );
 
-    expect(result.ok).toBe(true);
-    expect(result.requirements.map((r) => r.requirementId)).toEqual(["req-eligible"]);
+    expect(result).toMatchObject({
+      ok: true,
+      requirements: [{ requirementId: "req-eligible" }],
+    });
   });
 
   it("rejects a caller whose device is not trusted", async () => {

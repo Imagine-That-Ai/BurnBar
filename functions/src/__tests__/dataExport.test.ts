@@ -13,9 +13,7 @@ import {
 import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
-const registry = JSON.parse(
-  readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
-) as {
+const registry: {
   domains: Array<{
     id: string;
     encryptionTier: string;
@@ -23,7 +21,7 @@ const registry = JSON.parse(
     storagePaths: string[];
     actions: string[];
   }>;
-};
+} = JSON.parse(readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"));
 const registryIds = registry.domains.map((d) => d.id).sort();
 
 describe("DATA_DOMAIN_PATHS ⇄ data-domain registry (no drift)", () => {

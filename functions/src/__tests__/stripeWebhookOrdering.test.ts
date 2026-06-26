@@ -277,8 +277,9 @@ describe("stripe_webhook_events ledger TTL", () => {
 
   function ledgerExpireAtMillis(eventID: string): number | undefined {
     const doc = firestoreState.docs.get(`stripe_webhook_events/${eventID}`);
-    const expireAt = doc?.expireAt as { toMillis?: () => number } | undefined;
-    return typeof expireAt?.toMillis === "function" ? expireAt.toMillis() : undefined;
+    const expireAt = doc?.expireAt;
+    const toMillis = expireAt && typeof expireAt === "object" ? Reflect.get(expireAt, "toMillis") : undefined;
+    return typeof toMillis === "function" ? toMillis.call(expireAt) : undefined;
   }
 
   it("writes expireAt = event time + 90 days on reserve, processed, and failed ledger writes", async () => {

@@ -428,7 +428,9 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
     expect(nonceDoc).toBeDefined();
     const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
-    expect((nonceDoc?.expireAt as { toMillis(): number })?.toMillis()).toBe(expectedExpire);
+    const toMillis = nonceDoc?.expireAt && typeof nonceDoc.expireAt === "object" ? Reflect.get(nonceDoc.expireAt, "toMillis") : undefined;
+    expect(typeof toMillis).toBe("function");
+    expect(toMillis.call(nonceDoc?.expireAt)).toBe(expectedExpire);
 
     dateNowSpy.mockRestore();
   });

@@ -54,13 +54,13 @@ describe("check-collection-group-coverage.mjs", () => {
     // Regression pins for the 2026-06 prod outage: reapHermesGatewayApprovals
     // and rebuildRollups threw FAILED_PRECONDITION on every cadence tick
     // because these single-field collection-group indexes were never declared.
-    const declared = JSON.parse(readFileSync(resolve(REPO_ROOT, "firestore.indexes.json"), "utf8")) as {
+    const declared: {
       fieldOverrides?: Array<{
         collectionGroup: string;
         fieldPath: string;
         indexes?: Array<{ queryScope: string; order?: string }>;
       }>;
-    };
+    } = JSON.parse(readFileSync(resolve(REPO_ROOT, "firestore.indexes.json"), "utf8"));
     const required: Array<[string, string]> = [
       ["rollup_jobs", "dirty"],
       ["computer_use_sessions", "startedAt"],

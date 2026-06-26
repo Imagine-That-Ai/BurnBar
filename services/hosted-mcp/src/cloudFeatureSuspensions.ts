@@ -92,13 +92,10 @@ function timestampMillis(raw: unknown): number | undefined {
   if (!raw) {return undefined;}
   if (raw instanceof Date) {return raw.getTime();}
   if (typeof raw === "number") {return raw;}
-  if (
-    typeof raw === "object" &&
-    raw !== null &&
-    "toMillis" in raw &&
-    typeof (raw as { toMillis: unknown }).toMillis === "function"
-  ) {
-    return (raw as { toMillis(): number }).toMillis();
+  const toMillis = typeof raw === "object" && raw !== null ? Reflect.get(raw, "toMillis") : undefined;
+  if (typeof toMillis === "function") {
+    const millis = toMillis.call(raw);
+    return typeof millis === "number" ? millis : undefined;
   }
   const parsed = Date.parse(String(raw));
   return Number.isFinite(parsed) ? parsed : undefined;

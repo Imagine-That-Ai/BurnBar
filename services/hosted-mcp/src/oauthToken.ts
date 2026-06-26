@@ -79,8 +79,10 @@ function safeEqualHash(raw: string, expectedHash: unknown): boolean {
 }
 
 function toMillis(raw: unknown): number | undefined {
-  if (raw && typeof raw === "object" && "toMillis" in raw && typeof (raw as { toMillis: unknown }).toMillis === "function") {
-    return (raw as { toMillis(): number }).toMillis();
+  const toMillis = raw && typeof raw === "object" ? Reflect.get(raw, "toMillis") : undefined;
+  if (typeof toMillis === "function") {
+    const millis = toMillis.call(raw);
+    return typeof millis === "number" ? millis : undefined;
   }
   if (raw instanceof Date) {return raw.getTime();}
   if (typeof raw === "string") {

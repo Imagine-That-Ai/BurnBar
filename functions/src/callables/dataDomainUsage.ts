@@ -127,13 +127,9 @@ function optionalString(value: unknown): string | undefined {
 function timestampString(value: unknown): string | undefined {
   if (value instanceof Timestamp) return value.toDate().toISOString();
   if (value instanceof Date) return value.toISOString();
-  if (
-    value &&
-    typeof value === "object" &&
-    "toDate" in value &&
-    typeof (value as { toDate?: unknown }).toDate === "function"
-  ) {
-    const date = (value as { toDate: () => Date }).toDate();
+  const toDate = value && typeof value === "object" ? Reflect.get(value, "toDate") : undefined;
+  if (typeof toDate === "function") {
+    const date = toDate.call(value);
     return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined;
   }
   return optionalString(value);

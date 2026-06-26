@@ -11,7 +11,8 @@ import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 function decodeHmacAccessToken(token: string): { scopes?: unknown } {
   const [body] = token.split(".");
   if (!body) throw new Error("missing token body");
-  return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { scopes?: unknown };
+  const decoded: { scopes?: unknown } = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  return decoded;
 }
 
 describe("Remote MCP Functions issuer token posture", () => {

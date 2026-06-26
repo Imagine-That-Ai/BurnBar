@@ -19,7 +19,7 @@ interface FirestoreIndex {
 }
 
 function declaredIndexes(): FirestoreIndex[] {
-  const parsed = JSON.parse(readFileSync(INDEXES_PATH, "utf8")) as { indexes?: FirestoreIndex[] };
+  const parsed: { indexes?: FirestoreIndex[] } = JSON.parse(readFileSync(INDEXES_PATH, "utf8"));
   return parsed.indexes ?? [];
 }
 
