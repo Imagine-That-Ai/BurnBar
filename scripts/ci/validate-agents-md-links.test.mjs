@@ -16,11 +16,11 @@ test("extracts only internal non-empty links", () => {
 });
 
 test("reports broken links without executing workflow-command text", () => {
-  const markdown = "[bad](missing.md\\n::error::owned)";
+  const markdown = "[bad](missing.md\n::error::owned\r)";
   const result = validateAgentsLinks(markdown, () => false);
 
   assert.equal(result.broken.length, 1);
-  assert.equal(sanitizeForLog(result.broken[0].path), "missing.md\\n:\\:error:\\:owned");
+  assert.equal(sanitizeForLog(result.broken[0].path), "missing.md\\n:\\:error:\\:owned\\r");
 });
 
 test("keeps valid links separate from broken links", () => {
@@ -36,4 +36,3 @@ test("keeps valid links separate from broken links", () => {
     ["docs/MISSING.md"],
   );
 });
-

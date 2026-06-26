@@ -203,7 +203,7 @@ function isFirestoreDeleteSentinel(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const constructorValue = Reflect.get(value, "constructor");
   const constructorName =
-    constructorValue && typeof constructorValue === "object" ? Reflect.get(constructorValue, "name") : undefined;
+    constructorValue && typeof constructorValue === "function" ? Reflect.get(constructorValue, "name") : undefined;
   return (
     Reflect.get(value, "_methodName") === "FieldValue.delete" ||
     Reflect.get(value, "methodName") === "FieldValue.delete" ||

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { expectCallableDenial, callableRequest, callableRunner, tier2CallableProof } from "./callableBolaHarness.js";
+import {
+  expectCallableDenial,
+  callableRequest,
+  callableRunner,
+  pathKeyedFirestore,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 describe("callableBolaHarness sanity", () => {
   it("expectCallableDenial fails when handler succeeds", async () => {
@@ -25,5 +31,18 @@ describe("callableBolaHarness sanity", () => {
         expectedCode: "not-found",
       }),
     ).rejects.toThrow(/expected callable to reject/);
+  });
+
+  it("treats Firestore delete sentinels identifiable by constructor name as deletes", async () => {
+    class DeleteTransform {}
+
+    const store = new Map<string, Record<string, unknown>>([
+      ["users/alice/documents/doc-1", { keep: true, remove: "legacy" }],
+    ]);
+    const db = pathKeyedFirestore(store);
+
+    await db.doc("users/alice/documents/doc-1").update({ remove: new DeleteTransform() });
+
+    expect(store.get("users/alice/documents/doc-1")).toEqual({ keep: true });
   });
 });
