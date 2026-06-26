@@ -225,15 +225,24 @@ final class InlineAgentMirrorController: ObservableObject {
         phase = .askingMirror
 
         // F7: wrap a per-mirror frame key when the flag is on and the Mac
-        // advertised media_frame_aead_v1 (the coordinator's read loop drops
-        // sealed frames that fail to open under it).
-        let mediaSealSession = await MediaSealSessionEstablisher.establishIfNegotiated(
-            uid: uid,
-            connectionID: connectionID,
-            viewerId: viewerID,
-            macCapabilities: coordinator.latestMacPresenceCapabilities,
-            macRelayPublicKeyBase64: hermesService?.selectedConnection.relayPublicKey
-        )
+        // advertised media_frame_aead_v1. If that negotiated setup fails,
+        // stop before sending instead of downgrading to an unsealed request.
+        let mediaSealSession: MediaSealSessionEstablisher.Session?
+        do {
+            mediaSealSession = try await MediaSealSessionEstablisher.establishIfNegotiated(
+                uid: uid,
+                connectionID: connectionID,
+                viewerId: viewerID,
+                macCapabilities: coordinator.latestMacPresenceCapabilities,
+                macRelayPublicKeyBase64: hermesService?.selectedConnection.relayPublicKey
+            )
+        } catch {
+            coordinator.mediaFrameSealKey = nil
+            awaitingRequestID = nil
+            activeMirrorViewerId = nil
+            phase = .error(error.localizedDescription)
+            return
+        }
         coordinator.mediaFrameSealKey = mediaSealSession?.key
         let request = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,

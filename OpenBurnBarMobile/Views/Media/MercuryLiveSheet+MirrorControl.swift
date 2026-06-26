@@ -395,15 +395,24 @@ extension MercuryLiveSheet {
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
         // F7: wrap a per-mirror frame key when the flag is on and the Mac
-        // advertised media_frame_aead_v1; the coordinator drops sealed frames
-        // that fail to open under this key.
-        let mediaSealSession = await MediaSealSessionEstablisher.establishIfNegotiated(
-            uid: uid,
-            connectionID: connectionID,
-            viewerId: viewerID,
-            macCapabilities: controlStreamCoordinator.latestMacPresenceCapabilities,
-            macRelayPublicKeyBase64: HermesService.shared.selectedConnection.relayPublicKey
-        )
+        // advertised media_frame_aead_v1. If that negotiated setup fails,
+        // stop before sending instead of downgrading to an unsealed request.
+        let mediaSealSession: MediaSealSessionEstablisher.Session?
+        do {
+            mediaSealSession = try await MediaSealSessionEstablisher.establishIfNegotiated(
+                uid: uid,
+                connectionID: connectionID,
+                viewerId: viewerID,
+                macCapabilities: controlStreamCoordinator.latestMacPresenceCapabilities,
+                macRelayPublicKeyBase64: HermesService.shared.selectedConnection.relayPublicKey
+            )
+        } catch {
+            controlStreamCoordinator.mediaFrameSealKey = nil
+            awaitingRequestID = nil
+            activeMirrorViewerId = nil
+            lastError = error.localizedDescription
+            return
+        }
         controlStreamCoordinator.mediaFrameSealKey = mediaSealSession?.key
         let request = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,

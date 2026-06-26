@@ -705,10 +705,12 @@ final class OpenBurnBarRuntimeContext {
             hudState: hud
         )
         router.setMirrorSinkFactory { request, frame, replySender in
-            // F7: when the phone wrapped a media-seal key into its mirror
-            // request, open it (pinned-sender trust path) and seal every
-            // frame; nil keeps the legacy plaintext-at-app-layer lane.
-            let frameSealKey = await MacMediaSealKeyOpener.frameSealKey(for: request, frame: frame)
+            // F7: no-wrap requests keep the legacy app-layer lane; offered
+            // media-seal wraps must open or the sink fails closed.
+            let frameSealKey = try await MacMediaSealKeyOpener.requireFrameSealKeyIfOffered(
+                for: request,
+                frame: frame
+            )
             return MercuryControlStreamMediaSink(
                 sender: replySender,
                 uid: frame.uid,

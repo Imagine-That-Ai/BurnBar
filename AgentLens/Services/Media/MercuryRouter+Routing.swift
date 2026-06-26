@@ -660,17 +660,9 @@ extension MercuryRouter {
               let factory = mirrorSinkFactory else {
             throw MediaSessionError.captureFailed
         }
-        // F7 — refuse the lane (fail CLOSED) when sealing is expected for this
-        // stream class but cannot be established. Screen-video / agent-watch
-        // keep `sealingExpected == false`, so they still degrade to
-        // unsealed-over-QUIC for pre-F7 viewers and are never refused here; only
-        // audio, camera/call video, and file lanes refuse a de-negotiated peer
-        // rather than leak that lane's bytes in cleartext on a transport
-        // fallback.
-        try await refuseLaneIfSealingNotEstablished(
-            mirrorRequest: mirrorRequest,
-            frame: viewer.frame
-        )
+        if mirrorRequest.mediaSealKey != nil && !viewer.mediaFrameSealEstablished {
+            throw MercuryLaneSealingError.refused(reason: .sessionKeyUnavailable)
+        }
         let sink = try await factory(mirrorRequest, viewer.frame, viewer.replySender)
         let capabilities = streamingCapabilities(
             for: mirrorRequest,
@@ -689,19 +681,19 @@ extension MercuryRouter {
         )
     }
 
-    /// F7 — consult `MediaFrameAeadNegotiation` for the requested lane and throw
-    /// when it decides `.refuseLane`. The Mac always advertises
+    /// F7 — consult `MediaFrameAeadNegotiation` for the requested lane and
+    /// return whether this viewer has an established media-frame seal. The Mac
+    /// always advertises
     /// `MediaFrameAeadNegotiation.capability` (see `macPresenceCapabilities`),
     /// so `localSupports` is true; the phone only wraps a `mediaSealKey` into
     /// its mirror request once both peers advertise F7, so its presence is the
-    /// remote-support signal; and `sessionKeyAvailable` reflects whether the
-    /// Mac can actually open that wrap into a usable session key. For lanes
-    /// whose `sealingExpected` is false (screen-video / agent-watch) the
-    /// negotiation never refuses, so this is a no-op for them.
-    func refuseLaneIfSealingNotEstablished(
+    /// remote-support signal. Once a remote peer offers a seal, missing key
+    /// material is a hard refusal even for screen-video; pre-F7 peers still
+    /// omit the wrap and keep legacy screen-share compatibility.
+    func resolvedMediaFrameSealEstablished(
         mirrorRequest: HermesRealtimeRelayMirrorRequest,
         frame: HermesRealtimeRelayFrame
-    ) async throws {
+    ) async throws -> Bool {
         let streamClass = MediaStreamClass(rawValue: mirrorRequest.streamClass)
         let remoteSupports = mirrorRequest.mediaSealKey != nil
         let sessionKeyAvailable = await mediaFrameSealEstablished(
@@ -714,10 +706,16 @@ extension MercuryRouter {
             remoteSupports: remoteSupports,
             sessionKeyAvailable: sessionKeyAvailable
         )
-        guard case .refuseLane(let reason) = decision else { return }
-        Self.log.error("router_lane_refused_sealing streamClass=\(streamClass.rawValue, privacy: .public) reason=\(reason.rawValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
-        Self.debugTrace("router_lane_refused_sealing streamClass=\(streamClass.rawValue) reason=\(reason.rawValue)")
-        throw MercuryLaneSealingError.refused(reason: reason)
+        switch decision {
+        case .seal:
+            return true
+        case .allowUnsealed:
+            return false
+        case .refuseLane(let reason):
+            Self.log.error("router_lane_refused_sealing streamClass=\(streamClass.rawValue, privacy: .public) reason=\(reason.rawValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+            Self.debugTrace("router_lane_refused_sealing streamClass=\(streamClass.rawValue) reason=\(reason.rawValue)")
+            throw MercuryLaneSealingError.refused(reason: reason)
+        }
     }
 
     func mediaFrameSealEstablished(
@@ -1437,8 +1435,8 @@ extension MercuryRouter {
                 for: mirrorRequest,
                 requestedMode: requestedFocusMode
             )
-            let mediaFrameSealEstablished = await mediaFrameSealEstablished(
-                for: mirrorRequest,
+            let mediaFrameSealEstablished = try await resolvedMediaFrameSealEstablished(
+                mirrorRequest: mirrorRequest,
                 frame: request.frame
             )
             let viewer = ActiveMirrorViewer(

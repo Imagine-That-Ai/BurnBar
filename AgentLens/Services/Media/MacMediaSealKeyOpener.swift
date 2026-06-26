@@ -6,10 +6,10 @@ import OSLog
 
 /// F7 — opens the phone-wrapped media-seal key carried on a mirror request,
 /// using the Mac relay private key and the SAME pinned relay-sender-key trust
-/// path the chat opener applies. Returns nil — the legacy plaintext-at-app-
-/// layer lane — when the request carries no wrap or when establishment fails:
-/// per-frame sealing is defense-in-depth on top of the iroh transport seal,
-/// and a mirror must not fail because the seal could not be established.
+/// path the chat opener applies. `frameSealKey(for:frame:)` returns nil for the
+/// legacy no-wrap lane; callers that are constructing a negotiated sealed sink
+/// must use `requireFrameSealKeyIfOffered(for:frame:)` so an offered-but-
+/// unopenable wrap fails closed instead of downgrading to plaintext frames.
 enum MacMediaSealKeyOpener {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
 
@@ -67,5 +67,16 @@ enum MacMediaSealKeyOpener {
             Self.log.error("media_seal_establish_failed connectionID=\(frame.connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    static func requireFrameSealKeyIfOffered(
+        for request: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> SymmetricKey? {
+        guard request.mediaSealKey != nil else { return nil }
+        guard let key = await frameSealKey(for: request, frame: frame) else {
+            throw MercuryLaneSealingError.refused(reason: .sessionKeyUnavailable)
+        }
+        return key
     }
 }

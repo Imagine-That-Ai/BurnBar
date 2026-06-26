@@ -203,7 +203,8 @@ final class MercuryRouterTests: XCTestCase {
         viewerDeviceID: String? = "iphone-1",
         controlAuthorityPeerNodeID: String? = "ios-peer",
         remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
-        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil,
+        mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil
     ) -> HermesRealtimeRelayFrame {
         let req = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
@@ -216,7 +217,8 @@ final class MercuryRouterTests: XCTestCase {
             viewerDeviceId: viewerDeviceID,
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeID,
             remoteUnlockSession: remoteUnlockSession,
-            agentTerminal: agentTerminal
+            agentTerminal: agentTerminal,
+            mediaSealKey: mediaSealKey
         )
         return HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -224,6 +226,18 @@ final class MercuryRouterTests: XCTestCase {
             connectionId: connectionID,
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(mirrorRequest: req)
+        )
+    }
+
+    private func invalidMediaSealKeyEnvelope() -> HermesRealtimeRelayControlSealKeyEnvelope {
+        HermesRealtimeRelayControlSealKeyEnvelope(
+            encBase64: Data("invalid-enc".utf8).base64EncodedString(),
+            wrappedKeyBase64: Data("invalid-wrap".utf8).base64EncodedString(),
+            senderDeviceId: "iphone-f7",
+            senderPeerNodeId: "iphone-f7",
+            senderKeyId: "media-key-1",
+            senderCounter: 1,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3
         )
     }
 
@@ -464,6 +478,50 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertNil(capturedRemote)
         let frames = await sink.frames
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testScreenVideoRequestWithOfferedMediaSealFailsClosedWhenKeyUnavailable() async throws {
+        let previousPrivateKeyProvider = MacMediaSealKeyOpener.recipientPrivateKeyProvider
+        let previousPinnedKeyProvider = MacMediaSealKeyOpener.pinnedSenderKeyProvider
+        MacMediaSealKeyOpener.recipientPrivateKeyProvider = {
+            HermesRelayCrypto.generatePrivateKey()
+        }
+        MacMediaSealKeyOpener.pinnedSenderKeyProvider = { _, _, _ in
+            HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        }
+        defer {
+            MacMediaSealKeyOpener.recipientPrivateKeyProvider = previousPrivateKeyProvider
+            MacMediaSealKeyOpener.pinnedSenderKeyProvider = previousPinnedKeyProvider
+        }
+
+        var startCount = 0
+        let (router, sink) = makeRouter(
+            consent: true,
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "seal-stripped-screen",
+                mediaSealKey: invalidMediaSealKeyEnvelope()
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let frames = await sink.frames
+        let ack = try XCTUnwrap(frames.first?.media?.mirrorAck)
+        XCTAssertEqual(ack.decision, .unsupported)
+        XCTAssertEqual(
+            ack.detail,
+            MercuryLaneSealingError.refused(reason: .sessionKeyUnavailable).localizedDescription
+        )
+        XCTAssertEqual(startCount, 0)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertTrue(router.activeMirrorViewers.isEmpty)
+        XCTAssertEqual(router.phase, .idle)
     }
 
     func testMediaSessionBuildsV2FrameWithCodecAndLTRMetadata() throws {
