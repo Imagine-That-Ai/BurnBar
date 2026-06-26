@@ -41,13 +41,27 @@ final class InsightsMacEnvironment {
     let digestBuilder: InsightDigestBuilder
     let aggregator: InsightAggregator
     let analysisEngine: MacInsightAnalysisEngine
+    private let hermesBearerTokenProvider: @MainActor () -> String?
 
-    init(dataStore: DataStore) throws {
+    convenience init(dataStore: DataStore) throws {
+        try self.init(
+            dataStore: dataStore,
+            hermesBearerTokenProvider: {
+                SettingsManager.shared.hermesBearerToken
+            }
+        )
+    }
+
+    init(
+        dataStore: DataStore,
+        hermesBearerTokenProvider: @escaping @MainActor () -> String?
+    ) throws {
         let supportDir = try Self.applicationSupportDirectory()
         let insightsDir = supportDir.appendingPathComponent("Insights", isDirectory: true)
         let cacheDir = insightsDir.appendingPathComponent("cache", isDirectory: true)
 
         self.dataStore = dataStore
+        self.hermesBearerTokenProvider = hermesBearerTokenProvider
         let source = MacInsightDataSource(dataStore: dataStore)
         self.dataSource = source
 
@@ -308,6 +322,7 @@ final class InsightsMacEnvironment {
         }
         let environment = ProcessInfo.processInfo.environment
         let resolvedProviderKeys = providerKeys
+        let hermesBearerToken = hermesBearerTokenProvider()
 
         await InsightProviderGatewayRegistry.registerDefaultSwiftGateways(
             in: catalog,
@@ -334,22 +349,13 @@ final class InsightsMacEnvironment {
                 return URL(string: raw)
             },
             hermesProvider: {
-                // macOS owns its Hermes runtime via the daemon — always
-                // register the local relay as an Insights gateway so the
-                // user's follow-up taps stream through Hermes by default,
-                // no API keys required. `HERMES_BASE_URL` lets advanced
-                // users redirect to a different relay (e.g. a remote
-                // session shared from another machine).
-                let envURL = environment["HERMES_BASE_URL"]
-                    .flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                let baseURL = envURL ?? URL(string: "http://127.0.0.1:8642")!
-                let transport = HermesInsightHTTPTransport(
-                    baseURL: baseURL,
-                    advertisedModels: HermesInsightAdapter.defaultModels
-                )
-                return HermesInsightAdapter(
-                    transport: transport,
-                    availableModels: HermesInsightAdapter.defaultModels
+                // macOS owns its Hermes runtime via the daemon. Insights uses
+                // the same bearer-protected local relay as chat so follow-up
+                // taps cannot silently post prompts to an unauthenticated
+                // localhost or operator-supplied relay.
+                Self.makeHermesInsightAdapter(
+                    environment: environment,
+                    bearerToken: hermesBearerToken
                 )
             },
             hostedFallbackProvider: {
@@ -369,6 +375,38 @@ final class InsightsMacEnvironment {
                     appCheckTokenProvider: { await MacFirebaseTokenProvider.shared?.appCheckToken() }
                 )
             }
+        )
+    }
+
+    nonisolated static func hermesInsightAuthorizationHeader(bearerToken: String?) -> String? {
+        guard let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else {
+            return nil
+        }
+        return "Bearer \(token)"
+    }
+
+    nonisolated static func hermesInsightBaseURL(environment: [String: String]) -> URL {
+        environment["HERMES_BASE_URL"]
+            .flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    nonisolated static func makeHermesInsightAdapter(
+        environment: [String: String],
+        bearerToken: String?
+    ) -> HermesInsightAdapter? {
+        guard let authorizationHeader = hermesInsightAuthorizationHeader(bearerToken: bearerToken) else {
+            return nil
+        }
+        let transport = HermesInsightHTTPTransport(
+            baseURL: hermesInsightBaseURL(environment: environment),
+            authorizationHeader: authorizationHeader,
+            advertisedModels: HermesInsightAdapter.defaultModels
+        )
+        return HermesInsightAdapter(
+            transport: transport,
+            availableModels: HermesInsightAdapter.defaultModels
         )
     }
 
