@@ -658,7 +658,7 @@ extension ComputerUseSessionCoordinator {
             "sessionId": sessionId.rawValue,
             "counter": String(counter)
         ])
-        let response = await invoke(invocation)
+        let response = await invokeTrustedPhoneControlAction(invocation)
         var fields: [String: String] = [
             "event": "mac_phone_action_dispatched",
             "tool": invocation.tool.rawValue,

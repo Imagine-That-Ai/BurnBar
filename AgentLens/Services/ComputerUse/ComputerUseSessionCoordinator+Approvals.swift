@@ -212,6 +212,17 @@ extension ComputerUseSessionCoordinator {
     }
 
     public func invoke(_ invocation: BurnBarToolInvocation) async -> ComputerUseInvokeResponse {
+        await invoke(invocation, trustedPhoneOrigin: false)
+    }
+
+    func invokeTrustedPhoneControlAction(_ invocation: BurnBarToolInvocation) async -> ComputerUseInvokeResponse {
+        await invoke(invocation, trustedPhoneOrigin: true)
+    }
+
+    private func invoke(
+        _ invocation: BurnBarToolInvocation,
+        trustedPhoneOrigin: Bool
+    ) async -> ComputerUseInvokeResponse {
         guard let sessionId = activeSessionId, var currentState = state, let logger = auditLogger else {
             return ComputerUseInvokeResponse(
                 sessionId: activeSessionId?.rawValue ?? "",
@@ -223,7 +234,7 @@ extension ComputerUseSessionCoordinator {
 
         let action: ComputerUseAction
         do {
-            action = try decodeAction(invocation: invocation)
+            action = try decodeAction(invocation: invocation, trustedPhoneOrigin: trustedPhoneOrigin)
         } catch {
             return ComputerUseInvokeResponse(
                 sessionId: sessionId.rawValue,
@@ -244,7 +255,9 @@ extension ComputerUseSessionCoordinator {
             context: scopeContext
         )
         let accessibilityDeny = accessibilityDeny(for: action)
-        let originatedFromPhone = invocation.requestedBy.rawValue == "phone-control"
+        let originatedFromPhone = trustedPhoneOrigin
+            && invocation.requestedBy.rawValue == "phone-control"
+            && activeSessionIsDirectPhoneControl
         let phoneSessionFirstActionConfirmed = !originatedFromPhone || isPhoneFirstActionConfirmed()
         let capability = ComputerUseCapabilityContext(
             entitlement: configuration.entitlement,

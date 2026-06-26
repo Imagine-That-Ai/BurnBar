@@ -109,7 +109,10 @@ extension ComputerUseSessionCoordinator {
         )
     }
 
-    func decodeAction(invocation: BurnBarToolInvocation) throws -> ComputerUseAction {
+    func decodeAction(
+        invocation: BurnBarToolInvocation,
+        trustedPhoneOrigin: Bool = false
+    ) throws -> ComputerUseAction {
         switch invocation.tool {
         case .browserClick:
             let args = try invocation.arguments.decode(BurnBarBrowserActionArguments.self)
@@ -143,7 +146,11 @@ extension ComputerUseSessionCoordinator {
             let args = try invocation.arguments.decode(BurnBarBrowserActionArguments.self)
             return .browser(BrowserAction(kind: .extract, selector: args.selector))
         case .macInputClick:
-            return .macInput(try decodeMacInput(invocation: invocation, kind: .click))
+            return .macInput(try decodeMacInput(
+                invocation: invocation,
+                kind: .click,
+                trustedPhoneOrigin: trustedPhoneOrigin
+            ))
         case .macInputType:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .type))
         case .macInputKey:
@@ -172,13 +179,15 @@ extension ComputerUseSessionCoordinator {
 
     func decodeMacInput(
         invocation: BurnBarToolInvocation,
-        kind: MacInputAction.Kind
+        kind: MacInputAction.Kind,
+        trustedPhoneOrigin: Bool = false
     ) throws -> MacInputAction {
         guard case let .object(arguments) = invocation.arguments else {
             return MacInputAction(kind: kind)
         }
         let decodedKind: MacInputAction.Kind
         if kind == .click,
+           trustedPhoneOrigin,
            invocation.requestedBy.rawValue == "phone-control",
            case let .object(arguments) = invocation.arguments,
            arguments.stringValue(forKey: "kind") == MacInputAction.Kind.pointerClick.rawValue {
