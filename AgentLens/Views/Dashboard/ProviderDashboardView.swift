@@ -1105,14 +1105,14 @@ struct DailyTrendChart: View {
         if displayMode == .currency {
             return v.formatAsCost()
         }
-        return Int(v).formatAsTokenVolume()
+        return v.formatAsTokenVolume()
     }
 
     private func formatSummary(_ v: Double) -> String {
         if displayMode == .currency {
             return v.formatAsCost()
         }
-        return Int(v).formatAsTokenVolume()
+        return v.formatAsTokenVolume()
     }
 
 }

@@ -40,6 +40,12 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual((-5.0).formatAsCost(), "-$5.00")
     }
 
+    func test_formatAsCost_nonFinite() {
+        XCTAssertEqual(Double.infinity.formatAsCost(), "—")
+        XCTAssertEqual(Double.nan.formatAsCost(), "—")
+        XCTAssertEqual((-Double.infinity).formatAsCost(), "—")
+    }
+
     // MARK: - Double.formatAsPercent()
 
     func test_formatAsPercent_zero() {
@@ -117,6 +123,12 @@ final class FormattingTests: XCTestCase {
     func test_formatAsTokenVolume_kilo() {
         XCTAssertEqual(1_000.formatAsTokenVolume(), "1.0K")
         XCTAssertEqual(10_500.formatAsTokenVolume(), "10.5K")
+    }
+
+    func test_doubleFormatAsTokenVolume_nonFinite() {
+        XCTAssertEqual(Double.infinity.formatAsTokenVolume(), "—")
+        XCTAssertEqual(Double.nan.formatAsTokenVolume(), "—")
+        XCTAssertEqual((-Double.infinity).formatAsTokenVolume(), "—")
     }
 
     func test_formatAsTokenVolume_mega() {
