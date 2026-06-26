@@ -80,7 +80,9 @@ public final class AgentWatchReceiver: ObservableObject {
     }
 
     private static func boundSystemPermissionThreadID(_ controlSessionID: String?) -> String? {
-        guard let threadID = controlSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let controlSessionID = controlSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !controlSessionID.isEmpty,
+              let threadID = HermesService.mainSurface?.selectedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !threadID.isEmpty else {
             return nil
         }
