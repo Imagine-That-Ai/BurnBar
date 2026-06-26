@@ -2678,6 +2678,10 @@ final class ControlFrameSealCoordinatorTests: XCTestCase {
             lock.lock(); defer { lock.unlock() }
             return frames.compactMap { $0.control?.denied?.detail }
         }
+        func deniedDetailCount(_ detail: String) -> Int {
+            lock.lock(); defer { lock.unlock() }
+            return frames.filter { $0.control?.denied?.detail == detail }.count
+        }
     }
 
     private func makeCoordinator(
@@ -2751,6 +2755,43 @@ final class ControlFrameSealCoordinatorTests: XCTestCase {
         )
         await coordinator.controlDispatcher(classify) { frame in replies.append(frame) }
         return phoneSide
+    }
+
+    private func sealedClipboardFrame(
+        key: SymmetricKey,
+        requestId: String,
+        counter: UInt64
+    ) throws -> HermesRealtimeRelayFrame {
+        let inner = HermesRealtimeRelayControlPayload(
+            streamClass: "control.clipboard",
+            clipboardRequest: HermesRealtimeRelayClipboardRequest(
+                requestId: requestId,
+                action: .pasteToMac,
+                contentType: "text/plain",
+                text: "sealed secret",
+                maxBytes: 65_536,
+                clientIntentId: "intent-\(requestId)",
+                authority: HermesRealtimeRelayAuthorityEnvelope(
+                    peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+                    counter: counter,
+                    timestamp: Date(),
+                    intentHashBlake3: String(repeating: "ab", count: 32),
+                    signatureEd25519: Data(repeating: 1, count: 64).base64EncodedString()
+                )
+            )
+        )
+        let shell = try ControlFrameSealSession.sealPayload(
+            inner,
+            key: key,
+            peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+            frameType: HermesRealtimeRelayFrameType.controlClipboardRequest.rawValue
+        )
+        return HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: shell
+        )
     }
 
     func testSealedFrameOpensAndTamperedOrSessionlessFramesFailClosed() async throws {
@@ -2829,6 +2870,72 @@ final class ControlFrameSealCoordinatorTests: XCTestCase {
         await coordinator.controlDispatcher(tamperedFrame) { frame in replies.append(frame) }
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertTrue(replies.deniedDetails.contains("control_seal_open_failed"))
+    }
+
+    func testRejectedClassifyDoesNotReplaceEstablishedControlSealSession() async throws {
+        let macKey = HermesRelayCrypto.generatePrivateKey()
+        let phoneKey = HermesRelayCrypto.generatePrivateKey()
+        let replies = ReplyBox()
+        let coordinator = makeCoordinator(recipientKey: macKey, pinnedSenderKeyBase64: phoneKey.publicKeyBase64)
+
+        let oldPhoneSeal = try await establishedSession(
+            coordinator: coordinator,
+            macKey: macKey,
+            phoneKey: phoneKey,
+            replies: replies
+        )
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(replies.deniedDetails.contains("control_seal_establish_failed"))
+
+        coordinator.phoneValidator.revokePeer(nodeId: "ios-phone-f10aabbccddeeff0011223344")
+        let (freshEnvelope, freshPhoneSeal) = try ControlFrameSealSession.establish(
+            uid: "uid-f10",
+            connectionID: "conn-f10",
+            peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+            senderDeviceID: "iphone-f10",
+            senderPeerNodeID: "iphone-f10",
+            senderKeyID: "relay-v3-f10",
+            senderCounter: 2,
+            recipientPublicKeyBase64: macKey.publicKeyBase64,
+            senderPrivateKey: phoneKey
+        )
+        let rejectedClassify = HermesRealtimeRelayFrame(
+            type: .controlClassify,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                authorityPeerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+                controlSealKey: freshEnvelope
+            )
+        )
+        await coordinator.controlDispatcher(rejectedClassify) { frame in replies.append(frame) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(replies.deniedDetails.contains("peer_revoked"))
+
+        let openFailuresBeforeOldFrame = replies.deniedDetailCount("control_seal_open_failed")
+        await coordinator.controlDispatcher(
+            try sealedClipboardFrame(key: oldPhoneSeal, requestId: "old-session", counter: 3),
+            { frame in replies.append(frame) }
+        )
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(
+            replies.deniedDetailCount("control_seal_open_failed"),
+            openFailuresBeforeOldFrame,
+            "A rejected classify must not replace the previously admitted control-seal session."
+        )
+
+        let openFailuresBeforeFreshFrame = replies.deniedDetailCount("control_seal_open_failed")
+        await coordinator.controlDispatcher(
+            try sealedClipboardFrame(key: freshPhoneSeal, requestId: "fresh-rejected", counter: 4),
+            { frame in replies.append(frame) }
+        )
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(
+            replies.deniedDetailCount("control_seal_open_failed"),
+            openFailuresBeforeFreshFrame + 1,
+            "A seal key from a rejected classify must not become usable for later frames."
+        )
     }
 
     func testEstablishWithWrongPinnedSenderRefusesClassify() async throws {
