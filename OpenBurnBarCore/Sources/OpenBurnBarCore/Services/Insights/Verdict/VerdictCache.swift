@@ -180,7 +180,7 @@ public actor VerdictCache {
         guard let data = try? encoder.encode(dict),
               let sealed = try? diskCrypto.seal(data, associatedData: associatedData(deviceID: deviceID, window: window))
         else { return }
-        try? sealed.write(to: url, options: [.atomic])
+        guard (try? sealed.write(to: url, options: [.atomic])) != nil else { return }
         try? FileManager.default.removeItem(at: legacyURL)
     }
 
@@ -244,8 +244,16 @@ private struct VerdictCacheDiskCrypto: Sendable {
 
     private static func loadOrCreateKeychainKey() -> Data? {
         if let existing = keychainRead() {
-            return existing.count == 32 ? existing : nil
+            guard existing.count == 32 else {
+                _ = keychainDelete()
+                return createKeychainKey()
+            }
+            return existing
         }
+        return createKeychainKey()
+    }
+
+    private static func createKeychainKey() -> Data? {
         var keyData = Data(count: 32)
         let status = keyData.withUnsafeMutableBytes { buffer in
             SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
@@ -283,6 +291,16 @@ private struct VerdictCacheDiskCrypto: Sendable {
         create[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let addStatus = SecItemAdd(create as CFDictionary, nil)
         return addStatus == errSecSuccess
+    }
+
+    private static func keychainDelete() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }
 

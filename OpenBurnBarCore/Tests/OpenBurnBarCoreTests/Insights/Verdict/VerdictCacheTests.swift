@@ -169,6 +169,37 @@ final class VerdictCacheTests: XCTestCase {
         )
     }
 
+    func testLegacyPlaintextDiskCacheIsPreservedWhenSealedMigrationWriteFails() async throws {
+        let tempDir = try FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true
+        )
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDir) }
+
+        let now = Date()
+        let verdict = makeVerdict(generatedAt: now)
+        let deviceDir = tempDir.appendingPathComponent("dev", isDirectory: true)
+        try FileManager.default.createDirectory(at: deviceDir, withIntermediateDirectories: true)
+        let legacyURL = deviceDir.appendingPathComponent("\(VerdictWindow.today.rawValue).json")
+        let sealedURL = deviceDir.appendingPathComponent("\(VerdictWindow.today.rawValue).sealed")
+        try FileManager.default.createDirectory(at: sealedURL, withIntermediateDirectories: true)
+        let bucket = VerdictWindow.today.dayBucketKey(for: verdict.generatedAt, calendar: .current)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode([bucket: verdict]).write(to: legacyURL, options: [.atomic])
+
+        let cache = VerdictCache(storage: .onDisk(directory: tempDir, encryptionKey: Data(repeating: 0x26, count: 32)))
+        let read = await cache.read(window: .today, deviceID: "dev", now: now)
+
+        XCTAssertNotNil(read)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sealedURL.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+    }
+
     func testCountReturnsBucketSize() async {
         let cache = VerdictCache(storage: .memoryOnly)
         let now = Date()
