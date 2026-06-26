@@ -77,4 +77,39 @@ public enum AnalyticsBuckets {
         default: return ">60m"
         }
     }
+
+    public static func toolName(_ name: String?) -> String {
+        guard let name else { return "unknown" }
+        let normalized = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        guard !normalized.isEmpty else { return "unknown" }
+
+        switch normalized {
+        case "read", "view", "view_file", "open_file":
+            return "file_read"
+        case "write", "create_file":
+            return "file_write"
+        case "edit", "editfile", "edit_file", "apply_patch":
+            return "file_edit"
+        case "bash", "shell", "shell_run", "exec", "exec_command", "terminal":
+            return "terminal"
+        case "grep", "grep_search", "search", "rg", "ripgrep":
+            return "search"
+        case "web", "webfetch", "web_fetch", "websearch", "web_search":
+            return "web"
+        case "memory", "memory_read", "memory_write":
+            return "memory"
+        case "browser", "browser_screenshot", "browser_click", "browser_open":
+            return "browser"
+        case "clipboard", "clipboard_read", "clipboard_write":
+            return "clipboard"
+        case "todo", "todo_read", "todo_write":
+            return "todo"
+        default:
+            return "other"
+        }
+    }
 }

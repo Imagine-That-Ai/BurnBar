@@ -217,7 +217,10 @@ struct MacAgentInsightsWorkspace: View {
     @MainActor
     private func prepare() async {
         if environment == nil {
-            if let env = try? InsightsMacEnvironment(dataStore: dataStore) {
+            if let env = try? InsightsMacEnvironment(
+                dataStore: dataStore,
+                hermesBearerTokenProvider: { settingsManager.hermesBearerToken }
+            ) {
                 environment = env
                 let producer = MacAgentInsightsProducer(environment: env)
                 self.producer = producer

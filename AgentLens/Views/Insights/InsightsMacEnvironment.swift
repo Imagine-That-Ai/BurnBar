@@ -43,15 +43,6 @@ final class InsightsMacEnvironment {
     let analysisEngine: MacInsightAnalysisEngine
     private let hermesBearerTokenProvider: @MainActor () -> String?
 
-    convenience init(dataStore: DataStore) throws {
-        try self.init(
-            dataStore: dataStore,
-            hermesBearerTokenProvider: {
-                SettingsManager.shared.hermesBearerToken
-            }
-        )
-    }
-
     init(
         dataStore: DataStore,
         hermesBearerTokenProvider: @escaping @MainActor () -> String?
