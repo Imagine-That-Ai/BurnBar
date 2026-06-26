@@ -189,6 +189,10 @@ function sealedText(tag: string) {
   };
 }
 
+function callableRequest<T extends Record<string, unknown>>(uid: string, data: T) {
+  return { auth: { uid, token: {} }, app: { appId: "test-app" }, rawRequest: { headers: {} }, data };
+}
+
 function signalEnvelopeForKnowledgeVector(uid: string, docId: string, overrides: Record<string, unknown> = {}) {
   const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
   return {
@@ -228,31 +232,26 @@ function signalEnvelopeForKnowledgeVector(uid: string, docId: string, overrides:
 function commitRequestForUser(uid: string, vaultKey: Buffer) {
   const dedupHash = vaultKeyedHmac(vaultKey, "content", PLAINTEXT);
   const slugHmac = vaultKeyedHmac(vaultKey, "slug", SOURCE_SLUG);
-  return {
-    auth: { uid, token: {} },
-    app: { appId: "test-app" },
-    rawRequest: { headers: {} },
-    data: {
-      // Legacy request alias: older clients still send the opaque source
-      // manifest id as `sourceSlug`. The server stores canonical
-      // `sourceManifestId` on the manifest doc.
-      sourceSlug: slugHmac,
-      slugHmac,
-      embeddingModelVersion: "bge-small-en-v1.5-cloak-v1",
-      vectors: [
-        {
-          cloakedVector: Array.from({ length: 384 }, (_, i) => Math.sin(i) / 7),
-          sealedCiphertext: sealedText("ct"),
-          // The real path lives ONLY inside the sealed metadata blob.
-          sealedMetadata: sealedText("md"),
-          dedupHash,
-          sourceKind: "repo_docs",
-          chunkIndex: 0,
-          byteCount: Buffer.byteLength(PLAINTEXT, "utf8"),
-        },
-      ],
-    },
-  };
+  return callableRequest(uid, {
+    // Legacy request alias: older clients still send the opaque source
+    // manifest id as `sourceSlug`. The server stores canonical
+    // `sourceManifestId` on the manifest doc.
+    sourceSlug: slugHmac,
+    slugHmac,
+    embeddingModelVersion: "bge-small-en-v1.5-cloak-v1",
+    vectors: [
+      {
+        cloakedVector: Array.from({ length: 384 }, (_, i) => Math.sin(i) / 7),
+        sealedCiphertext: sealedText("ct"),
+        // The real path lives ONLY inside the sealed metadata blob.
+        sealedMetadata: sealedText("md"),
+        dedupHash,
+        sourceKind: "repo_docs",
+        chunkIndex: 0,
+        byteCount: Buffer.byteLength(PLAINTEXT, "utf8"),
+      },
+    ],
+  });
 }
 
 function makeApprovedChatMemory(req: ReturnType<typeof commitRequestForUser>) {
@@ -396,12 +395,12 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     const run = callableRun(configureKnowledgeSource);
     const sourceManifestId = "ab".repeat(32);
 
-    const result = (await run({
-      auth: { uid: "userConfig", token: {} },
-      app: { appId: "test-app" },
-      rawRequest: { headers: {} },
-      data: { sourceKind: "repo_docs", sourceSlug: sourceManifestId },
-    })) as { sourceManifestId: string; sourceSlug: string };
+    const result = (await run(
+      callableRequest("userConfig", { sourceKind: "repo_docs", sourceSlug: sourceManifestId }),
+    )) as {
+      sourceManifestId: string;
+      sourceSlug: string;
+    };
 
     expect(result.sourceManifestId).toBe(sourceManifestId);
     expect(result.sourceSlug).toBe(sourceManifestId);
@@ -524,32 +523,21 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 });
 
-// --- FLAG-DAY: dedup-v0 retirement (read floor + whole-doc purge) -------------
-
-// The bumped production tag every live v1 vector now lands under (must stay
-// byte-identical to PensieveVectorCloak.embeddingModelVersion / embed.ts).
 const NEW_MODEL_TAG = "bge-small-en-v1.5-vault-dedup-v1";
-// The retired tag every stranded legacy v0 / ancient row still carries.
 const RETIRED_MODEL_TAG = "bge-small-en-v1.5";
 
 function searchRequest(uid: string, modelTag: string) {
-  return {
-    auth: { uid, token: {} },
-    app: { appId: "test-app" },
-    rawRequest: { headers: {} },
-    data: {
-      queryVector: Array.from({ length: 384 }, (_, i) => Math.cos(i) / 9),
-      embeddingModelVersion: modelTag,
-      limit: 50,
-    },
-  };
+  return callableRequest(uid, {
+    queryVector: Array.from({ length: 384 }, (_, i) => Math.cos(i) / 9),
+    embeddingModelVersion: modelTag,
+    limit: 50,
+  });
 }
 
-/** Seed a stored knowledge vector directly (bypassing the write path). */
 function seedVector(
   uid: string,
   vectorId: string,
-  fields: { dedupHashVersion: number; embeddingModelVersion: string; dedupHash: string },
+  fields: { dedupHashVersion: number; embeddingModelVersion: string; dedupHash: string; byteCount?: number },
 ) {
   stored.set(`users/${uid}/cloud_search_knowledge/${vectorId}`, {
     uid,
@@ -558,7 +546,7 @@ function seedVector(
     sealedMetadata: sealedText("md"),
     sourceKind: "repo_docs",
     chunkIndex: 0,
-    byteCount: 16,
+    byteCount: fields.byteCount ?? 16,
     embedding: { __vector: Array.from({ length: 384 }, () => 0) },
     ...fields,
   });
@@ -659,12 +647,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
       dedupHash: "dd".repeat(32),
     });
 
-    const res = await run({
-      auth: { uid, token: {} },
-      app: { appId: "test-app" },
-      rawRequest: { headers: {} },
-      data: {},
-    });
+    const res = await run(callableRequest(uid, {}));
     const counts = purgeCounts(res);
 
     // v0 (by version) + ancient (by retired tag) deleted; v1 survives.
@@ -677,9 +660,6 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 });
 
-// --- FLAG-DAY: re-ingest near the tier cap is not blocked by orphaned v0 rows --
-
-/** Seed `count` stored rows at the given dedupHashVersion (cap-pressure fixture). */
 function seedRows(uid: string, count: number, dedupHashVersion: number, idPrefix: string) {
   for (let i = 0; i < count; i += 1) {
     seedVector(uid, `${idPrefix}${i}`, {
@@ -707,19 +687,12 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
     const run = callableRun(commitKnowledgeBatch);
     const uid = "userReingest";
 
-    // Fill the entire Pro chunk cap with stranded legacy v0 rows (the rows the
-    // daily purge will delete). Before the fix the cap aggregate counted these,
-    // so the very first re-ingest tripped the failed-precondition cap check.
     seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 0, "v0-");
 
-    // The first v1 re-ingest must SUCCEED: the cap aggregate floors v1, so the
-    // orphaned v0 rows do not count as live usage.
     const res = okFromResult(await run(commitRequestForUser(uid, Buffer.alloc(32, 0xe5))));
     expect(res.ok).toBe(true);
     expect(res.written).toBe(1);
-    // Effective live count = v1 rows only (1), NOT v1 + the 5000 orphaned v0.
     expect(res.chunkCount).toBe(1);
-    // The v1 row landed alongside the still-present (to-be-purged) v0 rows.
     expect([...stored.keys()].some((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/v0-0`))).toBe(true);
   });
 
@@ -728,13 +701,46 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
     const run = callableRun(commitKnowledgeBatch);
     const uid = "userAtCapV1";
 
-    // Live v1 rows fill the cap — these DO count, so a new chunk must be rejected.
     seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
 
     await expect(run(commitRequestForUser(uid, Buffer.alloc(32, 0xf6)))).rejects.toThrow(/chunk limit/i);
-    // Nothing new persisted beyond the seeded v1 rows.
     expect([...stored.keys()].filter((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/`)).length).toBe(
       PENSIEVE_LIMITS.pro.chunks,
     );
+  });
+
+  it("same-doc legacy rewrites are charged against live chunk and byte caps", async () => {
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+    const request = (uid: string, fill: number, byteCount?: number) => {
+      const req = commitRequestForUser(uid, Buffer.alloc(32, fill));
+      if (byteCount !== undefined) vectorForMutation(req).byteCount = byteCount;
+      return req;
+    };
+    const seedLegacy = (uid: string, req: ReturnType<typeof commitRequestForUser>, byteCount = 16) =>
+      seedVector(uid, String(vectorForMutation(req).dedupHash), {
+        dedupHashVersion: 0,
+        embeddingModelVersion: RETIRED_MODEL_TAG,
+        dedupHash: "legacy-cleartext-digest",
+        byteCount,
+      });
+
+    const chunkUid = "userLegacyRewriteChunkCap";
+    const chunkReq = request(chunkUid, 0xb8);
+    seedRows(chunkUid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
+    seedLegacy(chunkUid, chunkReq);
+    await expect(run(chunkReq)).rejects.toThrow(/chunk limit/i);
+
+    stored.clear();
+    const byteUid = "userLegacyRewriteByteCap";
+    const byteReq = request(byteUid, 0xc9, 64);
+    seedVector(byteUid, "live-near-byte-cap", {
+      dedupHashVersion: 1,
+      embeddingModelVersion: NEW_MODEL_TAG,
+      dedupHash: "live-near-byte-cap",
+      byteCount: PENSIEVE_LIMITS.pro.bytes - 8,
+    });
+    seedLegacy(byteUid, byteReq, 1024);
+    await expect(run(byteReq)).rejects.toThrow(/storage limit/i);
   });
 });
