@@ -3271,6 +3271,68 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(state.actionsExecuted, 10)
     }
 
+    func testAgentWatchReceiverBindsSystemPermissionStatusToControlSession() async throws {
+        let uid = "user-agent-watch-permission"
+        let connectionID = "relay-connection-permission"
+        let visibleThreadID = "visible-thread"
+        let controlSessionID = "control-session"
+        let visibleSurface = HermesService(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        visibleSurface.selectedSessionID = visibleThreadID
+        HermesService.mainSurface = visibleSurface
+        defer {
+            HermesService.mainSurface = nil
+            SystemPermissionInboxStore.shared.clear(threadID: visibleThreadID)
+            SystemPermissionInboxStore.shared.clear(threadID: controlSessionID)
+        }
+
+        let receiver = AgentWatchReceiver(
+            uid: uid,
+            connectionId: connectionID,
+            approvalFrameSink: { _ in }
+        )
+
+        receiver.ingest(systemPermissionStatusFrame(
+            uid: uid,
+            connectionID: connectionID,
+            sessionID: controlSessionID,
+            status: .needsAccess
+        ))
+
+        XCTAssertNil(SystemPermissionInboxStore.shared.latestItem(forThread: visibleThreadID))
+        let item = try XCTUnwrap(SystemPermissionInboxStore.shared.latestItem(forThread: controlSessionID))
+        XCTAssertEqual(item.threadId, controlSessionID)
+        XCTAssertEqual(item.kind, .screenRecording)
+        XCTAssertEqual(item.status, .needsAccess)
+    }
+
+    func testAgentWatchReceiverDropsSystemPermissionStatusWithoutControlSession() async throws {
+        let uid = "user-agent-watch-permission-missing"
+        let connectionID = "relay-connection-permission-missing"
+        let visibleThreadID = "visible-thread-missing-session"
+        let visibleSurface = HermesService(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        visibleSurface.selectedSessionID = visibleThreadID
+        HermesService.mainSurface = visibleSurface
+        defer {
+            HermesService.mainSurface = nil
+            SystemPermissionInboxStore.shared.clear(threadID: visibleThreadID)
+        }
+
+        let receiver = AgentWatchReceiver(
+            uid: uid,
+            connectionId: connectionID,
+            approvalFrameSink: { _ in }
+        )
+
+        receiver.ingest(systemPermissionStatusFrame(
+            uid: uid,
+            connectionID: connectionID,
+            sessionID: nil,
+            status: .needsAccess
+        ))
+
+        XCTAssertNil(SystemPermissionInboxStore.shared.latestItem(forThread: visibleThreadID))
+    }
+
     func testAgentWatchReceiverSendsSignedTapAndScrollIntents() async throws {
         let uid = "user-agent-watch-input"
         let connectionID = "relay-connection-input"
@@ -3775,6 +3837,30 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     status: .completed,
                     screenshotHashBlake3: "shot-\(index)",
                     parentEntryBlake3: "head-\(index)"
+                )
+            )
+        )
+    }
+
+    private func systemPermissionStatusFrame(
+        uid: String,
+        connectionID: String,
+        sessionID: String?,
+        status: HermesRealtimeRelaySystemPermissionStatusKind
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .controlSystemPermissionStatus,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.system_permission.status",
+                sessionId: sessionID,
+                systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus(
+                    kind: .screenRecording,
+                    status: status,
+                    originatingToolCallId: "tool-call-permission",
+                    originatingToolName: "computer_use",
+                    lastChangedAt: Date(timeIntervalSince1970: 1_800_000_100)
                 )
             )
         )
