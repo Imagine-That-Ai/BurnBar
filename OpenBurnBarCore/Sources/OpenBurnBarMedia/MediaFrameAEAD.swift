@@ -198,11 +198,11 @@ public enum MediaFrameAeadNegotiation {
 
     /// Lane-aware negotiation outcome. Seals when both peers support F7; for a
     /// lane whose `sealingExpected` is true, refuses the lane (fail CLOSED)
-    /// when sealing cannot be established; otherwise degrades to
-    /// unsealed-over-QUIC. `sessionKeyAvailable` reflects whether a derived
-    /// media-seal key actually exists on this side (a peer can advertise the
-    /// capability yet fail to wrap/open a session key) — when sealing is
-    /// expected and the key is missing, the lane is refused.
+    /// when sealing cannot be established. Screen-video keeps pre-F7
+    /// compatibility only when the remote peer never offered a seal; once a
+    /// peer sends a media-seal key, failure to open that key is a hard refusal
+    /// for every lane so an active seal negotiation cannot be stripped back to
+    /// plaintext-over-QUIC.
     public static func resolveSealingDecision(
         streamClass: MediaStreamClass,
         localSupports: Bool,
@@ -211,7 +211,7 @@ public enum MediaFrameAeadNegotiation {
     ) -> SealingDecision {
         let expected = sealingExpected(for: streamClass)
         guard localSupports else {
-            return expected
+            return expected || remoteSupports
                 ? .refuseLane(reason: .localDoesNotSupportSealing)
                 : .allowUnsealed
         }
@@ -221,9 +221,7 @@ public enum MediaFrameAeadNegotiation {
                 : .allowUnsealed
         }
         guard sessionKeyAvailable else {
-            return expected
-                ? .refuseLane(reason: .sessionKeyUnavailable)
-                : .allowUnsealed
+            return .refuseLane(reason: .sessionKeyUnavailable)
         }
         return .seal
     }

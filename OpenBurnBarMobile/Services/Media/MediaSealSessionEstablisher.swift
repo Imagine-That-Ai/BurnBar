@@ -15,26 +15,33 @@ enum MediaSealSessionEstablisher {
         let key: SymmetricKey
     }
 
+    enum EstablishmentError: LocalizedError, Equatable {
+        case negotiatedSessionUnavailable
+
+        var errorDescription: String? {
+            "The Mac requires protected media frames, but this device could not prepare the media seal."
+        }
+    }
+
     /// Establish when (and only when) the default-off RC flag is on AND the
     /// Mac advertised `media_frame_aead_v1` in its heartbeat reply. Returns
-    /// nil — the legacy plaintext-at-app-layer lane — otherwise, or when wrap
-    /// preparation fails (per-frame sealing is defense-in-depth; a mirror must
-    /// not fail because the seal could not be established).
+    /// nil only when the lane was not negotiated, preserving byte-compatible
+    /// legacy screen share. Once negotiated, failure to prepare the seal is a
+    /// hard refusal so the phone cannot silently downgrade to unsealed frames.
     static func establishIfNegotiated(
         uid: String,
         connectionID: String,
         viewerId: String,
         macCapabilities: [String],
         macRelayPublicKeyBase64: String?
-    ) async -> Session? {
+    ) async throws -> Session? {
         guard MobileComputerUseRemoteConfig.mediaFrameAeadEnabled(),
-              MediaFrameAeadNegotiation.resolveSealingEnabled(
-                  localSupports: true,
-                  remoteSupports: macCapabilities.contains(MediaFrameAeadNegotiation.capability)
-              ),
-              let recipientKey = macRelayPublicKeyBase64?.trimmingCharacters(in: .whitespacesAndNewlines),
-              recipientKey.isEmpty == false else {
+              macCapabilities.contains(MediaFrameAeadNegotiation.capability) else {
             return nil
+        }
+        guard let recipientKey = macRelayPublicKeyBase64?.trimmingCharacters(in: .whitespacesAndNewlines),
+              recipientKey.isEmpty == false else {
+            throw EstablishmentError.negotiatedSessionUnavailable
         }
         do {
             let senderKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
@@ -76,7 +83,7 @@ enum MediaSealSessionEstablisher {
             )
             return Session(envelope: envelope, key: key)
         } catch {
-            return nil
+            throw EstablishmentError.negotiatedSessionUnavailable
         }
     }
 }

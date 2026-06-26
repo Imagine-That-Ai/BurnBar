@@ -143,9 +143,10 @@ final class MediaFrameAEADTests: XCTestCase {
         XCTAssertEqual(decision, .seal)
     }
 
-    func testScreenLaneDegradesToUnsealedInsteadOfRefusing() {
-        // Screen-video stays soft: a pre-F7 viewer keeps getting frames over the
-        // iroh transport seal rather than having the lane refused.
+    func testScreenLaneDegradesOnlyWhenRemotePeerDoesNotOfferSealing() {
+        // Screen-video stays soft for pre-F7 viewers: absent capability/wrap
+        // keeps getting frames over the iroh transport seal rather than having
+        // the lane refused.
         let degraded = MediaFrameAeadNegotiation.resolveSealingDecision(
             streamClass: .screenVideo,
             localSupports: true,
@@ -162,5 +163,16 @@ final class MediaFrameAEADTests: XCTestCase {
             sessionKeyAvailable: true
         )
         XCTAssertEqual(sealed, .seal)
+    }
+
+    func testScreenLaneRefusesWhenOfferedSealSessionKeyIsUnavailable() {
+        let stripped = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .screenVideo,
+            localSupports: true,
+            remoteSupports: true,
+            sessionKeyAvailable: false
+        )
+
+        XCTAssertEqual(stripped, .refuseLane(reason: .sessionKeyUnavailable))
     }
 }
