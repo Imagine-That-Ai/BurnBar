@@ -357,7 +357,7 @@ export const connectKnowledgeRepo = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [KNOWLEDGE_REPO_MATCH_KEY],
+    secrets: [KNOWLEDGE_REPO_MATCH_KEY, KNOWLEDGE_GITHUB_APP_ID, KNOWLEDGE_GITHUB_APP_PRIVATE_KEY],
   },
   wrapCallableHandler(
     "connectKnowledgeRepo",
