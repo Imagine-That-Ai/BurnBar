@@ -110,19 +110,19 @@ function inlineErrorMessage(payload: unknown): string | undefined {
   // paas/v4 error shape: { error: { code, message } }
   const error = recordOrUndefined(obj.error);
   if (error) {
-    const message = stringFromAny(error.message ?? error.msg);
+    const message = diagnosticStringFromAny(error.message ?? error.msg);
     if (message) return message;
   }
 
   // monitor/* shape: { success: false, code, msg }
   if (obj.success === false) {
-    return stringFromAny(obj.msg ?? obj.message ?? obj.error) ?? "Z.ai request was unsuccessful.";
+    return diagnosticStringFromAny(obj.msg ?? obj.message ?? obj.error) ?? "Z.ai request was unsuccessful.";
   }
 
   // monitor/* alternate shape: { code: 401, msg: "..." }
   const code = numberFromAny(obj.code);
   if (code !== undefined && code !== 0 && code !== 200) {
-    const message = stringFromAny(obj.msg ?? obj.message);
+    const message = diagnosticStringFromAny(obj.msg ?? obj.message);
     return message ?? `Z.ai error code ${code}`;
   }
 
@@ -518,9 +518,16 @@ function stringFromAny(raw: unknown): string | undefined {
   return boundedQuotaLabel(raw);
 }
 
+function diagnosticStringFromAny(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  return value ? value : undefined;
+}
+
 export const __testing__ = {
   zaiFetch,
   tryEachHost,
+  inlineErrorMessage,
   bucketsFromMonitorQuota,
   bucketsFromBalance,
   HOSTS,

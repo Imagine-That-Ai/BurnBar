@@ -392,12 +392,12 @@ function miniMaxBucketFromObject(obj: Record<string, unknown>, path: readonly st
 
 function collectModelRows(payload: Record<string, unknown>): Array<Record<string, unknown>> {
   if (Array.isArray(payload.model_remains)) {
-    return payload.model_remains.filter(recordOrUndefined);
+    return payload.model_remains.slice(0, QUOTA_PAYLOAD_MAX_BUCKETS).filter(recordOrUndefined);
   }
   // Coding Plan responses sometimes wrap the rows under `data.model_remains`.
   const data = recordOrUndefined(payload.data);
   if (data && Array.isArray(data.model_remains)) {
-    return data.model_remains.filter(recordOrUndefined);
+    return data.model_remains.slice(0, QUOTA_PAYLOAD_MAX_BUCKETS).filter(recordOrUndefined);
   }
   return [];
 }

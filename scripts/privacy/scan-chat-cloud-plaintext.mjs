@@ -71,14 +71,58 @@ function stripCodeCommentsAndStrings(source) {
   return out;
 }
 
+function stripCodeComments(source) {
+  let out = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (c === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      if (i < source.length) out += "\n";
+      continue;
+    }
+
+    if (c === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        if (source[i] === "*" && source[i + 1] === "/") {
+          out += "  ";
+          i += 1;
+          break;
+        }
+        out += source[i] === "\n" ? "\n" : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    out += c;
+  }
+  return out;
+}
+
 function executableIncludes(text, needle) {
   return stripCodeCommentsAndStrings(text).includes(needle);
 }
 
+function rulesReturnedExpression(section) {
+  const stripped = stripCodeCommentsAndStrings(section);
+  const match = /\breturn\b/u.exec(stripped);
+  if (!match) return "";
+  const start = match.index + match[0].length;
+  const end = stripped.indexOf(";", start);
+  return stripped.slice(start, end < 0 ? stripped.length : end);
+}
+
 function rulesReturnContains(section, pattern) {
-  return new RegExp(`\\breturn\\b[\\s\\S]*${pattern}`).test(
-    stripCodeCommentsAndStrings(section),
-  );
+  return new RegExp(pattern).test(rulesReturnedExpression(section));
 }
 
 function rulesSectionReturnsHasOnly(section) {
@@ -170,11 +214,17 @@ function assertSectionRejectsFieldOrDeniesWrite(
   if (rulesSectionDeniesClientWrites(section)) {
     return;
   }
-  if (!section.includes(`!("${field}" in request.resource.data)`)) {
+  if (!rulesSectionRejectsField(section, field)) {
     fail(
       `${relativePath}: ${note ?? `section must reject ${field} or deny client writes`}`,
     );
   }
+}
+
+function rulesSectionRejectsField(section, field) {
+  return stripCodeComments(section).includes(
+    `!("${field}" in request.resource.data)`,
+  );
 }
 
 function assertSectionIncludesAny(
@@ -340,6 +390,13 @@ function runSelfTest() {
         ),
     ],
     [
+      "rules hasOnly in a later function does not satisfy first return",
+      () =>
+        !rulesSectionReturnsHasOnly(
+          'function bad() { return true; }\nfunction later() { return request.resource.data.keys().hasOnly(["id"]); }',
+        ),
+    ],
+    [
       "helper must be returned, not merely mentioned",
       () =>
         !rulesSectionReturnsHelper(
@@ -368,6 +425,22 @@ function runSelfTest() {
       () =>
         rulesSectionDeniesClientWrites(
           "match /x { allow read: if true; allow write: if false; }",
+        ),
+    ],
+    [
+      "field rejection in comments does not satisfy",
+      () =>
+        !rulesSectionRejectsField(
+          'match /x { // !("repoFullName" in request.resource.data)\n allow write: if true; }',
+          "repoFullName",
+        ),
+    ],
+    [
+      "executable field rejection satisfies",
+      () =>
+        rulesSectionRejectsField(
+          'match /x { allow write: if !("repoFullName" in request.resource.data); }',
+          "repoFullName",
         ),
     ],
   ];

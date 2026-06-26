@@ -247,6 +247,30 @@ expect(
   1,
 );
 
+expect(
+  "I5 — quoted banned APNs payload key fails",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
+      "callId: args.callId, correlationId: args.correlationId",
+      'callId: args.callId, "connection_id": args.connectionId, correlationId: args.correlationId',
+    );
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I5 — computed banned FCM payload key fails",
+  buildTree((f) => {
+    f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
+      "call_id: args.callId, correlation_id: args.correlationId",
+      'call_id: args.callId, ["connection_id"]: args.connectionId, correlation_id: args.correlationId',
+    );
+    return f;
+  }),
+  1,
+);
+
 // I5: a banned key in the PARAM TYPE alone (not forwarded to the payload) must
 // NOT trip the gate — proves the gate inspects the payload body, not the params.
 expect(

@@ -77,4 +77,34 @@ describe("provider quota payload bounds", () => {
     expect(minimaxTesting.extractBuckets({ model_remains: rows })).toHaveLength(QUOTA_PAYLOAD_MAX_BUCKETS);
     expect(zaiTesting.bucketsFromMonitorQuota({ data: { quotaList } })).toHaveLength(QUOTA_PAYLOAD_MAX_BUCKETS);
   });
+
+  it("does not scan MiniMax rows beyond the bucket cap", () => {
+    const rows = Array.from({ length: QUOTA_PAYLOAD_MAX_BUCKETS }, (_, index) => ({
+      model_name: `model_${index}`,
+      used: index,
+      total: 100,
+      remains: 100 - index,
+      period: "monthly",
+    }));
+    Object.defineProperty(rows, QUOTA_PAYLOAD_MAX_BUCKETS + 4, {
+      get() {
+        throw new Error("uncapped MiniMax row traversal");
+      },
+    });
+
+    expect(minimaxTesting.extractBuckets({ model_remains: rows })).toHaveLength(QUOTA_PAYLOAD_MAX_BUCKETS);
+  });
+
+  it("preserves full Z.ai diagnostic messages while bounding quota labels", () => {
+    const longMessage = `  ${"quota diagnostic with internal spacing  ".repeat(12)}  `;
+
+    expect(zaiTesting.inlineErrorMessage({ success: false, msg: longMessage })).toBe(longMessage.trim());
+    expect(
+      zaiTesting.bucketsFromMonitorQuota({
+        data: {
+          quotaList: [{ window: longMessage, used: 1, limit: 2, remaining: 1 }],
+        },
+      })[0].name.length,
+    ).toBeLessThanOrEqual(QUOTA_PAYLOAD_MAX_LABEL_LENGTH);
+  });
 });
