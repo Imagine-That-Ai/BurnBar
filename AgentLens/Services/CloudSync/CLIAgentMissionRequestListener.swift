@@ -689,6 +689,17 @@ final class CLIAgentMissionRequestListener {
             await fail(document: document, message: "\(backend.displayName) is not available through the interactive Mac chat controller.")
             return
         }
+        guard !chatController.isSendBusy else {
+            await fail(
+                document: document,
+                message: modelAwareFailureMessage(
+                    backend: backend,
+                    requestedModelID: requestedModelID,
+                    errorMessage: "A Mac CLI agent is already responding. Wait for the current reply to finish, then send again."
+                )
+            )
+            return
+        }
 
         chatController.setChatBackend(chatBackend)
         if let requestedModelID {

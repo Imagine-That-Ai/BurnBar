@@ -188,7 +188,32 @@ final class TerminalAssistantCommitTests: XCTestCase {
 
         XCTAssertTrue(controller.messages.isEmpty, "A send arriving while another is in-flight must be rejected before appending any turn.")
         XCTAssertTrue(controller.sendInFlight, "A rejected send must not clear a sentinel owned by the in-flight send; its own defer clears it on return.")
-        XCTAssertEqual(controller.streamError, "A chat response is already in progress. Wait for it to finish, then send again.")
+        XCTAssertNil(
+            controller.streamError,
+            "A rejected duplicate send must not poison the active stream's terminal error state."
+        )
+    }
+
+    func testSendInFlightGuardPreservesExistingStreamOutcomeState() async throws {
+        let store = try makeInMemoryStore()
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "\(Self.self)-\(UUID().uuidString)"))
+        let settings = SettingsManager(defaults: defaults)
+        settings.cliAssistantAllowed = false
+        let controller = ChatSessionController(dataStore: store, settingsManager: settings)
+
+        controller.sendInFlight = true
+        controller.streamError = "active stream outcome"
+        controller.inputText = "hello"
+
+        await controller.send()
+
+        XCTAssertTrue(controller.messages.isEmpty)
+        XCTAssertTrue(controller.sendInFlight)
+        XCTAssertEqual(
+            controller.streamError,
+            "active stream outcome",
+            "A duplicate send rejection must preserve the stream outcome owned by the active send."
+        )
     }
 
     func testSendResetsSentinelOnEarlyReturn() async throws {
