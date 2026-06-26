@@ -78,6 +78,13 @@ class HermesProtocolTest {
     }
 
     @Test
+    fun `validatedBaseURL rejects private-looking userinfo authorities`() {
+        assertNull(HermesProtocol.validatedBaseURL("http://10.0.0.1:8642@hermes.example.com"))
+        assertNull(HermesProtocol.validatedBaseURL("http://localhost@hermes.example.com"))
+        assertNull(HermesProtocol.validatedBaseURL("https://localhost@hermes.example.com"))
+    }
+
+    @Test
     fun `validatedBaseURL accepts https for any host`() {
         assertNotNull(HermesProtocol.validatedBaseURL("https://hermes.example.com"))
         assertNotNull(HermesProtocol.validatedBaseURL("https://localhost:8642"))
@@ -95,6 +102,14 @@ class HermesProtocolTest {
         )
         assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("https://hermes.example.com"))
         assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("http://8.8.8.8:8642"))
+    }
+
+    @Test
+    fun `validatedLocalOrPrivateBaseURL rejects authority smuggling`() {
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("http://10.0.0.1:8642@hermes.example.com"))
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("http://localhost@hermes.example.com"))
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("http://10.0.0.1.attacker.example:8642"))
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("https://192.168.1.42@hermes.example.com"))
     }
 
     // ── isLocalOrPrivateHost ────────────────────────────────────────
@@ -118,6 +133,10 @@ class HermesProtocolTest {
     fun `isLocalOrPrivateHost rejects public addresses and hostnames`() {
         assertFalse(HermesProtocol.isLocalOrPrivateHost("8.8.8.8"))
         assertFalse(HermesProtocol.isLocalOrPrivateHost("172.32.0.1"))
+        assertFalse(HermesProtocol.isLocalOrPrivateHost("10.0.0.1.attacker.example"))
+        assertFalse(HermesProtocol.isLocalOrPrivateHost("192.168.1.42.example.com"))
+        assertFalse(HermesProtocol.isLocalOrPrivateHost("10.0.0"))
+        assertFalse(HermesProtocol.isLocalOrPrivateHost("10.0.0.1.2"))
         assertFalse(HermesProtocol.isLocalOrPrivateHost("example.com"))
         assertFalse(HermesProtocol.isLocalOrPrivateHost(""))
     }
