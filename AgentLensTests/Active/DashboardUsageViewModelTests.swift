@@ -97,6 +97,38 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(currencyShare, 10, accuracy: 0.001)
     }
 
+    func test_dashboardUsageRanking_treatsNonFiniteCostsAsZero() {
+        let finite = makeProviderSummary(provider: .codex, cost: 2, tokens: 100)
+        let malformed = makeProviderSummary(provider: .kimi, cost: .nan, tokens: 10_000)
+
+        let currencyRanked = DashboardUsageRanking.sortedProviders(
+            [malformed, finite],
+            displayMode: .currency
+        )
+
+        XCTAssertEqual(currencyRanked.map(\.provider), [.codex, .kimi])
+
+        let malformedModel = makeModelUsage(modelName: "malformed", cost: .infinity, tokens: 100)
+        let finiteModel = makeModelUsage(modelName: "finite", cost: 2, tokens: 100)
+        let summary = makeProviderSummary(
+            provider: .factory,
+            cost: 2,
+            tokens: 200,
+            modelBreakdown: [malformedModel, finiteModel]
+        )
+
+        XCTAssertEqual(
+            DashboardUsageRanking.modelUsagePercentage(malformedModel, in: summary, displayMode: .currency),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            DashboardUsageRanking.modelUsagePercentage(finiteModel, in: summary, displayMode: .currency),
+            100,
+            accuracy: 0.001
+        )
+    }
+
     func test_windowSummary_reusesFilteredTotalsAndSummaries() {
         let vm = DashboardUsageViewModel()
         let now = Date()

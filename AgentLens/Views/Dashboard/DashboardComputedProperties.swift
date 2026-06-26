@@ -197,8 +197,10 @@ enum DashboardUsageRanking {
     ) -> Double {
         switch displayMode {
         case .currency:
-            guard summary.totalCost > 0 else { return 0 }
-            return (model.cost / summary.totalCost) * 100
+            let modelCost = finiteCost(model.cost)
+            let totalCost = finiteCost(summary.totalCost)
+            guard totalCost > 0 else { return 0 }
+            return (modelCost / totalCost) * 100
         case .tokens:
             guard summary.totalTokens > 0 else { return 0 }
             return (Double(model.totalTokens) / Double(summary.totalTokens)) * 100
@@ -212,8 +214,10 @@ enum DashboardUsageRanking {
     ) -> Double {
         switch displayMode {
         case .currency:
-            guard summary.totalCost > 0 else { return 0 }
-            return (provider.cost / summary.totalCost) * 100
+            let providerCost = finiteCost(provider.cost)
+            let totalCost = finiteCost(summary.totalCost)
+            guard totalCost > 0 else { return 0 }
+            return (providerCost / totalCost) * 100
         case .tokens:
             guard summary.totalTokens > 0 else { return 0 }
             return (Double(provider.totalTokens) / Double(summary.totalTokens)) * 100
@@ -229,14 +233,21 @@ enum DashboardUsageRanking {
         otherName: String,
         displayMode: UsageDisplayMode
     ) -> Bool {
+        let rankedCost = finiteCost(cost)
+        let rankedOtherCost = finiteCost(otherCost)
+
         switch displayMode {
         case .currency:
-            if cost != otherCost { return cost > otherCost }
+            if rankedCost != rankedOtherCost { return rankedCost > rankedOtherCost }
             if tokens != otherTokens { return tokens > otherTokens }
         case .tokens:
             if tokens != otherTokens { return tokens > otherTokens }
-            if cost != otherCost { return cost > otherCost }
+            if rankedCost != rankedOtherCost { return rankedCost > rankedOtherCost }
         }
         return name.localizedCaseInsensitiveCompare(otherName) == .orderedAscending
+    }
+
+    private static func finiteCost(_ value: Double) -> Double {
+        value.isFinite ? value : 0
     }
 }

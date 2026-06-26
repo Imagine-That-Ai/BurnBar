@@ -18,12 +18,20 @@ enum UsageDisplayMode: String, CaseIterable, Identifiable, Hashable {
 
 extension Double {
     func formatAsCost() -> String {
+        guard self.isFinite else { return "—" }
         let magnitude = abs(self)
         if magnitude < 1e-9 { return "$0.00" }
         let formatted = magnitude < 0.01
             ? String(format: "$%.4f", magnitude)
             : String(format: "$%.2f", magnitude)
         return self < 0 ? "-\(formatted)" : formatted
+    }
+
+    func formatAsTokenVolume() -> String {
+        guard self.isFinite else { return "—" }
+        if self >= Double(Int.max) { return Int.max.formatAsTokenVolume() }
+        if self <= Double(Int.min) { return Int.min.formatAsTokenVolume() }
+        return Int(self).formatAsTokenVolume()
     }
 
     /// Display a 0–1 ratio as a percent. Whole numbers when ≥ 10%, one decimal below.
