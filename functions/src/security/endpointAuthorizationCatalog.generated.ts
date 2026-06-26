@@ -1517,6 +1517,24 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "markIrohAuditEventRollupEligible",
+    trigger: "firestore-trigger",
+    authMethod: "Firestore event trigger",
+    appCheck: "not-applicable",
+    tenantSource: "event document path",
+    objectIdsFromClient: [],
+    ownershipCheck: "server derives uid/object path from triggering document",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["markIrohAuditEventRollupEligible"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "onCliSessionAgentReplyNotification",
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",

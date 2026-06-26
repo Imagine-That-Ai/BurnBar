@@ -74,6 +74,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "reconcileKnowledgeMemoryDaily",
   "detectStalePendingCloudVaultRotations",
   "backfillProviderAccountDeviceLinksScheduled",
+  "markIrohAuditEventRollupEligible",
   "onUsageWritten",
   "rebuildRollups",
   "rollupUserRebuild",
