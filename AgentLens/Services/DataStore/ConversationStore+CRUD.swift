@@ -437,6 +437,7 @@ extension ConversationStore {
             try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations")
                 try db.execute(sql: "DELETE FROM summary_runs")
+                try db.execute(sql: "DELETE FROM project_memory_snapshots")
             }
         }
 
