@@ -57,9 +57,50 @@ run_case 64 oversized-cleanup-timeout-fails \
     FIRESTORE_DRILL_CLEANUP_TIMEOUT_SECONDS=999999 \
     bash "$script"
 
+backup_list='[
+  {
+    "name": "projects/burnbar/locations/us-central1/backups/wrong-newest",
+    "database": "projects/burnbar/databases/staging",
+    "state": "READY",
+    "snapshotTime": "2026-06-17T20:00:00Z"
+  },
+  {
+    "name": "projects/burnbar/locations/us-central1/backups/default-newest",
+    "database": "projects/burnbar/databases/(default)",
+    "state": "READY",
+    "snapshotTime": "2026-06-17T19:00:00Z"
+  },
+  {
+    "name": "projects/burnbar/locations/us-central1/backups/default-old",
+    "database": "projects/burnbar/databases/(default)",
+    "state": "READY",
+    "snapshotTime": "2026-06-17T18:00:00Z"
+  }
+]'
+
+run_case 0 backup-selection-filters-source-database \
+  env FIRESTORE_DRILL_VALIDATE_BACKUP_SELECTION_ONLY=1 \
+    FIRESTORE_DRILL_MODE=backup \
+    FIRESTORE_DRILL_BACKUP_LIST_JSON="$backup_list" \
+    bash "$script"
+
+run_case 2 explicit-wrong-database-backup-fails \
+  env FIRESTORE_DRILL_VALIDATE_BACKUP_SELECTION_ONLY=1 \
+    FIRESTORE_DRILL_MODE=backup \
+    FIRESTORE_DRILL_BACKUP_NAME="projects/burnbar/locations/us-central1/backups/wrong-newest" \
+    FIRESTORE_DRILL_BACKUP_LIST_JSON="$backup_list" \
+    bash "$script"
+
+run_case 2 no-source-database-backup-fails \
+  env FIRESTORE_DRILL_VALIDATE_BACKUP_SELECTION_ONLY=1 \
+    FIRESTORE_DRILL_MODE=backup \
+    FIRESTORE_DATABASE_ID=missing \
+    FIRESTORE_DRILL_BACKUP_LIST_JSON="$backup_list" \
+    bash "$script"
+
 if [[ "$fail" -ne 0 ]]; then
   echo "FAIL: ${fail} Firestore restore-drill timeout validation test(s) failed" >&2
   exit 1
 fi
 
-echo "PASS: ${pass} Firestore restore-drill timeout validation checks"
+echo "PASS: ${pass} Firestore restore-drill validation checks"
