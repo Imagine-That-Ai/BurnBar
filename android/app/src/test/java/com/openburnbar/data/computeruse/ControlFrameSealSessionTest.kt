@@ -9,8 +9,10 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayloadCodec
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntent
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
+import com.openburnbar.irohrelay.wireValue
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
@@ -353,6 +355,81 @@ class ControlFrameSealSessionTest {
         assertEquals(HermesRealtimeRelayInputIntentKind.TAP, opened.inputIntent?.kind)
         assertEquals("android-phone-1", opened.inputIntent?.authority?.peerNodeId)
         assertTrue(opened.inputIntent?.authority?.signatureEd25519.orEmpty().isNotEmpty())
+    }
+
+    @Test
+    fun `sealing frame sink seals agent grant and system permission controls`() = runBlocking {
+        val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
+        val sender = HermesRelayCryptoEc.generateEphemeralKeyPair()
+        val established = establish(recipient, sender)
+        val session =
+            ControlSealSessionEstablisher.Session(
+                envelope = established.envelope,
+                key = established.key,
+                controllerPeerNodeId = "android-phone-1",
+            )
+
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frames += it }
+        val controlSender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-1",
+                signingIdentityProvider = {
+                    PhoneControlSigningIdentity.Ed25519(ByteArray(32) { index -> (index + 1).toByte() })
+                },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_123L },
+                frameSink = ControlSealSessionEstablisher.sealingFrameSink(baseSink, session),
+            )
+
+        controlSender.send(
+            agentGrant =
+            AgentCapabilityGrantRequest(
+                runtime = "claude_code",
+                threadId = "thread-1",
+                preset = AgentPermissionPreset.WORKSPACE,
+                requestedAtMillis = 1_700_000_000_123L,
+                sourceDeviceId = "android-device-1",
+                localAuthenticationSatisfied = true,
+            ),
+        )
+        controlSender.send(
+            systemPermissionRequest =
+            PhoneControlSystemPermissionRequest(
+                requestId = "permission-1",
+                kind = PhoneControlSystemPermissionKind.SCREEN_RECORDING,
+                action = PhoneControlSystemPermissionAction.PROMPT,
+                requestedAtMillis = 1_700_000_000_456L,
+            ),
+        )
+
+        val agentGrantFrame = frames[0]
+        assertNull(agentGrantFrame.control?.agentGrantRequest)
+        assertNotNull(agentGrantFrame.control?.sealedFrameBase64)
+        val openedAgentGrant =
+            ControlFrameSealSession.openPayload(
+                payload = agentGrantFrame.control ?: error("expected agent grant control frame"),
+                key = session.key,
+                peerNodeId = "android-phone-1",
+                frameType = HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST.wireValue,
+            )
+        assertEquals("claude_code", openedAgentGrant.agentGrantRequest?.runtime)
+        assertEquals("android-phone-1", openedAgentGrant.agentGrantRequest?.authority?.peerNodeId)
+
+        val systemPermissionFrame = frames[1]
+        assertNull(systemPermissionFrame.control?.systemPermissionRequest)
+        assertNotNull(systemPermissionFrame.control?.sealedFrameBase64)
+        val openedSystemPermission =
+            ControlFrameSealSession.openPayload(
+                payload = systemPermissionFrame.control ?: error("expected system permission control frame"),
+                key = session.key,
+                peerNodeId = "android-phone-1",
+                frameType = HermesRealtimeRelayFrameType.CONTROL_SYSTEM_PERMISSION_REQUEST.wireValue,
+            )
+        assertEquals("permission-1", openedSystemPermission.systemPermissionRequest?.requestId)
+        assertEquals("android-phone-1", openedSystemPermission.systemPermissionRequest?.authority?.peerNodeId)
     }
 
     @Test
