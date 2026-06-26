@@ -163,7 +163,7 @@ Apple proof now collected:
 - `swift test --package-path OpenBurnBarCore --filter SignalAtRestSealerTests` passed against the rebuilt FFI package.
 - `xcodebuild ... -scheme OpenBurnBarMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' ... build` passed.
 - `xcodebuild ... -scheme OpenBurnBar -destination 'platform=macOS' ... build` passed.
-- `OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=AFB07C15-AD18-5EFA-AD1C-CADB4F286797' ./scripts/test-openburnbar-mobile.sh` passed on a physical iPhone: 972 tests, 24 skipped, 0 failures.
+- `OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<IOS_DEVICE_ID>' ./scripts/test-openburnbar-mobile.sh` passed on a physical iPhone: 972 tests, 24 skipped, 0 failures.
 
 Remaining release Apple proof:
 
@@ -210,11 +210,11 @@ Acceptance:
 
 Proof now collected:
 
-- Physical iPhone: `./scripts/test-openburnbar-mobile.sh` against `AFB07C15-AD18-5EFA-AD1C-CADB4F286797` passed.
-- Physical iPhone focused mobile assistant chat Signal path-binding: `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
-- Physical iPhone focused CLI mission Signal path-binding: `CLIAgentMissionDispatcherSealTests/test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
-- Physical Android: `CloudVaultCryptoSignalInstrumentedTest` against `R3CXB0CNS0J` / `SM-S921U` passed.
-- Physical iPad final rerun: `PensieveMemorySearchSignalTests` passed **3/3** on `00008132-001158191E9A401C`, and `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed **1/1** on the same wired iPad. Logs: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-physical-final/`.
+- Physical iPhone: `./scripts/test-openburnbar-mobile.sh` against `<IOS_DEVICE_ID>` passed.
+- Physical iPhone focused mobile assistant chat Signal path-binding: `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `<IOS_DEVICE_ID>`.
+- Physical iPhone focused CLI mission Signal path-binding: `CLIAgentMissionDispatcherSealTests/test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `<IOS_DEVICE_ID>`.
+- Physical Android: `CloudVaultCryptoSignalInstrumentedTest` against `<ANDROID_SERIAL>` / `SM-S921U` passed.
+- Physical iPad final rerun: `PensieveMemorySearchSignalTests` passed **3/3** on `<IOS_USB_UDID>`, and `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed **1/1** on the same wired iPad. Logs: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-physical-final/`.
 
 Remaining live matrix after producer wiring:
 

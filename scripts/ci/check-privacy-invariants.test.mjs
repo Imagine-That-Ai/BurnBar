@@ -20,6 +20,14 @@ const GATE = join(
   dirname(fileURLToPath(import.meta.url)),
   "check-privacy-invariants.mjs",
 );
+const IOS_COREDEVICE_SAMPLE = [
+  "01234567",
+  "89AB",
+  "CDEF",
+  "0123",
+  "456789ABCDEF",
+].join("-");
+const ANDROID_SERIAL_SAMPLE = ["TEST", "12345678"].join("");
 const roots = [];
 process.on("exit", () =>
   roots.forEach((d) => rmSync(d, { recursive: true, force: true })),
@@ -238,6 +246,37 @@ expect(
     return f;
   }),
   1,
+);
+
+// I7: personal physical-device identifiers must not be committed to public
+// docs/scripts/tests. The samples are assembled above so this self-test source
+// does not itself carry a real-looking device token.
+expect(
+  "I7 — physical iOS device id in docs fails",
+  buildTree((f) => {
+    f["docs/local-device.md"] = `Physical iPhone ${IOS_COREDEVICE_SAMPLE} passed local validation.`;
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I7 — physical Android serial in docs fails",
+  buildTree((f) => {
+    f["docs/local-device.md"] = `Samsung Android ${ANDROID_SERIAL_SAMPLE} passed local validation.`;
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I7 — device placeholders in docs pass",
+  buildTree((f) => {
+    f["docs/local-device.md"] =
+      "Physical iPhone <IOS_DEVICE_ID> and Android <ANDROID_SERIAL> passed local validation.";
+    return f;
+  }),
+  0,
 );
 
 // Misconfiguration: invalid indexes JSON must exit 2 (fail-closed, not crash to 0).

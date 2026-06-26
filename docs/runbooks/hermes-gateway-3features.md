@@ -12,7 +12,7 @@ procedure, and the readiness verdict for the Hermes plugin PR.
 > fork branch (`78b1c7244`, `ajnunezg/burnbar-gateway-e2ee`; code proof commit
 > `f79947b9b` plus security-note update). The focused mobile gateway/security
 > suite now also passes on Alberto's connected physical iPad
-> (`00008132-001158191E9A401C`, iPad Air 11-inch M4, iPadOS 26.5): 95 executed,
+> (`<IOS_USB_UDID>`, iPad Air 11-inch M4, iPadOS 26.5): 95 executed,
 > 3 source-inspection checks skipped because the Mac workspace is not mounted in
 > the app-host process, 0 failures. Live deployed readback also confirms sealed
 > chat, model-switch, attachment, approval, Firestore, Storage, Cloud Logging,
@@ -323,7 +323,7 @@ Updated after the gateway E2EE re-architecture landed in the same files and the
 - **iOS client:** **unit/compile ready on simulator and physical iPad; deployed
   approval decisions now have live trusted-device readback.** `OpenBurnBarMobileTests/
   OpenBurnBarMobileTests` passed 95 executed tests on simulator and on Alberto's
-  physical iPad (`00008132-001158191E9A401C`), including E2EE pinning, sealed
+  physical iPad (`<IOS_USB_UDID>`), including E2EE pinning, sealed
   replies, destination-bound sealed attachments, sealed model-switch envelopes,
   gateway store behavior, and the app-host ratchet phone-event/agent-reply
   round trip. The focused live approval test separately armed approve/reject/
@@ -382,8 +382,8 @@ bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 | BurnBar adapter local gateway smoke | pass (`eventsReceived=2`, `messagesSent=4`, `attachmentUploads=3`, `attachmentFinalizes=3`, `typingEvents=1`) |
 | External Hermes gateway pytest | 211 passed |
 | iOS simulator `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | 95 passed |
-| Physical iPad `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | pass; 95 executed, 3 source-inspection checks skipped, 0 failures; UDID `00008132-001158191E9A401C`; telemetry `.derived-data/test-openburnbar-mobile-attempts.jsonl`; xcresult `/var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/openburnbar-mobile-tests/openburnbar-mobile-tests.2gQdGa/OpenBurnBarMobileTests-attempt-1.xcresult` |
-| Physical iPad live approval E2E | pass; `OpenBurnBarMobileTests/HermesServiceTests/testLiveHermesGatewayApprovalResponseE2E` on `00008132-001158191E9A401C` armed approve/reject/expiry cases, trusted the iPad through native device escrow, resolved approve/reject from the trusted device, observed public expiry, and proved late expired responses fail closed |
+| Physical iPad `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | pass; 95 executed, 3 source-inspection checks skipped, 0 failures; UDID `<IOS_USB_UDID>`; telemetry `.derived-data/test-openburnbar-mobile-attempts.jsonl`; xcresult `/var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/openburnbar-mobile-tests/openburnbar-mobile-tests.2gQdGa/OpenBurnBarMobileTests-attempt-1.xcresult` |
+| Physical iPad live approval E2E | pass; `OpenBurnBarMobileTests/HermesServiceTests/testLiveHermesGatewayApprovalResponseE2E` on `<IOS_USB_UDID>` armed approve/reject/expiry cases, trusted the iPad through native device escrow, resolved approve/reject from the trusted device, observed public expiry, and proved late expired responses fail closed |
 | Live Firestore gateway clients | pass; active client `hgw_e16e63911798c721125ada4c` has relay, HPKE v3, and ratchet public capability fields and fresh `lastSeenAt`/runtime metadata |
 | Live Firestore gateway events/messages | pass; recent message, model-switch, and agent-message docs for `hgw_e16e63911798c721125ada4c` carry `relayEnvelope` v2 / `payloadCiphertext` and no top-level plaintext `text`, `body`, or `message` fields |
 | Live Firestore/Storage attachments | pass; 2 uploaded attachment manifests in `hermes_gateway_attachments` store `application/octet-stream`, no plaintext `fileName`, destination-bound sealed `relayEnvelope` v2, and matching opaque Storage objects in the deployed bucket |

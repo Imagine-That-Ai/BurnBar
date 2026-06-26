@@ -78,7 +78,7 @@ Verification:
   `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-ci-focused -only-testing:OpenBurnBarTests/OpenBurnBarDaemonManagerTests/test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding -only-testing:OpenBurnBarTests/SettingsManifestCoverageTests/test_eachTabHasAtLeastOneEntry -only-testing:OpenBurnBarTests/QuotaSettingsTests -skipPackagePluginValidation -skipMacroValidation`
   passed.
 - Cellular-attempt command:
-  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 600 --wait-for-device-interval 5 --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-ios-cellular-gate' --poll-seconds 600 --poll-interval 5 --output-dir docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260517-current-cellular --no-start-host`
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --device <IOS_DEVICE_ID> --wait-for-device-seconds 600 --wait-for-device-interval 5 --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-ios-cellular-gate' --poll-seconds 600 --poll-interval 5 --output-dir docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260517-current-cellular --no-start-host`
   stopped on run 1 because the expected interface was `cellular` but the phone
   reported `wifi`.
 - Request `iroh_23eced2c-6cc4-47aa-8c54-841e3e20b446` still proves the routing
@@ -113,7 +113,7 @@ Completed:
 - Verified the gateway health endpoint returned OK and `/v1/models` advertised
   47 route-eligible models including `minimax-m2.7-highspeed`.
 - Rebuilt, installed, and launched the current iOS app on physical iPhone
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
+  `<IOS_DEVICE_ID>`.
 - Ran a physical iPhone Hermes iroh E2E against the current Mac daemon with the
   exact model assertion set to `minimax-m2.7-highspeed`.
 
@@ -126,7 +126,7 @@ Verification:
 - Model catalog:
   `/v1/models` returned 47 rows and included `minimax-m2.7-highspeed`.
 - iOS physical smoke:
-  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 60 --wait-for-device-interval 5 --expect-interface wifi --model minimax-m2.7-highspeed --expect-requested-model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-app-running' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-app-running-events.json --no-start-host`
+  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device <IOS_DEVICE_ID> --wait-for-device-seconds 60 --wait-for-device-interval 5 --expect-interface wifi --model minimax-m2.7-highspeed --expect-requested-model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-app-running' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-app-running-events.json --no-start-host`
   passed.
 - Request `iroh_41abb1fa-d8b1-45c3-bc97-f19af1e89d5d` shows
   `iroh_pairing_verified`, `iroh_stream_opened` over `iroh-direct`,
@@ -278,8 +278,8 @@ Completed:
 - Repaired shared CLI auth discovery so the iOS target no longer compiles a
   macOS-only `homeDirectoryForCurrentUser` path.
 - Installed the rebuilt Android debug APK on physical Android
-  `R3CXB0CNS0J` and the rebuilt iOS app on physical iPhone
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
+  `<ANDROID_SERIAL>` and the rebuilt iOS app on physical iPhone
+  `<IOS_DEVICE_ID>`.
 - Verified Android and iOS both route the explicit
   `minimax-m2.7-highspeed` model over `iroh-direct` through the hosted relay,
   with no WSS fallback and no silent reroute to a default GPT model.
@@ -299,7 +299,7 @@ Verification:
   `android_response_chunk_received` / `android_response_chunk_processed`,
   then `android_response_complete`.
 - iOS physical smoke:
-  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 60 --expect-interface wifi --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-18' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-18-events.json --no-start-host`
+  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device <IOS_DEVICE_ID> --wait-for-device-seconds 60 --expect-interface wifi --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-18' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-18-events.json --no-start-host`
   passed. Request `iroh_79058de1-ffdb-49c0-a28c-9503a545569b` shows
   `host_forward_chat_start` with `requestedModel=minimax-m2.7-highspeed`,
   `host_forward_chat_complete done=true`, and `ios_response_complete` on
@@ -451,7 +451,7 @@ Next action:
 
 Completed:
 - Rechecked the physical-device state before rerunning the cellular gate. The
-  iPhone `AFB07C15-AD18-5EFA-AD1C-CADB4F286797` is still paired but not
+  iPhone `<IOS_DEVICE_ID>` is still paired but not
   launchable: `tunnelState: unavailable`. `xcrun xcdevice list` reports the
   same device as unavailable with the recovery suggestion to unlock it and
   attach it with a cable or keep it on the same local network.
@@ -481,7 +481,7 @@ Completed:
   recorded green, and Phase D remains in hosted-relay validation with the
   remaining formal requirement being cellular/different-network iOS proof.
 - Rechecked CoreDevice state before attempting the gate. The iPhone
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797` is paired but not launchable:
+  `<IOS_DEVICE_ID>` is paired but not launchable:
   `tunnelState: unavailable`. The iPad is launchable over local network, but it
   does not satisfy the remaining cellular iPhone topology gate.
 - Hardened `scripts/e2e/ios-iroh-chat.sh` and
@@ -753,7 +753,7 @@ Completed:
   - Mac pairing published at `2026-05-16T04:47:07.319Z` with relay URL
     `https://use1-1.relay.alberto8793.burnbar.iroh.link/`.
   - Physical iPhone launch succeeded through `devicectl` on device
-    `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
+    `<IOS_DEVICE_ID>`.
   - iOS pairing verified at `2026-05-16T04:47:58.217Z`; iOS stream opened at
     `2026-05-16T04:48:01.814Z`; Mac stream opened at
     `2026-05-16T04:48:01.922Z`.
@@ -811,7 +811,7 @@ Completed:
     model.
 - Rebuilt and installed the updated physical iPhone app after the guardrail
   changes. Run 07 launch used device
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`, hosted relay
+  `<IOS_DEVICE_ID>`, hosted relay
   `https://use1-1.relay.alberto8793.burnbar.iroh.link/`, and
   `OPENBURNBAR_E2E_HERMES_MODEL=gpt-5.5`.
 - Run 07 live audit proved model binding:
@@ -884,7 +884,7 @@ Completed:
 
 - Rebuilt and reinstalled the physical iPhone app after the host/client timeout
   split and diagnostic audit additions. The device launch used
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`, hosted relay
+  `<IOS_DEVICE_ID>`, hosted relay
   `https://use1-1.relay.alberto8793.burnbar.iroh.link/`, and
   `OPENBURNBAR_E2E_HERMES_MODEL=gpt-5.5`.
 - Hosted-relay run `iroh_27bc1c83-677a-43a4-9e9a-7cbbc061f8d9` completed
@@ -1002,7 +1002,7 @@ Completed:
   application, selected model, and send start; they do not log prompt contents,
   uid, email, or display name.
 - Rebuilt and reinstalled `OpenBurnBarMobile` on physical device
-  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`. The debug dylib contains the new
+  `<IOS_DEVICE_ID>`. The debug dylib contains the new
   `HermesE2E` and `OPENBURNBAR_E2E_HERMES_*` strings.
 - Rebuilt and relaunched the macOS host with
   `OPENBURNBAR_FORCE_LIVE_SCENE=1`,

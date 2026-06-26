@@ -28,7 +28,7 @@ RUNS=10
 INTERFACES="cellular"
 OUTPUT_DIR="docs/runbooks/iroh-dev-validation/ios-iroh-gate-$(date -u '+%Y%m%dT%H%M%SZ')"
 PROJECT="burnbar"
-DEVICE_ID="AFB07C15-AD18-5EFA-AD1C-CADB4F286797"
+DEVICE_ID="${OPENBURNBAR_IOS_DEVICE_ID:-}"
 DEVICE_WAIT_SECONDS=0
 DEVICE_WAIT_INTERVAL=5
 MODEL="auto"
@@ -50,7 +50,7 @@ Options:
   --interfaces <csv>           Expected networkInterfaces plan. Default: cellular
   --output-dir <path>          Directory for run logs and Firestore exports.
   --project <id>               Firebase/GCP project. Default: burnbar
-  --device <id>                CoreDevice identifier. Default: current dev iPhone
+  --device <id>                CoreDevice identifier. Defaults to OPENBURNBAR_IOS_DEVICE_ID.
   --wait-for-device-seconds <n>
                                Wait for CoreDevice tunnel before failing. Default: 0
   --wait-for-device-interval <n>
@@ -95,6 +95,11 @@ done
 
 if [[ -z "${UID_VALUE}" ]]; then
     echo "Missing required --uid <firebase-uid>." >&2
+    exit 2
+fi
+if [[ -z "${DEVICE_ID}" ]]; then
+    echo "Missing --device <id> or OPENBURNBAR_IOS_DEVICE_ID." >&2
+    echo "Find it with: xcrun devicectl list devices" >&2
     exit 2
 fi
 if ! [[ "${RUNS}" =~ ^[1-9][0-9]*$ ]]; then

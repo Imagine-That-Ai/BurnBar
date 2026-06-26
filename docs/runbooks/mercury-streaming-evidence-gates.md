@@ -280,8 +280,8 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 export BENCH_DIR="$PWD/artifacts/mercury-live-benchmark/$RUN_ID"
 mkdir -p "$BENCH_DIR"
 
-adb -s R3CXB0CNS0J logcat -c
-adb -s R3CXB0CNS0J logcat -v epoch > "$BENCH_DIR/android-logcat.txt" &
+adb -s <ANDROID_SERIAL> logcat -c
+adb -s <ANDROID_SERIAL> logcat -v epoch > "$BENCH_DIR/android-logcat.txt" &
 ANDROID_LOG_PID=$!
 
 log stream --style compact \
@@ -289,7 +289,7 @@ log stream --style compact \
   > "$BENCH_DIR/mac-log.txt" &
 MAC_LOG_PID=$!
 
-adb -s R3CXB0CNS0J shell screenrecord --time-limit 180 /sdcard/mercury-benchmark.mp4 &
+adb -s <ANDROID_SERIAL> shell screenrecord --time-limit 180 /sdcard/mercury-benchmark.mp4 &
 ```
 
 Manual run:
@@ -304,8 +304,8 @@ Manual run:
 7. End the stream and collect artifacts:
 
 ```bash
-adb -s R3CXB0CNS0J pull /sdcard/mercury-benchmark.mp4 "$BENCH_DIR/"
-adb -s R3CXB0CNS0J bugreport "$BENCH_DIR/android-bugreport.zip"
+adb -s <ANDROID_SERIAL> pull /sdcard/mercury-benchmark.mp4 "$BENCH_DIR/"
+adb -s <ANDROID_SERIAL> bugreport "$BENCH_DIR/android-bugreport.zip"
 kill "$ANDROID_LOG_PID" "$MAC_LOG_PID" 2>/dev/null || true
 ```
 
@@ -329,8 +329,8 @@ cleanup pass:
 ```bash
 xcodebuild -scheme OpenBurnBarMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:OpenBurnBarMobileTests/MediaControlStreamPresenceTests test -quiet
 cd android && JAVA_HOME="$HOME/.homebrew/opt/openjdk@21" ANDROID_HOME="$HOME/Library/Android" ANDROID_SDK_ROOT="$HOME/Library/Android" ./gradlew assembleDebug :openburnbar-iroh-relay:testDebugUnitTest :app:testDebugUnitTest --no-daemon
-adb -s R3CXB0CNS0J install -r android/app/build/outputs/apk/debug/app-debug.apk
-adb -s R3CXB0CNS0J shell am start -W -n com.openburnbar/.MainActivity
+adb -s <ANDROID_SERIAL> install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb -s <ANDROID_SERIAL> shell am start -W -n com.openburnbar/.MainActivity
 ```
 
 Results:
@@ -339,7 +339,7 @@ Results:
   `artifacts/swift-warning-final.log`.
 - Android debug APK and app plus relay JVM unit tests passed with no compiler
   warnings in `artifacts/android-warning-final.log`.
-- Samsung `R3CXB0CNS0J` cold-launched `com.openburnbar/.MainActivity` in
+- Samsung `<ANDROID_SERIAL>` cold-launched `com.openburnbar/.MainActivity` in
   963 ms wait time.
 - Launch log includes `Installed Android native context for iroh DNS resolver`
   and no fatal AndroidRuntime/SIGABRT/SIGSEGV markers.
