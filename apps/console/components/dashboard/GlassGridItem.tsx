@@ -8,6 +8,7 @@ import {
   clampRect,
   colToPx,
   rowToPx,
+  resizeRectFromOrigin,
   snapPxRect,
   spanHeightPx,
   spanWidthPx,
@@ -158,7 +159,7 @@ export function GlassGridItem({
     const [dx, dy] = d;
     // Plain arrows move; Shift+arrows resize.
     const next: GridRect = e.shiftKey
-      ? { ...rect, w: rect.w + dx, h: rect.h + dy }
+      ? resizeRectFromOrigin(rect, dx, dy, cols)
       : { ...rect, x: rect.x + dx, y: rect.y + dy };
     onCommit(clampRect(next, cols));
   }

@@ -62,7 +62,7 @@ describe("kernel specs", () => {
   });
 
   it("getKernelSpec falls back for an unknown id", () => {
-    // @ts-expect-error — deliberately invalid id
+    // @ts-expect-error reason: exercises the unknown-id fallback at runtime.
     expect(getKernelSpec("does-not-exist").id).toBe(DEFAULT_KERNEL_ID);
     expect(isKernelId("does-not-exist")).toBe(false);
   });

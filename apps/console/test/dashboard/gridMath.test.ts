@@ -9,6 +9,7 @@ import {
   nextRow,
   pxToColSpan,
   rectsOverlap,
+  resizeRectFromOrigin,
   snapPxRect,
   spanWidthPx,
   type GridRect,
@@ -129,6 +130,19 @@ describe("snapPxRect resize mode", () => {
     );
     expect(snapped.x).toBe(9); // origin preserved, NOT shifted left
     expect(snapped.x + snapped.w).toBeLessThanOrEqual(GRID.cols);
+  });
+});
+
+describe("resizeRectFromOrigin", () => {
+  it("caps keyboard resize at the right edge without shifting origin", () => {
+    const resized = resizeRectFromOrigin({ x: 9, y: 1, w: 3, h: 2 }, 1, 0);
+    expect(resized).toEqual({ x: 9, y: 1, w: 3, h: 2 });
+  });
+
+  it("still applies minimum height and width", () => {
+    const resized = resizeRectFromOrigin({ x: 2, y: 1, w: 4, h: 3 }, -20, -20);
+    expect(resized.w).toBe(GRID.minW);
+    expect(resized.h).toBe(GRID.minH);
   });
 });
 

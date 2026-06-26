@@ -133,7 +133,7 @@ public enum DataDomains {
             id: "entitlements_billing", title: "Plan & Billing", icon: "creditcard.fill",
             encryptionTier: .serverReadable, summary: "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
             serverSees: ["entitlement ids", "product ids", "active state", "expiry", "purchase source"], deviceOnly: [],
-            firestorePaths: ["entitlements", "entitlement_events", "entitlement_bindings"], storagePaths: [],
+            firestorePaths: ["entitlements", "entitlement_events", "entitlement_bindings", "billing"], storagePaths: [],
             countSource: "entitlements", byteSource: nil,
             retention: "permanent", actions: ["view"],
             entitlementGate: nil, suspensionSurface: nil,

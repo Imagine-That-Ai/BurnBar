@@ -1246,8 +1246,7 @@ final class CursorConnectorManager {
         import json, ssl, sys, uuid, datetime, time, threading
         from http import HTTPStatus
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-        from urllib.error import HTTPError, URLError
-        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError, URLError; from urllib.request import Request, urlopen
 
         CONFIG_PATH = sys.argv[1]
 

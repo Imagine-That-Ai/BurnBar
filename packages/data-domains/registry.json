@@ -195,7 +195,7 @@
       "summary": "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
       "serverSees": ["entitlement ids", "product ids", "active state", "expiry", "purchase source"],
       "deviceOnly": [],
-      "firestorePaths": ["entitlements", "entitlement_events", "entitlement_bindings"],
+      "firestorePaths": ["entitlements", "entitlement_events", "entitlement_bindings", "billing"],
       "storagePaths": [],
       "countSource": "entitlements",
       "byteSource": null,

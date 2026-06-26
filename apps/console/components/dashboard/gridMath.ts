@@ -178,3 +178,20 @@ export function snapPxRect(
   }
   return clampRect({ x, y, w, h }, cols);
 }
+
+/** Resize from the top-left origin, capping width instead of shifting x left. */
+export function resizeRectFromOrigin(
+  rect: GridRect,
+  deltaW: number,
+  deltaH: number,
+  cols: number = GRID.cols,
+): GridRect {
+  const origin = clampRect(rect, cols);
+  const maxW = cols - origin.x;
+  const minW = Math.min(GRID.minW, maxW);
+  return {
+    ...origin,
+    w: clampInt(origin.w + deltaW, minW, maxW),
+    h: clampInt(origin.h + deltaH, GRID.minH, MAX_ROWS),
+  };
+}
