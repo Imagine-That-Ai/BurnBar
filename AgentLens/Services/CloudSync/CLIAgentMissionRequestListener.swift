@@ -1352,6 +1352,18 @@ final class CLIAgentMissionRequestListener {
                     message: text,
                     backend: backend
                 )
+            case .reasoning, .refusal:
+                let text = piece.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                await recordEvent(
+                    reference: reference,
+                    requestID: requestID,
+                    phase: piece.kind == .reasoning ? "reasoning" : "refusal",
+                    kind: piece.kind == .reasoning ? "llm_reasoning" : "llm_refusal",
+                    title: piece.kind == .reasoning ? "Reasoning" : "Refusal",
+                    message: text,
+                    backend: backend
+                )
             }
         }
     }

@@ -1661,13 +1661,21 @@ final class ChatSessionController {
     }
 
     static func appendStreamingText(_ chunk: String, to pieces: inout [ChatTranscriptPiece]) {
+        appendStreamingTranscriptChunk(chunk, kind: .text, to: &pieces)
+    }
+
+    static func appendStreamingTranscriptChunk(
+        _ chunk: String,
+        kind: ChatTranscriptPiece.Kind,
+        to pieces: inout [ChatTranscriptPiece]
+    ) {
         guard !chunk.isEmpty else { return }
-        if let i = pieces.indices.last, pieces[i].kind == .text {
+        if let i = pieces.indices.last, pieces[i].kind == kind {
             var last = pieces[i]
             last.value += chunk
             pieces[i] = last
         } else {
-            pieces.append(ChatTranscriptPiece(kind: .text, value: chunk, detail: nil))
+            pieces.append(ChatTranscriptPiece(kind: kind, value: chunk, detail: nil))
         }
     }
 

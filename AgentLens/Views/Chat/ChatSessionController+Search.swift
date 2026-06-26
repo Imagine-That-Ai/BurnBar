@@ -741,6 +741,10 @@ extension ChatSessionController {
                     switch event {
                     case .text(let chunk):
                         Self.appendStreamingText(chunk, to: &pieces)
+                    case .reasoning(let chunk):
+                        Self.appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
+                    case .refusal(let chunk):
+                        Self.appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
                         Task { @MainActor in

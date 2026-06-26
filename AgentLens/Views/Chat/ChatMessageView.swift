@@ -81,8 +81,10 @@ struct ChatMessageView: View {
         return narrow + (wide - narrow) * t
     }
 
-    private var lastTextPieceId: String? {
-        transcript.last { $0.kind == .text }?.id
+    private var lastProsePieceId: String? {
+        transcript.last { piece in
+            piece.kind == .text || piece.kind == .reasoning || piece.kind == .refusal
+        }?.id
     }
 
     var body: some View {
@@ -153,6 +155,10 @@ struct ChatMessageView: View {
             switch piece.kind {
             case .text:
                 return piece.value
+            case .reasoning:
+                return "Reasoning\n\(piece.value)"
+            case .refusal:
+                return "Refusal\n\(piece.value)"
             case .toolUse:
                 return "⟨\(piece.value)\(piece.detail.map { ": \($0)" } ?? "")⟩"
             case .toolResult:
@@ -255,11 +261,22 @@ struct ChatMessageView: View {
                     case .toolGroup(let pieces):
                         toolGroupStrip(pieces)
                     case .single(let piece):
-                        proseBubble(
-                            isUser: false,
-                            text: piece.value,
-                            appendCaret: isStreaming && piece.id == lastTextPieceId
-                        )
+                        switch piece.kind {
+                        case .text:
+                            proseBubble(
+                                isUser: false,
+                                text: piece.value,
+                                appendCaret: isStreaming && piece.id == lastProsePieceId
+                            )
+                        case .reasoning, .refusal:
+                            safetyLabeledBubble(
+                                kind: piece.kind,
+                                text: piece.value,
+                                appendCaret: isStreaming && piece.id == lastProsePieceId
+                            )
+                        case .toolUse, .toolResult:
+                            EmptyView()
+                        }
                     }
                 }
             }
@@ -271,6 +288,28 @@ struct ChatMessageView: View {
                     .padding(.top, 2)
             }
         }
+    }
+
+    @ViewBuilder
+    private func safetyLabeledBubble(kind: ChatTranscriptPiece.Kind, text: String, appendCaret: Bool) -> some View {
+        let title = kind == .reasoning ? "Reasoning" : "Refusal"
+        let accent = kind == .reasoning ? DesignSystem.Colors.textMuted : DesignSystem.Colors.warning
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(accent)
+            if !text.isEmpty || appendCaret {
+                Text(text + (appendCaret ? "▍" : ""))
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm + 2)
+        .padding(.vertical, DesignSystem.Spacing.xs + 2)
+        .background(accent.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
     }
 
     // MARK: - Tool Group Strip
@@ -339,7 +378,7 @@ struct ChatMessageView: View {
                 // a ghost "result" row — the information is not lost because the
                 // Mac transcript always emits toolUse before toolResult.
                 break
-            case .text:
+            case .text, .reasoning, .refusal:
                 break
             }
             index += 1

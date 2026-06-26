@@ -1154,6 +1154,23 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(result.done)
     }
 
+    func test_openAICompatibleSSEParser_preservesReasoningAndRefusalLabels() {
+        var parser = OpenAICompatibleSSEParser()
+        let line = #"""
+        data: {"choices":[{"delta":{"reasoning_content":"think","refusal":"no","content":"answer"}}]}
+        """#
+
+        let result = parser.events(fromLine: line)
+
+        XCTAssertEqual(result.events, [
+            .refusal("no"),
+            .reasoning("think"),
+            .text("answer")
+        ])
+        XCTAssertTrue(result.streamedText)
+        XCTAssertFalse(result.done)
+    }
+
     func test_openAICompatibleModelListParser_extractsFirstModelID() throws {
         let data = #"{"data":[{"id":"Hermes-3"}]}"#.data(using: .utf8)!
 

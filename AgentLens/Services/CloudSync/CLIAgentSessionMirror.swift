@@ -490,6 +490,16 @@ final class CLIAgentSessionMirror: Sendable {
                 if !piece.value.isEmpty {
                     bodyParts.append(piece.value)
                 }
+            case .reasoning, .refusal:
+                toolUses.append(
+                    CLIAgentToolUse(
+                        id: piece.id,
+                        name: piece.kind == .reasoning ? "Reasoning" : "Refusal",
+                        status: "done",
+                        detail: piece.value,
+                        startedAt: message.timestamp
+                    )
+                )
             case .toolUse, .toolResult:
                 toolUses.append(
                     CLIAgentToolUse(
