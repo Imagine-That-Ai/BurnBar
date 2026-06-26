@@ -236,7 +236,7 @@ who emits what.
 | `chat.generation.completed`    | lifecycle      | `backend`, `total_duration_ms_bucket`, `outcome`                       |
 | `chat.generation.cancelled`    | primary_action | `backend`, `elapsed_ms_bucket`                                         |
 | `chat.generation.failed`       | error          | `backend`, `error_type`, `elapsed_ms_bucket`                           |
-| `chat.tool.invoked`            | primary_action | `tool_name` (enum of known tools; never args)                         |
+| `chat.tool.invoked`            | primary_action | `tool_name` (closed tool bucket; never raw custom names or args)       |
 | `chat.backend.switched`        | primary_action | `from_backend`, `to_backend`                                          |
 | `chat.model.selected`          | primary_action | `backend`, `model_source`                                            |
 | `chat.attachment.added`        | primary_action | `attachment_kind` (`file`\|`image`), `attachment_count_bucket`        |

@@ -65,6 +65,27 @@ final class AnalyticsBucketsTests: XCTestCase {
         XCTAssertEqual(AnalyticsBuckets.durationSeconds(1800), "10-60m")
         XCTAssertEqual(AnalyticsBuckets.durationSeconds(5000), ">60m")
     }
+
+    func test_toolName_knownToolsUseClosedBuckets() {
+        XCTAssertEqual(AnalyticsBuckets.toolName("Read"), "file_read")
+        XCTAssertEqual(AnalyticsBuckets.toolName("EditFile"), "file_edit")
+        XCTAssertEqual(AnalyticsBuckets.toolName("grep-search"), "search")
+        XCTAssertEqual(AnalyticsBuckets.toolName("WebFetch"), "web")
+        XCTAssertEqual(AnalyticsBuckets.toolName("browser_screenshot"), "browser")
+    }
+
+    func test_toolName_unknownOrSensitiveValuesDoNotReachAnalytics() {
+        XCTAssertEqual(AnalyticsBuckets.toolName(nil), "unknown")
+        XCTAssertEqual(AnalyticsBuckets.toolName("   "), "unknown")
+        XCTAssertEqual(
+            AnalyticsBuckets.toolName("customer_token_/Users/example/private/project.swift"),
+            "other"
+        )
+        XCTAssertEqual(
+            AnalyticsBuckets.toolName(String(repeating: "x", count: 2_000)),
+            "other"
+        )
+    }
 }
 
 /// The event registry enforces the taxonomy at compile time — call sites can only

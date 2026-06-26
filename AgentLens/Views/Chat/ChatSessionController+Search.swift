@@ -745,7 +745,7 @@ extension ChatSessionController {
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
                         Task { @MainActor in
                             Analytics.shared.track(.chatToolInvoked, [
-                                "tool_name": .string(name),
+                                "tool_name": .string(AnalyticsBuckets.toolName(name)),
                                 "backend": .string(self.chatBackend.rawValue)
                             ])
                         }
