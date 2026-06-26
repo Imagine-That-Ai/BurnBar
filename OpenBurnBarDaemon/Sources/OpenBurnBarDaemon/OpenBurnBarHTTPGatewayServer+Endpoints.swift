@@ -90,7 +90,6 @@ extension BurnBarHTTPGatewayServer {
             attemptDegrade: { request in
                 await self.attemptCrossVendorDegradeForChat(
                     bodyData: request.bodyData,
-                    requestSignature: request.requestSignature,
                     accountingRequestID: request.accountingRequestID,
                     requestedModelID: request.modelID,
                     routeLogStartedAt: request.startedAt,

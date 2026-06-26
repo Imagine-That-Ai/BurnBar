@@ -43,7 +43,6 @@ extension BurnBarHTTPGatewayServer {
             return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("model field required"))))
         }
         let wantsStream = decoded.wantsStream
-        let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
         var advertisedRequestedModel = requestedModel
         var resolvedVariant: BurnBarModelVariant?
@@ -72,7 +71,6 @@ extension BurnBarHTTPGatewayServer {
             bodyData: bodyData,
             modelID: modelID,
             wantsStream: wantsStream,
-            requestSignature: requestSignature,
             requestedModel: requestedModel,
             advertisedRequestedModel: advertisedRequestedModel,
             resolvedVariant: resolvedVariant,
@@ -262,7 +260,6 @@ extension BurnBarHTTPGatewayServer {
         let bodyData = resolved.bodyData
         let modelID = resolved.modelID
         let wantsStream = resolved.wantsStream
-        let requestSignature = resolved.requestSignature
         let accountingRequestID = UUID().uuidString
         var routeLogAttempts = RouteAttemptRecorder()
         var requestedModel = resolved.requestedModel
@@ -275,7 +272,6 @@ extension BurnBarHTTPGatewayServer {
         func degradeRequest(requestedCanonicalModelID: String?) -> GatewayDegradeRequest {
             GatewayDegradeRequest(
                 bodyData: bodyData,
-                requestSignature: requestSignature,
                 accountingRequestID: accountingRequestID,
                 modelID: modelID,
                 startedAt: routeLogStartedAt,
@@ -437,7 +433,6 @@ extension BurnBarHTTPGatewayServer {
                             bodyData: bodyData,
                             wantsStream: wantsStream,
                             resolvedVariant: resolvedVariant,
-                            requestSignature: requestSignature,
                             accountingRequestID: accountingRequestID,
                             requestedModel: requestedModel,
                             logContext: logContext

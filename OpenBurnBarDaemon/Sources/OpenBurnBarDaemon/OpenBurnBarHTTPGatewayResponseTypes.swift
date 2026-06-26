@@ -133,7 +133,6 @@ extension BurnBarHTTPGatewayServer {
     /// Pipeline state handed to the cross-vendor degrade hook.
     struct GatewayDegradeRequest {
         let bodyData: Data
-        let requestSignature: String
         let accountingRequestID: String
         let modelID: String
         let startedAt: Date
@@ -153,7 +152,6 @@ extension BurnBarHTTPGatewayServer {
         let bodyData: Data
         let modelID: String
         let wantsStream: Bool
-        let requestSignature: String
         let requestedModel: GatewayRequestedModel
         let advertisedRequestedModel: GatewayRequestedModel
         let resolvedVariant: BurnBarModelVariant?
@@ -178,7 +176,6 @@ extension BurnBarHTTPGatewayServer {
         let bodyData: Data
         let wantsStream: Bool
         let resolvedVariant: BurnBarModelVariant?
-        let requestSignature: String
         let accountingRequestID: String
         let requestedModel: GatewayRequestedModel
         let logContext: GatewayRequestContext
