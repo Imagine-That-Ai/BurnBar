@@ -25,6 +25,7 @@
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 import { providerFetch } from "./httpClient.js";
+import { boundedQuotaLabel, QUOTA_PAYLOAD_MAX_BUCKETS, walkQuotaPayloadObjects } from "./quotaPayloadWalker.js";
 
 const PROVIDER = "zai" as const;
 
@@ -262,6 +263,7 @@ function bucketsFromMonitorQuota(payload: unknown): QuotaBucket[] {
       : undefined;
   if (Array.isArray(list) && list.length > 0) {
     return list
+      .slice(0, QUOTA_PAYLOAD_MAX_BUCKETS)
       .map((row, index): QuotaBucket | undefined => {
         const entry = recordOrUndefined(row);
         if (!entry) return undefined;
@@ -337,33 +339,20 @@ function harvestQuotaBuckets(payload: unknown): QuotaBucket[] {
   const buckets: QuotaBucket[] = [];
   const seen = new Set<string>();
 
-  function walk(node: unknown, path: string[]): void {
-    if (!node || typeof node !== "object") return;
-
-    if (Array.isArray(node)) {
-      node.forEach((item, idx) => walk(item, [...path, `[${idx}]`]));
-      return;
-    }
-
-    const obj = recordOrUndefined(node);
-    if (!obj) return;
+  walkQuotaPayloadObjects(payload, (obj, path) => {
     const candidate = bucketFromObject(obj, path);
     if (candidate) {
       const key = `${candidate.name}|${candidate.window}|${candidate.limit}|${candidate.used}`;
       if (!seen.has(key)) {
         seen.add(key);
         buckets.push(candidate);
+        if (buckets.length >= QUOTA_PAYLOAD_MAX_BUCKETS) {
+          return "stop";
+        }
       }
     }
-
-    for (const [k, v] of Object.entries(obj)) {
-      if (v && typeof v === "object") {
-        walk(v, [...path, k]);
-      }
-    }
-  }
-
-  walk(payload, []);
+    return undefined;
+  });
   return buckets;
 }
 
@@ -476,7 +465,7 @@ const WINDOW_KEYS = [
   "type",
 ] as const;
 
-function bucketFromObject(obj: Record<string, unknown>, path: string[]): QuotaBucket | undefined {
+function bucketFromObject(obj: Record<string, unknown>, path: readonly string[]): QuotaBucket | undefined {
   const used = pickNumber(obj, USED_KEYS);
   const limit = pickNumber(obj, LIMIT_KEYS);
   const remaining = pickNumber(obj, REMAINING_KEYS);
@@ -495,7 +484,11 @@ function bucketFromObject(obj: Record<string, unknown>, path: string[]): QuotaBu
     return undefined;
   }
 
-  const name = pickString(obj, NAME_KEYS) ?? pickString(obj, WINDOW_KEYS) ?? path[path.length - 1] ?? "quota";
+  const name =
+    pickString(obj, NAME_KEYS) ??
+    pickString(obj, WINDOW_KEYS) ??
+    boundedQuotaLabel(path[path.length - 1], "quota") ??
+    "quota";
 
   const window = pickString(obj, WINDOW_KEYS) ?? "account";
 
@@ -522,9 +515,7 @@ function numberFromAny(raw: unknown): number | undefined {
 }
 
 function stringFromAny(raw: unknown): string | undefined {
-  if (typeof raw !== "string") return undefined;
-  const value = raw.trim();
-  return value.length > 0 ? value : undefined;
+  return boundedQuotaLabel(raw);
 }
 
 export const __testing__ = {
