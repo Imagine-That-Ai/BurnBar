@@ -3271,7 +3271,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(state.actionsExecuted, 10)
     }
 
-    func testAgentWatchReceiverBindsSystemPermissionStatusToControlSession() async throws {
+    func testAgentWatchReceiverBindsSystemPermissionStatusToVisibleChatThread() async throws {
         let uid = "user-agent-watch-permission"
         let connectionID = "relay-connection-permission"
         let visibleThreadID = "visible-thread"
@@ -3298,9 +3298,9 @@ final class OpenBurnBarMobileTests: XCTestCase {
             status: .needsAccess
         ))
 
-        XCTAssertNil(SystemPermissionInboxStore.shared.latestItem(forThread: visibleThreadID))
-        let item = try XCTUnwrap(SystemPermissionInboxStore.shared.latestItem(forThread: controlSessionID))
-        XCTAssertEqual(item.threadId, controlSessionID)
+        XCTAssertNil(SystemPermissionInboxStore.shared.latestItem(forThread: controlSessionID))
+        let item = try XCTUnwrap(SystemPermissionInboxStore.shared.latestItem(forThread: visibleThreadID))
+        XCTAssertEqual(item.threadId, visibleThreadID)
         XCTAssertEqual(item.kind, .screenRecording)
         XCTAssertEqual(item.status, .needsAccess)
     }
