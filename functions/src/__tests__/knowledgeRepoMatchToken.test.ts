@@ -287,6 +287,12 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     expect(leaves).not.toContain("repo-docs-secret");
   });
 
+  it("exports the installation-bound match-token helper for regression tests", async () => {
+    const { __testing__ } = await import("../callables/knowledgeSync.js");
+
+    expect(__testing__.repoInstallationMatchTokenFor(REPO, "98765")).toBe(expectedInstallationToken(REPO, "98765"));
+  });
+
   it("is case-insensitive: differently-cased full names map to the SAME token", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
     mockGitHubRepoAccess("Owner/Repo");
