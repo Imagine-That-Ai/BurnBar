@@ -1,5 +1,13 @@
 package com.openburnbar.data.text
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+
 enum class TextExpansionMode(val wireName: String) {
     STATIC("static"),
     LLM_REWRITE("llm_rewrite"),
@@ -15,6 +23,14 @@ enum class TextExpansionSurface {
     MAC_GLOBAL,
     IOS_KEYBOARD,
     ANDROID_IME,
+    ;
+
+    companion object {
+        fun fromWireName(value: String): TextExpansionSurface? = entries.firstOrNull {
+            it.name.equals(value, ignoreCase = true) ||
+                it.name.replace("_", "").equals(value.replace("_", ""), ignoreCase = true)
+        }
+    }
 }
 
 data class TextExpansionScope(
@@ -30,7 +46,40 @@ data class TextExpansionScope(
         val threadAllowed = threadIds.isEmpty() || threadId != null && threadIds.contains(threadId)
         return surfaces.contains(surface) && bundleAllowed && threadAllowed
     }
+
+    companion object {
+        val NONE: TextExpansionScope = TextExpansionScope(surfaces = emptySet())
+
+        fun fromJson(raw: String): TextExpansionScope {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty() || trimmed == "{}") return TextExpansionScope()
+
+            val root =
+                runCatching { Json.parseToJsonElement(trimmed).jsonObject }
+                    .getOrElse { return NONE }
+
+            val surfaces =
+                root.optionalStringArray("surfaces")
+                    ?.mapNotNull(TextExpansionSurface::fromWireName)
+                    ?.toSet()
+                    ?: TextExpansionSurface.entries.toSet()
+
+            return TextExpansionScope(
+                surfaces = surfaces,
+                bundleIdentifiers = root.optionalStringArray("bundleIdentifiers")?.toSet() ?: emptySet(),
+                threadIds = (root.optionalStringArray("threadIDs") ?: root.optionalStringArray("threadIds"))?.toSet() ?: emptySet(),
+            )
+        }
+    }
 }
+
+private fun JsonObject.optionalStringArray(key: String): List<String>? {
+    val element = this[key] ?: return null
+    val array = element as? JsonArray ?: runCatching { element.jsonArray }.getOrNull() ?: return emptyList()
+    return array.mapNotNull(JsonElement::stringOrNull).map(String::trim).filter(String::isNotEmpty)
+}
+
+private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 data class TextExpansionSnippet(
     val id: String,

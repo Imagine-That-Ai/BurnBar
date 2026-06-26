@@ -1,5 +1,6 @@
 package com.openburnbar.data.text
 
+import com.openburnbar.data.db.TextExpansionSnippetEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -105,6 +106,106 @@ class TextExpansionMatcherTest {
                 text = "Please &&ctx ",
                 snippets = listOf(snippet),
                 surface = TextExpansionSurface.IN_APP_THREAD,
+            ),
+        )
+    }
+
+    @Test
+    fun androidImeRejectsSnippetsScopedOnlyToInAppThreads() {
+        val snippet =
+            TextExpansionSnippet(
+                id = "1",
+                title = "Thread Only",
+                trigger = "thread",
+                body = "Thread body",
+                scope = TextExpansionScope(surfaces = setOf(TextExpansionSurface.IN_APP_THREAD)),
+            )
+
+        assertNull(
+            TextExpansionMatcher.match(
+                text = "&&thread ",
+                snippets = listOf(snippet),
+                surface = TextExpansionSurface.ANDROID_IME,
+            ),
+        )
+    }
+
+    @Test
+    fun textExpansionScopeDecodesSwiftWireNames() {
+        val scope =
+            TextExpansionScope.fromJson(
+                """
+                {
+                  "surfaces": ["in_app_thread"],
+                  "bundleIdentifiers": ["com.example.editor"],
+                  "threadIDs": ["thread-1"]
+                }
+                """.trimIndent(),
+            )
+
+        assertEquals(setOf(TextExpansionSurface.IN_APP_THREAD), scope.surfaces)
+        assertEquals(setOf("com.example.editor"), scope.bundleIdentifiers)
+        assertEquals(setOf("thread-1"), scope.threadIds)
+        assertNotNull(
+            TextExpansionMatcher.match(
+                text = "&&thread ",
+                snippets = listOf(
+                    TextExpansionSnippet(
+                        id = "1",
+                        title = "Thread",
+                        trigger = "thread",
+                        body = "Thread body",
+                        scope = scope,
+                    ),
+                ),
+                surface = TextExpansionSurface.IN_APP_THREAD,
+                bundleIdentifier = "COM.EXAMPLE.EDITOR",
+                threadId = "thread-1",
+            ),
+        )
+    }
+
+    @Test
+    fun invalidNonBlankScopeJsonFailsClosed() {
+        val scope = TextExpansionScope.fromJson("{not-json")
+
+        assertNull(
+            TextExpansionMatcher.match(
+                text = "&&safe ",
+                snippets = listOf(
+                    TextExpansionSnippet(
+                        id = "1",
+                        title = "Safe",
+                        trigger = "safe",
+                        body = "Safe body",
+                        scope = scope,
+                    ),
+                ),
+                surface = TextExpansionSurface.IN_APP_THREAD,
+            ),
+        )
+    }
+
+    @Test
+    fun entityMapperPreservesStoredScopeForAndroidIme() {
+        val entity =
+            TextExpansionSnippetEntity(
+                id = "1",
+                title = "Thread Only",
+                trigger = "thread",
+                body = "Thread body",
+                mode = "static",
+                scopeJson = """{"surfaces":["in_app_thread"]}""",
+                createdAtMillis = 1,
+                updatedAtMillis = 2,
+            )
+        val snippet = entity.toTextExpansionSnippet()
+
+        assertNull(
+            TextExpansionMatcher.match(
+                text = "&&thread ",
+                snippets = listOf(snippet),
+                surface = TextExpansionSurface.ANDROID_IME,
             ),
         )
     }

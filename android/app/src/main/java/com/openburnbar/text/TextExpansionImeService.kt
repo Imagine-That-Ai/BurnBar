@@ -7,12 +7,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.openburnbar.data.db.AppDatabase
-import com.openburnbar.data.db.TextExpansionSnippetEntity
 import com.openburnbar.data.text.TextExpansionMatcher
-import com.openburnbar.data.text.TextExpansionMode
-import com.openburnbar.data.text.TextExpansionScope
 import com.openburnbar.data.text.TextExpansionSnippet
 import com.openburnbar.data.text.TextExpansionSurface
+import com.openburnbar.data.text.toTextExpansionSnippet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -139,15 +137,4 @@ class TextExpansionImeService : InputMethodService() {
         )
         buffer = StringBuilder()
     }
-
-    private fun TextExpansionSnippetEntity.toTextExpansionSnippet(): TextExpansionSnippet = TextExpansionSnippet(
-        id = id,
-        title = title,
-        trigger = trigger,
-        body = body,
-        mode = TextExpansionMode.fromWireName(mode),
-        isEnabled = isEnabled,
-        scope = TextExpansionScope(surfaces = setOf(TextExpansionSurface.ANDROID_IME, TextExpansionSurface.IN_APP_THREAD)),
-        deletedAtMillis = deletedAtMillis,
-    )
 }
