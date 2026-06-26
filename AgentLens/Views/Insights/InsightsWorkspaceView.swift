@@ -40,7 +40,10 @@ struct InsightsWorkspaceView: View {
         }
         .task {
             if environment == nil {
-                if let env = try? InsightsMacEnvironment(dataStore: dataStore) {
+                if let env = try? InsightsMacEnvironment(
+                    dataStore: dataStore,
+                    hermesBearerTokenProvider: { settingsManager.hermesBearerToken }
+                ) {
                     environment = env
                     let model = InsightsMacVerdictModel(
                         deviceID: UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local",
