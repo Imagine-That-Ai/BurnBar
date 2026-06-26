@@ -197,10 +197,14 @@ public actor ComputerUseService {
             withIntermediateDirectories: true
         )
         let chainURL = sessionDirectory.appendingPathComponent("chain.jsonl")
-        if request.anchorOpenTimestamps {
-            try await anchorOpenTimestampsProof(forChainAt: chainURL)
-        }
         let signer = try deviceAuditExportSigner()
+        let signedHead = try ComputerUseAuditHeadFinalizer.finalizeSessionDirectory(
+            sessionDirectory,
+            signer: signer
+        )
+        if request.anchorOpenTimestamps {
+            try await anchorOpenTimestampsProof(forChainAt: chainURL, signedHead: signedHead)
+        }
         let result = try ComputerUseAuditExportWriter().export(
             sessionDirectory: sessionDirectory,
             destinationURL: destination,
@@ -231,13 +235,18 @@ public actor ComputerUseService {
         try auditExportSignerProvider.signer()
     }
 
-    private func anchorOpenTimestampsProof(forChainAt chainURL: URL) async throws {
+    private func anchorOpenTimestampsProof(
+        forChainAt chainURL: URL,
+        signedHead: ComputerUseAuditSignedHead
+    ) async throws {
         let client = ComputerUseOpenTimestampsClient()
         let proof = try await client.notarize(chainFileAt: chainURL)
         _ = try ComputerUseOpenTimestampsArchive.writeProof(
             proofBytes: proof,
             sourceChainURL: chainURL,
-            calendarURL: client.configuration.calendarURL
+            calendarURL: client.configuration.calendarURL,
+            auditHeadHashHex: signedHead.headHashHex,
+            sessionId: signedHead.sessionId
         )
     }
 

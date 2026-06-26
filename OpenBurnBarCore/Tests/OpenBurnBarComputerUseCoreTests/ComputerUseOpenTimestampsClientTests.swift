@@ -59,20 +59,32 @@ final class ComputerUseOpenTimestampsClientTests: XCTestCase {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ots-archive-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let manifestURL = tmp.appendingPathComponent("manifest.json")
+        let manifestBytes = Data("{\"sessionId\":\"cu-session-1\"}".utf8)
+        try manifestBytes.write(to: manifestURL)
         let chainURL = tmp.appendingPathComponent("chain.jsonl")
-        try Data("{}\n".utf8).write(to: chainURL)
+        let chainBytes = Data("{}\n".utf8)
+        try chainBytes.write(to: chainURL)
         let proof = Data([0x01, 0x02, 0x03, 0x04])
         let calendar = URL(string: "https://a.pool.opentimestamps.org/digest")!
+        let headHash = String(repeating: "b", count: 64)
+        let sessionId = "cu-session-1"
         let written = try ComputerUseOpenTimestampsArchive.writeProof(
             proofBytes: proof,
             sourceChainURL: chainURL,
-            calendarURL: calendar
+            calendarURL: calendar,
+            auditHeadHashHex: headHash,
+            sessionId: sessionId
         )
         XCTAssertEqual(written.lastPathComponent, "chain.jsonl.ots")
         let sidecarURL = chainURL.deletingPathExtension().appendingPathExtension("jsonl.ots.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: sidecarURL.path))
         let sidecar = try JSONSerialization.jsonObject(with: Data(contentsOf: sidecarURL)) as? [String: Any]
         XCTAssertEqual(sidecar?["chainFile"] as? String, "chain.jsonl")
+        XCTAssertEqual(sidecar?["chainSHA256Hex"] as? String, ComputerUseAuditHasher.current.hash(data: chainBytes))
+        XCTAssertEqual(sidecar?["manifestSHA256Hex"] as? String, ComputerUseAuditHasher.current.hash(data: manifestBytes))
+        XCTAssertEqual(sidecar?["auditHeadHashHex"] as? String, headHash)
+        XCTAssertEqual(sidecar?["sessionId"] as? String, sessionId)
         XCTAssertEqual(sidecar?["calendar"] as? String, calendar.absoluteString)
         XCTAssertEqual(sidecar?["proofSizeBytes"] as? Int, 4)
     }
