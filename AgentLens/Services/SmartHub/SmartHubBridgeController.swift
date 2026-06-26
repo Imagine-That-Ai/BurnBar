@@ -1371,10 +1371,10 @@ final class SmartHubBridgeController {
     }
 
     private func persistPublishedBridgeURLsIfChanged(dashboardURL: URL) {
-        let dashboard = persistentBridgeURL(dashboardURL).absoluteString
-        let refresh = companionBridgeURL(from: persistentBridgeURL(dashboardURL), path: "/refresh")?.absoluteString
+        let dashboard = dashboardURL.absoluteString
+        let refresh = companionBridgeURL(from: dashboardURL, path: "/refresh")?.absoluteString
             ?? settingsManager.smartHubQuotaRefreshURL
-        let voiceRefresh = companionBridgeURL(from: persistentBridgeURL(dashboardURL), path: "/voice-refresh")?.absoluteString
+        let voiceRefresh = companionBridgeURL(from: dashboardURL, path: "/voice-refresh")?.absoluteString
             ?? settingsManager.smartHubQuotaVoiceRefreshURL
         guard settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines) != dashboard
             || settingsManager.smartHubQuotaRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines) != refresh
@@ -1393,10 +1393,6 @@ final class SmartHubBridgeController {
         }
         components.path = path
         return components.url
-    }
-
-    private func persistentBridgeURL(_ url: URL) -> URL {
-        SmartHubBridgeServer.shared.redactedBridgeURL(url)
     }
 
     private func redactedBridgeURLForLogging(_ url: URL) -> String {
