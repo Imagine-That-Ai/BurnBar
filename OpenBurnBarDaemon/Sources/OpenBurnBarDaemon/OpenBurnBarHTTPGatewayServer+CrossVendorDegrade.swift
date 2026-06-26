@@ -20,7 +20,6 @@ extension BurnBarHTTPGatewayServer {
     /// own pricing so the local ledger reflects the true (cheaper) cost.
     func attemptCrossVendorDegradeForChat(
         bodyData: Data,
-        requestSignature: String,
         accountingRequestID: String,
         requestedModelID: String,
         routeLogStartedAt: Date,
@@ -75,7 +74,6 @@ extension BurnBarHTTPGatewayServer {
                 requestedModelID: requestedModelID,
                 requestedCanonicalModelID: requestedCanonicalModelID,
                 bodyData: bodyData,
-                requestSignature: requestSignature,
                 accountingRequestID: accountingRequestID,
                 logContext: logContext,
                 priorAttempts: priorAttempts,
@@ -98,7 +96,6 @@ extension BurnBarHTTPGatewayServer {
         requestedModelID: String,
         requestedCanonicalModelID: String?,
         bodyData: Data,
-        requestSignature: String,
         accountingRequestID: String,
         logContext: GatewayRequestContext,
         priorAttempts: [BurnBarProxyRouteAttempt],
