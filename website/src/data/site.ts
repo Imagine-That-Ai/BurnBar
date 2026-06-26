@@ -112,7 +112,7 @@ export const SITE = {
   macReleaseFile: "OpenBurnBar-1.0.5-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev",
+  macDownloadBaseUrl: "https://downloads.burnbar.ai",
   macUpdateBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",

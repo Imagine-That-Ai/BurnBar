@@ -52,25 +52,26 @@ AGPL/libsignal-linked review binaries until counsel signs off. The upload path
 fails unless `OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved` is set by the
 operator after counsel approval.
 
-Upload the customer-facing direct-download artifacts to Cloudflare R2 with:
+Upload the customer-facing direct-download artifacts to the Cloudflare R2 bucket
+behind the branded `downloads.burnbar.ai` host with:
 
 ```bash
 scripts/setup-macos-downloads-r2.sh
 scripts/upload-macos-downloads-r2.sh
 ```
 
-The setup script creates the R2 bucket and enables the public `r2.dev` URL. The
+The setup script creates the R2 bucket and can bind the branded custom domain. The
 upload script reads the current macOS release file/version from `website/src/data/site.ts`,
 uploads the DMG, ZIP, `appcast.xml`, `latest-macos.json`, checksums, SBOM, and release metadata from
 `website/public/downloads/`, and verifies the public DMG, appcast, and latest-metadata URLs. Defaults:
 
 - R2 bucket: `openburnbar-downloads`
-- Public R2 URL: `https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev`
+- Public download URL: `https://downloads.burnbar.ai`
 
 If the bucket or host changes, override with `OPENBURNBAR_R2_BUCKET` and
-`OPENBURNBAR_R2_PUBLIC_BASE_URL`. Set `SITE.macDownloadBaseUrl` in
-`website/src/data/site.ts` only after the public R2 host returns the DMG with
-HTTP 200.
+`OPENBURNBAR_R2_PUBLIC_BASE_URL`. Keep `SITE.macDownloadBaseUrl` in
+`website/src/data/site.ts` on a first-party host; raw `r2.dev` bucket URLs are a
+storage implementation detail, not the customer-facing trust boundary.
 
 The app's default direct-update feed is the stable GitHub Release asset URL
 `https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json`.
