@@ -13,12 +13,14 @@
  *   stale-first ordered query nor a `where("lastRefreshAt", "==", null)`
  *   filter can ever see them — the originally proposed filter would have
  *   returned zero rows and permanently orphaned legacy docs. Instead, a
- *   cursor-resumable backfill stamps `lastRefreshAt: null` onto missing-field
- *   docs (cheap writes, no provider HTTP). Explicit null sorts FIRST in the
- *   ordered pass's asc `orderBy`, so backfilled docs are refreshed with
- *   stale-first priority by the very next ordered query, covered by the
- *   existing composite index (status asc, storageScope asc, lastRefreshAt
- *   asc) — no new index needed.
+ *   cursor-resumable backfill stamps an ancient ISO timestamp onto
+ *   missing-field docs (cheap writes, no provider HTTP). That marker is
+ *   Firestore-rules/schema-valid, sorts before every real refresh timestamp,
+ *   and makes the docs refresh with stale-first priority by the very next
+ *   ordered query, covered by the existing composite index (status asc,
+ *   storageScope asc, lastRefreshAt asc) — no new index needed. Older
+ *   admin-written null markers still sort first and drain through the same
+ *   ordered pass; the sweep no longer writes new nulls.
  *
  * - The backfill terminates: each (status, storageScope) stream pages in
  *   implicit `__name__` order with a persisted cursor, and once every stream
@@ -93,7 +95,7 @@ type QuotaBackfillResult = {
   complete: boolean;
   /** Docs examined by this run's scan pages. */
   examined: number;
-  /** Missing-field docs stamped `lastRefreshAt: null` by this run. */
+  /** Missing-field docs stamped with the legacy refresh marker by this run. */
   backfilled: number;
 };
 
@@ -124,6 +126,13 @@ const REFRESHABLE_STATUSES = ["connected", "stale", "error"] as const;
 const REFRESHABLE_SCOPES = ["cloud_refreshable", "server_private"] as const;
 const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_BACKFILL_SCAN_PAGE_SIZE = 200;
+
+/**
+ * Schema-valid marker for legacy provider account docs that predate
+ * `lastRefreshAt`. It sorts before any real refresh timestamp without
+ * teaching Firestore rules or generated clients to accept nullable timestamps.
+ */
+export const LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL = "1970-01-01T00:00:00.000Z";
 
 /**
  * Server-only migration marker (clients are denied by default — the path is
@@ -212,8 +221,9 @@ function isDemoSweepAccountDoc(doc: SweepAccountDoc): boolean {
 
 /**
  * One bounded slice of the one-time `lastRefreshAt` backfill. Missing-field
- * docs are stamped explicit null so the ordered refresh pass can see them;
- * docs that already carry the field (including explicit null) are untouched.
+ * docs are stamped with a schema-valid ancient timestamp so the ordered
+ * refresh pass can see them; docs that already carry the field (including
+ * legacy explicit null markers) are untouched.
  */
 async function runLastRefreshAtBackfill<Doc extends SweepAccountDoc>(
   db: SweepDb<Doc>,
@@ -271,7 +281,7 @@ async function runLastRefreshAtBackfill<Doc extends SweepAccountDoc>(
       if (isDemoSweepAccountDoc(doc)) continue;
       if (doc.get("lastRefreshAt") !== undefined) continue;
       try {
-        await doc.ref.update({ lastRefreshAt: null });
+        await doc.ref.update({ lastRefreshAt: LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL });
         backfilled += 1;
       } catch {
         // Doc deleted between scan and stamp — nothing left to migrate.
