@@ -1991,7 +1991,7 @@ service cloud.firestore {
         return value in ["new", "resume", "fork", "forward", "continue"];
       }
 
-      function validCliAgentMissionRequest() {
+      function validCliAgentMissionRequestKeys() {
         return request.resource.data.keys().hasOnly([
           "id",
           "missionKind",
@@ -2040,7 +2040,11 @@ service cloud.firestore {
           "sealedStateSchemaVersion",
           "sealedStateVaultKeyID",
           "approvedByDeviceId"
-        ])
+        ]);
+      }
+
+      function validCliAgentMissionRequest() {
+        return validCliAgentMissionRequestKeys()
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
         && request.resource.data.contentSealed == true
@@ -2113,6 +2117,32 @@ service cloud.firestore {
           ]);
       }
 
+      function validCliAgentMissionSealedStateUpdate() {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "sealedStatePayload",
+          "sealedStateSchemaVersion",
+          "sealedStateVaultKeyID"
+        ])
+        || (
+          request.resource.data.contentSealed == true
+          && request.resource.data.sealedStateSchemaVersion == 1
+          && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
+          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
+        );
+      }
+
+      function validCliAgentMissionUpdateEnvelope() {
+        return validCliAgentMissionRequestKeys()
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.contentSealed == true
+          && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
+          && request.resource.data.vaultKeyID == resource.data.vaultKeyID
+          && request.resource.data.sealedPayload == resource.data.sealedPayload
+          && validCliAgentMissionSealedStateUpdate()
+          && forbidsDirectSignalEnvelope();
+      }
+
       function trustedMissionExecutorDevice(userId) {
         return ("claimedBy" in request.resource.data)
           && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy))
@@ -2123,7 +2153,45 @@ service cloud.firestore {
       function validTrustedMissionHostUpdate(userId) {
         return trustedMissionExecutorDevice(userId)
           && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["events"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "claimedBy",
+            "selectedRuntime",
+            "selectedRuntimeName",
+            "selectedModelID",
+            "sessionId",
+            "approvalRequestId",
+            "approvalStatus",
+            "approvalRequestedAt",
+            "lastEventSequence",
+            "startedAt",
+            "completedAt",
+            "contentSealed",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID",
+            "updatedAt",
+            // Legacy plaintext state keys may only disappear as producers migrate
+            // to sealedStatePayload; validCliAgentMissionRequestKeys() still
+            // rejects them if they remain in request.resource.data.
+            "liveSummary",
+            "resultPreview",
+            "errorMessage",
+            "approvalTitle",
+            "approvalMessage",
+            "synthesisSummary"
+          ])
+          && request.resource.data.status is string
+          && request.resource.data.status.size() <= 80
+          && request.resource.data.claimedBy is string
+          && request.resource.data.claimedBy.size() <= 256
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntime"]) || validCliMissionRuntime(request.resource.data.selectedRuntime))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntimeName"]) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 120))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedModelID"]) || validCliMissionMetadataToken(request.resource.data.selectedModelID, 160))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["sessionId"]) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalRequestId"]) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 160))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalStatus"]) || request.resource.data.approvalStatus in ["pending", "canceled", "cancelled"])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["lastEventSequence"]) || request.resource.data.lastEventSequence is int)
           // The trusted Mac host may REQUEST approval (approvalStatus "pending")
           // but must NOT RESOLVE it. Flipping approvalStatus to approved/rejected
           // is the human decision and must flow through the App-Check-enforced
@@ -2227,7 +2295,7 @@ service cloud.firestore {
         && validCliAgentMissionRequest()
         && validCliAgentMissionCreate();
       allow update: if ownerWritableNonSecret(userId)
-        && validCliAgentMissionRequest()
+        && validCliAgentMissionUpdateEnvelope()
         && (
           validTrustedMissionHostUpdate(userId)
           || validMobileMissionApprovalResponse()
