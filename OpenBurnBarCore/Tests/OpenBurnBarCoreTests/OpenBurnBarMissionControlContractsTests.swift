@@ -1205,6 +1205,86 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         XCTAssertNoThrow(try invalidContract.validate())
     }
 
+    func testVAL_DAEMON_013_ValidationRejectsDuplicateNodeIDs() throws {
+        let missionID = BurnBarMissionID(rawValue: "mission-duplicate-node-013")
+        let nodeID = BurnBarDAGNodeID(rawValue: "duplicate-node")
+
+        let invalidContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [
+                BurnBarDAGNode(id: nodeID, title: "First", detail: "First node"),
+                BurnBarDAGNode(id: nodeID, title: "Second", detail: "Second node")
+            ]
+        )
+
+        XCTAssertThrowsError(try invalidContract.validate()) { error in
+            guard case BurnBarDAGError.duplicateNodeID(let duplicateID) = error else {
+                XCTFail("Expected duplicateNodeID error, got \(error)")
+                return
+            }
+            XCTAssertEqual(duplicateID, nodeID.rawValue)
+        }
+    }
+
+    func testVAL_DAEMON_013_ValidationRequiresExplicitEdgesToMatchDependencies() throws {
+        let missionID = BurnBarMissionID(rawValue: "mission-edge-consistency-013")
+        let nodeAID = BurnBarDAGNodeID(rawValue: "edge-node-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "edge-node-b")
+
+        let matchingContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "A", detail: "Root"),
+                BurnBarDAGNode(id: nodeBID, title: "B", detail: "Depends on A", dependsOn: [nodeAID])
+            ],
+            edges: [
+                BurnBarDAGEdge(sourceNodeID: nodeAID, targetNodeID: nodeBID)
+            ]
+        )
+        XCTAssertNoThrow(try matchingContract.validate())
+
+        let mismatchedContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "A", detail: "Root"),
+                BurnBarDAGNode(id: nodeBID, title: "B", detail: "No dependency declared")
+            ],
+            edges: [
+                BurnBarDAGEdge(sourceNodeID: nodeAID, targetNodeID: nodeBID)
+            ]
+        )
+
+        XCTAssertThrowsError(try mismatchedContract.validate()) { error in
+            guard case BurnBarDAGError.edgeDependencyMismatch(let sourceID, let targetID) = error else {
+                XCTFail("Expected edgeDependencyMismatch error, got \(error)")
+                return
+            }
+            XCTAssertEqual(sourceID, nodeAID.rawValue)
+            XCTAssertEqual(targetID, nodeBID.rawValue)
+        }
+
+        let duplicateEdgeContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "A", detail: "Root"),
+                BurnBarDAGNode(id: nodeBID, title: "B", detail: "Depends on A", dependsOn: [nodeAID])
+            ],
+            edges: [
+                BurnBarDAGEdge(sourceNodeID: nodeAID, targetNodeID: nodeBID),
+                BurnBarDAGEdge(sourceNodeID: nodeAID, targetNodeID: nodeBID)
+            ]
+        )
+
+        XCTAssertThrowsError(try duplicateEdgeContract.validate()) { error in
+            guard case BurnBarDAGError.edgeDependencyMismatch(let sourceID, let targetID) = error else {
+                XCTFail("Expected edgeDependencyMismatch error, got \(error)")
+                return
+            }
+            XCTAssertEqual(sourceID, nodeAID.rawValue)
+            XCTAssertEqual(targetID, nodeBID.rawValue)
+        }
+    }
+
     func testVAL_DAEMON_013_ValidationDetectsCircularDependencies() throws {
         // VAL-DAEMON-013: Validation detects circular dependencies
         let missionID = BurnBarMissionID(rawValue: "mission-cycle-013")
