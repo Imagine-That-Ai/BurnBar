@@ -34,12 +34,16 @@ import kotlinx.coroutines.launch
  * ```
  * data = {
  *   "type": "media_incoming_call",
- *   "connection_id": "<paired Mac connection id>",
- *   "caller_name": "<paired Mac display name>",
- *   "caller_initial": "M",
+ *   "correlation_id": "<fresh per-push id>",
+ *   "caller_name": "Incoming call",
+ *   "caller_initial": "I",
  *   "feature": "videoCall",
  * }
  * ```
+ *
+ * The stable paired-Mac connection id is resolved from an owner-scoped,
+ * TTL-bound Firestore context keyed by `correlation_id`; it is never required
+ * in the third-party FCM payload.
  */
 class MercuryFcmService : FirebaseMessagingService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -52,14 +56,14 @@ class MercuryFcmService : FirebaseMessagingService() {
             return
         }
         if (type != "media_incoming_call") return
-        val connectionId = data["connection_id"] ?: return
-        val callerName = data["caller_name"] ?: "OpenBurnBar"
-        val callerInitial = data["caller_initial"] ?: callerName.firstOrNull()?.toString() ?: "M"
-        postIncomingCall(
-            connectionId = connectionId,
-            callerName = callerName,
-            callerInitial = callerInitial,
-        )
+        serviceScope.launch {
+            val routing = resolveIncomingCallRouting(data) ?: return@launch
+            postIncomingCall(
+                connectionId = routing.connectionId,
+                callerName = routing.callerName,
+                callerInitial = routing.callerInitial,
+            )
+        }
     }
 
     override fun onNewToken(token: String) {
@@ -136,7 +140,7 @@ class MercuryFcmService : FirebaseMessagingService() {
             // calls cannot surface, instead of failing silently.
             Log.w(
                 "BurnBar",
-                "incoming_call_notification_post_denied connection=$connectionId reason=${error.message}",
+                "incoming_call_notification_post_denied reason=${error.message}",
             )
             AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = false)
         }

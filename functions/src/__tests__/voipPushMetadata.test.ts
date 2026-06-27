@@ -85,10 +85,11 @@ describe("VoIP/FCM push metadata minimization", () => {
     expect(apnsPayload).not.toHaveProperty("displayName");
     expect(apnsPayload).not.toHaveProperty("display_name");
 
-    // Verify FCM payload shape and omissions
+    // Verify Android FCM payload shape and privacy-preserving omissions.
     expect(fcmPayload).toHaveProperty("call_id", "call-123");
     expect(fcmPayload).toHaveProperty("correlation_id", correlationId);
     expect(fcmPayload).toHaveProperty("caller_name", "Incoming call"); // generic display name
+    expect(fcmPayload).toHaveProperty("caller_initial", "I");
     expect(fcmPayload).not.toHaveProperty("connectionId");
     expect(fcmPayload).not.toHaveProperty("connection_id");
     expect(fcmPayload).not.toHaveProperty("pairedDeviceId");

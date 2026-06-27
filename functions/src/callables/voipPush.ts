@@ -26,6 +26,8 @@ function pushQueueTimestamps(nowMillis: number = Date.now()): { createdAt: Times
   };
 }
 
+const INCOMING_CALL_CONTEXT_COLLECTION = "incoming_call_contexts";
+
 export const triggerVoIPCall = onCall(
   { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("triggerVoIPCall", async (request) => {
@@ -51,13 +53,10 @@ export const triggerVoIPCall = onCall(
       firestore,
     });
 
-    // T-PRV-01 / T-PRV-07: the push payload that leaves our trust boundary
-    // (APNs / FCM, both readable by a cross-service push processor) carries NO
-    // cleartext caller displayName and NO stable correlators (connection_id /
-    // paired_device_id). The client resolves the real caller + connection from
-    // its own sealed session state keyed on `callId`. A fresh, per-push
-    // `correlationId` lets the device dedupe duplicate fan-outs without exposing
-    // a stable identifier that links the device across sessions.
+    // T-PRV-01 / T-PRV-07: payloads that leave our trust boundary carry NO
+    // cleartext caller displayName and NO stable routing ids. Android resolves
+    // the active connection from this owner-scoped, TTL-bound context after
+    // receiving the push, keyed by the fresh per-push `correlationId`.
     const correlationId = ephemeralCallCorrelationId();
     const now = Timestamp.now();
     // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents
@@ -81,9 +80,28 @@ export const triggerVoIPCall = onCall(
 
     if (fanOut.fcmToken) {
       writes.push(
+        firestore
+          .collection("users")
+          .doc(request.auth.uid)
+          .collection(INCOMING_CALL_CONTEXT_COLLECTION)
+          .doc(correlationId)
+          .set({
+            id: correlationId,
+            callId: data.callId,
+            connectionId: data.connectionId,
+            createdAt: queueTimestamps.createdAt,
+            expireAt: queueTimestamps.expireAt,
+            schemaVersion: 1,
+          }),
+      );
+      writes.push(
         firestore.collection("fcm_outbound").add({
           uid: request.auth.uid,
-          payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
+          payload: buildFcmCallPayload({
+            callId: data.callId,
+            isVideo: data.isVideo,
+            correlationId,
+          }),
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,
           createdAt: queueTimestamps.createdAt,

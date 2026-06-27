@@ -25,11 +25,12 @@ import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 
 /**
- * Fresh, single-push correlation id (T-PRV-01 / T-PRV-07). Replaces the stable
- * `connection_id` that previously rode in the push payload to a third-party
- * push processor (APNs / FCM). Because it rotates per push, it cannot be used to
- * link a device across call sessions; the device still dedupes duplicate
- * fan-outs of the SAME push via the document id / `correlationId` echoed back.
+ * Fresh, single-push correlation id (T-PRV-01 / T-PRV-07). Push payloads use
+ * this instead of stable routing ids; Android resolves any required call route
+ * from an owner-scoped, short-lived Firestore context after receiving the push.
+ * Because this value rotates per push, it cannot be used to link a device
+ * across call sessions; the device still dedupes duplicate fan-outs of the SAME
+ * push via the document id / `correlationId` echoed back.
  */
 export function ephemeralCallCorrelationId(): string {
   return randomUUID();
@@ -81,9 +82,10 @@ export function buildVoipApnsPayload(args: {
 }
 
 /**
- * Build the Android FCM data payload (T-PRV-01 / T-PRV-07). Generic caller label,
- * no stable connection_id / paired_device_id correlators; an ephemeral
- * per-push correlation id replaces the stable connection_id.
+ * Build the Android FCM data payload (T-PRV-01 / T-PRV-07). Android's
+ * background receiver resolves the paired Mac connection id from the
+ * owner-scoped call context keyed by the ephemeral `correlationId`, so FCM
+ * stays free of stable cross-processor correlators and real display names.
  */
 export function buildFcmCallPayload(args: {
   callId: string;
@@ -93,6 +95,7 @@ export function buildFcmCallPayload(args: {
   return {
     type: "media_incoming_call",
     caller_name: GENERIC_CALLER_DISPLAY_NAME,
+    caller_initial: pushCallerInitial(GENERIC_CALLER_DISPLAY_NAME),
     feature: args.isVideo ? "videoCall" : "voiceCall",
     call_id: args.callId,
     correlation_id: args.correlationId,

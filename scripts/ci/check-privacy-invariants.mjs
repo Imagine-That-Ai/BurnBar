@@ -55,6 +55,11 @@ const EPHEMERAL_PII_COLLECTIONS = [
     finding: "F-RR09-007",
   },
   {
+    collection: "incoming_call_contexts",
+    field: "expireAt",
+    finding: "F-RR09-008",
+  },
+  {
     collection: "credential_transfers",
     field: "expiresAt",
     finding: "credential-transfer-secret-boundary",
