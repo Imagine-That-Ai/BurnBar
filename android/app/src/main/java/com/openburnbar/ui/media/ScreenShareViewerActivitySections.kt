@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.data.computeruse.ControlSealSessionEstablisher
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
@@ -97,9 +98,11 @@ internal fun ScreenShareViewerActivity.applyControlDenied(denied: HermesRealtime
         HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY,
         HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP,
         -> {
+            phoneControlConnectionID?.let { ControlSealSessionEstablisher.unregister(it) }
             phoneControlSender = null
             phoneControlConnectionID = null
-            com.openburnbar.BurnBarApplication.activePhoneControlSender = null
+            phoneControlSenderSealed = false
+            BurnBarApplication.activePhoneControlSender = null
         }
         else -> Unit
     }

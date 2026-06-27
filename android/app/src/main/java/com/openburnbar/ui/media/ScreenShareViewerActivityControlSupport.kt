@@ -69,8 +69,10 @@ internal fun ScreenShareViewerActivity.reinstallMirrorSurfaceAfterReturn() {
                 runCatching { ensurePhoneControlSender() }
                     .onSuccess { controlStatus.value = "Mirror reconnected" }
                     .onFailure { controlError ->
+                        phoneControlConnectionID?.let { ControlSealSessionEstablisher.unregister(it) }
                         phoneControlSender = null
                         phoneControlConnectionID = null
+                        phoneControlSenderSealed = false
                         BurnBarApplication.activePhoneControlSender = null
                         controlStatus.value =
                             when {
@@ -80,14 +82,18 @@ internal fun ScreenShareViewerActivity.reinstallMirrorSurfaceAfterReturn() {
                             }
                     }
             } else {
+                phoneControlConnectionID?.let { ControlSealSessionEstablisher.unregister(it) }
                 phoneControlSender = null
                 phoneControlConnectionID = null
+                phoneControlSenderSealed = false
                 BurnBarApplication.activePhoneControlSender = null
                 controlStatus.value = "Mirror is reconnecting..."
             }
         }.onFailure { error ->
+            phoneControlConnectionID?.let { ControlSealSessionEstablisher.unregister(it) }
             phoneControlSender = null
             phoneControlConnectionID = null
+            phoneControlSenderSealed = false
             BurnBarApplication.activePhoneControlSender = null
             controlStatus.value = error.message?.take(CONTROL_STATUS_SHORT_MAX) ?: "Reconnect failed"
             Log.w(ScreenShareViewerActivity.TAG, "Android screen-share return recovery failed error=${error.message}", error)
@@ -356,16 +362,10 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
             ?.let { sender ->
-                // F10: a reused sender keeps sealing under its established
-                // session; re-attach the same wrap so a Mac that re-keys its
-                // open side by connection id re-establishes from the classify.
-                sendPhoneControlClassify(
-                    coordinator,
-                    pair,
-                    peerNodeId,
-                    ControlSealSessionEstablisher.activeSession(pair.connectionID)?.envelope,
-                )
-                return@withLock sender
+                val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
+                if (phoneControlSenderSealed == (sealSession != null)) {
+                    return@withLock sender
+                }
             }
         var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
         if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
@@ -398,6 +398,7 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
         ).also {
             phoneControlSender = it
             phoneControlConnectionID = pair.connectionID
+            phoneControlSenderSealed = sealSession != null
             // RR-7b: publish the live sender so the Agent Watch surface can sign + transmit approvals.
             BurnBarApplication.activePhoneControlSender = it
         }
@@ -427,7 +428,11 @@ private suspend fun ScreenShareViewerActivity.establishControlSealAndClassify(
             macCapabilities = coordinator.lastPeerCapabilities.value,
         )
     sendPhoneControlClassify(coordinator, pair, peerNodeId, sealSession?.envelope)
-    sealSession?.let { ControlSealSessionEstablisher.register(it, pair.connectionID) }
+    if (sealSession != null) {
+        ControlSealSessionEstablisher.register(sealSession, pair.connectionID)
+    } else {
+        ControlSealSessionEstablisher.unregister(pair.connectionID)
+    }
     return sealSession
 }
 
@@ -484,8 +489,10 @@ internal fun ScreenShareViewerActivity.trustThisAndroidForControl() {
                 BurnBarApplication.mediaControlCoordinator?.activePair?.value
                     ?: error("Open the Mac mirror before trusting this Android for control.")
             AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
+            phoneControlConnectionID?.let { ControlSealSessionEstablisher.unregister(it) }
             phoneControlSender = null
             phoneControlConnectionID = null
+            phoneControlSenderSealed = false
             BurnBarApplication.activePhoneControlSender = null
             controlStatus.value = "Android trusted for Mac control"
             Log.i(ScreenShareViewerActivity.TAG, "Android phone-control trusted local escrow device for uid=${pair.uid}")

@@ -41,6 +41,10 @@ object ControlSealSessionEstablisher {
         sessionsByConnection[connectionId] = session
     }
 
+    fun unregister(connectionId: String) {
+        sessionsByConnection.remove(connectionId)
+    }
+
     internal fun clearForTests() = sessionsByConnection.clear()
 
     /** Default-ON protection flag, same key the iOS client reads; a fetched

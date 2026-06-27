@@ -555,6 +555,67 @@ class ControlFrameSealSessionTest {
     }
 
     @Test
+    fun `unregister drops stale session before reconnect fallback sealing`() = runBlocking {
+        val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
+        val oldEstablished = establish(recipient, HermesRelayCryptoEc.generateEphemeralKeyPair())
+        val freshEstablished = establish(recipient, HermesRelayCryptoEc.generateEphemeralKeyPair())
+        val oldSession =
+            ControlSealSessionEstablisher.Session(
+                envelope = oldEstablished.envelope,
+                key = oldEstablished.key,
+                controllerPeerNodeId = "android-phone-1",
+            )
+        val freshSession =
+            ControlSealSessionEstablisher.Session(
+                envelope = freshEstablished.envelope,
+                key = freshEstablished.key,
+                controllerPeerNodeId = "android-phone-1",
+            )
+        ControlSealSessionEstablisher.register(oldSession, "conn-reconnect")
+        ControlSealSessionEstablisher.unregister("conn-reconnect")
+
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frames += it }
+        val controlSender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-reconnect",
+                peerNodeId = "android-phone-1",
+                signingIdentityProvider = {
+                    PhoneControlSigningIdentity.Ed25519(ByteArray(32) { index -> (index + 1).toByte() })
+                },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_789L },
+                frameSink = ControlSealSessionEstablisher.sealingFrameSink(baseSink, freshSession),
+            )
+
+        controlSender.send(
+            PhoneControlIntent(kind = PhoneControlIntentKind.TAP, normalizedX = 0.25, normalizedY = 0.75),
+        )
+
+        val control = frames.single().control ?: error("expected control frame")
+        try {
+            ControlFrameSealSession.openPayload(
+                payload = control,
+                key = oldSession.key,
+                peerNodeId = "android-phone-1",
+                frameType = "control.input.intent",
+            )
+            fail("unregistered stale session key must not open the reconnect frame")
+        } catch (_: GeneralSecurityException) {
+            // expected: unregister removed the old connection-scoped session
+        }
+        val opened =
+            ControlFrameSealSession.openPayload(
+                payload = control,
+                key = freshSession.key,
+                peerNodeId = "android-phone-1",
+                frameType = "control.input.intent",
+            )
+        assertEquals(HermesRealtimeRelayInputIntentKind.TAP, opened.inputIntent?.kind)
+    }
+
+    @Test
     fun `establishIfNegotiated fails closed when the default-off ramp is unreadable`() = runBlocking {
         // No Firebase in unit tests ⇒ the RC read throws ⇒ resolves false ⇒
         // null (legacy lane) even when the Mac advertises the capability.
