@@ -444,20 +444,26 @@ public enum BurnBarDAGSchemaVersion: Int, Codable, CaseIterable, Hashable, Senda
 /// Errors related to DAG contract validation.
 public enum BurnBarDAGError: Error, LocalizedError {
     case unsupportedSchemaVersion(Int)
+    case duplicateNodeID(String)
     case missingRequiredNode(String)
     case circularDependencyDetected(nodeID: String)
     case invalidEdge(sourceID: String, targetID: String)
+    case edgeDependencyMismatch(sourceID: String, targetID: String)
 
     public var errorDescription: String? {
         switch self {
         case .unsupportedSchemaVersion(let version):
             return "DAG contract has unsupported schema version \(version). Supported versions: \(BurnBarDAGSchemaVersion.supported.map { $0.rawValue })."
+        case .duplicateNodeID(let nodeID):
+            return "DAG contract contains duplicate node ID: '\(nodeID)'."
         case .missingRequiredNode(let nodeID):
             return "DAG contract references missing node: '\(nodeID)'."
         case .circularDependencyDetected(let nodeID):
             return "DAG contract contains circular dependency involving node: '\(nodeID)'."
         case .invalidEdge(let sourceID, let targetID):
             return "DAG contract contains invalid edge from '\(sourceID)' to '\(targetID)'."
+        case .edgeDependencyMismatch(let sourceID, let targetID):
+            return "DAG contract edge/dependency mismatch for edge from '\(sourceID)' to '\(targetID)'."
         }
     }
 }
@@ -596,6 +602,11 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
     public let edges: [BurnBarDAGEdge]
     public let metadata: [String: BurnBarJSONValue]?
 
+    private struct DependencyEdgeKey: Hashable {
+        let sourceNodeID: BurnBarDAGNodeID
+        let targetNodeID: BurnBarDAGNodeID
+    }
+
     public init(
         schemaVersion: BurnBarDAGSchemaVersion = .v1,
         missionID: BurnBarMissionID,
@@ -650,7 +661,12 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
         }
 
         // Build set of valid node IDs
-        let nodeIDs = Set(nodes.map { $0.id })
+        var nodeIDs: Set<BurnBarDAGNodeID> = []
+        for node in nodes {
+            guard nodeIDs.insert(node.id).inserted else {
+                throw BurnBarDAGError.duplicateNodeID(node.id.rawValue)
+            }
+        }
 
         // Validate all node IDs in dependsOn exist
         for node in nodes {
@@ -673,6 +689,36 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
                 throw BurnBarDAGError.invalidEdge(
                     sourceID: edge.sourceNodeID.rawValue,
                     targetID: edge.targetNodeID.rawValue
+                )
+            }
+        }
+
+        // If explicit edges are present, they must mirror dependsOn exactly.
+        // Older contracts may omit edges and rely on dependsOn as the source of truth.
+        if !edges.isEmpty {
+            let dependencyEdges = Set(nodes.flatMap { node in
+                node.dependsOn.map { depID in
+                    DependencyEdgeKey(sourceNodeID: depID, targetNodeID: node.id)
+                }
+            })
+            var declaredEdges: Set<DependencyEdgeKey> = []
+            for edge in edges {
+                let declaredEdge = DependencyEdgeKey(sourceNodeID: edge.sourceNodeID, targetNodeID: edge.targetNodeID)
+                guard declaredEdges.insert(declaredEdge).inserted else {
+                    throw BurnBarDAGError.edgeDependencyMismatch(
+                        sourceID: declaredEdge.sourceNodeID.rawValue,
+                        targetID: declaredEdge.targetNodeID.rawValue
+                    )
+                }
+            }
+
+            if dependencyEdges != declaredEdges {
+                let extraEdges = declaredEdges.subtracting(dependencyEdges)
+                let missingEdges = dependencyEdges.subtracting(declaredEdges)
+                let mismatchedEdge = (extraEdges.first ?? missingEdges.first)!
+                throw BurnBarDAGError.edgeDependencyMismatch(
+                    sourceID: mismatchedEdge.sourceNodeID.rawValue,
+                    targetID: mismatchedEdge.targetNodeID.rawValue
                 )
             }
         }

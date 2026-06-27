@@ -92,6 +92,22 @@ public struct BurnBarDAGNodeOutcomeMetrics: Sendable {
         self.sequenceNumber = sequenceNumber
         self.isSuccessful = isSuccessful
     }
+
+    var normalizedForScoring: BurnBarDAGNodeOutcomeMetrics {
+        BurnBarDAGNodeOutcomeMetrics(
+            evidenceCompleteness: Self.clampedUnit(evidenceCompleteness, fallback: 0.0),
+            riskResidual: Self.clampedUnit(riskResidual, fallback: 1.0),
+            costPenalty: Self.clampedUnit(costPenalty, fallback: 1.0),
+            latencyPenalty: Self.clampedUnit(latencyPenalty, fallback: 1.0),
+            sequenceNumber: max(0, sequenceNumber),
+            isSuccessful: isSuccessful
+        )
+    }
+
+    private static func clampedUnit(_ value: Double, fallback: Double) -> Double {
+        guard value.isFinite else { return fallback }
+        return min(1.0, max(0.0, value))
+    }
 }
 
 /// Protocol for providing node outcome metrics during winner selection.
@@ -185,10 +201,11 @@ public actor BurnBarParallelDAGScheduler {
         }
         self.nodeMetadata = metadata
 
-        // Initialize state
+        // Initialize scheduler-owned runtime state. The planner contract may carry
+        // serialized/display statuses, but execution must not trust them.
         var initialStatuses: [String: BurnBarDAGNodeStatus] = [:]
         for node in dag.nodes {
-            initialStatuses[node.id.rawValue] = node.status
+            initialStatuses[node.id.rawValue] = .pending
         }
 
         // Calculate initial critical path from DAG structure
@@ -348,28 +365,24 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Finds the next ready node that has all dependencies satisfied.
     private func findNextReadyNode() -> BurnBarDAGNodeID? {
-        // First, filter to nodes that are pending (not yet started)
-        let pendingNodes = dag.nodes.filter { node in
+        refreshReadyNodes()
+        return state.readyNodes.first
+    }
+
+    /// Recomputes ready nodes from canonical scheduler state.
+    private func refreshReadyNodes() {
+        state.readyNodes = dag.nodes.compactMap { node in
             guard let status = state.nodeStatuses[node.id.rawValue],
                   status == .pending || status == .ready else {
-                return false
+                return nil
             }
-            return true
-        }
-
-        // Among pending nodes, find those with all dependencies completed
-        for node in pendingNodes {
             let depsSatisfied = node.dependsOn.allSatisfy { depID in
                 guard let status = state.nodeStatuses[depID.rawValue] else { return false }
                 return status == .completed
             }
 
-            if depsSatisfied {
-                return node.id
-            }
+            return depsSatisfied ? node.id : nil
         }
-
-        return nil
     }
 
     // MARK: - VAL-EXEC-010: Reconciler Winner Selection
@@ -436,14 +449,14 @@ public actor BurnBarParallelDAGScheduler {
         var candidateScores: [BurnBarDAGNodeID: (score: Double, metrics: BurnBarDAGNodeOutcomeMetrics)] = [:]
 
         for node in terminalConflictingOutcomes {
-            let metrics: BurnBarDAGNodeOutcomeMetrics
+            let rawMetrics: BurnBarDAGNodeOutcomeMetrics
             if let provider = metricsProvider, let provided = provider.metrics(for: node.id) {
-                metrics = provided
+                rawMetrics = provided
             } else {
                 // VAL-EXEC-010: Use runtime terminal sequence number, not static DAG order
                 let runtimeSequence = terminalSequenceNumbers[node.id] ?? 0
                 // Use default metrics based on success/failure
-                metrics = BurnBarDAGNodeOutcomeMetrics(
+                rawMetrics = BurnBarDAGNodeOutcomeMetrics(
                     evidenceCompleteness: 0.5,
                     riskResidual: state.nodeStatuses[node.id.rawValue] == .completed ? 0.3 : 0.7,
                     costPenalty: 0.5,
@@ -452,6 +465,7 @@ public actor BurnBarParallelDAGScheduler {
                     isSuccessful: state.nodeStatuses[node.id.rawValue] == .completed
                 )
             }
+            let metrics = rawMetrics.normalizedForScoring
 
             // Calculate composite score using winner selection precedence:
             // 1. Policy-valid and dependency-complete candidates (all terminal nodes satisfy this)
@@ -466,7 +480,7 @@ public actor BurnBarParallelDAGScheduler {
             let riskScore = (1.0 - metrics.riskResidual) * 1.0
             let costScore = (1.0 - metrics.costPenalty) * 0.5
             let latencyScore = (1.0 - metrics.latencyPenalty) * 0.5
-            let sequenceScore = 1.0 / Double(1 + metrics.sequenceNumber)
+            let sequenceScore = 1.0 / (Double(metrics.sequenceNumber) + 1.0)
 
             let compositeScore = successBonus + evidenceScore + riskScore + costScore + latencyScore + sequenceScore
 
