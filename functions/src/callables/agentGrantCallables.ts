@@ -329,11 +329,22 @@ async function commitQueuedGrant(args: {
   requestRef: DocumentReference;
   authority: GrantAuthorityEnvelope;
   authorityPublicKey: Buffer;
+  authorityKeyKind: PhoneControlSigningKeyKind;
   request: QueuedGrantRequest;
   localAuthProof: AgentGrantLocalAuthProof | undefined;
   payload: Record<string, unknown>;
 }): Promise<void> {
-  const { uid, authorityRef, requestRef, authority, authorityPublicKey, request, localAuthProof, payload } = args;
+  const {
+    uid,
+    authorityRef,
+    requestRef,
+    authority,
+    authorityPublicKey,
+    authorityKeyKind,
+    request,
+    localAuthProof,
+    payload,
+  } = args;
   await db.runTransaction(async (transaction) => {
     const proofRef = localAuthProof ? db.doc(`users/${uid}/local_auth_proofs/${localAuthProof.proofId}`) : undefined;
     const [freshAuthority, existingRequest, proofSnapshot] = await Promise.all([
@@ -349,6 +360,9 @@ async function commitQueuedGrant(args: {
       freshAuthority.get("peerNodeId") !== authority.peerNodeId ||
       freshAuthority.get("publicKeyBase64") !== authorityPublicKey.toString("base64")
     ) {
+      throw new HttpsError("permission-denied", "Agent grant authority changed before the request could be queued.");
+    }
+    if (parsePhoneControlSigningKeyKind(freshAuthority.get("signingKeyKind") ?? undefined) !== authorityKeyKind) {
       throw new HttpsError("permission-denied", "Agent grant authority changed before the request could be queued.");
     }
     const lastQueuedCounter = freshAuthority.get("lastQueuedCounter");
@@ -387,10 +401,11 @@ async function commitQueuedGrant(args: {
 function buildQueuedGrantPayload(args: {
   request: QueuedGrantRequest;
   authority: GrantAuthorityEnvelope;
+  authorityKeyKind: PhoneControlSigningKeyKind;
   observedIntentHashHex: string;
   localAuthProof: AgentGrantLocalAuthProof | undefined;
 }): Record<string, unknown> {
-  const { request, authority, observedIntentHashHex, localAuthProof } = args;
+  const { request, authority, authorityKeyKind, observedIntentHashHex, localAuthProof } = args;
   return {
     requestId: request.requestId,
     runtime: request.runtime,
@@ -424,6 +439,7 @@ function buildQueuedGrantPayload(args: {
       timestamp: authority.timestamp,
       intentHashBlake3: authority.intentHashBlake3,
       signatureEd25519: authority.signatureEd25519,
+      ...(authorityKeyKind === "ed25519" ? {} : { keyKind: authorityKeyKind }),
     },
     status: "queued",
     canonicalRequestHashSha256: observedIntentHashHex,
@@ -492,7 +508,7 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
 
     const authorityRef = db.doc(`users/${uid}/agent_grant_authorities/${grantRequest.sourceDeviceId}`);
     const requestRef = db.doc(`users/${uid}/agent_capability_grant_requests/${grantRequest.requestId}`);
-    const { authorityPublicKey } = await verifyGrantAuthority({
+    const { authorityPublicKey, authorityKeyKind } = await verifyGrantAuthority({
       uid,
       authorityRef,
       authority,
@@ -505,6 +521,7 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
     const payload = buildQueuedGrantPayload({
       request: grantRequest,
       authority,
+      authorityKeyKind,
       observedIntentHashHex,
       localAuthProof,
     });
@@ -514,6 +531,7 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
       requestRef,
       authority,
       authorityPublicKey,
+      authorityKeyKind,
       request: grantRequest,
       localAuthProof,
       payload,
