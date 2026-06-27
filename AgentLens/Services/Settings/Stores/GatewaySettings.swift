@@ -135,9 +135,14 @@ final class GatewaySettings {
             .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
             .appendingPathComponent("com.openburnbar.daemon.plist", isDirectory: false)
     ) -> String? {
-        guard let data = try? Data(contentsOf: plistURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-              let dictionary = plist as? [String: Any],
+        let plist: Any
+        do {
+            let data = try Data(contentsOf: plistURL)
+            plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        } catch {
+            return nil
+        }
+        guard let dictionary = plist as? [String: Any],
               let environment = dictionary["EnvironmentVariables"] as? [String: Any],
               let token = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"] as? String else {
             return nil
