@@ -119,7 +119,10 @@ struct MissionControlSummaryEnricher {
             freshness: freshness,
             projectionStatus: projectionStatus,
             recentEvents: recentEvents,
-            nextActions: BurnBarControllerNextActionPlanner.orderedActions(from: missionSnapshots)
+            nextActions: BurnBarControllerNextActionPlanner.orderedActions(
+                from: missionSnapshots,
+                maxCount: BurnBarControllerNextActionPlanner.defaultMaximumActionCount
+            )
         )
     }
 
