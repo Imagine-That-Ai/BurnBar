@@ -251,7 +251,7 @@ final class AutoSummaryEngine {
             requestTimeoutSeconds: settingsManager.summaryRequestTimeoutSeconds,
             maxPromptChars: effectiveAutoSummaryPromptChars,
             maxOutputTokens: effectiveAutoSummaryOutputTokens,
-            dailyCapUSD: settingsManager.summaryDailyCapUSD ?? 0,
+            dailyCapUSD: settingsManager.summaryDailyCapUSD,
             retryCount: settingsManager.summaryRetryCount
         )
     }
