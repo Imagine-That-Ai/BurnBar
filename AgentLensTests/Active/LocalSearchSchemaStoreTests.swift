@@ -150,7 +150,12 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.markProjectionJobLeased(id: "job-1", leaseOwner: "worker-1", leaseDuration: 120, now: now)
         let leasedJobs = try await store.fetchProjectionJobs(statuses: [.leased], limit: 10)
         XCTAssertEqual(leasedJobs.first?.id, "job-1")
-        try await store.markProjectionJobCompleted(id: "job-1", completedAt: now.addingTimeInterval(60))
+        let completed = try await store.markProjectionJobCompleted(
+            id: "job-1",
+            leaseOwner: "worker-1",
+            completedAt: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(completed)
         let completedJobs = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10)
         XCTAssertEqual(completedJobs.first?.id, "job-1")
 
@@ -367,14 +372,22 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
         XCTAssertEqual(queued.map(\.id), ["job-ready", "job-later", "job-low-priority"])
 
-        let retryAt = base.addingTimeInterval(300)
-        try await store.markProjectionJobFailed(
+        try await store.markProjectionJobLeased(
             id: "job-ready",
+            leaseOwner: "worker-failure",
+            leaseDuration: 60,
+            now: base
+        )
+        let retryAt = base.addingTimeInterval(300)
+        let failedApplied = try await store.markProjectionJobFailed(
+            id: "job-ready",
+            leaseOwner: "worker-failure",
             errorCode: "EMBEDDING_UNAVAILABLE",
             errorMessage: "Embedder offline",
             retryAt: retryAt,
             updatedAt: retryAt
         )
+        XCTAssertTrue(failedApplied)
 
         let failed = try await store.fetchProjectionJobs(statuses: [.failed], limit: 10)
         XCTAssertEqual(failed.count, 1)
@@ -386,6 +399,89 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(failedJob.attempts, 1)
         XCTAssertEqual(failedJob.lastErrorCode, "EMBEDDING_UNAVAILABLE")
         XCTAssertEqual(failedJob.availableAt.timeIntervalSince1970, retryAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func test_projectionJobTerminalUpdatesRequireCurrentLeaseOwner() async throws {
+        let store = try makeInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_100_500)
+        let expiredAt = base.addingTimeInterval(-60)
+
+        try await store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-stale-fence",
+                jobType: .project,
+                status: .running,
+                priority: 1,
+                attempts: 2,
+                maxAttempts: 5,
+                scheduledAt: expiredAt,
+                availableAt: expiredAt,
+                startedAt: expiredAt,
+                leaseOwner: "stale-worker",
+                leaseExpiresAt: base.addingTimeInterval(-1),
+                createdAt: expiredAt,
+                updatedAt: expiredAt
+            )
+        )
+
+        let reclaimed = try await store.leaseNextProjectionJob(
+            leaseOwner: "current-worker",
+            leaseDuration: 120,
+            now: base
+        )
+        XCTAssertEqual(reclaimed?.id, "job-stale-fence")
+        XCTAssertEqual(reclaimed?.leaseOwner, "current-worker")
+
+        let staleCompleted = try await store.markProjectionJobCompleted(
+            id: "job-stale-fence",
+            leaseOwner: "stale-worker",
+            completedAt: base.addingTimeInterval(10)
+        )
+        XCTAssertFalse(staleCompleted)
+
+        let staleFailed = try await store.markProjectionJobFailed(
+            id: "job-stale-fence",
+            leaseOwner: "stale-worker",
+            errorCode: "STALE_FAILURE",
+            errorMessage: "old worker finished late",
+            retryAt: base.addingTimeInterval(300),
+            updatedAt: base.addingTimeInterval(11)
+        )
+        XCTAssertFalse(staleFailed)
+
+        let staleCanceled = try await store.markProjectionJobCanceled(
+            id: "job-stale-fence",
+            leaseOwner: "stale-worker",
+            errorCode: "STALE_CANCEL",
+            errorMessage: "old worker exhausted late",
+            updatedAt: base.addingTimeInterval(12)
+        )
+        XCTAssertFalse(staleCanceled)
+
+        let runningJobs = try await store.fetchProjectionJobs(statuses: [.running], limit: 10)
+        let running = try XCTUnwrap(runningJobs.first { $0.id == "job-stale-fence" })
+        XCTAssertEqual(running.leaseOwner, "current-worker")
+        XCTAssertEqual(running.attempts, 2)
+        XCTAssertNil(running.completedAt)
+        XCTAssertNil(running.lastErrorCode)
+        XCTAssertNil(running.lastErrorMessage)
+
+        let currentFailed = try await store.markProjectionJobFailed(
+            id: "job-stale-fence",
+            leaseOwner: "current-worker",
+            errorCode: "EMBEDDING_UNAVAILABLE",
+            errorMessage: "Embedder offline",
+            retryAt: base.addingTimeInterval(300),
+            updatedAt: base.addingTimeInterval(13)
+        )
+        XCTAssertTrue(currentFailed)
+
+        let failedJobs = try await store.fetchProjectionJobs(statuses: [.failed], limit: 10)
+        let failed = try XCTUnwrap(failedJobs.first { $0.id == "job-stale-fence" })
+        XCTAssertEqual(failed.attempts, 3)
+        XCTAssertEqual(failed.lastErrorCode, "EMBEDDING_UNAVAILABLE")
+        XCTAssertNil(failed.leaseOwner)
+        XCTAssertNil(failed.leaseExpiresAt)
     }
 
     func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() async throws {

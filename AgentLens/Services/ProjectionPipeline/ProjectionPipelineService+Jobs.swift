@@ -139,35 +139,48 @@ extension ProjectionPipelineService {
 
             do {
                 try await process(leasedJob)
-                try await dataStore.markProjectionJobCompleted(id: leasedJob.id, completedAt: nowProvider())
+                let completed = try await dataStore.markProjectionJobCompleted(
+                    id: leasedJob.id,
+                    leaseOwner: leaseOwner,
+                    completedAt: nowProvider()
+                )
+                guard completed else { continue }
                 try await updateSubsystemHealthAfterCompletion(for: leasedJob)
                 report.completedJobs += 1
             } catch {
                 let code = ProjectionPipelineError.code(for: error)
                 let message = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-                lastErrorCode = code
-                lastErrorMessage = message
 
                 let nextAttempt = leasedJob.attempts + 1
+                let transitionApplied: Bool
                 if nextAttempt >= leasedJob.maxAttempts {
-                    try await dataStore.markProjectionJobCanceled(
+                    transitionApplied = try await dataStore.markProjectionJobCanceled(
                         id: leasedJob.id,
+                        leaseOwner: leaseOwner,
                         errorCode: code,
                         errorMessage: message,
                         updatedAt: nowProvider()
                     )
-                    report.canceledJobs += 1
+                    if transitionApplied {
+                        report.canceledJobs += 1
+                    }
                 } else {
                     let retryAt = nowProvider().addingTimeInterval(retryDelaySeconds(attempt: nextAttempt))
-                    try await dataStore.markProjectionJobFailed(
+                    transitionApplied = try await dataStore.markProjectionJobFailed(
                         id: leasedJob.id,
+                        leaseOwner: leaseOwner,
                         errorCode: code,
                         errorMessage: message,
                         retryAt: retryAt,
                         updatedAt: nowProvider()
                     )
-                    report.retriedJobs += 1
+                    if transitionApplied {
+                        report.retriedJobs += 1
+                    }
                 }
+                guard transitionApplied else { continue }
+                lastErrorCode = code
+                lastErrorMessage = message
                 do {
                     try await upsertSubsystemFailureHealth(for: leasedJob, errorCode: code, errorMessage: message)
                 } catch {
