@@ -168,7 +168,8 @@ struct OpenBurnBarMissionSummaryCard: View {
             Text(value)
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(color)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+                .truncationMode(.middle)
         }
     }
 }

@@ -1839,6 +1839,38 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertFalse(mission.nextRecommendation.isEmpty, "VAL-BRIEF-001: Next recommendation must be populated")
     }
 
+    @MainActor
+    func testVAL_BRIEF_001_MissionBriefBoundsChangedFileSummary() async throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+        let longSegment = String(repeating: "a", count: 240)
+        let keyFiles = (0..<80).map { index in
+            "/Users/alberto/project/generated/\(longSegment)-\(index)/Nested/File\(index).swift\nignored-tail-\(index)"
+        }
+
+        try await seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
+            latestMessage: "Ship flow is active and still resolving the final QA checklist.",
+            latestSummary: nil,
+            latestSummaryTitle: "Ship approval sheet",
+            usageCosts: [2.1, 1.7],
+            latestKeyFiles: keyFiles
+        )
+
+        let snapshot = await makeSnapshot(dataStore: store)
+        let summary = snapshot.mission.changedFilesSummary
+
+        XCTAssertTrue(summary.hasPrefix("64+ files touched:"), "VAL-BRIEF-001: Changed-file summary should cap counted file references")
+        XCTAssertTrue(summary.contains("(+more)"), "VAL-BRIEF-001: Changed-file summary should disclose bounded overflow")
+        XCTAssertLessThanOrEqual(summary.count, 360, "VAL-BRIEF-001: Changed-file summary must stay compact for rendering")
+        XCTAssertFalse(summary.contains(longSegment), "VAL-BRIEF-001: Raw long path segments should be abbreviated")
+        XCTAssertFalse(summary.contains("\n"), "VAL-BRIEF-001: Changed-file summary must be single-line normalized")
+        XCTAssertFalse(summary.contains("/Users/alberto/project"), "VAL-BRIEF-001: Changed-file summary should avoid rendering absolute path prefixes")
+        XCTAssertFalse(summary.contains("File64.swift"), "VAL-BRIEF-001: Changed-file summary should not scan beyond the bounded prefix")
+    }
+
     // MARK: VAL-BRIEF-003: Closure messaging is state-specific and deterministic
 
     /// VAL-BRIEF-003 Evidence: Next recommendation messaging differs deterministically for running/blocked/partial/completed

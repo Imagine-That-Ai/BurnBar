@@ -4,6 +4,10 @@ import Foundation
 
 @MainActor
 enum OpenBurnBarOperatingComposer {
+    private static let missionChangedFileScanLimit = 64
+    private static let missionChangedFilePreviewLimit = 3
+    private static let missionChangedFilePathLimit = 96
+
     static func build(
         dataStore: DataStore,
         settingsManager: SettingsManager,
@@ -1180,11 +1184,15 @@ enum OpenBurnBarOperatingComposer {
             return "No changed files are available yet."
         }
 
+        let hasHiddenFiles = latestConversation.keyFiles.count > missionChangedFileScanLimit
         let files = latestConversation.keyFiles
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
+            .prefix(missionChangedFileScanLimit)
+            .compactMap(abbreviatedMissionChangedFilePath)
 
         guard files.isEmpty == false else {
+            if hasHiddenFiles {
+                return "\(missionChangedFileScanLimit)+ changed-file references captured; preview is bounded until the next normalized checkpoint."
+            }
             switch state {
             case .blocked:
                 return "Changed files are unavailable while the mission is blocked."
@@ -1199,10 +1207,41 @@ enum OpenBurnBarOperatingComposer {
             }
         }
 
-        let preview = files.prefix(3).joined(separator: ", ")
-        let remaining = files.count - min(files.count, 3)
-        let suffix = remaining > 0 ? " (+\(remaining) more)" : ""
-        return "\(files.count) file\(files.count == 1 ? "" : "s") touched: \(preview)\(suffix)"
+        let preview = files.prefix(missionChangedFilePreviewLimit).joined(separator: ", ")
+        let remaining = files.count - min(files.count, missionChangedFilePreviewLimit)
+        let suffix: String
+        if hasHiddenFiles {
+            suffix = " (+more)"
+        } else {
+            suffix = remaining > 0 ? " (+\(remaining) more)" : ""
+        }
+        let countPrefix = hasHiddenFiles ? "\(files.count)+" : "\(files.count)"
+        return "\(countPrefix) file\(files.count == 1 && hasHiddenFiles == false ? "" : "s") touched: \(preview)\(suffix)"
+    }
+
+    private static func abbreviatedMissionChangedFilePath(_ rawValue: String) -> String? {
+        let collapsed = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+        guard collapsed.isEmpty == false else {
+            return nil
+        }
+
+        let components = collapsed
+            .components(separatedBy: CharacterSet(charactersIn: "/\\"))
+            .filter { $0.isEmpty == false }
+        let displayPath = components.count > 2
+            ? ".../" + components.suffix(2).joined(separator: "/")
+            : collapsed
+        guard displayPath.count > missionChangedFilePathLimit else {
+            return displayPath
+        }
+
+        let headCount = max(12, missionChangedFilePathLimit / 2 - 2)
+        let tailCount = max(12, missionChangedFilePathLimit - headCount - 3)
+        return "\(displayPath.prefix(headCount))...\(displayPath.suffix(tailCount))"
     }
 
     private static func missionRisksSummary(
