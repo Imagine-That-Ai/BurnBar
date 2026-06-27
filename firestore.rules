@@ -4584,8 +4584,10 @@ service cloud.firestore {
           "ciphertext",
           "keyVersion",
           "envelopeVersion",
+          "metadataBinding",
           "createdAt"
         ])
+        && request.resource.data.id is string
         && request.resource.data.id == envelopeId
         && request.resource.data.grantId is string
         && request.resource.data.grantId.size() <= 160
@@ -4603,6 +4605,8 @@ service cloud.firestore {
         && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
         && request.resource.data.keyVersion is int
         && request.resource.data.envelopeVersion is int
+        && (!("metadataBinding" in request.resource.data) || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
+        && (request.resource.data.envelopeVersion < 2 || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
         && request.resource.data.createdAt is timestamp;
       }
 

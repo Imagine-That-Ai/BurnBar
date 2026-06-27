@@ -593,6 +593,35 @@ test("escrow public keys and envelopes are schema-constrained encrypted docs", a
     createdAt: Timestamp.fromMillis(Date.now()),
   };
   await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-1"), envelope));
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-v2"), {
+      ...envelope,
+      id: "envelope-v2",
+      envelopeVersion: 2,
+      metadataBinding: "escrow-credential-aad-v1",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-v2-missing-binding"), {
+      ...envelope,
+      id: "envelope-v2-missing-binding",
+      envelopeVersion: 2,
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-v2-wrong-binding"), {
+      ...envelope,
+      id: "envelope-v2-wrong-binding",
+      envelopeVersion: 2,
+      metadataBinding: "wrong-binding",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-id-mismatch"), {
+      ...envelope,
+      id: "different-envelope-id",
+    })
+  );
   const { targetDeviceId: _targetDeviceId, ...missingTargetEnvelope } = envelope;
   await assertFails(
     setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-2"), {

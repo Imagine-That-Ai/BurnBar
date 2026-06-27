@@ -149,6 +149,7 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
 
         // Envelope doc — the import reads these exact fields.
         let envelope = plan.envelope
+        XCTAssertEqual(envelope["id"] as? String, "env-1")
         XCTAssertEqual(envelope["grantId"] as? String, "grant-1")
         XCTAssertEqual(envelope["targetDeviceId"] as? String, "iphone-1")
         XCTAssertEqual(envelope["sourceDeviceId"] as? String, "mac-1")

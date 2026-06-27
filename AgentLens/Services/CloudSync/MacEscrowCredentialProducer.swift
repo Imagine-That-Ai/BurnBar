@@ -268,6 +268,7 @@ struct MacEscrowCredentialProducer {
         ]
 
         let envelope: [String: Any] = [
+            "id": envelopeId,
             "grantId": grantId,
             "sourceDeviceId": sourceDeviceID,
             "targetDeviceId": recipient.deviceId,
