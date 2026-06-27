@@ -5,6 +5,7 @@ import {
   MAX_ROWS,
   clampRect,
   columnWidth,
+  compactWithLock,
   findFreeSlot,
   nextRow,
   pxToColSpan,
@@ -143,6 +144,39 @@ describe("resizeRectFromOrigin", () => {
     const resized = resizeRectFromOrigin({ x: 2, y: 1, w: 4, h: 3 }, -20, -20);
     expect(resized.w).toBe(GRID.minW);
     expect(resized.h).toBe(GRID.minH);
+  });
+});
+
+describe("compactWithLock (overlap resolution)", () => {
+  it("produces a layout with zero overlaps and keeps the locked card put", () => {
+    // Two cards dropped onto the same cell.
+    const items = [
+      { id: "a", rect: { x: 0, y: 0, w: 6, h: 3 } },
+      { id: "b", rect: { x: 0, y: 0, w: 6, h: 3 } }, // collides with a
+      { id: "c", rect: { x: 6, y: 0, w: 6, h: 3 } },
+    ];
+    const out = compactWithLock(items, "b"); // b is the one being moved/locked
+    const byId = Object.fromEntries(out.map((o) => [o.id, o.rect]));
+    // Locked card stays exactly where it was dropped.
+    expect(byId.b).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    // No pair overlaps.
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        expect(rectsOverlap(out[i]!.rect, out[j]!.rect)).toBe(false);
+      }
+    }
+  });
+
+  it("preserves item identity/order and column position", () => {
+    const items = [
+      { id: "x", rect: { x: 3, y: 4, w: 3, h: 2 } },
+      { id: "y", rect: { x: 3, y: 0, w: 3, h: 2 } },
+    ];
+    const out = compactWithLock(items, "x");
+    expect(out.map((o) => o.id)).toEqual(["x", "y"]);
+    // Every card keeps its column (compaction only moves vertically).
+    expect(out.find((o) => o.id === "x")!.rect.x).toBe(3);
+    expect(out.find((o) => o.id === "y")!.rect.x).toBe(3);
   });
 });
 
