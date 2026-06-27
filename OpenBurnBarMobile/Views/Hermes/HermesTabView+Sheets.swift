@@ -520,11 +520,11 @@ struct HermesGatewayModelPickerSheet: View {
                             .stroke(MobileTheme.Colors.border.opacity(0.5), lineWidth: 0.7)
                     )
                     .onSubmit {
-                        switchModel(customModelID)
+                        Task { await switchModel(customModelID) }
                     }
 
                 Button {
-                    switchModel(customModelID)
+                    Task { await switchModel(customModelID) }
                 } label: {
                     Label(gatewayStore.isSwitchingModel ? "Switching" : "Switch Gateway Model", systemImage: "arrow.left.arrow.right.circle.fill")
                         .frame(maxWidth: .infinity)
@@ -562,7 +562,7 @@ struct HermesGatewayModelPickerSheet: View {
                             isSelected: service.selectedModelID == option.modelID || gatewayStore.runtimeModelId == option.modelID,
                             isFavorite: service.isFavoriteModel(option)
                         ) {
-                            switchModel(option.modelID)
+                            Task { await switchModel(option.modelID) }
                         } onToggleFavorite: {
                             service.toggleFavoriteModel(option)
                             HapticBus.toggle()
@@ -574,28 +574,42 @@ struct HermesGatewayModelPickerSheet: View {
     }
 
     @MainActor
-    private func switchModel(_ modelID: String) {
-        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        // Optimistic: select + dismiss immediately. The sealed gateway
-        // enqueue is a Firestore round trip (E2EE seal + network) that used
-        // to block the tap for seconds; it now rides in the background. If
-        // the runtime ends up on a different model, the per-turn
-        // "asked X → got Y" honesty badge reports it, and the gateway
-        // store's notice surfaces enqueue failures.
-        service.selectGatewayModelID(trimmed)
-        HapticBus.primaryAction()
-        dismiss()
-        let store = gatewayStore
-        let sender = senderDisplayName
-        let thread = threadId
-        Task {
-            await store.switchGatewayModel(
-                modelId: trimmed,
-                senderDisplayName: sender,
-                threadId: thread
-            )
+    private func switchModel(_ modelID: String) async {
+        let switched = await HermesGatewayModelSwitchCoordinator.switchModel(
+            modelID,
+            service: service,
+            gatewayStore: gatewayStore,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId
+        )
+        if switched {
+            HapticBus.primaryAction()
+            dismiss()
         }
+    }
+}
+
+@MainActor
+enum HermesGatewayModelSwitchCoordinator {
+    @discardableResult
+    static func switchModel(
+        _ modelID: String,
+        service: HermesService,
+        gatewayStore: HermesGatewaySettingsStore,
+        senderDisplayName: String,
+        threadId: String
+    ) async -> Bool {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard await gatewayStore.switchGatewayModel(
+            modelId: trimmed,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId
+        ) != nil else {
+            return false
+        }
+        service.selectGatewayModelID(trimmed)
+        return true
     }
 }
 
