@@ -21,6 +21,13 @@
  *   scrim.read = clamp(1 − 0.120/peak, 0.30, 0.74)   (reading band is stricter)
  * Each scrim below is computed from this kernel's lum/busy, then hand-rounded.
  *
+ * `scrim.nav` (optional) is an EXTRA top-anchored darken (top ~6vh, fading out
+ * by ~15vh) layered above the flat hero band, ONLY for kernels whose bright/
+ * busy field lifts the local backdrop behind the small inactive nav labels
+ * (0.66-alpha) below the 4.5:1 floor. It is additive over scrim.hero and is
+ * confined to the nav strip, so it rescues the nav WITHOUT muddying the hero
+ * headline below it. Kernels that pass nav legibility omit it (default 0).
+ *
  * `Record<KernelId, KernelInk>` makes coverage of all 30 kernels a COMPILE-TIME
  * invariant: add a kernel id and this file fails to type-check until it has ink.
  */
@@ -55,8 +62,10 @@ export interface KernelInk {
   lum: number;
   /** Spatial high-frequency contrast / "busyness" that locally spikes (0..1). */
   busy: number;
-  /** Scrim alphas: hero band (light) and reading band (strict). 0..1. */
-  scrim: { hero: number; read: number };
+  /** Scrim alphas: hero band (light) and reading band (strict). 0..1.
+   *  `nav` (optional) is an extra additive top-strip darken for kernels whose
+   *  bright field washes out the small inactive nav labels; omit when nav passes. */
+  scrim: { hero: number; read: number; nav?: number };
   /** Halo strength tier for ink (1 calm .. 3 turbulent). */
   haloTier: 1 | 2 | 3;
   /** Accent hue pulled from this kernel's character (hex). Drives --ink-accent. */
@@ -96,24 +105,24 @@ export const KERNEL_INK: Record<KernelId, KernelInk> = {
   constellation: { lum: 0.1, busy: 0.35, scrim: { hero: 0.2, read: 0.34 }, haloTier: 1, accent: "#838EFF", motion: "shatter", timing: T.shatter() },
   flow: { lum: 0.16, busy: 0.4, scrim: { hero: 0.24, read: 0.4 }, haloTier: 1, accent: "#7FB0F0", motion: "drift", timing: T.drift() },
   aurora: { lum: 0.26, busy: 0.3, scrim: { hero: 0.34, read: 0.5 }, haloTier: 1, accent: "#9A86FF", motion: "drift", timing: T.drift() },
-  mesh: { lum: 0.24, busy: 0.45, scrim: { hero: 0.34, read: 0.5 }, haloTier: 2, accent: "#B08EFF", motion: "shatter", timing: T.shatter() },
+  mesh: { lum: 0.3, busy: 0.6, scrim: { hero: 0.4, read: 0.54, nav: 0.5 }, haloTier: 3, accent: "#B08EFF", motion: "shatter", timing: T.shatter() },
   moire: { lum: 0.3, busy: 0.85, scrim: { hero: 0.52, read: 0.66 }, haloTier: 3, accent: "#78DCE8", motion: "shatter", timing: T.shatter() },
   volumetric: { lum: 0.2, busy: 0.3, scrim: { hero: 0.28, read: 0.44 }, haloTier: 1, accent: "#9FB4FF", motion: "condense", timing: T.condense() },
   lic: { lum: 0.18, busy: 0.42, scrim: { hero: 0.28, read: 0.44 }, haloTier: 1, accent: "#838EFF", motion: "drift", timing: T.drift() },
   "fluid-aurora": { lum: 0.3, busy: 0.4, scrim: { hero: 0.38, read: 0.54 }, haloTier: 2, accent: "#6FD6E8", motion: "drift", timing: T.drift() },
   cloudfield: { lum: 0.34, busy: 0.45, scrim: { hero: 0.44, read: 0.58 }, haloTier: 2, accent: "#9AB4FF", motion: "drift", timing: T.drift() },
-  "plasma-orbs": { lum: 0.3, busy: 0.7, scrim: { hero: 0.46, read: 0.6 }, haloTier: 3, accent: "#8FB6FF", motion: "pulse", timing: T.pulse() },
+  "plasma-orbs": { lum: 0.34, busy: 0.72, scrim: { hero: 0.5, read: 0.64, nav: 0.5 }, haloTier: 3, accent: "#8FB6FF", motion: "pulse", timing: T.pulse() },
   "blobs-mesh": { lum: 0.28, busy: 0.3, scrim: { hero: 0.36, read: 0.52 }, haloTier: 1, accent: "#C68EFF", motion: "drift", timing: T.drift() },
   "retro-plasma": { lum: 0.42, busy: 0.8, scrim: { hero: 0.58, read: 0.72 }, haloTier: 3, accent: "#6CE0E8", motion: "pulse", timing: T.pulse() },
   "inversion-lattice": { lum: 0.24, busy: 0.75, scrim: { hero: 0.46, read: 0.62 }, haloTier: 3, accent: "#7CE0E8", motion: "shatter", timing: T.shatter() },
   "vogel-bloom": { lum: 0.12, busy: 0.4, scrim: { hero: 0.22, read: 0.38 }, haloTier: 1, accent: "#FFC46A", motion: "rise", timing: T.rise() },
-  "crystal-drift": { lum: 0.2, busy: 0.6, scrim: { hero: 0.36, read: 0.52 }, haloTier: 2, accent: "#76E0D0", motion: "shatter", timing: T.shatter() },
-  "ripple-lattice": { lum: 0.12, busy: 0.45, scrim: { hero: 0.24, read: 0.4 }, haloTier: 1, accent: "#8FA0FF", motion: "ripple", timing: T.ripple() },
-  "liquid-lumen": { lum: 0.3, busy: 0.3, scrim: { hero: 0.38, read: 0.54 }, haloTier: 1, accent: "#B884FF", motion: "pulse", timing: T.pulse() },
+  "crystal-drift": { lum: 0.3, busy: 0.7, scrim: { hero: 0.52, read: 0.64, nav: 0.42 }, haloTier: 3, accent: "#76E0D0", motion: "shatter", timing: T.shatter() },
+  "ripple-lattice": { lum: 0.22, busy: 0.6, scrim: { hero: 0.4, read: 0.58, nav: 0.4 }, haloTier: 3, accent: "#8FA0FF", motion: "ripple", timing: T.ripple() },
+  "liquid-lumen": { lum: 0.46, busy: 0.6, scrim: { hero: 0.58, read: 0.7, nav: 0.46 }, haloTier: 3, accent: "#B884FF", motion: "pulse", timing: T.pulse() },
   "spectral-drift": { lum: 0.18, busy: 0.55, scrim: { hero: 0.32, read: 0.48 }, haloTier: 2, accent: "#9AA8C8", motion: "drift", timing: T.drift() },
   "mycelium-mesh": { lum: 0.14, busy: 0.55, scrim: { hero: 0.28, read: 0.44 }, haloTier: 2, accent: "#6FD0B0", motion: "rise", timing: T.rise() },
-  oilfield: { lum: 0.26, busy: 0.5, scrim: { hero: 0.38, read: 0.54 }, haloTier: 2, accent: "#7AD6C0", motion: "marble", timing: T.marble() },
-  "suminagashi-drift": { lum: 0.22, busy: 0.55, scrim: { hero: 0.36, read: 0.52 }, haloTier: 2, accent: "#78C4E0", motion: "marble", timing: T.marble() },
+  oilfield: { lum: 0.4, busy: 0.6, scrim: { hero: 0.52, read: 0.66, nav: 0.5 }, haloTier: 3, accent: "#7AD6C0", motion: "marble", timing: T.marble() },
+  "suminagashi-drift": { lum: 0.36, busy: 0.6, scrim: { hero: 0.5, read: 0.64, nav: 0.48 }, haloTier: 3, accent: "#78C4E0", motion: "marble", timing: T.marble() },
   "kinetic-stipple": { lum: 0.12, busy: 0.5, scrim: { hero: 0.26, read: 0.42 }, haloTier: 2, accent: "#8FA0FF", motion: "drift", timing: T.drift() },
   "neural-bloom": { lum: 0.26, busy: 0.4, scrim: { hero: 0.36, read: 0.52 }, haloTier: 1, accent: "#C28EFF", motion: "rise", timing: T.rise() },
   agent1: { lum: 0.28, busy: 0.35, scrim: { hero: 0.36, read: 0.52 }, haloTier: 1, accent: "#9A86FF", motion: "condense", timing: T.condense() },
@@ -121,8 +130,8 @@ export const KERNEL_INK: Record<KernelId, KernelInk> = {
   "bat-signal": { lum: 0.22, busy: 0.45, scrim: { hero: 0.32, read: 0.48 }, haloTier: 2, accent: "#BFD0FF", motion: "beam", timing: T.beam() },
   "storm-signal": { lum: 0.16, busy: 0.55, scrim: { hero: 0.3, read: 0.46 }, haloTier: 2, accent: "#9AA8C8", motion: "pulse", timing: T.pulse() },
   origami: { lum: 0.2, busy: 0.25, scrim: { hero: 0.3, read: 0.46 }, haloTier: 1, accent: "#FFC49A", motion: "rise", timing: T.rise() },
-  "ink-diffusion": { lum: 0.16, busy: 0.45, scrim: { hero: 0.28, read: 0.44 }, haloTier: 2, accent: "#8FB0E0", motion: "bleed", timing: T.bleed() },
-  "petroleum-sheen": { lum: 0.2, busy: 0.6, scrim: { hero: 0.36, read: 0.52 }, haloTier: 2, accent: "#7AD6D0", motion: "marble", timing: T.marble() },
+  "ink-diffusion": { lum: 0.3, busy: 0.6, scrim: { hero: 0.46, read: 0.62, nav: 0.5 }, haloTier: 3, accent: "#8FB0E0", motion: "bleed", timing: T.bleed() },
+  "petroleum-sheen": { lum: 0.34, busy: 0.65, scrim: { hero: 0.5, read: 0.66, nav: 0.46 }, haloTier: 3, accent: "#7AD6D0", motion: "marble", timing: T.marble() },
 };
 
 /** Resolve the ink for a kernel, falling back to the calm default. */
