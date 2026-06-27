@@ -363,32 +363,27 @@ class InsightAnalysisEngineTest {
         providerID = "provider-01",
     )
 
-    private fun evidencePack(
-        id: String,
-        source: String,
-        summary: String,
-        deepTranscriptIncluded: Boolean = false,
-    ): InsightEvidencePack = InsightEvidencePack(
+    private fun evidencePack(id: String, source: String, summary: String, deepTranscriptIncluded: Boolean = false): InsightEvidencePack = InsightEvidencePack(
         id = id,
         sourcePlatform = InsightAnalysisPlatform.MACOS,
         generatedAt = "2026-06-11T00:00:00Z",
         timeWindow = InsightTimeWindow.Last7d,
         includedDataSources = listOf(source),
         budgetReport =
-            InsightContextBudgetReport(
-                encodedBytes = summary.toByteArray(Charsets.UTF_8).size,
-                estimatedPromptTokens = (summary.length / 4).coerceAtLeast(1),
-                includedDataSources = listOf(source),
-            ),
+        InsightContextBudgetReport(
+            encodedBytes = summary.toByteArray(Charsets.UTF_8).size,
+            estimatedPromptTokens = (summary.length / 4).coerceAtLeast(1),
+            includedDataSources = listOf(source),
+        ),
         evidence =
-            listOf(
-                InsightEvidence(
-                    id = "pack:$id",
-                    citation = citation(0),
-                    source = source,
-                    summary = summary,
-                ),
+        listOf(
+            InsightEvidence(
+                id = "pack:$id",
+                citation = citation(0),
+                source = source,
+                summary = summary,
             ),
+        ),
         summary = summary,
         contentHash = "hash-$id",
         deepTranscriptIncluded = deepTranscriptIncluded,
