@@ -11,6 +11,7 @@
 
 import process from "node:process";
 import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
@@ -126,6 +127,16 @@ function shortDigest(value) {
   return digest(value).slice(0, 16);
 }
 
+function providerAccountSecretRefID(uid, accountID) {
+  const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "-");
+  const safeAccountID = accountID.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `${safeUid}_${safeAccountID}`;
+}
+
+export function providerAccountSecretRefPath(uid, accountID) {
+  return `provider_account_secret_refs/${providerAccountSecretRefID(uid, accountID)}`;
+}
+
 function redactPath(path) {
   return String(path).replace(/^users\/[^/]+\//, "users/<uid>/");
 }
@@ -153,6 +164,17 @@ function requireString(doc, field) {
     fail(`entitlement.${field} is missing or empty`);
   }
   return value;
+}
+
+function optionalString(doc, field) {
+  const value = doc?.[field];
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+export function assertNotFirestoreEmulator(env = process.env) {
+  if (typeof env.FIRESTORE_EMULATOR_HOST === "string" && env.FIRESTORE_EMULATOR_HOST.trim() !== "") {
+    fail("refusing hosted quota proof while FIRESTORE_EMULATOR_HOST is set");
+  }
 }
 
 function assertEntitlement(data, opts) {
@@ -274,13 +296,36 @@ async function proveBackupContent(db, uid) {
   return evidence;
 }
 
-async function proveHostedQuota(db, uid) {
+export async function proveHostedQuota(db, uid) {
   const account = await firstMatching(
     db.collection(`users/${uid}/provider_accounts`).where("providerID", "==", "codex"),
-    (data) => data.storageScope === "server_private"
+    (data, doc) =>
+      data.id === doc.id &&
+      data.status === "connected" &&
+      data.providerID === "codex" &&
+      data.storageScope === "server_private"
   );
   if (!account) {
-    fail("no server_private Codex provider account found");
+    fail("no connected server_private Codex provider account found");
+  }
+
+  const privateRef = db.doc(providerAccountSecretRefPath(uid, account.id));
+  const privateSnap = await privateRef.get();
+  if (!privateSnap.exists) {
+    fail("no server-private secret reference found for the hosted Codex provider account", {
+      accountPath: redactPath(account.ref.path),
+    });
+  }
+  const privateData = privateSnap.data();
+  if (
+    optionalString(privateData, "uid") !== uid ||
+    optionalString(privateData, "accountID") !== account.id ||
+    optionalString(privateData, "providerID") !== "codex" ||
+    !optionalString(privateData, "secretVersionName")
+  ) {
+    fail("server-private secret reference does not match the hosted Codex provider account", {
+      accountPath: redactPath(account.ref.path),
+    });
   }
 
   const snapshot = await firstMatching(
@@ -298,11 +343,13 @@ async function proveHostedQuota(db, uid) {
   return {
     accountPath: account.ref.path,
     snapshotPath: snapshot.ref.path,
+    secretRefPathHash: digest(privateRef.path),
   };
 }
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  assertNotFirestoreEmulator();
   if (getApps().length === 0) initializeApp({ projectId: opts.project });
   const db = getFirestore();
 
@@ -346,6 +393,7 @@ async function main() {
     result.hostedQuotaEvidence = {
       accountPath: redactPath(evidence.accountPath),
       snapshotPath: redactPath(evidence.snapshotPath),
+      secretRefPathHash: evidence.secretRefPathHash,
     };
   }
 
@@ -353,17 +401,19 @@ async function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-main().catch((err) => {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        error: err.message,
-        details: err.details,
-      },
-      null,
-      2
-    )
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(
+      JSON.stringify(
+        {
+          ok: false,
+          error: err.message,
+          details: err.details,
+        },
+        null,
+        2
+      )
+    );
+    process.exitCode = 1;
+  });
+}
