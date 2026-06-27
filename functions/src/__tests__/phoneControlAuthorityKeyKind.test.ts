@@ -317,7 +317,10 @@ function req(data: Record<string, unknown>) {
 }
 
 function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
-  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const run =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof run !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -886,6 +889,10 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
     });
     const res = await invokeCallable<{ ok: boolean }>(queueAgentCapabilityGrantRequest, data);
     expect(res.ok).toBe(true);
+    const written = store.get(`users/${UID}/agent_capability_grant_requests/${data.requestId}`) as
+      | { authority?: Record<string, unknown> }
+      | undefined;
+    expect(written?.authority?.keyKind).toBe("se-p256");
   });
 
   it("rejects a queued grant whose SE-P256 signature does not verify", async () => {
@@ -903,6 +910,25 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
     await expect(invokeCallable(queueAgentCapabilityGrantRequest, data)).rejects.toThrow(/signature is invalid/i);
   });
 
+  it("rejects a queued grant if the authority key kind changes before commit", async () => {
+    const { x963, privateKey, peerNodeId } = p256Pair();
+    const authorityPath = `users/${UID}/agent_grant_authorities/${DEVICE}`;
+    store.set(authorityPath, {
+      peerNodeId,
+      publicKeyBase64: x963.toString("base64"),
+      signingKeyKind: "se-p256",
+    });
+    const data = queuedGrantData({
+      peerNodeId,
+      signGrant: (payload) => cryptoSign("sha256", payload, { key: privateKey, dsaEncoding: "ieee-p1363" }),
+    });
+    setBeforeTransactionHook(() => {
+      store.set(authorityPath, { ...store.get(authorityPath), signingKeyKind: "ed25519" });
+    });
+    await expect(invokeCallable(queueAgentCapabilityGrantRequest, data)).rejects.toThrow(/authority changed/i);
+    expect(store.has(`users/${UID}/agent_capability_grant_requests/${data.requestId}`)).toBe(false);
+  });
+
   it("still accepts a legacy Ed25519 queued grant (no signingKeyKind on the doc)", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
     const jwk = publicKey.export({ format: "jwk" });
@@ -918,6 +944,10 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
     });
     const res = await invokeCallable<{ ok: boolean }>(queueAgentCapabilityGrantRequest, data);
     expect(res.ok).toBe(true);
+    const written = store.get(`users/${UID}/agent_capability_grant_requests/${data.requestId}`) as
+      | { authority?: Record<string, unknown> }
+      | undefined;
+    expect(Object.prototype.hasOwnProperty.call(written?.authority ?? {}, "keyKind")).toBe(false);
   });
 
   it("rejects a grant request from a revoked source device (trust re-check)", async () => {
