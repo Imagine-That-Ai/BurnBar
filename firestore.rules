@@ -3587,6 +3587,7 @@ service cloud.firestore {
         && (!("p95RoundTripMillisBucket" in request.resource.data) || request.resource.data.p95RoundTripMillisBucket in ["lt_50ms", "50_150ms", "150_400ms", "gte_400ms"])
         && (!("p95BitsPerSecondBucket" in request.resource.data) || request.resource.data.p95BitsPerSecondBucket in ["lt_300kbps", "300_600kbps", "600kbps_1mbps", "1_2mbps", "2_4mbps", "4_8mbps", "gte_8mbps"])
         && (!("durationBucket" in request.resource.data) || request.resource.data.durationBucket in ["lt_30s", "30s_2m", "2m_10m", "10m_30m", "30m_60m", "gte_60m"])
+        && (!("freezeCount" in request.resource.data) || (request.resource.data.freezeCount is int && request.resource.data.freezeCount >= 0 && request.resource.data.freezeCount <= 50))
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)

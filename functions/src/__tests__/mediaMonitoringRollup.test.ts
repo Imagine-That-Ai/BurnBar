@@ -160,4 +160,63 @@ describe("rollupMediaSessionsForDay", () => {
       merge: true,
     });
   });
+
+  it("ignores out-of-policy legacy freeze counts in percentile sketches", async () => {
+    const firestore = new FakeFirestore([
+      {
+        path: "users/user-1/media_session_events/event-valid",
+        data: {
+          feature: "screenShare",
+          startedAt: "2026-06-17T00:10:00.000Z",
+          endedAt: "2026-06-17T00:20:00.000Z",
+          endReason: "completedSuccess",
+          freezeCount: 50,
+        },
+      },
+      {
+        path: "users/user-1/media_session_events/event-negative",
+        data: {
+          feature: "screenShare",
+          startedAt: "2026-06-17T00:20:00.000Z",
+          endedAt: "2026-06-17T00:30:00.000Z",
+          endReason: "completedSuccess",
+          freezeCount: -1,
+        },
+      },
+      {
+        path: "users/user-1/media_session_events/event-huge",
+        data: {
+          feature: "screenShare",
+          startedAt: "2026-06-17T00:30:00.000Z",
+          endedAt: "2026-06-17T00:40:00.000Z",
+          endReason: "completedSuccess",
+          freezeCount: Number.MAX_SAFE_INTEGER,
+        },
+      },
+      {
+        path: "users/user-1/media_session_events/event-fractional",
+        data: {
+          feature: "screenShare",
+          startedAt: "2026-06-17T00:40:00.000Z",
+          endedAt: "2026-06-17T00:50:00.000Z",
+          endReason: "completedSuccess",
+          freezeCount: 2.5,
+        },
+      },
+    ]);
+
+    const rollup = await rollupMediaSessionsForDay({
+      dateUTC: new Date("2026-06-17T12:00:00.000Z"),
+      firestore,
+    });
+
+    expect(rollup.totalEvents).toBe(4);
+    expect(rollup.perFeature.screenShare.sessionCount).toBe(4);
+    expect(rollup.perFeature.screenShare.freezeCount).toMatchObject({
+      count: 1,
+      p50: 50,
+      p95: 50,
+      p99: 50,
+    });
+  });
 });
