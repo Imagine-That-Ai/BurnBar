@@ -9,8 +9,17 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.BurnBarApplication
 import com.openburnbar.MainActivity
 import kotlinx.coroutines.tasks.await
+
+private const val INCOMING_CALL_CONTEXT_COLLECTION = "incoming_call_contexts"
+
+internal data class IncomingCallRouting(
+    val connectionId: String,
+    val callerName: String,
+    val callerInitial: String,
+)
 
 internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<String, String>): Notification? {
     ensureAgentReplyChannel()
@@ -106,3 +115,54 @@ private suspend fun resolveThreadId(eventId: String): String? {
         null
     }
 }
+
+internal suspend fun MercuryFcmService.resolveIncomingCallRouting(data: Map<String, String>): IncomingCallRouting? {
+    val callerName = data["caller_name"]?.trim()?.takeIf { it.isNotBlank() } ?: "Incoming call"
+    val callerInitial = data["caller_initial"]?.trim()?.takeIf { it.isNotBlank() }
+        ?: callerName.firstOrNull()?.toString()
+        ?: "I"
+    val connectionId = normalizedRoutingId(data["connection_id"])
+        ?: resolveIncomingCallContextConnectionId(data["correlation_id"])
+        ?: normalizedRoutingId(BurnBarApplication.mediaControlCoordinator?.activePair?.value?.connectionID)
+        ?: return null
+    return IncomingCallRouting(
+        connectionId = connectionId,
+        callerName = callerName,
+        callerInitial = callerInitial,
+    )
+}
+
+private suspend fun resolveIncomingCallContextConnectionId(rawCorrelationId: String?): String? {
+    val correlationId = normalizedCorrelationId(rawCorrelationId) ?: return null
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
+    return try {
+        val snapshot = FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection(INCOMING_CALL_CONTEXT_COLLECTION).document(correlationId)
+            .get()
+            .await()
+        if (!snapshot.exists()) return null
+        val expireAtMillis = snapshot.getTimestamp("expireAt")?.toDate()?.time
+        if (expireAtMillis != null && expireAtMillis <= System.currentTimeMillis()) return null
+        normalizedRoutingId(snapshot.getString("connectionId"))
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun normalizedCorrelationId(value: String?): String? {
+    val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (normalized.length > 128) return null
+    if (normalized.contains("/")) return null
+    if (CONTROL_OR_BIDI_REGEX.containsMatchIn(normalized)) return null
+    return normalized
+}
+
+private fun normalizedRoutingId(value: String?): String? {
+    val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (normalized.length > 160) return null
+    if (CONTROL_OR_BIDI_REGEX.containsMatchIn(normalized)) return null
+    return normalized
+}
+
+private val CONTROL_OR_BIDI_REGEX = Regex("[\\u0000-\\u001f\\u202a-\\u202e]")

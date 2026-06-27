@@ -178,7 +178,12 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
   },
   media: {
     encryptionTier: "zero_access",
-    firestoreCollections: ["media_session_events", "media_quota_usage", "media_attachment_manifests"],
+    firestoreCollections: [
+      "incoming_call_contexts",
+      "media_session_events",
+      "media_quota_usage",
+      "media_attachment_manifests",
+    ],
     storagePrefixes: [],
   },
   entitlements_billing: {

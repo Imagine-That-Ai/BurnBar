@@ -26,6 +26,8 @@ function pushQueueTimestamps(nowMillis: number = Date.now()): { createdAt: Times
   };
 }
 
+const INCOMING_CALL_CONTEXT_COLLECTION = "incoming_call_contexts";
+
 export const triggerVoIPCall = onCall(
   { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("triggerVoIPCall", async (request) => {
@@ -52,11 +54,9 @@ export const triggerVoIPCall = onCall(
     });
 
     // T-PRV-01 / T-PRV-07: payloads that leave our trust boundary carry NO
-    // cleartext caller displayName and NO paired_device_id. APNs also omits
-    // stable routing ids; Android FCM keeps the active connection_id because
-    // MercuryFcmService needs it to route accept/decline back to the live Mac
-    // session. A fresh, per-push `correlationId` lets devices dedupe duplicate
-    // fan-outs without overloading a stable routing key for that purpose.
+    // cleartext caller displayName and NO stable routing ids. Android resolves
+    // the active connection from this owner-scoped, TTL-bound context after
+    // receiving the push, keyed by the fresh per-push `correlationId`.
     const correlationId = ephemeralCallCorrelationId();
     const now = Timestamp.now();
     // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents
@@ -80,11 +80,25 @@ export const triggerVoIPCall = onCall(
 
     if (fanOut.fcmToken) {
       writes.push(
+        firestore
+          .collection("users")
+          .doc(request.auth.uid)
+          .collection(INCOMING_CALL_CONTEXT_COLLECTION)
+          .doc(correlationId)
+          .set({
+            id: correlationId,
+            callId: data.callId,
+            connectionId: data.connectionId,
+            createdAt: queueTimestamps.createdAt,
+            expireAt: queueTimestamps.expireAt,
+            schemaVersion: 1,
+          }),
+      );
+      writes.push(
         firestore.collection("fcm_outbound").add({
           uid: request.auth.uid,
           payload: buildFcmCallPayload({
             callId: data.callId,
-            connectionId: data.connectionId,
             isVideo: data.isVideo,
             correlationId,
           }),

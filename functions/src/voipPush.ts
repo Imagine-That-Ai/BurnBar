@@ -25,12 +25,12 @@ import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 
 /**
- * Fresh, single-push correlation id (T-PRV-01 / T-PRV-07). APNs uses this
- * instead of stable routing ids, while Android FCM still carries the active
- * connection id required by its background receiver. Because this value rotates
- * per push, it cannot be used to link a device across call sessions; the device
- * still dedupes duplicate fan-outs of the SAME push via the document id /
- * `correlationId` echoed back.
+ * Fresh, single-push correlation id (T-PRV-01 / T-PRV-07). Push payloads use
+ * this instead of stable routing ids; Android resolves any required call route
+ * from an owner-scoped, short-lived Firestore context after receiving the push.
+ * Because this value rotates per push, it cannot be used to link a device
+ * across call sessions; the device still dedupes duplicate fan-outs of the SAME
+ * push via the document id / `correlationId` echoed back.
  */
 export function ephemeralCallCorrelationId(): string {
   return randomUUID();
@@ -83,19 +83,17 @@ export function buildVoipApnsPayload(args: {
 
 /**
  * Build the Android FCM data payload (T-PRV-01 / T-PRV-07). Android's
- * background receiver needs the paired Mac connection id to route accept /
- * decline broadcasts back to the active Mercury session. Keep that routing key
- * explicit, while still omitting paired_device_id and any real display name.
+ * background receiver resolves the paired Mac connection id from the
+ * owner-scoped call context keyed by the ephemeral `correlationId`, so FCM
+ * stays free of stable cross-processor correlators and real display names.
  */
 export function buildFcmCallPayload(args: {
   callId: string;
-  connectionId: string;
   isVideo: boolean;
   correlationId: string;
 }): Record<string, string> {
   return {
     type: "media_incoming_call",
-    connection_id: args.connectionId,
     caller_name: GENERIC_CALLER_DISPLAY_NAME,
     caller_initial: pushCallerInitial(GENERIC_CALLER_DISPLAY_NAME),
     feature: args.isVideo ? "videoCall" : "voiceCall",

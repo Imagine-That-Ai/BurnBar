@@ -450,6 +450,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "byte size",
       "opaque peer device-id hash",
       "direction",
+      "short-lived call routing ids",
       "timestamps"
     ],
     "deviceOnly": [
@@ -459,7 +460,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "firestorePaths": [
       "media_session_events",
       "media_quota_usage",
-      "media_attachment_manifests"
+      "media_attachment_manifests",
+      "incoming_call_contexts"
     ],
     "storagePaths": [],
     "countSource": "media_attachment_manifests",

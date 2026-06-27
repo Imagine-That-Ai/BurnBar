@@ -4,7 +4,7 @@ rules_version = '2';
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
-// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events
+// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events, incoming_call_contexts
 // - users/{uid}/agent_grant_authorities, agent_capability_grant_requests
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
@@ -3551,6 +3551,14 @@ service cloud.firestore {
         && request.resource.data.schemaVersion >= 1;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // Short-lived Android incoming-call routing context. Server-only writes;
+    // Android reads by the ephemeral FCM correlation id, then routes
+    // accept/decline locally without exposing stable connection ids to FCM.
+    match /users/{userId}/incoming_call_contexts/{contextId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
     }
 
     // --- Mercury media (Phase 2) ---

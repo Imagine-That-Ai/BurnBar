@@ -284,6 +284,7 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "byte size",
       "opaque peer device-id hash",
       "direction",
+      "short-lived call routing ids",
       "timestamps"
     ],
     "deviceOnly": [

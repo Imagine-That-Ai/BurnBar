@@ -122,8 +122,8 @@ object DataDomains {
         DataDomain(
             id = "media", title = "Media", icon = "photo.on.rectangle.angled",
             encryptionTier = EncryptionTier.ZERO_ACCESS, summary = "Files, screen, and video relayed between your Mac and phones (Floo media). NOTE: an attachment manifest records only an opaque content hash, mime type, byte size, an opaque per-peer device-id hash, direction, and timestamps — the human-readable file name is sealed on-device (sealedFilename) and never readable by the server.",
-            serverSees = listOf("session events", "quota usage", "attachment blob hash", "mime type", "byte size", "opaque peer device-id hash", "direction", "timestamps"), deviceOnly = listOf("media payload contents (relayed/sealed)", "attachment file names (sealed on-device)"),
-            firestorePaths = listOf("media_session_events", "media_quota_usage", "media_attachment_manifests"), storagePaths = listOf(),
+            serverSees = listOf("session events", "quota usage", "attachment blob hash", "mime type", "byte size", "opaque peer device-id hash", "direction", "short-lived call routing ids", "timestamps"), deviceOnly = listOf("media payload contents (relayed/sealed)", "attachment file names (sealed on-device)"),
+            firestorePaths = listOf("media_session_events", "media_quota_usage", "media_attachment_manifests", "incoming_call_contexts"), storagePaths = listOf(),
             countSource = "media_attachment_manifests", byteSource = "media_attachment_manifests",
             retention = "rolling", actions = listOf("view", "delete"),
             entitlementGate = "burnbar_pro_max", suspensionSurface = "floo_relay",

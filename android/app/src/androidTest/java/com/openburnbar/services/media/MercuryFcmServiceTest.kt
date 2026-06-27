@@ -11,35 +11,37 @@ import org.junit.runner.RunWith
  * Instrumented coverage for `MercuryFcmService`'s incoming-message
  * routing. We can construct a `RemoteMessage` via its public Builder
  * but `FirebaseMessagingService` itself isn't directly invokable —
- * instead we exercise the data-message decoder by reading the
- * envelope shape and confirming the activity intent contract.
+ * instead we exercise the data-message envelope shape and confirm the
+ * local activity intent contract.
  */
 @RunWith(AndroidJUnit4::class)
 class MercuryFcmServiceTest {
     @Test
-    fun media_incoming_call_message_carries_required_keys() {
+    fun media_incoming_call_message_uses_ephemeral_context_key() {
         // Cloud Functions delivers data-only payloads with this shape; the
-        // service routes on `type == "media_incoming_call"` and reads
-        // `connection_id`, `caller_name`, `caller_initial`. This test
-        // pins the contract from the consumer side.
+        // service routes on `type == "media_incoming_call"`, resolves the
+        // stable connection id from owner-scoped Firestore context keyed by
+        // `correlation_id`, and never requires it in the FCM payload.
         val msg =
             RemoteMessage.Builder("u@fcm")
                 .addData("type", "media_incoming_call")
-                .addData("connection_id", "conn-1")
-                .addData("caller_name", "Albert")
-                .addData("caller_initial", "A")
+                .addData("correlation_id", "550e8400-e29b-41d4-a716-446655440000")
+                .addData("call_id", "call-1")
+                .addData("caller_name", "Incoming call")
+                .addData("caller_initial", "I")
                 .addData("feature", "videoCall")
                 .build()
-        assertNotNull(msg.data["connection_id"])
+        assertNull(msg.data["connection_id"])
+        assertNotNull(msg.data["correlation_id"])
         assertNotNull(msg.data["caller_name"])
         assertNotNull(msg.data["caller_initial"])
-        // A message without `type` shouldn't surface a connection_id; the
+        // A message without `type` shouldn't surface a correlation id; the
         // dispatcher must early-return before posting a notification.
         val unrelated =
             RemoteMessage.Builder("u@fcm")
                 .addData("type", "ignored")
                 .build()
-        assertNull(unrelated.data["connection_id"])
+        assertNull(unrelated.data["correlation_id"])
     }
 
     @Test

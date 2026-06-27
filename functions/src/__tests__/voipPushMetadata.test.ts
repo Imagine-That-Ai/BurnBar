@@ -70,7 +70,6 @@ describe("VoIP/FCM push metadata minimization", () => {
 
     const fcmPayload = buildFcmCallPayload({
       callId: "call-123",
-      connectionId: "conn-123",
       isVideo: true,
       correlationId,
     });
@@ -87,14 +86,12 @@ describe("VoIP/FCM push metadata minimization", () => {
     expect(apnsPayload).not.toHaveProperty("display_name");
 
     // Verify Android FCM payload shape and privacy-preserving omissions.
-    // Unlike APNs, Android needs the active Mac connection id to route the
-    // accept/decline broadcast back to Mercury.
     expect(fcmPayload).toHaveProperty("call_id", "call-123");
-    expect(fcmPayload).toHaveProperty("connection_id", "conn-123");
     expect(fcmPayload).toHaveProperty("correlation_id", correlationId);
     expect(fcmPayload).toHaveProperty("caller_name", "Incoming call"); // generic display name
     expect(fcmPayload).toHaveProperty("caller_initial", "I");
     expect(fcmPayload).not.toHaveProperty("connectionId");
+    expect(fcmPayload).not.toHaveProperty("connection_id");
     expect(fcmPayload).not.toHaveProperty("pairedDeviceId");
     expect(fcmPayload).not.toHaveProperty("paired_device_id");
     expect(fcmPayload).not.toHaveProperty("displayName");

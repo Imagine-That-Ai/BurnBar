@@ -2023,6 +2023,12 @@
       "indexes": []
     },
     {
+      "collectionGroup": "incoming_call_contexts",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "credential_transfers",
       "fieldPath": "expiresAt",
       "ttl": true,

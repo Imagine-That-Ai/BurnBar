@@ -56,6 +56,12 @@ const GOOD_INDEXES = {
       indexes: [],
     },
     {
+      collectionGroup: "incoming_call_contexts",
+      fieldPath: "expireAt",
+      ttl: true,
+      indexes: [],
+    },
+    {
       collectionGroup: "credential_transfers",
       fieldPath: "expiresAt",
       ttl: true,
@@ -75,6 +81,7 @@ export function buildFcmCallPayload(args: { callId: string; isVideo: boolean; co
 }
 const w = db.collection("voip_outbound").add({ uid, expireAt: x });
 const f = db.collection("fcm_outbound").add({ uid, expireAt: x });
+const c = db.collection("incoming_call_contexts").add({ uid, connectionId: args.connectionId, expireAt: x });
 `;
 const GOOD_AGENTNOTIF = `const EVENT_COLLECTION = "agent_notification_events";
 const e = { expireAt: Timestamp.fromMillis(n + TTL) };
