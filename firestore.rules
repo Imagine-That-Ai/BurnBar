@@ -339,7 +339,7 @@ service cloud.firestore {
         && pixelClock.port >= 1
         && pixelClock.port <= 65535
         && pixelClock.layout in ["providerDashboard", "quotaCarousel", "burnStatus", "alertsOnly"]
-        && pixelClock.palette in ["emberWhimsy", "mercury", "traffic", "monochrome"]
+        && pixelClock.palette in ["emberWhimsy", "mercury", "traffic", "monochrome", "rainbow"]
         && pixelClock.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]
         && (!("workingSpinnerStyle" in pixelClock) || pixelClock.workingSpinnerStyle in ["orbit", "chase", "pulse", "scan"])
         && (!("workingSpinnerPrimaryHex" in pixelClock) || (pixelClock.workingSpinnerPrimaryHex is string && pixelClock.workingSpinnerPrimaryHex.matches("^#[0-9A-Fa-f]{6}$")))
@@ -382,7 +382,7 @@ service cloud.firestore {
           "updatedAt"
         ])
         && displayConfig.layout in ["quotaCarousel", "bigTotal", "providerGrid", "singleProvider"]
-        && displayConfig.palette in ["emberWhimsy", "mercury", "forestSage", "monochrome"]
+        && displayConfig.palette in ["emberWhimsy", "mercury", "forestSage", "monochrome", "rainbow"]
         && displayConfig.theme in ["warmCharcoal", "botanicalCream", "oledBlack", "matchSystem"]
         && displayConfig.background in ["dashboard", "ambient", "photoBlend"]
         && displayConfig.brightness is number

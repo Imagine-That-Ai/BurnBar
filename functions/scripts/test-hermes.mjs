@@ -98,7 +98,9 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(rules, /request\.resource\.data\.id == connectionId/);
   assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*"realtimeRelayLastSeenAt"[\s\S]*"realtimeRelayProtocolVersion"[\s\S]*\]\)/);
   assert.match(rules, /request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
-  assert.match(rules, /request\.resource\.data\.realtimeRelayURL\.matches\("\^wss:\/\/\.\+"\)/);
+  assert.match(rules, /validRealtimeRelayURL\(request\.resource\.data\.realtimeRelayURL\)/);
+  assert.match(rules, /function validRealtimeRelayURL\(value\) \{[\s\S]*value\.matches\("\^wss:\/\/\[a-z0-9\]/);
+  assert.match(rules, /function validRealtimeRelayURL\(value\) \{[\s\S]*!value\.matches\("\^wss:\/\/localhost/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayStatus in \["online", "offline", "degraded"\]/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayLastSeenAt is string/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayProtocolVersion is int/);
@@ -156,9 +158,16 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(block, /pixelClock\.host\.size\(\) <= 255/);
   assert.match(block, /pixelClock\.port >= 1[\s\S]*pixelClock\.port <= 65535/);
   assert.match(block, /pixelClock\.layout in \["providerDashboard", "quotaCarousel", "burnStatus", "alertsOnly"\]/);
+  assert.match(block, /pixelClock\.palette in \["emberWhimsy", "mercury", "traffic", "monochrome", "rainbow"\]/);
   assert.match(block, /pixelClock\.brightness >= 0[\s\S]*pixelClock\.brightness <= 255/);
   assert.match(block, /pixelClock\.providerIDs\.size\(\) <= 24/);
   assert.match(block, /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/);
+}
+{
+  const start = rules.indexOf("function validSmartHubDisplayConfig(displayConfig)");
+  assert.notEqual(start, -1, "validSmartHubDisplayConfig helper must exist");
+  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
+  assert.match(block, /displayConfig\.palette in \["emberWhimsy", "mercury", "forestSage", "monochrome", "rainbow"\]/);
 }
 {
   const start = rules.indexOf("function relayRequestWrite(userId, requestId)");

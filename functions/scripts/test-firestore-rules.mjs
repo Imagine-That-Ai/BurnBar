@@ -2965,7 +2965,7 @@ test("owners can publish smart display config and complete setup actions", async
 
   const displayConfig = {
     layout: "quotaCarousel",
-    palette: "emberWhimsy",
+    palette: "rainbow",
     theme: "warmCharcoal",
     background: "dashboard",
     brightness: 0.85,
@@ -2982,7 +2982,7 @@ test("owners can publish smart display config and complete setup actions", async
     host: "192.168.68.92",
     port: 80,
     layout: "providerDashboard",
-    palette: "emberWhimsy",
+    palette: "rainbow",
     timePeriod: "rolling5h",
     workingSpinnerStyle: "scan",
     workingSpinnerPrimaryHex: "#52D6FF",
