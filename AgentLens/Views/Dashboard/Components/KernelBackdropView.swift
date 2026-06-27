@@ -48,7 +48,7 @@ enum KernelCatalog {
         KernelCatalogEntry(id: "storm-signal", label: "Tempest"),
         KernelCatalogEntry(id: "origami", label: "Origami"),
         KernelCatalogEntry(id: "ink-diffusion", label: "Ink Diffusion"),
-        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen"),
+        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen")
     ]
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.
