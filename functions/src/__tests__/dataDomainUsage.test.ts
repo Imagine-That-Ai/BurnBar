@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { resolveDataTierFromEntitlements, wandParallelMaxForDataTier } from "../callables/dataDomainUsage.js";
+import {
+  DATA_DOMAIN_USAGE,
+  resolveDataTierFromEntitlements,
+  wandParallelMaxForDataTier,
+} from "../callables/dataDomainUsage.js";
 
 type DataTier = Parameters<typeof wandParallelMaxForDataTier>[0];
+type RegistryDomain = { id: string; byteSource?: string | null };
+
+const registry: { domains: RegistryDomain[] } = JSON.parse(
+  readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
+);
 
 const FAR_FUTURE = "2999-01-01T00:00:00.000Z";
 
@@ -51,5 +62,31 @@ describe("data domain usage Wand tier limits", () => {
         cloud: activeEntitlement("com.openburnbar.hostedQuotaSync.cloud.monthly"),
       }),
     ).toBe("ultra");
+  });
+});
+
+describe("data domain usage byte-source coverage", () => {
+  it("counts bytes for every registry domain that declares a byte source", () => {
+    for (const domain of registry.domains) {
+      const source = DATA_DOMAIN_USAGE[domain.id];
+      expect(source, `${domain.id} missing from DATA_DOMAIN_USAGE`).toBeTruthy();
+      if (domain.byteSource) {
+        expect(source.byteCollection, `${domain.id} byteCollection`).toBeTruthy();
+        expect(source.byteField, `${domain.id} byteField`).toBeTruthy();
+      }
+    }
+  });
+
+  it("uses the stored manifest byte fields for searchable logs and media", () => {
+    expect(DATA_DOMAIN_USAGE.session_logs).toMatchObject({
+      countCollection: "cloud_search_documents",
+      byteCollection: "cloud_search_documents",
+      byteField: "byteCount",
+    });
+    expect(DATA_DOMAIN_USAGE.media).toMatchObject({
+      countCollection: "media_attachment_manifests",
+      byteCollection: "media_attachment_manifests",
+      byteField: "size",
+    });
   });
 });

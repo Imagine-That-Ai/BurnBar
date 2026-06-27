@@ -48,11 +48,7 @@ export const PRODUCTS = Object.freeze({
   ultra: {
     entitlementID: "burnbar_ultra",
     products: {
-      apple: [
-        "com.openburnbar.ultra.monthly",
-        "com.openburnbar.ultra.annual.v2",
-        "com.openburnbar.ultra.annual",
-      ],
+      apple: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2", "com.openburnbar.ultra.annual"],
       stripe: [],
       google_play: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual"],
     },
@@ -299,7 +295,8 @@ export function assertPaidTierEntitlement(entitlement, opts) {
 export function assertGooglePlayAuditRecord(record, opts) {
   if (opts.channel !== "google_play") fail("Google Play audit proof requires google_play channel");
   const target = PRODUCTS[opts.tier];
-  if (record.entitlementID !== target.entitlementID) fail("Google Play audit entitlementID mismatch", record.entitlementID);
+  if (record.entitlementID !== target.entitlementID)
+    fail("Google Play audit entitlementID mismatch", record.entitlementID);
   const actual = record.productID || record.lineItemProductID || "";
   const allowed = target.products.google_play;
   if (opts.productID) {
@@ -352,21 +349,16 @@ export function selfTest() {
   return { ok: true, tiers: Object.keys(PRODUCTS), channels: [...CHANNELS] };
 }
 
-async function main() {
-  const opts = parseArgs(process.argv.slice(2));
-  if (opts.selfTest) {
-    console.log(JSON.stringify(selfTest(), null, 2));
-    return;
-  }
-
-  if (getApps().length === 0) initializeApp({ projectId: opts.project });
-  const db = getFirestore();
-
+export async function buildPaidTierProof(db, opts) {
+  const entitlementPath = `users/${opts.uid}/entitlements/${PRODUCTS[opts.tier].entitlementID}`;
   if (opts.googlePlayAuditRecord) {
     const auditPath = `users/${opts.uid}/billing/google_play_purchases/tokens/${opts.purchaseTokenHash}`;
     const auditSnap = await db.doc(auditPath).get();
     if (!auditSnap.exists) fail("Google Play billing audit record does not exist", redactPath(auditPath));
     const googlePlayAuditRecord = assertGooglePlayAuditRecord(auditSnap.data() || {}, opts);
+    const entitlementSnap = await db.doc(entitlementPath).get();
+    if (!entitlementSnap.exists) fail("paid-tier entitlement document does not exist", redactPath(entitlementPath));
+    const entitlement = assertPaidTierEntitlement(entitlementSnap.data() || {}, opts);
     const result = {
       ok: true,
       project: opts.project,
@@ -376,13 +368,16 @@ async function main() {
       channel: opts.channel,
       googlePlayAuditPath: redactPath(auditPath),
       googlePlayAuditRecord,
+      entitlementPath: redactPath(entitlementPath),
+      entitlement,
+      allowanceLedgerPath: null,
     };
-    console.log(`# proof-subject uid_sha256_16=${result.uidHash16}`);
-    console.log(JSON.stringify(result, null, 2));
-    return;
+    if (opts.requireAllowanceLedger) {
+      result.allowanceLedgerPath = await proveAllowanceLedger(db, opts.uid);
+    }
+    return result;
   }
 
-  const entitlementPath = `users/${opts.uid}/entitlements/${PRODUCTS[opts.tier].entitlementID}`;
   const snap = await db.doc(entitlementPath).get();
   if (!snap.exists) fail("paid-tier entitlement document does not exist", redactPath(entitlementPath));
 
@@ -403,6 +398,19 @@ async function main() {
     result.allowanceLedgerPath = await proveAllowanceLedger(db, opts.uid);
   }
 
+  return result;
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.selfTest) {
+    console.log(JSON.stringify(selfTest(), null, 2));
+    return;
+  }
+
+  if (getApps().length === 0) initializeApp({ projectId: opts.project });
+  const db = getFirestore();
+  const result = await buildPaidTierProof(db, opts);
   console.log(`# proof-subject uid_sha256_16=${result.uidHash16}`);
   console.log(JSON.stringify(result, null, 2));
 }
