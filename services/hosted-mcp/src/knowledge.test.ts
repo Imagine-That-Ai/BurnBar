@@ -386,6 +386,34 @@ test("readKnowledgeDocument returns the inline atomic sealed envelope", async ()
   assert.equal(doc.decryptMode, "local_decrypt_shim");
 });
 
+test("readKnowledgeDocument hides legacy dedup rows even when the URI is known", async () => {
+  const db = makeStubDb([
+    row("uidA", "current", Q384([1, 0, 0]), { dedupHashVersion: 1 }),
+    row("uidA", "legacy", Q384([1, 0, 0]), { dedupHashVersion: 0 }),
+    row("uidA", "ancient", Q384([1, 0, 0]), { dedupHashVersion: undefined }),
+  ]);
+
+  await assert.doesNotReject(() =>
+    readKnowledgeDocument(db, "uidA", {
+      resourceUri: "burnbar://knowledge/current",
+    }),
+  );
+  await assert.rejects(
+    () =>
+      readKnowledgeDocument(db, "uidA", {
+        resourceUri: "burnbar://knowledge/legacy",
+      }),
+    /not found/,
+  );
+  await assert.rejects(
+    () =>
+      readKnowledgeDocument(db, "uidA", {
+        resourceUri: "burnbar://knowledge/ancient",
+      }),
+    /not found/,
+  );
+});
+
 test("readKnowledgeDocument hides code rows; readHostedCodeDocument only returns code rows", async () => {
   const projectHmac = "7".repeat(64);
   const envelope = { algorithm: "AES-256-GCM", ciphertext: "code" };
@@ -421,6 +449,35 @@ test("readKnowledgeDocument hides code rows; readHostedCodeDocument only returns
   assert.equal(doc.projectHmac, projectHmac);
   assert.equal(doc.encrypted, true);
   assert.equal(doc.decryptMode, "local_decrypt_shim");
+});
+
+test("readHostedCodeDocument hides legacy dedup rows even when the URI is known", async () => {
+  const projectHmac = "7".repeat(64);
+  const db = makeStubDb([
+    row("uidA", "currentCode", Q384([1, 0, 0]), {
+      sourceKind: "code",
+      projectHmac,
+      dedupHashVersion: 1,
+    }),
+    row("uidA", "legacyCode", Q384([1, 0, 0]), {
+      sourceKind: "code",
+      projectHmac,
+      dedupHashVersion: 0,
+    }),
+  ]);
+
+  await assert.doesNotReject(() =>
+    readHostedCodeDocument(db, "uidA", {
+      resourceUri: "burnbar://code/currentCode",
+    }),
+  );
+  await assert.rejects(
+    () =>
+      readHostedCodeDocument(db, "uidA", {
+        resourceUri: "burnbar://code/legacyCode",
+      }),
+    /not found/,
+  );
 });
 
 test("readKnowledgeDocument rejects bad URIs, missing docs, and cross-namespace reads", async () => {
