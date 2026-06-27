@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Sibling to `InsightCache` (which caches canvas-investigation runs). Keyed
 /// by the inputs that uniquely determine an analysis: prompt + digest content
-/// hash + model id + capability tier + instruction. LRU eviction at 64 entries.
+/// hash + context identity + model id + capability tier + instruction. LRU eviction at 64 entries.
 public actor InsightAnalysisCache {
     public struct CachedResult: Codable, Hashable, Sendable {
         public let key: String
@@ -52,19 +52,25 @@ public actor InsightAnalysisCache {
     /// generated from the same evidence as findings/recommendations.
     /// Pre-v3 cached remote results may have an empty mission board.
     ///
+    /// v4 — analysis cache keys include the full analysis context identity,
+    /// including evidence packs and prior summaries, so richer prompt contexts
+    /// cannot reuse digest-only answers.
+    ///
     /// v2 — 2026-05-13: rule-based engine now synthesizes widget data
     /// for `barRanking`, `timeSeriesLine`, and `quotaPulse` straight
     /// from the digest. Pre-fix cached entries have `data = nil` and
     /// must be invalidated so the brief paints real charts.
-    public static let schemaVersion = "v3-insight-mission-candidates"
+    public static let schemaVersion = "v4-context-evidence-packs"
 
     public static func key(
         prompt: String,
         digestContentHash: String,
+        contextContentHash: String? = nil,
         modelID: String,
         instruction: InsightAnalysisRequest.Instruction
     ) -> String {
-        let payload = "\(schemaVersion)\u{1F}\(prompt)\u{1F}\(digestContentHash)\u{1F}\(modelID)\u{1F}\(instruction.rawValue)"
+        let contextHash = contextContentHash ?? digestContentHash
+        let payload = "\(schemaVersion)\u{1F}\(prompt)\u{1F}\(digestContentHash)\u{1F}\(contextHash)\u{1F}\(modelID)\u{1F}\(instruction.rawValue)"
         return SHA256.hash(data: Data(payload.utf8))
             .map { String(format: "%02x", $0) }
             .joined()

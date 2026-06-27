@@ -9,6 +9,8 @@ import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightContextBudgetReport
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightEgressTier
+import com.openburnbar.data.insights.InsightEvidence
+import com.openburnbar.data.insights.InsightEvidencePack
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTokenUsage
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
@@ -17,6 +19,7 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -369,11 +372,11 @@ object InsightAggregator {
         digest: InsightDigest,
         includedDataSources: List<String>,
         priorRunSummaries: List<String> = emptyList(),
-        evidencePacks: List<com.openburnbar.data.insights.InsightEvidencePack> = emptyList(),
+        evidencePacks: List<InsightEvidencePack> = emptyList(),
+        allowDeepTranscriptEvidencePacks: Boolean = false,
     ): InsightAnalysisContext {
-        val encoded = kotlinx.serialization.json.Json.encodeToString(InsightDigest.serializer(), digest)
-        val evidence = buildInsightEvidenceIndex(digest) + evidencePacks.flatMap { it.evidence }
-        val sources = (includedDataSources + evidencePacks.flatMap { it.includedDataSources }).distinct().sorted()
+        val digestEvidence = buildInsightEvidenceIndex(digest)
+        val selectedEvidencePacks = mutableListOf<InsightEvidencePack>()
         val truncated =
             buildList {
                 if (digest.providers.size >= INSIGHT_PROVIDER_TRIM_THRESHOLD && "provider_summaries" in includedDataSources) {
@@ -382,12 +385,49 @@ object InsightAggregator {
                 if (digest.models.size >= INSIGHT_MODEL_TRIM_THRESHOLD && "model_summaries" in includedDataSources) {
                     add("model_summaries")
                 }
-                if (digest.daily.size >= INSIGHT_DAILY_TRIM_THRESHOLD && "daily_points" in includedDataSources) add("daily_points")
+                if (digest.daily.size >= INSIGHT_DAILY_TRIM_THRESHOLD && "daily_points" in includedDataSources) {
+                    add("daily_points")
+                }
+            }.toMutableList()
+        if (!allowDeepTranscriptEvidencePacks && evidencePacks.any { it.deepTranscriptIncluded }) {
+            truncated.add("deep_transcript_evidence_packs")
+        }
+        for (pack in evidencePacks.filter { allowDeepTranscriptEvidencePacks || !it.deepTranscriptIncluded }) {
+            val candidatePacks = selectedEvidencePacks + pack
+            val candidateEvidence = digestEvidence + candidatePacks.flatMap { it.evidence }
+            val candidateBytes =
+                encodedBudgetBytes(
+                    InsightContextBudgetPayload(
+                        digest = digest,
+                        evidenceIndex = candidateEvidence,
+                        priorRunSummaries = priorRunSummaries,
+                        evidencePacks = candidatePacks,
+                    ),
+                )
+            if (candidateBytes <= InsightDigest.MAX_ENCODED_BYTES) {
+                selectedEvidencePacks.add(pack)
+            } else if ("evidence_packs" !in truncated) {
+                truncated.add("evidence_packs")
             }
+        }
+        val evidence = digestEvidence + selectedEvidencePacks.flatMap { it.evidence }
+        val encodedBytes =
+            encodedBudgetBytes(
+                InsightContextBudgetPayload(
+                    digest = digest,
+                    evidenceIndex = evidence,
+                    priorRunSummaries = priorRunSummaries,
+                    evidencePacks = selectedEvidencePacks,
+                ),
+            )
+        val sources =
+            (includedDataSources + selectedEvidencePacks.flatMap { it.includedDataSources })
+                .distinct()
+                .sorted()
         val budget =
             InsightContextBudgetReport(
-                encodedBytes = encoded.toByteArray(Charsets.UTF_8).size,
-                estimatedPromptTokens = (encoded.length / 4).coerceAtLeast(1),
+                encodedBytes = encodedBytes,
+                estimatedPromptTokens = (encodedBytes / 4).coerceAtLeast(1),
                 includedDataSources = sources,
                 truncatedDataSources = truncated,
                 truncationSummary =
@@ -403,7 +443,18 @@ object InsightAggregator {
             evidenceIndex = evidence,
             budgetReport = budget,
             priorRunSummaries = priorRunSummaries,
-            evidencePacks = evidencePacks,
+            evidencePacks = selectedEvidencePacks,
         )
     }
+
+    @Serializable
+    private data class InsightContextBudgetPayload(
+        val digest: InsightDigest,
+        val evidenceIndex: List<InsightEvidence>,
+        val priorRunSummaries: List<String>,
+        val evidencePacks: List<InsightEvidencePack>,
+    )
+
+    private fun encodedBudgetBytes(payload: InsightContextBudgetPayload): Int =
+        Json.encodeToString(InsightContextBudgetPayload.serializer(), payload).toByteArray(Charsets.UTF_8).size
 }

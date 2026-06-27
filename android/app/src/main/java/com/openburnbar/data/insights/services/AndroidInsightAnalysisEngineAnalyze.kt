@@ -5,6 +5,7 @@ import com.openburnbar.data.insights.InsightAnalysisPlatform
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightTimeWindow
+import com.openburnbar.data.insights.cacheIdentityHash
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
 import java.security.MessageDigest
@@ -24,6 +25,7 @@ internal suspend fun resolveCachedAndroidInsightResult(
         InsightAnalysisCacheRepository.key(
             prompt = request.prompt,
             digestContentHash = request.context.digest.contentHash,
+            contextContentHash = request.context.cacheIdentityHash(),
             modelID = request.selectedModel.modelID,
             instruction = request.instruction,
         )
@@ -104,6 +106,7 @@ internal suspend fun maybeStoreAndroidInsightCache(cache: InsightAnalysisCacheRe
         InsightAnalysisCacheRepository.key(
             prompt = request.prompt,
             digestContentHash = request.context.digest.contentHash,
+            contextContentHash = request.context.cacheIdentityHash(),
             modelID = request.selectedModel.modelID,
             instruction = request.instruction,
         )
