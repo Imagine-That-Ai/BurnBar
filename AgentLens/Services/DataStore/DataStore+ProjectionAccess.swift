@@ -91,19 +91,23 @@ extension DataStore {
         )
     }
 
-    func markProjectionJobCompleted(id: String, completedAt: Date = Date()) async throws {
-        try await actor.projectionStore.markJobCompleted(id: id, completedAt: completedAt)
+    @discardableResult
+    func markProjectionJobCompleted(id: String, leaseOwner: String, completedAt: Date = Date()) async throws -> Bool {
+        try await actor.projectionStore.markJobCompleted(id: id, leaseOwner: leaseOwner, completedAt: completedAt)
     }
 
+    @discardableResult
     func markProjectionJobFailed(
         id: String,
+        leaseOwner: String,
         errorCode: String?,
         errorMessage: String?,
         retryAt: Date? = nil,
         updatedAt: Date = Date()
-    ) async throws {
+    ) async throws -> Bool {
         try await actor.projectionStore.markJobFailed(
             id: id,
+            leaseOwner: leaseOwner,
             errorCode: errorCode,
             errorMessage: errorMessage,
             retryAt: retryAt,
@@ -111,14 +115,17 @@ extension DataStore {
         )
     }
 
+    @discardableResult
     func markProjectionJobCanceled(
         id: String,
+        leaseOwner: String,
         errorCode: String?,
         errorMessage: String?,
         updatedAt: Date = Date()
-    ) async throws {
+    ) async throws -> Bool {
         try await actor.projectionStore.markJobCanceled(
             id: id,
+            leaseOwner: leaseOwner,
             errorCode: errorCode,
             errorMessage: errorMessage,
             updatedAt: updatedAt

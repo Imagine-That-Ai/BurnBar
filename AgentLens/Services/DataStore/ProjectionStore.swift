@@ -266,7 +266,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func markJobCompleted(id: String, completedAt: Date) async throws {
+    @discardableResult
+    func markJobCompleted(id: String, leaseOwner: String, completedAt: Date) async throws -> Bool {
         try await dbQueue.write { db in
             try db.execute(
                 sql: """
@@ -274,19 +275,32 @@ final class ProjectionStore: Sendable {
                 SET status = ?, completedAt = ?, leaseOwner = NULL, leaseExpiresAt = NULL,
                     lastErrorCode = NULL, lastErrorMessage = NULL, updatedAt = ?
                 WHERE id = ?
+                  AND leaseOwner = ?
+                  AND status IN (?, ?)
                 """,
-                arguments: [ProjectionJobStatus.completed.rawValue, completedAt, completedAt, id]
+                arguments: [
+                    ProjectionJobStatus.completed.rawValue,
+                    completedAt,
+                    completedAt,
+                    id,
+                    leaseOwner,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue
+                ]
             )
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) == 1
         }
     }
 
+    @discardableResult
     func markJobFailed(
         id: String,
+        leaseOwner: String,
         errorCode: String?,
         errorMessage: String?,
         retryAt: Date?,
         updatedAt: Date
-    ) async throws {
+    ) async throws -> Bool {
         try await dbQueue.write { db in
             try db.execute(
                 sql: """
@@ -294,18 +308,33 @@ final class ProjectionStore: Sendable {
                 SET status = ?, attempts = attempts + 1, leaseOwner = NULL, leaseExpiresAt = NULL,
                     lastErrorCode = ?, lastErrorMessage = ?, availableAt = COALESCE(?, availableAt), updatedAt = ?
                 WHERE id = ?
+                  AND leaseOwner = ?
+                  AND status IN (?, ?)
                 """,
-                arguments: [ProjectionJobStatus.failed.rawValue, errorCode, errorMessage, retryAt, updatedAt, id]
+                arguments: [
+                    ProjectionJobStatus.failed.rawValue,
+                    errorCode,
+                    errorMessage,
+                    retryAt,
+                    updatedAt,
+                    id,
+                    leaseOwner,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue
+                ]
             )
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) == 1
         }
     }
 
+    @discardableResult
     func markJobCanceled(
         id: String,
+        leaseOwner: String,
         errorCode: String?,
         errorMessage: String?,
         updatedAt: Date
-    ) async throws {
+    ) async throws -> Bool {
         try await dbQueue.write { db in
             try db.execute(
                 sql: """
@@ -313,9 +342,21 @@ final class ProjectionStore: Sendable {
                 SET status = ?, leaseOwner = NULL, leaseExpiresAt = NULL,
                     lastErrorCode = ?, lastErrorMessage = ?, updatedAt = ?
                 WHERE id = ?
+                  AND leaseOwner = ?
+                  AND status IN (?, ?)
                 """,
-                arguments: [ProjectionJobStatus.canceled.rawValue, errorCode, errorMessage, updatedAt, id]
+                arguments: [
+                    ProjectionJobStatus.canceled.rawValue,
+                    errorCode,
+                    errorMessage,
+                    updatedAt,
+                    id,
+                    leaseOwner,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue
+                ]
             )
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) == 1
         }
     }
 
