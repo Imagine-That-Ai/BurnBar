@@ -2,7 +2,8 @@
 
 import * as React from "react";
 
-import { isKernelId, type KernelId } from "@/lib/gl/kernels";
+import { isKernelId } from "@/lib/gl/engine/registry";
+import type { KernelId } from "@/lib/gl/engine/types";
 import {
   CARD_DEF_BY_ID,
   CARD_ID_SET,
