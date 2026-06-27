@@ -21,11 +21,17 @@ import kotlinx.coroutines.sync.withLock
 class AgentCapabilityGrantController(
     context: Context,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val counterStore: PhoneControlCounterStore = SharedPreferencesPhoneControlCounterStore(context),
+    private val trustRegistrar: AgentCapabilityGrantTrustRegistrar = FirebaseAgentCapabilityGrantTrustRegistrar(),
+    signingKeysOverride: AgentCapabilityGrantSigningKeys? = null,
+    private val authorityPublisher: AgentCapabilityGrantAuthorityPublishing =
+        FirebaseAgentCapabilityGrantAuthorityPublishing(firestore),
+    private val grantQueue: AgentCapabilityGrantQueueing = FirebaseAgentCapabilityGrantQueueing(),
 ) {
     private val appContext = context.applicationContext
     private val keyStore = PhoneControlSigningKeyStore(appContext)
-    private val counterStore = SharedPreferencesPhoneControlCounterStore(appContext)
+    private val signingKeys = signingKeysOverride ?: PhoneControlSigningKeyStoreAdapter(keyStore)
     private val senderMutex = Mutex()
     private var phoneControlSender: PhoneControlSender? = null
     private var phoneControlConnectionID: String? = null
@@ -68,6 +74,8 @@ class AgentCapabilityGrantController(
                 return remember(request.pendingReceipt("Sent to your Mac."))
             } catch (error: FirebaseException) {
                 if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
+            } catch (error: GrantError.NoPairedMac) {
+                if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
             }
         }
 
@@ -83,11 +91,7 @@ class AgentCapabilityGrantController(
     }
 
     private suspend fun trustedSourceDeviceId(uid: String): String {
-        val device = AndroidEscrowDeviceRegistry().registerSelf(uid = uid)
-        if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
-            throw GrantError.DeviceNotTrusted
-        }
-        return device.deviceId
+        return trustRegistrar.trustedSourceDeviceId(uid)
     }
 
     private suspend fun authenticateIfNeeded(activity: FragmentActivity, preset: AgentPermissionPreset): Boolean {
@@ -112,8 +116,8 @@ class AgentCapabilityGrantController(
         val pair = coordinator.activePair.value ?: throw GrantError.NoPairedMac
         // F2: resolve the signing identity once so the published authority key
         // and every envelope this sender signs stay the same key.
-        val identity = keyStore.signingIdentity()
-        val peerNodeId = keyStore.peerNodeId(identity)
+        val identity = signingKeys.signingIdentity()
+        val peerNodeId = signingKeys.peerNodeId(identity)
 
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
@@ -131,9 +135,12 @@ class AgentCapabilityGrantController(
                 identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
-        val publisher = PhoneControlAuthorityPublisher(firestore)
-        publisher.publish(uid = pair.uid, authority = authority)
-        publisher.publishAgentGrantAuthority(uid = uid, sourceDeviceId = sourceDeviceId, authority = authority)
+        authorityPublisher.publish(uid = pair.uid, authority = authority)
+        authorityPublisher.publishAgentGrantAuthority(
+            uid = uid,
+            sourceDeviceId = sourceDeviceId,
+            authority = authority,
+        )
         val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
         val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frame -> coordinator.send(frame) }
 
@@ -202,7 +209,7 @@ class AgentCapabilityGrantController(
     private suspend fun queue(uid: String, request: AgentCapabilityGrantRequest) {
         // F2: one identity resolution covers the published authority key and
         // the queued request's signature.
-        val identity = keyStore.signingIdentity()
+        val identity = signingKeys.signingIdentity()
         val signedWire = signedWireRequest(request, identity)
         val authority =
             PhoneControlAuthorityDocumentFactory.document(
@@ -211,16 +218,19 @@ class AgentCapabilityGrantController(
                 identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
-        PhoneControlAuthorityPublisher(firestore)
-            .publishAgentGrantAuthority(uid = uid, sourceDeviceId = request.sourceDeviceId, authority = authority)
-        ComputerUseSecurityCallableClient().queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
+        authorityPublisher.publishAgentGrantAuthority(
+            uid = uid,
+            sourceDeviceId = request.sourceDeviceId,
+            authority = authority,
+        )
+        grantQueue.queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
     }
 
     private fun signedWireRequest(
         request: AgentCapabilityGrantRequest,
         identity: PhoneControlSigningIdentity,
     ): com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest {
-        val peerNodeId = keyStore.peerNodeId(identity)
+        val peerNodeId = signingKeys.peerNodeId(identity)
         val placeholder =
             HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId = "",
@@ -310,5 +320,63 @@ class AgentCapabilityGrantController(
     private fun remember(receipt: AgentCapabilityGrantReceipt): AgentCapabilityGrantReceipt {
         AgentCapabilityGrantState.apply(receipt)
         return receipt
+    }
+}
+
+interface AgentCapabilityGrantTrustRegistrar {
+    suspend fun trustedSourceDeviceId(uid: String): String
+}
+
+private class FirebaseAgentCapabilityGrantTrustRegistrar : AgentCapabilityGrantTrustRegistrar {
+    override suspend fun trustedSourceDeviceId(uid: String): String {
+        val device = AndroidEscrowDeviceRegistry().registerSelf(uid = uid)
+        if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
+            throw AgentCapabilityGrantController.GrantError.DeviceNotTrusted
+        }
+        return device.deviceId
+    }
+}
+
+interface AgentCapabilityGrantSigningKeys {
+    fun signingIdentity(): PhoneControlSigningIdentity
+    fun peerNodeId(identity: PhoneControlSigningIdentity): String
+}
+
+private class PhoneControlSigningKeyStoreAdapter(
+    private val keyStore: PhoneControlSigningKeyStore,
+) : AgentCapabilityGrantSigningKeys {
+    override fun signingIdentity(): PhoneControlSigningIdentity = keyStore.signingIdentity()
+
+    override fun peerNodeId(identity: PhoneControlSigningIdentity): String = keyStore.peerNodeId(identity)
+}
+
+interface AgentCapabilityGrantAuthorityPublishing {
+    suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc)
+    suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc)
+}
+
+private class FirebaseAgentCapabilityGrantAuthorityPublishing(
+    private val firestore: FirebaseFirestore,
+) : AgentCapabilityGrantAuthorityPublishing {
+    private val publisher: PhoneControlAuthorityPublisher by lazy {
+        PhoneControlAuthorityPublisher(firestore)
+    }
+
+    override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
+        publisher.publish(uid = uid, authority = authority)
+    }
+
+    override suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
+        publisher.publishAgentGrantAuthority(uid = uid, sourceDeviceId = sourceDeviceId, authority = authority)
+    }
+}
+
+interface AgentCapabilityGrantQueueing {
+    suspend fun queueAgentCapabilityGrantRequest(payload: Map<String, Any>)
+}
+
+private class FirebaseAgentCapabilityGrantQueueing : AgentCapabilityGrantQueueing {
+    override suspend fun queueAgentCapabilityGrantRequest(payload: Map<String, Any>) {
+        ComputerUseSecurityCallableClient().queueAgentCapabilityGrantRequest(payload)
     }
 }
