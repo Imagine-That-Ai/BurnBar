@@ -31,6 +31,7 @@ class ScreenShareViewerActivity : FragmentActivity() {
     internal val counterStore = InMemoryPhoneControlCounterStore()
     internal var phoneControlSender: PhoneControlSender? = null
     internal var phoneControlConnectionID: String? = null
+    internal var phoneControlSenderSealed: Boolean = false
     internal var mirrorSessionID: String? = null
     internal var mirrorViewerRole: String? = null
     internal var mirrorStopSent = false

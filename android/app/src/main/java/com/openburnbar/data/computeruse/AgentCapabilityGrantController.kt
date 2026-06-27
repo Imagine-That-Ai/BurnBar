@@ -118,7 +118,7 @@ class AgentCapabilityGrantController(
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
             ?.let { sender ->
-                val sealSession = currentOrEstablishControlSealAndClassify(coordinator, pair, peerNodeId)
+                val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
                 if (phoneControlSenderSealed == (sealSession != null)) {
                     return@withLock sender
                 }
@@ -134,7 +134,7 @@ class AgentCapabilityGrantController(
         val publisher = PhoneControlAuthorityPublisher(firestore)
         publisher.publish(uid = pair.uid, authority = authority)
         publisher.publishAgentGrantAuthority(uid = uid, sourceDeviceId = sourceDeviceId, authority = authority)
-        val sealSession = currentOrEstablishControlSealAndClassify(coordinator, pair, peerNodeId)
+        val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
         val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frame -> coordinator.send(frame) }
 
         PhoneControlSender(
@@ -156,19 +156,6 @@ class AgentCapabilityGrantController(
         }
     }
 
-    private suspend fun currentOrEstablishControlSealAndClassify(
-        coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
-        pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
-        peerNodeId: String,
-    ): ControlSealSessionEstablisher.Session? {
-        val activeSealSession = ControlSealSessionEstablisher.activeSession(pair.connectionID)
-        if (activeSealSession != null) {
-            sendPhoneControlClassify(coordinator, pair, peerNodeId, activeSealSession.envelope)
-            return activeSealSession
-        }
-        return establishControlSealAndClassify(coordinator, pair, peerNodeId)
-    }
-
     private suspend fun establishControlSealAndClassify(
         coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
         pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
@@ -183,7 +170,11 @@ class AgentCapabilityGrantController(
                 macCapabilities = coordinator.lastPeerCapabilities.value,
             )
         sendPhoneControlClassify(coordinator, pair, peerNodeId, sealSession?.envelope)
-        sealSession?.let { ControlSealSessionEstablisher.register(it, pair.connectionID) }
+        if (sealSession != null) {
+            ControlSealSessionEstablisher.register(sealSession, pair.connectionID)
+        } else {
+            ControlSealSessionEstablisher.unregister(pair.connectionID)
+        }
         return sealSession
     }
 
