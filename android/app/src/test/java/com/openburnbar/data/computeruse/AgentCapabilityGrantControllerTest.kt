@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.BurnBarApplication
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -21,7 +23,7 @@ import org.junit.Test
  * errors carry the exact user-facing copy the sheets render.
  */
 class AgentCapabilityGrantControllerTest {
-    private fun controller(): AgentCapabilityGrantController {
+    private fun signedOutController(): AgentCapabilityGrantController {
         val context = mockk<Context>()
         every { context.applicationContext } returns context
         every { context.getSharedPreferences(any(), any()) } returns mockk<SharedPreferences>(relaxed = true)
@@ -37,7 +39,7 @@ class AgentCapabilityGrantControllerTest {
     @Test
     fun `grant fails closed with NotSignedIn before any side effect`() = runTest {
         val error = runCatching {
-            controller().grant(
+            signedOutController().grant(
                 activity = mockk<FragmentActivity>(),
                 runtime = "claude_code",
                 threadId = "thread-1",
@@ -52,6 +54,65 @@ class AgentCapabilityGrantControllerTest {
     }
 
     @Test
+    fun `live then queued grant queues when no Mac is paired`() = runTest {
+        val queue = RecordingGrantQueue()
+        val publisher = RecordingAuthorityPublisher()
+        val previousCoordinator = BurnBarApplication.mediaControlCoordinator
+        BurnBarApplication.mediaControlCoordinator = null
+        try {
+            val receipt = signedInController(
+                queue = queue,
+                publisher = publisher,
+            ).grant(
+                activity = mockk<FragmentActivity>(),
+                runtime = "claude_code",
+                threadId = "thread-queued",
+                preset = AgentPermissionPreset.LOW,
+                deliveryMode = AgentGrantDeliveryMode.LIVE_THEN_QUEUED,
+            )
+
+            assertEquals(AgentGrantDecisionStatus.QUEUED, receipt.status)
+            assertEquals("Mac was unreachable, so this was queued for 5 minutes.", receipt.message)
+            assertEquals("device-1", receipt.sourceDeviceId)
+        } finally {
+            BurnBarApplication.mediaControlCoordinator = previousCoordinator
+        }
+
+        assertEquals(1, queue.payloads.size)
+        val payload = queue.payloads.single()
+        assertEquals("claude_code", payload["runtime"])
+        assertEquals("thread-queued", payload["threadId"])
+        assertEquals(AgentGrantDeliveryMode.LIVE_THEN_QUEUED.wireValue, payload["deliveryMode"])
+        assertEquals("device-1", payload["sourceDeviceId"])
+        assertEquals(1, publisher.agentGrantAuthorities.size)
+        assertEquals("agent-grant-queued", publisher.agentGrantAuthorities.single().connectionId)
+    }
+
+    @Test
+    fun `live only grant does not queue when no Mac is paired`() = runTest {
+        val queue = RecordingGrantQueue()
+        val previousCoordinator = BurnBarApplication.mediaControlCoordinator
+        BurnBarApplication.mediaControlCoordinator = null
+        val error =
+            try {
+                runCatching {
+                    signedInController(queue = queue).grant(
+                        activity = mockk<FragmentActivity>(),
+                        runtime = "claude_code",
+                        threadId = "thread-live",
+                        preset = AgentPermissionPreset.LOW,
+                        deliveryMode = AgentGrantDeliveryMode.LIVE,
+                    )
+                }.exceptionOrNull()
+            } finally {
+                BurnBarApplication.mediaControlCoordinator = previousCoordinator
+            }
+
+        assertSame(AgentCapabilityGrantController.GrantError.NoPairedMac, error)
+        assertTrue(queue.payloads.isEmpty())
+    }
+
+    @Test
     fun `system permission relay also requires a signed in user`() = runTest {
         val request = PhoneControlSystemPermissionRequest(
             requestId = "req-1",
@@ -60,7 +121,7 @@ class AgentCapabilityGrantControllerTest {
             requestedAtMillis = 1_700_000_000_000L,
         )
 
-        val error = runCatching { controller().sendSystemPermissionRequest(request) }.exceptionOrNull()
+        val error = runCatching { signedOutController().sendSystemPermissionRequest(request) }.exceptionOrNull()
 
         assertSame(AgentCapabilityGrantController.GrantError.NotSignedIn, error)
     }
@@ -83,5 +144,60 @@ class AgentCapabilityGrantControllerTest {
             "Approve this Android in Devices & Sync before granting Mac control.",
             AgentCapabilityGrantController.GrantError.DeviceNotTrusted.message,
         )
+    }
+
+    private fun signedInController(
+        queue: RecordingGrantQueue = RecordingGrantQueue(),
+        publisher: RecordingAuthorityPublisher = RecordingAuthorityPublisher(),
+    ): AgentCapabilityGrantController {
+        val context = mockk<Context>()
+        every { context.applicationContext } returns context
+        every { context.getSharedPreferences(any(), any()) } returns mockk<SharedPreferences>(relaxed = true)
+        val user = mockk<FirebaseUser>()
+        every { user.uid } returns "uid-1"
+        val auth = mockk<FirebaseAuth>()
+        every { auth.currentUser } returns user
+        return AgentCapabilityGrantController(
+            context = context,
+            auth = auth,
+            firestore = mockk<FirebaseFirestore>(relaxed = true),
+            counterStore = InMemoryPhoneControlCounterStore(),
+            trustRegistrar = StaticTrustRegistrar(deviceId = "device-1"),
+            signingKeysOverride = StaticGrantSigningKeys(),
+            authorityPublisher = publisher,
+            grantQueue = queue,
+        )
+    }
+
+    private class StaticTrustRegistrar(
+        private val deviceId: String,
+    ) : AgentCapabilityGrantTrustRegistrar {
+        override suspend fun trustedSourceDeviceId(uid: String): String = deviceId
+    }
+
+    private class StaticGrantSigningKeys : AgentCapabilityGrantSigningKeys {
+        private val identity = PhoneControlSigningIdentity.Ed25519(ByteArray(32) { (it + 1).toByte() })
+
+        override fun signingIdentity(): PhoneControlSigningIdentity = identity
+
+        override fun peerNodeId(identity: PhoneControlSigningIdentity): String = PhoneControlAuthorityDocumentFactory.peerNodeId(identity)
+    }
+
+    private class RecordingAuthorityPublisher : AgentCapabilityGrantAuthorityPublishing {
+        val agentGrantAuthorities = mutableListOf<PhoneControlAuthorityDoc>()
+
+        override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) = Unit
+
+        override suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
+            agentGrantAuthorities += authority
+        }
+    }
+
+    private class RecordingGrantQueue : AgentCapabilityGrantQueueing {
+        val payloads = mutableListOf<Map<String, Any>>()
+
+        override suspend fun queueAgentCapabilityGrantRequest(payload: Map<String, Any>) {
+            payloads += payload
+        }
     }
 }
