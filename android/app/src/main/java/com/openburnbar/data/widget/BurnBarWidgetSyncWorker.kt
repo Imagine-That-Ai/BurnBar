@@ -132,6 +132,12 @@ class BurnBarWidgetSyncWorker(
             )
         }
 
+        /** Clear persisted widget data and repaint every receiver immediately on sign-out. */
+        suspend fun clearAndRefresh(context: Context) {
+            BurnBarWidgetSnapshotStore.clear(context)
+            refreshAllReceivers(context)
+        }
+
         /** Push the latest snapshot into every Glance widget surface. */
         suspend fun refreshAllReceivers(context: Context) {
             val widgets: List<GlanceAppWidget> =

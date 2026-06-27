@@ -2808,7 +2808,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let lastSync = Date(timeIntervalSince1970: 1_800_000_000)
 
         let snapshot = LiveCloudReader.syncStatusSnapshot(
-            deviceID: "23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA",
+            deviceID: "test-device-id",
             displayName: "Mac",
             data: [
                 "lastSyncAt": Timestamp(date: lastSync)
@@ -2820,7 +2820,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let lastReadAt = try XCTUnwrap(snapshot.lastReadAt)
         XCTAssertEqual(publishedAt.timeIntervalSince1970, lastSync.timeIntervalSince1970, accuracy: 0.001)
         XCTAssertEqual(lastReadAt.timeIntervalSince1970, readAt.timeIntervalSince1970, accuracy: 0.001)
-        XCTAssertEqual(snapshot.publisher?.deviceID, "23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA")
+        XCTAssertEqual(snapshot.publisher?.deviceID, "test-device-id")
         XCTAssertEqual(snapshot.publisher?.displayName, "Mac")
         XCTAssertNil(snapshot.lastErrorClassification)
     }

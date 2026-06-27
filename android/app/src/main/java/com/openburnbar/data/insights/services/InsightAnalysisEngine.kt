@@ -410,16 +410,50 @@ object InsightAggregator {
                 truncated.add("evidence_packs")
             }
         }
-        val evidence = digestEvidence + selectedEvidencePacks.flatMap { it.evidence }
-        val encodedBytes =
+        var evidence = digestEvidence + selectedEvidencePacks.flatMap { it.evidence }
+        var finalPriorRunSummaries = priorRunSummaries
+        var encodedBytes =
             encodedBudgetBytes(
                 InsightContextBudgetPayload(
                     digest = digest,
                     evidenceIndex = evidence,
-                    priorRunSummaries = priorRunSummaries,
+                    priorRunSummaries = finalPriorRunSummaries,
                     evidencePacks = selectedEvidencePacks,
                 ),
             )
+        while (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && evidence.isNotEmpty()) {
+            evidence = evidence.dropLast(1)
+            if ("evidence_index" !in truncated) {
+                truncated.add("evidence_index")
+            }
+            encodedBytes =
+                encodedBudgetBytes(
+                    InsightContextBudgetPayload(
+                        digest = digest,
+                        evidenceIndex = evidence,
+                        priorRunSummaries = finalPriorRunSummaries,
+                        evidencePacks = selectedEvidencePacks,
+                    ),
+                )
+        }
+        while (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && finalPriorRunSummaries.isNotEmpty()) {
+            finalPriorRunSummaries = finalPriorRunSummaries.dropLast(1)
+            if ("prior_run_summaries" !in truncated) {
+                truncated.add("prior_run_summaries")
+            }
+            encodedBytes =
+                encodedBudgetBytes(
+                    InsightContextBudgetPayload(
+                        digest = digest,
+                        evidenceIndex = evidence,
+                        priorRunSummaries = finalPriorRunSummaries,
+                        evidencePacks = selectedEvidencePacks,
+                    ),
+                )
+        }
+        if (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && "base_context" !in truncated) {
+            truncated.add("base_context")
+        }
         val sources =
             (includedDataSources + selectedEvidencePacks.flatMap { it.includedDataSources })
                 .distinct()
@@ -442,7 +476,7 @@ object InsightAggregator {
             digest = digest,
             evidenceIndex = evidence,
             budgetReport = budget,
-            priorRunSummaries = priorRunSummaries,
+            priorRunSummaries = finalPriorRunSummaries,
             evidencePacks = selectedEvidencePacks,
         )
     }

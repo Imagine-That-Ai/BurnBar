@@ -366,6 +366,36 @@ expect(
 );
 
 expect(
+  "I7 — physical iPad device id in docs fails",
+  buildTree((f) => {
+    f["docs/local-device.md"] =
+      `Physical iPad ${IOS_COREDEVICE_SAMPLE} passed local validation.`;
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I7 — CoreDevice-prefixed device id in docs fails",
+  buildTree((f) => {
+    f["docs/local-device.md"] =
+      `Device: ${IOS_COREDEVICE_SAMPLE} passed local validation.`;
+    return f;
+  }),
+  1,
+);
+
+expect(
+  "I7 — JSON deviceId field in docs fails",
+  buildTree((f) => {
+    f["docs/local-device.md"] =
+      `{"deviceId":"${IOS_COREDEVICE_SAMPLE}","status":"passed"}`;
+    return f;
+  }),
+  1,
+);
+
+expect(
   "I7 — physical Android serial in docs fails",
   buildTree((f) => {
     f["docs/local-device.md"] =
