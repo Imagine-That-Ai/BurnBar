@@ -179,7 +179,8 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         delegate.primePopoverContent()
 
         guard let contentViewController = delegate.popover?.contentViewController else {
-            return XCTFail("Priming must install popover content")
+            XCTFail("Priming must install popover content")
+            return
         }
 
         let window = NSWindow(contentViewController: contentViewController)
