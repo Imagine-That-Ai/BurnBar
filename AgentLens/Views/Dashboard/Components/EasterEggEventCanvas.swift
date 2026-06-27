@@ -33,7 +33,7 @@ struct EasterEggEventCanvas: View {
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
-            Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, canvasSize in
+            Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: false) { context, canvasSize in
                 guard let simulation else { return }
                 step(simulation, now: timeline.date, size: canvasSize)
                 simulation.draw(
