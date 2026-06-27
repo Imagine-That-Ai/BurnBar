@@ -41,9 +41,10 @@ public enum BurnBarDaemonHeartbeat {
     }()
 
     /// Writes a heartbeat snapshot atomically to the configured path.
-    /// `.atomic` already does the temp-file + rename dance internally and
-    /// preserves the existing file's mode on Darwin, so the chmod only runs
-    /// on first create instead of every beat.
+    /// `.atomic` does the temp-file + rename dance internally, but the
+    /// resulting inode metadata is platform and source-state dependent. Reassert
+    /// owner-only permissions after every beat so a preexisting widened file
+    /// cannot survive the next daemon heartbeat.
     public static func writeSnapshot(
         _ snapshot: BurnBarDaemonHeartbeatSnapshot,
         to fileURL: URL = defaultFileURL,
@@ -52,11 +53,8 @@ public enum BurnBarDaemonHeartbeat {
         let directoryURL = fileURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let payload = try encoder.encode(snapshot)
-        let isFirstWrite = !fileManager.fileExists(atPath: fileURL.path)
         try payload.write(to: fileURL, options: .atomic)
-        if isFirstWrite {
-            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-        }
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
     public static func readSnapshot(
