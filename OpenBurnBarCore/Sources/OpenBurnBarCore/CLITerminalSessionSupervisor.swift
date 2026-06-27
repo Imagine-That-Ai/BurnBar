@@ -46,7 +46,6 @@ public enum CLIQuotaExhaustionClassifier {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        let normalized = trimmed.lowercased()
         let genericPatterns = [
             "quota exhausted",
             "quota exceeded",
@@ -61,6 +60,16 @@ public enum CLIQuotaExhaustionClassifier {
         let weakLimitPatterns = [
             "out of limit",
             "out of limits"
+        ]
+
+        let weakLimitAnchors = [
+            "quota",
+            "rate limit",
+            "rate-limit",
+            "usage limit",
+            "credit",
+            "billing",
+            "plan limit"
         ]
 
         let rateLimitPatterns = [
@@ -78,7 +87,6 @@ public enum CLIQuotaExhaustionClassifier {
         ]
 
         let cliSpecificPatterns: [String]
-        let cliIdentityPatterns: [String]
         switch cliType {
         case .codex:
             cliSpecificPatterns = [
@@ -86,35 +94,30 @@ public enum CLIQuotaExhaustionClassifier {
                 "chatgpt plan limit",
                 "run codex and use /status to refresh local quota data"
             ]
-            cliIdentityPatterns = ["codex", "chatgpt", "openai"]
         case .claude:
             cliSpecificPatterns = [
                 "claude code usage limit",
                 "anthropic quota",
                 "rate-limit payload"
             ]
-            cliIdentityPatterns = ["claude", "anthropic"]
         case .opencode:
             cliSpecificPatterns = [
                 "opencode quota",
                 "opencode go quota",
                 "opencode credit"
             ]
-            cliIdentityPatterns = ["opencode"]
         case .droid:
             cliSpecificPatterns = [
                 "droid quota",
                 "factory quota",
                 "factory usage limit"
             ]
-            cliIdentityPatterns = ["droid", "factory"]
         case .forge:
             cliSpecificPatterns = [
                 "forge quota",
                 "forge credit",
                 "provider quota"
             ]
-            cliIdentityPatterns = ["forge"]
         case .antigravity:
             cliSpecificPatterns = [
                 "antigravity quota",
@@ -122,7 +125,6 @@ public enum CLIQuotaExhaustionClassifier {
                 "gemini quota",
                 "google ai quota"
             ]
-            cliIdentityPatterns = ["antigravity", "agy", "gemini", "google ai"]
         case .grok:
             cliSpecificPatterns = [
                 "grok quota",
@@ -130,7 +132,6 @@ public enum CLIQuotaExhaustionClassifier {
                 "supergrok limit",
                 "grok build limit"
             ]
-            cliIdentityPatterns = ["grok", "xai", "supergrok", "grok build"]
         case .cursorAgent:
             cliSpecificPatterns = [
                 "cursor quota",
@@ -140,7 +141,6 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor agent quota",
                 "cursor agent limit"
             ]
-            cliIdentityPatterns = ["cursor", "cursor-agent", "cursor agent"]
         case .gemini:
             cliSpecificPatterns = [
                 "gemini quota",
@@ -148,69 +148,56 @@ public enum CLIQuotaExhaustionClassifier {
                 "approval-mode",
                 "yolo mode"
             ]
-            cliIdentityPatterns = ["gemini", "google ai"]
         case .kimi:
             cliSpecificPatterns = [
                 "kimi quota",
                 "moonshot quota",
                 "kimi limit"
             ]
-            cliIdentityPatterns = ["kimi", "moonshot"]
         case .pi:
             cliSpecificPatterns = [
                 "pi quota",
                 "pi limit",
                 "provider quota"
             ]
-            cliIdentityPatterns = ["pi"]
         }
 
-        if genericPatterns.contains(where: normalized.contains) {
-            return trimmed
-        }
-        if rateLimitPatterns.contains(where: normalized.contains) {
-            return trimmed
-        }
-        if weakLimitPatterns.contains(where: normalized.contains) {
-            let anchoredToQuotaSource = normalized.contains("quota")
-                || normalized.contains("rate limit")
-                || normalized.contains("usage limit")
-                || normalized.contains("credit")
-                || cliSpecificPatterns.contains(where: normalized.contains)
-                || cliIdentityPatterns.contains(where: { containsIdentity($0, in: normalized) })
-            if anchoredToQuotaSource {
-                return trimmed
+        let candidates = trimmed
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .suffix(64)
+        for candidate in candidates {
+            let normalized = candidate.lowercased()
+
+            if genericPatterns.contains(where: normalized.contains) {
+                return candidate
             }
-        }
-        if normalized.contains("too many requests")
-            && (normalized.contains("quota") || normalized.contains("rate limit") || normalized.contains("limit reached")) {
-            return trimmed
-        }
-        if cliSpecificPatterns.contains(where: normalized.contains)
-            && (normalized.contains("limit") || normalized.contains("quota") || normalized.contains("exhaust")) {
-            return trimmed
+            if rateLimitPatterns.contains(where: normalized.contains) {
+                return candidate
+            }
+            if weakLimitPatterns.contains(where: normalized.contains) {
+                let anchoredToQuotaSource = weakLimitAnchors.contains(where: normalized.contains)
+                    || cliSpecificPatterns.contains(where: normalized.contains)
+                if anchoredToQuotaSource {
+                    return candidate
+                }
+            }
+            if normalized.contains("too many requests")
+                && (normalized.contains("quota") || normalized.contains("rate limit") || normalized.contains("limit reached")) {
+                return candidate
+            }
+            if cliSpecificPatterns.contains(where: normalized.contains)
+                && (normalized.contains("limit reached")
+                    || normalized.contains("limit exceeded")
+                    || normalized.contains("quota exhausted")
+                    || normalized.contains("quota exceeded")
+                    || normalized.contains("exhaust")) {
+                return candidate
+            }
         }
 
         return nil
-    }
-
-    private static func containsIdentity(_ identity: String, in normalized: String) -> Bool {
-        var searchRange = normalized.startIndex..<normalized.endIndex
-        while let range = normalized.range(of: identity, options: [], range: searchRange) {
-            let beforeOK = range.lowerBound == normalized.startIndex
-                || !isIdentityCharacter(normalized[normalized.index(before: range.lowerBound)])
-            let afterOK = range.upperBound == normalized.endIndex
-                || !isIdentityCharacter(normalized[range.upperBound])
-            if beforeOK && afterOK {
-                return true
-            }
-            searchRange = range.upperBound..<normalized.endIndex
-        }
-        return false
-    }
-
-    private static func isIdentityCharacter(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber || character == "_" || character == "-"
     }
 }
 
