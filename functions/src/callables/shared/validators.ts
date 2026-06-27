@@ -173,7 +173,7 @@ function requireSearchHashes(raw: unknown, fieldName: string, required: boolean)
 
 const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
 
-function validateCloudVaultAADPart(value: string, fieldName: string): string {
+function validateCloudVaultAADPart(value: unknown, fieldName: string): string {
   const part = boundedTrimmedString(value, fieldName, 512, true);
   if (!part || /[\u0000-\u001f\u007f|]/u.test(part)) {
     throw new HttpsError("invalid-argument", `${fieldName} contains an invalid CloudVault AAD component.`);
@@ -182,14 +182,14 @@ function validateCloudVaultAADPart(value: string, fieldName: string): string {
 }
 
 export function cloudVaultAADContext(
-  uid: string,
-  collection: string,
-  docID: string,
-  field: string,
-  schemaVersion = 2,
-  purpose = field,
+  uid: unknown,
+  collection: unknown,
+  docID: unknown,
+  field: unknown,
+  schemaVersion: unknown = 2,
+  purpose: unknown = field,
 ): string {
-  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
+  if (typeof schemaVersion !== "number" || !Number.isInteger(schemaVersion) || schemaVersion < 2) {
     throw new HttpsError("invalid-argument", "CloudVault AAD schema version must be at least 2.");
   }
   return [
