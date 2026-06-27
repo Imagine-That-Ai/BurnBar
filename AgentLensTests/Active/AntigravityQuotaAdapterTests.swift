@@ -23,18 +23,26 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeContext() throws -> ProviderQuotaAdapterContext {
+    private func makeContext(
+        referenceEpochMs: Double? = nil,
+        enableReferenceDateOverride: Bool = true
+    ) throws -> ProviderQuotaAdapterContext {
+        let resolvedReferenceEpochMs = referenceEpochMs ?? Self.referenceEpochMs
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let session = URLSession(configuration: .ephemeral)
+        var environment = [
+            AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", resolvedReferenceEpochMs)
+        ]
+        if enableReferenceDateOverride {
+            environment[AntigravityQuotaAdapter.referenceDateOptInEnvironmentKey] = "1"
+        }
 
         return ProviderQuotaAdapterContext(
             appPaths: appPaths,
             fileManager: fileManager,
             session: session,
-            environment: [
-                AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", Self.referenceEpochMs)
-            ],
+            environment: environment,
             homeDirectoryURL: tempDirectoryURL,
             snapshotStore: store,
             bridgeManager: ClaudeQuotaBridgeManager(appPaths: appPaths, homeDirectoryURL: tempDirectoryURL, fileManager: fileManager, snapshotStore: store),
@@ -68,12 +76,54 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     }
 
     /// Integer millisecond timestamps avoid JSON float/scientific-notation decode flakes in CI.
-    private func historyLine(display: String, hoursAgo: Double, anchorMs: Double = referenceEpochMs) -> String {
-        let timestampMs = Int64(anchorMs - (hoursAgo * 60.0 * 60.0 * 1000.0))
+    private func historyLine(display: String, hoursAgo: Double, anchorMs: Double? = nil) -> String {
+        let resolvedAnchorMs = anchorMs ?? Self.referenceEpochMs
+        let timestampMs = Int64(resolvedAnchorMs - (hoursAgo * 60.0 * 60.0 * 1000.0))
         return "{\"display\":\"\(display)\",\"timestamp\":\(timestampMs),\"workspace\":\"/mock/ws\"}"
     }
 
     // MARK: - Tests
+
+    func testReferenceDateOverride_requiresExplicitDebugOptIn() throws {
+        let context = try makeContext(enableReferenceDateOverride: false)
+
+        let before = Date()
+        let resolved = AntigravityQuotaAdapter.referenceDate(from: context)
+        let after = Date()
+
+        XCTAssertGreaterThanOrEqual(resolved.timeIntervalSince1970, before.timeIntervalSince1970 - 1)
+        XCTAssertLessThanOrEqual(resolved.timeIntervalSince1970, after.timeIntervalSince1970 + 1)
+        XCTAssertNotEqual(
+            Int(resolved.timeIntervalSince1970),
+            Int(Self.referenceEpochMs / 1000.0),
+            "The test clock env value must be inert unless the debug opt-in flag is present."
+        )
+    }
+
+    func testReferenceDateOverride_rejectsNonFiniteAndOutOfBoundsValues() throws {
+        let invalidContexts = try [
+            makeContext(referenceEpochMs: .nan),
+            makeContext(referenceEpochMs: -1),
+            makeContext(referenceEpochMs: 4_102_444_800_001)
+        ]
+
+        for context in invalidContexts {
+            let before = Date()
+            let resolved = AntigravityQuotaAdapter.referenceDate(from: context)
+            let after = Date()
+
+            XCTAssertGreaterThanOrEqual(resolved.timeIntervalSince1970, before.timeIntervalSince1970 - 1)
+            XCTAssertLessThanOrEqual(resolved.timeIntervalSince1970, after.timeIntervalSince1970 + 1)
+        }
+    }
+
+    func testReferenceDateOverride_appliesWithDebugOptIn() throws {
+        let context = try makeContext()
+
+        let resolved = AntigravityQuotaAdapter.referenceDate(from: context)
+
+        XCTAssertEqual(resolved.timeIntervalSince1970, Self.referenceEpochMs / 1000.0, accuracy: 0.001)
+    }
 
     func testFetch_whenHistoryDoesNotExist_returnsUnavailableSnapshot() async throws {
         let adapter = AntigravityQuotaAdapter()
@@ -208,7 +258,6 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let adapter = AntigravityQuotaAdapter()
 
         let nowMs = Self.referenceEpochMs
-        let hourInMs = 60.0 * 60.0 * 1000.0
 
         let mockLines = [
             historyLine(display: "R1", hoursAgo: 1.0, anchorMs: nowMs),
