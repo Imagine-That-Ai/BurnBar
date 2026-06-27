@@ -913,82 +913,62 @@ body::after {
 }
 
 /* ============================================================================
-   LIQUID GLASS — console surfaces (dark themes) + the Inventory showcase
+   LIQUID GLASS — console panes over the kernel backdrop
    ----------------------------------------------------------------------------
-   The animated kernel backdrop is mounted globally behind every tab, but the
-   shared `.glass-pane` is an opaque slab that hides it. Here we turn panes into
-   real Apple-style Liquid Glass: a translucent, backdrop-blurred plate with a
-   specular top edge and an accent-tinted corner bloom, so the living aurora
-   refracts through. It's TOKEN-DRIVEN — the plate tint derives from each theme's
-   `--color-ink-elevated` via color-mix, so every skin glasses in its own hue
-   (midnight bluish, forest green, obsidian neutral, sand warm, paper bright).
-   The only literals are the white sheen/hairlines that *make* glass read as glass.
+   The animated kernel is mounted globally behind every tab, and the INK LAYER
+   below (`body[data-ink="on"]`, every route but /dashboard) already remaps the
+   editorial tokens to a light-ink ramp and turns `--color-ink-elevated` into a
+   translucent dark vellum. So the shared `.glass-pane` is already a dark
+   translucent slab on EVERY theme — but a FLAT one: no blur, no specular, so it
+   reads as a printed card, not glass.
 
-   Legibility: dark themes already ship light text tokens, so a dark translucent
-   plate over the brightness-dimmed aurora keeps AA. Light themes keep a bright
-   vellum plate (dark text stays legible). Both degrade to the opaque pane where
-   backdrop-filter is unsupported or the member prefers reduced transparency.
-   ========================================================================== */
+   Here we finish the job: a backdrop blur + saturate so the aurora refracts and
+   bends through the plate, a specular top edge + inner hairline, an accent-tinted
+   corner bloom, and a deep contact shadow — real Apple-style Liquid Glass. It's
+   token-driven (plate derives from `--color-ink-elevated` via color-mix), so it
+   tracks whatever hue the kernel ink resolves to, on every theme. Degrades to the
+   flat translucent vellum where backdrop-filter is absent or the member asks for
+   reduced transparency. Scoped to the ink layer, so /dashboard (its own glass)
+   and the pre-auth sign-in card are untouched. */
 
-/* (1) Console-wide: the shared pane becomes Liquid Glass on the DARK themes only.
-   Light themes (paper/sand) keep their clean opaque editorial paper identity. */
-:root[data-theme="obsidian"] .glass-pane,
-:root[data-theme="midnight"] .glass-pane,
-:root[data-theme="forest"] .glass-pane {
+/* (1) Every pane over the backdrop becomes Liquid Glass. */
+body[data-ink="on"] .glass-pane {
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.02) 46%, transparent 66%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02) 46%, transparent 66%),
     radial-gradient(120% 120% at 100% 0%, var(--accent-wash), transparent 58%),
-    color-mix(in srgb, var(--color-ink-elevated) 60%, transparent);
-  backdrop-filter: blur(20px) saturate(1.5) brightness(0.94);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5) brightness(0.94);
+    color-mix(in srgb, var(--color-ink-elevated) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(1.5) brightness(0.96);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5) brightness(0.96);
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.04),
     0 28px 64px -32px rgba(0, 0, 0, 0.7);
 }
-:root[data-theme="obsidian"] .glass-pane--elevated,
-:root[data-theme="midnight"] .glass-pane--elevated,
-:root[data-theme="forest"] .glass-pane--elevated {
+body[data-ink="on"] .glass-pane--elevated {
   border-color: rgba(255, 255, 255, 0.26);
 }
 
-/* (2) The Inventory page is the Liquid Glass SHOWCASE — frosted in EVERY theme.
-   On light themes the plate is a bright vellum so the aurora only whispers
-   through; the `:root[data-theme=dark]` companion below supplies the deeper,
-   more translucent dark glass (specificity 0,4,0 — it outranks the generic
-   dark-pane rule above at 0,3,0, so the showcase tuning always wins). */
-.lg-inventory .glass-pane {
+/* (2) The Inventory page is the SHOWCASE — a touch more translucent + a brighter
+   specular crown so the aurora reads most vividly through the hero surface
+   (specificity 0,3,0 beats the console-wide pane above at 0,2,0). */
+body[data-ink="on"] .lg-inventory .glass-pane {
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.06) 46%, transparent 64%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03) 44%, transparent 64%),
     radial-gradient(125% 125% at 100% 0%, var(--accent-wash), transparent 56%),
-    color-mix(in srgb, var(--color-ink-elevated) 80%, transparent);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid var(--color-glass-line-bright);
+    color-mix(in srgb, var(--color-ink-elevated) 60%, transparent);
+  backdrop-filter: blur(22px) saturate(1.6) brightness(0.93);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6) brightness(0.93);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 24px 50px -30px rgba(22, 20, 15, 0.5);
-}
-:root[data-theme="obsidian"] .lg-inventory .glass-pane,
-:root[data-theme="midnight"] .lg-inventory .glass-pane,
-:root[data-theme="forest"] .lg-inventory .glass-pane {
-  background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 44%, transparent 64%),
-    radial-gradient(125% 125% at 100% 0%, var(--accent-wash), transparent 58%),
-    color-mix(in srgb, var(--color-ink-elevated) 50%, transparent);
-  backdrop-filter: blur(22px) saturate(1.6) brightness(0.92);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6) brightness(0.92);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
     0 30px 70px -34px rgba(0, 0, 0, 0.78);
 }
 
-/* (3) Inner chrome — glass chips (facet pills) + the Your/Server segmented
-   toggle pick up a faint blur + specular edge so they read as etched into the
-   plate rather than printed on it. Theme-aware via tokens. */
+/* (3) Inner chrome — facet pills + the Your/Server segmented toggle pick up a
+   faint blur + specular edge so they read as etched into the plate rather than
+   printed on it. (--color-mercury-bright is the light ink under the ink layer.) */
 .lg-inventory .lg-chip {
   background: color-mix(in srgb, var(--color-mercury-bright) 7%, transparent);
   border-color: var(--color-glass-line-bright);
@@ -1011,47 +991,23 @@ body::after {
   -webkit-backdrop-filter: blur(4px) saturate(0.92);
 }
 
-/* (5) Actions on dark glass: ghost/outline buttons go light (mirrors the
-   Studio toolbar), and the destructive crimson brightens so the Delete control
-   clears contrast on the dark plate. Scoped to the Inventory page. */
-:root[data-theme="obsidian"] .lg-inventory,
-:root[data-theme="midnight"] .lg-inventory,
-:root[data-theme="forest"] .lg-inventory {
+/* (5) The destructive crimson is NOT remapped by the ink layer, so the Delete
+   control would sit too dark on the glass. Brighten it across the backdrop (the
+   ghost/outline buttons are already light via the ink ramp). */
+body[data-ink="on"] {
   --color-seal-crimson: #ff6b72;
-}
-:root[data-theme="obsidian"] .lg-inventory :is(.btn-bare, .btn-outline),
-:root[data-theme="midnight"] .lg-inventory :is(.btn-bare, .btn-outline),
-:root[data-theme="forest"] .lg-inventory :is(.btn-bare, .btn-outline) {
-  color: var(--color-text-base);
-}
-:root[data-theme="obsidian"] .lg-inventory .btn-outline,
-:root[data-theme="midnight"] .lg-inventory .btn-outline,
-:root[data-theme="forest"] .lg-inventory .btn-outline {
-  border-color: rgba(255, 255, 255, 0.24);
-}
-:root[data-theme="obsidian"] .lg-inventory :is(.btn-bare, .btn-outline):hover,
-:root[data-theme="midnight"] .lg-inventory :is(.btn-bare, .btn-outline):hover,
-:root[data-theme="forest"] .lg-inventory :is(.btn-bare, .btn-outline):hover {
-  color: var(--color-text-bright);
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* (6) Graceful degradation: where the compositor can't blur, or the member asks
-   for reduced transparency, fall back to the opaque pane — never an unreadable
-   wash. (Light-theme showcase panes are already near-opaque vellum.) */
+   for reduced transparency, fall back to the flat translucent vellum — never an
+   unreadable wash. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root[data-theme="obsidian"] .glass-pane,
-  :root[data-theme="midnight"] .glass-pane,
-  :root[data-theme="forest"] .glass-pane,
-  .lg-inventory .glass-pane {
+  body[data-ink="on"] .glass-pane {
     background: var(--color-ink-elevated);
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  :root[data-theme="obsidian"] .glass-pane,
-  :root[data-theme="midnight"] .glass-pane,
-  :root[data-theme="forest"] .glass-pane,
-  .lg-inventory .glass-pane {
+  body[data-ink="on"] .glass-pane {
     background: var(--color-ink-elevated);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
