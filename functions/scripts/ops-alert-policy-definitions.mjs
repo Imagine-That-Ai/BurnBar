@@ -57,7 +57,7 @@ export const OPS_SLO_ALERT_POLICIES = [
         displayName: "Rollup breaker-open events present for 15 min",
         conditionThreshold: {
           filter:
-            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_breaker_open"',
+            'resource.type="cloud_run_revision" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_breaker_open"',
           aggregations: [
             {
               alignmentPeriod: "300s",
@@ -75,7 +75,7 @@ export const OPS_SLO_ALERT_POLICIES = [
         displayName: "Rollup rebuild failures present for 15 min",
         conditionThreshold: {
           filter:
-            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_rebuild_failed"',
+            'resource.type="cloud_run_revision" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_rebuild_failed"',
           aggregations: [
             {
               alignmentPeriod: "300s",
@@ -107,7 +107,7 @@ export const OPS_SLO_ALERT_POLICIES = [
         displayName: "Delta drain capped for 30 min",
         conditionThreshold: {
           filter:
-            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_delta_drain_capped"',
+            'resource.type="cloud_run_revision" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_delta_drain_capped"',
           aggregations: [
             {
               alignmentPeriod: "300s",

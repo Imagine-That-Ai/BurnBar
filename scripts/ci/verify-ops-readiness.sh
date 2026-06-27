@@ -23,6 +23,7 @@ bash scripts/ci/verify-vendored-agent-source.sh
 
 echo "==> ops alert policy manifest"
 node --check functions/scripts/ops-alert-policy-definitions.mjs
+node functions/scripts/test-ops-alert-policy-definitions.mjs
 node --check functions/scripts/apply-ops-alert-policies.mjs
 node --check functions/scripts/create-ops-log-metrics.mjs
 

@@ -99,10 +99,14 @@ interface UsageSource {
  * Server-authoritative per-domain usage sources. Ids MUST match the canonical
  * registry (packages/data-domains/registry.json) — enforced by the unit test.
  */
-const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
+export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   usage_spend: { countCollection: "usage" },
   conversations_chat: { countCollection: "chat_threads" },
-  session_logs: { countCollection: "cloud_search_documents" },
+  session_logs: {
+    countCollection: "cloud_search_documents",
+    byteCollection: "cloud_search_documents",
+    byteField: "byteCount",
+  },
   pensieve: {
     countCollection: "cloud_search_knowledge",
     byteCollection: "cloud_search_knowledge",
@@ -112,7 +116,11 @@ const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   connected_devices: { countCollection: "devices" },
   external_mcp: { countCollection: "remote_mcp_clients" },
   computer_use: { countCollection: "computer_use_sessions" },
-  media: { countCollection: "media_attachment_manifests" },
+  media: {
+    countCollection: "media_attachment_manifests",
+    byteCollection: "media_attachment_manifests",
+    byteField: "size",
+  },
   entitlements_billing: { countCollection: "entitlements" },
   device_trust_keys: { countCollection: "escrow_devices" },
   audit_timeline: { countCollection: "unified_audit_log" },
