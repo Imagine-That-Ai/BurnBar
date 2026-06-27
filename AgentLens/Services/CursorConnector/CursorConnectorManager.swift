@@ -1705,7 +1705,7 @@ final class CursorConnectorManager {
             return getattr(t, 'client_ip', "unknown")
 
         def _is_health_path(path):
-            return path in ("/health", "/healthz")
+            return path.split("?", 1)[0] in ("/health", "/healthz")
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -1767,6 +1767,9 @@ final class CursorConnectorManager {
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": {"message": "not found"}})
 
             def do_POST(self):
+                if _is_health_path(self.path):
+                    self.send_json(HTTPStatus.OK, {"ok": True})
+                    return
                 if not self.check_auth():
                     return
                 # Record request for rate limiting after successful auth.

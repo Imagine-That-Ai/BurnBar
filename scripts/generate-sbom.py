@@ -367,7 +367,7 @@ def collect_gradle_dependencies(repo_root: Path) -> list[dict]:
                     "source": rel,
                 }
             )
-        for plugin_id, version in plugin_re.findall(text):
+        for plugin_id, version in plugin_re.findall(scannable_text):
             packages.append(
                 {
                     "name": plugin_id,

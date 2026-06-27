@@ -55,6 +55,23 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertTrue(context.budgetReport.truncatedDataSources.contains("evidence_packs"))
     }
 
+    func testAggregatorTrimsPriorRunSummariesWhenBasePayloadExceedsBudget() throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let summaries = (1...32).map { "summary-\($0) " + String(repeating: "oversized ", count: 2048) }
+
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["provider_summaries"],
+            priorRunSummaries: summaries
+        )
+
+        XCTAssertLessThanOrEqual(context.budgetReport.encodedBytes, InsightDigest.maxEncodedBytes)
+        XCTAssertLessThan(context.priorRunSummaries.count, summaries.count)
+        XCTAssertTrue(context.budgetReport.truncatedDataSources.contains("prior_run_summaries"))
+        XCTAssertNotEqual(context.budgetReport.truncationSummary, "No truncation.")
+    }
+
     func testAnalysisContextCacheIdentityIncludesEvidencePacks() throws {
         let snapshot = InsightTestFixtures.twoWeeksOfUsage()
         let base = try InsightAggregator().buildContext(

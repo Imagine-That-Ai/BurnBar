@@ -16,7 +16,8 @@ test("extracts only internal non-empty links", () => {
 });
 
 test("reports broken links without executing workflow-command text", () => {
-  const markdown = "[bad](missing.md\n::error::owned\r)";
+  const markdown = `[bad](missing.md
+::error::owned${"\r"})`;
   const result = validateAgentsLinks(markdown, () => false);
 
   assert.equal(result.broken.length, 1);

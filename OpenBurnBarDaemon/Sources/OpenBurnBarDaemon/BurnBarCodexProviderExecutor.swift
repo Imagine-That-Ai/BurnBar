@@ -84,8 +84,26 @@ public struct BurnBarCodexSystemProcessRunner: BurnBarCodexProcessRunning {
             .filter { seen.insert($0).inserted }
     }
 
-    private static func isTrustedExecutablePath(_ path: String) -> Bool {
-        trustedCLIPathEntries().contains { isDescendantOrEqual(path: path, root: $0) }
+    static func trustedCLIResolvedPathEntries(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String] {
+        let entries = [
+            "/opt/homebrew",
+            "/usr/local",
+            "/usr/bin",
+            "/bin"
+        ]
+        var seen = Set<String>()
+        return entries
+            .filter { !isDescendantOrEqual(path: $0, root: home.path) }
+            .filter { seen.insert($0).inserted }
+    }
+
+    static func isTrustedExecutablePath(
+        _ path: String,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        trustedCLIResolvedPathEntries(home: home).contains { isDescendantOrEqual(path: path, root: $0) }
     }
 
     private static func isDescendantOrEqual(path: String, root: String) -> Bool {

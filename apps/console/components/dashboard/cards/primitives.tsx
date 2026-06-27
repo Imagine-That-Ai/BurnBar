@@ -72,6 +72,7 @@ export function Sparkline({
   values: number[];
   className?: string;
 }) {
+  const gradientId = "spark-fill-" + React.useId().replace(/:/g, "");
   const pts = values.length >= 2 ? values : [0, 0];
   const max = Math.max(...pts, 1);
   const lastIndex = pts.length - 1;
@@ -91,12 +92,12 @@ export function Sparkline({
       style={{ display: "block", width: "100%", height: "100%" }}
     >
       <defs>
-        <linearGradient id="lg-spark-fill" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.34" />
           <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={area} fill="url(#lg-spark-fill)" />
+      <path d={area} fill={`url(#${gradientId})`} />
       <path
         d={line}
         fill="none"

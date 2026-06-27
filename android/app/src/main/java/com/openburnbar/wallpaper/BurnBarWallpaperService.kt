@@ -304,7 +304,10 @@ class BurnBarWallpaperService : WallpaperService() {
         private fun refreshProviderColors() {
             val snapshot =
                 BurnBarWidgetSnapshotStore.snapshot.value
-                    ?: return
+                    ?: run {
+                        providerWeights = emptyList()
+                        return
+                    }
             providerWeights =
                 wallpaperProviderColorWeights(
                     topProviders = snapshot.topProviders,

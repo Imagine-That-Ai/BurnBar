@@ -252,6 +252,9 @@ class BurnBarApplication : Application() {
             if (uid == null) {
                 tearDownPairingListener()
                 stopMediaControlCoordinator()
+                applicationScope.launch {
+                    BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
+                }
             } else {
                 applicationScope.launch {
                     runCatching {
