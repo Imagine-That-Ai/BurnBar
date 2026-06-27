@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import OpenBurnBar
 
@@ -8,6 +9,8 @@ import XCTest
 /// many dispatch-source read events, line reassembly across split writes, and
 /// the trailing-partial-line flush at EOF.
 final class AsyncPipeLineReaderTests: XCTestCase {
+    private struct TimeoutError: Error {}
+
     /// 8 000 newline-delimited lines (~80 KB, far larger than the 8 KB read
     /// buffer) plus a trailing partial line — proves every line is yielded once,
     /// in order, across many read events, and the partial tail is flushed on EOF.
@@ -81,5 +84,56 @@ final class AsyncPipeLineReaderTests: XCTestCase {
         }
 
         XCTAssertEqual(received, ["crlf-line", "lf-line"])
+    }
+
+    /// A long partial line spread across many read events must remain linear.
+    /// If the reader restarts newline search from the beginning of the buffered
+    /// partial line on every chunk, this workload degenerates into repeated
+    /// full-buffer scans before the final newline arrives.
+    func test_longPartialLineAcrossManyChunksCompletesWithinLinearBudget() async throws {
+        let pipe = Pipe()
+        let reader = AsyncPipeLineReader(pipe: pipe)
+        let writeHandle = pipe.fileHandleForWriting
+        let chunkCount = 2_048
+        let chunkSize = 4_096
+        let chunk = Data(repeating: 0x78, count: chunkSize)
+
+        Task.detached {
+            for _ in 0..<chunkCount {
+                try? writeHandle.write(contentsOf: chunk)
+            }
+            try? writeHandle.write(contentsOf: Data("\n".utf8))
+            try? writeHandle.close()
+        }
+
+        let received = try await collectLines(from: reader, timeoutNanoseconds: 5_000_000_000)
+
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received[0].utf8.count, chunkCount * chunkSize)
+    }
+
+    private func collectLines(
+        from reader: AsyncPipeLineReader,
+        timeoutNanoseconds: UInt64
+    ) async throws -> [String] {
+        try await withThrowingTaskGroup(of: [String].self) { group in
+            group.addTask {
+                var received: [String] = []
+                for try await line in reader.lines() {
+                    received.append(line)
+                }
+                return received
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw TimeoutError()
+            }
+
+            guard let result = try await group.next() else {
+                throw TimeoutError()
+            }
+            group.cancelAll()
+            return result
+        }
     }
 }
