@@ -45,10 +45,10 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deleteManifestMemory } from "../lib/mem0-delete-boundary.mjs";
+import { makeMem0RestClient } from "../lib/mem0-rest-client.mjs";
 import { buildDesiredFromGitTree, planActions, runPool } from "../lib/verbatim-chunker.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const MEM0_BASE = "https://api.mem0.ai";
 
 function parseArgs(argv) {
   const args = {
@@ -100,47 +100,6 @@ function writeManifest(manifestAbs, manifest) {
   for (const k of Object.keys(manifest.entries).sort()) sorted[k] = manifest.entries[k];
   manifest.entries = sorted;
   writeFileSync(manifestAbs, JSON.stringify(manifest, null, 2) + "\n");
-}
-
-// -- mem0 REST client (verbatim store via infer=false) ------------------------
-
-function makeClient(apiKey) {
-  const headers = { Authorization: `Token ${apiKey}`, "Content-Type": "application/json" };
-  async function call(method, path, body, options = {}) {
-    for (let attempt = 0; ; attempt++) {
-      const res = await fetch(`${MEM0_BASE}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (options.allowNotFound && res.status === 404) return null;
-      if (res.status === 429 || res.status >= 500) {
-        if (attempt < 4) {
-          await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
-          continue;
-        }
-      }
-      const txt = await res.text();
-      if (!res.ok) throw new Error(`mem0 ${method} ${path} -> ${res.status}: ${txt.slice(0, 300)}`);
-      return txt ? JSON.parse(txt) : null;
-    }
-  }
-  return {
-    get: (id) => call("GET", `/v1/memories/${encodeURIComponent(id)}/`, undefined, { allowNotFound: true }),
-    async create(text, userId, appId, metadata) {
-      const out = await call("POST", "/v1/memories/", {
-        messages: [{ role: "user", content: text }],
-        user_id: userId,
-        app_id: appId,
-        infer: false,
-        metadata,
-      });
-      const id = out?.results?.[0]?.id;
-      if (!id) throw new Error(`create returned no memory id (verbatim add did not persist): ${JSON.stringify(out).slice(0, 200)}`);
-      return id;
-    },
-    delete: (id) => call("DELETE", `/v1/memories/${id}/`),
-  };
 }
 
 // -- Main ---------------------------------------------------------------------
@@ -215,7 +174,7 @@ async function main() {
     log("mem0 sync skipped (no MEM0_BURNBAR_API_KEY / MEM0_API_KEY in env)");
     return;
   }
-  const client = makeClient(apiKey);
+  const client = makeMem0RestClient(apiKey);
 
   // Deletes first (frees space + clears stale ids), then updates (delete+create), then creates.
   await runPool(deletes, args.concurrency, async (d) => {
