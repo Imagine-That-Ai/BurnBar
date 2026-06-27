@@ -50,6 +50,18 @@ const usageDocs = [
     cost: 0.001,
     startTime: now.toISOString(),
   },
+  {
+    provider: "codex",
+    providerID: "codex",
+    schemaVersion: 1,
+    sessionId: "codex-recorded-at-only",
+    model: "gpt-5.5",
+    inputTokens: 70,
+    outputTokens: 7,
+    totalTokens: 77,
+    cost: 0.0007,
+    recordedAt: now.toISOString(),
+  },
 ];
 
 // Mirrors Firestore set() semantics: merge:false replaces the document,
@@ -199,28 +211,31 @@ const rollups = await computeUserRollups(db, "test-uid");
 const today = rollups.today;
 const dayKey = now.toISOString().slice(0, 10);
 
-assert.equal(today.totals.requests, 2);
-assert.equal(today.totals.tokens, 1_875);
-assert.equal(today.today, 1_875);
+assert.equal(today.totals.requests, 3);
+assert.equal(today.totals.tokens, 1_952);
+assert.equal(today.today, 1_952);
 assert.equal(today.providerSummaries.find((p) => p.provider === "kimi")?.totalTokens, 1_750);
 assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.model, "kimi-for-coding");
 assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.tokens, 1_750);
-assert.equal(today.totals.costUsd, 0.00291);
-assert.deepEqual(today.dailyPoints, { [dayKey]: 1_875 });
-assert.deepEqual(rollups.all_time.dailyPoints, { [dayKey]: 1_875 });
+assert.equal(today.totals.costUsd, 0.00361);
+assert.deepEqual(today.dailyPoints, { [dayKey]: 1_952 });
+assert.deepEqual(rollups.all_time.dailyPoints, { [dayKey]: 1_952 });
 // Full counter rebuilds regenerate the rolling dailyTokens map for free.
-assert.deepEqual(db.store.get("users/test-uid/usage_counter_totals/all_time").dailyTokens, { [dayKey]: 1_875 });
+assert.deepEqual(db.store.get("users/test-uid/usage_counter_totals/all_time").dailyTokens, { [dayKey]: 1_952 });
 
 await applyUsageCounterDelta(db, "test-uid", "usage-1", usageDocs[1], undefined);
 const repairedThenUpdated = await computeUserRollupsFromCounters(db, "test-uid");
-assert.equal(repairedThenUpdated.today.totals.requests, 2);
-assert.equal(repairedThenUpdated.today.totals.tokens, 1_875);
-assert.equal(repairedThenUpdated.today.modelSummaries.find((m) => m.provider === "codex")?.model, "unknown");
+assert.equal(repairedThenUpdated.today.totals.requests, 3);
+assert.equal(repairedThenUpdated.today.totals.tokens, 1_952);
+assert.equal(
+  repairedThenUpdated.today.modelSummaries.some((m) => m.provider === "codex" && m.model === "unknown"),
+  true,
+);
 
 const pagedRepair = await rebuildUserRollupCounters(db, "test-uid", { pageSize: 1 });
-assert.equal(pagedRepair.usageDocsScanned, 3);
-assert.equal(pagedRepair.pages, 3);
-assert.equal(pagedRepair.winnersWritten, 2);
+assert.equal(pagedRepair.usageDocsScanned, 4);
+assert.equal(pagedRepair.pages, 4);
+assert.equal(pagedRepair.winnersWritten, 3);
 
 function containsUndefined(value) {
   if (Array.isArray(value)) return value.some(containsUndefined);
