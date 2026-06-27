@@ -1112,7 +1112,7 @@ extension HermesSettingsView {
 
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Base URL")
-                    TextField("http://localhost:8642", text: urlBinding)
+                    TextField("http://localhost:8642", text: $gatewayDraftURL)
                         .font(.body)
                         .padding(MobileTheme.Spacing.sm)
                         .background(
@@ -1129,7 +1129,7 @@ extension HermesSettingsView {
 	                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Bearer Token")
                     HStack {
-                        SecureField("API_SERVER_KEY from ~/.hermes/.env", text: tokenBinding)
+                        SecureField("API_SERVER_KEY from ~/.hermes/.env", text: $gatewayDraftToken)
                             .font(.body)
                         Button {
                             showTokenEditor = true
@@ -1151,7 +1151,7 @@ extension HermesSettingsView {
 
 	                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Model Override")
-                    TextField("Leave empty for auto (e.g. gpt-5.5)", text: modelBinding)
+                    TextField("Leave empty for auto (e.g. gpt-5.5)", text: $gatewayDraftModel)
                         .font(.body)
                         .padding(MobileTheme.Spacing.sm)
                         .background(
@@ -1162,6 +1162,38 @@ extension HermesSettingsView {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
+
+                if let gatewaySettingsError {
+                    Label(gatewaySettingsError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    Task { await saveGatewaySettingsFromGatewaySection() }
+                } label: {
+                    HStack(spacing: MobileTheme.Spacing.sm) {
+                        if isSavingGatewaySettings {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        Text(isSavingGatewaySettings ? "Saving Gateway" : "Save Gateway Settings")
+                            .font(.body.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MobileTheme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: MobileTheme.Radius.sm)
+                            .fill(canSaveGatewaySettings ? MobileTheme.ember.opacity(0.16) : MobileTheme.Colors.surfaceElevated.opacity(0.55))
+                            .stroke(canSaveGatewaySettings ? MobileTheme.ember.opacity(0.45) : MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.7)
+                    )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canSaveGatewaySettings ? MobileTheme.ember : MobileTheme.Colors.textMuted)
+                .disabled(!canSaveGatewaySettings)
             }
         }
     }

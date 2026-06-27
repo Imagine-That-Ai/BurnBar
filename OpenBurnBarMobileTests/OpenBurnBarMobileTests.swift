@@ -2559,6 +2559,69 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_macmini")
     }
 
+    func testHermesGatewayModelSwitchCoordinatorPersistsSelectionAfterAcceptedQueue() async {
+        let suiteName = "HermesGatewayModelSwitch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_macmini", displayName: "Mac mini Hermes", lastSeenAt: now)
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+        let service = HermesService(defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+        let switched = await HermesGatewayModelSwitchCoordinator.switchModel(
+            "  glm-5  ",
+            service: service,
+            gatewayStore: store,
+            senderDisplayName: "OpenBurnBar iPhone",
+            threadId: HermesGatewayMessageResolver.defaultThreadID
+        )
+
+        XCTAssertTrue(switched)
+        XCTAssertEqual(service.selectedModelID, "glm-5")
+        XCTAssertEqual(defaults.string(forKey: HermesRuntimeStore.selectedModelDefaultsKey), "glm-5")
+        XCTAssertEqual(repository.enqueuedModelSwitches.last?.modelId, "glm-5")
+        XCTAssertEqual(repository.enqueuedModelSwitches.last?.targetClientId, "hgw_macmini")
+    }
+
+    func testHermesGatewayModelSwitchCoordinatorDoesNotPersistFailedQueue() async {
+        let suiteName = "HermesGatewayModelSwitch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_macmini", displayName: "Mac mini Hermes", lastSeenAt: now)
+        ]
+        repository.modelSwitchError = NSError(
+            domain: "HermesGatewayModelSwitchTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Gateway refused model switch"]
+        )
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+        let service = HermesService(defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+        let switched = await HermesGatewayModelSwitchCoordinator.switchModel(
+            "glm-5",
+            service: service,
+            gatewayStore: store,
+            senderDisplayName: "OpenBurnBar iPhone",
+            threadId: HermesGatewayMessageResolver.defaultThreadID
+        )
+
+        XCTAssertFalse(switched)
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(defaults.string(forKey: HermesRuntimeStore.selectedModelDefaultsKey))
+        XCTAssertTrue(repository.enqueuedModelSwitches.isEmpty)
+        XCTAssertEqual(store.noticeText, "Gateway refused model switch")
+    }
+
     private func hermesGatewayClient(
         id: String? = nil,
         displayName: String = "Hermes Agent",
@@ -4037,6 +4100,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
     private(set) var approvalDecisionEvents: [ApprovalDecisionEvent] = []
     private(set) var approvalGrants: [ApprovalGrant] = []
     var approvalError: Error?
+    var modelSwitchError: Error?
     private var sequence = 0
 
     func approveHermesGatewayDeviceGrant(
@@ -4132,6 +4196,9 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent {
+        if let modelSwitchError {
+            throw modelSwitchError
+        }
         sequence += 1
         enqueuedModelSwitches.append(
             EnqueuedModelSwitch(
