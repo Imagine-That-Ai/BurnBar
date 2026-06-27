@@ -171,6 +171,7 @@ cleanup_drill_database() {
 
 wait_firestore_operation() {
   local operation="$1"
+  local operation_snapshot_path="${2:-}"
   local wait_timeout
   local poll_seconds
   wait_timeout="$(positive_integer_env FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS 14400 604800)"
@@ -178,7 +179,10 @@ wait_firestore_operation() {
   local deadline=$(( $(date +%s) + wait_timeout ))
   while true; do
     local operation_json
-    operation_json="$(gcloud alpha firestore operations describe "$operation" --project="$PROJECT" --format=json)"
+    operation_json="$(describe_firestore_operation_json "$operation")"
+    if [[ -n "$operation_snapshot_path" ]]; then
+      printf '%s\n' "$operation_json" >"$operation_snapshot_path"
+    fi
     local status
     status="$(
       OPERATION_JSON="$operation_json" python3 - <<'PY'
@@ -227,6 +231,21 @@ PY
   done
 }
 
+describe_firestore_operation_json() {
+  local operation="$1"
+  local operation_json
+  if operation_json="$(gcloud firestore operations describe "$operation" --project="$PROJECT" --format=json 2>/dev/null)"; then
+    printf '%s\n' "$operation_json"
+    return 0
+  fi
+  gcloud alpha firestore operations describe "$operation" --project="$PROJECT" --format=json
+}
+
+if [[ "${FIRESTORE_DRILL_VALIDATE_OPERATION_WAIT_ONLY:-0}" == "1" ]]; then
+  wait_firestore_operation "${FIRESTORE_DRILL_OPERATION_NAME:-operations/test}" "$operation_path"
+  exit 0
+fi
+
 cleanup_completed=false
 trap 'if [[ "$cleanup_completed" != "true" ]]; then cleanup_drill_database; fi' EXIT
 
@@ -272,7 +291,7 @@ RESTORE_OPERATION="$(
   node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).name)' "$operation_path"
 )"
 echo "==> wait for ${RESTORE_OPERATION}"
-wait_firestore_operation "$RESTORE_OPERATION"
+wait_firestore_operation "$RESTORE_OPERATION" "$operation_path"
 
 echo "==> capture restored database and indexes"
 gcloud firestore databases describe --database="$RESTORE_DATABASE_ID" \

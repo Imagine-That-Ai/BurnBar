@@ -97,7 +97,8 @@ count_literal_uses() {
       | awk -F: '{sum += $NF} END {print sum + 0}'
   else
     grep -RhoF "$flag" \
-      --include="*.swift" --include="*.kt" --include="*.ts" --include="*.md" \
+      --include="*.swift" --include="*.kt" --include="*.ts" \
+      --include="*.mjs" --include="*.js" --include="*.sh" --include="*.md" \
       "${SEARCH_DIRS[@]}" 2>/dev/null | wc -l | tr -d ' '
   fi
 }

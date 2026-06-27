@@ -98,6 +98,64 @@ run_case 2 no-source-database-backup-fails \
     FIRESTORE_DRILL_BACKUP_LIST_JSON="$backup_list" \
     bash "$script"
 
+fake_bin="$tmp_root/bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/gcloud" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${FAKE_GCLOUD_LOG:?}"
+case "${FAKE_GCLOUD_MODE:-ga-success}:$*" in
+  ga-success:firestore\ operations\ describe*)
+    printf '{"name":"operations/test","done":true,"metadata":{"operationState":"SUCCESS"}}\n'
+    ;;
+  alpha-fallback:firestore\ operations\ describe*)
+    exit 2
+    ;;
+  alpha-fallback:alpha\ firestore\ operations\ describe*)
+    printf '{"name":"operations/test","done":true,"metadata":{"operationState":"SUCCESS","progressPercentage":{"completedWork":1,"estimatedWork":1}}}\n'
+    ;;
+  *)
+    echo "unexpected fake gcloud invocation: $*" >&2
+    exit 2
+    ;;
+esac
+SH
+chmod +x "$fake_bin/gcloud"
+
+operation_evidence="$tmp_root/operation-evidence"
+gcloud_log="$tmp_root/gcloud.log"
+run_case 0 operation-wait-prefers-ga-describe-and-persists-final-json \
+  env PATH="$fake_bin:$PATH" \
+    FAKE_GCLOUD_MODE=ga-success \
+    FAKE_GCLOUD_LOG="$gcloud_log" \
+    FIRESTORE_DRILL_VALIDATE_OPERATION_WAIT_ONLY=1 \
+    FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS=5 \
+    FIRESTORE_DRILL_WAIT_POLL_SECONDS=1 \
+    FIRESTORE_DRILL_EVIDENCE_DIR="$operation_evidence" \
+    FIRESTORE_DRILL_TS=ga \
+    bash "$script"
+if ! grep -q '"done":true' "$operation_evidence/firestore-restore-drill-ga.operation.json"; then
+  fail=$((fail + 1))
+  echo "FAIL: operation wait did not persist final GA operation JSON" >&2
+fi
+
+operation_evidence="$tmp_root/operation-evidence-alpha"
+gcloud_log="$tmp_root/gcloud-alpha.log"
+run_case 0 operation-wait-falls-back-to-alpha-describe \
+  env PATH="$fake_bin:$PATH" \
+    FAKE_GCLOUD_MODE=alpha-fallback \
+    FAKE_GCLOUD_LOG="$gcloud_log" \
+    FIRESTORE_DRILL_VALIDATE_OPERATION_WAIT_ONLY=1 \
+    FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS=5 \
+    FIRESTORE_DRILL_WAIT_POLL_SECONDS=1 \
+    FIRESTORE_DRILL_EVIDENCE_DIR="$operation_evidence" \
+    FIRESTORE_DRILL_TS=alpha \
+    bash "$script"
+if ! grep -q '^alpha firestore operations describe' "$gcloud_log"; then
+  fail=$((fail + 1))
+  echo "FAIL: operation wait did not use alpha fallback after GA describe failure" >&2
+fi
+
 if [[ "$fail" -ne 0 ]]; then
   echo "FAIL: ${fail} Firestore restore-drill timeout validation test(s) failed" >&2
   exit 1

@@ -38,6 +38,10 @@ homebrew_file="$repo_root/homebrew/burnbar.rb"
 homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
+require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+  require_current_homebrew=1
+fi
 if [[ -z "$homebrew_version" ]]; then
   echo "FAIL: Homebrew cask — version not found in $homebrew_file" >&2
   fail=1
@@ -46,7 +50,13 @@ elif [[ "$homebrew_version" == "$expected_version" && "$homebrew_sha" == "$place
   echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
   fail=1
 elif [[ "$homebrew_version" != "$expected_version" ]]; then
-  echo "PASS: Homebrew cask deferred (currently '$homebrew_version'; update after v$expected_version DMG checksum exists)"
+  if [[ "$require_current_homebrew" == "1" ]]; then
+    echo "FAIL: Homebrew cask — expected '$expected_version', found '$homebrew_version' in $homebrew_file" >&2
+    echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
+    fail=1
+  else
+    echo "PASS: Homebrew cask deferred (currently '$homebrew_version'; update after v$expected_version DMG checksum exists)"
+  fi
 else
   echo "PASS: Homebrew cask"
 fi
