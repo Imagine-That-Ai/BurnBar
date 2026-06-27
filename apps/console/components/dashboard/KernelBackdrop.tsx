@@ -8,8 +8,9 @@ import { housePalette } from "@/lib/gl/engine/palette";
 import type { KernelId } from "@/lib/gl/engine/types";
 
 /**
- * The dashboard's deep backdrop: the vendored imaginethat-llc BackdropEngine
- * rendering a full-viewport animated kernel behind the page's glass cards.
+ * The deep backdrop: the vendored imaginethat-llc BackdropEngine rendering a
+ * full-viewport animated kernel behind the page. Used by the dashboard's glass
+ * cards AND, console-wide, by {@link GlobalBackdrop} behind the ink scrim.
  *
  * The engine (a framework-agnostic class) owns the entire runtime — per-slot
  * canvas creation, the rAF clock, DPR sizing, resize/visibility/pointer routing,
@@ -17,15 +18,29 @@ import type { KernelId } from "@/lib/gl/engine/types";
  * (a WebGL2 kernel degrades to the 2D `constellation` when WebGL2 is absent, so
  * the field is never black), and teardown. This component just hands it a host
  * <div> on mount and forwards kernel switches.
+ *
+ * `onResolve` reports the kernel actually shown (post GL-fallback) so callers
+ * (the ink layer) can publish the resolved id + its legibility ink.
  */
 
 // A dark base behind the engine's canvases so the field is never white, even
 // for the (vanishingly rare) no-canvas case. Matches the engine's dark bg.
 const DARK_BASE = toCss(housePalette("dark").bg);
 
-export function KernelBackdrop({ kernelId }: { kernelId: KernelId }) {
+export function KernelBackdrop({
+  kernelId,
+  className,
+  onResolve,
+}: {
+  kernelId: KernelId;
+  className?: string;
+  onResolve?: (id: KernelId) => void;
+}) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const engineRef = React.useRef<BackdropEngine | null>(null);
+  // Hold the latest onResolve so the engine (built once) always calls current.
+  const onResolveRef = React.useRef(onResolve);
+  onResolveRef.current = onResolve;
 
   // Construct the engine once (client-only — it touches window/document).
   React.useEffect(() => {
@@ -34,6 +49,7 @@ export function KernelBackdrop({ kernelId }: { kernelId: KernelId }) {
     const engine = new BackdropEngine(host, {
       theme: "dark",
       initialKernel: kernelId,
+      onResolve: (id) => onResolveRef.current?.(id),
     });
     engineRef.current = engine;
     return () => {
@@ -52,6 +68,7 @@ export function KernelBackdrop({ kernelId }: { kernelId: KernelId }) {
     <div
       ref={hostRef}
       aria-hidden
+      className={className}
       style={{
         position: "fixed",
         inset: 0,

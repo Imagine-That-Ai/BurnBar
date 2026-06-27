@@ -5,6 +5,7 @@ import { CheckCircle2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { PasskeyEnrollmentActions } from "@/components/account/PasskeyEnrollment";
 import { PrivacyPosture } from "@/components/basin/Basin";
+import { KineticHeadline } from "@/components/KineticHeadline";
 import { isFirstRunAccount, usageTotals } from "@/lib/accountStatus";
 import { useAuth } from "@/lib/useAuth";
 import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
@@ -58,15 +59,12 @@ export default function HomePage() {
       {/* ── hero ───────────────────────────────────────────────────────── */}
       <section className="grid gap-token-8 pt-token-4 lg:grid-cols-[1.55fr_1fr]">
         <div className="space-y-token-6">
-          <h1
+          <KineticHeadline
+            as="h1"
+            text="Everything we keep for you — and exactly who can read it."
             className="reveal text-[clamp(2.6rem,7vw,5.25rem)] font-semibold leading-[0.98] tracking-[-0.035em] text-content-bright"
             style={delay(80)}
-          >
-            Everything we keep
-            <br />
-            for you —{" "}
-            <span className="text-content-mute">and exactly who can read it.</span>
-          </h1>
+          />
 
           <blockquote
             className="reveal border-l-2 pl-token-4 epigraph text-xl"
