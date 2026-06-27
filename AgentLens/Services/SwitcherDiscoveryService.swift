@@ -788,6 +788,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
         do {
             let saved = try dataStore.switcherStore.create(record)
+            var aclDeniedMessage: String?
             // Reconnect no longer snapshots the route token itself, so a flaky
             // Keychain can never discard a confirmed login. Snapshot it here,
             // non-fatally: the profile is already saved, so a denial only defers
@@ -798,7 +799,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                     try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: saved)
                 } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
                     if case .accessDenied = snapshotError {
-                        scanErrors.append(snapshotError.localizedDescription)
+                        aclDeniedMessage = snapshotError.localizedDescription
                     }
                 } catch {
                     AppLogger.dataStore.error(
@@ -810,6 +811,9 @@ final class SwitcherDiscoveryService: ObservableObject {
             activateIfFirstProfile(saved.id, dataStore: dataStore)
 
             await scan(dataStore: dataStore)
+            if let aclDeniedMessage {
+                scanErrors.append(aclDeniedMessage)
+            }
             if let index = discoveredIdentities.firstIndex(where: { identity in
                 switch identity.source {
                 case .codex(_, _, _, let accountDescription, let configDirectory):

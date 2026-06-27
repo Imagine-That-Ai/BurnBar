@@ -1462,6 +1462,7 @@ struct ConnectionsSettingsView: View {
                     cliType: account.cliType
                 )
                 _ = try dataStore.switcherStore.update(refreshed)
+                var captureMessage: String?
                 // Reconnect no longer snapshots the route token itself (a flaky
                 // Keychain must never discard a confirmed re-auth). Snapshot it
                 // here, non-fatally: the profile is already saved, so a denial
@@ -1472,7 +1473,7 @@ struct ConnectionsSettingsView: View {
                         try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: refreshed)
                     } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
                         if case .accessDenied = snapshotError {
-                            externalCredentialMessages[account.id] = snapshotError.localizedDescription
+                            captureMessage = snapshotError.localizedDescription
                         }
                     } catch {
                         AppLogger.shared.error(
@@ -1493,7 +1494,7 @@ struct ConnectionsSettingsView: View {
                 // unconditionally promising quota that some accounts never
                 // expose.
                 refreshExternalAuthStates()
-                externalCredentialMessages[account.id] = refreshConfirmationMessage(for: account)
+                externalCredentialMessages[account.id] = captureMessage ?? refreshConfirmationMessage(for: account)
             } catch {
                 externalCredentialMessages[account.id] = "Failed to save refreshed credential: \(error.localizedDescription)"
             }
