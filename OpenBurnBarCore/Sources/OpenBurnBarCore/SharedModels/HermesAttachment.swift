@@ -127,5 +127,6 @@ public enum HermesAttachmentLimits {
     public static let maxTextDocumentBytes = 2 * 1024 * 1024    // 2 MB total accepted
     public static let maxAudioBytes = 25 * 1024 * 1024          // 25 MB
     public static let maxGenericBytes = 200 * 1024 * 1024       // 200 MB workspace ref
+    public static let maxInlineRequestBytes = 32 * 1024 * 1024  // 32 MB loaded into memory per send
     public static let textPreviewBytes = 4 * 1024               // 4 KB shown on chip
 }

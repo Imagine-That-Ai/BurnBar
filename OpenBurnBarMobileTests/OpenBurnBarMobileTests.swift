@@ -228,7 +228,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(AssistantPendingThread.shared.consume(.pi), "pi-thread")
     }
 
-    func testBurnBarGatewayReplyStoresExactHermesThreadForDeepLink() throws {
+    func testBurnBarGatewayReplyStoresAuthoritativeHermesThreadForDeepLink() throws {
         let local = InMemoryMobileChatLocalStore()
         let history = MobileChatHistoryStore(local: local, cloud: nil)
         let defaultsName = "HermesGatewayReplyThread.\(UUID().uuidString)"
@@ -236,22 +236,24 @@ final class OpenBurnBarMobileTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: defaultsName) }
 
         let service = HermesService(defaults: defaults, history: history)
-        let threadID = "burnbar-ios-e2e-\(UUID().uuidString)"
+        let selectedThreadID = "burnbar-ios-e2e-\(UUID().uuidString)"
+        let replyThreadID = "reply-thread-\(UUID().uuidString)"
         let reply = try XCTUnwrap(hermesGatewayMessage(
             id: "msg_gateway_reply",
-            threadId: threadID,
+            threadId: replyThreadID,
             text: "Gateway online — Hermes is back and ready.",
             createdAt: "2026-06-06T20:19:50.000Z"
         ))
 
         service.recordBurnBarGatewayReply(
             reply,
-            threadID: "fallback-thread",
+            threadID: selectedThreadID,
             modelID: "minimax/abab6.5-chat",
             modelName: "MiniMax"
         )
 
-        let stored = try XCTUnwrap(history.thread(id: threadID))
+        let stored = try XCTUnwrap(history.thread(id: selectedThreadID))
+        XCTAssertNil(history.thread(id: replyThreadID))
         XCTAssertEqual(stored.runtime, AssistantRuntimeID.hermes.rawValue)
         XCTAssertEqual(stored.preview, "Gateway online — Hermes is back and ready.")
         XCTAssertEqual(stored.modelName, "MiniMax")

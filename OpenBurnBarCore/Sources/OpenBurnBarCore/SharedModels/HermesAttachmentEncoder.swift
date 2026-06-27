@@ -166,6 +166,24 @@ public enum HermesAttachmentEncoder {
         return output
     }
 
+    public static func shouldLoadAttachmentBytes(
+        for attachment: HermesAttachment,
+        capabilities: HermesBackendCapabilities = .default
+    ) -> Bool {
+        switch attachment.kind {
+        case .image:
+            return canInlineImage(attachment, capabilities: capabilities)
+        case .pdf:
+            return canInlinePDF(attachment, capabilities: capabilities)
+        case .audio:
+            return canInlineAudio(attachment, capabilities: capabilities)
+        case .textDocument:
+            return true
+        case .video, .generic:
+            return false
+        }
+    }
+
     private static func encodeParts(
         message: Message,
         capabilities: HermesBackendCapabilities,

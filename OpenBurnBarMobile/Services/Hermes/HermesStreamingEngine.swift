@@ -723,12 +723,14 @@ final class HermesStreamingEngine {
 
     private func completionRequestBody(coordinator: HermesStreamingCoordinating, context: String?) throws -> Data {
         let model = try coordinator.activeModelIDForRequest()
+        let capabilities = backendCapabilities(coordinator: coordinator, for: model)
+        var inlineAttachmentBytesUsed = 0
 
         // Build encoder messages from history. We load attachment bytes for
-        // each user message that carries attachments so the encoder can emit
-        // image_url / input_audio parts inline.
+        // user attachments only when the encoder can inline them. Workspace-
+        // reference-only kinds stay as metadata, avoiding large Data reads.
         let workspaceURL = HermesAttachmentWorkspace.attachmentsRootIfReady
-        let encoderMessages: [HermesAttachmentEncoder.Message] = coordinator.messages.compactMap { message in
+        let encoderMessages: [HermesAttachmentEncoder.Message] = try coordinator.messages.compactMap { message in
             let content = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
             // Tool replies have an empty `text` only when something went
             // wrong upstream; keep them out of the wire payload. Assistant
@@ -753,10 +755,25 @@ final class HermesStreamingEngine {
             var bytesByID: [String: Data] = [:]
             if message.role == .user, !message.attachments.isEmpty, let workspaceURL {
                 for attachment in message.attachments {
+                    guard HermesAttachmentEncoder.shouldLoadAttachmentBytes(
+                        for: attachment,
+                        capabilities: capabilities
+                    ) else {
+                        continue
+                    }
+                    try Self.reserveInlineAttachmentBytes(
+                        attachment.byteSize,
+                        used: &inlineAttachmentBytesUsed
+                    )
                     if let data = HermesAttachmentWorkspace.loadBytes(
                         for: attachment,
                         in: workspaceURL
                     ) {
+                        let actualByteDelta = max(0, data.count - max(0, attachment.byteSize))
+                        try Self.reserveInlineAttachmentBytes(
+                            actualByteDelta,
+                            used: &inlineAttachmentBytesUsed
+                        )
                         bytesByID[attachment.id] = data
                     }
                 }
@@ -798,7 +815,7 @@ final class HermesStreamingEngine {
         let requestMessages = HermesAttachmentEncoder.encodeMessages(
             systemPrompt: systemPrompt,
             messages: encoderMessages,
-            capabilities: backendCapabilities(coordinator: coordinator, for: model),
+            capabilities: capabilities,
             workspaceAbsolutePath: { att in
                 guard let workspaceForRefs else { return att.workspaceRelativePath }
                 return workspaceForRefs.appendingPathComponent(att.workspaceRelativePath).path
@@ -836,6 +853,18 @@ final class HermesStreamingEngine {
             payload["plugins"] = plugins
         }
         return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private static func reserveInlineAttachmentBytes(_ byteCount: Int, used: inout Int) throws {
+        let safeByteCount = max(0, byteCount)
+        let remaining = max(0, HermesAttachmentLimits.maxInlineRequestBytes - used)
+        guard safeByteCount <= remaining else {
+            let limit = HermesAttachmentEncoder.formatBytes(HermesAttachmentLimits.maxInlineRequestBytes)
+            throw HermesServiceError.relayUnavailable(
+                "Selected attachments are too large to send inline together. Send fewer attachments at once, or keep large files as workspace references. Limit: \(limit)."
+            )
+        }
+        used += safeByteCount
     }
 
     /// Capability hints used by the encoder. Defaults to vision-on,
