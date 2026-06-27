@@ -831,11 +831,11 @@ struct HermesSquareLeftColumn: View {
     }
 
     private func autoPinPairedMacIfNeeded(peer: MercuryPeer?) {
-        guard mercuryPinnedTileEnabled, let peer else { return }
-        let uri = "\(AgentIdentityRegistry.pairedMacURIPrefix)\(peer.connectionID)"
+        guard mercuryPinnedTileEnabled else { return }
         let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        guard !grid.pinnedURIs.contains(uri) else { return }
-        pinnedJSON = grid.pinningPairedMac(uri).jsonString()
+        let updated = PairedMacAutoPinPolicy.pinningPeerIfEligible(peer, in: grid)
+        guard updated != grid else { return }
+        pinnedJSON = updated.jsonString()
     }
 
     private func recordApprovalPolicy(_ ask: MissionConsoleApprovalAsk, decision: ApprovalPolicy.Decision) {

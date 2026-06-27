@@ -292,3 +292,35 @@ final class AgentIdentityRegistry {
         UserDefaults.standard.set(data, forKey: userInstallsKey)
     }
 }
+
+enum PairedMacAutoPinPolicy {
+    static let legacyFallbackConnectionID = "paired-mac:default"
+    static let pairedMacURIPrefix = "device://paired-mac/"
+
+    static func isResolvedConnectionID(_ connectionID: String) -> Bool {
+        let trimmed = connectionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != legacyFallbackConnectionID
+    }
+
+    static func shouldAutoPin(peer: MercuryPeer?) -> Bool {
+        guard let peer, peer.isOnline else {
+            return false
+        }
+        return isResolvedConnectionID(peer.connectionID)
+    }
+
+    static func pinningPeerIfEligible(
+        _ peer: MercuryPeer?,
+        in grid: PinnedAgentGridConfig,
+        pairedMacPrefix: String = pairedMacURIPrefix
+    ) -> PinnedAgentGridConfig {
+        guard let peer, shouldAutoPin(peer: peer) else {
+            return grid
+        }
+        let uri = "\(pairedMacPrefix)\(peer.connectionID)"
+        guard !grid.pinnedURIs.contains(uri) else {
+            return grid
+        }
+        return grid.pinningPairedMac(uri, pairedMacPrefix: pairedMacPrefix)
+    }
+}
