@@ -1184,6 +1184,7 @@ function sealedMissionGroup(ownerUid, id, width, overrides = {}) {
     childMissionIDs,
     runtimeTokens: childMissionIDs.map((childID) => `runtime:${childID}`),
     parallelismLimit: width,
+    source: "ios-insights",
     mergeStrategy: "keep_all",
     phase: "queued",
     createdAt: serverTimestamp(),
@@ -2965,7 +2966,7 @@ test("owners can publish smart display config and complete setup actions", async
 
   const displayConfig = {
     layout: "quotaCarousel",
-    palette: "emberWhimsy",
+    palette: "rainbow",
     theme: "warmCharcoal",
     background: "dashboard",
     brightness: 0.85,
@@ -2982,7 +2983,7 @@ test("owners can publish smart display config and complete setup actions", async
     host: "192.168.68.92",
     port: 80,
     layout: "providerDashboard",
-    palette: "emberWhimsy",
+    palette: "rainbow",
     timePeriod: "rolling5h",
     workingSpinnerStyle: "scan",
     workingSpinnerPrimaryHex: "#52D6FF",
@@ -5074,15 +5075,15 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   );
 });
 
-// T18 — knowledge_repos: opaque keyed repoMatchToken + canonical
-// sourceManifestId + sealed name accepted; every cleartext/deprecated repo
-// identity (repoFullName / sourcePath / sourceSlug / sourceSlugToken) rejected;
-// non-opaque tokens + smuggled keys rejected; cross-user denied.
+// T18 — knowledge_repos: server-owned opaque keyed repoMatchToken + canonical
+// sourceManifestId + sealed name are owner-readable; direct client writes,
+// cleartext/deprecated repo identity fields, smuggled keys, and cross-user
+// access are denied.
 // knowledge_sync_manifests is server-only (allow write: if false) and
 // owner-read. (L40 — the connectKnowledgeRepo callable now persists the
 // canonical opaque sourceManifestId instead of the transitional sourceSlugToken
 // or reversible cleartext slug; these rules tests pin the on-disk contract.)
-test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity + cross-user", async () => {
+test("T18 knowledge_repos are server-owned, owner-readable, and reject cleartext repo identity", async () => {
   const ownerUid = "kr-owner";
   const otherUid = "kr-intruder";
   const db = authedDb(ownerUid);
@@ -5100,9 +5101,12 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
     schemaVersion: 1,
   };
 
-  // Opaque-only shape (keyed match token + manifest token + sealed name) accepted.
-  await assertSucceeds(setDoc(doc(db, repoPath), base));
-  // Owner can read its own row.
+  // Direct client writes are denied even for the canonical opaque-only shape.
+  await assertFails(setDoc(doc(db, repoPath), base));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), repoPath), base);
+  });
+  // Owner can read its server-seeded row.
   await assertSucceeds(getDoc(doc(db, repoPath)));
 
   // Every cleartext repo-identity field is rejected by the allowlist + ban.
@@ -5167,6 +5171,22 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   const db = authedDb(ownerUid);
   const timestamp = Timestamp.fromDate(new Date("2026-06-04T00:00:00.000Z"));
   const sourceRefHmac = "a".repeat(64);
+  const factIds = {
+    noEntitlement: "1".repeat(64),
+    cloudOnly: "2".repeat(64),
+    ok: "3".repeat(64),
+    playCloudProOk: "4".repeat(64),
+    ultraOk: "5".repeat(64),
+    plaintextSource: "6".repeat(64),
+    uppercaseSource: "7".repeat(64),
+    objectSource: "8".repeat(64),
+    tooManySources: "9".repeat(64),
+  };
+  const receiptIds = {
+    factOk: "c".repeat(64),
+    plaintextSource: "d".repeat(64),
+    sourceOk: "e".repeat(64),
+  };
 
   const memoryFactFor = (uid, docID, overrides = {}) => ({
     uid,
@@ -5186,24 +5206,24 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   const memoryFact = (docID, overrides = {}) => memoryFactFor(ownerUid, docID, overrides);
 
   await assertFails(
-    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-no-entitlement`), memoryFact("fact-no-entitlement"))
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/${factIds.noEntitlement}`), memoryFact(factIds.noEntitlement))
   );
   await seedHostedCloudEntitlement(ownerUid);
   await assertFails(
-    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-cloud-only`), memoryFact("fact-cloud-only"))
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/${factIds.cloudOnly}`), memoryFact(factIds.cloudOnly))
   );
   await seedBurnBarProMaxEntitlement(ownerUid);
 
   await assertSucceeds(
-    setDoc(doc(db, `users/${ownerUid}/memory_facts/fact-ok`), memoryFact("fact-ok"))
+    setDoc(doc(db, `users/${ownerUid}/memory_facts/${factIds.ok}`), memoryFact(factIds.ok))
   );
   const googlePlayCloudProUid = "memory-play-cloud-pro-owner";
   const googlePlayCloudProDb = authedDb(googlePlayCloudProUid);
   await seedBurnBarProMaxEntitlement(googlePlayCloudProUid, "com.openburnbar.promax.v2.monthly");
   await assertSucceeds(
     setDoc(
-      doc(googlePlayCloudProDb, `users/${googlePlayCloudProUid}/memory_facts/fact-play-cloud-pro-ok`),
-      memoryFactFor(googlePlayCloudProUid, "fact-play-cloud-pro-ok")
+      doc(googlePlayCloudProDb, `users/${googlePlayCloudProUid}/memory_facts/${factIds.playCloudProOk}`),
+      memoryFactFor(googlePlayCloudProUid, factIds.playCloudProOk)
     )
   );
   const ultraUid = "memory-ultra-owner";
@@ -5211,14 +5231,14 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   await seedBurnBarUltraEntitlement(ultraUid);
   await assertSucceeds(
     setDoc(
-      doc(ultraDb, `users/${ultraUid}/memory_facts/fact-ultra-ok`),
-      memoryFactFor(ultraUid, "fact-ultra-ok")
+      doc(ultraDb, `users/${ultraUid}/memory_facts/${factIds.ultraOk}`),
+      memoryFactFor(ultraUid, factIds.ultraOk)
     )
   );
   await assertFails(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_facts/fact-plaintext-source`),
-      memoryFact("fact-plaintext-source", {
+      doc(db, `users/${ownerUid}/memory_facts/${factIds.plaintextSource}`),
+      memoryFact(factIds.plaintextSource, {
         sourceRefHmacs: [sourceRefHmac, "thread/message/plaintext"],
         citationCount: 2,
       })
@@ -5226,24 +5246,24 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
   );
   await assertFails(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_facts/fact-uppercase-source`),
-      memoryFact("fact-uppercase-source", {
+      doc(db, `users/${ownerUid}/memory_facts/${factIds.uppercaseSource}`),
+      memoryFact(factIds.uppercaseSource, {
         sourceRefHmacs: ["A".repeat(64)],
       })
     )
   );
   await assertFails(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_facts/fact-object-source`),
-      memoryFact("fact-object-source", {
+      doc(db, `users/${ownerUid}/memory_facts/${factIds.objectSource}`),
+      memoryFact(factIds.objectSource, {
         sourceRefHmacs: [{ plaintext: "message-id" }],
       })
     )
   );
   await assertFails(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_facts/fact-too-many-sources`),
-      memoryFact("fact-too-many-sources", {
+      doc(db, `users/${ownerUid}/memory_facts/${factIds.tooManySources}`),
+      memoryFact(factIds.tooManySources, {
         sourceRefHmacs: Array.from({ length: 51 }, (_, index) => (index % 10).toString().repeat(64)),
         citationCount: 50,
       })
@@ -5264,23 +5284,23 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
 
   await assertSucceeds(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-fact-ok`),
-      factReceipt("receipt-fact-ok")
+      doc(db, `users/${ownerUid}/memory_forget_receipts/${receiptIds.factOk}`),
+      factReceipt(receiptIds.factOk)
     )
   );
   await assertFails(
     setDoc(
-      doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-fact-plaintext-source`),
-      factReceipt("receipt-fact-plaintext-source", {
+      doc(db, `users/${ownerUid}/memory_forget_receipts/${receiptIds.plaintextSource}`),
+      factReceipt(receiptIds.plaintextSource, {
         sourceRefHmacs: [sourceRefHmac, "thread/message/plaintext"],
       })
     )
   );
 
   await assertSucceeds(
-    setDoc(doc(db, `users/${ownerUid}/memory_forget_receipts/receipt-source-ok`), {
+    setDoc(doc(db, `users/${ownerUid}/memory_forget_receipts/${receiptIds.sourceOk}`), {
       uid: ownerUid,
-      receiptID: "receipt-source-ok",
+      receiptID: receiptIds.sourceOk,
       schemaVersion: 1,
       sourceRefHmac,
       reason: "clear_history",
