@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
-import { DEFAULT_KERNEL_ID, KERNEL_SPECS } from "@/lib/gl/kernels";
+import { KERNEL_META } from "@/lib/gl/engine/registry";
 import type { CardProps } from "./cardTypes";
 import type { GridRect } from "./gridMath";
 import {
@@ -162,7 +162,7 @@ export function isCardId(value: unknown): value is CardId {
 }
 
 export const KERNEL_ID_SET: ReadonlySet<string> = new Set(
-  KERNEL_SPECS.map((k) => k.id),
+  KERNEL_META.map((k) => k.id),
 );
 
 /** A sensible starting board — all cards, no overlaps, in a 12-col grid. */
@@ -179,8 +179,11 @@ export const DEFAULT_DASHBOARD_ITEMS: DashboardLayoutItem[] = [
   { cardId: "formation", rect: { x: 6, y: 9, w: 6, h: 3 } },
 ];
 
+// The console default is a self-contained WebGL2 field (no glyph swarm needed).
+// The engine's own DEFAULT_KERNEL_ID (constellation, 2D) remains the hard
+// fallback when WebGL2 is unavailable — see resolveRenderableKernelId.
 export const DEFAULT_APPEARANCE: DashboardAppearance = {
-  kernelId: DEFAULT_KERNEL_ID,
+  kernelId: "fluid-aurora",
   frost: 0.5,
 };
 

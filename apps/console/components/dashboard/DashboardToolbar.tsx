@@ -3,7 +3,8 @@
 import * as React from "react";
 import { Check, Pencil, Plus, RotateCcw, RotateCw, Sparkles } from "lucide-react";
 
-import { KERNEL_SPECS, type KernelId } from "@/lib/gl/kernels";
+import { KERNEL_META } from "@/lib/gl/engine/registry";
+import type { KernelId } from "@/lib/gl/engine/types";
 import { USAGE_WINDOWS, type UsageWindowKey } from "@/lib/usage";
 import { Button } from "@/components/ui/button";
 import {
@@ -172,35 +173,7 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div>
-            <span className="eyebrow">Backdrop</span>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {KERNEL_SPECS.map((spec) => {
-                const active = props.kernelId === spec.id;
-                return (
-                  <button
-                    key={spec.id}
-                    type="button"
-                    onClick={() => props.setKernel(spec.id)}
-                    aria-pressed={active}
-                    className="flex items-center gap-token-2 rounded-md p-token-2 text-left text-sm transition-colors hover:bg-mercury-wash"
-                    style={{
-                      border: active ? "1px solid var(--accent)" : "1px solid var(--color-glass-line)",
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      className="size-6 shrink-0 rounded-md"
-                      style={{
-                        background: `linear-gradient(135deg, ${spec.palette.accents[1]}, ${spec.palette.accents[2]} 60%, ${spec.palette.accents[3]})`,
-                      }}
-                    />
-                    <span className="truncate text-content-base">{spec.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <KernelPicker kernelId={props.kernelId} setKernel={props.setKernel} />
 
           <div className="mt-token-2">
             <label htmlFor="lg-frost" className="eyebrow">
@@ -225,6 +198,82 @@ export function DashboardToolbar(props: DashboardToolbarProps) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** A stable, varied gradient swatch per kernel id (the engine has no per-kernel palette). */
+function kernelSwatch(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const a = h % 360;
+  const b = (a + 42) % 360;
+  const c = (a + 200) % 360;
+  return `linear-gradient(135deg, hsl(${a} 72% 56%), hsl(${b} 70% 50%) 55%, hsl(${c} 64% 46%))`;
+}
+
+function KernelPicker({
+  kernelId,
+  setKernel,
+}: {
+  kernelId: KernelId;
+  setKernel: (id: KernelId) => void;
+}) {
+  const [q, setQ] = React.useState("");
+  const query = q.trim().toLowerCase();
+  const list = query
+    ? KERNEL_META.filter(
+        (k) =>
+          k.label.toLowerCase().includes(query) || k.blurb.toLowerCase().includes(query),
+      )
+    : KERNEL_META;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className="eyebrow">Backdrop</span>
+        <span className="font-mono text-[0.6rem] text-content-dim">
+          {KERNEL_META.length} kernels
+        </span>
+      </div>
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search backdrops…"
+        aria-label="Search backdrops"
+        className="mt-2 w-full rounded-md bg-mercury-wash px-token-3 py-1.5 text-sm text-content-base outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+        style={{ border: "1px solid var(--color-glass-line)" }}
+      />
+      <div className="mt-2 grid max-h-[44vh] grid-cols-2 gap-2 overflow-y-auto pr-1">
+        {list.map((k) => {
+          const active = kernelId === k.id;
+          return (
+            <button
+              key={k.id}
+              type="button"
+              onClick={() => setKernel(k.id)}
+              aria-pressed={active}
+              title={k.blurb}
+              className="flex items-center gap-token-2 rounded-md p-token-2 text-left text-sm transition-colors hover:bg-mercury-wash"
+              style={{
+                border: active ? "1px solid var(--accent)" : "1px solid var(--color-glass-line)",
+              }}
+            >
+              <span
+                aria-hidden
+                className="size-6 shrink-0 rounded-md"
+                style={{ background: kernelSwatch(k.id) }}
+              />
+              <span className="min-w-0 truncate text-content-base">{k.label}</span>
+            </button>
+          );
+        })}
+        {list.length === 0 && (
+          <p className="col-span-2 py-4 text-center text-sm text-content-dim">
+            No backdrops match.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
