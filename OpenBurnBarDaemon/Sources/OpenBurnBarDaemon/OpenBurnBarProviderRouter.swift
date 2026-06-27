@@ -1569,57 +1569,14 @@ extension BurnBarProviderRouter {
         // before composite score: soonest active reset wins, then highest
         // remaining percent, then the normal score/LRU/deterministic ties.
         let rankingNow = Date()
-        rankedRoutes.sort { lhs, rhs in
-            if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaDrain(
-                lhsReset: lhs.quotaResetsAt,
-                lhsRemainingPercent: lhs.quotaRemainingPercent,
-                rhsReset: rhs.quotaResetsAt,
-                rhsRemainingPercent: rhs.quotaRemainingPercent,
-                now: rankingNow
-               ) {
-                return quotaOrder.ordered
-            }
-            let lhsScore = rankedCompositeScore(
-                lhs,
-                routerMode: effectiveRouterMode,
-                taskCategory: taskCategory,
-                benchmarkIndex: benchmarkIndex
-            )
-            let rhsScore = rankedCompositeScore(
-                rhs,
-                routerMode: effectiveRouterMode,
-                taskCategory: taskCategory,
-                benchmarkIndex: benchmarkIndex
-            )
-            if lhsScore != rhsScore {
-                return lhsScore > rhsScore
-            }
-            // Deterministic tie-break: providerID asc, slotID asc (nil = "legacy" first)
-            let lhsProvider = lhs.breakdown.providerID
-            let rhsProvider = rhs.breakdown.providerID
-            if lhsProvider != rhsProvider {
-                return lhsProvider < rhsProvider
-            }
-            if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaDrain(
-                lhsReset: lhs.quotaResetsAt,
-                lhsRemainingPercent: lhs.quotaRemainingPercent,
-                rhsReset: rhs.quotaResetsAt,
-                rhsRemainingPercent: rhs.quotaRemainingPercent,
-                now: rankingNow
-            ) {
-                return quotaOrder.ordered
-            }
-            let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
-            let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
-            if lhsLastSelected != rhsLastSelected {
-                return lhsLastSelected < rhsLastSelected
-            }
-            let lhsSlot = lhs.breakdown.slotID ?? "legacy"
-            let rhsSlot = rhs.breakdown.slotID ?? "legacy"
-            return lhsSlot < rhsSlot
-        }
+        rankedRoutes = rankRoutesWithStrictQuotaDrainPools(
+            rankedRoutes,
+            routerMode: effectiveRouterMode,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex,
+            slotInfoMap: slotInfoMap,
+            now: rankingNow
+        )
 
         rankedRoutes = restrictFailoverToMatchingEndpointProfile(rankedRoutes)
 
@@ -1693,47 +1650,14 @@ extension BurnBarProviderRouter {
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask([])
         let rankingNow = Date()
-        ranked.sort { lhs, rhs in
-            if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaDrain(
-                lhsReset: lhs.quotaResetsAt,
-                lhsRemainingPercent: lhs.quotaRemainingPercent,
-                rhsReset: rhs.quotaResetsAt,
-                rhsRemainingPercent: rhs.quotaRemainingPercent,
-                now: rankingNow
-               ) {
-                return quotaOrder.ordered
-            }
-            let lhsScore = rankedCompositeScore(
-                lhs,
-                routerMode: .providerFamilyFailover,
-                taskCategory: taskCategory,
-                benchmarkIndex: benchmarkIndex
-            )
-            let rhsScore = rankedCompositeScore(
-                rhs,
-                routerMode: .providerFamilyFailover,
-                taskCategory: taskCategory,
-                benchmarkIndex: benchmarkIndex
-            )
-            if lhsScore != rhsScore {
-                return lhsScore > rhsScore
-            }
-            if lhs.route.providerID != rhs.route.providerID {
-                return lhs.route.providerID < rhs.route.providerID
-            }
-            if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaDrain(
-                lhsReset: lhs.quotaResetsAt,
-                lhsRemainingPercent: lhs.quotaRemainingPercent,
-                rhsReset: rhs.quotaResetsAt,
-                rhsRemainingPercent: rhs.quotaRemainingPercent,
-                now: rankingNow
-            ) {
-                return quotaOrder.ordered
-            }
-            return (lhs.route.credentialSlotID ?? "legacy") < (rhs.route.credentialSlotID ?? "legacy")
-        }
+        ranked = rankRoutesWithStrictQuotaDrainPools(
+            ranked,
+            routerMode: .providerFamilyFailover,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex,
+            slotInfoMap: slotInfoMap,
+            now: rankingNow
+        )
 
         return Array(ranked.prefix(policy.maxCandidates))
     }
@@ -1950,7 +1874,7 @@ extension BurnBarProviderRouter {
         }
     }
 
-    private func rankedCompositeScore(
+    func rankedCompositeScore(
         _ rankedRoute: BurnBarRankedRoute,
         routerMode: ProviderRouterMode,
         taskCategory: ProviderRoutingTaskCategory,

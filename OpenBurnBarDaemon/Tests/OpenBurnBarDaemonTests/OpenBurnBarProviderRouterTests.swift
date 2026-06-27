@@ -1495,6 +1495,95 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertFalse(event.explanation.contains("utilization:"))
     }
 
+    func testRouterRanksQuotaDrainPoolsWithoutPairwiseCycles() async throws {
+        let harness = try makeHarness(name: "slot-quota-strict-pool-ordering", catalog: exactSameModelFailoverCatalog())
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["gpt-5.4"],
+                preferredCredentialSlotID: "slot-alpha-later"
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-gpt-5.4"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "slot-alpha-later",
+            label: "Alpha Later",
+            apiKey: "alpha-key-later"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "slot-alpha-sooner",
+            label: "Alpha Sooner",
+            apiKey: "alpha-key-sooner"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "beta",
+            slotID: "slot-beta",
+            label: "Beta",
+            apiKey: "beta-key"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "alpha",
+            slotID: "slot-alpha-later",
+            remainingPercent: 95,
+            resetsAt: now.addingTimeInterval(6 * 60 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "alpha",
+            slotID: "slot-alpha-sooner",
+            remainingPercent: 20,
+            resetsAt: now.addingTimeInterval(5 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "beta",
+            slotID: "slot-beta",
+            remainingPercent: 90,
+            resetsAt: now.addingTimeInterval(30 * 60),
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "gpt-5.4",
+            requiredCanonicalModelID: "gpt-5.4",
+            routerMode: .sameModelFailover
+        )
+        let routeIDs = ranking.rankedRoutes.map { rankedRoute in
+            "\(rankedRoute.route.providerID):\(rankedRoute.route.credentialSlotID ?? "legacy")"
+        }
+
+        XCTAssertEqual(routeIDs, [
+            "alpha:slot-alpha-sooner",
+            "alpha:slot-alpha-later",
+            "beta:slot-beta"
+        ])
+
+        for _ in 0..<10 {
+            let rerun = try await harness.router.scoreAndRankRoutes(
+                modelName: "gpt-5.4",
+                requiredCanonicalModelID: "gpt-5.4",
+                routerMode: .sameModelFailover
+            )
+            XCTAssertEqual(
+                rerun.rankedRoutes.map { "\($0.route.providerID):\($0.route.credentialSlotID ?? "legacy")" },
+                routeIDs
+            )
+        }
+    }
+
     func testRouterDoesNotDrainQuotaAcrossEndpointProfiles() async throws {
         let harness = try makeHarness(name: "slot-quota-reset-profile-boundary")
         _ = try await harness.configStore.upsertProvider(
