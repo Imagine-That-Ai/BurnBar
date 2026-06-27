@@ -38,7 +38,7 @@
     },
     {
       "name": "transport-non-ascii-nfc-clientId",
-      "_comment": "clientId carries U+00E9 (é) as the PRECOMPOSED single code point (NFC). The Swift+Android suites also feed the DECOMPOSED form (e + U+0301) at runtime and assert it normalizes to this same expectedAAD.",
+      "_comment": "clientId carries U+00E9 (é) as the PRECOMPOSED single code point (NFC). The Swift+Android suites also feed the DECOMPOSED form (e + U+0301) at runtime and assert it fails closed rather than collapsing to this same expectedAAD.",
       "binding": {
         "uid": "uid-1",
         "scope": "gateway",

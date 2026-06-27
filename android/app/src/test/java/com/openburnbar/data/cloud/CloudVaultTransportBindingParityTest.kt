@@ -15,7 +15,7 @@ import org.junit.Test
  * `CloudVaultCryptoTest.signalBindingToAadMatchesCanonicalGrammarAndRejectsInjection`). If
  * `CloudVaultCryptoSupport.bindingToAAD` drifts from the TypeScript/Swift canonicalizer by a single
  * byte, one of these assertions fails. Unicode is written with explicit escapes so the source
- * encoding cannot perturb the NFC/NFD bytes under test.
+ * encoding cannot perturb the NFC/non-NFC bytes under test.
  */
 class CloudVaultTransportBindingParityTest {
     private val full =
@@ -66,19 +66,17 @@ class CloudVaultTransportBindingParityTest {
     }
 
     @Test
-    fun nfdClientIdNormalizesToTheSameAadAsNfc() {
+    fun nfdClientIdFailsClosedInsteadOfCollapsingToTheNfcAad() {
         // clientId "café-client": PRECOMPOSED (NFC, U+00E9) vs DECOMPOSED (NFD, e + U+0301)
-        // must canonicalize to the byte-identical AAD, matching the TypeScript .normalize("NFC").
+        // must not canonicalize to the byte-identical AAD; the non-NFC form is rejected.
         val nfc = full.copy(clientId = "caf\u00e9-client")
         val nfd = full.copy(clientId = "cafe\u0301-client")
         assertEquals(
             "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|caf\u00e9-client||||event-1|1",
             CloudVaultCryptoSupport.bindingToAAD(nfc),
         )
-        assertEquals(
-            CloudVaultCryptoSupport.bindingToAAD(nfc),
-            CloudVaultCryptoSupport.bindingToAAD(nfd),
-        )
+        val error = assertThrows(IllegalArgumentException::class.java) { CloudVaultCryptoSupport.bindingToAAD(nfd) }
+        assertEquals("Signal envelope binding segment must be NFC-normalized", error.message)
     }
 
     @Test

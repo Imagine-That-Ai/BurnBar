@@ -129,12 +129,10 @@ final class SignalEnvelopeAADTests: XCTestCase {
     }
 
     /// Cross-platform Unicode parity: a uid supplied DECOMPOSED (NFD: `e` +
-    /// U+0301) canonicalizes to the byte-identical AAD as the PRECOMPOSED form
-    /// (NFC: U+00E9) the shared fixture stores, byte-for-byte matching the
-    /// TypeScript `.normalize("NFC")`. Without this a Swift-sealed and a
-    /// Node-sealed ciphertext for the same logical uid would carry divergent
-    /// UTF-8 AAD and fail to open. ASCII vectors are NFC-stable (verified).
-    func test_nfdNormalizesToTheSameAADAsNFC() throws {
+    /// U+0301) must fail closed instead of canonicalizing to the same AAD as the
+    /// PRECOMPOSED form (NFC: U+00E9). This keeps the AAD mapping injective over
+    /// raw identifier bytes. ASCII vectors are NFC-stable (verified).
+    func test_rejectsNonNFCUIDInsteadOfCollapsingItToTheNFCAAD() throws {
         let fixture = try loadFixture()
         let nfcVector = try XCTUnwrap(
             fixture.vectors.first { $0.name == "non-ascii-nfc-uid" },
@@ -156,13 +154,13 @@ final class SignalEnvelopeAADTests: XCTestCase {
         nfdBinding.uid = nfdUid
         let nfcBinding = try nfcVector.binding.toBinding()
 
-        let nfdAAD = try signalEnvelopeBindingToAAD(nfdBinding)
-        XCTAssertEqual(nfdAAD, nfcVector.expectedAAD, "NFD uid must canonicalize to the NFC expectedAAD")
-        XCTAssertEqual(
-            Array(nfdAAD.utf8),
-            Array(try signalEnvelopeBindingToAAD(nfcBinding).utf8),
-            "NFD and NFC bindings must produce byte-identical AAD"
-        )
+        XCTAssertEqual(try signalEnvelopeBindingToAAD(nfcBinding), nfcVector.expectedAAD, "NFC uid must remain accepted")
+        XCTAssertThrowsError(try signalEnvelopeBindingToAAD(nfdBinding)) { error in
+            XCTAssertEqual(
+                error as? SignalEnvelopeAAD.SignalEnvelopeAADError,
+                .nonCanonicalUnicodeSegment
+            )
+        }
 
         // ASCII vectors are NFC-stable, so normalization is a no-op for them.
         for vector in fixture.vectors where vector.name != "non-ascii-nfc-uid" {

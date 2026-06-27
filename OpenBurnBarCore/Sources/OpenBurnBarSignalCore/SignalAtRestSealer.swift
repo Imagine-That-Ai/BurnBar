@@ -92,9 +92,9 @@ public enum OpenBurnBarSignalAtRest {
     ///
     /// Framing is LENGTH-PREFIXED (4-byte big-endian length per field), not delimiter-
     /// joined, so no field value can inject a separator (closes the framing-ambiguity
-    /// hardening item). Every string is NFC-normalized
-    /// (`precomposedStringWithCanonicalMapping`, matching `signalEnvelopeBindingToAAD`)
-    /// and wraps are ordered by the raw UTF-8 BYTES of the normalized
+    /// hardening item). Sender-auth framing keeps NFC-normalized bytes for
+    /// signature parity; the AAD binding canonicalizer itself rejects non-NFC
+    /// binding identifiers before this path. Wraps are ordered by the raw UTF-8 BYTES of the normalized
     /// `recipientIdentityKeyId` (not Swift's locale/Unicode `String.<`), so a future
     /// Kotlin port produces identical bytes even for non-ASCII device ids.
     public static func senderAuthSignedMessage(

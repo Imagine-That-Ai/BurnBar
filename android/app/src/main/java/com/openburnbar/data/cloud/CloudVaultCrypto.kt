@@ -457,8 +457,9 @@ object CloudVaultCrypto {
      * can be tampered without breaking the signature.
      *
      * Framing is LENGTH-PREFIXED (4-byte big-endian length per field), not delimiter-joined, so no
-     * field value can inject a separator. Every string is NFC-normalized (matching `bindingToAAD`)
-     * and wraps are ordered by the raw UTF-8 BYTES of the normalized `recipientIdentityKeyId` (not
+     * field value can inject a separator. Sender-auth framing keeps NFC-normalized bytes for
+     * signature parity; the AAD binding canonicalizer itself rejects non-NFC binding identifiers.
+     * Wraps are ordered by the raw UTF-8 BYTES of the normalized `recipientIdentityKeyId` (not
      * Kotlin's locale/Unicode `String.<`), so the bytes are identical to the Swift side even for
      * non-ASCII device ids.
      */

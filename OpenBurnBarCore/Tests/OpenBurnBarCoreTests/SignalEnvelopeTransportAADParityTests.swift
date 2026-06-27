@@ -119,10 +119,10 @@ final class SignalEnvelopeTransportAADParityTests: XCTestCase {
     }
 
     /// Cross-platform Unicode parity: a clientId supplied DECOMPOSED (NFD: `e` +
-    /// U+0301) canonicalizes to the byte-identical AAD as the PRECOMPOSED form
-    /// (NFC: U+00E9) the shared fixture stores, byte-for-byte matching the TypeScript
-    /// `.normalize("NFC")`.
-    func test_nfdClientIdNormalizesToTheSameAADAsNFC() throws {
+    /// U+0301) must fail closed instead of canonicalizing to the same AAD as the
+    /// PRECOMPOSED form (NFC: U+00E9). This keeps the transport binding injective
+    /// over raw identifier bytes.
+    func test_rejectsNonNFCClientIdInsteadOfCollapsingItToTheNFCAAD() throws {
         let fixture = try loadFixture()
         let nfcVector = try XCTUnwrap(
             fixture.vectors.first { $0.name == "transport-non-ascii-nfc-clientId" },
@@ -147,13 +147,13 @@ final class SignalEnvelopeTransportAADParityTests: XCTestCase {
             mode: .transport,
             formatVersion: json.formatVersion
         )
-        let nfdAAD = try signalEnvelopeBindingToAAD(nfdBinding)
-        XCTAssertEqual(nfdAAD, nfcVector.expectedAAD, "NFD clientId must canonicalize to the NFC expectedAAD")
-        XCTAssertEqual(
-            Array(nfdAAD.utf8),
-            Array(try signalEnvelopeBindingToAAD(nfcVector.binding.toBinding()).utf8),
-            "NFD and NFC bindings must produce byte-identical AAD"
-        )
+        XCTAssertEqual(try signalEnvelopeBindingToAAD(nfcVector.binding.toBinding()), nfcVector.expectedAAD, "NFC clientId must remain accepted")
+        XCTAssertThrowsError(try signalEnvelopeBindingToAAD(nfdBinding)) { error in
+            XCTAssertEqual(
+                error as? SignalEnvelopeAAD.SignalEnvelopeAADError,
+                .nonCanonicalUnicodeSegment
+            )
+        }
     }
 
     /// Fail-closed: a transport segment carrying `|`, CR, or LF throws rather than

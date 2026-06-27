@@ -314,6 +314,16 @@ export const SIGNAL_BINDING_AAD_PREFIX = "OpenBurnBar-Signal-AAD-v1|";
 
 const SIGNAL_BINDING_AAD_FORBIDDEN = /[|\r\n]/u;
 
+function canonicalSignalBindingSegment(segment: string): string {
+  if (segment !== segment.normalize("NFC")) {
+    throw new Error("signal binding segment must be NFC-normalized");
+  }
+  if (SIGNAL_BINDING_AAD_FORBIDDEN.test(segment)) {
+    throw new Error("signal binding segment contains a reserved '|' or CR/LF character");
+  }
+  return segment;
+}
+
 /**
  * Deterministic, cross-language canonical serialization of a {@link SignalBinding}
  * for use as the HPKE `info` suffix AND the AEAD `associatedData` in the v4
@@ -332,19 +342,16 @@ const SIGNAL_BINDING_AAD_FORBIDDEN = /[|\r\n]/u;
  * UTF-8 string; the shared fixture `fixtures/binding-aad-vectors.json` is the
  * byte-parity proof consumed by both test suites.
  *
- * Unicode normalization: every segment is normalized to NFC (`String#normalize`)
- * BEFORE the reserved-char guard and the join, so a non-ASCII value supplied as
- * NFD (decomposed) and the same value supplied as NFC (precomposed) produce the
- * byte-identical AAD. Swift seals with `precomposedStringWithCanonicalMapping`
- * (also NFC); without this both sides could otherwise emit divergent UTF-8 for
- * the same logical string and fail to open each other's ciphertext. ASCII values
- * are NFC-stable, so existing fixtures are unaffected.
+ * Unicode normalization: every segment must already be NFC-normalized. The
+ * canonicalizer checks that invariant and throws instead of silently normalizing,
+ * because accepting both NFD (decomposed) and NFC (precomposed) inputs would make
+ * distinct raw identifiers collapse to the same AAD. ASCII values are NFC-stable,
+ * so existing ASCII fixtures are unaffected.
  *
  * Fail-closed: although the contract's `boundedText` validator already rejects
  * any segment containing `|`, CR, or LF, this function re-asserts that invariant
- * (on the NORMALIZED segment) and THROWS on a violating segment rather than
- * emitting an ambiguous AAD. This is production E2EE code — never silently weaken
- * domain separation.
+ * and THROWS on a violating segment rather than emitting an ambiguous AAD. This
+ * is production E2EE code — never silently weaken domain separation.
  */
 export function bindingToAAD(binding: SignalBinding): string {
   const segments = [
@@ -357,12 +364,7 @@ export function bindingToAAD(binding: SignalBinding): string {
     binding.field ?? "",
     binding.slotId ?? "",
     String(binding.formatVersion),
-  ].map((segment) => segment.normalize("NFC"));
-  for (const segment of segments) {
-    if (SIGNAL_BINDING_AAD_FORBIDDEN.test(segment)) {
-      throw new Error("signal binding segment contains a reserved '|' or CR/LF character");
-    }
-  }
+  ].map(canonicalSignalBindingSegment);
   return SIGNAL_BINDING_AAD_PREFIX + segments.join("|");
 }
 

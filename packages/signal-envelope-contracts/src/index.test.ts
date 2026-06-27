@@ -243,12 +243,11 @@ test("bindingToAAD matches the shared cross-language fixture byte-for-byte", () 
   }
 });
 
-test("bindingToAAD normalizes NFD to the same bytes as NFC (cross-platform Unicode parity)", () => {
+test("bindingToAAD rejects non-NFC input instead of collapsing distinct raw identifiers", () => {
   // The shared fixture stores 'é' as the PRECOMPOSED single code point U+00E9
   // (NFC). The decomposed form 'e' + U+0301 (COMBINING ACUTE ACCENT) is a
-  // different byte sequence for the same logical string. Without NFC
-  // normalization the two would yield divergent AAD and fail to open each
-  // other's ciphertext across Node/Swift. Prove they collapse to one AAD.
+  // different byte sequence for the same logical string. The canonicalizer must
+  // reject it rather than silently collapsing both raw identifiers to one AAD.
   const nfcVector = bindingAADFixture.vectors.find((v) => v.name === "non-ascii-nfc-uid");
   assert.ok(nfcVector, "fixture must include the non-ascii-nfc-uid vector");
 
@@ -260,9 +259,12 @@ test("bindingToAAD normalizes NFD to the same bytes as NFC (cross-platform Unico
   const nfcBinding: SignalBinding = { ...nfcVector.binding };
   const nfdBinding: SignalBinding = { ...nfcVector.binding, uid: nfdUid };
 
-  // The NFD-fed binding produces the SAME AAD as the NFC fixture value.
-  assert.equal(bindingToAAD(nfdBinding), nfcVector.expectedAAD, "NFD uid must canonicalize to the NFC expectedAAD");
-  assert.equal(bindingToAAD(nfdBinding), bindingToAAD(nfcBinding), "NFD and NFC bindings must produce identical AAD");
+  assert.equal(bindingToAAD(nfcBinding), nfcVector.expectedAAD, "NFC uid must remain accepted");
+  assert.throws(
+    () => bindingToAAD(nfdBinding),
+    /NFC-normalized/,
+    "NFD uid must fail closed instead of reusing the NFC AAD",
+  );
 
   // Sanity: ASCII vectors are NFC-stable, so normalization is a no-op for them.
   for (const vector of bindingAADFixture.vectors) {
