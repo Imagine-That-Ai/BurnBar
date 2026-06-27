@@ -4993,24 +4993,56 @@ extension BurnBarHTTPGatewayServerTests {
             secretStore: BurnBarInMemorySecretStore(),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
-        let server = BurnBarHTTPGatewayServer(
-            configuration: BurnBarGatewayConfiguration(
-                isEnabled: true,
-                host: "127.0.0.1",
-                port: GatewayHarness.nextPortCandidate(),
-                authToken: "test-token"
-            ),
-            configStore: configStore,
-            logger: capturingLogger
-        )
+        var lastStartError: Error?
+        var lastCapturedEntries: [CapturingDaemonLogger.Entry] = []
+        let startedEvent = "gateway_started"
+        let listenerFailureEvent = "gateway_listener_failed"
 
-        try await server.start()
-        addTeardownBlock { await server.stop() }
+        for _ in 0..<5 {
+            let server = BurnBarHTTPGatewayServer(
+                configuration: BurnBarGatewayConfiguration(
+                    isEnabled: true,
+                    host: "127.0.0.1",
+                    port: try GatewayHarness.reservePort(),
+                    authToken: "test-token"
+                ),
+                configStore: configStore,
+                logger: capturingLogger
+            )
+            let startIndex = capturingLogger.captured.count
 
-        // NWListener enters .ready asynchronously; poll for gateway_started.
-        let entries = try await waitForLogEntry(event: "gateway_started", in: capturingLogger, timeoutSeconds: 5)
-        XCTAssertFalse(entries.contains { $0.event == "gateway_non_loopback_bind" },
-                       "loopback bind must not emit non-loopback warning")
+            do {
+                try await server.start()
+            } catch {
+                lastStartError = error
+                await server.stop()
+                continue
+            }
+
+            // NWListener enters .ready asynchronously; poll for gateway_started.
+            let firstStartupEvent = try await waitForFirstLogEntry(
+                events: [startedEvent, listenerFailureEvent],
+                in: capturingLogger,
+                after: startIndex,
+                timeoutSeconds: 5
+            )
+            lastCapturedEntries = capturingLogger.captured
+
+            if firstStartupEvent?.event == startedEvent {
+                addTeardownBlock { await server.stop() }
+                XCTAssertFalse(capturingLogger.captured.contains { $0.event == "gateway_non_loopback_bind" },
+                               "loopback bind must not emit non-loopback warning")
+                return
+            }
+
+            await server.stop()
+        }
+
+        if let lastStartError {
+            throw lastStartError
+        }
+        XCTFail("Timed out waiting for log event '\(startedEvent)' after retrying listener startup. "
+                + "Captured: \(lastCapturedEntries.map(\.event))")
     }
 
     #if DEBUG
