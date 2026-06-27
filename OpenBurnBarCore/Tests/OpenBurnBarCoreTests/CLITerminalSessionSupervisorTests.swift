@@ -42,8 +42,8 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("monthly credit limit"))
     }
 
-    func test_classifierTreatsOutOfLimitAsFiveHourQuotaWindow() {
-        let detail = "Codex is out of limit for this account."
+    func test_classifierTreatsQuotaAnchoredOutOfLimitAsFiveHourQuotaWindow() {
+        let detail = "Codex quota is out of limit for this account."
         XCTAssertEqual(
             CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail),
             detail
@@ -56,6 +56,21 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
 
     func test_classifierIgnoresUnanchoredOutOfLimitText() {
         let detail = "The assistant draft says these examples are out of limits, then keeps writing."
+
+        XCTAssertNil(CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail))
+    }
+
+    func test_classifierIgnoresIdentityAnchoredOutOfLimitText() {
+        let detail = "Codex generated a test fixture that says values are out of limits."
+
+        XCTAssertNil(CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail))
+    }
+
+    func test_classifierDoesNotAnchorWeakLimitPhraseAcrossLines() {
+        let detail = """
+        Codex quota dashboard loaded.
+        The build output says these layout values are out of limits.
+        """
 
         XCTAssertNil(CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail))
     }
@@ -83,8 +98,8 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         )
     }
 
-    func test_piClassifierStillAcceptsBoundedIdentity() {
-        let detail = "Pi is out of limits for this account."
+    func test_piClassifierStillAcceptsQuotaAnchoredWeakLimitPhrase() {
+        let detail = "Pi quota is out of limits for this account."
         XCTAssertEqual(CLIQuotaExhaustionClassifier.classify(for: .pi, in: detail), detail)
     }
 }
