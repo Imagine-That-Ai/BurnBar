@@ -89,6 +89,41 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         XCTAssertTrue(recorder.snapshot().isEmpty)
     }
 
+    func test_attachedPipeDrainsLargeAvailableOutputInOneReadEvent() throws {
+        let eventExpectation = expectation(description: "quota event emitted")
+        let recorder = SupervisorEventRecorder(expectation: eventExpectation)
+        let supervisor = CLITerminalSessionSupervisor(cliType: .codex) { event in
+            recorder.record(event)
+        }
+        let pipe = Pipe()
+        let observer = supervisor.attach(
+            to: pipe,
+            source: .stderr,
+            queue: DispatchQueue(label: "test.cli-terminal-session-supervisor.pipe-drain")
+        )
+        defer { observer.cancel() }
+
+        let prefix = String(repeating: "log-line-before-quota\n", count: 350)
+        let marker = "Codex 5-hour limit reached for this account.\n"
+        pipe.fileHandleForWriting.write(Data((prefix + marker).utf8))
+        try pipe.fileHandleForWriting.close()
+
+        wait(for: [eventExpectation], timeout: 2.0)
+
+        let snapshot = supervisor.snapshot()
+        XCTAssertGreaterThan(snapshot.utf8.count, 4096)
+        XCTAssertTrue(snapshot.hasSuffix(marker))
+
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.count, 1)
+        guard case .quotaExhausted(let detail, let source) = events[0] else {
+            XCTFail("Expected quota exhaustion event")
+            return
+        }
+        XCTAssertEqual(source, .stderr)
+        XCTAssertTrue(detail.localizedCaseInsensitiveContains("5-hour"))
+    }
+
     func test_piClassifierDoesNotTreatSubstringAsQuotaIdentity() {
         XCTAssertNil(
             CLIQuotaExhaustionClassifier.classify(
@@ -106,9 +141,15 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
 
 private final class SupervisorEventRecorder: Sendable {
     private let state = Locked<[CLITerminalSessionEvent]>([])
+    private let expectation: XCTestExpectation?
+
+    init(expectation: XCTestExpectation? = nil) {
+        self.expectation = expectation
+    }
 
     func record(_ event: CLITerminalSessionEvent) {
         state.withLock { $0.append(event) }
+        expectation?.fulfill()
     }
 
     func snapshot() -> [CLITerminalSessionEvent] {
