@@ -426,6 +426,20 @@ test("provider accounts reject plaintext, unknown credential containers, and cli
   };
 
   await assertSucceeds(setDoc(doc(ownerDb, basePath), canonical));
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-sentinel"), {
+      ...canonical,
+      id: "account-sentinel",
+      lastRefreshAt: "1970-01-01T00:00:00.000Z",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-null"), {
+      ...canonical,
+      id: "account-null",
+      lastRefreshAt: null,
+    })
+  );
   await assertFails(
     setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-2"), {
       ...canonical,

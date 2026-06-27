@@ -11,12 +11,12 @@
  * and permanently orphaned every legacy account doc.
  *
  * The corrected design implemented by `runQuotaRefreshSweep`:
- *   1. A cursor-resumable, self-terminating backfill stamps
- *      `lastRefreshAt: null` onto missing-field docs (cheap writes, no HTTP),
- *      so they join the ordered pass — explicit null sorts FIRST in the asc
- *      orderBy, and the existing composite index already covers it. Once a
- *      clean scan finds nothing left, a marker doc retires the backfill to a
- *      single cached read per run (zero extra collection-group queries).
+ *   1. A cursor-resumable, self-terminating backfill stamps a schema-valid
+ *      ancient ISO timestamp onto missing-field docs (cheap writes, no HTTP),
+ *      so they join the ordered pass ahead of real refresh timestamps, and the
+ *      existing composite index already covers it. Once a clean scan finds
+ *      nothing left, a marker doc retires the backfill to a single cached read
+ *      per run (zero extra collection-group queries).
  *   2. The refresh pass itself runs through a bounded concurrency pool
  *      instead of strictly serial awaits.
  *
@@ -28,6 +28,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL,
   LAST_REFRESH_AT_BACKFILL_MARKER_PATH,
   mapWithConcurrency,
   resetQuotaRefreshSweepCachesForTests,
@@ -290,9 +291,11 @@ describe("the verifier-proven orphaning failure mode (encoded against the fake's
     expect(snap.docs.map((doc) => doc.path)).not.toContain(legacyPath);
   });
 
-  it("explicit null sorts FIRST in the asc orderBy, so backfilled docs get stale-first priority", async () => {
+  it("the legacy backfill sentinel sorts before real refresh timestamps", async () => {
     const db = new FakeSweepDb();
-    const backfilled = seedAccount(db, "legacy-user", "acct-1", { lastRefreshAt: null });
+    const backfilled = seedAccount(db, "legacy-user", "acct-1", {
+      lastRefreshAt: LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL,
+    });
     const fresh = seedAccount(db, "fresh-user", "acct-2", { lastRefreshAt: "2026-06-09T00:00:00.000Z" });
 
     const snap = await db
@@ -308,7 +311,7 @@ describe("the verifier-proven orphaning failure mode (encoded against the fake's
 });
 
 describe("runQuotaRefreshSweep backfill (the corrected design)", () => {
-  it("backfills legacy missing-field docs to explicit null and refreshes them in the same run", async () => {
+  it("backfills legacy missing-field docs with a schema-valid stale marker and refreshes them in the same run", async () => {
     const db = new FakeSweepDb();
     const legacyPath = seedAccount(db, "legacy-user", "acct-1", {});
     seedAccount(db, "fresh-user", "acct-2", { lastRefreshAt: "2026-06-09T00:00:00.000Z" });
@@ -316,9 +319,10 @@ describe("runQuotaRefreshSweep backfill (the corrected design)", () => {
     const calls: SweepCalls = { refreshedAccounts: [], refreshedLegacy: [] };
     const result = await runQuotaRefreshSweep(asSweepDb(db), sweepOptions(db, calls));
 
-    // The legacy doc was NOT orphaned: stamped null, then refreshed FIRST
-    // (null sorts before every present lastRefreshAt value).
+    // The legacy doc was NOT orphaned: stamped with the stale marker, then
+    // refreshed FIRST (the marker sorts before every real refresh timestamp).
     expect(result.backfill.backfilled).toBe(1);
+    expect(db.updateLog).toEqual([legacyPath]);
     expect(calls.refreshedAccounts[0]).toBe(legacyPath);
     expect(calls.refreshedAccounts).toHaveLength(2);
   });
@@ -411,7 +415,9 @@ describe("runQuotaRefreshSweep backfill (the corrected design)", () => {
 
     const result = await runQuotaRefreshSweep(asSweepDb(db), options);
     expect(result.backfill.backfilled).toBe(1);
-    expect(db.store.get(accountPath("legacy-user", "acct-kept"))?.lastRefreshAt).toBeNull();
+    expect(db.store.get(accountPath("legacy-user", "acct-kept"))?.lastRefreshAt).toBe(
+      LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL,
+    );
   });
 });
 
