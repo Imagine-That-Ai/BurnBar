@@ -14,7 +14,7 @@ export function TransparencyInventory() {
   const byId = usageById(data);
 
   return (
-    <section aria-labelledby="inventory-heading" className="space-y-token-4">
+    <section aria-labelledby="inventory-heading" className="lg-inventory space-y-token-4">
       <header className="flex flex-wrap items-end justify-between gap-token-3">
         <div>
           <h2 id="inventory-heading" className="font-display text-2xl text-content-bright">
@@ -44,7 +44,7 @@ export function TransparencyInventory() {
       )}
 
       <div className="space-y-token-3">
-        {DATA_DOMAINS.map((domain) => {
+        {DATA_DOMAINS.map((domain, i) => {
           const u = byId[domain.id] ?? { count: 0, bytes: 0 };
           return (
             <DomainRow
@@ -52,6 +52,7 @@ export function TransparencyInventory() {
               domain={domain}
               count={loading ? 0 : u.count}
               bytes={loading ? 0 : u.bytes}
+              index={i}
               onChanged={reload}
             />
           );
