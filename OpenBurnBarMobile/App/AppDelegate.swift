@@ -2,6 +2,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
+import FirebaseFirestore
 import FirebaseMessaging
 import GoogleSignIn
 import OpenBurnBarCore
@@ -218,6 +219,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
 
         FirebaseApp.configure()
+        Self.disableFirestoreNetworkForSimulatorIfNeeded()
         Self.configureGoogleSignIn()
         _ = MobileAppCheckAttestationMonitor.shared
         Task { @MainActor in
@@ -233,6 +235,39 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         #if DEBUG
         Self.signInWithE2ECustomTokenIfNeeded()
+        #endif
+    }
+
+    private static func disableFirestoreNetworkForSimulatorIfNeeded() {
+        guard shouldDisableFirestoreNetworkForRuntime(
+            isSimulator: isRunningInSimulator,
+            operatingSystemVersion: ProcessInfo.processInfo.operatingSystemVersion
+        ) else {
+            return
+        }
+        Firestore.firestore().disableNetwork { error in
+            #if DEBUG
+            if let error {
+                print("warning: failed to disable Firestore network for iOS 27 Simulator: \(error.localizedDescription)")
+            } else {
+                print("OpenBurnBarMobile disabled Firestore network for iOS 27 Simulator compatibility.")
+            }
+            #endif
+        }
+    }
+
+    static func shouldDisableFirestoreNetworkForRuntime(
+        isSimulator: Bool,
+        operatingSystemVersion: OperatingSystemVersion
+    ) -> Bool {
+        isSimulator && operatingSystemVersion.majorVersion >= 27
+    }
+
+    private static var isRunningInSimulator: Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
         #endif
     }
 

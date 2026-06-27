@@ -442,7 +442,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
 
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
         Analytics.shared.track(.menubarPopoverShown)
     }
 
@@ -1315,8 +1314,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) {
-        guard let window = popover?.contentViewController?.view.window else { return }
-        window.makeKeyAndOrderFront(nil)
+        // `NSPopover.show` owns panel ordering and focus. Forcing the backing
+        // panel key here can look like an outside activation to transient
+        // popovers and immediately dismiss the menu-bar dropdown.
     }
 
     func popoverDidClose(_ notification: Notification) {

@@ -173,6 +173,28 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         )
     }
 
+    func testPopoverDidShow_doesNotPromoteBackingWindow() {
+        let delegate = AppDelegate()
+        AppCommandRouter.shared.makeMenuBarPopoverContent = { _ in AnyView(Text("Stable")) }
+        delegate.primePopoverContent()
+
+        guard let contentViewController = delegate.popover?.contentViewController else {
+            return XCTFail("Priming must install popover content")
+        }
+
+        let window = NSWindow(contentViewController: contentViewController)
+        window.orderOut(nil)
+        XCTAssertFalse(window.isVisible)
+
+        delegate.popoverDidShow(Notification(name: NSPopover.didShowNotification))
+
+        XCTAssertFalse(
+            window.isVisible,
+            "The delegate must not force the transient popover panel key; AppKit owns show-time ordering"
+        )
+        window.close()
+    }
+
     func testPrimePopoverContent_withoutFactory_leavesPopoverUntouched() {
         let delegate = AppDelegate()
         delegate.primePopoverContent()
