@@ -412,7 +412,10 @@ internal fun mobileToolCalls(event: CLIAgentRelayChatEvent): List<AssistantChatT
                 name = piece.value.ifBlank { piece.kind.wire },
                 status = piece.detail?.trim()?.takeIf { it.isNotEmpty() } ?: "done",
             )
-        CLIAgentRelayTranscriptPieceKind.TEXT -> null
+        CLIAgentRelayTranscriptPieceKind.TEXT,
+        CLIAgentRelayTranscriptPieceKind.REASONING,
+        CLIAgentRelayTranscriptPieceKind.REFUSAL,
+        -> null
     }
 }
 

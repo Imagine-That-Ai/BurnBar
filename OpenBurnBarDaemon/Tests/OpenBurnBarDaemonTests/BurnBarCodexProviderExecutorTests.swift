@@ -22,4 +22,27 @@ final class BurnBarCodexProviderExecutorTests: XCTestCase {
         XCTAssertFalse(entries.contains("/Users/example/.nvm/versions/node/v22.0.0/bin"))
         XCTAssertEqual(entries, ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])
     }
+
+    func testTrustedExecutablePathAcceptsHomebrewSymlinkTargets() {
+        let home = URL(fileURLWithPath: "/Users/example")
+
+        XCTAssertTrue(
+            BurnBarCodexSystemProcessRunner.isTrustedExecutablePath(
+                "/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js",
+                home: home
+            )
+        )
+        XCTAssertTrue(
+            BurnBarCodexSystemProcessRunner.isTrustedExecutablePath(
+                "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+                home: home
+            )
+        )
+        XCTAssertFalse(
+            BurnBarCodexSystemProcessRunner.isTrustedExecutablePath(
+                "/Users/example/.local/bin/codex",
+                home: home
+            )
+        )
+    }
 }

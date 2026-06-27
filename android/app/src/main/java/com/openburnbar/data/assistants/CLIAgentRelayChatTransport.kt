@@ -156,6 +156,8 @@ enum class CLIAgentRelayChatEventKind(val wire: String) {
 
 enum class CLIAgentRelayTranscriptPieceKind(val wire: String) {
     TEXT("text"),
+    REASONING("reasoning"),
+    REFUSAL("refusal"),
     TOOL_USE("toolUse"),
     TOOL_RESULT("toolResult"),
     ;

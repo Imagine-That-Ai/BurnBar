@@ -234,7 +234,7 @@ cat >"${SUMMARY_MD}" <<EOF_SUMMARY
 - Runs required: ${RUNS}
 - Interface plan: ${INTERFACES}
 - Project: ${PROJECT}
-- Device: ${DEVICE_ID}
+- Device: <IOS_DEVICE_ID>
 - Model: ${MODEL}
 - Relay URL: ${RELAY_URL}
 - Mac host log: ${MAC_HOST_LOG}

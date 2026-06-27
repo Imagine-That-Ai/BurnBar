@@ -254,6 +254,24 @@ class InsightAnalysisEngineTest {
     }
 
     @Test
+    fun `aggregator trims prior run summaries when base payload exceeds budget`() {
+        val digest = InsightDigest(providers = listOf(providerSnapshot(1)))
+        val summaries = (1..32).map { index -> "summary-$index " + "oversized ".repeat(2048) }
+
+        val context =
+            InsightAggregator.buildContext(
+                digest = digest,
+                includedDataSources = listOf("provider_summaries"),
+                priorRunSummaries = summaries,
+            )
+
+        assertTrue(context.budgetReport.encodedBytes <= InsightDigest.MAX_ENCODED_BYTES)
+        assertTrue(context.priorRunSummaries.size < summaries.size)
+        assertTrue("prior_run_summaries" in context.budgetReport.truncatedDataSources)
+        assertTrue(context.budgetReport.truncationSummary != "No truncation.")
+    }
+
+    @Test
     fun `analysis context cache identity includes evidence packs`() {
         val digest = InsightDigest(providers = listOf(providerSnapshot(1)))
         val base = InsightAggregator.buildContext(digest, listOf("provider_summaries"))

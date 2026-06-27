@@ -38,13 +38,41 @@ public struct InsightAggregator: Sendable {
                 truncated.append("evidence_packs")
             }
         }
-        let evidence = digestEvidence + selectedEvidencePacks.flatMap(\.evidence)
-        let encodedBytes = Self.encodedBytes(ContextBudgetPayload(
+        var evidence = digestEvidence + selectedEvidencePacks.flatMap(\.evidence)
+        var finalPriorRunSummaries = priorRunSummaries
+        var encodedBytes = Self.encodedBytes(ContextBudgetPayload(
             digest: digest,
             evidenceIndex: evidence,
-            priorRunSummaries: priorRunSummaries,
+            priorRunSummaries: finalPriorRunSummaries,
             evidencePacks: selectedEvidencePacks
         ))
+        while encodedBytes > InsightDigest.maxEncodedBytes, !evidence.isEmpty {
+            evidence.removeLast()
+            if !truncated.contains("evidence_index") {
+                truncated.append("evidence_index")
+            }
+            encodedBytes = Self.encodedBytes(ContextBudgetPayload(
+                digest: digest,
+                evidenceIndex: evidence,
+                priorRunSummaries: finalPriorRunSummaries,
+                evidencePacks: selectedEvidencePacks
+            ))
+        }
+        while encodedBytes > InsightDigest.maxEncodedBytes, !finalPriorRunSummaries.isEmpty {
+            finalPriorRunSummaries.removeLast()
+            if !truncated.contains("prior_run_summaries") {
+                truncated.append("prior_run_summaries")
+            }
+            encodedBytes = Self.encodedBytes(ContextBudgetPayload(
+                digest: digest,
+                evidenceIndex: evidence,
+                priorRunSummaries: finalPriorRunSummaries,
+                evidencePacks: selectedEvidencePacks
+            ))
+        }
+        if encodedBytes > InsightDigest.maxEncodedBytes, !truncated.contains("base_context") {
+            truncated.append("base_context")
+        }
         let includedSources = Array(Set(includedDataSources + selectedEvidencePacks.flatMap(\.includedDataSources))).sorted()
         let budget = InsightContextBudgetReport(
             encodedBytes: encodedBytes,
@@ -59,7 +87,7 @@ public struct InsightAggregator: Sendable {
             digest: digest,
             evidenceIndex: evidence,
             budgetReport: budget,
-            priorRunSummaries: priorRunSummaries,
+            priorRunSummaries: finalPriorRunSummaries,
             evidencePacks: selectedEvidencePacks
         )
     }
