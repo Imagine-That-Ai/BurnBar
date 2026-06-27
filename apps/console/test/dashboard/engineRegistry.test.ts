@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -83,5 +85,15 @@ describe("vendored kernel registry", () => {
       // Single-pass/2D kernels (no float requirement) resolve to themselves.
       if (!k.requiresFloatTex) expect(resolved).toBe(k.id);
     }
+  });
+
+  it("declares scroll controls for the storm kernel uScroll shader input", () => {
+    const source = readFileSync(
+      new URL("../../lib/gl/engine/kernels/stormCellKernel.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("uScroll.y");
+    expect(source).toContain('controls: ["scroll"]');
   });
 });

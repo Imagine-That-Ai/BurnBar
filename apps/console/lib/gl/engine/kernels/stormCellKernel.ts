@@ -96,5 +96,6 @@ export function createStormCellKernel(): Kernel {
     id: "storm-signal",
     label: "Tempest",
     body: BODY,
+    controls: ["scroll"],
   });
 }
