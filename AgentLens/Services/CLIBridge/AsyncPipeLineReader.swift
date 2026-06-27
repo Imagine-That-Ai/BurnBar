@@ -77,6 +77,7 @@ private final class ReaderState: Sendable {
     /// under `Locked`, which the compiler can verify.
     private struct BufferState: Sendable {
         var buffer = Data()
+        var scannedByteCount = 0
     }
 
     private let state = Locked(BufferState())
@@ -89,22 +90,27 @@ private final class ReaderState: Sendable {
         let lines = state.withLock { state -> [String] in
             state.buffer.append(data)
             var extracted: [String] = []
-            // Walk newline-delimited lines in the buffer's OWN index space.
-            // `Data` indices are not guaranteed to be zero-based after slicing,
-            // so we must use `startIndex`/`index(after:)` rather than absolute
-            // offsets, and re-base the unconsumed remainder once at the end.
+            // Walk only the unscanned suffix. Long process output can emit a
+            // multi-megabyte partial line before the newline arrives; restarting
+            // at `startIndex` on every read makes that path quadratic.
             var lineStart = state.buffer.startIndex
-            while let newlineIndex = state.buffer[lineStart...].firstIndex(of: 0x0A) {
+            var searchStart = state.buffer.index(
+                state.buffer.startIndex,
+                offsetBy: min(state.scannedByteCount, state.buffer.count)
+            )
+            while let newlineIndex = state.buffer[searchStart...].firstIndex(of: 0x0A) {
                 if let line = String(data: state.buffer[lineStart..<newlineIndex], encoding: .utf8) {
                     extracted.append(line.trimmingCharacters(in: .newlines))
                 }
                 lineStart = state.buffer.index(after: newlineIndex)
+                searchStart = lineStart
             }
             if lineStart > state.buffer.startIndex {
                 // Drop the consumed prefix once; `Data(_:)` re-bases to a fresh
                 // zero-indexed buffer so the next append stays well-formed.
                 state.buffer = Data(state.buffer[lineStart...])
             }
+            state.scannedByteCount = state.buffer.count
             return extracted
         }
 
@@ -119,6 +125,7 @@ private final class ReaderState: Sendable {
         let remaining = state.withLock { state -> Data in
             let remaining = state.buffer
             state.buffer.removeAll()
+            state.scannedByteCount = 0
             return remaining
         }
 
