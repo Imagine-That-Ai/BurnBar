@@ -103,6 +103,25 @@ describe("pendingCounterDeltaDocID", () => {
     expect(a < b).toBe(true);
     expect(a).not.toBe(b);
   });
+
+  it("orders one usage document's update chain by semantic version, not enqueue arrival", () => {
+    const a0 = codexEvent({ updatedAt: "2026-06-09T00:00:00.000Z" });
+    const a1 = codexEvent({ updatedAt: "2026-06-09T00:00:01.000Z" });
+    const a2 = codexEvent({ updatedAt: "2026-06-09T00:00:02.000Z" });
+    const firstTransition = delta("doc-1", a0, a1);
+    const secondTransition = delta("doc-1", a1, a2);
+
+    const arrivedLaterButEarlierVersion = pendingCounterDeltaDocID(
+      "2026-06-09T00:00:10.000Z",
+      firstTransition,
+    );
+    const arrivedEarlierButLaterVersion = pendingCounterDeltaDocID(
+      "2026-06-09T00:00:09.000Z",
+      secondTransition,
+    );
+
+    expect(arrivedLaterButEarlierVersion < arrivedEarlierButLaterVersion).toBe(true);
+  });
 });
 
 describe("planPendingDeltaDrain", () => {
@@ -169,6 +188,37 @@ describe("planPendingDeltaDrain", () => {
     // B0 and A2 share the bucket identity tuple and metrics except cost: the
     // merged -B0/+A2 increments cancel requests/tokens and carry only the
     // cost delta (0.002 - 0.001).
+    expect(plan.bucketContributions).toHaveLength(1);
+    expect(plan.bucketContributions[0].requests).toBe(0);
+    expect(plan.bucketContributions[0].tokens).toBe(0);
+    expect(plan.bucketContributions[0].costUsd).toBeCloseTo(0.001, 10);
+  });
+
+  it("canonicalizes out-of-order update-chain arrival before planning", () => {
+    const b0 = codexEvent({ totalTokens: 100, inputTokens: 100, outputTokens: 0 });
+    const a1 = codexEvent({
+      totalTokens: 100,
+      inputTokens: 100,
+      outputTokens: 0,
+      updatedAt: "2026-06-09T00:00:01.000Z",
+    });
+    const a2 = codexEvent({
+      totalTokens: 100,
+      inputTokens: 100,
+      outputTokens: 0,
+      updatedAt: "2026-06-09T00:00:02.000Z",
+      costUsd: 0.002,
+    });
+
+    const seeded = delta("doc-1", undefined, b0);
+    const seededPlan = planPendingDeltaDrain([seeded], emptyKeyStates());
+    const keyStates = new Map<string, Record<string, UsageCounterCandidate>>();
+    for (const write of seededPlan.keyWrites) keyStates.set(write.logicalKey, write.candidates);
+
+    const plan = planPendingDeltaDrain([delta("doc-1", a1, a2), delta("doc-1", b0, a1)], keyStates);
+
+    expect(plan.keyWrites).toHaveLength(1);
+    expect(plan.keyWrites[0].winner?.updatedMillis).toBe(Date.parse("2026-06-09T00:00:02.000Z"));
     expect(plan.bucketContributions).toHaveLength(1);
     expect(plan.bucketContributions[0].requests).toBe(0);
     expect(plan.bucketContributions[0].tokens).toBe(0);
