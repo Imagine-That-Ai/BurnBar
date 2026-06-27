@@ -27,6 +27,8 @@ on:
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/check_burnbar_release_preflight.py"
       - "scripts/ci/check_burnbar_release_preflight.test.py"
+      - "scripts/ci/deploy-firebase-rules-releases.mjs"
+      - "scripts/ci/deploy-firebase-rules-releases.test.mjs"
       - "scripts/generate-macos-appcast.mjs"
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
@@ -82,6 +84,8 @@ on:
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/check_burnbar_release_preflight.py"
       - "scripts/ci/check_burnbar_release_preflight.test.py"
+      - "scripts/ci/deploy-firebase-rules-releases.mjs"
+      - "scripts/ci/deploy-firebase-rules-releases.test.mjs"
       - "scripts/generate-macos-appcast.mjs"
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
@@ -204,6 +208,9 @@ jobs:
 
       - name: Self-test BurnBar release preflight imports
         run: python3 scripts/ci/check_burnbar_release_preflight.test.py
+
+      - name: Self-test Firebase Rules release deploy requests
+        run: node scripts/ci/deploy-firebase-rules-releases.test.mjs
 
       - name: Verify release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.mjs

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -115,12 +116,7 @@ async function patchExistingRelease(token, releaseName, update) {
     if (delaysMs[attempt] > 0) await sleep(delaysMs[attempt]);
     try {
       return await firebaseRulesJson(releaseName, token, {
-        method: "PATCH",
-        // Match firebase-tools' Rules API PATCH shape: the live API rejects an
-        // updateMask here and accepts the nested release payload.
-        body: JSON.stringify({
-          release: update,
-        }),
+        ...buildReleasePatchRequest(update.name, update.rulesetName),
       });
     } catch (error) {
       if (
@@ -149,8 +145,7 @@ async function patchRelease(token, releaseName, rulesetName) {
   } catch (error) {
     if (error?.status !== 404) throw error;
     release = await firebaseRulesJson(`projects/${project}/releases`, token, {
-      method: "POST",
-      body: JSON.stringify(update),
+      ...buildReleaseCreateRequest(releaseName, rulesetName),
     });
   }
   if (release.rulesetName !== rulesetName) {
@@ -158,6 +153,48 @@ async function patchRelease(token, releaseName, rulesetName) {
       `Firebase Rules release ${releaseName} points at ${release.rulesetName || "<missing>"} instead of ${rulesetName}`,
     );
   }
+}
+
+function requireFirebaseResourceName(fieldName, value, expectedSegment) {
+  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+    throw new TypeError(`${fieldName} must be a non-empty trimmed string`);
+  }
+  if (!value.startsWith("projects/") || !value.includes(expectedSegment)) {
+    throw new TypeError(
+      `${fieldName} must be a Firebase resource name containing ${expectedSegment}`,
+    );
+  }
+  return value;
+}
+
+export function buildReleaseUpdate(releaseName, rulesetName) {
+  return {
+    name: requireFirebaseResourceName("releaseName", releaseName, "/releases/"),
+    rulesetName: requireFirebaseResourceName(
+      "rulesetName",
+      rulesetName,
+      "/rulesets/",
+    ),
+  };
+}
+
+export function buildReleasePatchRequest(releaseName, rulesetName) {
+  const update = buildReleaseUpdate(releaseName, rulesetName);
+  return {
+    method: "PATCH",
+    // Match firebase-tools' Rules API PATCH shape: the live API rejects an
+    // update mask here and accepts the nested release payload.
+    body: JSON.stringify({
+      release: update,
+    }),
+  };
+}
+
+export function buildReleaseCreateRequest(releaseName, rulesetName) {
+  return {
+    method: "POST",
+    body: JSON.stringify(buildReleaseUpdate(releaseName, rulesetName)),
+  };
 }
 
 async function verifyRelease(token, releaseName, rulesetName) {
@@ -185,15 +222,21 @@ async function deployRulesFile(token, fileName, releaseNames) {
   );
 }
 
-const token = accessToken();
-await deployRulesFile(token, "firestore.rules", [
-  `projects/${project}/releases/cloud.firestore`,
-]);
+async function main() {
+  const token = accessToken();
+  await deployRulesFile(token, "firestore.rules", [
+    `projects/${project}/releases/cloud.firestore`,
+  ]);
 
-const storageReleaseNames = await releasePathsForStorage(token);
-if (storageReleaseNames.length === 0) {
-  throw new Error(
-    `no firebase.storage releases found for ${project}; expected at least one Storage bucket release`,
-  );
+  const storageReleaseNames = await releasePathsForStorage(token);
+  if (storageReleaseNames.length === 0) {
+    throw new Error(
+      `no firebase.storage releases found for ${project}; expected at least one Storage bucket release`,
+    );
+  }
+  await deployRulesFile(token, "storage.rules", storageReleaseNames);
 }
-await deployRulesFile(token, "storage.rules", storageReleaseNames);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
