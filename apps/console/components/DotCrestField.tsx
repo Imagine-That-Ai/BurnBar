@@ -378,6 +378,7 @@ export function DotCrestField() {
     <canvas
       ref={ref}
       aria-hidden
+      data-dotcrest
       style={{
         position: "fixed",
         inset: 0,
