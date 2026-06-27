@@ -2868,6 +2868,21 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(unwrappedActivity.timeIntervalSince1970, lastSeen.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    func testLiveCloudReaderUsesFreshestMacActivityDate() throws {
+        let lastActive = Date(timeIntervalSince1970: 1_700_000_000)
+        let lastSeen = Date(timeIntervalSince1970: 1_800_000_000)
+        let updated = Date(timeIntervalSince1970: 1_750_000_000)
+
+        let activity = CloudDeviceActivityDateResolver.date(from: [
+            "lastActiveAt": Timestamp(date: lastActive),
+            "lastSeenAt": Timestamp(date: lastSeen),
+            "updatedAt": Timestamp(date: updated)
+        ])
+
+        let unwrappedActivity = try XCTUnwrap(activity)
+        XCTAssertEqual(unwrappedActivity.timeIntervalSince1970, lastSeen.timeIntervalSince1970, accuracy: 0.001)
+    }
+
     func testLiveCloudReaderBuildsSyncStatusSnapshotFromLatestStatusDoc() throws {
         let readAt = Date(timeIntervalSince1970: 1_800_000_500)
         let lastSync = Date(timeIntervalSince1970: 1_800_000_000)

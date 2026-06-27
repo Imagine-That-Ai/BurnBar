@@ -37,9 +37,13 @@ enum MobileDeviceIdentity {
 
 enum CloudDeviceActivityDateResolver {
     static func date(from data: [String: Any]) -> Date? {
-        firestoreDate(data["lastActiveAt"])
-            ?? firestoreDate(data["lastSeenAt"])
-            ?? firestoreDate(data["updatedAt"])
+        [
+            firestoreDate(data["lastActiveAt"]),
+            firestoreDate(data["lastSeenAt"]),
+            firestoreDate(data["updatedAt"])
+        ]
+        .compactMap(\.self)
+        .max()
     }
 
     private static func firestoreDate(_ value: Any?) -> Date? {
