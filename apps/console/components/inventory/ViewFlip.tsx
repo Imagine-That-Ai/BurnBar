@@ -50,7 +50,7 @@ export function FlipToggle({
   onChange: (s: FlipSide) => void;
 }) {
   return (
-    <div className="inline-flex rounded-pill border border-glass-line bg-mercury-wash p-0.5 text-xs">
+    <div className="lg-seg inline-flex rounded-pill border border-glass-line bg-mercury-wash p-0.5 text-xs">
       {(["yours", "server"] as const).map((s) => (
         <button
           key={s}

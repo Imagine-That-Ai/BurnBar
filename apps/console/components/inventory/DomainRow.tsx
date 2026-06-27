@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ function FacetList({ items, empty }: { items: string[]; empty: string }) {
       {items.map((it) => (
         <li
           key={it}
-          className="rounded-pill border border-glass-line bg-mercury-wash px-2 py-0.5 text-xs text-content-base"
+          className="lg-chip rounded-pill border border-glass-line bg-mercury-wash px-2 py-0.5 text-xs text-content-base"
         >
           {it}
         </li>
@@ -38,11 +38,13 @@ export function DomainRow({
   domain,
   count,
   bytes,
+  index = 0,
   onChanged,
 }: {
   domain: DataDomain;
   count: number;
   bytes: number;
+  index?: number;
   onChanged?: () => void;
 }) {
   const [side, setSide] = useState<FlipSide>("yours");
@@ -83,7 +85,10 @@ export function DomainRow({
   };
 
   return (
-    <div className="glass-pane p-token-4">
+    <div
+      className="glass-pane lift reveal p-token-4"
+      style={{ "--d": `${Math.min(index, 8) * 70}ms` } as CSSProperties}
+    >
       <div className="flex flex-wrap items-start justify-between gap-token-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-token-2">
