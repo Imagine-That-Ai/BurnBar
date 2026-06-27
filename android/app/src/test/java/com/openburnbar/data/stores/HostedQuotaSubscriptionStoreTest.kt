@@ -2,6 +2,7 @@
 package com.openburnbar.data.stores
 
 import android.app.Activity
+import android.content.Context
 import android.util.Log
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
@@ -14,6 +15,13 @@ import com.android.billingclient.api.PurchasesResponseListener
 import com.android.billingclient.api.QueryProductDetailsResult
 import com.android.billingclient.api.UnfetchedProduct
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
 import io.mockk.coEvery
@@ -481,6 +489,132 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.activeProductID.value)
         assertEquals(123456789L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(), store.expirationDate.value)
+    }
+
+    @Test
+    fun `restorePurchases clears stale Android entitlement when Play returns no subscription`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+
+        val mockPurchase = mockk<Purchase>()
+        every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { mockPurchase.purchaseToken } returns "active-then-gone-token"
+        every { mockPurchase.purchaseTime } returns 123456789L
+        every { mockPurchase.isAcknowledged } returns true
+
+        val queryResponses =
+            mutableListOf(
+                listOf(mockPurchase),
+                emptyList<Purchase>(),
+                emptyList(),
+                emptyList(),
+            )
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            val purchases = if (queryResponses.isEmpty()) emptyList() else queryResponses.removeAt(0)
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, purchases)
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "active-then-gone-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2026-06-30T12:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        assertTrue(store.isActive.value)
+        assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
+
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertNull(store.purchaseDate.value)
+        assertNull(store.expirationDate.value)
+    }
+
+    @Test
+    fun `cloud entitlement keeps cross-platform restore active until canonical doc is missing`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, emptyList())
+        }
+
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val userDocument = mockk<DocumentReference>()
+        val entitlementsCollection = mockk<CollectionReference>()
+        val entitlementDocument = mockk<DocumentReference>()
+        val entitlementRegistration = mockk<ListenerRegistration>(relaxed = true)
+        val entitlementListenerSlot = slot<EventListener<DocumentSnapshot>>()
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-123") } returns userDocument
+        every { userDocument.collection("entitlements") } returns entitlementsCollection
+        every { entitlementsCollection.document("hosted_quota_sync") } returns entitlementDocument
+        every { entitlementDocument.addSnapshotListener(capture(entitlementListenerSlot)) } returns entitlementRegistration
+
+        val firebaseUser = mockk<FirebaseUser>()
+        every { firebaseUser.uid } returns "user-123"
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns firebaseUser
+        every { firebaseAuth.addAuthStateListener(any()) } answers {
+            firstArg<FirebaseAuth.AuthStateListener>().onAuthStateChanged(firebaseAuth)
+        }
+
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+            )
+        store.initialize(context)
+
+        val activeSnap = mockk<DocumentSnapshot>()
+        every { activeSnap.exists() } returns true
+        every { activeSnap.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to "com.openburnbar.hostedQuotaSync.cloud.monthly",
+                "expiresAt" to "2026-06-30T12:00:00Z",
+            )
+
+        entitlementListenerSlot.captured.onEvent(activeSnap, null)
+        assertTrue(store.isActive.value)
+
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        assertTrue(store.isActive.value)
+        assertEquals("com.openburnbar.hostedQuotaSync.cloud.monthly", store.activeProductID.value)
+
+        val missingSnap = mockk<DocumentSnapshot>()
+        every { missingSnap.exists() } returns false
+
+        entitlementListenerSlot.captured.onEvent(missingSnap, null)
+
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertNull(store.purchaseDate.value)
+        assertNull(store.expirationDate.value)
     }
 
     @Test

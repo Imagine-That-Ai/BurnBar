@@ -60,6 +60,8 @@ data class HostedQuotaStoreProduct(
 class HostedQuotaSubscriptionStore(
     private val functions: FunctionsRepository = FunctionsRepository(),
     initialBillingClient: BillingClient? = null,
+    initialFirestore: FirebaseFirestore? = null,
+    initialFirebaseAuth: FirebaseAuth? = null,
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         private const val LOG_TAG = "BurnBarBilling"
@@ -247,10 +249,11 @@ class HostedQuotaSubscriptionStore(
     // platform. Firestore is the server's authoritative view; Play Billing
     // remains the local fast-path for users who purchased on Android.
 
-    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
-    private val firebaseAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val firestore: FirebaseFirestore by lazy { initialFirestore ?: FirebaseFirestore.getInstance() }
+    private val firebaseAuth: FirebaseAuth by lazy { initialFirebaseAuth ?: FirebaseAuth.getInstance() }
     private var entitlementListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
+    private var firestoreEntitlementActive: Boolean? = null
 
     fun initialize(context: Context) {
         if (billingClient == null) {
@@ -279,9 +282,8 @@ class HostedQuotaSubscriptionStore(
 
                 val uid = auth.currentUser?.uid
                 if (uid == null) {
-                    _isActive.value = false
-                    _expirationDate.value = null
-                    _purchaseDate.value = null
+                    firestoreEntitlementActive = null
+                    clearSubscriptionState()
                     return@AuthStateListener
                 }
 
@@ -290,11 +292,14 @@ class HostedQuotaSubscriptionStore(
                         .document(uid)
                         .collection("entitlements")
                         .document("hosted_quota_sync")
-                        .addSnapshotListener { snap, _ ->
+                        .addSnapshotListener { snap, error ->
+                            if (error != null) {
+                                Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
+                                return@addSnapshotListener
+                            }
                             if (snap == null || !snap.exists()) {
-                                // No entitlement on file. If Play Billing already
-                                // unlocked locally, leave that state alone; otherwise
-                                // the user is just a free user.
+                                firestoreEntitlementActive = false
+                                clearSubscriptionState()
                                 return@addSnapshotListener
                             }
                             applyEntitlementDoc(snap.data ?: emptyMap())
@@ -318,14 +323,31 @@ class HostedQuotaSubscriptionStore(
                 ?: parseTimestampMs(data["purchaseDate"])
 
         val notExpired = expiresAtMs == null || expiresAtMs > System.currentTimeMillis()
-        _isActive.value = active && notExpired
+        val isActive = active && notExpired
+        firestoreEntitlementActive = isActive
+        _isActive.value = isActive
         if (_isActive.value) {
             _activeProductID.value = data["productID"] as? String ?: data["productId"] as? String ?: _activeProductID.value
         } else {
             _activeProductID.value = null
         }
-        if (expiresAtMs != null) _expirationDate.value = expiresAtMs
-        if (purchaseMs != null) _purchaseDate.value = purchaseMs
+        if (expiresAtMs != null) {
+            _expirationDate.value = expiresAtMs
+        } else if (!isActive) {
+            _expirationDate.value = null
+        }
+        if (purchaseMs != null) {
+            _purchaseDate.value = purchaseMs
+        } else if (!isActive) {
+            _purchaseDate.value = null
+        }
+    }
+
+    private fun clearSubscriptionState() {
+        _isActive.value = false
+        _activeProductID.value = null
+        _expirationDate.value = null
+        _purchaseDate.value = null
     }
 
     private fun applyFallbackProductDetails() {
@@ -551,16 +573,13 @@ class HostedQuotaSubscriptionStore(
             "restorePurchases queried subscriptions=${subscriptionPurchases.size} topUps=${topUpPurchases.size} " +
                 "products=${purchaseProductSummary(subscriptionPurchases + topUpPurchases)}",
         )
-        handlePurchases(subscriptionPurchases + topUpPurchases)
-        // No local Play purchase doesn't necessarily mean inactive — the
-        // user may be a Cloud Member via the iOS subscription. The Firestore
-        // entitlement listener is the canonical source; only clear local
-        // state when both Play Billing AND the entitlement doc agree the
-        // user isn't active. We leave `_isActive` alone here so the
-        // Firestore listener stays in charge.
+        val hadSubscriptionPurchase = handlePurchases(subscriptionPurchases + topUpPurchases)
+        if (!hadSubscriptionPurchase && firestoreEntitlementActive != true) {
+            clearSubscriptionState()
+        }
     }
 
-    private suspend fun handlePurchases(purchases: List<Purchase>) {
+    private suspend fun handlePurchases(purchases: List<Purchase>): Boolean {
         verifyHostedQuotaTopUpPurchases(purchases, TOP_UP_PRODUCT_IDS, functions).lastOrNull()?.let { _lastTopUpCredit.value = it }
 
         var lastInactiveSubscription: VerifiedSubscription? = null
@@ -594,7 +613,7 @@ class HostedQuotaSubscriptionStore(
                         _error.value = "Your subscription is active, but Google Play acknowledgement is still pending."
                     }
                     applyVerifiedSubscription(verified)
-                    return
+                    return true
                 }
                 lastInactiveSubscription = verified
             } catch (error: FirebaseFunctionsException) {
@@ -607,9 +626,10 @@ class HostedQuotaSubscriptionStore(
         }
         if (lastInactiveSubscription != null) {
             applyVerifiedSubscription(lastInactiveSubscription)
-            return
+            return true
         }
         lastVerificationError?.let { throw it }
+        return subscriptionCandidates.isNotEmpty()
     }
 
     private data class SubscriptionPurchaseCandidate(
