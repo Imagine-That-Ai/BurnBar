@@ -173,7 +173,7 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 1.00, g: 0.78, b: 0.22, a: base.a)
         case .mimo:
             return RGBA(r: 1.00, g: 0.55, b: 0.18, a: base.a)
-        case .openClaw, .rooCode:
+        case .openClaw, .openClaude, .rooCode:
             return RGBA(r: 1.00, g: 0.42, b: 0.52, a: base.a)
         case .openBurnBar:
             return RGBA(r: 0.98, g: 0.31, b: 0.33, a: base.a)

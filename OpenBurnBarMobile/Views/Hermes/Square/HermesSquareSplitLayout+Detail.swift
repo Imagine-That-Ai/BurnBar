@@ -426,7 +426,7 @@ struct HermesSquareDetailColumn: View {
                     onOpenRuntimeThread(.pi, "pi:\(threadID)")
                 }
             )
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(
                     runtime: cliRuntime,
@@ -447,7 +447,7 @@ struct HermesSquareDetailColumn: View {
             HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .new)
         case .pi:
             PiChatThreadView(service: piService, route: .new)
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
             runtimeNativeView(for: runtime)
         }
     }

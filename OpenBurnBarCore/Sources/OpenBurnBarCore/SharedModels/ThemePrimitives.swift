@@ -237,7 +237,8 @@ public enum DesignSystemColors {
         case .antigravity: return Color(hex: "6C63FF")
         case .cursorAgent: return Color(hex: "00E5FF")
         case .goose:      return Color(hex: "0D9488")
-        case .openClaw:   return Color(hex: "FF6B6B")
+        case .openClaw: return Color(hex: "FF6B6B")
+        case .openClaude: return Color(hex: "D97757")
         case .ollama:     return Color(hex: "6B7280")
         case .windsurf:   return Color(hex: "06B6D4")
         case .warp:       return Color(hex: "DDE4EA")
@@ -272,7 +273,8 @@ public enum DesignSystemColors {
         case .antigravity: return Color(hex: "8F8AFF")
         case .cursorAgent: return Color(hex: "33ECFF")
         case .goose:      return Color(hex: "2DD4BF")
-        case .openClaw:   return Color(hex: "F472B6")
+        case .openClaw: return Color(hex: "F472B6")
+        case .openClaude: return Color(hex: "E8855F")
         case .ollama:     return Color(hex: "9CA3AF")
         case .windsurf:   return Color(hex: "22D3EE")
         case .warp:       return Color(hex: "111111")
@@ -383,7 +385,8 @@ public enum DesignSystemColors {
         case .antigravity: return "6C63FF"
         case .cursorAgent: return "00E5FF"
         case .goose:       return "0D9488"
-        case .openClaw:    return "FF6B6B"
+        case .openClaw: return "FF6B6B"
+        case .openClaude: return "D97757"
         case .ollama:      return "6B7280"
         case .windsurf:    return "06B6D4"
         case .warp:        return "DDE4EA"

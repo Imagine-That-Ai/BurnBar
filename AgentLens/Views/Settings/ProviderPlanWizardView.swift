@@ -162,10 +162,52 @@ struct ProviderPlanWizardView: View {
 
     @State var saveError: String?
 
-    // Delete confirmation
-    @State var slotToDelete: SlotDeleteTarget?
+    // Delete confirmation. A single pending-deletion value drives one alert so
+    // the slot and external-account confirmations can never suppress each other
+    // (two `.alert` modifiers on the same view silently collapse to one on
+    // macOS — only the last-attached presents, which previously swallowed the
+    // slot "Delete plan?" confirmation entirely and made the trash button look
+    // dead).
+    @State var pendingDeletion: PendingAccountDeletion?
 
-    @State var externalAccountToDelete: ExternalAccountDeleteTarget?
+    /// In-flight deletion target id, so a second tap on the same row's trash is
+    /// a no-op while the daemon round-trip completes.
+    @State var deletingAccountID: String?
+
+    enum PendingAccountDeletion: Identifiable {
+        case slot(SlotDeleteTarget)
+        case external(ExternalAccountDeleteTarget)
+
+        var id: String {
+            switch self {
+            case .slot(let target): return "slot:\(target.id)"
+            case .external(let target): return "external:\(target.id)"
+            }
+        }
+
+        var alertTitle: String {
+            switch self {
+            case .slot: return "Delete plan?"
+            case .external: return "Remove account?"
+            }
+        }
+
+        var confirmTitle: String {
+            switch self {
+            case .slot: return "Delete"
+            case .external: return "Remove"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .slot(let target):
+                return "This permanently removes the plan \"\(target.slotLabel)\" and its credentials."
+            case .external(let target):
+                return "This removes \"\(target.label)\" from BurnBar and deletes its stored switcher credentials. It does not sign out your default local CLI login."
+            }
+        }
+    }
 
     struct SlotDeleteTarget: Identifiable {
         let providerID: String
@@ -340,27 +382,23 @@ struct ProviderPlanWizardView: View {
             await refreshGatewayAdvertisementState()
         }
         .onDisappear { quotaProbeTask?.cancel() }
-        .alert("Delete plan?", isPresented: Binding(
-            get: { slotToDelete != nil },
-            set: { if !$0 { slotToDelete = nil } }
-        )) {
-            Button("Cancel", role: .cancel) { slotToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let target = slotToDelete { deleteSlot(target) }
+        .alert(
+            pendingDeletion?.alertTitle ?? "",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { target in
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+            Button(target.confirmTitle, role: .destructive) {
+                switch target {
+                case .slot(let slot): deleteSlot(slot)
+                case .external(let account): deleteExternalAccount(account)
+                }
             }
-        } message: {
-            Text("This permanently removes the plan \"\(slotToDelete?.slotLabel ?? "")\" and its credentials.")
-        }
-        .alert("Remove account?", isPresented: Binding(
-            get: { externalAccountToDelete != nil },
-            set: { if !$0 { externalAccountToDelete = nil } }
-        )) {
-            Button("Cancel", role: .cancel) { externalAccountToDelete = nil }
-            Button("Remove", role: .destructive) {
-                if let target = externalAccountToDelete { deleteExternalAccount(target) }
-            }
-        } message: {
-            Text("This removes \"\(externalAccountToDelete?.label ?? "")\" from BurnBar and deletes its stored switcher credentials. It does not sign out your default local CLI login.")
+        } message: { target in
+            Text(target.message)
         }
     }
 

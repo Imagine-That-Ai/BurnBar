@@ -184,7 +184,8 @@ extension CLIAgentRuntime {
         switch self {
         case .codex:       return "codex"
         case .claude:      return "claude_code"
-        case .openClaw:    return "openclaw"
+        case .openClaw: return "openclaw"
+        case .openClaude: return "openclaude"
         case .droid:       return "droid"
         case .forge:       return "forge"
         case .antigravity: return "antigravity"
@@ -350,6 +351,7 @@ public struct CLIAgentResumeOutcome: Hashable, Sendable {
         }
         switch wireID {
         case "openclaw": return "OpenClaw"
+        case "openclaude": return "OpenClaude"
         case "goose":    return "Goose"
         case "cursor":   return "Cursor"
         case "windsurf": return "Windsurf"

@@ -182,11 +182,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     }
 
     var frameMetricsForTesting: PetModel3DFrameMetrics? {
-        guard let contentRoot,
-              let framing = modelFraming,
-              let bounds = subtreeBoundingBox(for: contentRoot) else { return nil }
-        let (minB, maxB) = bounds
-        let maxExtent = Self.maxExtent(min: minB, max: maxB)
+        guard contentRoot != nil,
+              let framing = modelFraming else { return nil }
+        let maxExtent = Self.targetModelHeight / framing.baseScale
         guard maxExtent > 0 else { return nil }
         let scale = framing.baseScale * userScale
         return PetModel3DFrameMetrics(
@@ -196,15 +194,24 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         )
     }
 
+    /// Test hook: whether the mounted model stands upright. Measured in the
+    /// content root's space so the verdict reflects the rendered orientation, not
+    /// only the raw mesh metadata.
+    ///
+    /// The regression these rigs hit is the rendered body lying toward the camera:
+    /// the head-to-toe axis ends up along SceneKit's Z (depth) with only the body's
+    /// thickness along Y. So "upright" is precisely: the **vertical extent is at
+    /// least the depth extent** (`height >= depth`). Width (X) is deliberately not
+    /// compared — a standing rig's bind pose can splay its arms wider than it is
+    /// tall, which is upright, not supine. `false` when no model is mounted.
     var isUprightForTesting: Bool {
         guard let contentRoot,
-              let bounds = subtreeBoundingBox(for: contentRoot) else { return false }
+              let bounds = subtreeBoundingBox(for: contentRoot, excludingAttachedProps: true) else { return false }
         let (minB, maxB) = bounds
-        let extentX = CGFloat(maxB.x - minB.x)
-        let extentY = CGFloat(maxB.y - minB.y)
-        let extentZ = CGFloat(maxB.z - minB.z)
-        guard [extentX, extentY, extentZ].allSatisfy(\.isFinite) else { return false }
-        return extentY >= max(extentX, extentZ) * 0.95
+        let height = CGFloat(maxB.y - minB.y)
+        let depth = CGFloat(maxB.z - minB.z)
+        guard height.isFinite, depth.isFinite, height > 0 else { return false }
+        return height >= depth
     }
 
     // MARK: Init
@@ -519,24 +526,14 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         scnView.scene = loaded
 
         // Wrap the imported root so we can yaw/bob without disturbing clips.
-        // `root` owns the yaw/bob (applied in applyModelTransform). The imported
-        // model goes under an inner `upright` node that stands it up: these Meshy
-        // rigs import into SceneKit lying on their back (Z-up source vs SceneKit's
-        // Y-up), so a fixed -90° pitch about X makes every pet stand. Framing reads
-        // `root`'s bounds AFTER this, so scale/centering stay correct, and the yaw
-        // on `root` spins an already-upright model. (model-viewer applies the same
-        // glTF Y-up convention on the web — this matches it.)
+        // `root` owns the yaw/bob (applied in applyModelTransform). The synced
+        // GLBs are already authored Y-up; adding a blanket pitch correction turns
+        // founder bodies horizontal, which reads as a top-of-head view. Keep the
+        // imported rig orientation intact and let framing/camera handle scale.
         let root = SCNNode()
-        let upright = SCNNode()
-        // Rigged Meshy GLBs import into SceneKit tilted -90° about X. Static demo
-        // GLBs already carry their authoring transform, so leave those alone.
-        if definition.model3d?.kind?.lowercased() != "static" {
-            upright.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
-        }
         for child in loaded.rootNode.childNodes {
-            upright.addChildNode(child)
+            root.addChildNode(child)
         }
-        root.addChildNode(upright)
         loaded.rootNode.addChildNode(root)
         contentRoot = root
 
@@ -702,7 +699,10 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         applyModelTransform()
     }
 
-    private func subtreeBoundingBox(for root: SCNNode) -> (SCNVector3, SCNVector3)? {
+    private func subtreeBoundingBox(
+        for root: SCNNode,
+        excludingAttachedProps: Bool = false
+    ) -> (SCNVector3, SCNVector3)? {
         var minPoint: SCNVector3?
         var maxPoint: SCNVector3?
 
@@ -741,7 +741,11 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         }
 
         includeBounds(of: root)
-        root.enumerateChildNodes { node, _ in
+        root.enumerateChildNodes { node, stop in
+            if excludingAttachedProps, node.name?.hasPrefix("prop:") == true {
+                stop.pointee = true
+                return
+            }
             includeBounds(of: node)
         }
 

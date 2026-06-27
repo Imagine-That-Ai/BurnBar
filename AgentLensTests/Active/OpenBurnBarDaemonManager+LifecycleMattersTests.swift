@@ -60,7 +60,8 @@ final class OpenBurnBarDaemonManagerLifecycleMattersTests: XCTestCase {
 
     private func dependencies(
         fileManager: FileManager,
-        resolveDaemonBinary: @escaping @Sendable () -> URL?
+        resolveDaemonBinary: @escaping @Sendable () -> URL?,
+        validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
     ) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(
             fileManager: fileManager,
@@ -94,7 +95,8 @@ final class OpenBurnBarDaemonManagerLifecycleMattersTests: XCTestCase {
                         freshness: .missing
                     )
                 )
-            }
+            },
+            validateDaemonBinary: validateDaemonBinary
         )
     }
 
@@ -218,6 +220,67 @@ final class OpenBurnBarDaemonManagerLifecycleMattersTests: XCTestCase {
                 dependencies: deps
             ),
             "A size mismatch on a healthy file system must still report a needed refresh."
+        )
+    }
+
+    // MARK: - Forward-facing: an untrusted source must never drive an auto-refresh
+
+    /// Regression for the "old build leaving stuff behind" daemon block: a
+    /// resolved source binary that differs from the installed one (so the
+    /// size/mtime path would request a refresh) but FAILS the first-party
+    /// signature requirement must NOT trigger a refresh. Auto-refreshing from it
+    /// would validate the bad source, fail, and block every provider mutation
+    /// behind "daemon must be healthy" even though the installed daemon is fine.
+    func test_needsRefresh_skipsRefreshWhenSourceFailsSignatureValidation() throws {
+        struct UntrustedSource: Error {}
+        let harness = try makeHarness(name: "untrusted-source")
+        defer { harness.cleanup() }
+
+        // Different content => different size => the staleness path alone would
+        // report "refresh".
+        try writeExecutable("#!/bin/sh\nexit 0\necho stale-adhoc-source\n", to: harness.sourceURL)
+        try writeExecutable("#!/bin/sh\nexit 0\n", to: harness.installedURL)
+
+        let deps = dependencies(
+            fileManager: .default,
+            resolveDaemonBinary: { harness.sourceURL },
+            validateDaemonBinary: { url in
+                if url.standardizedFileURL == harness.sourceURL.standardizedFileURL {
+                    throw UntrustedSource()
+                }
+            }
+        )
+
+        XCTAssertFalse(
+            OpenBurnBarDaemonManager.installedDaemonBinaryNeedsRefresh(
+                paths: harness.paths,
+                dependencies: deps
+            ),
+            "A source binary that fails signature validation must never drive a refresh of a working installed daemon."
+        )
+    }
+
+    /// Positive control: when the differing source binary PASSES signature
+    /// validation, the normal upgrade path still proceeds.
+    func test_needsRefresh_proceedsWhenSourcePassesSignatureValidation() throws {
+        let harness = try makeHarness(name: "trusted-source")
+        defer { harness.cleanup() }
+
+        try writeExecutable("#!/bin/sh\nexit 0\necho fresh-trusted-source\n", to: harness.sourceURL)
+        try writeExecutable("#!/bin/sh\nexit 0\n", to: harness.installedURL)
+
+        let deps = dependencies(
+            fileManager: .default,
+            resolveDaemonBinary: { harness.sourceURL },
+            validateDaemonBinary: { _ in }
+        )
+
+        XCTAssertTrue(
+            OpenBurnBarDaemonManager.installedDaemonBinaryNeedsRefresh(
+                paths: harness.paths,
+                dependencies: deps
+            ),
+            "A trusted, newer source binary must still upgrade the installed daemon."
         )
     }
 }

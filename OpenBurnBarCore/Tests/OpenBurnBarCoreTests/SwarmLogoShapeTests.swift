@@ -58,7 +58,8 @@ final class SwarmLogoShapeTests: XCTestCase {
         // so the per-glyph particle budget stays readable on iPhone.
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.factory, .claudeCode]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.codex, .openCode]))
-        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .hermes]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .openClaude]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.hermes, .geminiCLI]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.allSatisfy { $0.count <= 2 })
     }
 

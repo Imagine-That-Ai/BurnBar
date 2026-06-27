@@ -30,6 +30,7 @@ struct PetKeychainStore: Sendable {
         case claude = "Claude"
         case hermes = "Hermes"
         case openclaw = "OpenClaw"
+        case openClaude = "OpenClaude"
         case piAgent = "PiAgent"
         case droid = "Droid"
         case forge = "Forge"
@@ -46,6 +47,7 @@ struct PetKeychainStore: Sendable {
             case .claude: self = .claude
             case .hermes: self = .hermes
             case .openclaw: self = .openclaw
+            case .openClaude: self = .openClaude
             case .piAgent: self = .piAgent
             case .droid: self = .droid
             case .forge: self = .forge

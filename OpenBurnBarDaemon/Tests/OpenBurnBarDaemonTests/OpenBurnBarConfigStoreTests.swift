@@ -266,6 +266,54 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(snapshot.providerSettings(id: "ollama")?.credentialSlots.isEmpty ?? false)
     }
 
+    func testRemoveCredentialSlotSucceedsWhenSecretDeletionFaults() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-remove-fault-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let secretStore = DeleteFaultingSecretStore()
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json", isDirectory: false),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: secretStore,
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5-turbo"],
+                preferredCredentialSlotID: "gmail",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "gmail",
+                        label: "Gmail",
+                        isEnabled: true,
+                        status: .ready
+                    )
+                ]
+            )
+        )
+
+        // A keychain delete fault (e.g. errSecInvalidOwnerEdit / -25244 from an
+        // item whose ACL was written by an older daemon identity) must not fail
+        // the removal: the slot is already gone from config, which is the
+        // user-facing success. The previous behavior surfaced a false
+        // "couldn't remove" error and left the deleted row on screen.
+        try await configStore.removeCredentialSlot(providerID: "zai", slotID: "gmail")
+
+        let snapshot = try await configStore.snapshot()
+        let slots = snapshot.providerSettings(id: "zai")?.credentialSlots ?? []
+        XCTAssertFalse(
+            slots.contains(where: { $0.slotID == "gmail" }),
+            "Removal must drop the slot from config even when keychain secret cleanup faults."
+        )
+        let attempts = await secretStore.deleteAttempts
+        XCTAssertEqual(attempts, 3, "Secret cleanup must retry the transient fault before giving up.")
+    }
+
     func testCredentialSlotUpsertRejectsEmptyRouteCredential() async throws {
         let harness = try makeHarness(name: "empty-slot-secret")
 
@@ -1338,4 +1386,26 @@ private actor UnreadableSecretStore: BurnBarProviderSecretStoring {
     }
 
     func setSecret(_ secret: String?, for providerID: String) async throws {}
+}
+
+/// A secret store whose reads/writes succeed but whose deletes
+/// (`setSecret(nil, ...)`) always fault, modelling errSecInvalidOwnerEdit /
+/// -25244 from a keychain item whose ACL was written by an older daemon
+/// identity. Used to prove credential-slot removal stays successful even when
+/// the best-effort secret cleanup cannot complete.
+private actor DeleteFaultingSecretStore: BurnBarProviderSecretStoring {
+    struct DeleteDenied: Error {}
+
+    private(set) var deleteAttempts = 0
+
+    func secret(for providerID: String) async throws -> String? {
+        "sk-test-token"
+    }
+
+    func setSecret(_ secret: String?, for providerID: String) async throws {
+        if secret == nil {
+            deleteAttempts += 1
+            throw DeleteDenied()
+        }
+    }
 }

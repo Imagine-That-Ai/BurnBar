@@ -376,6 +376,7 @@ struct ChatEnginesDetailView: View {
         case .hermes: return "Local Hermes webapi (recommended)"
         case .piAgent: return "Pi agent via the Pi gateway"
         case .openclaw: return "OpenClaw OpenAI-compatible gateway"
+        case .openClaude: return "Local OpenClaude CLI session"
         case .codex: return "Local Codex CLI session"
         case .claude: return "Local Claude Code CLI session"
         case .droid: return "Local Droid CLI session"

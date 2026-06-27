@@ -63,6 +63,7 @@ final class SettingsManager {
         defaults: UserDefaults = .standard,
         controllerRuntimeSecrets: KeychainStore = SettingsManager.controllerRuntimeSecrets,
         chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets,
+        launchAgentGatewayAuthTokenReader: @escaping () -> String? = { GatewaySettings.readLaunchAgentAuthToken() },
         flushDelayNanoseconds: UInt64 = 100_000_000
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
@@ -86,7 +87,8 @@ final class SettingsManager {
         )
         self.gateway = GatewaySettings(
             persistence: coordinator,
-            secretPersistence: chatGatewaySecretPersistence
+            secretPersistence: chatGatewaySecretPersistence,
+            launchAgentAuthTokenReader: launchAgentGatewayAuthTokenReader
         )
         self.chatBackend = ChatBackendSettings(
             persistence: coordinator,

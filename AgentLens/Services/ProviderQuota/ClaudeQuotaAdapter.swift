@@ -280,7 +280,25 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // This path is handled before the statusline bridge so explicit
         // account snapshots cannot inherit another account's local hook data.
 
-        // 3. JSONL-based token counting from local Claude project
+        // 3. Anthropic rate-limit header probe. The OAuth usage endpoint may
+        //    fail for credentials that lack the `user:profile` scope (common on
+        //    Pro/Max OAuth tokens). A 1-token probe against `/v1/messages`
+        //    reads the `anthropic-ratelimit-unified-*` headers (Claude Max/Pro)
+        //    or `anthropic-ratelimit-{requests,input-tokens,output-tokens}-*`
+        //    headers (Console API keys) that Anthropic returns on every
+        //    response. This is the authoritative per-account quota signal — it
+        //    is keyed to the credential's organization, so each slot gets its
+        //    own real numbers instead of collapsing to the single shared
+        //    statusline hook payload.
+        if let probeSnapshot = await headerProbeSnapshot(
+            workingCredentials: workingCredentials,
+            resolvedAPIKeys: context.resolvedAPIKeys,
+            session: context.session
+        ) {
+            return probeSnapshot
+        }
+
+        // 4. JSONL-based token counting from local Claude project
         //    files. Real per-message tokens from
         //    `~/.claude/projects/**/*.jsonl`. When an explicit
         //    credential injection knows the plan tier, annotate the
@@ -886,6 +904,139 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 isEstimated: false
             )
         }
+    }
+
+    // MARK: - Rate-Limit Header Probe
+
+    /// Extract the raw credential (OAuth bearer or Console API key) for the
+    /// current account scope. Prefers the structured OAuth credentials
+    /// injected by `accountContext`; falls back to resolved API keys for
+    /// Console keys that did not parse as OAuth.
+    private func rawProbeCredential(
+        workingCredentials: ClaudeOAuthCredentials?,
+        resolvedAPIKeys: [String: String?]
+    ) -> String? {
+        if let token = quotaNonEmpty(workingCredentials?.accessToken) {
+            return token
+        }
+        let claudeKeyIdentifiers = ["Claude Code", "claude code", "claudecode", "claude_code"]
+        return claudeKeyIdentifiers.compactMap { identifier in
+            quotaNonEmpty(resolvedAPIKeys[identifier].flatMap { $0 })
+        }.first
+    }
+
+    /// Probe Anthropic with a 1-token request and read the rate-limit headers
+    /// from the response. Returns an authoritative per-account snapshot when
+    /// the probe is healthy and headers are present; returns `nil` to fall
+    /// through to the existing cascade.
+    private func headerProbeSnapshot(
+        workingCredentials: ClaudeOAuthCredentials?,
+        resolvedAPIKeys: [String: String?],
+        session: URLSession
+    ) async -> ProviderQuotaSnapshot? {
+        guard let rawCredential = rawProbeCredential(
+            workingCredentials: workingCredentials,
+            resolvedAPIKeys: resolvedAPIKeys
+        ) else {
+            return nil
+        }
+
+        let probe = AnthropicCredentialProbe(session: session)
+        let result = await probe.probe(credential: rawCredential)
+
+        guard result.isHealthy, !result.rateLimitHeaders.isEmpty else {
+            return nil
+        }
+
+        let headers = result.rateLimitHeaders
+        let now = Date()
+        var buckets: [ProviderQuotaBucket] = []
+
+        if headers.hasUnifiedData {
+            let limit = headers.unifiedTokensLimit
+            let remaining = headers.unifiedTokensRemaining
+            let usedPercent: Double? = {
+                guard let limit, limit > 0, let remaining else { return nil }
+                return max(0, min(((limit - remaining) / limit) * 100, 100))
+            }()
+            let resetsAt = headers.unifiedTokensResetSeconds.map { now.addingTimeInterval($0) }
+            buckets.append(ProviderQuotaBucket(
+                key: "claude-unified-header-probe",
+                label: "5-hour unified window",
+                windowKind: .rollingHours,
+                usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                limitValue: limit,
+                remainingValue: remaining,
+                usedPercent: usedPercent,
+                resetsAt: resetsAt,
+                unit: .tokens,
+                isEstimated: false
+            ))
+        }
+
+        if headers.hasStandardData {
+            func standardBucket(
+                prefix: String,
+                label: String,
+                limit: Double?,
+                remaining: Double?,
+                resetSeconds: Double?
+            ) -> ProviderQuotaBucket? {
+                guard limit != nil || remaining != nil else { return nil }
+                let usedPercent: Double? = {
+                    guard let limit, limit > 0, let remaining else { return nil }
+                    return max(0, min(((limit - remaining) / limit) * 100, 100))
+                }()
+                return ProviderQuotaBucket(
+                    key: "claude-rate-limit-\(prefix)",
+                    label: label,
+                    windowKind: .custom,
+                    usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                    limitValue: limit,
+                    remainingValue: remaining,
+                    usedPercent: usedPercent,
+                    resetsAt: resetSeconds.map { now.addingTimeInterval($0) },
+                    unit: prefix.contains("tokens") ? .tokens : .requests,
+                    isEstimated: false
+                )
+            }
+            buckets.append(contentsOf: [
+                standardBucket(
+                    prefix: "requests",
+                    label: "Requests / minute",
+                    limit: headers.requestsLimit,
+                    remaining: headers.requestsRemaining,
+                    resetSeconds: headers.requestsResetSeconds
+                ),
+                standardBucket(
+                    prefix: "input-tokens",
+                    label: "Input tokens / minute",
+                    limit: headers.inputTokensLimit,
+                    remaining: headers.inputTokensRemaining,
+                    resetSeconds: headers.inputTokensResetSeconds
+                ),
+                standardBucket(
+                    prefix: "output-tokens",
+                    label: "Output tokens / minute",
+                    limit: headers.outputTokensLimit,
+                    remaining: headers.outputTokensRemaining,
+                    resetSeconds: headers.outputTokensResetSeconds
+                )
+            ].compactMap { $0 })
+        }
+
+        guard !buckets.isEmpty else { return nil }
+
+        let credentialKind = result.shape == .consoleAPIKey ? "Console API key" : "Claude plan"
+        return ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: now,
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: "https://claude.ai/settings/usage",
+            statusMessage: "Claude quota from Anthropic rate-limit headers (\(credentialKind)). \(buckets.count) window(s) active.",
+            buckets: buckets
+        )
     }
 
     /// Stream a transcript line by line, returning the boundary-independent

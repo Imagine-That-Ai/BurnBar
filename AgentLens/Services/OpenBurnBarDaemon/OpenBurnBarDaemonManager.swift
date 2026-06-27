@@ -363,7 +363,11 @@ final class OpenBurnBarDaemonManager {
     /// Daemon binary refresh checks can hash multi-megabyte build products. Keep that off the main actor.
     /// `nonisolated` so the hashing runs off the main actor (SE-0338).
     nonisolated func daemonNeedsRefreshCheck() async -> Bool {
-        Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
+        if dependencies.fileManager.isExecutableFile(atPath: paths.installedBinaryURL.path),
+           !dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path) {
+            return true
+        }
+        return Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
     }
 
     var socketPathDisplay: String {

@@ -200,6 +200,7 @@ final class HermesRelayContractTests: XCTestCase {
             .codex: "codex",
             .claude: "claude_code",
             .openClaw: "openclaw",
+            .openClaude: "openclaude",
             .droid: "droid",
             .forge: "forge",
             .antigravity: "antigravity",
@@ -212,9 +213,11 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertTrue(CLIAgentRuntime.claude.supportsNativeResume)
         XCTAssertTrue(CLIAgentRuntime.codex.supportsNativeResume)
         XCTAssertFalse(CLIAgentRuntime.openClaw.supportsNativeResume)
+        XCTAssertFalse(CLIAgentRuntime.openClaude.supportsNativeResume)
         XCTAssertFalse(CLIAgentRuntime.grok.supportsNativeResume)
-        // openClaw has no first-class resume target (handoff only).
+        // OpenClaw/OpenClaude have no first-class resume target (handoff only).
         XCTAssertNil(CLIAgentRuntime.openClaw.resumeTarget)
+        XCTAssertNil(CLIAgentRuntime.openClaude.resumeTarget)
         XCTAssertEqual(CLIAgentRuntime.cursorAgent.resumeTarget, .cursorAgent)
     }
 

@@ -536,11 +536,11 @@ extension ProviderPlanWizardView {
                             reconnectExternalOAuthProfile(profile, providerID: provider.providerID)
                         }
                         slotButton("trash", help: "Remove this OAuth profile", tint: DesignSystem.Colors.error) {
-                            externalAccountToDelete = ExternalAccountDeleteTarget(
+                            pendingDeletion = .external(ExternalAccountDeleteTarget(
                                 profileID: profile.id,
                                 label: account.label,
                                 cliType: account.cliType
-                            )
+                            ))
                         }
                     }
                 }
@@ -776,12 +776,18 @@ extension ProviderPlanWizardView {
                 }
             }
 
-            slotButton("trash", help: "Delete plan", tint: DesignSystem.Colors.error) {
-                slotToDelete = SlotDeleteTarget(
+            let isDeletingSlot = deletingAccountID == slot.slotID
+            slotButton(
+                isDeletingSlot ? "hourglass" : "trash",
+                help: "Delete plan",
+                tint: DesignSystem.Colors.error,
+                disabled: isDeletingSlot
+            ) {
+                pendingDeletion = .slot(SlotDeleteTarget(
                     providerID: provider.providerID,
                     slotID: slot.slotID,
                     slotLabel: slot.label
-                )
+                ))
             }
         }
     }

@@ -404,17 +404,48 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String
     ) async {
+        _ = await removeProviderCredentialSlotReporting(providerID: providerID, slotID: slotID)
+    }
+
+    /// Removes a credential slot and reports whether it actually succeeded.
+    ///
+    /// Unlike the fire-and-forget `performBusyWork` path (which silently
+    /// *returns* when another daemon write is mid-flight, leaving the deleted
+    /// row on screen and the user convinced the trash button is dead), this
+    /// waits its turn via `performRequiredBusyWork`, refreshes the runtime
+    /// snapshot on success so the row disappears immediately, and surfaces a
+    /// failure through the return value + `lastError` so the UI can tell the
+    /// truth instead of pretending the removal worked.
+    @discardableResult
+    func removeProviderCredentialSlotReporting(
+        providerID: String,
+        slotID: String
+    ) async -> Bool {
+        do {
+            try await removeProviderCredentialSlotOrThrow(providerID: providerID, slotID: slotID)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    func removeProviderCredentialSlotOrThrow(
+        providerID: String,
+        slotID: String
+    ) async throws {
         if case .healthy = status {
             // already healthy
         } else {
             await forceRefreshHealth()
             guard case .healthy = status else {
-                lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-                return
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
             }
         }
 
-        await performBusyWork {
+        try await performRequiredBusyWork {
             let socketURL = paths.socketURL
             _ = try await daemonRPC {
                 try OpenBurnBarDaemonSocketClient.removeProviderCredentialSlot(
