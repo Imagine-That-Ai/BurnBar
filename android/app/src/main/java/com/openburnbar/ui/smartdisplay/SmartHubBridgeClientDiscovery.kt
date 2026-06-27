@@ -6,6 +6,7 @@ import android.net.nsd.NsdServiceInfo
 import java.net.InetAddress
 
 private const val DISCOVERY_SERVICE_TYPE = "_http._tcp."
+internal const val SMART_DISPLAY_DISCOVERY_MAX_RESULTS = 32
 
 internal object SmartHubBridgeClientDiscovery {
     private var nsdManager: NsdManager? = null
@@ -111,8 +112,23 @@ internal object SmartHubBridgeClientDiscovery {
 
     private fun addOrUpdateDevice(device: PixelClockDevice) {
         SmartHubBridgeClient.updateState { snapshot ->
-            val without = snapshot.discoveredDevices.filterNot { it.id == device.id }
-            snapshot.copy(discoveredDevices = (without + device).sortedBy { it.name.lowercase() })
+            snapshot.copy(discoveredDevices = mergeDiscoveredDevices(snapshot.discoveredDevices, device))
         }
     }
 }
+
+internal fun mergeDiscoveredDevices(
+    existing: List<PixelClockDevice>,
+    device: PixelClockDevice,
+    maxResults: Int = SMART_DISPLAY_DISCOVERY_MAX_RESULTS,
+): List<PixelClockDevice> {
+    val cap = maxResults.coerceAtLeast(0)
+    val boundedExisting = existing.sortedForDiscovery().take(cap)
+    val without = boundedExisting.filterNot { it.id == device.id }
+    val shouldAdd = without.size < cap || boundedExisting.any { it.id == device.id }
+    val merged = if (shouldAdd) without + device else without
+    return merged.sortedForDiscovery()
+}
+
+private fun List<PixelClockDevice>.sortedForDiscovery(): List<PixelClockDevice> =
+    sortedWith(compareBy<PixelClockDevice> { it.name.lowercase() }.thenBy { it.id })
