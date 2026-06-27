@@ -4,6 +4,27 @@ import XCTest
 
 final class SwarmCanvasFrameRateTests: XCTestCase {
 
+    // MARK: - Stateful Canvas isolation
+
+    func testStatefulCanvasRenderers_doNotRenderAsynchronously() throws {
+        let statefulCanvasSources = [
+            "AgentLens/Views/Dashboard/DashboardBracketSwarmBackground.swift",
+            "AgentLens/Views/Dashboard/Components/EasterEggEventCanvas.swift"
+        ]
+
+        for relativePath in statefulCanvasSources {
+            let source = try Self.loadSource(relativePath)
+            XCTAssertFalse(
+                source.contains("rendersAsynchronously: true"),
+                "\(relativePath) owns SwiftUI or simulation state from its Canvas closure and must stay synchronous."
+            )
+            XCTAssertTrue(
+                source.contains("rendersAsynchronously: false"),
+                "\(relativePath) should make the stateful Canvas execution policy explicit."
+            )
+        }
+    }
+
     // MARK: - sanitizedFrameRate matrix
 
     func testSanitizedFrameRate_nil_returnsFallback() {
@@ -111,5 +132,14 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         // R=255 in the top byte: 0xFF000000 | 0x00000000 | 0x00000000 | 0xFF
         let expected: UInt32 = (255 << 24) | (0 << 16) | (0 << 8) | 255
         XCTAssertEqual(pureRed.bucketKey, expected)
+    }
+
+    private static func loadSource(_ relativePath: String) throws -> String {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fileURL = packageRoot.appendingPathComponent(relativePath)
+        return try String(contentsOf: fileURL, encoding: .utf8)
     }
 }
