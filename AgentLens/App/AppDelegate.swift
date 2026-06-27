@@ -271,12 +271,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         if statusItem != nil {
             return
         }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: OpenBurnBarStatusItemBrandMark.statusItemWidth)
         if let button = item.button {
             button.image = OpenBurnBarStatusItemBrandMark.image(
                 colorful: shouldRenderColorfulMenuBarIcon
             )
-            button.imagePosition = .imageOnly
+            button.imagePosition = .imageLeading
+            button.title = OpenBurnBarStatusItemBrandMark.fallbackTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
             button.target = self
@@ -1437,6 +1438,8 @@ private extension NSStatusBarButton {
 
 private enum OpenBurnBarStatusItemBrandMark {
     private static let side: CGFloat = 18
+    static let statusItemWidth: CGFloat = 86
+    static let fallbackTitle = "BurnBar"
 
     /// Returns the menu-bar icon in either monochrome template mode or full color.
     static func image(colorful: Bool) -> NSImage {
