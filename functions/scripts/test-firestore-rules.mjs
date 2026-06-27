@@ -1095,33 +1095,41 @@ test("current and legacy computer use subscription product ids do not bypass ser
 
 test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async () => {
   const cloudDb = authedDb("cloud-only-media");
+  const mediaManifestFor = (uid, id = "manifest-1") => ({
+    id,
+    blobHash: "b".repeat(64),
+    sealedFilename: sealedTextAt(uid, "media_attachment_manifests", id, "sealedFilename"),
+    mime: "image/png",
+    size: 1234,
+    peerDeviceIdHash: "peer-hash",
+    direction: "macToIos",
+    schemaVersion: 1,
+  });
+
   await seedBurnBarProEntitlement("cloud-only-media");
   await assertFails(
-    setDoc(doc(cloudDb, "users/cloud-only-media/media_attachment_manifests/manifest-1"), {
-      id: "manifest-1",
-      blobHash: "b".repeat(64),
-      sealedFilename: sealedTextAt("cloud-only-media", "media_attachment_manifests", "manifest-1", "sealedFilename"),
-      mime: "image/png",
-      size: 1234,
-      peerDeviceIdHash: "peer-hash",
-      direction: "macToIos",
-      schemaVersion: 1,
-    })
+    setDoc(
+      doc(cloudDb, "users/cloud-only-media/media_attachment_manifests/manifest-1"),
+      mediaManifestFor("cloud-only-media")
+    )
   );
 
   const proDb = authedDb("cloud-pro-media");
   await seedBurnBarProMaxEntitlement("cloud-pro-media");
   await assertSucceeds(
-    setDoc(doc(proDb, "users/cloud-pro-media/media_attachment_manifests/manifest-1"), {
-      id: "manifest-1",
-      blobHash: "b".repeat(64),
-      sealedFilename: sealedTextAt("cloud-pro-media", "media_attachment_manifests", "manifest-1", "sealedFilename"),
-      mime: "image/png",
-      size: 1234,
-      peerDeviceIdHash: "peer-hash",
-      direction: "macToIos",
-      schemaVersion: 1,
-    })
+    setDoc(
+      doc(proDb, "users/cloud-pro-media/media_attachment_manifests/manifest-1"),
+      mediaManifestFor("cloud-pro-media")
+    )
+  );
+
+  const playProDb = authedDb("play-cloud-pro-media");
+  await seedBurnBarProMaxEntitlement("play-cloud-pro-media", "com.openburnbar.promax.v2.monthly");
+  await assertSucceeds(
+    setDoc(
+      doc(playProDb, "users/play-cloud-pro-media/media_attachment_manifests/manifest-1"),
+      mediaManifestFor("play-cloud-pro-media")
+    )
   );
 });
 
@@ -1212,6 +1220,32 @@ test("no subscription tier bypasses server-owned computer-use authority writes",
       peerNodeId: `${proUid}-peer-${"a".repeat(24)}`,
       publicKeyBase64: "A".repeat(44),
       updatedAt: serverTimestamp(),
+    })
+  );
+});
+
+test("Google Play Cloud Pro unlocks computer-use session metadata writes", async () => {
+  const uid = "play-cloud-pro-control";
+  const db = authedDb(uid);
+  await seedBurnBarProMaxEntitlement(uid, "com.openburnbar.promax.v2.monthly");
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}/computer_use_sessions/session-1`), {
+      id: "session-1",
+      sessionId: "session-1",
+      userId: uid,
+      mode: "browser",
+      trustMode: "manual",
+      startedAt: Timestamp.fromDate(new Date("2026-06-05T00:00:00.000Z")),
+      actionCount: 0,
+      approvalCount: 0,
+      rejectionCount: 0,
+      panicHaltCount: 0,
+      visionSpendUSD: 0,
+      manifestHashHex: "a".repeat(64),
+      macAppVersion: "1.0.0",
+      schemaVersion: 1,
+      updatedAt: Timestamp.fromDate(new Date("2026-06-05T00:00:00.000Z")),
     })
   );
 });
@@ -4434,6 +4468,18 @@ test("T11 project_memory_snapshots seal the name and reject plaintext slug", asy
   };
 
   await assertSucceeds(setDoc(doc(db, snapshotPath), base));
+  const playProUid = "pms-play-cloud-pro-owner";
+  const playProDocID = `pm_${"b".repeat(16)}`;
+  const playProDb = authedDb(playProUid);
+  await seedBurnBarProMaxEntitlement(playProUid, "com.openburnbar.promax.annual");
+  await assertSucceeds(
+    setDoc(doc(playProDb, `users/${playProUid}/project_memory_snapshots/${playProDocID}`), {
+      ...base,
+      docID: playProDocID,
+      contentHash: "e".repeat(64),
+      sealedSnapshot: sealedBlobAt(playProUid, "project_memory_snapshots", playProDocID, "sealedSnapshot"),
+    })
+  );
   // Plaintext project name fields are denied.
   await assertFails(
     setDoc(doc(db, snapshotPath), { ...base, projectDisplayName: "BurnBar" })

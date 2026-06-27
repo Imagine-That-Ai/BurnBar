@@ -112,10 +112,9 @@ const FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL = [
  * Preserved shipped asymmetries (kept verbatim; widening a rules allowlist is
  * a security-reviewed change, not a refactor):
  * - The lowercase Google Play `com.openburnbar.promax.*` aliases are accepted
- *   by the strict proMax predicate because Play Cloud Pro writes the same
- *   `burnbar_pro_max` entitlement doc that Data Vault and Wand gates read.
- *   They remain absent from the broader premium/media/computer-use lists until
- *   those legacy gates are intentionally widened.
+ *   by the strict proMax predicate. Broader gates evaluate that predicate on
+ *   the `burnbar_pro_max` mirror doc instead of duplicating every Cloud Pro
+ *   alias into the larger premium/media/computer-use lists.
  * - A `hosted_media_sync` receipt grants media but is absent from the premium
  *   floor list, exactly as shipped.
  */

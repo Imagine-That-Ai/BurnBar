@@ -474,6 +474,11 @@ service cloud.firestore {
         && entitlement.expireAt > request.time;
     }
 
+    function activeProMaxOrUltraEntitlementData(entitlement) {
+      return activeProMaxEntitlementData(entitlement)
+        || activeUltraEntitlementData(entitlement);
+    }
+
     function hasActiveHostedQuotaEntitlement(userId) {
       return (
           exists(hostedCloudEntitlementPath(userId))
@@ -485,7 +490,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activePremiumEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -569,7 +574,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activeMediaEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -608,7 +613,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activeComputerUseEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
