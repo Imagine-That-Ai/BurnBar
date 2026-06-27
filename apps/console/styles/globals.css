@@ -443,6 +443,14 @@ body::after {
   .spine-wrap::after {
     display: none;
   }
+  .stagger > *, .stagger-words > *, .ink-settle {
+    opacity: 1 !important; transform: none !important; animation: none !important;
+  }
+  .text-sheen {
+    animation: none !important;
+    -webkit-text-fill-color: currentColor; color: var(--color-text-bright) !important;
+  }
+  .twinkle { animation: none !important; opacity: 1 !important; }
 }
 
 /* Gentle life on the static brand mark until the looping video is present. */
@@ -666,6 +674,10 @@ body::after {
   --accent-deep: #a3600e;
   --accent-wash: rgba(224, 137, 42, 0.12);
   --color-brass-glow: rgba(224, 137, 42, 0.18);
+  --font-display: "Fraunces", "Bricolage Grotesque", Georgia, serif;
+  --font-body: "Work Sans", "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
 :root[data-theme="obsidian"] {
@@ -692,6 +704,10 @@ body::after {
   --accent-deep: #ff9aa2;
   --accent-wash: rgba(251, 93, 106, 0.14);
   --color-brass-glow: rgba(251, 93, 106, 0.22);
+  --font-display: "Space Grotesk", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 }
 
 :root[data-theme="midnight"] {
@@ -718,6 +734,10 @@ body::after {
   --accent-deep: #9ec5ff;
   --accent-wash: rgba(79, 156, 255, 0.14);
   --color-brass-glow: rgba(79, 156, 255, 0.22);
+  --font-display: "Geist", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 }
 
 :root[data-theme="forest"] {
@@ -744,4 +764,150 @@ body::after {
   --accent-deep: #74e6cd;
   --accent-wash: rgba(31, 201, 168, 0.14);
   --color-brass-glow: rgba(31, 201, 168, 0.22);
+  --font-display: "Newsreader", "Fraunces", Georgia, serif;
+  --font-body: "Work Sans", "Geist", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+}
+
+/* ============================================================================
+   Per-theme type personalities. Token swaps (in the theme blocks above) change
+   the FACES; these rules tune tracking / weight / case / optical feel so each
+   theme reads unmistakably distinct. Scoped to [data-theme] — no component edits.
+   ========================================================================== */
+
+/* PAPER — refined grotesque, baseline editorial. Italic Newsreader epigraph. */
+:root[data-theme="paper"] .epigraph { font-style: italic; letter-spacing: 0; }
+
+/* SAND — warm humanist. Fraunces opsz, looser tracking, soft italic accents. */
+:root[data-theme="sand"] :is(h1, h2, h3, h4) {
+  font-weight: 500;
+  letter-spacing: -0.014em;
+  line-height: 1.06;
+  font-optical-sizing: auto;
+  font-feature-settings: "ss01" 1, "ss02" 1;
+}
+:root[data-theme="sand"] .nameplate { font-weight: 600; letter-spacing: -0.016em; }
+:root[data-theme="sand"] .eyebrow   { letter-spacing: 0.2em; font-weight: 500; }
+:root[data-theme="sand"] .epigraph  { font-style: italic; letter-spacing: 0.004em; }
+:root[data-theme="sand"] .dropcap::first-letter { font-style: italic; }
+
+/* OBSIDIAN — tight techno. Space Grotesk, negative tracking, mono eyebrows snug. */
+:root[data-theme="obsidian"] :is(h1, h2, h3, h4) {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.0;
+}
+:root[data-theme="obsidian"] .nameplate { font-weight: 700; letter-spacing: -0.04em; }
+:root[data-theme="obsidian"] .eyebrow   { letter-spacing: 0.14em; font-weight: 500; }
+:root[data-theme="obsidian"] .folio     { letter-spacing: 0.14em; }
+
+/* MIDNIGHT — precise, mono-accented. Heavy Geist display, wide JetBrains kickers. */
+:root[data-theme="midnight"] :is(h1, h2, h3, h4) {
+  font-weight: 650;
+  letter-spacing: -0.022em;
+}
+:root[data-theme="midnight"] .nameplate { font-weight: 700; letter-spacing: -0.026em; }
+:root[data-theme="midnight"] .eyebrow   { letter-spacing: 0.24em; font-weight: 500; }
+:root[data-theme="midnight"] .folio     { letter-spacing: 0.22em; }
+:root[data-theme="midnight"] :is(.index-num, .font-mono) {
+  font-feature-settings: "tnum" 1, "zero" 1, "cv01" 1;
+}
+
+/* FOREST — organic literary. Newsreader display (opsz), near-neutral tracking,
+   Fraunces italic epigraph. Cap display weight ≤600 (Newsreader is a text face). */
+:root[data-theme="forest"] :is(h1, h2, h3, h4) {
+  font-weight: 500;
+  letter-spacing: -0.006em;
+  line-height: 1.08;
+  font-optical-sizing: auto;
+}
+:root[data-theme="forest"] .nameplate { font-weight: 600; letter-spacing: -0.01em; }
+:root[data-theme="forest"] .eyebrow   { letter-spacing: 0.16em; font-weight: 500; }
+:root[data-theme="forest"] .epigraph  { font-style: italic; }
+:root[data-theme="forest"] .dropcap::first-letter { font-weight: 600; }
+
+/* ============================================================================
+   Motion kit — ported/adapted from imaginethat-llc evocativeText.css.
+   CSS-first. Every animated utility is neutralized in the reduced-motion guard.
+   (.reveal / spine-* / brand-sheen already live above at 367–476; kept as-is.)
+   ========================================================================== */
+
+/* (2) ink-rise — per-character curtain rise (adapted from ink-aurora).
+   Markup: wrap each char in <span style="--i:N">. */
+@keyframes ink-rise {
+  from { opacity: 0; transform: translateY(0.5em) scaleY(0.86); filter: blur(4px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.stagger > * {
+  display: inline-block;
+  opacity: 0;
+  animation: ink-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 38ms);
+}
+
+/* (3) word-fade — per-word organic stagger. <span style="--i:N"> per word. */
+@keyframes word-fade {
+  from { opacity: 0; transform: translateY(0.28em); }
+  to   { opacity: 1; transform: none; }
+}
+.stagger-words > * {
+  display: inline-block;
+  opacity: 0;
+  animation: word-fade 0.7s ease both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+/* (4) text-sheen — clipped gradient shimmer (adapted from glass-display-accent). */
+@keyframes text-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+.text-sheen {
+  background: linear-gradient(100deg,
+      var(--color-text-bright) 0%, var(--accent) 40%, var(--color-text-bright) 62%)
+    0 50% / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: text-sheen 7s linear infinite;
+}
+
+/* (5) ink-settle — italic skew settle (adapted from flow ink-flow). Epigraphs. */
+@keyframes ink-settle {
+  from { opacity: 0; transform: translateX(-0.4em) skewX(-8deg); }
+  to   { opacity: 1; transform: none; }
+}
+.ink-settle { animation: ink-settle 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* (6) twinkle — constellation pulse for tier-dots / accent marks on dark themes. */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.55; filter: brightness(1); }
+  50%      { opacity: 1;    filter: brightness(1.6); }
+}
+.twinkle { animation: twinkle 3.2s ease-in-out infinite; }
+
+/* (7) hover lift — quiet card/row elevation. */
+@media (prefers-reduced-motion: no-preference) {
+  .lift { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease; }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.45); }
+}
+
+/* (8) eyebrow underline grow — flow-style accent rule on hover. */
+.eyebrow-underline { position: relative; }
+.eyebrow-underline::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -0.35em; height: 1px;
+  background: var(--accent); transform: scaleX(0); transform-origin: left;
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.eyebrow-underline:hover::after,
+.group:hover .eyebrow-underline::after { transform: scaleX(1); }
+
+/* (9) theme cross-fade — free reskin transition when data-theme flips the tokens.
+   Scoped to elements WITHOUT their own transition decls (so .ledger-row's 160ms
+   hover at line 210 and .link-underline at 305 are untouched). */
+@media (prefers-reduced-motion: no-preference) {
+  html { transition: background-color 600ms ease; }
+  body, .glass-pane, .frost-overlay, .tier-badge,
+  h1, h2, h3, h4, .eyebrow, .folio, .epigraph, .nameplate {
+    transition: color 600ms ease, background-color 600ms ease, border-color 600ms ease;
+  }
 }
