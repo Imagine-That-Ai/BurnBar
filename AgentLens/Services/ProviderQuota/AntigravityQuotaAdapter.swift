@@ -54,15 +54,30 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Fetch
 
-    /// Test-only deterministic clock override. Production leaves this unset.
+    /// Test-only deterministic clock override. Release builds never honor this
+    /// environment seam, and debug builds require an explicit opt-in flag so a
+    /// stray production-like environment cannot move quota windows.
     static let referenceDateEnvironmentKey = "OPENBURNBAR_QUOTA_REFERENCE_MS"
+    static let referenceDateOptInEnvironmentKey = "OPENBURNBAR_ENABLE_TEST_QUOTA_REFERENCE_MS"
+    private static let minimumReferenceDateMilliseconds = 946_684_800_000.0 // 2000-01-01T00:00:00Z
+    private static let maximumReferenceDateMilliseconds = 4_102_444_800_000.0 // 2100-01-01T00:00:00Z
 
     static func referenceDate(from context: ProviderQuotaAdapterContext) -> Date {
+        #if DEBUG
+        guard context.environment[referenceDateOptInEnvironmentKey] == "1" else {
+            return Date()
+        }
         guard let raw = context.environment[referenceDateEnvironmentKey],
-              let milliseconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+              let milliseconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              milliseconds.isFinite,
+              milliseconds >= minimumReferenceDateMilliseconds,
+              milliseconds <= maximumReferenceDateMilliseconds else {
             return Date()
         }
         return Date(timeIntervalSince1970: milliseconds / 1000.0)
+        #else
+        return Date()
+        #endif
     }
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
