@@ -89,18 +89,50 @@ export function buildPendingCounterDelta(
 }
 
 /**
- * Time-prefixed doc ID: the queue is drained in implicit `__name__` order, so
- * a fixed-width ISO-8601 prefix makes lexicographic order chronological. A
- * per-instance sequence keeps same-millisecond sequential enqueues ordered
- * before the random suffix makes IDs collision-free. (Monotonic-ID hotspotting
- * only matters at sustained >500 writes/s — far above session-end burst rates.
- * Cross-instance trigger delivery can still be out-of-order; the dirty/full
- * rebuild path self-heals that rarer case.)
+ * Sort key used by both the immutable queue doc ID and the pure drain planner.
+ * A usage document's update chain must be replayed by semantic candidate
+ * version, not by whichever Cloud Function instance happened to enqueue first.
+ * Deletes are ordered after creates/updates at the same semantic version so a
+ * final delete cannot be undone by its own preceding state.
  */
 let lastPendingCounterDeltaEnqueuedAt = "";
 let lastPendingCounterDeltaSequence = 0;
 
-export function pendingCounterDeltaDocID(enqueuedAt: string): string {
+function pendingCounterDeltaSortTuple(delta: PendingCounterDelta): readonly [string, number, number] {
+  const transitionMillis = Math.max(
+    delta.before?.updatedMillis ?? Number.NEGATIVE_INFINITY,
+    delta.after?.updatedMillis ?? Number.NEGATIVE_INFINITY,
+  );
+  return [
+    delta.candidateKey,
+    Number.isFinite(transitionMillis) ? transitionMillis : Date.parse(delta.enqueuedAt) || 0,
+    delta.after === undefined ? 1 : 0,
+  ];
+}
+
+function comparePendingCounterDeltas(lhs: PendingCounterDelta, rhs: PendingCounterDelta): number {
+  const [leftCandidateKey, leftTransitionMillis, leftTransitionPhase] = pendingCounterDeltaSortTuple(lhs);
+  const [rightCandidateKey, rightTransitionMillis, rightTransitionPhase] = pendingCounterDeltaSortTuple(rhs);
+  if (leftCandidateKey !== rightCandidateKey) return leftCandidateKey < rightCandidateKey ? -1 : 1;
+  if (leftTransitionMillis !== rightTransitionMillis) return leftTransitionMillis - rightTransitionMillis;
+  if (leftTransitionPhase !== rightTransitionPhase) return leftTransitionPhase - rightTransitionPhase;
+  if (lhs.enqueuedAt !== rhs.enqueuedAt) return lhs.enqueuedAt < rhs.enqueuedAt ? -1 : 1;
+  if (lhs.usageDoc !== rhs.usageDoc) return lhs.usageDoc < rhs.usageDoc ? -1 : 1;
+  return 0;
+}
+
+function orderedPendingCounterDeltas(deltas: readonly PendingCounterDelta[]): PendingCounterDelta[] {
+  return [...deltas].sort(comparePendingCounterDeltas);
+}
+
+/**
+ * Semantic-order doc ID: the queue is drained in implicit `__name__` order, so
+ * the prefix mirrors `comparePendingCounterDeltas`. This keeps a single usage
+ * document's update chain ordered even when different trigger instances enqueue
+ * transitions in a different wall-clock order. A per-instance sequence plus
+ * random suffix keeps IDs collision-free within identical enqueue timestamps.
+ */
+export function pendingCounterDeltaDocID(enqueuedAt: string, delta?: PendingCounterDelta): string {
   if (enqueuedAt === lastPendingCounterDeltaEnqueuedAt) {
     lastPendingCounterDeltaSequence += 1;
   } else {
@@ -109,7 +141,13 @@ export function pendingCounterDeltaDocID(enqueuedAt: string): string {
   }
 
   const sequence = lastPendingCounterDeltaSequence.toString(36).padStart(8, "0");
-  return `${enqueuedAt}_${sequence}_${randomUUID()}`;
+  if (!delta) {
+    return `${enqueuedAt}_${sequence}_${randomUUID()}`;
+  }
+
+  const [candidateKey, transitionMillis, transitionPhase] = pendingCounterDeltaSortTuple(delta);
+  const semanticMillis = transitionMillis.toString().padStart(13, "0");
+  return `v1_${candidateKey}_${semanticMillis}_${transitionPhase}_${enqueuedAt}_${sequence}_${randomUUID()}`;
 }
 
 /**
@@ -126,7 +164,7 @@ export async function enqueueUsageCounterDelta(
   const enqueuedAt = new Date().toISOString();
   const delta = buildPendingCounterDelta(usageDoc, before, after, enqueuedAt);
   if (!delta) return false;
-  const ref = db.collection(`users/${uid}/pending_counter_deltas`).doc(pendingCounterDeltaDocID(enqueuedAt));
+  const ref = db.collection(`users/${uid}/pending_counter_deltas`).doc(pendingCounterDeltaDocID(enqueuedAt, delta));
   await ref.set(stripUndefinedDocument(delta), { merge: false });
   return true;
 }
@@ -223,7 +261,7 @@ export function planPendingDeltaDrain(
     return seeded;
   };
 
-  for (const delta of deltas) {
+  for (const delta of orderedPendingCounterDeltas(deltas)) {
     if (delta.before) {
       delete stateFor(delta.before.logicalKey)[delta.candidateKey];
     }
@@ -365,8 +403,9 @@ export async function drainPendingCounterDeltas(
   let capped = false;
 
   for (;;) {
-    // No orderBy: implicit __name__ ordering plus time-prefixed doc IDs (see
-    // pendingCounterDeltaDocID) yields oldest-first with no index needs.
+    // No orderBy: implicit __name__ ordering plus semantic doc IDs (see
+    // pendingCounterDeltaDocID) keeps same-usage-doc transitions ordered with
+    // no composite index needs.
     const page = await db.collection(queuePath).limit(PENDING_DELTA_DRAIN_PAGE_SIZE).get();
     if (page.docs.length === 0) break;
     pages += 1;
