@@ -19,7 +19,7 @@ struct SummarySettingsSnapshot: Sendable {
     let requestTimeoutSeconds: Double
     let maxPromptChars: Int
     let maxOutputTokens: Int
-    let dailyCapUSD: Double
+    let dailyCapUSD: Double?
     let retryCount: Int
 }
 

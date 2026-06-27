@@ -105,6 +105,26 @@ final class SummaryWorkerMattersTests: XCTestCase {
         )
     }
 
+    func test_nilDailyCap_doesNotBehaveLikeZeroDollarCap() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["OLLAMA_API_KEY"] == nil,
+            "OLLAMA_API_KEY is set; cannot isolate the no-credential cloud-gate path."
+        )
+
+        let reader = FixedDailySpendReader(spentToday: 999_999)
+        let worker = try await makeWorker(spendReader: reader)
+        let settings = makeSettings(dailyCapUSD: nil, retryCount: 0)
+
+        _ = await worker.summarizeAndStore(makeConversation(), settings: settings)
+
+        XCTAssertEqual(reader.callCount, 1, "The worker should still read spend before a cloud provider call")
+        XCTAssertGreaterThanOrEqual(
+            SummaryWorkerNetworkRecorder.paidCompletionRequestCount,
+            1,
+            "An absent daily cap must not collapse to a zero-dollar cap that blocks every paid summary"
+        )
+    }
+
     // MARK: - Cap-exceeded read must skip the call (existing behavior intact)
 
     /// A successful read that is already over the cap must skip the paid call,
@@ -170,7 +190,7 @@ final class SummaryWorkerMattersTests: XCTestCase {
         return ProviderAPIKeyStore(keychain: keychain)
     }
 
-    private func makeSettings(dailyCapUSD: Double, retryCount: Int = 0) -> SummarySettingsSnapshot {
+    private func makeSettings(dailyCapUSD: Double?, retryCount: Int = 0) -> SummarySettingsSnapshot {
         SummarySettingsSnapshot(
             providerOrder: [.ollama],
             localBaseURL: "",

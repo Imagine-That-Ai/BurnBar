@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import CryptoKit
 @testable import OpenBurnBar
 import OpenBurnBarCore
 
@@ -7,17 +8,9 @@ import OpenBurnBarCore
 final class ProviderAccountPersistenceTests: XCTestCase {
 
     private func persistedProviderAccountID(_ rawValue: String) -> String {
-        switch rawValue {
-        case "openai_work":
-            return "acct_sha256_66c1238fe26d776148ca580f"
-        case "openai_personal":
-            return "acct_sha256_1fe6cb359213f40aa6eba39f"
-        case "openai_client":
-            return "acct_sha256_366c264992448c4b4401133b"
-        default:
-            XCTFail("Add expected provider account hash for \(rawValue)")
-            return rawValue
-        }
+        let digest = SHA256.hash(data: Data(rawValue.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "acct_sha256_\(hex.prefix(24))"
     }
     func test_migration_v35_createsProviderAccountAndUsageAttributionSchema() async throws {
         let queue = try DatabaseQueue()
@@ -112,6 +105,26 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         XCTAssertEqual(fetched.providerAccountID, persistedProviderAccountID("openai_client"))
         XCTAssertEqual(fetched.providerAccountLabel, "Client")
         XCTAssertEqual(fetched.providerAccountSource, .serverPrivate)
+    }
+
+    func test_insertRemoteUsage_preservesAlreadyPartitionedAccountID() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = UsageStore(dbQueue: queue)
+        let partitionedID = persistedProviderAccountID("openai_client")
+
+        let usage = makeUsage(
+            accountID: partitionedID,
+            label: "Client",
+            source: .serverPrivate,
+            isRemote: true
+        )
+        try await store.insertRemoteUsage(usage)
+
+        let rows = try await store.fetchAllUsage()
+        let fetched = try XCTUnwrap(rows.first)
+        XCTAssertEqual(fetched.providerAccountID, partitionedID)
+        XCTAssertNotEqual(fetched.providerAccountID, persistedProviderAccountID(partitionedID))
     }
 
     func test_providerAccountStore_roundTripsMultipleAccountsForSameProvider() async throws {
