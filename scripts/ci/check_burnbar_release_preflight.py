@@ -10,6 +10,7 @@ readiness, and signed external-counsel approval.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -19,32 +20,37 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LEGAL_EVIDENCE = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
 
 
+def load_ci_module(repo_root: Path, module_name: str):
+    if not module_name.isidentifier():
+        raise ValueError(f"release preflight helper name is invalid: {module_name!r}")
+
+    module_path = repo_root / "scripts" / "ci" / f"{module_name}.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(f"required release preflight helper is missing: {module_path}")
+
+    spec = importlib.util.spec_from_file_location(f"openburnbar_ci_{module_name}", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"release preflight helper could not be loaded: {module_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def source_provenance_blockers(repo_root: Path, *, include_runtime_readiness: bool = True) -> list[str]:
-    sys.path.insert(0, str(repo_root))
-    try:
-        from scripts.ci.write_burnbar_source_provenance import (
-            build_source_provenance_manifest,
-            release_preflight_blockers,
-            source_integrity_blockers,
-        )
-    finally:
-        sys.path.pop(0)
+    provenance = load_ci_module(repo_root, "write_burnbar_source_provenance")
 
     try:
-        manifest = build_source_provenance_manifest(repo_root=repo_root)
+        manifest = provenance.build_source_provenance_manifest(repo_root=repo_root)
     except Exception as exc:  # pragma: no cover - defensive aggregation path
         return [f"source provenance could not be generated: {exc}"]
     if include_runtime_readiness:
-        return release_preflight_blockers(manifest)
-    return source_integrity_blockers(manifest)
+        return provenance.release_preflight_blockers(manifest)
+    return provenance.source_integrity_blockers(manifest)
 
 
 def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
-    sys.path.insert(0, str(repo_root))
-    try:
-        from scripts.ci.check_agpl_legal_release_review import validate_legal_release_review
-    finally:
-        sys.path.pop(0)
+    legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
 
     if not evidence_path.is_file():
         return [f"legal release review evidence is missing: {evidence_path}"]
@@ -62,7 +68,10 @@ def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
             blockers.append("legal release review pending evidence must explicitly say it is not legal approval")
         return blockers
 
-    return [f"legal release review: {error}" for error in validate_legal_release_review(data, require_approved=True)]
+    return [
+        f"legal release review: {error}"
+        for error in legal_review.validate_legal_release_review(data, require_approved=True)
+    ]
 
 
 def collect_blockers(
