@@ -153,11 +153,13 @@ export const setupRecovery = (
 // recovery_key methods require re-verification: the client re-derives the key's
 // verificationHash and passes it so the server can prove the user re-entered the
 // key (Apple ADP delayed-confirm). recovery_contact methods omit it.
-export const confirmRecovery = (recoveryId: string, verificationHash?: string) =>
-  call<{ recoveryId: string; verificationHash?: string }, { ok: boolean }>("confirmRecovery", {
-    recoveryId,
-    verificationHash,
-  });
+export const confirmRecovery = (recoveryId: string, verificationHash?: string) => {
+  const payload: { recoveryId: string; verificationHash?: string } = { recoveryId };
+  if (typeof verificationHash === "string") {
+    payload.verificationHash = verificationHash;
+  }
+  return call<typeof payload, { ok: boolean }>("confirmRecovery", payload);
+};
 export interface RecoveryMethod {
   recoveryId: string;
   kind: string;
