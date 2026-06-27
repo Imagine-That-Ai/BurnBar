@@ -92,7 +92,7 @@ describe("inkFor", () => {
   });
 
   it("falls back to constellation for an unknown id", () => {
-    // @ts-expect-error — exercising the runtime guard with a non-KernelId.
+    // @ts-expect-error reason: exercising the runtime guard with a non-KernelId.
     expect(inkFor("does-not-exist")).toBe(KERNEL_INK.constellation);
   });
 });
