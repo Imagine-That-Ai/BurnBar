@@ -1,46 +1,13 @@
 /**
- * Self-contained WebGL2 shader chunks for the dashboard backdrop.
+ * Reusable GLSL chunks (GLSL ES 3.00) shared by the fragment-shader kernels.
  *
- * Ported verbatim from the "Liquid Glass Studio" design prototype
- * (gl-kernels.js), whose GLSL bodies in turn descend from
- * imaginethat-llc/src/kernels. This is the *minimal* path — PREAMBLE + shared
- * noise/ramp chunks + a fullscreen-triangle vertex shader + the compositing
- * MAIN — with zero external dependencies. We deliberately do NOT vendor the
- * full imaginethat-llc `createShaderKernel` factory: it pulls in sim-pass,
- * glyph-field and control-block machinery this backdrop never uses.
- *
- * Every kernel body (see ./kernels) defines:
- *     vec3 renderKernel(vec2 uv, vec2 fragCoord)
- * and may read the injected uniforms (PREAMBLE) + the shared chunks below.
- * A complete fragment shader is `PRELUDE + body + MAIN`.
+ * Kept as TS string constants so they can be concatenated into a shader and
+ * tree-shaken out of 2D-only builds. `SNOISE` is Ashima/Gustavson's
+ * public-domain simplex noise; the rest are small house utilities.
  */
 
-/** Fullscreen triangle generated from gl_VertexID — no attribute buffers. */
-export const VERT = `#version 300 es
-void main(){
-  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
-}`;
-
-const PREAMBLE = `#version 300 es
-precision highp float;
-out vec4 fragColor;
-uniform vec2  uResolution;
-uniform float uTime;
-uniform vec2  uPointer;
-uniform float uPointerActive;
-uniform vec3  uBg;
-uniform vec3  uAccent0;
-uniform vec3  uAccent1;
-uniform vec3  uAccent2;
-uniform vec3  uAccent3;
-uniform vec3  uInk;
-uniform float uIntensity;
-uniform float uTheme;
-`;
-
-/** Ashima/Gustavson 3D simplex noise. */
-const SNOISE = `
+/** 3D simplex noise: `float snoise(vec3 v)` in roughly [-1, 1]. */
+export const SNOISE = /* glsl */ `
 vec3 mod289(vec3 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
 vec4 mod289(vec4 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
 vec4 permute(vec4 x){ return mod289(((x*34.0)+1.0)*x); }
@@ -89,20 +56,29 @@ float snoise(vec3 v){
 }
 `;
 
-const FBM = `
+/** Fractal Brownian motion over `snoise`. 3 octaves — the soft aurora/mesh
+ * fields don't need finer detail, and this keeps both shaders at a locked
+ * 60fps (the 4th octave's cost is not worth the imperceptible gain). */
+export const FBM = /* glsl */ `
 float fbm(vec3 p){
   float a = 0.5, s = 0.0;
-  for(int i = 0; i < 3; i++){ s += a * snoise(p); p *= 2.0; a *= 0.5; }
+  for(int i = 0; i < 3; i++){
+    s += a * snoise(p);
+    p *= 2.0;
+    a *= 0.5;
+  }
   return s;
 }
 `;
 
-const DITHER = `
+/** Hash + ordered dither to break 8-bit gradient banding. */
+export const DITHER = /* glsl */ `
 float hash21(vec2 p){
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
 }
+// Triangular-PDF dither, ~±1 LSB at 8-bit.
 vec3 dither(vec2 fragCoord){
   float r = hash21(fragCoord);
   float r2 = hash21(fragCoord + 17.0);
@@ -110,7 +86,8 @@ vec3 dither(vec2 fragCoord){
 }
 `;
 
-const RAMP = `
+/** Smooth 4-stop accent ramp from the palette uniforms. */
+export const RAMP = /* glsl */ `
 vec3 accentRamp(float t){
   t = clamp(t, 0.0, 1.0) * 3.0;
   vec3 c01 = mix(uAccent0, uAccent1, smoothstep(0.0, 1.0, t));
@@ -122,32 +99,3 @@ vec3 accentRamp(float t){
   return c;
 }
 `;
-
-/** Everything that precedes a kernel body. */
-export const PRELUDE = PREAMBLE + SNOISE + FBM + DITHER + RAMP;
-
-/** Compositing entry point. Calls the kernel body's renderKernel(). */
-export const MAIN = `
-void main(){
-  vec2 fragCoord = gl_FragCoord.xy;
-  vec2 uv = fragCoord / uResolution;
-  vec3 col = renderKernel(uv, fragCoord);
-  col += dither(fragCoord);
-  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
-}`;
-
-/** Uniform names the host looks up (kept in one place for the renderer + tests). */
-export const UNIFORM_NAMES = [
-  "uResolution",
-  "uTime",
-  "uPointer",
-  "uPointerActive",
-  "uBg",
-  "uAccent0",
-  "uAccent1",
-  "uAccent2",
-  "uAccent3",
-  "uInk",
-  "uIntensity",
-  "uTheme",
-] as const;
