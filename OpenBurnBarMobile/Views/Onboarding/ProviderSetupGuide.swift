@@ -151,7 +151,7 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
-        case .cursorAgent:
+        case .cursorAgent, .openClaude:
             return ProviderSetupGuide(
                 provider: provider,
                 kinds: [.session],

@@ -1040,6 +1040,7 @@ final class SmartHubBridgeController {
         case .cursorAgent: return "00E5FF"
         case .goose:      return "0D9488"
         case .openClaw:   return "FF6B6B"
+        case .openClaude: return "D97757"
         case .ollama:     return "6B7280"
         case .windsurf:   return "06B6D4"
         case .warp:       return "DDE4EA"

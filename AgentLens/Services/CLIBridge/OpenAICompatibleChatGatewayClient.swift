@@ -1036,6 +1036,42 @@ enum OpenAICompatibleModelProbe {
         await probeWithModel(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session).available
     }
 
+    /// `/health` endpoint for the gateway, derived by replacing the path (mirrors
+    /// `ChatSessionController.hermesHealthReachable`). A gateway that just cold-
+    /// started answers this immediately, even while its `/v1/models` catalog is
+    /// still warming up from upstream providers.
+    static func healthURL(baseURL: URL) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path = "/health"
+        components.query = nil
+        return components.url
+    }
+
+    /// Lightweight liveness probe: GET `/health`. This is the truth source for
+    /// "is the gateway up?" independent of whether its model catalog can be read
+    /// yet — so a slow/transient `/v1/models` never makes a running gateway look
+    /// offline.
+    static func healthReachable(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 3,
+        session: URLSession = .shared
+    ) async -> Bool {
+        guard let url = healthURL(baseURL: baseURL) else { return false }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+
     static func probeWithModel(
         baseURL: URL,
         bearerToken: String?,

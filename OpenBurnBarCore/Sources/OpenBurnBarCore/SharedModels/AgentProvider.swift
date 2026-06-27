@@ -29,6 +29,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case antigravity = "Antigravity"
     case goose = "Goose"
     case openClaw = "OpenClaw"
+    case openClaude = "OpenClaude"
     case ollama = "Ollama"
     case windsurf = "Windsurf"
     case warp = "Warp"
@@ -47,6 +48,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .codex,
         .openCode,
         .openClaw,
+        .openClaude,
         .hermes,
         .geminiCLI,
         .antigravity,
@@ -257,6 +259,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .goose
         case "openclaw", "open-claw":
             return .openClaw
+        case "openclaude", "open-claude":
+            return .openClaude
         case "forge", "forgedev":
             return .forgeDev
         case "augment":
@@ -305,6 +309,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .antigravity: return "AntigravityLogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
+        case .openClaude: return "OpenClaudeLogo"
         case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
@@ -341,6 +346,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .antigravity: return "sparkles"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
+        case .openClaude: return "arrow.triangle.branch"
         case .ollama: return "server.rack"
         case .windsurf: return "sailboat.fill"
         case .warp: return "terminal.fill"

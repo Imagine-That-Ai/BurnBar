@@ -23,7 +23,7 @@ struct ClineQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "vscode:extension/saoudrizwan.claude-dev",
             statusMessage: installed
-                ? "Cline detected — token tracking via VS Code extension data."
+                ? "Cline detected â token tracking via VS Code extension data."
                 : "Cline not installed. Install the VS Code extension.",
             buckets: installed ? basicActivityBuckets() : []
         )
@@ -75,7 +75,7 @@ struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "vscode:extension/rooveterinaryinc.roo-cline",
             statusMessage: installed
-                ? "Roo Code detected — sessions tracked via extension data."
+                ? "Roo Code detected â sessions tracked via extension data."
                 : "Roo Code not installed. Install the VS Code extension.",
             buckets: []
         )
@@ -130,7 +130,7 @@ struct GooseQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "https://block.github.io/goose/",
             statusMessage: installed
-                ? "Goose detected — sessions tracked via local data."
+                ? "Goose detected â sessions tracked via local data."
                 : "Goose not detected. Install from block.github.io/goose/.",
             buckets: []
         )
@@ -153,6 +153,25 @@ struct OpenClawQuotaAdapter: ProviderQuotaAdapter {
     }
 }
 
+// MARK: - OpenClaude
+
+// OpenClaude (github.com/Gitlawb/openclaude) is a spawned Claude Code fork with no
+// usage API, so — like OpenClaw — it reports `.unavailable`. Distinct from
+// OpenClawQuotaAdapter, which points at the OpenClaw assistant platform.
+struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
+    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        return ProviderQuotaSnapshot(
+            provider: .openClaude,
+            fetchedAt: Date(),
+            source: .unavailable,
+            confidence: .unavailable,
+            managementURL: "https://github.com/Gitlawb/openclaude",
+            statusMessage: "OpenClaude not detected. Install openclaude to track usage.",
+            buckets: []
+        )
+    }
+}
+
 // MARK: - Windsurf
 
 struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
@@ -167,7 +186,7 @@ struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "https://codeium.com/windsurf",
             statusMessage: installed
-                ? "Windsurf detected — IDE usage tracking via local data."
+                ? "Windsurf detected â IDE usage tracking via local data."
                 : "Windsurf not installed. Download from codeium.com/windsurf.",
             buckets: []
         )

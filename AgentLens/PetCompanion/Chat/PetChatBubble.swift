@@ -534,12 +534,17 @@ struct PetChatBubbleView: View {
             inputRow
         }
         .padding(DesignSystem.Spacing.md)
-        .frame(width: 300)
-        .background(bubbleBackground)
-        .overlay(bubbleBorder)
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
-        .overlay(alignment: .bottom) { bubbleTail }
+        .frame(width: Self.bubbleWidth)
+        // Reserve the tail strip beneath the content so the glass plate's tail
+        // (part of the same silhouette) never overlaps text.
+        .padding(.bottom, Self.tailHeight)
+        // One continuous Liquid Glass plate shaped as a speech bubble (body +
+        // tail), so the founder reads as actually *speaking* it. macOS 26 renders
+        // real glass; macOS 14–15 falls back to the frosted material plate.
+        .liquidGlassSurface(in: speechBubbleShape, fallback: .regularMaterial)
+        .clipShape(speechBubbleShape)
+        .overlay { speechBubbleShape.stroke(Self.edgeSheen, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 7)
         .onAppear { inputFocused = true }
         .onChange(of: controller.isOpen) { _, open in inputFocused = open }
         .onChange(of: controller.draft) { _, _ in controller.userDidType() }
@@ -732,42 +737,80 @@ struct PetChatBubbleView: View {
 
     // MARK: Chrome
 
-    private var bubbleBackground: some View {
-        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(DesignSystem.Colors.cardGradient)
-            )
-    }
+    /// Bubble width (the tail anchor maps across this).
+    static let bubbleWidth: CGFloat = 300
+    /// Tail footprint where it meets the body.
+    static let tailWidth: CGFloat = 22
+    /// How far the tail drops below the body toward the founder.
+    static let tailHeight: CGFloat = 13
 
-    private var bubbleBorder: some View {
-        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 1)
-    }
+    /// Glass-edge highlight: a faint top-lit rim that gives the plate its
+    /// "liquid" sheen without fighting the system glass material.
+    static let edgeSheen = LinearGradient(
+        colors: [.white.opacity(0.45), .white.opacity(0.06), .white.opacity(0.18)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 
-    /// A small triangle tail pointing down toward the pet's contact socket.
-    private var bubbleTail: some View {
-        BubbleTail()
-            .fill(.ultraThinMaterial)
-            .overlay(BubbleTail().stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 1))
-            .frame(width: 18, height: 10)
-            .offset(y: 9)
-            .alignmentGuide(.bottom) { d in d[.bottom] }
-            .padding(.leading, max(0, (tailAnchorX - 0.5)) * 280)
+    private var speechBubbleShape: SpeechBubbleShape {
+        SpeechBubbleShape(
+            cornerRadius: DesignSystem.Radius.lg,
+            tailWidth: Self.tailWidth,
+            tailHeight: Self.tailHeight,
+            tailAnchorX: tailAnchorX
+        )
     }
 }
 
-// MARK: - BubbleTail shape
+// MARK: - SpeechBubbleShape
 
-/// Downward speech-bubble tail.
-private struct BubbleTail: Shape {
+/// A rounded speech-bubble silhouette with a soft, liquid tail dropping from the
+/// bottom edge toward the founder's contact socket. The body and tail are a
+/// single `Path`, so the glass plate renders as one continuous bubble (no seam
+/// between a card and a detached triangle).
+private struct SpeechBubbleShape: Shape {
+    var cornerRadius: CGFloat
+    var tailWidth: CGFloat
+    var tailHeight: CGFloat
+    var tailAnchorX: CGFloat
+
+    var animatableData: CGFloat {
+        get { tailAnchorX }
+        set { tailAnchorX = newValue }
+    }
+
     func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        p.closeSubpath()
-        return p
+        let bodyRect = CGRect(
+            x: rect.minX,
+            y: rect.minY,
+            width: rect.width,
+            height: max(0, rect.height - tailHeight)
+        )
+        var path = Path(roundedRect: bodyRect, cornerRadius: cornerRadius, style: .continuous)
+
+        // Clamp the tail so it always meets a straight stretch of the bottom edge,
+        // never a rounded corner, however the anchor projects.
+        let half = tailWidth / 2
+        let minCenter = bodyRect.minX + cornerRadius + half
+        let maxCenter = bodyRect.maxX - cornerRadius - half
+        let rawCenter = bodyRect.minX + min(max(tailAnchorX, 0), 1) * bodyRect.width
+        let center = maxCenter >= minCenter ? min(max(rawCenter, minCenter), maxCenter) : bodyRect.midX
+        let baseY = bodyRect.maxY
+        let tipY = rect.maxY
+
+        var tail = Path()
+        // Overlap the body by 1pt so the union fills seamlessly.
+        tail.move(to: CGPoint(x: center - half, y: baseY - 1))
+        tail.addQuadCurve(
+            to: CGPoint(x: center, y: tipY),
+            control: CGPoint(x: center - half * 0.25, y: tipY - tailHeight * 0.25)
+        )
+        tail.addQuadCurve(
+            to: CGPoint(x: center + half, y: baseY - 1),
+            control: CGPoint(x: center + half * 0.25, y: tipY - tailHeight * 0.25)
+        )
+        tail.closeSubpath()
+        path.addPath(tail)
+        return path
     }
 }

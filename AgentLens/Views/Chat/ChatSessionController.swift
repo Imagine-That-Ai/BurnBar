@@ -133,7 +133,15 @@ final class ChatSessionController {
         didSet { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
     }
 
+    var chatModelOpenClaude: String = "" {
+        didSet { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) }
+    }
+
     var hermesAvailable: Bool = false
+
+    /// In-flight background re-probe that backfills the Hermes `/v1/models`
+    /// catalog after a cold start (see `scheduleHermesCatalogWarmIfNeeded`).
+    @ObservationIgnored private var hermesCatalogWarmTask: Task<Void, Never>?
 
     var openClawAvailable: Bool = false
 
@@ -306,6 +314,7 @@ final class ChatSessionController {
     static let udChatModelAntigravity = "chatPanel.model.antigravity"
 
     static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
+    static let udChatModelOpenClaude = "chatPanel.model.openclaude"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -407,6 +416,7 @@ final class ChatSessionController {
         chatModelForge = UserDefaults.standard.string(forKey: Self.udChatModelForge) ?? ""
         chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
         chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
+        chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -453,6 +463,7 @@ final class ChatSessionController {
         case .forge: return chatModelForge
         case .antigravity: return chatModelAntigravity
         case .cursorAgent: return chatModelCursorAgent
+        case .openClaude: return chatModelOpenClaude
         }
     }
 
@@ -467,6 +478,7 @@ final class ChatSessionController {
         case .forge: chatModelForge = value
         case .antigravity: chatModelAntigravity = value
         case .cursorAgent: chatModelCursorAgent = value
+        case .openClaude: chatModelOpenClaude = value
         }
     }
 
@@ -586,6 +598,7 @@ final class ChatSessionController {
         case .forge: return .forge
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
+        case .openClaude: return .openClaude
         }
     }
 
@@ -621,6 +634,8 @@ final class ChatSessionController {
             return chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines)
         case .cursorAgent:
             return chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .openClaude:
+            return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -670,7 +685,7 @@ final class ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             return 0
         }
     }
@@ -683,7 +698,7 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             return []
         }
     }
@@ -782,17 +797,39 @@ final class ChatSessionController {
     }
 
     func selectedModelRoutingError(for backend: ChatBackendID) -> String? {
+        Self.selectedModelRoutingError(
+            backend: backend,
+            selectedModel: effectiveChatModel(for: backend).trimmingCharacters(in: .whitespacesAndNewlines),
+            liveModels: liveAdvertisedModels(for: backend)
+        )
+    }
+
+    /// Pure routing-eligibility gate (extracted so the empty-catalog policy is
+    /// unit-testable). Only reached after `validateChatBackendAvailability()`
+    /// already confirmed the gateway is up, so an empty `liveModels` here means
+    /// "gateway reachable, catalog not read yet", not "gateway down".
+    ///
+    /// For **Hermes** an unread catalog must NOT block the send: the gateway
+    /// routes the canonical family names ("claude", "codex", "ollama", …)
+    /// directly and is itself the routing authority — it returns a real error if
+    /// the model is genuinely unroutable. OpenClaw/Pi are generic OpenAI-
+    /// compatible gateways whose model id must match the advertised catalog, so
+    /// they keep verifying against it.
+    nonisolated static func selectedModelRoutingError(
+        backend: ChatBackendID,
+        selectedModel: String,
+        liveModels: [OpenAICompatibleAdvertisedModel]
+    ) -> String? {
         guard backend == .hermes || backend == .openclaw || backend == .piAgent else { return nil }
-        let selected = effectiveChatModel(for: backend).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !selected.isEmpty else {
+        guard !selectedModel.isEmpty else {
             return "No eligible route for \(backend.displayName). Add or enable an account/provider that serves this model."
         }
-        let models = liveAdvertisedModels(for: backend)
-        guard !models.isEmpty else {
-            return "Selected \(backend.displayName) model '\(selected)' has not been verified against this gateway's live /v1/models catalog. Refresh the gateway before sending, so the request is not silently rerouted."
+        guard !liveModels.isEmpty else {
+            if backend == .hermes { return nil }
+            return "Selected \(backend.displayName) model '\(selectedModel)' has not been verified against this gateway's live /v1/models catalog. Refresh the gateway before sending, so the request is not silently rerouted."
         }
-        guard models.contains(where: { $0.id == selected && $0.routeEligible }) else {
-            return "No eligible route for \(selected). Add or enable an account/provider that serves this model."
+        guard liveModels.contains(where: { $0.id == selectedModel && $0.routeEligible }) else {
+            return "No eligible route for \(selectedModel). Add or enable an account/provider that serves this model."
         }
         return nil
     }
@@ -822,6 +859,31 @@ final class ChatSessionController {
             bearerToken: hermesBearerToken
         )
         hermesAvailable = cliBridge.hermesAvailable
+        scheduleHermesCatalogWarmIfNeeded()
+    }
+
+    /// When the gateway is reachable but its `/v1/models` catalog has not loaded
+    /// yet (cold start), re-probe a few times with backoff so the model picker
+    /// self-heals without the user having to retry. Chat already functions in the
+    /// meantime — the gateway routes the selected family directly — so this only
+    /// backfills the picker/header. Idempotent: a warm already in flight is left
+    /// to finish.
+    private func scheduleHermesCatalogWarmIfNeeded() {
+        guard hermesAvailable, cliBridge.hermesGatewayModels.isEmpty else { return }
+        guard hermesCatalogWarmTask == nil else { return }
+        hermesCatalogWarmTask = Task { [weak self] in
+            for delay in [Duration.seconds(2), .seconds(4), .seconds(8)] {
+                try? await Task.sleep(for: delay)
+                guard let self, !Task.isCancelled else { break }
+                await self.cliBridge.probeHermesAvailability(
+                    baseURL: self.hermesGatewayBaseURL,
+                    bearerToken: self.hermesBearerToken
+                )
+                self.hermesAvailable = self.cliBridge.hermesAvailable
+                if !self.cliBridge.hermesGatewayModels.isEmpty { break }
+            }
+            self?.hermesCatalogWarmTask = nil
+        }
     }
 
     func probeOpenClawAvailability() async {
@@ -1041,7 +1103,7 @@ final class ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
@@ -1243,7 +1305,7 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 UserDefaults.standard.set(legacy, forKey: key)

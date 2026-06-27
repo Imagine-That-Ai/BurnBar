@@ -60,7 +60,8 @@ final class SettingsManagerTests: XCTestCase {
     private func makeSettingsManager(
         defaults: UserDefaults? = nil,
         controllerSecrets: KeychainStore? = nil,
-        gatewaySecrets: KeychainStore? = nil
+        gatewaySecrets: KeychainStore? = nil,
+        launchAgentGatewayAuthTokenReader: @escaping () -> String? = { nil }
     ) -> SettingsManager {
         SettingsManager(
             defaults: defaults ?? makeIsolatedDefaults(),
@@ -74,6 +75,7 @@ final class SettingsManagerTests: XCTestCase {
                 legacyServices: [],
                 backend: makeTestKeychainBackend()
             ),
+            launchAgentGatewayAuthTokenReader: launchAgentGatewayAuthTokenReader,
             // Synchronous writes in tests; the production 100 ms debounce
             // races every immediate `defaults.string(forKey:)` assertion
             // and renders these contracts unverifiable.
@@ -680,6 +682,67 @@ final class SettingsManagerTests: XCTestCase {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertEqual(settings.gatewayPort, 8317)
+    }
+
+    func test_gatewayAuthToken_recoversFromLaunchAgentWhenSecretStoreIsEmpty() {
+        let defaults = makeIsolatedDefaults()
+        let backend = makeTestKeychainBackend()
+        let gatewayKeychain = KeychainStore(
+            service: "tests.gateway.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+
+        let settings = makeSettingsManager(
+            defaults: defaults,
+            gatewaySecrets: gatewayKeychain,
+            launchAgentGatewayAuthTokenReader: { " launch-agent-token " }
+        )
+
+        XCTAssertEqual(settings.gatewayAuthToken, "launch-agent-token")
+        XCTAssertEqual(
+            try? gatewayKeychain.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            "launch-agent-token"
+        )
+        XCTAssertNil(defaults.string(forKey: SettingsSecretDefaultsKey.gatewayAuthToken))
+    }
+
+    func test_gatewayAuthToken_prefersSecretStoreOverLaunchAgentRecovery() {
+        let defaults = makeIsolatedDefaults()
+        let backend = makeTestKeychainBackend()
+        let gatewayKeychain = KeychainStore(
+            service: "tests.gateway.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        try? gatewayKeychain.set("keychain-token", for: OpenBurnBarIdentity.gatewayAuthTokenAccount)
+
+        let settings = makeSettingsManager(
+            defaults: defaults,
+            gatewaySecrets: gatewayKeychain,
+            launchAgentGatewayAuthTokenReader: { "launch-agent-token" }
+        )
+
+        XCTAssertEqual(settings.gatewayAuthToken, "keychain-token")
+        XCTAssertEqual(
+            try? gatewayKeychain.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            "keychain-token"
+        )
+    }
+
+    func test_readLaunchAgentAuthToken_readsGatewayTokenFromPlistEnvironment() throws {
+        let directory = try makeTemporaryDirectory()
+        let plistURL = directory.appendingPathComponent("com.openburnbar.daemon.plist")
+        let plist: [String: Any] = [
+            "Label": "com.openburnbar.daemon",
+            "EnvironmentVariables": [
+                "OPENBURNBAR_GATEWAY_AUTH_TOKEN": " plist-token "
+            ]
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: plistURL)
+
+        XCTAssertEqual(GatewaySettings.readLaunchAgentAuthToken(plistURL: plistURL), "plist-token")
     }
 
     func test_gatewayConfigurationDict_containsExpectedValues() {
@@ -1856,12 +1919,13 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 9)
+        XCTAssertEqual(ChatBackendID.allCases.count, 10)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
         XCTAssertTrue(ChatBackendID.allCases.contains(.piAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openclaw))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.openClaude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.droid))
         XCTAssertTrue(ChatBackendID.allCases.contains(.forge))
         XCTAssertTrue(ChatBackendID.allCases.contains(.antigravity))

@@ -359,7 +359,37 @@ public actor BurnBarConfigStore {
             }
             return mutable
         }
-        try await secretStore.setSecret(nil, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: slotID))
+        // The config slot is now removed — that is the user-facing success. The
+        // keychain secret cleanup is best-effort: a fault here (a transient
+        // LocalAuthentication re-eval, or errSecInvalidOwnerEdit / -25244 when the
+        // item's ACL was written by an older daemon identity after an app update)
+        // must NOT fail the removal and resurrect a false "couldn't remove" error
+        // for a slot that is already gone. Retry briefly for transient faults,
+        // then log the orphaned secret so a leaked credential stays detectable.
+        let secretCleanupKey = slotSecretStoreKey(providerID: normalizedProviderID, slotID: slotID)
+        var lastSecretCleanupError: Error?
+        for attempt in 1...3 {
+            do {
+                try await secretStore.setSecret(nil, for: secretCleanupKey)
+                lastSecretCleanupError = nil
+                break
+            } catch {
+                lastSecretCleanupError = error
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+            }
+        }
+        if let lastSecretCleanupError {
+            logger.error(
+                "credential_slot_secret_cleanup_failed",
+                metadata: [
+                    "provider_id": normalizedProviderID,
+                    "slot_id": slotID,
+                    "error": "\(lastSecretCleanupError)"
+                ]
+            )
+        }
     }
 
     @discardableResult

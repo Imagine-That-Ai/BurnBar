@@ -146,6 +146,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return await bridge.isExecutableAvailable(named: "agy") ? .ready : .needsLogin
         case .cursorAgent:
             return await bridge.isExecutableAvailable(named: "cursor-agent") ? .ready : .needsLogin
+        case .openClaude:
+            return await bridge.isExecutableAvailable(named: "openclaude") ? .ready : .needsLogin
         }
     }
 
@@ -214,6 +216,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return bridge.chatAntigravityStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .cursorAgent:
             return bridge.chatCursorAgentStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .openClaude:
+            return bridge.chatOpenClaudeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }
     }
 

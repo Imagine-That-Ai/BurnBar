@@ -53,13 +53,14 @@ final class PetBubblePanel: NSPanel {
 
     /// Install (or refresh) the SwiftUI bubble bound to `chat`, sizing the panel
     /// to the content's fitting size.
-    func host(chat: PetChatController) {
+    func host(chat: PetChatController, tailAnchorX: CGFloat = 0.5, onContentSizeChange: @escaping () -> Void = {}) {
         let root = AnyView(
             PetChatBubbleView(
                 controller: chat,
-                tailAnchorX: 0.5,
+                tailAnchorX: tailAnchorX,
                 onContentSizeChange: { [weak self] in
                     self?.resizeToContent()
+                    onContentSizeChange()
                 }
             )
                 .fixedSize(horizontal: false, vertical: true)

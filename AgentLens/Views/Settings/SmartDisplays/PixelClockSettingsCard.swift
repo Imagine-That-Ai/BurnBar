@@ -892,6 +892,7 @@ private struct ProviderFilterChip: View {
         case .antigravity:  return "Antigravity"
         case .goose:        return "Goose"
         case .openClaw:     return "OpenClaw"
+        case .openClaude:   return "OpenClaude"
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
         case .cursorAgent:  return "Cursor Agent"

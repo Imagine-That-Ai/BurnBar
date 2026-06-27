@@ -158,6 +158,7 @@
 		104BDA9DC01A0A061A49B8A9 /* BurnBarDaemonServer+RPCUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8D96553ADEBC92041A7A9A /* BurnBarDaemonServer+RPCUsage.swift */; };
 		1052E908AA515A50EEAA43B3 /* RollingMetric.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F03E837BD586F27A856C497 /* RollingMetric.swift */; };
 		105B18EB9B29192D730C4B1A /* FormPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F6272A89C5D22193EB5854 /* FormPicker.swift */; };
+		FEEDFACE000000000000B001 /* PetHoverToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDFACE000000000000F002 /* PetHoverToolbar.swift */; };
 		1071DA3A94BAFE7603BEC647 /* AgentBrandZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCE15EA109589CC4B5129DB /* AgentBrandZoneView.swift */; };
 		1094DF34C2ACBF838BC8BA05 /* VideoSPSDimensionParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C2DE549C15386E5A0E1F249 /* VideoSPSDimensionParser.swift */; };
 		10B42775B6B300DE8F860070 /* MobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D581237A713841255E6A69F /* MobileTheme.swift */; };
@@ -2630,6 +2631,7 @@
 		375429FA6FBE7176F075B4B5 /* SettingsManager+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SettingsManager+Presentation.swift"; sourceTree = "<group>"; };
 		37BA5ED164D384834314130C /* CloudStoreSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudStoreSettingsView.swift; sourceTree = "<group>"; };
 		37F6272A89C5D22193EB5854 /* FormPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormPicker.swift; sourceTree = "<group>"; };
+		FEEDFACE000000000000F002 /* PetHoverToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetHoverToolbar.swift; sourceTree = "<group>"; };
 		381A45831DAF4128003944D4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3840AD67C63A79DB9FD1C278 /* MediaSessionCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSessionCoordinatorTests.swift; sourceTree = "<group>"; };
 		3882ACA30194E65EF719C59F /* MermaidWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidWebView.swift; sourceTree = "<group>"; };
@@ -5679,6 +5681,7 @@
 			children = (
 				0CAF787D96C54696B841B548 /* AgentSwitcher.swift */,
 				37F6272A89C5D22193EB5854 /* FormPicker.swift */,
+				FEEDFACE000000000000F002 /* PetHoverToolbar.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -10363,6 +10366,7 @@
 				00E878A353B252471030EA22 /* ForgeDevParser.swift in Sources */,
 				CBEB12A261E50A5386A0E8BF /* ForgeQuotaAdapter.swift in Sources */,
 				105B18EB9B29192D730C4B1A /* FormPicker.swift in Sources */,
+				FEEDFACE000000000000B001 /* PetHoverToolbar.swift in Sources */,
 				9D5168286DD8A575BE5E2D0B /* Formatting.swift in Sources */,
 				B02FCAE8E78055C90A1DF234 /* FusionFoil.swift in Sources */,
 				27F6FA40D8C1B5969DDE6CDE /* FusionImpactLedger.swift in Sources */,

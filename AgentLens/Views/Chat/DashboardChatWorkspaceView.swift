@@ -300,6 +300,7 @@ struct DashboardChatWorkspaceView: View {
         case .forge: return "Talk to Forge with your indexed history as grounding."
         case .antigravity: return "Talk to Antigravity with your indexed history as grounding."
         case .cursorAgent: return "Talk to Cursor Agent with your indexed history as grounding."
+        case .openClaude: return "Talk to OpenClaude with your indexed history as grounding."
         }
     }
 

@@ -23,6 +23,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .claude)
             case "open-claw":
                 return CLIAgentMissionBackend(chatBackend: .openclaw)
+            case "openclaude", "open-claude":
+                return CLIAgentMissionBackend(chatBackend: .openClaude)
             case "droid", "factory", "factory-droid", "factorydroid":
                 return CLIAgentMissionBackend(chatBackend: .droid)
             case "forge", "forge-dev", "forgedev":
@@ -149,7 +151,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
                 return true
             }
         }
@@ -214,7 +216,7 @@ enum CLIAgentMissionRuntimePlanner {
                 ],
                 extraEnvironment: env
             )
-        case ChatBackendID.openclaw.rawValue:
+        case ChatBackendID.openClaude.rawValue:
             let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
             let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
             var arguments = [
@@ -417,7 +419,7 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
-        case ChatBackendID.openclaw.rawValue,
+        case ChatBackendID.openClaude.rawValue,
             ChatBackendID.hermes.rawValue,
             ChatBackendID.piAgent.rawValue,
             "opencode",
@@ -457,6 +459,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .codex: return .codex
             case .claude: return .claude
             case .openclaw: return .openClaw
+            case .openClaude: return .openClaude
             case .droid: return .droid
             case .forge: return .forge
             case .antigravity: return .antigravity
@@ -467,6 +470,7 @@ enum CLIAgentMissionRuntimePlanner {
         }
         switch backend.rawValue {
         case "openclaw", "open-claw": return .openClaw
+        case "openclaude", "open-claude": return .openClaude
         case "droid", "factory": return .droid
         case "forge": return .forge
         case "antigravity", "agy", "google-antigravity": return .antigravity
