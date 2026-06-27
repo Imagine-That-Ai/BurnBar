@@ -890,6 +890,39 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(relay.streamingTimeouts.first), 360, accuracy: 0.001)
     }
 
+    func testRelayStreamingRejectsInlineAttachmentsOverAggregateBudget() async {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"should not send"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        let first = HermesAttachment(
+            id: "inline-image-1",
+            kind: .image,
+            displayName: "first.jpg",
+            mimeType: "image/jpeg",
+            byteSize: HermesAttachmentLimits.maxImageBytes,
+            workspaceRelativePath: "attachments/first.jpg"
+        )
+        let second = HermesAttachment(
+            id: "inline-image-2",
+            kind: .image,
+            displayName: "second.jpg",
+            mimeType: "image/jpeg",
+            byteSize: HermesAttachmentLimits.maxImageBytes,
+            workspaceRelativePath: "attachments/second.jpg"
+        )
+
+        service.sendMessage("Describe these", attachments: [first, second])
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertTrue(service.lastError?.contains("too large to send inline together") ?? false)
+    }
+
     func testRelayStreamingAccumulatesToolCallArgumentsAcrossDeltas() async throws {
         // OpenAI-compatible streaming emits a tool call across multiple
         // chunks: the first carries the function name, and successive chunks
