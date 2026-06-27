@@ -4287,6 +4287,27 @@ test("T8b media_session_events denies unlisted keys", async () => {
       smuggled: "x",
     })
   );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-4"), {
+      ...base,
+      id: "evt-4",
+      freezeCount: -1,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-5"), {
+      ...base,
+      id: "evt-5",
+      freezeCount: 51,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-6"), {
+      ...base,
+      id: "evt-6",
+      freezeCount: 1.5,
+    })
+  );
 });
 
 // T9 — media_attachment_manifests sealed-filename FLAG-DAY (Fork F = SEAL).

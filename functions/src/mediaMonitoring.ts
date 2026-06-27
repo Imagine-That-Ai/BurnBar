@@ -19,6 +19,7 @@ const FEATURES: MediaFeature[] = ["fileTransfer", "screenShare", "videoCall"];
 const RTT_ANCHORS = [25, 100, 275, 600];
 const BITS_PER_SECOND_ANCHORS = [200_000, 450_000, 800_000, 1_500_000, 3_000_000, 6_000_000, 12_000_000];
 const FREEZE_COUNT_ANCHORS = Array.from({ length: 51 }, (_value, index) => index);
+const MAX_FREEZE_COUNT = 50;
 
 type MediaSessionRollupDoc = {
   ref: { path: string };
@@ -122,6 +123,11 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
+function boundedFreezeCount(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isInteger(value) || value < 0 || value > MAX_FREEZE_COUNT) return undefined;
+  return value;
+}
+
 function buildSketches(anchors: readonly number[]): Record<MediaFeature, StreamingPercentileSketch> {
   return {
     fileTransfer: new StreamingPercentileSketch(anchors),
@@ -174,7 +180,7 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
     rttSketches[feature].add(rtt);
     const bps = bucketBitsPerSecond(stringField(raw, "p95BitsPerSecondBucket"));
     bpsSketches[feature].add(bps);
-    const freezeCount = numberField(raw, "freezeCount");
+    const freezeCount = boundedFreezeCount(numberField(raw, "freezeCount"));
     freezeSketches[feature].add(freezeCount);
 
     const startedAt = stringField(raw, "startedAt");
