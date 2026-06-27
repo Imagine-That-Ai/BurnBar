@@ -172,6 +172,10 @@ if match:
         sleep "$poll_interval"
         ;;
       *)
+        if [[ "$SECONDS" -ge "$deadline" ]]; then
+          echo "Cloud Build timed out waiting for ${build_id}; last status: ${status}" >&2
+          exit 1
+        fi
         echo "Cloud Build ${build_id} status: ${status}; waiting ${poll_interval}s..."
         sleep "$poll_interval"
         ;;
