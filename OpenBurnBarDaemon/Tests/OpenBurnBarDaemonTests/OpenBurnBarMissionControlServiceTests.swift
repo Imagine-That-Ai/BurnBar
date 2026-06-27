@@ -4459,6 +4459,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let afterFirstSync = try await harness.service.missionGet(
             BurnBarMissionGetRequest(missionID: missionID)
         )
+        let firstUpdatedAt = try XCTUnwrap(afterFirstSync.mission?.updatedAt)
         XCTAssertEqual(afterFirstSync.mission?.results.count, 1, "First sync should create result")
         XCTAssertEqual(afterFirstSync.mission?.results.first?.runID, runID)
 
@@ -4468,10 +4469,16 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let afterSecondSync = try await harness.service.missionGet(
             BurnBarMissionGetRequest(missionID: missionID)
         )
+        let secondUpdatedAt = try XCTUnwrap(afterSecondSync.mission?.updatedAt)
         XCTAssertEqual(
             afterSecondSync.mission?.results.count,
             1,
             "Second sync should NOT create duplicate result - count must remain 1"
+        )
+        XCTAssertEqual(
+            secondUpdatedAt,
+            firstUpdatedAt,
+            "Second sync should not rewrite an already reconciled terminal packet"
         )
 
         // Third sync cycle - still no duplicate
@@ -4480,10 +4487,16 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let afterThirdSync = try await harness.service.missionGet(
             BurnBarMissionGetRequest(missionID: missionID)
         )
+        let thirdUpdatedAt = try XCTUnwrap(afterThirdSync.mission?.updatedAt)
         XCTAssertEqual(
             afterThirdSync.mission?.results.count,
             1,
             "Third sync should NOT create duplicate result - count must remain 1"
+        )
+        XCTAssertEqual(
+            thirdUpdatedAt,
+            firstUpdatedAt,
+            "Third sync should remain idempotent for the same terminal run snapshot"
         )
     }
 
@@ -5811,6 +5824,52 @@ extension BurnBarMissionControlServiceTests {
             actions.map(\.id),
             "VAL-CROSS-008: Daemon summary next-action ordering should be deterministic across repeated reads"
         )
+    }
+
+    func testVAL_CROSS_009_ControllerSummaryNextActionsAreBoundedToDefaultMaximum() async throws {
+        let harness = try makeHarnessWithStore(name: "val-cross-009-next-action-bound")
+        let now = Date(timeIntervalSince1970: 1_710_900_000)
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        let missions = (0..<60).map { index in
+            let id = "mission-\(String(format: "%02d", index))"
+            return BurnBarMissionSnapshot(
+                id: BurnBarMissionID(rawValue: id),
+                projectSlug: "apollo",
+                title: id,
+                summary: "Mission \(id)",
+                status: .failed,
+                recommendation: .review,
+                createdAt: now.addingTimeInterval(-3_600),
+                updatedAt: now.addingTimeInterval(TimeInterval(index)),
+                approval: BurnBarMissionApprovalSnapshot(
+                    approved: true,
+                    approvedAt: now.addingTimeInterval(TimeInterval(index)),
+                    approvedBy: "operator",
+                    note: nil
+                ),
+                packets: [],
+                results: [],
+                burnRecords: [],
+                takeoverHistory: nil,
+                metadata: [:]
+            )
+        }
+
+        try await harness.store.injectMissionsForTieBreakTesting(missions)
+
+        let summary = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        let actions = try XCTUnwrap(summary.summary.nextActions)
+
+        XCTAssertEqual(actions.count, BurnBarControllerNextActionPlanner.defaultMaximumActionCount)
+        XCTAssertEqual(actions.first?.missionID.rawValue, "mission-59")
+        XCTAssertEqual(actions.last?.missionID.rawValue, "mission-10")
+        XCTAssertFalse(actions.contains { $0.missionID.rawValue == "mission-00" })
     }
 
     /// Creates a harness with direct store access for tests that need to manipulate timestamps
