@@ -13,6 +13,10 @@ import OSLog
 enum MacMediaSealKeyOpener {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
 
+    private enum OpenError: Error {
+        case missingSenderPeerNodeId
+    }
+
     // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup (production leaves nil).
     /// F7 test seams — production leaves these nil and resolves the Mac relay
     /// private key from the keychain-backed store and the pinned sender key
@@ -28,6 +32,9 @@ enum MacMediaSealKeyOpener {
     ) async -> SymmetricKey? {
         guard let envelope = request.mediaSealKey else { return nil }
         do {
+            guard let senderPeerNodeId = envelope.senderPeerNodeId else {
+                throw OpenError.missingSenderPeerNodeId
+            }
             let recipientKey = try recipientPrivateKeyProvider.map { try $0() }
                 ?? HermesRelayKeyStore().privateKey()
             // The trust resolver only consults uid + sender identity; the
@@ -41,7 +48,7 @@ enum MacMediaSealKeyOpener {
                 sender: HermesRelayAuthenticatedSender(
                     publicKeyBase64: "",
                     deviceID: envelope.senderDeviceId,
-                    peerNodeID: envelope.senderPeerNodeId,
+                    peerNodeID: senderPeerNodeId,
                     counter: envelope.senderCounter,
                     keyID: envelope.senderKeyId
                 )

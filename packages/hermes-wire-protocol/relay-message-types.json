@@ -159,7 +159,7 @@
         },
         {
           "name": "senderPeerNodeId",
-          "swiftType": "String",
+          "swiftType": "String?",
           "doc": [
             "    /// The peerNodeId the phone PUBLISHED in `relay_sender_keys/{deviceId}` —",
             "    /// the Mac's trust resolver matches it during pinned-key lookup. This is",
@@ -192,7 +192,9 @@
           }
         }
       ],
-      "initDefaults": {},
+      "initDefaults": {
+        "senderPeerNodeId": "nil"
+      },
       "nested": []
     },
     {
