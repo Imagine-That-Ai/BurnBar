@@ -64,14 +64,6 @@ final class SwitcherCLIAuthCoordinator {
         var executableHealthChecker: @Sendable (SwitcherCLIProfileType, String) async -> CLIExecutableHealth = { cliType, executablePath in
             await SwitcherCLIAuthCoordinator.defaultExecutableHealth(cliType: cliType, executablePath: executablePath)
         }
-
-        var persistProfileCredentialAfterLogin: @Sendable (SwitcherCLIProfileType, String, String?) throws -> Void = { cliType, configDirectory, accountDescription in
-            guard cliType == .claude else { return }
-            try SwitcherCLIAuthCoordinator.persistClaudeProfileCredential(
-                configDirectory: configDirectory,
-                expectedAccountDescription: accountDescription
-            )
-        }
     }
 
     private let dependencies: Dependencies
@@ -193,12 +185,11 @@ final class SwitcherCLIAuthCoordinator {
             )
         }
 
-        do {
-            try dependencies.persistProfileCredentialAfterLogin(cliType, configDirectory, detectedAccount)
-        } catch {
-            return .failed("\(cliType.displayName) login completed, but BurnBar could not persist the profile credential: \(error.localizedDescription)")
-        }
-
+        // Credential persistence is deliberately NOT done here. A successful
+        // login must yield a saved switcher profile even if the (best-effort,
+        // possibly ACL-gated) route-token snapshot fails. The caller persists
+        // the profile first, then snapshots the credential non-fatally via
+        // `persistProfileCredentialAfterConfirmedLogin(for:)`.
         return .readyToPersist(updatedProfile)
     }
 
@@ -609,6 +600,60 @@ final class SwitcherCLIAuthCoordinator {
         )
     }
 
+    /// Snapshots the *auto-detected default* local Claude login (`~/.claude`)
+    /// into the per-profile Keychain item the quota reader resolves.
+    ///
+    /// Unlike a saved isolated profile, the default login has no
+    /// `SwitcherProfileRecord` — it is discovered live from the global Claude
+    /// Code session — so background quota refresh, which reads the per-profile
+    /// item with `allowDefaultKeychainFallback: false`, finds nothing and shows
+    /// blank quota. This is the only user-facing moment (the "Refresh
+    /// credential" action) where macOS can present the "Always Allow" prompt
+    /// that lets BurnBar copy the ACL-locked global token into its own
+    /// per-profile item; the background refresh is non-interactive and cannot
+    /// prompt.
+    ///
+    /// Delegates to the same capture+persist path as a confirmed login, so the
+    /// captured payload lands in `profileScopedKeychainService(configDirectory:)`
+    /// and the next background refresh reads it back. Throws `.accessDenied`
+    /// (actionable ACL message) when the global item exists but macOS blocks the
+    /// read, so the caller can guide the user to grant access.
+    ///
+    /// No account-match guard is applied (`expectedAccountDescription: nil`):
+    /// this is the *live* default login, so the global item it captures already
+    /// belongs to it. The guard exists only to stop a saved second-subscription
+    /// profile from grabbing the default login's token during interleaved
+    /// logins, which cannot happen here.
+    nonisolated static func captureDefaultLoginProfileCredential(
+        configDirectory: String
+    ) throws {
+        guard let configDirectory = normalizedCredentialDirectory(configDirectory) else {
+            return
+        }
+
+        try persistClaudeProfileCredential(
+            configDirectory: configDirectory,
+            expectedAccountDescription: nil
+        )
+    }
+
+    /// Snapshots the freshly signed-in Claude account's OAuth token into a
+    /// BurnBar-owned, profile-scoped Keychain item so quota refresh can read it
+    /// without ever touching Claude Code's own (cross-identity ACL-locked) global
+    /// item again.
+    ///
+    /// macOS keeps one global Claude Code Keychain item that each `claude login`
+    /// overwrites; `CLAUDE_CONFIG_DIR` does not scope it. So the only reliable
+    /// capture window is right after this account's login, while it still owns
+    /// the global item. We first check whether Claude already wrote a profile
+    /// scoped item (some platforms/future versions do), and otherwise capture the
+    /// global item — interactively, so macOS can prompt the user to grant access.
+    ///
+    /// The captured payload is written to BurnBar's own
+    /// `profileScopedKeychainService(configDirectory:)` item, which the quota
+    /// reader loads with `allowDefaultKeychainFallback: false`. Each distinct
+    /// `configDirectory` hashes to a distinct service, so two subscriptions never
+    /// resolve to each other's token.
     nonisolated private static func persistClaudeProfileCredential(
         configDirectory: String,
         expectedAccountDescription: String?
@@ -624,17 +669,22 @@ final class SwitcherCLIAuthCoordinator {
             switch error {
             case .missing, .malformed, .expired:
                 break
+            case .accessDenied:
+                throw error
             }
+
+            // Refuse to snapshot the global item unless it still belongs to the
+            // account we just connected. This is what keeps a second
+            // subscription from capturing the first account's token if logins
+            // are interleaved.
             let expectedAccountDescription = normalizedCredentialDirectory(expectedAccountDescription)
             if let expectedAccountDescription,
                !defaultClaudeAccountMatches(expectedAccountDescription) {
                 throw ClaudeCodeOAuthCredentialImportError.missing
             }
 
-            credentials = try ClaudeCodeOAuthCredentialImporter(
-                configDirectory: nil,
-                allowDefaultKeychainFallback: true
-            ).load(allowUserInteraction: true)
+            credentials = try ClaudeCodeOAuthCredentialImporter()
+                .captureDefaultKeychainCredential()
         }
 
         let service = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(

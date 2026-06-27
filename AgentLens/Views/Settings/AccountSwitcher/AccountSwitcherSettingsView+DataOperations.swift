@@ -363,6 +363,7 @@ extension AccountSwitcherSettingsView {
                 sortKey: 0
             )
             _ = try dataStore.switcherStore.create(newProfile)
+            persistClaudeRouteCredentialSnapshot(for: newProfile)
             return true
         } catch {
             self.error = "Failed to add \(cliType.displayName) account: \(error.localizedDescription)"
@@ -500,13 +501,43 @@ extension AccountSwitcherSettingsView {
         persistCredentialAfterLogin: Bool = false
     ) {
         do {
-            if persistCredentialAfterLogin {
-                try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: updatedProfile)
-            }
             _ = try dataStore.switcherStore.update(updatedProfile)
             loadProfiles()
         } catch {
             self.error = "Failed to update CLI profile: \(error.localizedDescription)"
+            return
+        }
+
+        if persistCredentialAfterLogin {
+            persistClaudeRouteCredentialSnapshot(for: updatedProfile)
+        }
+    }
+
+    /// Snapshots a freshly signed-in Claude account's route token into its
+    /// profile-scoped Keychain item. Best-effort: the switcher profile is
+    /// already saved, so a failure here only means quota/route tracking is
+    /// deferred — it must never discard the account. Surfaces an actionable
+    /// message for ACL denials so the user knows to grant Keychain access.
+    private func persistClaudeRouteCredentialSnapshot(for profile: SwitcherProfileRecord) {
+        do {
+            try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: profile)
+        } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
+            switch snapshotError {
+            case .accessDenied:
+                error = snapshotError.localizedDescription
+            case .missing, .malformed, .expired:
+                // The account is saved for switching; BurnBar just could not
+                // import a route token to track quota yet. Stay quiet — the user
+                // can retry the import from the wizard.
+                break
+            }
+        } catch {
+            // Unexpected fault (e.g. Keychain write failure). Don't fail the
+            // account add; the profile is already persisted.
+            AppLogger.shared.error(
+                "claude_route_credential_snapshot_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
         }
     }
 
@@ -544,11 +575,11 @@ extension AccountSwitcherSettingsView {
                 ),
                 sortKey: 0
             )
-            if persistCredentialAfterLogin {
-                try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: newProfile)
-            }
             _ = try dataStore.switcherStore.create(newProfile)
             loadProfiles()
+            if persistCredentialAfterLogin {
+                persistClaudeRouteCredentialSnapshot(for: newProfile)
+            }
         } catch {
             self.error = "Failed to save the new CLI profile: \(error.localizedDescription)"
         }

@@ -192,6 +192,18 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             let result = await fetcher.fetchRateLimits(
                 credentials: credentials
             )
+            // Round-trip the refreshed token back to the per-profile Keychain
+            // item this account reads from. The fetcher refreshes an expired
+            // access token in-memory for the live usage call, but without
+            // persisting it the NEXT refresh tick re-reads the now-stale token
+            // and must refresh again — and once the original refresh token is
+            // rotated server-side, the stale copy can no longer refresh at all,
+            // silently killing a second subscription after its access token
+            // expires. Writing the rotated access+refresh tokens back keeps the
+            // profile self-sufficient across expiry.
+            if let refreshed = result.refreshedCredentials {
+                persistRefreshedProfileCredential(refreshed, environment: context.environment)
+            }
             if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
                 let buckets = claudeQuotaBuckets(from: rateLimits)
                 if !buckets.isEmpty {
@@ -639,6 +651,34 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         dirs.append(homeDirectoryURL.appendingPathComponent(".claude/projects", isDirectory: true))
 
         return dirs
+    }
+
+    /// Writes a refreshed Claude OAuth credential back to the per-profile
+    /// Keychain item the switcher account reads from, so the rotated
+    /// access/refresh tokens survive across quota-refresh ticks and access-token
+    /// expiry. Only fires for switcher-profile-scoped refreshes (those carry a
+    /// `CLAUDE_CONFIG_DIR`); the global default-login path has no per-profile
+    /// item to update and is left untouched. Best-effort: a write failure only
+    /// means the next tick must refresh again, so it is logged, not surfaced.
+    private func persistRefreshedProfileCredential(
+        _ credentials: ClaudeOAuthCredentials,
+        environment: [String: String]
+    ) {
+        guard let configDirectory = quotaNonEmpty(environment["CLAUDE_CONFIG_DIR"]) else {
+            return
+        }
+        let service = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: configDirectory
+        )
+        do {
+            try KeychainStore(service: service, legacyServices: [])
+                .set(credentials.routeCredentialStoragePayload(), for: NSUserName())
+        } catch {
+            AppLogger.network.error(
+                "claude_profile_credential_refresh_writeback_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private static func hasScopedClaudeConfig(environment: [String: String]) -> Bool {

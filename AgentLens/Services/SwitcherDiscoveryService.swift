@@ -788,6 +788,25 @@ final class SwitcherDiscoveryService: ObservableObject {
 
         do {
             let saved = try dataStore.switcherStore.create(record)
+            // Reconnect no longer snapshots the route token itself, so a flaky
+            // Keychain can never discard a confirmed login. Snapshot it here,
+            // non-fatally: the profile is already saved, so a denial only defers
+            // quota tracking. The actionable ACL guidance is surfaced via
+            // scanErrors; other faults are logged.
+            if cliType == .claude {
+                do {
+                    try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: saved)
+                } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
+                    if case .accessDenied = snapshotError {
+                        scanErrors.append(snapshotError.localizedDescription)
+                    }
+                } catch {
+                    AppLogger.dataStore.error(
+                        "claude_route_credential_snapshot_failed",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
+                }
+            }
             activateIfFirstProfile(saved.id, dataStore: dataStore)
 
             await scan(dataStore: dataStore)

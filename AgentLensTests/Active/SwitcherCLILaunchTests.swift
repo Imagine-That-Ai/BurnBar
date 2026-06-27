@@ -148,12 +148,16 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "reserve@example.com")
     }
 
-    func test_cliAuthCoordinator_persistsClaudeCredentialAfterIsolatedLogin() async throws {
+    func test_cliAuthCoordinator_reconnectSucceedsWithoutPersistingCredential() async throws {
+        // Credential persistence is decoupled from reconnect: a confirmed login
+        // must always yield a saved switcher profile. The route-token snapshot is
+        // a separate, non-fatal step (`persistProfileCredentialAfterConfirmedLogin`)
+        // that the caller runs AFTER the profile is stored. Reconnect itself must
+        // never touch the keychain, so a flaky keychain can't discard the login.
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -173,12 +177,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
                 executablePathResolver: { cliType in
                     cliType == .claude ? "/tmp/test-claude-auth" : nil
                 },
-                executableHealthChecker: { _, _ in .healthy },
-                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
-                    var values = capturedPersists.value
-                    values.append((cliType, configDirectory, accountDescription))
-                    capturedPersists.value = values
-                }
+                executableHealthChecker: { _, _ in .healthy }
             )
         )
 
@@ -199,68 +198,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
             return
         }
 
-        let persists = capturedPersists.value
-        XCTAssertEqual(persists.count, 1)
-        XCTAssertEqual(persists.first?.0, .claude)
-        XCTAssertEqual(persists.first?.1, configDirectory.path)
-        XCTAssertEqual(persists.first?.2, "claude-reserve@example.com")
+        XCTAssertEqual(updatedProfile.cliMetadata?.configDirectory, configDirectory.path)
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "claude-reserve@example.com")
-    }
-
-    func test_cliAuthCoordinator_failsClaudeReconnectWhenCredentialPersistenceFails() async throws {
-        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
-
-        let coordinator = SwitcherCLIAuthCoordinator(
-            dependencies: .init(
-                openScriptInTerminal: { scriptURL in
-                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
-                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
-                },
-                discoverAuthState: { cliType, configDirectory in
-                    CLIAuthInfo(
-                        cliType: cliType,
-                        isInstalled: true,
-                        executablePath: "/tmp/test-claude-auth",
-                        authState: .authenticated(lastRefresh: nil),
-                        configDirectory: configDirectory,
-                        accountDescription: "claude-reserve@example.com"
-                    )
-                },
-                executablePathResolver: { cliType in
-                    cliType == .claude ? "/tmp/test-claude-auth" : nil
-                },
-                executableHealthChecker: { _, _ in .healthy },
-                persistProfileCredentialAfterLogin: { _, _, _ in
-                    throw NSError(
-                        domain: "OpenBurnBarTests",
-                        code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "profile keychain write failed"]
-                    )
-                }
-            )
-        )
-
-        let profile = SwitcherProfileRecord(
-            id: "claude-reserve",
-            targetKind: .cli,
-            cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Claude Reserve",
-                configDirectory: configDirectory.path
-            ),
-            sortKey: 1
-        )
-
-        let result = await coordinator.reconnect(profile: profile)
-        guard case .failed(let message) = result else {
-            XCTFail("Expected failed result")
-            return
-        }
-
-        XCTAssertTrue(message.contains("could not persist the profile credential"))
-        XCTAssertTrue(message.contains("profile keychain write failed"))
     }
 
     func test_cliAuthCoordinator_exportsCodexHomeForReconnect() async throws {
@@ -350,8 +289,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: nil
                     )
-                },
-                persistProfileCredentialAfterLogin: { _, _, _ in }
+                }
             )
         )
 
@@ -478,7 +416,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        let capturedPersists = MutableBox<[(SwitcherCLIProfileType, String, String?)]>([])
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -494,11 +431,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
                         configDirectory: configDirectory,
                         accountDescription: "new@example.com"
                     )
-                },
-                persistProfileCredentialAfterLogin: { cliType, configDirectory, accountDescription in
-                    var values = capturedPersists.value
-                    values.append((cliType, configDirectory, accountDescription))
-                    capturedPersists.value = values
                 }
             )
         )
@@ -542,7 +474,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustedAt)
         XCTAssertNil(updatedProfile.cliMetadata?.exhaustedUntil)
         XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustionDetail)
-        XCTAssertEqual(capturedPersists.value.count, 0)
     }
 
     func test_cliAuthCoordinator_usesFreshConfigDirectoryWhenPreservingExistingAccount() async throws {

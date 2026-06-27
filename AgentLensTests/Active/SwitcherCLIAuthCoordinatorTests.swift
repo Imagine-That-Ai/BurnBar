@@ -1613,6 +1613,336 @@ final class SwitcherAuthStoreTests: XCTestCase {
         XCTAssertEqual(credentials.planDisplayName, "Max")
     }
 
+    // MARK: - Second-subscription capture + isolation
+
+    func test_claudeCodeOAuthImporter_captureDefaultKeychainCredential_readsGlobalItemInteractively() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "global-account-b-token",
+            "refreshToken": "global-account-b-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "org-b"
+        }
+        """
+        try backend.set(
+            Data(payload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            accounts: ["test-user"]
+        )
+
+        let credentials = try importer.captureDefaultKeychainCredential()
+        XCTAssertEqual(credentials.accessToken, "global-account-b-token")
+        XCTAssertEqual(credentials.organizationUuid, "org-b")
+    }
+
+    func test_claudeCodeOAuthImporter_captureDefaultKeychainCredential_throwsAccessDeniedWhenGlobalItemExistsButIsUnreadable() throws {
+        let backend = try XCTUnwrap(testBackend)
+        // The global item exists but every read is gated behind a cross-identity
+        // ACL — exactly what macOS does to a non-`claude` process. The read maps
+        // to an empty payload, but the existence probe confirms the item is
+        // there, so the user must get an actionable "Always Allow" message rather
+        // than a misleading "you never signed in".
+        backend.readErrors[ClaudeCodeOAuthCredentialImporter.keychainService] =
+            KeychainStoreError.unhandled(errSecInteractionNotAllowed)
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            externalKeychainPasswordReader: { _, _ in nil },
+            externalKeychainItemExists: { service, account in
+                service == ClaudeCodeOAuthCredentialImporter.keychainService && account == "test-user"
+            },
+            accounts: ["test-user"]
+        )
+
+        XCTAssertThrowsError(try importer.captureDefaultKeychainCredential()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.accessDenied.localizedDescription
+            )
+        }
+    }
+
+    func test_claudeCodeOAuthImporter_captureDefaultKeychainCredential_throwsMissingWhenGlobalItemAbsent() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            externalKeychainPasswordReader: { _, _ in nil },
+            externalKeychainItemExists: { _, _ in false },
+            accounts: ["test-user"]
+        )
+
+        XCTAssertThrowsError(try importer.captureDefaultKeychainCredential()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.missing.localizedDescription
+            )
+        }
+    }
+
+    func test_claudeCodeOAuthImporter_secondSubscriptionPersistsToProfileScopedServiceAndReadsBack() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let configDirectory = "/tmp/openburnbar-claude-account-b"
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: configDirectory
+        )
+
+        // Simulate the writer: account B's captured token lands in B's
+        // profile-scoped item, NOT the global item.
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "account-b-route-token",
+            "refreshToken": "account-b-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "org-b"
+        }
+        """
+        try backend.set(Data(payload.utf8), service: profileService, account: "test-user")
+
+        // The quota reader path: profile-scoped, global fallback OFF.
+        let reader = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            accounts: ["test-user"],
+            configDirectory: configDirectory,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try reader.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "account-b-route-token")
+        XCTAssertEqual(credentials.organizationUuid, "org-b")
+    }
+
+    func test_claudeCodeOAuthImporter_twoDistinctSubscriptionsResolveToDistinctTokens() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let configB = "/tmp/openburnbar-claude-account-b"
+        let configC = "/tmp/openburnbar-claude-account-c"
+        let serviceB = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(configDirectory: configB)
+        let serviceC = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(configDirectory: configC)
+        XCTAssertNotEqual(serviceB, serviceC)
+
+        try backend.set(
+            Data(Self.oauthPayload(accessToken: "token-b", org: "org-b").utf8),
+            service: serviceB,
+            account: "test-user"
+        )
+        try backend.set(
+            Data(Self.oauthPayload(accessToken: "token-c", org: "org-c").utf8),
+            service: serviceC,
+            account: "test-user"
+        )
+
+        func read(_ configDirectory: String) throws -> ClaudeOAuthCredentials {
+            try ClaudeCodeOAuthCredentialImporter(
+                keychain: KeychainStore(
+                    service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                    legacyServices: [],
+                    backend: backend
+                ),
+                profileKeychainStore: { service in
+                    KeychainStore(service: service, legacyServices: [], backend: backend)
+                },
+                accounts: ["test-user"],
+                configDirectory: configDirectory,
+                allowDefaultKeychainFallback: false
+            ).load(allowUserInteraction: false)
+        }
+
+        XCTAssertEqual(try read(configB).accessToken, "token-b")
+        XCTAssertEqual(try read(configC).accessToken, "token-c")
+    }
+
+    func test_claudeCodeOAuthImporter_globalOverwriteDoesNotCorruptPersistedSnapshot() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let configB = "/tmp/openburnbar-claude-account-b"
+        let serviceB = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(configDirectory: configB)
+
+        // Account B's snapshot is persisted to its profile-scoped item.
+        try backend.set(
+            Data(Self.oauthPayload(accessToken: "token-b", org: "org-b").utf8),
+            service: serviceB,
+            account: "test-user"
+        )
+        // Later, account C's login overwrites the SHARED global item.
+        try backend.set(
+            Data(Self.oauthPayload(accessToken: "token-c", org: "org-c").utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        // B's quota reader still resolves B's token — never C's — because it
+        // never falls back to the global item.
+        let credentials = try ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            accounts: ["test-user"],
+            configDirectory: configB,
+            allowDefaultKeychainFallback: false
+        ).load(allowUserInteraction: false)
+
+        XCTAssertEqual(credentials.accessToken, "token-b")
+        XCTAssertNotEqual(credentials.accessToken, "token-c")
+    }
+
+    func test_claudeCodeOAuthImporter_refreshWriteBackReplacesStaleProfileToken() throws {
+        // Mirrors ClaudeQuotaAdapter.persistRefreshedProfileCredential: when the
+        // background usage fetch refreshes an expired access token, the rotated
+        // credential is written back to the SAME profile-scoped item the quota
+        // reader loads from. Without this, the next refresh tick re-reads the
+        // stale token; once the refresh token rotates server-side the stale copy
+        // can no longer recover, silently killing a second subscription. This
+        // asserts the round-trip closes: stale token in → refreshed token out.
+        let backend = try XCTUnwrap(testBackend)
+        let configDirectory = "/tmp/openburnbar-claude-account-b"
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: configDirectory
+        )
+
+        // Seed the profile item with a soon-to-expire access token.
+        try KeychainStore(service: profileService, legacyServices: [], backend: backend)
+            .set(Self.oauthPayload(accessToken: "stale-access", org: "org-b"), for: "test-user")
+
+        func read() throws -> ClaudeOAuthCredentials {
+            try ClaudeCodeOAuthCredentialImporter(
+                keychain: KeychainStore(
+                    service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                    legacyServices: [],
+                    backend: backend
+                ),
+                profileKeychainStore: { service in
+                    KeychainStore(service: service, legacyServices: [], backend: backend)
+                },
+                accounts: ["test-user"],
+                configDirectory: configDirectory,
+                allowDefaultKeychainFallback: false
+            ).load(allowUserInteraction: false)
+        }
+
+        XCTAssertEqual(try read().accessToken, "stale-access")
+
+        // The refresh write-back path: persist the rotated credential to the
+        // profile-scoped item via routeCredentialStoragePayload(), exactly as the
+        // adapter does.
+        let refreshed = ClaudeOAuthCredentials(
+            accessToken: "refreshed-access",
+            refreshToken: "rotated-refresh",
+            expiresAt: Date(timeIntervalSince1970: 4_102_444_800),
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_20x",
+            organizationUuid: "org-b"
+        )
+        try KeychainStore(service: profileService, legacyServices: [], backend: backend)
+            .set(refreshed.routeCredentialStoragePayload(), for: "test-user")
+
+        let afterRefresh = try read()
+        XCTAssertEqual(afterRefresh.accessToken, "refreshed-access")
+        XCTAssertEqual(afterRefresh.refreshToken, "rotated-refresh")
+        XCTAssertNotEqual(afterRefresh.accessToken, "stale-access")
+    }
+
+    func test_claudeCodeOAuthImporter_defaultLoginCaptureWritesProfileItemQuotaReaderResolves() throws {
+        // Models what the "Refresh credential" action does for the auto-detected
+        // default login (`~/.claude`): `captureDefaultLoginProfileCredential`
+        // copies the token captured from the global item into the SAME
+        // profile-scoped service the background quota reader resolves for that
+        // config directory. We assert that contract end to end:
+        //   1. the default login's config directory hashes to a profile-scoped
+        //      service distinct from the global service, and
+        //   2. a token written there is read back by the quota reader path
+        //      (`allowDefaultKeychainFallback: false`, same config directory).
+        // This is what turns blank default-login quota into populated quota on
+        // the next background refresh.
+        let backend = try XCTUnwrap(testBackend)
+        let defaultConfigDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude", isDirectory: true)
+            .path
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: defaultConfigDirectory
+        )
+        // The capture must NOT just re-use the global service; it must land in a
+        // distinct per-profile item, otherwise the background reader (which never
+        // touches the global item) would still find nothing.
+        XCTAssertNotEqual(profileService, ClaudeCodeOAuthCredentialImporter.keychainService)
+
+        // Simulate the capture writer: the default login's token is persisted to
+        // its profile-scoped item via routeCredentialStoragePayload(), exactly as
+        // SwitcherCLIAuthCoordinator.persistClaudeProfileCredential does.
+        try KeychainStore(service: profileService, legacyServices: [], backend: backend)
+            .set(Self.oauthPayload(accessToken: "default-login-token", org: "org-default"), for: "test-user")
+
+        // The background quota reader path for the default login: profile-scoped,
+        // global fallback OFF, non-interactive.
+        let reader = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            accounts: ["test-user"],
+            configDirectory: defaultConfigDirectory,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try reader.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "default-login-token")
+        XCTAssertEqual(credentials.organizationUuid, "org-default")
+    }
+
+    private static func oauthPayload(accessToken: String, org: String) -> String {
+        """
+        {
+          "claudeAiOauth": {
+            "accessToken": "\(accessToken)",
+            "refreshToken": "\(accessToken)-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "\(org)"
+        }
+        """
+    }
+
     // MARK: - Helper
 
     private func makeStore() -> SwitcherAuthStore {

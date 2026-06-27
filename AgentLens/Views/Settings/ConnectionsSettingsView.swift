@@ -1401,10 +1401,37 @@ struct ConnectionsSettingsView: View {
 
         if account.isCurrentLogin {
             refreshExternalAuthStates()
+            // The default local Claude login lives in the ACL-locked global
+            // Keychain item, which background quota refresh cannot read. Capture
+            // it into the per-profile item the quota reader resolves, while this
+            // user action lets macOS show the "Always Allow" prompt. Capture
+            // BEFORE the quota refresh below so the same refresh reads the
+            // freshly populated item. Non-fatal: a denial only defers quota, so
+            // we surface the actionable ACL guidance and still refresh.
+            var captureMessage: String?
+            if account.cliType == .claude {
+                do {
+                    try SwitcherCLIAuthCoordinator.captureDefaultLoginProfileCredential(
+                        configDirectory: defaultClaudeLoginConfigDirectory(for: account)
+                    )
+                } catch let captureError as ClaudeCodeOAuthCredentialImportError {
+                    if case .accessDenied = captureError {
+                        captureMessage = captureError.localizedDescription
+                    }
+                } catch {
+                    AppLogger.shared.error(
+                        "claude_default_login_credential_capture_failed",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
+                }
+            }
             if let provider = account.cliType.agentProvider {
                 await quotaService.refresh(provider: provider, dataStore: dataStore)
             }
-            externalCredentialMessages[account.id] = "Refreshed \(account.cliType.displayName) status."
+            // Prefer the actionable ACL message (so the user knows to grant
+            // access); otherwise report the routine status.
+            externalCredentialMessages[account.id] = captureMessage
+                ?? "Refreshed \(account.cliType.displayName) status."
             return
         }
 
@@ -1435,6 +1462,25 @@ struct ConnectionsSettingsView: View {
                     cliType: account.cliType
                 )
                 _ = try dataStore.switcherStore.update(refreshed)
+                // Reconnect no longer snapshots the route token itself (a flaky
+                // Keychain must never discard a confirmed re-auth). Snapshot it
+                // here, non-fatally: the profile is already saved, so a denial
+                // only defers quota tracking. Surfaces the actionable ACL message
+                // when macOS blocks the read.
+                if account.cliType == .claude {
+                    do {
+                        try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: refreshed)
+                    } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
+                        if case .accessDenied = snapshotError {
+                            externalCredentialMessages[account.id] = snapshotError.localizedDescription
+                        }
+                    } catch {
+                        AppLogger.shared.error(
+                            "claude_route_credential_snapshot_failed",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
+                }
                 loadSwitcherProfiles()
                 refreshExternalAuthStates()
                 externalCredentialMessages[account.id] = "Credential refreshed. Updating quota..."
@@ -1544,6 +1590,19 @@ struct ConnectionsSettingsView: View {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The config directory whose per-profile Keychain item should hold the
+    /// default Claude login's captured token. The account row carries the
+    /// discovered config directory in `detail`; fall back to `~/.claude` (the
+    /// canonical default) when discovery did not surface a path, so the captured
+    /// item hashes to the same service the quota reader resolves for the default
+    /// login.
+    private func defaultClaudeLoginConfigDirectory(for account: ExternalOAuthAccount) -> String {
+        normalizedString(account.detail)
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".claude", isDirectory: true)
+                .path
     }
 
     private func normalizedQuotaIdentifier(_ value: String?) -> String? {
