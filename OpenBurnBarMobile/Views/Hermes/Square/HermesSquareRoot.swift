@@ -901,11 +901,10 @@ struct HermesSquareRoot: View {
     /// AppStorage flag lets the user opt out from the Mercury Live
     /// sheet's settings toggle.
     private func autoPinPairedMacIfNeeded(peer: MercuryPeer?) {
-        guard mercuryPinnedTileEnabled, let peer else { return }
-        let uri = "\(AgentIdentityRegistry.pairedMacURIPrefix)\(peer.connectionID)"
+        guard mercuryPinnedTileEnabled else { return }
         let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        guard !grid.pinnedURIs.contains(uri) else { return }
-        let updated = grid.pinningPairedMac(uri)
+        let updated = PairedMacAutoPinPolicy.pinningPeerIfEligible(peer, in: grid)
+        guard updated != grid else { return }
         pinnedJSON = updated.jsonString()
     }
 

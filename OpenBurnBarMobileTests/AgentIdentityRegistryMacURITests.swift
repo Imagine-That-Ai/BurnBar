@@ -66,6 +66,87 @@ final class AgentIdentityRegistryMacURITests: XCTestCase {
         XCTAssertEqual(identity?.availability, .offline)
     }
 
+    func testPairedMacAutoPinRequiresOnlineResolvedPeer() {
+        let grid = PinnedAgentGridConfig(pinnedURIs: ["agent://burnbar/hermes"])
+        let offlinePeer = MercuryPeer(
+            connectionID: "relay-offline",
+            displayName: "Offline Mac",
+            isOnline: false,
+            lastSeenAt: referenceDate,
+            capabilities: MercuryPeer.macFallbackCapabilities
+        )
+        let legacyPlaceholder = MercuryPeer(
+            connectionID: PairedMacAutoPinPolicy.legacyFallbackConnectionID,
+            displayName: "My Mac",
+            isOnline: true,
+            lastSeenAt: referenceDate,
+            capabilities: MercuryPeer.macFallbackCapabilities
+        )
+        let onlinePeer = MercuryPeer(
+            connectionID: "relay-live",
+            displayName: "Studio Mac",
+            isOnline: true,
+            lastSeenAt: referenceDate,
+            capabilities: MercuryPeer.macFallbackCapabilities
+        )
+
+        XCTAssertEqual(
+            PairedMacAutoPinPolicy.pinningPeerIfEligible(offlinePeer, in: grid),
+            grid
+        )
+        XCTAssertEqual(
+            PairedMacAutoPinPolicy.pinningPeerIfEligible(legacyPlaceholder, in: grid),
+            grid
+        )
+
+        let pinned = PairedMacAutoPinPolicy.pinningPeerIfEligible(onlinePeer, in: grid)
+        XCTAssertEqual(pinned.pinnedURIs.first, "device://paired-mac/relay-live")
+        XCTAssertEqual(pinned.pinnedURIs.dropFirst(), grid.pinnedURIs[...])
+    }
+
+    func testMercuryPeerSourceRequiresPeerEvidenceBeforePublishing() {
+        XCTAssertFalse(MercuryPeerSource.hasResolvedPeerEvidence(
+            relay: nil,
+            lastHeartbeat: nil,
+            currentConnectionID: nil,
+            existingPeer: nil
+        ))
+        XCTAssertFalse(MercuryPeerSource.hasResolvedPeerEvidence(
+            relay: nil,
+            lastHeartbeat: nil,
+            currentConnectionID: PairedMacAutoPinPolicy.legacyFallbackConnectionID,
+            existingPeer: nil
+        ))
+
+        let existingResolvedPeer = MercuryPeer(
+            connectionID: "relay-known",
+            displayName: "Studio Mac",
+            isOnline: false,
+            lastSeenAt: referenceDate,
+            capabilities: []
+        )
+        XCTAssertTrue(MercuryPeerSource.hasResolvedPeerEvidence(
+            relay: nil,
+            lastHeartbeat: nil,
+            currentConnectionID: nil,
+            existingPeer: existingResolvedPeer
+        ))
+    }
+
+    func testMercuryPeerSourceDoesNotSynthesizePlaceholderWithoutEvidence() async {
+        let referenceDate = self.referenceDate
+        let source = MercuryPeerSource(
+            relayConnectionProvider: { nil },
+            displayNameProvider: { "Fallback Mac" },
+            pollInterval: 60,
+            clock: { referenceDate }
+        )
+
+        await source.refreshForTesting()
+
+        XCTAssertNil(source.peer)
+    }
+
     func testKnownBuiltInURIStillResolvesEvenWithMercuryPeerSet() {
         let registry = AgentIdentityRegistry()
         registry.pairedMacPeer = MercuryPeer(

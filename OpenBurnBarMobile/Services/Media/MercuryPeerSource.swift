@@ -78,10 +78,26 @@ final class MercuryPeerSource: ObservableObject {
     private func refresh() async {
         let phase = transport.currentMediaControlPhase
         let relay = relayConnectionProvider()
+        let activeConnectionID = transport.currentMediaControlConnectionID
+        guard Self.hasResolvedPeerEvidence(
+            relay: relay,
+            lastHeartbeat: lastHeartbeat,
+            currentConnectionID: activeConnectionID,
+            existingPeer: peer
+        ) else {
+            if peer != nil {
+                peer = nil
+            }
+            return
+        }
         let isOnline = phase == .live || Self.isFreshOnlineRelay(relay, now: clock())
-        let connectionID = await currentConnectionID()
+        let connectionID = currentConnectionID(
+            relay: relay,
+            activeConnectionID: activeConnectionID,
+            existingPeer: peer
+        )
         let displayName = resolveDisplayName()
-        let capabilities = resolveCapabilities()
+        let capabilities = resolveCapabilities(isOnline: isOnline)
         let lastSeen = resolveLastSeen(isOnline: isOnline, relay: relay)
         let next = MercuryPeer(
             connectionID: connectionID,
@@ -113,6 +129,30 @@ final class MercuryPeerSource: ObservableObject {
         return now.timeIntervalSince(activityDate) <= freshnessWindow
     }
 
+    static func hasResolvedPeerEvidence(
+        relay: HermesConnectionRecord?,
+        lastHeartbeat: HermesRealtimeRelayPresenceHeartbeat?,
+        currentConnectionID: String?,
+        existingPeer: MercuryPeer?
+    ) -> Bool {
+        if relay != nil || lastHeartbeat != nil {
+            return true
+        }
+        if let currentConnectionID,
+           PairedMacAutoPinPolicy.isResolvedConnectionID(currentConnectionID) {
+            return true
+        }
+        if let existingPeer,
+           PairedMacAutoPinPolicy.isResolvedConnectionID(existingPeer.connectionID) {
+            return true
+        }
+        return false
+    }
+
+    func refreshForTesting() async {
+        await refresh()
+    }
+
     private func resolveLastSeen(isOnline: Bool, relay: HermesConnectionRecord?) -> Date {
         if let heartbeat = lastHeartbeat {
             return heartbeat.sentAt
@@ -131,13 +171,25 @@ final class MercuryPeerSource: ObservableObject {
         return peer?.lastSeenAt ?? clock()
     }
 
-    private func currentConnectionID() async -> String {
-        if let relay = relayConnectionProvider() {
+    private func currentConnectionID(
+        relay: HermesConnectionRecord?,
+        activeConnectionID: String?,
+        existingPeer: MercuryPeer?
+    ) -> String {
+        if let relay {
             return relay.id
+        }
+        if let activeConnectionID,
+           PairedMacAutoPinPolicy.isResolvedConnectionID(activeConnectionID) {
+            return activeConnectionID
+        }
+        if let existingPeer,
+           PairedMacAutoPinPolicy.isResolvedConnectionID(existingPeer.connectionID) {
+            return existingPeer.connectionID
         }
         // Legacy fallback only. Current Hermes Square injects a relay
         // provider so the tile URI matches Mac-side media frame filtering.
-        return "paired-mac:default"
+        return PairedMacAutoPinPolicy.legacyFallbackConnectionID
     }
 
     private func resolveDisplayName() -> String {
@@ -152,12 +204,15 @@ final class MercuryPeerSource: ObservableObject {
         if let provided = displayNameProvider(), !provided.isEmpty {
             return provided
         }
+        if let existing = peer?.displayName, !existing.isEmpty {
+            return existing
+        }
         return "My Mac"
     }
 
-    private func resolveCapabilities() -> Set<MercuryPeer.Feature> {
+    private func resolveCapabilities(isOnline: Bool) -> Set<MercuryPeer.Feature> {
         guard let heartbeat = lastHeartbeat else {
-            return MercuryPeer.macFallbackCapabilities
+            return isOnline ? MercuryPeer.macFallbackCapabilities : (peer?.capabilities ?? [])
         }
         let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })
         return parsed.isEmpty ? MercuryPeer.macFallbackCapabilities : parsed
