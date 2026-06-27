@@ -479,7 +479,7 @@ extension AccountSwitcherSettingsView {
         let coordinator = SwitcherCLIAuthCoordinator()
         switch await coordinator.reconnect(profile: profile) {
         case .readyToPersist(let updatedProfile):
-            persistCLIProfileUpdate(updatedProfile)
+            persistCLIProfileUpdate(updatedProfile, persistCredentialAfterLogin: true)
         case .requiresConfirmation(let updatedProfile, let previousAccount, let detectedAccount):
             pendingCLIAccountUpdate = PendingCLIAccountUpdate(
                 id: profile.id,

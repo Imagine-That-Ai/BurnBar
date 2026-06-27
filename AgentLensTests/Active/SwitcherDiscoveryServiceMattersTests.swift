@@ -234,4 +234,20 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
         XCTAssertLessThan(captureAssignment.lowerBound, genericProgress.lowerBound)
         XCTAssertLessThan(genericProgress.lowerBound, finalMessage.lowerBound)
     }
+
+    func test_accountSwitcherReconnect_snapshotsCredentialAfterReadyToPersist_sourceGuard() throws {
+        let source = try repositorySource("AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+DataOperations.swift")
+
+        let reconnectMethod = try XCTUnwrap(source.range(of: "func reconnectCLIProfile"))
+        let readyBranch = try XCTUnwrap(source.range(
+            of: "case .readyToPersist(let updatedProfile)",
+            range: reconnectMethod.lowerBound..<source.endIndex
+        ))
+        let snapshotUpdate = try XCTUnwrap(source.range(
+            of: "persistCLIProfileUpdate(updatedProfile, persistCredentialAfterLogin: true)",
+            range: readyBranch.lowerBound..<source.endIndex
+        ))
+
+        XCTAssertLessThan(readyBranch.lowerBound, snapshotUpdate.lowerBound)
+    }
 }
