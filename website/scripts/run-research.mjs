@@ -39,9 +39,10 @@
  * Both are MERGED with the research output, never override it.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { buildRundown } from "./lib/rundown-generator.mjs";
 
@@ -57,7 +58,9 @@ function researchTimeoutMs() {
   if (!raw) return DEFAULT_RESEARCH_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1_000) {
-    console.warn(`[research] ignoring invalid OPENBURNBAR_RESEARCH_TIMEOUT_MS=${JSON.stringify(raw)}`);
+    console.warn(
+      `[research] ignoring invalid OPENBURNBAR_RESEARCH_TIMEOUT_MS=${JSON.stringify(raw)}`
+    );
     return DEFAULT_RESEARCH_TIMEOUT_MS;
   }
   return parsed;
@@ -80,10 +83,14 @@ function installFetchTimeout(ms) {
       if (upstreamSignal.aborted) {
         controller.abort(upstreamSignal.reason);
       } else {
-        upstreamSignal.addEventListener("abort", () => controller.abort(upstreamSignal.reason), { once: true });
+        upstreamSignal.addEventListener("abort", () => controller.abort(upstreamSignal.reason), {
+          once: true
+        });
       }
     }
-    return realFetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+    return realFetch(input, { ...init, signal: controller.signal }).finally(() =>
+      clearTimeout(timer)
+    );
   };
 }
 
@@ -94,7 +101,7 @@ async function withTimeout(promise, ms) {
       promise,
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(timeoutError(ms)), ms);
-      }),
+      })
     ]);
   } finally {
     clearTimeout(timer);
@@ -132,7 +139,7 @@ function buildAliasIndex(catalog) {
   for (const m of catalog) {
     const canonical = m.modelID;
     idx.set(canonical.toLowerCase(), canonical);
-    for (const alias of (m.aliases ?? [])) {
+    for (const alias of m.aliases ?? []) {
       idx.set(alias.toLowerCase(), canonical);
     }
   }
@@ -166,14 +173,14 @@ function mergeCatalog(rewrittenSnapshots, catalog) {
   return catalog.filter((m) => seen.has(m.modelID));
 }
 
-async function loadSeedSnapshotsForDate(dateISO) {
+export async function loadSeedSnapshotsForDate(dateISO) {
   // When live sources are unreachable or rate-limited, fall back to the
   // operator-curated snapshot fixture in seed/. The Manual OpenBurnBar
   // fixture source surfaces this as `manual` freshness so the page never
   // claims "fresh" for cached data.
   const candidates = [
     path.join(SEED_DIR, `snapshots-${dateISO}.json`),
-    path.join(SEED_DIR, "snapshots-latest.json"),
+    path.join(SEED_DIR, "snapshots-latest.json")
   ];
   for (const file of candidates) {
     try {
@@ -181,11 +188,30 @@ async function loadSeedSnapshotsForDate(dateISO) {
       const parsed = JSON.parse(text);
       const rows = Array.isArray(parsed) ? parsed : (parsed?.snapshots ?? null);
       if (Array.isArray(rows) && rows.length > 0) {
-        return { file: path.relative(ROOT, file), rows };
+        const statuses = Array.isArray(parsed?.statuses) ? parsed.statuses : [];
+        return { file: path.relative(ROOT, file), rows, statuses };
       }
     } catch {
       // try next candidate
     }
+  }
+  try {
+    const files = (await readdir(SEED_DIR))
+      .filter((file) => /^snapshots-\d{4}-\d{2}-\d{2}\.json$/.test(file))
+      .sort()
+      .reverse();
+    for (const fileName of files) {
+      const file = path.join(SEED_DIR, fileName);
+      const text = await readFile(file, "utf8");
+      const parsed = JSON.parse(text);
+      const rows = Array.isArray(parsed) ? parsed : (parsed?.snapshots ?? null);
+      if (Array.isArray(rows) && rows.length > 0) {
+        const statuses = Array.isArray(parsed?.statuses) ? parsed.statuses : [];
+        return { file: path.relative(ROOT, file), rows, statuses };
+      }
+    }
+  } catch {
+    // no usable seed directory
   }
   return null;
 }
@@ -200,15 +226,17 @@ async function loadPreviousRundownForDate(dateISO) {
   }
 }
 
-async function main() {
-  console.log("[research] loading compiled landscape adapters from", path.relative(ROOT, FUNCTIONS_LIB));
-  const modelLandscape = await import(FUNCTIONS_LIB);
+function seedOnlyStatus(file, reason) {
+  return {
+    source: "manual_fixture",
+    status: "stale",
+    message: `Using committed research seed ${file}; ${reason}.`,
+    fetchedAt: null
+  };
+}
 
-  console.log("[research] running live research against public endpoints…");
-  const now = new Date();
-  const timeoutMs = researchTimeoutMs();
-  installFetchTimeout(timeoutMs);
-
+export async function collectResearchResult(now, timeoutMs) {
+  const relativeFunctionsLib = path.relative(ROOT, FUNCTIONS_LIB);
   // If the operator hasn't bound a manual fixture explicitly, fall back to the
   // committed seed snapshot for today (or a date-less `snapshots-latest.json`
   // if present). This means a build with no API keys still produces a richer
@@ -217,14 +245,48 @@ async function main() {
     const seed = await loadSeedSnapshotsForDate(now.toISOString().slice(0, 10));
     if (seed) {
       process.env.MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON = JSON.stringify(seed.rows);
-      console.log(`[research] seed fixture loaded · ${seed.file} (${seed.rows.length} rows) · used as manual fallback`);
+      console.log(
+        `[research] seed fixture loaded · ${seed.file} (${seed.rows.length} rows) · used as manual fallback`
+      );
     }
   }
 
+  if (process.env.OPENBURNBAR_RESEARCH_SEED_ONLY === "1" || !existsSync(FUNCTIONS_LIB)) {
+    const reason =
+      process.env.OPENBURNBAR_RESEARCH_SEED_ONLY === "1"
+        ? "OPENBURNBAR_RESEARCH_SEED_ONLY=1"
+        : `${relativeFunctionsLib} is absent`;
+    const seed = await loadSeedSnapshotsForDate(now.toISOString().slice(0, 10));
+    if (!seed) {
+      throw new Error(
+        `Compiled model landscape adapters are unavailable (${reason}) and no committed seed snapshots exist.`
+      );
+    }
+    console.warn(`[research] ${reason}; using committed seed fixture ${seed.file}`);
+    return {
+      sourceMode: "seed",
+      snapshots: seed.rows,
+      statuses: seed.statuses.length > 0 ? seed.statuses : [seedOnlyStatus(seed.file, reason)]
+    };
+  }
+
+  console.log("[research] loading compiled landscape adapters from", relativeFunctionsLib);
+  const modelLandscape = await import(FUNCTIONS_LIB);
+
+  console.log("[research] running live research against public endpoints…");
   const result = await withTimeout(
     modelLandscape.collectModelLandscapeBenchmarks(process.env, now),
-    timeoutMs,
+    timeoutMs
   );
+  return { ...result, sourceMode: "live" };
+}
+
+async function main() {
+  const now = new Date();
+  const timeoutMs = researchTimeoutMs();
+  installFetchTimeout(timeoutMs);
+
+  const result = await collectResearchResult(now, timeoutMs);
 
   console.log("[research] source statuses:");
   for (const s of result.statuses) {
@@ -243,8 +305,12 @@ async function main() {
   if (models.length === 0) {
     console.warn("[research] no catalog entries matched the research output.");
     console.warn("[research] either:");
-    console.warn("[research]   - bind ARTIFICIAL_ANALYSIS_API_KEY for OpenAI/Anthropic/Google data, or");
-    console.warn("[research]   - update scripts/rundown-seed/models.json with the IDs the adapters returned");
+    console.warn(
+      "[research]   - bind ARTIFICIAL_ANALYSIS_API_KEY for OpenAI/Anthropic/Google data, or"
+    );
+    console.warn(
+      "[research]   - update scripts/rundown-seed/models.json with the IDs the adapters returned"
+    );
   }
 
   const date = now.toISOString().slice(0, 10);
@@ -258,17 +324,29 @@ async function main() {
     runtime,
     previousRundown,
     notes: [
-      "Generated by `node website/scripts/run-research.mjs` against live public benchmark adapters.",
+      result.sourceMode === "seed"
+        ? "Generated by `node website/scripts/run-research.mjs` from the committed seed fallback because compiled live adapters were unavailable."
+        : "Generated by `node website/scripts/run-research.mjs` against live public benchmark adapters.",
       `Snapshots from research: ${result.snapshots.length}. Catalog matches: ${models.length}.`,
-      "Sources without an API key configured render as 'unavailable' — never guessed at.",
-    ],
+      "Sources without an API key configured render as 'unavailable' — never guessed at."
+    ]
   });
 
   await mkdir(OUT_DIR, { recursive: true });
   const outFile = path.join(OUT_DIR, `${date}.json`);
   await writeFile(outFile, JSON.stringify(rundown, null, 2) + "\n", "utf8");
-  await writeFile(path.join(OUT_DIR, "latest.json"), JSON.stringify(rundown, null, 2) + "\n", "utf8");
-  console.log("[research] wrote", path.relative(ROOT, outFile), "(", rundown.taskRankings.length, "task rankings)");
+  await writeFile(
+    path.join(OUT_DIR, "latest.json"),
+    JSON.stringify(rundown, null, 2) + "\n",
+    "utf8"
+  );
+  console.log(
+    "[research] wrote",
+    path.relative(ROOT, outFile),
+    "(",
+    rundown.taskRankings.length,
+    "task rankings)"
+  );
 
   // Index of all dated rundowns.
   const { readdir } = await import("node:fs/promises");
@@ -279,11 +357,17 @@ async function main() {
     .sort()
     .reverse()
     .map((d) => ({ date: d, generatedAt: `${d}T12:00:00.000Z` }));
-  await writeFile(path.join(OUT_DIR, "index.json"), JSON.stringify({ dates }, null, 2) + "\n", "utf8");
+  await writeFile(
+    path.join(OUT_DIR, "index.json"),
+    JSON.stringify({ dates }, null, 2) + "\n",
+    "utf8"
+  );
   console.log("[research] index updated · dates:", dates.map((d) => d.date).join(", "));
 }
 
-main().catch((err) => {
-  console.error("[research] failed:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error("[research] failed:", err);
+    process.exit(1);
+  });
+}
