@@ -74,6 +74,17 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
         try dataStore.switcherStore.fetchActiveProfileState().activeProfileID
     }
 
+    private func repositorySource(_ relativePath: String) throws -> String {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+    }
+
     // MARK: - First-profile activation (formerly `(try? …count) ?? 0`)
 
     func test_addIdentity_firstProfile_becomesActive() throws {
@@ -195,5 +206,48 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
 
         XCTAssertNil(result, "A failed existing-profiles read must abort the add.")
         XCTAssertFalse(service.scanErrors.isEmpty, "The read failure must be surfaced.")
+    }
+
+    func test_addDifferentCLIAccount_accessDeniedMessageSurvivesRescan_sourceGuard() throws {
+        let source = try repositorySource("AgentLens/Services/SwitcherDiscoveryService.swift")
+
+        let captureDeclaration = try XCTUnwrap(source.range(of: "var aclDeniedMessage: String?"))
+        let captureAssignment = try XCTUnwrap(source.range(of: "aclDeniedMessage = snapshotError.localizedDescription"))
+        let rescan = try XCTUnwrap(source.range(of: "await scan(dataStore: dataStore)"))
+        let postScanAppend = try XCTUnwrap(source.range(of: "scanErrors.append(aclDeniedMessage)"))
+
+        XCTAssertLessThan(captureDeclaration.lowerBound, captureAssignment.lowerBound)
+        XCTAssertLessThan(captureAssignment.lowerBound, rescan.lowerBound)
+        XCTAssertLessThan(rescan.lowerBound, postScanAppend.lowerBound)
+    }
+
+    func test_connectionsReconnect_accessDeniedMessageWinsOverGenericConfirmation_sourceGuard() throws {
+        let source = try repositorySource("AgentLens/Views/Settings/ConnectionsSettingsView.swift")
+
+        let reconnectBranch = try XCTUnwrap(source.range(of: "case .readyToPersist"))
+        let captureDeclaration = try XCTUnwrap(source.range(of: "var captureMessage: String?", options: [], range: reconnectBranch.lowerBound..<source.endIndex))
+        let captureAssignment = try XCTUnwrap(source.range(of: "captureMessage = snapshotError.localizedDescription", range: captureDeclaration.lowerBound..<source.endIndex))
+        let genericProgress = try XCTUnwrap(source.range(of: "externalCredentialMessages[account.id] = \"Credential refreshed. Updating quota...\"", range: captureAssignment.lowerBound..<source.endIndex))
+        let finalMessage = try XCTUnwrap(source.range(of: "externalCredentialMessages[account.id] = captureMessage ?? refreshConfirmationMessage(for: account)", range: genericProgress.lowerBound..<source.endIndex))
+
+        XCTAssertLessThan(captureDeclaration.lowerBound, captureAssignment.lowerBound)
+        XCTAssertLessThan(captureAssignment.lowerBound, genericProgress.lowerBound)
+        XCTAssertLessThan(genericProgress.lowerBound, finalMessage.lowerBound)
+    }
+
+    func test_accountSwitcherReconnect_snapshotsCredentialAfterReadyToPersist_sourceGuard() throws {
+        let source = try repositorySource("AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+DataOperations.swift")
+
+        let reconnectMethod = try XCTUnwrap(source.range(of: "func reconnectCLIProfile"))
+        let readyBranch = try XCTUnwrap(source.range(
+            of: "case .readyToPersist(let updatedProfile)",
+            range: reconnectMethod.lowerBound..<source.endIndex
+        ))
+        let snapshotUpdate = try XCTUnwrap(source.range(
+            of: "persistCLIProfileUpdate(updatedProfile, persistCredentialAfterLogin: true)",
+            range: readyBranch.lowerBound..<source.endIndex
+        ))
+
+        XCTAssertLessThan(readyBranch.lowerBound, snapshotUpdate.lowerBound)
     }
 }

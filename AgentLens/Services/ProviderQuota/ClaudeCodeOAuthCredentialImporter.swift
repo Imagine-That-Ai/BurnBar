@@ -5,6 +5,7 @@ enum ClaudeCodeOAuthCredentialImportError: LocalizedError {
     case missing
     case malformed
     case expired
+    case accessDenied
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ enum ClaudeCodeOAuthCredentialImportError: LocalizedError {
             return "Claude Code returned an OAuth credential shape OpenBurnBar could not read."
         case .expired:
             return "Claude Code's OAuth token is expired. Sign in with Claude Code again, then try again."
+        case .accessDenied:
+            return "macOS blocked OpenBurnBar from reading Claude Code's keychain item. When macOS prompts, choose \"Always Allow\" so BurnBar can copy the freshly signed-in token into its own per-account store."
         }
     }
 }
@@ -30,6 +33,7 @@ struct ClaudeCodeOAuthCredentialImporter {
     private let keychain: KeychainStore
     private let profileKeychainStore: (String) -> KeychainStore
     private let externalKeychainPasswordReader: (String, String) -> String?
+    private let externalKeychainItemExists: (String, String) -> Bool
     private let accounts: [String]
     private let configDirectory: String?
     private let allowDefaultKeychainFallback: Bool
@@ -40,6 +44,7 @@ struct ClaudeCodeOAuthCredentialImporter {
             KeychainStore(service: $0, legacyServices: [])
         },
         externalKeychainPasswordReader: @escaping (String, String) -> String? = Self.readPasswordWithSecurityTool,
+        externalKeychainItemExists: @escaping (String, String) -> Bool = Self.keychainItemExistsViaSecurityTool,
         accounts: [String] = [NSUserName()],
         configDirectory: String? = nil,
         allowDefaultKeychainFallback: Bool = true
@@ -47,6 +52,7 @@ struct ClaudeCodeOAuthCredentialImporter {
         self.keychain = keychain
         self.profileKeychainStore = profileKeychainStore
         self.externalKeychainPasswordReader = externalKeychainPasswordReader
+        self.externalKeychainItemExists = externalKeychainItemExists
         self.configDirectory = configDirectory?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
@@ -105,6 +111,48 @@ struct ClaudeCodeOAuthCredentialImporter {
 
         if sawMalformedPayload {
             throw ClaudeCodeOAuthCredentialImportError.malformed
+        }
+        throw ClaudeCodeOAuthCredentialImportError.missing
+    }
+
+    /// Captures the token from Claude Code's *default* global keychain item
+    /// (`service = "Claude Code-credentials"`), interacting with the user if
+    /// macOS gates the read behind an ACL prompt.
+    ///
+    /// On macOS, `CLAUDE_CONFIG_DIR` does not redirect Claude Code's credential
+    /// keychain — every `claude login` writes the single global item — so the
+    /// only reliable moment to snapshot a freshly signed-in account is right
+    /// after its login, while that account still owns the global item. This
+    /// item was created by the `claude` binary under a different code-signing
+    /// ACL, so a background `SecItemCopyMatching` returns
+    /// `errSecInteractionNotAllowed` (mapped to `nil` by `KeychainStore`). The
+    /// interactive `security` path lets the user grant access ("Always Allow").
+    ///
+    /// Throws `.accessDenied` (an actionable ACL message) when the global item
+    /// exists but is unreadable, instead of the generic `.missing`, so the
+    /// caller can tell "you have a Claude session, just grant access" apart from
+    /// "you have no Claude session".
+    func captureDefaultKeychainCredential() throws -> ClaudeOAuthCredentials {
+        var sawMalformedPayload = false
+        if let credentials = try loadKeychainCredentials(
+            from: keychain,
+            service: Self.keychainService,
+            allowUserInteraction: true,
+            allowExternalFallback: true,
+            sawMalformedPayload: &sawMalformedPayload
+        ) {
+            return credentials
+        }
+
+        if sawMalformedPayload {
+            throw ClaudeCodeOAuthCredentialImportError.malformed
+        }
+
+        // The data read came back empty. If the global item nonetheless exists,
+        // the empty read is an ACL denial — surface an actionable message rather
+        // than implying the user never signed in.
+        for account in accounts where externalKeychainItemExists(Self.keychainService, account) {
+            throw ClaudeCodeOAuthCredentialImportError.accessDenied
         }
         throw ClaudeCodeOAuthCredentialImportError.missing
     }
@@ -212,6 +260,52 @@ struct ClaudeCodeOAuthCredentialImporter {
             .nilIfEmpty
         #else
         return nil
+        #endif
+    }
+
+    /// Reports whether a generic-password item exists for `service`/`account`
+    /// without reading its data. Omitting `-w` returns only metadata, so this
+    /// never triggers the ACL prompt that guards the secret itself — it just
+    /// distinguishes "the item exists but we can't read it" (ACL denial) from
+    /// "there is no such item" (the user never signed in).
+    private static func keychainItemExistsViaSecurityTool(service: String, account: String) -> Bool {
+        #if os(macOS)
+        let securityURL = URL(fileURLWithPath: "/usr/bin/security")
+        guard FileManager.default.isExecutableFile(atPath: securityURL.path) else { return false }
+
+        let process = Process()
+        process.executableURL = securityURL
+        process.arguments = [
+            "find-generic-password",
+            "-s", service,
+            "-a", account
+        ]
+        process.environment = [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            group.leave()
+        }
+
+        guard group.wait(timeout: .now() + 2) == .success else {
+            process.terminate()
+            return false
+        }
+        return process.terminationStatus == 0
+        #else
+        return false
         #endif
     }
 }

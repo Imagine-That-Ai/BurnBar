@@ -141,6 +141,33 @@ extension ProviderPlanWizardView {
         }
     }
 
+    /// Writes the freshly signed-in Claude account's token into its
+    /// profile-scoped Keychain item so the subsequent route-token import (and
+    /// background quota refresh) read a per-account copy instead of Claude
+    /// Code's shared global item. Best-effort: the switcher profile is already
+    /// saved, so any failure only defers route tracking. Returns an actionable
+    /// message when macOS blocks the Keychain read, otherwise `nil`.
+    @discardableResult
+    func snapshotClaudeProfileCredential(for profile: SwitcherProfileRecord) -> String? {
+        do {
+            try SwitcherCLIAuthCoordinator.persistProfileCredentialAfterConfirmedLogin(for: profile)
+            return nil
+        } catch let snapshotError as ClaudeCodeOAuthCredentialImportError {
+            switch snapshotError {
+            case .accessDenied:
+                return snapshotError.localizedDescription
+            case .missing, .malformed, .expired:
+                return nil
+            }
+        } catch {
+            AppLogger.shared.error(
+                "claude_route_credential_snapshot_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
+        }
+    }
+
     func importClaudeCodeOAuthBearer(
         configDirectory: String? = nil,
         accountLabel: String? = nil,
@@ -371,12 +398,25 @@ extension ProviderPlanWizardView {
                 if selectedAuthMethod?.isClaudeOAuthBearer == true,
                    let configDirectory = saved.cliMetadata?.configDirectory {
                     planLabel = planLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? label : planLabel
+                    // Snapshot the freshly signed-in account's token into THIS
+                    // profile's scoped Keychain item before importing. On macOS
+                    // every Claude account shares one global Keychain item, so we
+                    // must capture now (while this account owns it) and read back
+                    // from the per-profile copy — never the global item, which
+                    // would resolve to whichever account logged in last.
+                    if let snapshotMessage = snapshotClaudeProfileCredential(for: saved) {
+                        // macOS blocked the Keychain read — keep the actionable
+                        // "Always Allow" guidance instead of attempting a readback
+                        // that would fail with a generic message.
+                        externalAccountActionMessage = snapshotMessage
+                        return
+                    }
                     importClaudeCodeOAuthBearer(
                         configDirectory: configDirectory,
                         accountLabel: label,
-                        allowDefaultKeychainFallback: true
+                        allowDefaultKeychainFallback: false
                     )
-                    externalAccountActionMessage = "Added \(label). Claude Code stores route tokens in macOS Keychain, so BurnBar is importing that freshly signed-in token now."
+                    externalAccountActionMessage = "Added \(label). Claude Code stores route tokens in macOS Keychain, so BurnBar imported that freshly signed-in token into a per-account store."
                     return
                 }
                 activeProviderID = providerID
