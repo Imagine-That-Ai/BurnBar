@@ -39,6 +39,10 @@ const CURSOR_TTL_MS = 15 * 60_000;
 const LOCAL_DECRYPT_MODE = "local_decrypt_shim";
 type KnowledgeQueryVector = ReturnType<typeof FieldValue.vector>;
 
+function hasCurrentDedupHashVersion(data: Record<string, unknown>): boolean {
+  return data.dedupHashVersion === 1;
+}
+
 export interface KnowledgeSearchArgs {
   queryVector?: unknown;
   filters?: Record<string, unknown>;
@@ -420,6 +424,13 @@ export async function readKnowledgeDocument(
     );
   }
   const data = snap.data() ?? {};
+  if (!hasCurrentDedupHashVersion(data)) {
+    throw new HttpError(
+      404,
+      "Knowledge resource not found.",
+      "resource_not_found",
+    );
+  }
   if (data.sourceKind === "code") {
     throw new HttpError(
       404,
@@ -472,6 +483,9 @@ export async function readHostedCodeDocument(
     throw new HttpError(404, "Code resource not found.", "resource_not_found");
   }
   const data = snap.data() ?? {};
+  if (!hasCurrentDedupHashVersion(data)) {
+    throw new HttpError(404, "Code resource not found.", "resource_not_found");
+  }
   if (data.sourceKind !== "code") {
     throw new HttpError(404, "Code resource not found.", "resource_not_found");
   }
