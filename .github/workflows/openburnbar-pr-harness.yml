@@ -684,7 +684,7 @@ jobs:
       - ios-mobile
       - retrieval-evals
     runs-on: ubuntu-latest
-    if: always() && !cancelled()
+    if: always()
     steps:
       - name: Check all platform jobs passed
         run: |
@@ -1030,7 +1030,7 @@ jobs:
       - computer-use-e2e
       - mercury-media-e2e
     runs-on: ubuntu-latest
-    if: always() && !cancelled()
+    if: always()
     steps:
       - name: Check all targeted E2E jobs passed
         env:
@@ -1083,7 +1083,7 @@ jobs:
       - platform-confidence-gate
       - targeted-e2e-gate
     runs-on: ubuntu-latest
-    if: always() && !cancelled()
+    if: always()
     steps:
       - name: Preserve legacy required check while new gates prove out
         run: |
