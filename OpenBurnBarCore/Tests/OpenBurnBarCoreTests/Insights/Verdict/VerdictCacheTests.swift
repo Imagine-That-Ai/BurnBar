@@ -38,16 +38,25 @@ final class VerdictCacheTests: XCTestCase {
         XCTAssertFalse(read?.isStale ?? true)
     }
 
-    func testStalenessFiresAtTTLBoundary() async {
-        let cache = VerdictCache(storage: .memoryOnly)
-        let base = Date(timeIntervalSince1970: 1_779_012_000) // 2026-05-16 12:00:00 UTC
+    func testStalenessFiresAtTTLBoundary() async throws {
+        let calendar = Self.utcCalendar()
+        let cache = VerdictCache(storage: .memoryOnly, calendar: calendar)
+        let base = try Self.utcDate("2026-05-16T12:00:00Z")
+        let freshMoment = base.addingTimeInterval(VerdictWindow.today.cacheTTL / 2)
+        let staleMoment = base.addingTimeInterval(VerdictWindow.today.cacheTTL + 1)
+
+        XCTAssertEqual(
+            VerdictWindow.today.dayBucketKey(for: base, calendar: calendar),
+            VerdictWindow.today.dayBucketKey(for: staleMoment, calendar: calendar)
+        )
+
         let v = makeVerdict(generatedAt: base)
         await cache.write(v, deviceID: "dev", now: base)
         let fresh = await cache.read(window: .today, deviceID: "dev",
-                                     now: base.addingTimeInterval(VerdictWindow.today.cacheTTL / 2))
+                                     now: freshMoment)
         XCTAssertEqual(fresh?.isStale, false)
         let stale = await cache.read(window: .today, deviceID: "dev",
-                                     now: base.addingTimeInterval(VerdictWindow.today.cacheTTL + 1))
+                                     now: staleMoment)
         XCTAssertEqual(stale?.isStale, true)
     }
 
@@ -88,6 +97,22 @@ final class VerdictCacheTests: XCTestCase {
         line: UInt = #line
     ) throws -> T {
         try XCTUnwrap(value, file: file, line: line)
+    }
+
+    private static func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private static func utcDate(
+        _ value: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return try XCTUnwrap(formatter.date(from: value), file: file, line: line)
     }
 
     func testDiskPersistenceSurvivesNewInstance() async throws {
