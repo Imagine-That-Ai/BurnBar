@@ -329,6 +329,27 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertEqual(strategy, .debug)
     }
 
+    func testFirestoreNetworkCompatibilityShimOnlyTargetsIOS27Simulator() {
+        XCTAssertTrue(
+            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                isSimulator: true,
+                operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                isSimulator: false,
+                operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                isSimulator: true,
+                operatingSystemVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 5, patchVersion: 0)
+            )
+        )
+    }
+
     func testHostedQuotaStoreKeepsReviewVisibleProductsInLockstepWithAppStoreConnectCatalog() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let storeURL = repoRoot()
