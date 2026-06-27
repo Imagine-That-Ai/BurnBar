@@ -175,11 +175,10 @@ struct ChatMessagesStream: View {
                     assistantModelKey: chatAssistantModelKey(for: msg),
                     viewMode: controller.chatViewMode,
                     // F-3: surface recalled-memory citations on the latest
-                    // completed assistant turn. E1 wires the jump: tapping a
-                    // device-local source opens its owning thread (recall is
-                    // app-wide) and scrolls to the cited row.
+                    // completed assistant turn. The controller retains this
+                    // text-free projection only, not recalled snippet bodies.
                     memoryCitations: isLatestAssistant
-                        ? controller.lastRecalledMemorySnippets.flatMap(\.citations)
+                        ? controller.lastRecalledMemoryCitations
                         : [],
                     onJumpToLocal: { [weak controller] messageID in
                         guard let controller else { return }

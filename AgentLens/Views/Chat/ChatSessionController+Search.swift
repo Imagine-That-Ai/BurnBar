@@ -26,7 +26,7 @@ extension ChatSessionController {
         streamError = nil
         selectedContext = nil
         conversationJumpTargets = []
-        lastRecalledMemorySnippets = []
+        lastRecalledMemoryCitations = []
         pendingMemoryJumpMessageID = nil
         memoryJumpHighlightMessageID = nil
         revokeDesktopControl()
@@ -257,10 +257,10 @@ extension ChatSessionController {
             snippets = try await memoryService.recallForPrompt(request)
         } catch {
             AppLogger.chat.silentFailure("memory recallForPrompt", error: error)
-            self.lastRecalledMemorySnippets = []
+            self.lastRecalledMemoryCitations = []
             return ""
         }
-        self.lastRecalledMemorySnippets = snippets
+        self.lastRecalledMemoryCitations = snippets.flatMap(\.citations)
         guard !snippets.isEmpty else { return "" }
         return snippets.map { snippet in
             let jumpID = snippet.citations.first?.messageID ?? snippet.citations.first?.crossDeviceHMAC

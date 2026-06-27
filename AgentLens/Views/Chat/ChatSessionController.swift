@@ -177,11 +177,10 @@ final class ChatSessionController {
     /// feature is off, so holding a reference here flips nothing on.
     var memoryExtractionEngine: MemoryExtractionEngine?
 
-    /// F-3: the snippets recalled for the current/last turn, retained so the chat
-    /// view can render citation affordances on the latest assistant message. v1
-    /// surfaces the latest turn only; per-message citation persistence is a
-    /// follow-up (the citations live on the snippet, not the chat row).
-    var lastRecalledMemorySnippets: [MemorySnippet] = []
+    /// F-3: text-free citation projection for the current/last turn. Recalled
+    /// memory text is decrypted only long enough to build the wrapped prompt
+    /// section; the chat UI retains citations only.
+    var lastRecalledMemoryCitations: [MemoryCitation] = []
 
     /// E1 (citation jump): a `chat_messages.id` the stream should scroll to once it
     /// is present in `messages`. Recall is app-wide, so tapping a citation may first
