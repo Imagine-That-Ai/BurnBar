@@ -51,13 +51,12 @@ export const triggerVoIPCall = onCall(
       firestore,
     });
 
-    // T-PRV-01 / T-PRV-07: the push payload that leaves our trust boundary
-    // (APNs / FCM, both readable by a cross-service push processor) carries NO
-    // cleartext caller displayName and NO stable correlators (connection_id /
-    // paired_device_id). The client resolves the real caller + connection from
-    // its own sealed session state keyed on `callId`. A fresh, per-push
-    // `correlationId` lets the device dedupe duplicate fan-outs without exposing
-    // a stable identifier that links the device across sessions.
+    // T-PRV-01 / T-PRV-07: payloads that leave our trust boundary carry NO
+    // cleartext caller displayName and NO paired_device_id. APNs also omits
+    // stable routing ids; Android FCM keeps the active connection_id because
+    // MercuryFcmService needs it to route accept/decline back to the live Mac
+    // session. A fresh, per-push `correlationId` lets devices dedupe duplicate
+    // fan-outs without overloading a stable routing key for that purpose.
     const correlationId = ephemeralCallCorrelationId();
     const now = Timestamp.now();
     // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents
@@ -83,7 +82,12 @@ export const triggerVoIPCall = onCall(
       writes.push(
         firestore.collection("fcm_outbound").add({
           uid: request.auth.uid,
-          payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
+          payload: buildFcmCallPayload({
+            callId: data.callId,
+            connectionId: data.connectionId,
+            isVideo: data.isVideo,
+            correlationId,
+          }),
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,
           createdAt: queueTimestamps.createdAt,
