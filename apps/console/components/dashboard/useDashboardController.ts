@@ -13,7 +13,7 @@ import {
   rectsOf,
   type CardId,
 } from "./cardRegistry";
-import { findFreeSlot, type GridRect } from "./gridMath";
+import { compactWithLock, findFreeSlot, type GridRect } from "./gridMath";
 import {
   loadDashboardState,
   safeLocalStorage,
@@ -81,10 +81,20 @@ export function useDashboardController(): DashboardController {
   }, []);
 
   const updateRect = React.useCallback((cardId: string, rect: GridRect) => {
-    setState((prev) => ({
-      ...prev,
-      items: prev.items.map((it) => (it.cardId === cardId ? { ...it, rect } : it)),
-    }));
+    setState((prev) => {
+      // Apply the dropped rect, then reflow everything else around it so cards
+      // snap into place and never overlap (the moved card stays put).
+      const moved = prev.items.map((it) => (it.cardId === cardId ? { ...it, rect } : it));
+      const resolved = compactWithLock(
+        moved.map((it) => ({ id: it.cardId, rect: it.rect })),
+        cardId,
+      );
+      const byId = new Map(resolved.map((r) => [r.id, r.rect]));
+      return {
+        ...prev,
+        items: moved.map((it) => ({ ...it, rect: byId.get(it.cardId) ?? it.rect })),
+      };
+    });
   }, []);
 
   const setKernel = React.useCallback((id: KernelId) => {

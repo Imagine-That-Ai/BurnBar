@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { PanicButton } from "@/components/PanicButton";
+import { ThemeMenu } from "@/components/ThemeMenu";
+import { GlobalBackdrop } from "@/components/GlobalBackdrop";
 import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +16,7 @@ const NAV = [
   { href: "/inventory", label: "Inventory" },
   { href: "/pensieve", label: "Pensieve" },
   { href: "/escrow", label: "Trust" },
+  { href: "/experimental", label: "Experimental" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -23,6 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh">
+      <GlobalBackdrop />
       <header className="rule-double sticky top-0 z-40 bg-[color:var(--color-ink-void)]/90 backdrop-blur-sm">
         <div className="border-b border-glass-line">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-token-6 py-1.5">
@@ -73,7 +77,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="flex items-center gap-token-2">
+          <div className="flex items-center gap-token-3">
+            <ThemeMenu />
             {user && <PanicButton />}
             {user && (
               <Button variant="ghost" size="sm" onClick={() => signOut()}>
