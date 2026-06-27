@@ -397,6 +397,7 @@ final class HostedFallbackTests: XCTestCase {
         let cacheKey = InsightAnalysisCache.key(
             prompt: request.prompt,
             digestContentHash: request.context.digest.contentHash,
+            contextContentHash: request.context.cacheIdentityHash,
             modelID: userTag.modelID,
             instruction: request.instruction
         )
@@ -483,6 +484,7 @@ final class HostedFallbackTests: XCTestCase {
         let cacheKey = InsightAnalysisCache.key(
             prompt: request.prompt,
             digestContentHash: request.context.digest.contentHash,
+            contextContentHash: request.context.cacheIdentityHash,
             modelID: explicitHostedTag.modelID,
             instruction: request.instruction
         )
@@ -538,6 +540,7 @@ final class HostedFallbackTests: XCTestCase {
         let cacheKey = InsightAnalysisCache.key(
             prompt: request.prompt,
             digestContentHash: request.context.digest.contentHash,
+            contextContentHash: request.context.cacheIdentityHash,
             modelID: userTag.modelID,
             instruction: request.instruction
         )

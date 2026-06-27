@@ -1,8 +1,10 @@
 package com.openburnbar.data.insights
 
+import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 @Serializable
 data class InsightAnalysisResult(
@@ -111,6 +113,21 @@ data class InsightAnalysisContext(
     val priorRunSummaries: List<String> = emptyList(),
     val evidencePacks: List<InsightEvidencePack> = emptyList(),
 )
+
+private val insightAnalysisContextIdentityJson =
+    Json {
+        encodeDefaults = true
+    }
+
+fun InsightAnalysisContext.cacheIdentityHash(): String {
+    val encoded =
+        insightAnalysisContextIdentityJson.encodeToString(
+            InsightAnalysisContext.serializer(),
+            this,
+        )
+    val digest = MessageDigest.getInstance("SHA-256").digest(encoded.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
+}
 
 @Serializable
 data class InsightEvidence(

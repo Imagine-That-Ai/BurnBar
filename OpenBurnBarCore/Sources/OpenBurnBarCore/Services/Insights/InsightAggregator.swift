@@ -13,17 +13,43 @@ public struct InsightAggregator: Sendable {
         filter: InsightFilter,
         includedDataSources: [String],
         priorRunSummaries: [String] = [],
-        evidencePacks: [InsightEvidencePack] = []
+        evidencePacks: [InsightEvidencePack] = [],
+        allowDeepTranscriptEvidencePacks: Bool = false
     ) throws -> InsightAnalysisContext {
         let digest = try digestBuilder.build(from: snapshot, filter: filter)
-        let encodedBytes = Self.encodedBytes(digest)
-        let packEvidence = evidencePacks.flatMap(\.evidence)
-        let evidence = Self.buildEvidenceIndex(from: digest) + packEvidence
-        let truncated = Self.truncatedSources(digest: digest, sources: includedDataSources)
+        let digestEvidence = Self.buildEvidenceIndex(from: digest)
+        var selectedEvidencePacks: [InsightEvidencePack] = []
+        var truncated = Self.truncatedSources(digest: digest, sources: includedDataSources)
+        if !allowDeepTranscriptEvidencePacks, evidencePacks.contains(where: \.deepTranscriptIncluded) {
+            truncated.append("deep_transcript_evidence_packs")
+        }
+        for pack in evidencePacks where allowDeepTranscriptEvidencePacks || !pack.deepTranscriptIncluded {
+            let candidatePacks = selectedEvidencePacks + [pack]
+            let candidateEvidence = digestEvidence + candidatePacks.flatMap(\.evidence)
+            let candidateBytes = Self.encodedBytes(ContextBudgetPayload(
+                digest: digest,
+                evidenceIndex: candidateEvidence,
+                priorRunSummaries: priorRunSummaries,
+                evidencePacks: candidatePacks
+            ))
+            if candidateBytes <= InsightDigest.maxEncodedBytes {
+                selectedEvidencePacks = candidatePacks
+            } else if !truncated.contains("evidence_packs") {
+                truncated.append("evidence_packs")
+            }
+        }
+        let evidence = digestEvidence + selectedEvidencePacks.flatMap(\.evidence)
+        let encodedBytes = Self.encodedBytes(ContextBudgetPayload(
+            digest: digest,
+            evidenceIndex: evidence,
+            priorRunSummaries: priorRunSummaries,
+            evidencePacks: selectedEvidencePacks
+        ))
+        let includedSources = Array(Set(includedDataSources + selectedEvidencePacks.flatMap(\.includedDataSources))).sorted()
         let budget = InsightContextBudgetReport(
             encodedBytes: encodedBytes,
             estimatedPromptTokens: max(1, encodedBytes / 4),
-            includedDataSources: Array(Set(includedDataSources + evidencePacks.flatMap(\.includedDataSources))).sorted(),
+            includedDataSources: includedSources,
             truncatedDataSources: truncated,
             truncationSummary: truncated.isEmpty
                 ? "No truncation."
@@ -34,15 +60,22 @@ public struct InsightAggregator: Sendable {
             evidenceIndex: evidence,
             budgetReport: budget,
             priorRunSummaries: priorRunSummaries,
-            evidencePacks: evidencePacks
+            evidencePacks: selectedEvidencePacks
         )
     }
 
-    private static func encodedBytes(_ digest: InsightDigest) -> Int {
+    private struct ContextBudgetPayload: Encodable {
+        var digest: InsightDigest
+        var evidenceIndex: [InsightEvidence]
+        var priorRunSummaries: [String]
+        var evidencePacks: [InsightEvidencePack]
+    }
+
+    private static func encodedBytes<T: Encodable>(_ value: T) -> Int {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(digest))?.count ?? 0
+        return (try? encoder.encode(value))?.count ?? 0
     }
 
     private static func truncatedSources(digest: InsightDigest, sources: [String]) -> [String] {

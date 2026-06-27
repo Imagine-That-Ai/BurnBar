@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Cross-platform contract for a generated Insights analysis.
@@ -285,6 +286,18 @@ public struct InsightAnalysisContext: Codable, Hashable, Sendable {
         self.budgetReport = budgetReport
         self.priorRunSummaries = priorRunSummaries
         self.evidencePacks = evidencePacks
+    }
+
+    public var cacheIdentityHash: String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(self) else {
+            return digest.contentHash
+        }
+        return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 }
 

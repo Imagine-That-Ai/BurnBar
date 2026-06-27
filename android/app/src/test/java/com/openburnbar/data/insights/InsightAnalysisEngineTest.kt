@@ -212,6 +212,85 @@ class InsightAnalysisEngineTest {
         assertTrue(notOptedInReport.truncatedDataSources.isEmpty())
     }
 
+    @Test
+    fun `aggregator budgets and filters evidence packs`() {
+        val digest = InsightDigest(providers = listOf(providerSnapshot(1)))
+        val safePack =
+            evidencePack(
+                id = "safe-pack",
+                source = "synced_evidence",
+                summary = "A short sanitized evidence summary.",
+            )
+        val deepPack =
+            evidencePack(
+                id = "deep-pack",
+                source = "deep_transcripts",
+                summary = "A deep local transcript summary.",
+                deepTranscriptIncluded = true,
+            )
+        val oversizedPack =
+            evidencePack(
+                id = "oversized-pack",
+                source = "oversized_evidence",
+                summary = "oversized ".repeat(InsightDigest.MAX_ENCODED_BYTES),
+            )
+
+        val context =
+            InsightAggregator.buildContext(
+                digest = digest,
+                includedDataSources = listOf("provider_summaries"),
+                evidencePacks = listOf(safePack, deepPack, oversizedPack),
+            )
+
+        assertTrue(context.budgetReport.encodedBytes <= InsightDigest.MAX_ENCODED_BYTES)
+        assertTrue(context.evidencePacks.any { it.id == safePack.id })
+        assertFalse(context.evidencePacks.any { it.id == deepPack.id })
+        assertFalse(context.evidencePacks.any { it.id == oversizedPack.id })
+        assertTrue(context.evidenceIndex.any { it.id == "pack:safe-pack" })
+        assertFalse(context.evidenceIndex.any { it.id == "pack:deep-pack" })
+        assertFalse(context.evidenceIndex.any { it.id == "pack:oversized-pack" })
+        assertTrue("deep_transcript_evidence_packs" in context.budgetReport.truncatedDataSources)
+        assertTrue("evidence_packs" in context.budgetReport.truncatedDataSources)
+    }
+
+    @Test
+    fun `analysis context cache identity includes evidence packs`() {
+        val digest = InsightDigest(providers = listOf(providerSnapshot(1)))
+        val base = InsightAggregator.buildContext(digest, listOf("provider_summaries"))
+        val enriched =
+            InsightAggregator.buildContext(
+                digest = digest,
+                includedDataSources = listOf("provider_summaries"),
+                evidencePacks = listOf(
+                    evidencePack(
+                        id = "safe-pack",
+                        source = "synced_evidence",
+                        summary = "A short sanitized evidence summary.",
+                    ),
+                ),
+            )
+
+        assertEquals(base.digest.contentHash, enriched.digest.contentHash)
+        assertTrue(base.cacheIdentityHash() != enriched.cacheIdentityHash())
+        val baseKey =
+            InsightAnalysisCacheRepository.key(
+                prompt = "What changed?",
+                digestContentHash = base.digest.contentHash,
+                contextContentHash = base.cacheIdentityHash(),
+                modelID = "claude-sonnet-4-6",
+                instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
+            )
+        val enrichedKey =
+            InsightAnalysisCacheRepository.key(
+                prompt = "What changed?",
+                digestContentHash = enriched.digest.contentHash,
+                contextContentHash = enriched.cacheIdentityHash(),
+                modelID = "claude-sonnet-4-6",
+                instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
+            )
+        assertTrue(baseKey != enrichedKey)
+    }
+
     private fun analysisRequest(
         model: InsightModelTag,
         instruction: InsightAnalysisRequest.Instruction = InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP,
@@ -282,6 +361,32 @@ class InsightAnalysisEngineTest {
     private fun modelSnapshot(index: Int): InsightDigest.ModelSnapshot = InsightDigest.ModelSnapshot(
         id = "model-%02d".format(index),
         providerID = "provider-01",
+    )
+
+    private fun evidencePack(id: String, source: String, summary: String, deepTranscriptIncluded: Boolean = false): InsightEvidencePack = InsightEvidencePack(
+        id = id,
+        sourcePlatform = InsightAnalysisPlatform.MACOS,
+        generatedAt = "2026-06-11T00:00:00Z",
+        timeWindow = InsightTimeWindow.Last7d,
+        includedDataSources = listOf(source),
+        budgetReport =
+        InsightContextBudgetReport(
+            encodedBytes = summary.toByteArray(Charsets.UTF_8).size,
+            estimatedPromptTokens = (summary.length / 4).coerceAtLeast(1),
+            includedDataSources = listOf(source),
+        ),
+        evidence =
+        listOf(
+            InsightEvidence(
+                id = "pack:$id",
+                citation = citation(0),
+                source = source,
+                summary = summary,
+            ),
+        ),
+        summary = summary,
+        contentHash = "hash-$id",
+        deepTranscriptIncluded = deepTranscriptIncluded,
     )
 
     private fun ollamaChatResponse(): String = JSONObject()

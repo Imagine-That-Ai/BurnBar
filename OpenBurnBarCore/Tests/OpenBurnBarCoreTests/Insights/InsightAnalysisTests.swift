@@ -18,6 +18,82 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertTrue(context.evidenceIndex.contains { $0.source == "quota_snapshots" })
     }
 
+    func testAggregatorBudgetsAndFiltersEvidencePacks() throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let safePack = Self.evidencePack(
+            id: "safe-pack",
+            source: "synced_evidence",
+            summary: "A short sanitized evidence summary."
+        )
+        let deepPack = Self.evidencePack(
+            id: "deep-pack",
+            source: "deep_transcripts",
+            summary: "A deep local transcript summary.",
+            deepTranscriptIncluded: true
+        )
+        let oversizedPack = Self.evidencePack(
+            id: "oversized-pack",
+            source: "oversized_evidence",
+            summary: String(repeating: "oversized ", count: InsightDigest.maxEncodedBytes)
+        )
+
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"],
+            evidencePacks: [safePack, deepPack, oversizedPack]
+        )
+
+        XCTAssertLessThanOrEqual(context.budgetReport.encodedBytes, InsightDigest.maxEncodedBytes)
+        XCTAssertTrue(context.evidencePacks.contains { $0.id == safePack.id })
+        XCTAssertFalse(context.evidencePacks.contains { $0.id == deepPack.id })
+        XCTAssertFalse(context.evidencePacks.contains { $0.id == oversizedPack.id })
+        XCTAssertTrue(context.evidenceIndex.contains { $0.id == "pack:safe-pack" })
+        XCTAssertFalse(context.evidenceIndex.contains { $0.id == "pack:deep-pack" })
+        XCTAssertFalse(context.evidenceIndex.contains { $0.id == "pack:oversized-pack" })
+        XCTAssertTrue(context.budgetReport.truncatedDataSources.contains("deep_transcript_evidence_packs"))
+        XCTAssertTrue(context.budgetReport.truncatedDataSources.contains("evidence_packs"))
+    }
+
+    func testAnalysisContextCacheIdentityIncludesEvidencePacks() throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let base = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"]
+        )
+        let enriched = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"],
+            evidencePacks: [
+                Self.evidencePack(
+                    id: "safe-pack",
+                    source: "synced_evidence",
+                    summary: "A short sanitized evidence summary."
+                )
+            ]
+        )
+
+        XCTAssertEqual(base.digest.contentHash, enriched.digest.contentHash)
+        XCTAssertNotEqual(base.cacheIdentityHash, enriched.cacheIdentityHash)
+        let baseKey = InsightAnalysisCache.key(
+            prompt: "What changed?",
+            digestContentHash: base.digest.contentHash,
+            contextContentHash: base.cacheIdentityHash,
+            modelID: "claude-sonnet-4-6",
+            instruction: .defaultBrief
+        )
+        let enrichedKey = InsightAnalysisCache.key(
+            prompt: "What changed?",
+            digestContentHash: enriched.digest.contentHash,
+            contextContentHash: enriched.cacheIdentityHash,
+            modelID: "claude-sonnet-4-6",
+            instruction: .defaultBrief
+        )
+        XCTAssertNotEqual(baseKey, enrichedKey)
+    }
+
     func testRuleBasedAnalysisReturnsStructuredFindingsAndWidgets() async throws {
         let snapshot = InsightTestFixtures.twoWeeksOfUsage()
         let context = try InsightAggregator().buildContext(
@@ -396,6 +472,7 @@ final class InsightAnalysisTests: XCTestCase {
         let cacheKey = InsightAnalysisCache.key(
             prompt: request.prompt,
             digestContentHash: request.context.digest.contentHash,
+            contextContentHash: request.context.cacheIdentityHash,
             modelID: model.modelID,
             instruction: request.instruction
         )
@@ -503,23 +580,34 @@ final class InsightAnalysisTests: XCTestCase {
         let a = InsightAnalysisCache.key(
             prompt: "What changed this week?",
             digestContentHash: "abc123",
+            contextContentHash: "context-1",
             modelID: "claude-sonnet-4-6",
             instruction: .defaultBrief
         )
         let b = InsightAnalysisCache.key(
             prompt: "What changed this week?",
             digestContentHash: "abc123",
+            contextContentHash: "context-1",
             modelID: "claude-sonnet-4-6",
             instruction: .defaultBrief
         )
         let c = InsightAnalysisCache.key(
             prompt: "What changed this week?",
             digestContentHash: "abc123",
+            contextContentHash: "context-1",
             modelID: "claude-sonnet-4-6",
             instruction: .answerFollowUp
         )
+        let d = InsightAnalysisCache.key(
+            prompt: "What changed this week?",
+            digestContentHash: "abc123",
+            contextContentHash: "context-2",
+            modelID: "claude-sonnet-4-6",
+            instruction: .defaultBrief
+        )
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)
+        XCTAssertNotEqual(a, d)
     }
 
     func testProviderFamilyCatalogGroupsAndSortsByFamily() {
@@ -718,5 +806,38 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertEqual(canvas.widgets.count, restored.generatedWidgets.count)
         XCTAssertEqual(canvas.modelTag, restored.modelTag)
         XCTAssertEqual(canvas.origin, .composed(prompt: request.prompt))
+    }
+
+    private static func evidencePack(
+        id: String,
+        source: String,
+        summary: String,
+        deepTranscriptIncluded: Bool = false
+    ) -> InsightEvidencePack {
+        InsightEvidencePack(
+            id: id,
+            sourcePlatform: .macOS,
+            generatedAt: Date(timeIntervalSince1970: 0),
+            timeWindow: .last7d,
+            includedDataSources: [source],
+            budgetReport: InsightContextBudgetReport(
+                encodedBytes: summary.utf8.count,
+                estimatedPromptTokens: max(1, summary.utf8.count / 4),
+                includedDataSources: [source],
+                truncatedDataSources: [],
+                truncationSummary: "No truncation."
+            ),
+            evidence: [
+                InsightEvidence(
+                    id: "pack:\(id)",
+                    citation: InsightCitation(kind: .query(text: id), label: id),
+                    source: source,
+                    summary: summary
+                )
+            ],
+            summary: summary,
+            contentHash: "hash-\(id)",
+            deepTranscriptIncluded: deepTranscriptIncluded
+        )
     }
 }

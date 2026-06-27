@@ -1268,6 +1268,7 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
         let cacheKey = InsightAnalysisCache.key(
             prompt: request.prompt,
             digestContentHash: request.context.digest.contentHash,
+            contextContentHash: request.context.cacheIdentityHash,
             modelID: request.selectedModel.modelID,
             instruction: request.instruction
         )

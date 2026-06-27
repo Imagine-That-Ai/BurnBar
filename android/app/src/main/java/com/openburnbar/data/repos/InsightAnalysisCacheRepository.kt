@@ -14,8 +14,8 @@ import kotlinx.serialization.json.Json
 /**
  * Content-addressed cache for [InsightAnalysisResult].
  *
- * Keyed by (prompt, digestContentHash, modelID, instruction). LRU-evicted at
- * [maxEntries]. Stored as JSON files under
+ * Keyed by (prompt, digestContentHash, contextContentHash, modelID,
+ * instruction). LRU-evicted at [maxEntries]. Stored as JSON files under
  * `context.filesDir/Insights/analysis_cache/`.
  */
 class InsightAnalysisCacheRepository(
@@ -69,10 +69,17 @@ class InsightAnalysisCacheRepository(
     }
 
     companion object {
-        private const val SCHEMA_VERSION = "v3-insight-mission-candidates"
+        private const val SCHEMA_VERSION = "v4-context-evidence-packs"
 
-        fun key(prompt: String, digestContentHash: String, modelID: String, instruction: InsightAnalysisRequest.Instruction): String {
-            val payload = "$SCHEMA_VERSION$prompt$digestContentHash$modelID${instruction.name}"
+        fun key(
+            prompt: String,
+            digestContentHash: String,
+            contextContentHash: String? = null,
+            modelID: String,
+            instruction: InsightAnalysisRequest.Instruction,
+        ): String {
+            val contextHash = contextContentHash ?: digestContentHash
+            val payload = "$SCHEMA_VERSION$prompt$digestContentHash$contextHash$modelID${instruction.name}"
             val digest =
                 MessageDigest.getInstance("SHA-256")
                     .digest(payload.toByteArray(Charsets.UTF_8))
