@@ -13,6 +13,7 @@ struct MercuryRecentTransfersCard: View {
     let entries: [MercuryTransferHistoryEntry]
     let totalCount: Int
     let accent: Color
+    let canSendAnother: Bool
     let onRemove: (MercuryTransferHistoryEntry) -> Void
     let onSendAnother: () -> Void
 
@@ -33,12 +34,14 @@ struct MercuryRecentTransfersCard: View {
                 Button(action: onSendAnother) {
                     Text("Send a file")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(canSendAnother ? .white : Color.white.opacity(0.45))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Capsule().fill(accent.opacity(0.28)))
+                        .background(Capsule().fill(canSendAnother ? accent.opacity(0.28) : Color.white.opacity(0.05)))
                 }
                 .buttonStyle(.plain)
+                .disabled(!canSendAnother)
+                .accessibilityLabel("Send a file\(canSendAnother ? "" : " unavailable")")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

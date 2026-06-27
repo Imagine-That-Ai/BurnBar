@@ -110,6 +110,18 @@ final class iOSFileTransferService: ObservableObject {
         self.settingsProvider = settingsProvider
     }
 
+    var hasFileTransferBackend: Bool {
+        service != nil
+    }
+
+    var isFileTransferEnabledInSettings: Bool {
+        settingsProvider()
+    }
+
+    var canSendFiles: Bool {
+        hasFileTransferBackend && isFileTransferEnabledInSettings
+    }
+
     func attachControlStream(_ coordinator: MediaControlStreamCoordinator, connectionID: String) {
         controlCoordinatorsByConnectionID[connectionID] = coordinator
     }

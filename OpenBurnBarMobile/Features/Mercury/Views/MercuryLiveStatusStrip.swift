@@ -20,6 +20,7 @@ struct MercuryLiveStatusStrip: View {
     let inFlightCount: Int
     let moodName: String?
     let canRequestMirror: Bool
+    let canSendFile: Bool
     let onReconnect: () -> Void
     let onMirror: () -> Void
     let onCall: () -> Void
@@ -169,7 +170,7 @@ struct MercuryLiveStatusStrip: View {
                            label: "Call")
             CapabilityDivider()
             capabilityIcon(icon: "paperclip",
-                           enabled: peer.canSendFile,
+                           enabled: canSendFile,
                            action: onSendFile,
                            label: "Send file")
         }

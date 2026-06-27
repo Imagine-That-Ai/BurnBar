@@ -188,6 +188,31 @@ struct MercuryLiveSheet: View {
             : MobileBackgroundVisibility.prominent
     }
 
+    var canSendFiles: Bool {
+        peer.canSendFile && (fileTransferService?.canSendFiles ?? false)
+    }
+
+    var unavailableFileTransferMessage: String {
+        guard let fileTransferService else {
+            return iOSFileTransferService.Failure.backendUnavailable.errorDescription ?? "File transfer not available."
+        }
+        if !fileTransferService.hasFileTransferBackend {
+            return iOSFileTransferService.Failure.backendUnavailable.errorDescription ?? "File transfer not available."
+        }
+        if !fileTransferService.isFileTransferEnabledInSettings {
+            return iOSFileTransferService.Failure.settingDisabled.errorDescription ?? "File transfer not available."
+        }
+        return "This Mac is not advertising file transfer."
+    }
+
+    func openFileImporterIfAvailable() {
+        guard canSendFiles else {
+            lastError = unavailableFileTransferMessage
+            return
+        }
+        isShowingFileImporter = true
+    }
+
     var body: some View {
         ZStack {
             backgroundView
@@ -212,6 +237,7 @@ struct MercuryLiveSheet: View {
                             inFlightCount: fileTransferService?.inFlightCount ?? 0,
                             moodName: MercuryMoodPreset.matching(personalization)?.name,
                             canRequestMirror: canRequestMirror,
+                            canSendFile: canSendFiles,
                             onReconnect: {
                                 Task {
                                     await controlStreamCoordinator.stop()
@@ -222,7 +248,7 @@ struct MercuryLiveSheet: View {
                             },
                             onMirror: { Task { await requestMirror() } },
                             onCall: { Task { await placeCall() } },
-                            onSendFile: { isShowingFileImporter = true },
+                            onSendFile: { openFileImporterIfAvailable() },
                             onShowActivity: {
                                 // The Recent Transfers card is already
                                 // visible — opening the customize sheet
@@ -241,14 +267,14 @@ struct MercuryLiveSheet: View {
                         accent: accent,
                         canRequestMirror: canRequestMirror,
                         canPlaceCall: peer.canPlaceCall,
-                        canSendFile: peer.canSendFile && fileTransferService != nil,
+                        canSendFile: canSendFiles,
                         mirrorAutoAccept: mirrorAutoAccept,
                         awaitingRequestID: awaitingRequestID,
                         sendingFile: sendingFile,
                         mercuryStatusMessage: mercuryStatusMessage,
                         onRequestMirror: { Task { await requestMirror() } },
                         onPlaceCall: { Task { await placeCall() } },
-                        onSendFile: { isShowingFileImporter = true },
+                        onSendFile: { openFileImporterIfAvailable() },
                         usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false
                     )
 
@@ -256,8 +282,9 @@ struct MercuryLiveSheet: View {
                         entries: transferHistoryStore.recent(for: connectionID, limit: 5),
                         totalCount: transferHistoryStore.totalCount(for: connectionID),
                         accent: accent,
+                        canSendAnother: canSendFiles,
                         onRemove: { transferHistoryStore.remove(id: $0.id) },
-                        onSendAnother: { isShowingFileImporter = true }
+                        onSendAnother: { openFileImporterIfAvailable() }
                     )
 
                     MercuryMoodCarousel(

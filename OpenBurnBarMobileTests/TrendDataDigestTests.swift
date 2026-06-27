@@ -100,6 +100,90 @@ final class TrendDataDigestTests: XCTestCase {
                           "Digest grew past 12KB — risk of dropping context on small models.")
     }
 
+    func testDailySeriesKeepsThirtyDayWindow() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 1,
+            hour: 12
+        ).date!
+        let dailyPoints = (0..<35).map { offset in
+            RollupDailyPoint(
+                date: calendar.date(byAdding: .day, value: offset, to: start)!,
+                value: Double(offset)
+            )
+        }
+
+        let digest = TrendDataDigest.build(
+            windowTotals: [:],
+            providerSummaries: [],
+            modelSummaries: [],
+            deviceSummaries: [],
+            dailyPoints: dailyPoints,
+            recentUsages: [],
+            displayMode: .currency,
+            now: dailyPoints.last!.date
+        )
+
+        XCTAssertEqual(digest.daily.count, 30)
+        XCTAssertEqual(digest.daily.first?.date, "2026-01-06")
+        XCTAssertEqual(digest.daily.last?.date, "2026-02-04")
+    }
+
+    func testDailySeriesRollsProviderOverflowIntoOtherBucket() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 15,
+            hour: 12
+        ).date!
+        let providers = Array(AgentProvider.allCases.prefix(6))
+        let costs = [10.0, 9.0, 8.0, 7.0, 6.0, 5.0]
+        let usages = zip(providers, costs).enumerated().map { index, item -> TokenUsage in
+            let (provider, cost) = item
+            return TokenUsage(
+                provider: provider,
+                sessionId: "session-\(index)",
+                projectName: "Project",
+                model: "model-\(index)",
+                inputTokens: 100,
+                outputTokens: 50,
+                costUSD: cost,
+                startTime: day,
+                endTime: day.addingTimeInterval(60)
+            )
+        }
+
+        let digest = TrendDataDigest.build(
+            windowTotals: [:],
+            providerSummaries: [],
+            modelSummaries: [],
+            deviceSummaries: [],
+            dailyPoints: [RollupDailyPoint(date: day, value: 45)],
+            recentUsages: usages,
+            displayMode: .currency,
+            now: day
+        )
+
+        let stack = digest.daily[0].perProvider
+        XCTAssertEqual(stack.count, 5)
+        XCTAssertEqual(stack[providers[0].persistedToken] ?? -1, 10, accuracy: 0.0001)
+        XCTAssertEqual(stack[providers[1].persistedToken] ?? -1, 9, accuracy: 0.0001)
+        XCTAssertEqual(stack[providers[2].persistedToken] ?? -1, 8, accuracy: 0.0001)
+        XCTAssertEqual(stack[providers[3].persistedToken] ?? -1, 7, accuracy: 0.0001)
+        XCTAssertNil(stack[providers[4].persistedToken])
+        XCTAssertNil(stack[providers[5].persistedToken])
+        XCTAssertEqual(stack[TrendDataDigest.otherProviderKey] ?? -1, 11, accuracy: 0.0001)
+    }
+
     func testDigestEncodesProviderSharePercents() {
         let providers = [
             RollupProviderSummary(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 100, totalTokens: 600_000, totalCost: 60),

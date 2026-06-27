@@ -619,7 +619,11 @@ extension MercuryLiveSheet {
         case .success(let urls):
             guard let url = urls.first else { return }
             guard let service = fileTransferService else {
-                lastError = "File transfer not available."
+                lastError = unavailableFileTransferMessage
+                return
+            }
+            guard service.canSendFiles else {
+                lastError = unavailableFileTransferMessage
                 return
             }
             guard let uid = uidProvider(), !uid.isEmpty else {
