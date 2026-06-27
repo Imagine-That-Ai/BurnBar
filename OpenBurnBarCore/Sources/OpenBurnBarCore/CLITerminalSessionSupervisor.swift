@@ -261,23 +261,36 @@ public final class CLITerminalSessionSupervisor: Sendable {
         )
         readSource.setEventHandler { [weak self] in
             guard let self else { return }
-            // Use read() system call - returns -1 on error (pipe closed), 0 on EOF, >0 on data.
-            // This avoids NSFileHandleOperationException from availableData when pipe is closed.
-            let bytesRead = buffer.withUnsafeMutableBytes { ptr -> Int in
-                read(fd, ptr.baseAddress, bufferSize)
+            let sourceReadableBytes = readSource.data
+            let readableBytes = sourceReadableBytes > UInt(Int.max)
+                ? Int.max
+                : Int(sourceReadableBytes)
+            var remainingBytes = max(readableBytes, bufferSize)
+
+            while remainingBytes > 0 {
+                let requestedBytes = min(bufferSize, remainingBytes)
+                // Use read() system call - returns -1 on error (pipe closed), 0 on EOF, >0 on data.
+                // This avoids NSFileHandleOperationException from availableData when pipe is closed.
+                let bytesRead = buffer.withUnsafeMutableBytes { ptr -> Int in
+                    read(fd, ptr.baseAddress, requestedBytes)
+                }
+
+                if bytesRead <= 0 {
+                    // Pipe closed or error - stop reading
+                    readSource.cancel()
+                    return
+                }
+
+                if let text = String(bytes: buffer.prefix(bytesRead), encoding: .utf8),
+                   !text.isEmpty {
+                    self.ingest(text, source: source)
+                }
+
+                remainingBytes -= bytesRead
+                if bytesRead < requestedBytes {
+                    break
+                }
             }
-            
-            if bytesRead <= 0 {
-                // Pipe closed or error - stop reading
-                readSource.cancel()
-                return
-            }
-            
-            guard let text = String(bytes: buffer.prefix(bytesRead), encoding: .utf8),
-                  !text.isEmpty else {
-                return
-            }
-            self.ingest(text, source: source)
         }
         readSource.resume()
 
