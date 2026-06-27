@@ -1,12 +1,20 @@
 import Foundation
 
 public enum BurnBarControllerNextActionPlanner {
+    public static let defaultMaximumActionCount = 50
+
     public static func orderedActions(
-        from missions: [BurnBarMissionSnapshot]
+        from missions: [BurnBarMissionSnapshot],
+        maxCount: Int? = nil
     ) -> [BurnBarControllerNextActionSnapshot] {
-        missions
+        if let maxCount {
+            guard maxCount > 0 else { return [] }
+            return topMissions(from: missions, maxCount: maxCount).map(nextAction(for:))
+        }
+
+        return missions
+            .sorted(by: missionSort)
             .map(nextAction(for:))
-            .sorted(by: nextActionSort)
     }
 
     public static func bucket(
@@ -38,12 +46,30 @@ public enum BurnBarControllerNextActionPlanner {
         )
     }
 
-    private static func nextActionSort(
-        lhs: BurnBarControllerNextActionSnapshot,
-        rhs: BurnBarControllerNextActionSnapshot
+    private static func topMissions(
+        from missions: [BurnBarMissionSnapshot],
+        maxCount: Int
+    ) -> [BurnBarMissionSnapshot] {
+        var selected: [BurnBarMissionSnapshot] = []
+        selected.reserveCapacity(min(maxCount, missions.count))
+
+        for mission in missions {
+            selected.append(mission)
+            selected.sort(by: missionSort)
+            if selected.count > maxCount {
+                selected.removeLast(selected.count - maxCount)
+            }
+        }
+
+        return selected
+    }
+
+    private static func missionSort(
+        lhs: BurnBarMissionSnapshot,
+        rhs: BurnBarMissionSnapshot
     ) -> Bool {
-        let lhsBucketRank = bucketRank(lhs.bucket)
-        let rhsBucketRank = bucketRank(rhs.bucket)
+        let lhsBucketRank = bucketRank(bucket(for: lhs.status))
+        let rhsBucketRank = bucketRank(bucket(for: rhs.status))
         if lhsBucketRank != rhsBucketRank {
             return lhsBucketRank < rhsBucketRank
         }
@@ -58,7 +84,7 @@ public enum BurnBarControllerNextActionPlanner {
             return lhs.updatedAt > rhs.updatedAt
         }
 
-        return lhs.missionID.rawValue < rhs.missionID.rawValue
+        return lhs.id.rawValue < rhs.id.rawValue
     }
 
     private static func bucketRank(

@@ -1004,12 +1004,17 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
                 let desiredPacketStatus = missionPacketStatus(for: snapshot.phase)
                 let isTerminalPhase = isTerminal(phase: snapshot.phase)
-                // VAL-EXEC-001: Update packet status for terminal phases (always, to ensure
-                // correct phase→status mapping regardless of prior state) and for non-terminal
-                // phases only when the status has changed. The completedAt check is intentionally
-                // excluded for non-terminal packets since nil completedAt is expected and should
-                // not trigger a rewrite on every sync cycle.
-                if isTerminalPhase || desiredPacketStatus != packet.status {
+                let desiredPacketMetadata = packet.metadata.merging([
+                    "run_phase": .string(snapshot.phase.rawValue),
+                    "model_id": .string(snapshot.modelID)
+                ]) { _, new in new }
+                let packetNeedsSync = desiredPacketStatus != packet.status
+                    || (isTerminalPhase && packet.completedAt == nil)
+                    || packet.metadata["run_phase"]?.missionStringValue() != snapshot.phase.rawValue
+                    || packet.metadata["model_id"]?.missionStringValue() != snapshot.modelID
+                // VAL-EXEC-001/002: Sync terminal packet completion/provenance once, then leave
+                // stable packets untouched on later transport cycles.
+                if packetNeedsSync {
                     let updatedPacket = BurnBarMissionPacketSnapshot(
                         id: packet.id,
                         missionID: currentMission.id,
@@ -1018,11 +1023,8 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
                         status: desiredPacketStatus,
                         runID: runID,
                         dispatchedAt: packet.dispatchedAt,
-                        completedAt: isTerminal(phase: snapshot.phase) ? (packet.completedAt ?? now) : packet.completedAt,
-                        metadata: packet.metadata.merging([
-                            "run_phase": .string(snapshot.phase.rawValue),
-                            "model_id": .string(snapshot.modelID)
-                        ]) { _, new in new }
+                        completedAt: isTerminalPhase ? (packet.completedAt ?? now) : packet.completedAt,
+                        metadata: desiredPacketMetadata
                     )
                     currentMission = try await store.persistMissionSnapshot(
                         missionSnapshot(
