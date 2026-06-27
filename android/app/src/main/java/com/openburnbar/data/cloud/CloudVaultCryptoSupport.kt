@@ -36,11 +36,18 @@ internal object CloudVaultCryptoSupport {
                 binding.field ?: "",
                 binding.slotId ?: "",
                 binding.formatVersion.toString(),
-            ).map { Normalizer.normalize(it, Normalizer.Form.NFC) }
-        require(segments.none { it.any { ch -> ch == '|' || ch == '\r' || ch == '\n' } }) {
+            ).map { canonicalSignalBindingSegment(it) }
+        return "OpenBurnBar-Signal-AAD-v1|${segments.joinToString("|")}"
+    }
+
+    private fun canonicalSignalBindingSegment(value: String): String {
+        require(value == Normalizer.normalize(value, Normalizer.Form.NFC)) {
+            "Signal envelope binding segment must be NFC-normalized"
+        }
+        require(value.none { ch -> ch == '|' || ch == '\r' || ch == '\n' }) {
             "Signal envelope binding segment contains a reserved character"
         }
-        return "OpenBurnBar-Signal-AAD-v1|${segments.joinToString("|")}"
+        return value
     }
 
     fun atRestSeal(plaintext: ByteArray, recipientIdentityPublicKey: ByteArray, binding: SignalEnvelopeBinding): ByteArray {

@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -480,9 +481,14 @@ class CloudVaultCryptoTest {
             CloudVaultCryptoSupport.bindingToAAD(binding),
         )
         assertEquals(
+            "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|café||pensieve|doc-42|body||1",
             CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "café")),
-            CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "cafe\u0301")),
         )
+        val nfdError =
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "cafe\u0301"))
+            }
+        assertEquals("Signal envelope binding segment must be NFC-normalized", nfdError.message)
         assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "u|1")) }.isFailure)
         assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(binding.copy(docId = "doc\n42")) }.isFailure)
     }

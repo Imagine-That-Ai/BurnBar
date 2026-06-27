@@ -30,14 +30,11 @@ import Foundation
 /// positions stay stable (a transport binding can never be confused with an
 /// at-rest one under a shared AAD).
 ///
-/// Unicode normalization: every segment is normalized to NFC
-/// (`precomposedStringWithCanonicalMapping`) BEFORE the reserved-char guard and
-/// the join, byte-for-byte matching the TypeScript side's `.normalize("NFC")`. A
-/// non-ASCII value supplied decomposed (NFD) and the same value supplied
-/// precomposed (NFC) therefore canonicalize to the byte-identical AAD; without
-/// this, a Swift-sealed ciphertext and a Node-sealed one for the same logical
-/// string could carry divergent UTF-8 AAD and fail to open. ASCII values are
-/// NFC-stable, so existing fixtures are unaffected.
+/// Unicode normalization: every segment must already be NFC-normalized. The
+/// canonicalizer checks that invariant and throws instead of silently normalizing,
+/// because accepting both NFD (decomposed) and NFC (precomposed) inputs would make
+/// distinct raw identifiers collapse to the same AAD. ASCII values are NFC-stable,
+/// so existing ASCII fixtures are unaffected.
 ///
 /// Every value is already guaranteed pipe/CRLF free by the TypeScript contract's
 /// `boundedText` validator; this Swift side RE-ASSERTS that invariant (on the
@@ -100,6 +97,7 @@ public enum SignalEnvelopeAAD {
     /// Thrown fail-closed when a binding segment carries a reserved `|`, CR, or
     /// LF — never silently dropped, never silently joined.
     public enum SignalEnvelopeAADError: Error, Equatable {
+        case nonCanonicalUnicodeSegment
         case reservedCharacterInSegment
     }
 }
@@ -107,8 +105,10 @@ public enum SignalEnvelopeAAD {
 /// Produce the deterministic v4 canonical AAD/info string for `binding`,
 /// byte-identical to the TypeScript `bindingToAAD`.
 ///
-/// - Throws: ``SignalEnvelopeAAD/SignalEnvelopeAADError/reservedCharacterInSegment``
-///   if any segment contains `|`, CR, or LF.
+/// - Throws: ``SignalEnvelopeAAD/SignalEnvelopeAADError/nonCanonicalUnicodeSegment``
+///   if any segment is not NFC-normalized, or
+///   ``SignalEnvelopeAAD/SignalEnvelopeAADError/reservedCharacterInSegment`` if
+///   any segment contains `|`, CR, or LF.
 public func signalEnvelopeBindingToAAD(_ binding: SignalEnvelopeAAD.Binding) throws -> String {
     let segments: [String] = [
         binding.mode.rawValue,
@@ -120,7 +120,10 @@ public func signalEnvelopeBindingToAAD(_ binding: SignalEnvelopeAAD.Binding) thr
         binding.field ?? "",
         binding.slotId ?? "",
         String(binding.formatVersion)
-    ].map { $0.precomposedStringWithCanonicalMapping }
+    ]
+    for segment in segments where Array(segment.utf8) != Array(segment.precomposedStringWithCanonicalMapping.utf8) {
+        throw SignalEnvelopeAAD.SignalEnvelopeAADError.nonCanonicalUnicodeSegment
+    }
     for segment in segments where segment.unicodeScalars.contains(where: { $0 == "|" || $0 == "\r" || $0 == "\n" }) {
         throw SignalEnvelopeAAD.SignalEnvelopeAADError.reservedCharacterInSegment
     }
