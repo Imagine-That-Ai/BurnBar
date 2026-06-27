@@ -1057,3 +1057,228 @@ body::after {
     -webkit-backdrop-filter: none;
   }
 }
+
+/* ============================================================================
+   INK LAYER — per-kernel legibility over the console-wide GlobalBackdrop.
+
+   Active only under <body data-ink="on"> (every route except /dashboard, which
+   owns its own glass legibility). GlobalBackdrop writes the per-kernel custom
+   props (--ink-accent/--ink-halo/--ink-scrim-*) from lib/kernelInk.ts.
+
+   Mechanism: the kernel renders dark-themed over deep ink [7,8,15] behind
+   everything, so page ink is ALWAYS light. We (a) remap the editorial
+   text/accent/surface tokens to a light ink ramp inside the body[data-ink]
+   scope — so EVERY token-bound component flips to light-on-dark with zero
+   per-page edits — (b) drop a two-zone scrim that clears AA under the reading
+   column, and (c) give every glyph a dark halo as the local AA backstop the
+   flat scrim average can't guarantee over high-frequency kernels.
+   ========================================================================== */
+body[data-ink="on"] {
+  /* defaults; GlobalBackdrop overwrites per kernel */
+  --ink-fg: #f4f6ff;
+  --ink-mute: rgba(244, 246, 255, 0.66);
+  --ink-dim: rgba(244, 246, 255, 0.44);
+  --ink-accent: #9aa8ff;
+  --ink-halo: 0 1px 2px rgba(5, 6, 12, 0.55), 0 0 10px rgba(5, 6, 12, 0.4);
+  --ink-scrim-hero: 0.32;
+  --ink-scrim-read: 0.5;
+
+  /* Remap the editorial text tokens → the light ink ramp. Set on <body>, so
+     every descendant inherits these over the html[data-theme] values, making
+     the flip theme-independent (paper OR a dark theme both resolve to ink). */
+  --color-text-bright: var(--ink-fg);
+  --color-text-base: color-mix(in srgb, var(--ink-fg) 88%, transparent);
+  --color-text-mute: var(--ink-mute);
+  --color-text-dim: var(--ink-dim);
+
+  /* Accent → the kernel's hue (bright, for marks/links/underlines). */
+  --accent: var(--ink-accent);
+  --accent-deep: color-mix(in srgb, var(--ink-accent) 80%, white 20%);
+  --accent-wash: color-mix(in srgb, var(--ink-accent) 16%, transparent);
+  --color-brass-core: var(--accent);
+  --color-brass-bright: var(--accent);
+  --color-brass-deep: var(--accent-deep);
+  --color-brass-glow: color-mix(in srgb, var(--ink-accent) 18%, transparent);
+
+  /* Hairlines + washes → light translucent so they read on dark vellum. */
+  --color-glass-line: rgba(244, 246, 255, 0.14);
+  --color-glass-line-bright: rgba(244, 246, 255, 0.26);
+  --color-frost-veil: rgba(244, 246, 255, 0.05);
+  --color-frost-line: rgba(244, 246, 255, 0.14);
+  --color-mercury-wash: rgba(244, 246, 255, 0.06);
+  --color-mercury-bright: var(--ink-fg);
+  --color-mercury-core: var(--ink-mute);
+  --color-mercury-deep: var(--ink-dim);
+
+  /* Editorial paper surfaces → translucent dark vellum: the art reads through
+     at the margins while body text keeps a stable substrate. */
+  --color-ink-void: rgba(9, 11, 20, 0.72);
+  --color-ink-base: rgba(9, 11, 20, 0.6);
+  --color-ink-elevated: rgba(12, 14, 26, 0.56);
+  --color-ink-furnace: rgba(9, 11, 20, 0.72);
+  --color-glass-bg: rgba(10, 12, 22, 0.5);
+  --color-glass-bg-elevated: rgba(12, 14, 26, 0.6);
+
+  /* Encryption-tier inks → brighter, AA-legible on dark (the ledger badges). */
+  --color-tier-end-to-end: #45d6b5;
+  --color-tier-zero-access: #aeb6c4;
+  --color-tier-server-readable: #e3b25a;
+  --tier-e2e-dot: #45d6b5;
+  --tier-zero-dot: #aeb6c4;
+  --tier-srv-dot: #e3b25a;
+
+  background: transparent;
+}
+
+/* The paper-fibre multiply veil + the DotCrest ambient are PAPER — kill them in
+   ink mode so they don't fight the kernel field. */
+body[data-ink="on"]::after { display: none; }
+body[data-ink="on"] [data-dotcrest] { display: none; }
+
+/* Every ink glyph carries the halo — the per-glyph AA backstop. */
+body[data-ink="on"]
+  :is(h1, h2, h3, h4, p, span, a, li, blockquote, .folio, .eyebrow, .epigraph) {
+  text-shadow: var(--ink-halo);
+}
+
+/* The accent CTA uses --accent as a BACKGROUND with light text; kernel accents
+   are light, so over the backdrop it becomes a frosted accent-tinted glass pill
+   with light ink text + a luminous accent rim — legible and on-brand. */
+body[data-ink="on"] .btn-accent {
+  background: color-mix(in srgb, var(--ink-accent) 24%, rgba(8, 10, 20, 0.5));
+  color: var(--ink-fg);
+  border-color: color-mix(in srgb, var(--ink-accent) 58%, transparent);
+  text-shadow: var(--ink-halo);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+body[data-ink="on"] .btn-accent:hover {
+  background: color-mix(in srgb, var(--ink-accent) 36%, rgba(8, 10, 20, 0.42));
+  border-color: color-mix(in srgb, var(--ink-accent) 80%, transparent);
+  color: #fff;
+}
+
+/* The backdrop host (engine canvases live inside). KernelBackdrop sets its own
+   inline fixed/inset/z-index/dark-base; this class is the selector hook the
+   inspector uses to find the painted canvases. */
+.ink-backdrop { pointer-events: none; }
+
+/* Two-zone scrim plane — above the kernel (z:-2), below content (z:auto). The
+   hero band (top) stays light so the art breathes under the kinetic headline
+   (the glyph halos carry it there); the reading band is a stronger column wash.
+   A radial focus darkens behind the centered reading column and clears at the
+   page edges so the kernel shows at the margins. */
+.ink-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(6, 7, 14, var(--ink-scrim-hero, 0.32)) 0%,
+      rgba(6, 7, 14, var(--ink-scrim-hero, 0.32)) 30vh,
+      rgba(6, 7, 14, var(--ink-scrim-read, 0.5)) 64vh,
+      rgba(6, 7, 14, var(--ink-scrim-read, 0.5)) 100%
+    ),
+    radial-gradient(
+      120% 80% at 50% 42%,
+      rgba(6, 7, 14, calc(var(--ink-scrim-read, 0.5) * 0.5)) 0%,
+      transparent 70%
+    );
+  -webkit-backdrop-filter: saturate(1.05);
+  backdrop-filter: saturate(1.05);
+  transition: background 600ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-scrim { transition: none; }
+}
+
+/* ============================================================================
+   KINETIC HEADLINE — Pretext-laid per-glyph/word entrance (components/
+   KineticHeadline.tsx). The headline's data-kinetic attribute selects the
+   active kernel's keyframe; the "armed" pre-play value holds the from-state so
+   nothing flashes before the staggered start.
+   ========================================================================== */
+.kin-line { display: block; }
+.kin-word { display: inline-block; white-space: nowrap; }
+.kin-unit {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+  /* halo inherited from the body[data-ink] rule above — kept through the motion */
+}
+
+/* Armed (pre-play): hold the start state, no animation. */
+[data-kinetic="armed"] .kin-unit { opacity: 0; }
+
+/* Each motion fills 'both' so the final frame persists. */
+[data-kinetic]:not([data-kinetic="armed"]) .kin-unit {
+  animation-duration: var(--kin-dur, 800ms);
+  animation-timing-function: var(--kin-ease, ease);
+  animation-fill-mode: both;
+}
+
+[data-kinetic="shatter"] .kin-unit { animation-name: kin-shatter; }
+[data-kinetic="drift"] .kin-unit { animation-name: kin-drift; }
+[data-kinetic="pulse"] .kin-unit { animation-name: kin-pulse; }
+[data-kinetic="rise"] .kin-unit { animation-name: kin-rise; }
+[data-kinetic="marble"] .kin-unit { animation-name: kin-marble; }
+[data-kinetic="ripple"] .kin-unit { animation-name: kin-ripple; }
+[data-kinetic="bleed"] .kin-unit { animation-name: kin-bleed; }
+[data-kinetic="condense"] .kin-unit { animation-name: kin-condense; }
+[data-kinetic="beam"] .kin-unit { animation-name: kin-beam; }
+
+@keyframes kin-shatter {
+  0%   { opacity: 0; transform: translate(calc((var(--kin-rand, 0.5) - 0.5) * 1.4em), -1.1em) rotate(-8deg) scale(0.7); filter: blur(6px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes kin-drift {
+  0%   { opacity: 0; transform: translateX(-1.6em); filter: blur(4px); }
+  100% { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes kin-pulse {
+  0%   { opacity: 0; transform: scale(0.6); filter: brightness(2.2) blur(3px); }
+  55%  { opacity: 1; transform: scale(1.08); filter: brightness(1.5) blur(0); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+@keyframes kin-rise {
+  0%   { opacity: 0; transform: translateY(0.9em) scaleY(0.78); transform-origin: bottom; filter: blur(3px); }
+  100% { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes kin-marble {
+  0%   { opacity: 0; transform: translateY(0.4em) rotate(-7deg) skewX(10deg); filter: blur(7px); }
+  60%  { opacity: 1; filter: blur(0.4px); }
+  100% { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes kin-ripple {
+  0%   { opacity: 0; transform: translateY(0.5em) scale(0.85); }
+  45%  { opacity: 1; transform: translateY(-0.12em) scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes kin-bleed {
+  0%   { opacity: 0; filter: blur(12px); transform: scale(1.06); letter-spacing: 0.06em; }
+  70%  { opacity: 1; filter: blur(1.5px); }
+  100% { opacity: 1; filter: blur(0); transform: none; letter-spacing: normal; }
+}
+@keyframes kin-condense {
+  0%   { opacity: 0; filter: blur(14px); transform: scale(1.12); }
+  100% { opacity: 1; filter: blur(0); transform: none; }
+}
+@keyframes kin-beam {
+  0%   { opacity: 0; transform: translateX(-0.4em); filter: brightness(3) blur(2px); }
+  40%  { opacity: 1; filter: brightness(1.8); }
+  100% { opacity: 1; transform: none; filter: brightness(1) blur(0); }
+}
+
+/* Reduced motion: one calm fade, no stagger, no transforms. (The component also
+   short-circuits to plain text under reduced motion; this is the CSS backstop.) */
+@media (prefers-reduced-motion: reduce) {
+  [data-kinetic]:not([data-kinetic="armed"]) .kin-unit {
+    animation: kin-fade 360ms ease both !important;
+    animation-delay: 0ms !important;
+  }
+  [data-kinetic="armed"] .kin-unit { opacity: 1; }
+}
+@keyframes kin-fade { from { opacity: 0; } to { opacity: 1; } }
