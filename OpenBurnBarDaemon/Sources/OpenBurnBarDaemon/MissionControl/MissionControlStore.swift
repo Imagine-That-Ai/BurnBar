@@ -990,6 +990,7 @@ public actor BurnBarMissionControlStore {
 
         if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
+            try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: true)
         } else {
             try rebuildProjectionFromJournal(rebuiltAt: Date())
             return
@@ -1010,6 +1011,7 @@ public actor BurnBarMissionControlStore {
             try Task.checkCancellation()
             try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         }
+        try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: false)
         try sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: false)
         projection?.notificationSecretMigrationVersion = Self.currentNotificationSecretMigrationVersion
         try writeProjection()
@@ -1260,6 +1262,65 @@ public actor BurnBarMissionControlStore {
             return incoming
         }
 
+        return mergedMissionClosureQuestion(existing: existing, incoming: incoming)
+    }
+
+    private func normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: Bool) throws {
+        guard var currentProjection = projection else { return }
+
+        var groupedClosureQuestions: [String: [BurnBarPendingQuestionSnapshot]] = [:]
+        for question in currentProjection.questions.values {
+            guard let missionID = missionClosureQuestionMissionID(for: question) else { continue }
+            groupedClosureQuestions[missionID, default: []].append(question)
+        }
+
+        var didChange = false
+        for (_, groupedQuestions) in groupedClosureQuestions {
+            let questions = groupedQuestions.sorted(by: missionClosureQuestionSort)
+            guard questions.count > 1, var canonical = questions.first else {
+                continue
+            }
+
+            var duplicateQuestionIDs: Set<BurnBarQuestionID> = []
+            for duplicate in questions.dropFirst() {
+                duplicateQuestionIDs.insert(duplicate.id)
+                canonical = mergedMissionClosureQuestion(existing: canonical, incoming: duplicate)
+            }
+
+            currentProjection.questions[canonical.id.rawValue] = canonical
+            for duplicateID in duplicateQuestionIDs {
+                currentProjection.questions.removeValue(forKey: duplicateID.rawValue)
+            }
+
+            didChange = true
+            didChange = normalizeClosureFollowups(
+                in: &currentProjection,
+                canonicalQuestion: canonical,
+                duplicateQuestionIDs: duplicateQuestionIDs
+            ) || didChange
+        }
+
+        guard didChange else { return }
+        projection = currentProjection
+        if writeImmediately {
+            try writeProjection()
+        }
+    }
+
+    private func missionClosureQuestionSort(
+        lhs: BurnBarPendingQuestionSnapshot,
+        rhs: BurnBarPendingQuestionSnapshot
+    ) -> Bool {
+        if lhs.askedAt != rhs.askedAt {
+            return lhs.askedAt < rhs.askedAt
+        }
+        return lhs.id.rawValue < rhs.id.rawValue
+    }
+
+    private func mergedMissionClosureQuestion(
+        existing: BurnBarPendingQuestionSnapshot,
+        incoming: BurnBarPendingQuestionSnapshot
+    ) -> BurnBarPendingQuestionSnapshot {
         let mergedEvidenceRefs = incoming.evidenceRefs.isEmpty ? existing.evidenceRefs : incoming.evidenceRefs
         let mergedSuggestedOptions = incoming.suggestedOptions.isEmpty ? existing.suggestedOptions : incoming.suggestedOptions
         let mergedTracker = existing.tracker ?? incoming.tracker
@@ -1292,6 +1353,62 @@ public actor BurnBarMissionControlStore {
             tracker: mergedTracker,
             metadata: mergedMetadata
         )
+    }
+
+    private func normalizeClosureFollowups(
+        in projection: inout BurnBarMissionControlProjectionFile,
+        canonicalQuestion: BurnBarPendingQuestionSnapshot,
+        duplicateQuestionIDs: Set<BurnBarQuestionID>
+    ) -> Bool {
+        let canonicalQuestionID = canonicalQuestion.id
+        let canonicalFollowups = projection.followups.values
+            .filter { $0.questionID == canonicalQuestionID }
+            .sorted(by: followupSort)
+        let duplicateFollowups = projection.followups.values
+            .filter { followup in
+                guard let questionID = followup.questionID else { return false }
+                return duplicateQuestionIDs.contains(questionID)
+            }
+            .sorted(by: followupSort)
+
+        guard canonicalFollowups.count > 1 || !duplicateFollowups.isEmpty else {
+            return false
+        }
+
+        var didChange = false
+        if let keeper = canonicalFollowups.first {
+            for followup in Array(canonicalFollowups.dropFirst()) + duplicateFollowups {
+                guard followup.id != keeper.id else { continue }
+                projection.followups.removeValue(forKey: followup.id.rawValue)
+                didChange = true
+            }
+            return didChange
+        }
+
+        guard let rebound = duplicateFollowups.first else {
+            return didChange
+        }
+        projection.followups[rebound.id.rawValue] = followup(
+            rebound,
+            withQuestionID: canonicalQuestionID,
+            metadata: [
+                "invariant_reason_code": .string("CLOSURE_FOLLOWUP_REBOUND"),
+                "closure_rebound_to_question_id": .string(canonicalQuestionID.rawValue)
+            ]
+        )
+        didChange = true
+
+        for followup in duplicateFollowups.dropFirst() {
+            projection.followups.removeValue(forKey: followup.id.rawValue)
+        }
+        return didChange
+    }
+
+    private func followupSort(lhs: BurnBarFollowupSnapshot, rhs: BurnBarFollowupSnapshot) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.id.rawValue < rhs.id.rawValue
     }
 
     private func activeMissionClosureQuestion(for missionID: String) -> BurnBarPendingQuestionSnapshot? {
@@ -1340,6 +1457,29 @@ public actor BurnBarMissionControlStore {
     private func metadataBool(_ value: BurnBarJSONValue?) -> Bool? {
         guard case .bool(let rawValue)? = value else { return nil }
         return rawValue
+    }
+
+    private func followup(
+        _ followup: BurnBarFollowupSnapshot,
+        withQuestionID questionID: BurnBarQuestionID,
+        metadata: BurnBarMetadata
+    ) -> BurnBarFollowupSnapshot {
+        BurnBarFollowupSnapshot(
+            id: followup.id,
+            projectSlug: followup.projectSlug,
+            questionID: questionID,
+            title: followup.title,
+            summary: followup.summary,
+            stageLabel: followup.stageLabel,
+            status: followup.status,
+            kind: followup.kind,
+            createdAt: followup.createdAt,
+            nextNudgeAt: followup.nextNudgeAt,
+            snoozeUntil: followup.snoozeUntil,
+            calendarEntry: followup.calendarEntry,
+            deepLink: followup.deepLink,
+            metadata: followup.metadata.merging(metadata) { _, new in new }
+        )
     }
 
     private func applyPRLinkageMetadata(
