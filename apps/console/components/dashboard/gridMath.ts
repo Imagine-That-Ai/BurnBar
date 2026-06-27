@@ -195,3 +195,40 @@ export function resizeRectFromOrigin(
     h: clampInt(origin.h + deltaH, GRID.minH, MAX_ROWS),
   };
 }
+
+export interface PlacedRect {
+  id: string;
+  rect: GridRect;
+}
+
+function collidesAny(rect: GridRect, placed: PlacedRect[]): boolean {
+  return placed.some((p) => rectsOverlap(rect, p.rect));
+}
+
+/**
+ * Resolve overlaps after a move/resize: pin `lockedId` at its dropped rect, then
+ * float every other card UP to its lowest non-colliding row (keeping its column
+ * + size). Guarantees a gap-minimized, overlap-free layout — the "snap into
+ * place, never on top of each other" behaviour (vertical gravity, à la
+ * react-grid-layout's compact:"vertical"). Pure + deterministic.
+ */
+export function compactWithLock(items: PlacedRect[], lockedId: string): PlacedRect[] {
+  const placed: PlacedRect[] = [];
+  const locked = items.find((i) => i.id === lockedId);
+  if (locked) placed.push({ id: locked.id, rect: clampRect(locked.rect) });
+
+  const others = items
+    .filter((i) => i.id !== lockedId)
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+
+  for (const it of others) {
+    const base = clampRect(it.rect);
+    let y = 0;
+    while (y <= MAX_ROWS && collidesAny({ ...base, y }, placed)) y++;
+    placed.push({ id: it.id, rect: { ...base, y } });
+  }
+
+  // Restore the input order so callers can map back to their own item list.
+  const byId = new Map(placed.map((p) => [p.id, p.rect]));
+  return items.map((i) => ({ id: i.id, rect: byId.get(i.id) ?? clampRect(i.rect) }));
+}

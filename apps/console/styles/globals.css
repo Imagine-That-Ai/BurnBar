@@ -491,36 +491,51 @@ body::after {
    that *make* the glass read as glass.
    ========================================================================== */
 .lg-dashboard {
-  --lg-frost: 0.5;
-  --lg-blur: calc((1 - var(--lg-frost)) * 12px + 6px);
-  /* Plate stays predominantly opaque even at "clear" so dark ink stays legible
-     over the near-black kernel — the backdrop reads through the blur + edges,
-     not by thinning the plate into illegibility (see review: WCAG at frost=1). */
-  --lg-plate: calc(0.92 - var(--lg-frost) * 0.16);
+  --lg-frost: 0.5; /* 0 = milky frost, 1 = clearest */
+  /* Clear → light tint + sharp; frosted → heavier tint + deep blur. Over a dark
+     backdrop, real glass is a DARK translucent pane with LIGHT text (Apple
+     Liquid-Glass-on-dark): the backdrop reads through, text stays legible. */
+  --lg-blur: calc((1 - var(--lg-frost)) * 22px + 8px); /* 8px .. 30px */
+  --lg-tint: calc((1 - var(--lg-frost)) * 0.26 + 0.2); /* 0.20 .. 0.46 */
   position: relative;
 }
 
 .lg-card,
 .lg-bar {
   background:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.5) 0%, transparent 40%),
-    radial-gradient(130% 130% at 100% 0%, var(--accent-wash), transparent 56%),
-    rgba(255, 254, 251, var(--lg-plate));
-  backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
-  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
-  border: 1px solid rgba(255, 255, 255, 0.42);
+    linear-gradient(150deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 44%, transparent 64%),
+    radial-gradient(130% 130% at 100% 0%, var(--accent-wash), transparent 55%),
+    rgba(12, 14, 22, var(--lg-tint));
+  backdrop-filter: blur(var(--lg-blur)) saturate(1.6) brightness(0.92);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.6) brightness(0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-lg);
   box-shadow:
-    inset 0 0 0 0.8px rgba(255, 255, 255, 0.16),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.5),
-    0 18px 40px -18px rgba(8, 10, 18, 0.55);
-  /* The page ink tokens are tuned for opaque paper; on the translucent plate
-     over a dark backdrop the muted/dim tiers need to be darker to clear AA.
-     Scoped to the glass so the rest of the console is unaffected. */
-  --color-text-base: #2a251e;
-  --color-text-mute: #443e36;
-  --color-text-dim: #4e483f;
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 24px 60px -28px rgba(0, 0, 0, 0.8);
+  /* Light text on the dark glass — flips the page's dark ink tokens, scoped to
+     the dashboard panes only so the rest of the (light) console is untouched. */
+  --color-text-bright: #f6f8ff;
+  --color-text-base: #e3e9f4;
+  --color-text-mute: #b0bacc;
+  --color-text-dim: #8b95a9;
+  --color-glass-line: rgba(255, 255, 255, 0.14);
+  --color-mercury-wash: rgba(255, 255, 255, 0.1);
   color: var(--color-text-base);
+}
+
+/* Toolbar action buttons (Refresh / Add cards / Edit layout / Appearance) read
+   light on the dark bar. The coral primary button keeps its own styling. */
+.lg-bar :is(.btn-bare, .btn-outline) {
+  color: var(--color-text-base);
+}
+.lg-bar .btn-outline {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.lg-bar :is(.btn-bare, .btn-outline):hover {
+  color: var(--color-text-bright);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .lg-bar {
@@ -592,4 +607,141 @@ body::after {
   .lg-card {
     transition: none !important;
   }
+}
+
+/* ============================================================================
+   Console THEMES
+   Each theme is a complete skin: selecting one sets data-theme on <html> and
+   overrides the full token set, so every tab (surfaces, ink, hairlines, accent)
+   transforms at once. `paper` is the default light editorial look. Dark themes
+   use a lighter `--accent-deep` so accent-colored text stays legible on dark.
+   ========================================================================== */
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --color-ink-void: #f6f4ef;
+  --color-ink-base: #f0eee7;
+  --color-ink-elevated: #fffefb;
+  --color-ink-furnace: #f6f4ef;
+  --color-text-bright: #16140f;
+  --color-text-base: #353027;
+  --color-text-mute: #6e685d;
+  --color-text-dim: #9b9488;
+  --color-glass-line: rgba(22, 20, 15, 0.12);
+  --color-glass-line-bright: rgba(22, 20, 15, 0.22);
+  --color-glass-bg: #fffefb;
+  --color-glass-bg-elevated: #fffefb;
+  --color-mercury-bright: #16140f;
+  --color-mercury-core: #6e685d;
+  --color-mercury-deep: #9b9488;
+  --color-mercury-wash: rgba(22, 20, 15, 0.04);
+  --color-frost-veil: rgba(22, 20, 15, 0.035);
+  --color-frost-line: rgba(22, 20, 15, 0.12);
+  --accent: #f45b69;
+  --accent-deep: #b3243c;
+  --accent-wash: rgba(244, 91, 105, 0.1);
+  --color-brass-glow: rgba(244, 91, 105, 0.16);
+}
+
+:root[data-theme="sand"] {
+  color-scheme: light;
+  --color-ink-void: #f7f2e9;
+  --color-ink-base: #f1e9da;
+  --color-ink-elevated: #fffdf7;
+  --color-ink-furnace: #f7f2e9;
+  --color-text-bright: #2a2113;
+  --color-text-base: #4a3f2c;
+  --color-text-mute: #7c6f57;
+  --color-text-dim: #a99b80;
+  --color-glass-line: rgba(60, 45, 20, 0.12);
+  --color-glass-line-bright: rgba(60, 45, 20, 0.22);
+  --color-glass-bg: #fffdf7;
+  --color-glass-bg-elevated: #fffdf7;
+  --color-mercury-bright: #2a2113;
+  --color-mercury-core: #7c6f57;
+  --color-mercury-deep: #a99b80;
+  --color-mercury-wash: rgba(60, 45, 20, 0.04);
+  --color-frost-veil: rgba(60, 45, 20, 0.035);
+  --color-frost-line: rgba(60, 45, 20, 0.12);
+  --accent: #e0892a;
+  --accent-deep: #a3600e;
+  --accent-wash: rgba(224, 137, 42, 0.12);
+  --color-brass-glow: rgba(224, 137, 42, 0.18);
+}
+
+:root[data-theme="obsidian"] {
+  color-scheme: dark;
+  --color-ink-void: #0b0d12;
+  --color-ink-base: #11141b;
+  --color-ink-elevated: #161a22;
+  --color-ink-furnace: #0b0d12;
+  --color-text-bright: #f4f7fc;
+  --color-text-base: #d9e0ec;
+  --color-text-mute: #9aa3b4;
+  --color-text-dim: #6f7a8c;
+  --color-glass-line: rgba(255, 255, 255, 0.1);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.18);
+  --color-glass-bg: #161a22;
+  --color-glass-bg-elevated: #1b202a;
+  --color-mercury-bright: #f4f7fc;
+  --color-mercury-core: #9aa3b4;
+  --color-mercury-deep: #6f7a8c;
+  --color-mercury-wash: rgba(255, 255, 255, 0.05);
+  --color-frost-veil: rgba(255, 255, 255, 0.04);
+  --color-frost-line: rgba(255, 255, 255, 0.1);
+  --accent: #fb5d6a;
+  --accent-deep: #ff9aa2;
+  --accent-wash: rgba(251, 93, 106, 0.14);
+  --color-brass-glow: rgba(251, 93, 106, 0.22);
+}
+
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-ink-void: #0a0e16;
+  --color-ink-base: #0f1420;
+  --color-ink-elevated: #141a28;
+  --color-ink-furnace: #0a0e16;
+  --color-text-bright: #f2f6ff;
+  --color-text-base: #d6deee;
+  --color-text-mute: #97a2ba;
+  --color-text-dim: #6b7790;
+  --color-glass-line: rgba(255, 255, 255, 0.1);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.18);
+  --color-glass-bg: #141a28;
+  --color-glass-bg-elevated: #1a2233;
+  --color-mercury-bright: #f2f6ff;
+  --color-mercury-core: #97a2ba;
+  --color-mercury-deep: #6b7790;
+  --color-mercury-wash: rgba(255, 255, 255, 0.05);
+  --color-frost-veil: rgba(255, 255, 255, 0.04);
+  --color-frost-line: rgba(255, 255, 255, 0.1);
+  --accent: #4f9cff;
+  --accent-deep: #9ec5ff;
+  --accent-wash: rgba(79, 156, 255, 0.14);
+  --color-brass-glow: rgba(79, 156, 255, 0.22);
+}
+
+:root[data-theme="forest"] {
+  color-scheme: dark;
+  --color-ink-void: #08110f;
+  --color-ink-base: #0c1715;
+  --color-ink-elevated: #101e1b;
+  --color-ink-furnace: #08110f;
+  --color-text-bright: #eefcf7;
+  --color-text-base: #d2e6df;
+  --color-text-mute: #8fb0a6;
+  --color-text-dim: #648078;
+  --color-glass-line: rgba(255, 255, 255, 0.09);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.17);
+  --color-glass-bg: #101e1b;
+  --color-glass-bg-elevated: #152723;
+  --color-mercury-bright: #eefcf7;
+  --color-mercury-core: #8fb0a6;
+  --color-mercury-deep: #648078;
+  --color-mercury-wash: rgba(255, 255, 255, 0.05);
+  --color-frost-veil: rgba(255, 255, 255, 0.04);
+  --color-frost-line: rgba(255, 255, 255, 0.09);
+  --accent: #1fc9a8;
+  --accent-deep: #74e6cd;
+  --accent-wash: rgba(31, 201, 168, 0.14);
+  --color-brass-glow: rgba(31, 201, 168, 0.22);
 }
