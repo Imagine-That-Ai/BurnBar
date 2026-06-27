@@ -13,6 +13,7 @@ export default tseslint.config(
       "lib/domains.generated.ts", // generated (synced from packages/data-domains)
       "next-env.d.ts",
       "test/interop/**", // swift + json fixtures
+      "scripts/legibility-check.mjs", // Playwright inspection tool (optional dev dep)
     ],
   },
   js.configs.recommended,
