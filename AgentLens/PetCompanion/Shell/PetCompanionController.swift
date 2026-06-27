@@ -48,6 +48,15 @@ final class PetCompanionController: ObservableObject {
     /// pet. Kept independent of the pet panel so the bubble can size/position
     /// freely without resizing the creature.
     private var bubblePanel: PetBubblePanel?
+    /// The Liquid Glass hover toolbar (emote / resize / change avatar) that fades
+    /// in above the founder. A sibling float like the bubble.
+    private var toolbarPanel: PetToolbarPanel?
+    /// Pointer-hover bookkeeping for the toolbar: it stays up while the pointer is
+    /// over the founder OR the toolbar itself, with a short hide debounce so the
+    /// gap between them never flickers it away.
+    private var hoverOverPet = false
+    private var hoverOverToolbar = false
+    private var toolbarHideTask: Task<Void, Never>?
     /// Click monitor installed on the pet panel to open/toggle the bubble.
     private var clickGesture: NSClickGestureRecognizer?
     /// NSObject shim that carries the gesture's `@objc` action into this
@@ -65,6 +74,9 @@ final class PetCompanionController: ObservableObject {
     /// it weakly, so this strong reference is what keeps the drop target alive.
     /// reason: a weak ref here would deallocate the sole-owned delegate at once.
     private var attachmentDropDelegate: PetAttachmentDropDelegate? // swiftlint:disable:this weak_delegate
+    /// Observes the pet panel's frame so sibling panels (chat bubble, toolbar)
+    /// stay attached while the renderer drags/resizes the pet window directly.
+    private var panelFrameObservers: [NSObjectProtocol] = []
 
     /// Ambient tick that feeds time-driven triggers (`cooldownElapsed`,
     /// `idleElapsed`) into the interpreter. Paused alongside the renderer.
@@ -95,6 +107,7 @@ final class PetCompanionController: ObservableObject {
 
         let panel = panel ?? makePanel()
         self.panel = panel
+        observePanelFrame(panel)
 
         renderer?.unmount()
         renderer = nil
@@ -128,6 +141,7 @@ final class PetCompanionController: ObservableObject {
         renderer = nil
         interpreter = nil
         isRunning = false
+        removePanelFrameObservers()
         hide()
     }
 
@@ -154,6 +168,11 @@ final class PetCompanionController: ObservableObject {
         panel?.orderOut(nil)
         isVisible = false
         setPaused(true)
+        hoverOverPet = false
+        hoverOverToolbar = false
+        toolbarHideTask?.cancel()
+        toolbarHideTask = nil
+        dismissToolbar()
     }
 
     func toggle() {
@@ -377,6 +396,9 @@ final class PetCompanionController: ObservableObject {
     func openBubble() {
         guard let chat else { return }
         chat.open()
+        // The bubble owns the space above the founder while chatting, so fold the
+        // hover toolbar away (it returns on the next hover once the bubble closes).
+        dismissToolbar()
         presentBubble(for: chat)
     }
 
@@ -694,7 +716,10 @@ final class PetCompanionController: ObservableObject {
         let bubble = bubblePanel ?? PetBubblePanel()
         bubblePanel = bubble
         let anchor = bubbleTailAnchor()
-        bubble.host(chat: chat, tailAnchorX: anchor)
+        bubble.host(chat: chat, tailAnchorX: anchor) { [weak self, weak bubble] in
+            guard let self, let bubble else { return }
+            self.anchorBubble(bubble)
+        }
         anchorBubble(bubble)
         bubble.makeKeyAndOrderFront(nil)
         // The pet's projected top-of-head moves once the one-shot presentation
@@ -757,13 +782,191 @@ final class PetCompanionController: ObservableObject {
         if let chat { bubble.host(chat: chat, tailAnchorX: anchor2) }
     }
 
+    private func observePanelFrame(_ panel: PetPanel) {
+        removePanelFrameObservers()
+        let center = NotificationCenter.default
+        panelFrameObservers = [
+            center.addObserver(
+                forName: NSWindow.didMoveNotification,
+                object: panel,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.petPanelFrameDidChange()
+                }
+            },
+            center.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: panel,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.petPanelFrameDidChange()
+                }
+            }
+        ]
+    }
+
+    private func removePanelFrameObservers() {
+        for observer in panelFrameObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        panelFrameObservers.removeAll()
+    }
+
+    private func petPanelFrameDidChange() {
+        if let bubblePanel, chat?.isOpen == true {
+            anchorBubble(bubblePanel)
+        }
+        if toolbarPanel?.isVisible == true {
+            repositionToolbar()
+        }
+    }
+
+    // MARK: Hover toolbar (emote / resize / change avatar)
+
+    enum HoverSource { case pet, toolbar }
+
+    /// Resize clamps mirror the renderer's interaction defaults so 2D and 3D
+    /// founders grow/shrink within the same bounds (the renderer view fills the
+    /// panel, so resizing the panel scales the creature in either form).
+    private static let minPanelWidth: CGFloat = 110
+    private static let maxPanelWidth: CGFloat = 560
+    private static let panelAspect: CGFloat = PetPanel.defaultSize.height / PetPanel.defaultSize.width
+
+    /// Pointer entered/left the founder or the toolbar. The toolbar shows while
+    /// either is hovered and hides (after a short debounce) when neither is — so
+    /// reaching up from the pet to the bar never drops it.
+    func setHover(_ over: Bool, source: HoverSource) {
+        switch source {
+        case .pet: hoverOverPet = over
+        case .toolbar: hoverOverToolbar = over
+        }
+        if hoverOverPet || hoverOverToolbar {
+            toolbarHideTask?.cancel()
+            toolbarHideTask = nil
+            presentToolbar()
+        } else {
+            scheduleToolbarHide()
+        }
+    }
+
+    private func scheduleToolbarHide() {
+        toolbarHideTask?.cancel()
+        toolbarHideTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(280))
+            guard let self, !Task.isCancelled else { return }
+            if !self.hoverOverPet, !self.hoverOverToolbar {
+                self.dismissToolbar()
+            }
+            self.toolbarHideTask = nil
+        }
+    }
+
+    /// Show (or re-anchor) the hover toolbar above the founder. Suppressed while
+    /// the chat bubble is open (it owns the space then) or the pet is hidden.
+    func presentToolbar() {
+        guard isVisible, isRunning, chat?.isOpen != true else { return }
+        let toolbar = toolbarPanel ?? makeToolbarPanel()
+        toolbarPanel = toolbar
+        repositionToolbar()
+        toolbar.orderFront(nil)
+    }
+
+    func dismissToolbar() {
+        toolbarPanel?.orderOut(nil)
+    }
+
+    private func makeToolbarPanel() -> PetToolbarPanel {
+        let panel = PetToolbarPanel(onHoverChange: { [weak self] over in
+            self?.setHover(over, source: .toolbar)
+        })
+        panel.host(
+            PetHoverToolbarView(
+                title: displayName,
+                emotes: PetHoverToolbarView.defaultEmotes,
+                onEmote: { [weak self] in self?.playEmote($0) },
+                onResize: { [weak self] in self?.resizePet(by: $0) },
+                onResizeReset: { [weak self] in self?.resetPetSize() },
+                onChangeAvatar: { [weak self] in self?.presentLibrary() }
+            )
+        )
+        return panel
+    }
+
+    /// Position the toolbar centered just above the founder, overlapping the
+    /// crown a touch so the pointer never crosses empty space between them.
+    private func repositionToolbar() {
+        guard let toolbarPanel, let panel else { return }
+        toolbarPanel.resizeToContent()
+        let size = toolbarPanel.frame.size
+        let petFrame = panel.frame
+        let origin = CGPoint(
+            x: petFrame.midX - size.width / 2,
+            y: petFrame.maxY - 12
+        )
+        toolbarPanel.setFrameOrigin(origin)
+        toolbarPanel.clamp(to: panel.bestScreen)
+    }
+
+    /// Strike an emote pose on demand, then settle back so it reads as a beat.
+    func playEmote(_ state: PetLogicalState) {
+        lastInteractionAt = Date()
+        drive(to: state.rawValue, force: true)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1600))
+            guard let self, !self.isAgentBusy, self.isVisible else { return }
+            self.drive(to: .idle)
+        }
+    }
+
+    /// Grow/shrink the founder by `factor` (panel resize, aspect-locked, clamped),
+    /// anchored at the bottom centre so it scales from where it sits. Persisted so
+    /// the size survives relaunch (the same store the drag/scroll path uses).
+    func resizePet(by factor: CGFloat) {
+        guard let panel, factor.isFinite, factor > 0 else { return }
+        let frame = panel.frame
+        let newWidth = min(Self.maxPanelWidth, max(Self.minPanelWidth, frame.width * factor))
+        let newHeight = newWidth * Self.panelAspect
+        let origin = NSPoint(x: frame.midX - newWidth / 2, y: frame.minY)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: newWidth, height: newHeight)), display: true)
+        panel.clamp(to: panel.bestScreen)
+        persistPetFrame()
+        repositionToolbar()
+    }
+
+    /// Reset the founder to its default size, bottom-centre anchored.
+    func resetPetSize() {
+        guard let panel else { return }
+        let frame = panel.frame
+        let size = PetPanel.defaultSize
+        let origin = NSPoint(x: frame.midX - size.width / 2, y: frame.minY)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: size.width, height: size.height)), display: true)
+        panel.clamp(to: panel.bestScreen)
+        persistPetFrame()
+        repositionToolbar()
+    }
+
+    /// Open the founder library (switch founder + 2D/3D form) in its own window.
+    func presentLibrary() {
+        PetLibraryWindowPresenter.open(selectedPetID: definition?.id ?? PetCompanionFeature.activePetID)
+    }
+
+    private func persistPetFrame() {
+        guard let id = definition?.id, let panel else { return }
+        PetWindowState.store(panel.frame, for: id)
+    }
+
     // MARK: Private
 
     private func makePanel() -> PetPanel {
         let panel = PetPanel()
-        if panel.contentView == nil {
-            panel.contentView = NSView(frame: NSRect(origin: .zero, size: PetPanel.defaultSize))
-        }
+        // A hover-tracking content view so the controller can fade the Liquid
+        // Glass toolbar in/out as the pointer enters/leaves the founder. The
+        // renderer still mounts into this view and clicks still reach its gesture.
+        let content = PetPanelHoverView(frame: NSRect(origin: .zero, size: PetPanel.defaultSize))
+        content.onHoverChange = { [weak self] over in self?.setHover(over, source: .pet) }
+        panel.contentView = content
         if let atlas = definition?.atlas2d {
             panel.setContentSize(NSSize(width: atlas.cell.w, height: atlas.cell.h))
         }

@@ -737,6 +737,14 @@ extension ChatSessionController {
                             workspaceDirectory: self.chatWorkspaceURL,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .openClaude:
+                        return self.cliBridge.chatOpenClaudeStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -917,7 +925,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -951,7 +959,7 @@ extension ChatSessionController {
                 "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
                 "Antigravity not found"
             )
-        case .cursorAgent:
+        case .cursorAgent, .openClaude:
             requirement = (
                 "cursor-agent",
                 "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",

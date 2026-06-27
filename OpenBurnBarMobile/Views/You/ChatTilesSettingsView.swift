@@ -110,6 +110,7 @@ struct ChatTilesSettingsView: View {
         case .antigravity: return "Antigravity chat bridged from your Mac."
         case .grok: return "Grok Build chat bridged from your Mac."
         case .cursorAgent: return "Cursor Agent chat bridged from your Mac."
+        case .openClaude: return "OpenClaude chat bridged from your Mac."
         }
     }
 }

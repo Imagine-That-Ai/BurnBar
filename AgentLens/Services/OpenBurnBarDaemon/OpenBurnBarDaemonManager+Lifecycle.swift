@@ -130,6 +130,25 @@ extension OpenBurnBarDaemonManager {
         guard sourceURL != installedURL else { return false }
         guard dependencies.fileManager.fileExists(atPath: installedURL.path) else { return true }
 
+        // Never refresh a working installed daemon from a source binary that fails
+        // the first-party signature requirement. A stale/ad-hoc leftover source
+        // (old build artifacts beside the app, a dev build, a damaged copy) would
+        // otherwise trip this staleness check, drive an auto-repair that validates
+        // the bad source, fail, and block every provider mutation behind
+        // "daemon must be healthy" — even while the installed daemon is healthy.
+        // Refreshing to an unsigned/foreign binary would also be a trust downgrade.
+        // A valid installed daemon stays in place; a valid newer source still
+        // upgrades normally because it passes this gate.
+        do {
+            try dependencies.validateDaemonBinary(sourceURL)
+        } catch {
+            AppLogger.network.notice(
+                "daemon_refresh_skipped_untrusted_source",
+                metadata: ["reason": error.localizedDescription]
+            )
+            return false
+        }
+
         // Security/correctness: a same-user attacker can swap the user-writable
         // installed binary between install and launch (see RR-3). If we cannot
         // stat either binary, we have lost the size/mtime evidence needed to

@@ -739,7 +739,7 @@ private struct NestHubProviderChip: View {
         case .cursorAgent:  return "Cursor Agent"
         case .goose:        return "Goose"
         case .openClaw:     return "OpenClaw"
-        case .windsurf:     return "Windsurf"
+        case .openClaude:   return "OpenClaude"        case .windsurf:     return "Windsurf"
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
         case .openBurnBar:  return "BurnBar"

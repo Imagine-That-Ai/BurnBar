@@ -57,7 +57,11 @@ final class GatewaySettings {
         ]
     }
 
-    init(persistence: SettingsPersistenceCoordinator, secretPersistence: SettingsSecretPersistence) {
+    init(
+        persistence: SettingsPersistenceCoordinator,
+        secretPersistence: SettingsSecretPersistence,
+        launchAgentAuthTokenReader: @escaping () -> String? = { GatewaySettings.readLaunchAgentAuthToken() }
+    ) {
         self.persistence = persistence
         self.secretPersistence = secretPersistence
         self.gatewayEnabled = persistence.bool(forKey: "gatewayEnabled")
@@ -65,10 +69,23 @@ final class GatewaySettings {
         self.gatewayPort = persistence.objectExists(forKey: "gatewayPort")
             ? persistence.integer(forKey: "gatewayPort")
             : 8317
-        self.gatewayAuthToken = secretPersistence.load(
+        let storedAuthToken = secretPersistence.load(
             account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
         )
+        if storedAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let launchAgentToken = launchAgentAuthTokenReader()?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !launchAgentToken.isEmpty {
+            self.gatewayAuthToken = launchAgentToken
+            secretPersistence.persist(
+                launchAgentToken,
+                account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+                legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
+            )
+        } else {
+            self.gatewayAuthToken = storedAuthToken
+        }
         self.allowUnauthenticatedLoopback = persistence.bool(forKey: "gatewayAllowUnauthenticatedLoopback")
         self.crossVendorDegradeEnabled = persistence.bool(forKey: "crossVendorDegradeEnabled")
     }
@@ -111,5 +128,21 @@ final class GatewaySettings {
         }
         gatewayAuthToken = generated
         return generated
+    }
+
+    nonisolated static func readLaunchAgentAuthToken(
+        plistURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+            .appendingPathComponent("com.openburnbar.daemon.plist", isDirectory: false)
+    ) -> String? {
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dictionary = plist as? [String: Any],
+              let environment = dictionary["EnvironmentVariables"] as? [String: Any],
+              let token = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"] as? String else {
+            return nil
+        }
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

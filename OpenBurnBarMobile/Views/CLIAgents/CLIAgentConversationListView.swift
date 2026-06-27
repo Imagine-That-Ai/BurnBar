@@ -534,7 +534,7 @@ struct CLIAgentConversationListView: View {
             return "Start an Antigravity chat here. The Mac streams replies back into this mobile thread."
         case .grok:
             return "Start a Grok Build chat here. The Mac streams replies back into this mobile thread."
-        case .cursorAgent:
+        case .cursorAgent, .openClaude:
             return "Start a Cursor Agent chat here. The Mac streams replies back into this mobile thread."
         }
     }
@@ -544,6 +544,7 @@ struct CLIAgentConversationListView: View {
         case .codex:    return Color(hex: "1ABC9C")
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .openClaude: return Color(hex: "D97757")
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
@@ -1451,6 +1452,7 @@ struct CLIAgentChatThreadView: View {
         case .codex: return Color(hex: "1ABC9C")
         case .claude: return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
+        case .openClaude: return Color(hex: "D97757")
         case .droid: return Color(hex: "8B5CF6")
         case .forge: return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
@@ -1669,6 +1671,7 @@ private extension CLIAgentRuntime {
         case .codex:       return .codex
         case .claude:      return .claudeCode
         case .openClaw:    return .openClaw
+        case .openClaude:    return .openClaude
         case .droid:       return .factory
         case .forge:       return .forgeDev
         case .antigravity: return .antigravity

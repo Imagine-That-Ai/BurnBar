@@ -204,21 +204,33 @@ extension ProviderPlanWizardView {
     }
 
     func deleteSlot(_ target: SlotDeleteTarget) {
+        pendingDeletion = nil
+        guard deletingAccountID != target.slotID else { return }
+        deletingAccountID = target.slotID
+        externalAccountActionMessage = "Removing \(target.slotLabel)…"
         Task {
-            await daemonManager.removeProviderCredentialSlot(
+            let removed = await daemonManager.removeProviderCredentialSlotReporting(
                 providerID: target.providerID,
                 slotID: target.slotID
             )
             await refreshGatewayAdvertisementState()
-            await MainActor.run { slotToDelete = nil }
+            await MainActor.run {
+                deletingAccountID = nil
+                if removed {
+                    externalAccountActionMessage = "Removed \(target.slotLabel)."
+                } else {
+                    let reason = daemonManager.lastError ?? "the daemon rejected the change."
+                    externalAccountActionMessage = "Couldn't remove \(target.slotLabel): \(reason) Try again."
+                }
+            }
         }
     }
 
     func deleteExternalAccount(_ target: ExternalAccountDeleteTarget) {
+        pendingDeletion = nil
         do {
             try SwitcherAuthStore().deleteCredentials(forProfileID: target.profileID)
             try dataStore.switcherStore.deleteProfile(id: target.profileID)
-            externalAccountToDelete = nil
             externalAccountActionMessage = "Removed \(target.label)."
             loadSwitcherProfiles()
             refreshDashboardExternalAuthStates()

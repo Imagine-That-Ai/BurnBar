@@ -679,11 +679,11 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         }
     }
 
-    func test_missionRuntimePlanner_usesDirectArgumentsForOpenClawWithoutShell() throws {
+    func test_missionRuntimePlanner_usesDirectArgumentsForOpenClaudeWithoutShell() throws {
         let hostilePrompt = #"Read "$HOME"; rm -rf /tmp/should-not-run"#
-        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+        let backend = CLIAgentMissionBackend(chatBackend: .openClaude)
         let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
-            title: "OpenClaw direct mission",
+            title: "OpenClaude direct mission",
             prompt: hostilePrompt,
             backend: backend,
             data: [
@@ -725,8 +725,8 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertFalse(plan.arguments.joined(separator: "\n").contains("openai/gpt-5.5"))
     }
 
-    func test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI() throws {
-        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+    func test_missionRuntimePlanner_passesRequestedModelToOpenClaudeDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .openClaude)
         let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
             title: "OpenClaw selected model mission",
             prompt: "Use the phone-selected model.",
@@ -772,8 +772,8 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(plan.arguments[modelIndex + 1], "minimax/minimax-2.7-highspeed")
     }
 
-    func test_missionRuntimePlanner_constrainsOpenClawEditToolsWhenFileEditsAreDisabled() throws {
-        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+    func test_missionRuntimePlanner_constrainsOpenClaudeEditToolsWhenFileEditsAreDisabled() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .openClaude)
         let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
             title: "OpenClaw command-only mission",
             prompt: "Inspect the repository with commands, but do not edit files.",
