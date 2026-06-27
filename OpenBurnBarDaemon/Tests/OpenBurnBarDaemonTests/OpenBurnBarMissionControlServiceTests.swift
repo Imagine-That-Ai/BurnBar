@@ -704,6 +704,280 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(summary.summary.counts.projectCount, 1)
     }
 
+    func testMissionClosureQuestionInvariantNormalizesPersistedProjectionOnLoad() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-persisted-closure-invariant-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = rootURL.appendingPathComponent("controller-projection.json")
+        let baseline = Date(timeIntervalSince1970: 1_710_620_600)
+        let missionID = BurnBarMissionID(rawValue: "mission-persisted-closure")
+        let firstQuestionID = BurnBarQuestionID(rawValue: "question-persisted-closure-a")
+        let secondQuestionID = BurnBarQuestionID(rawValue: "question-persisted-closure-b")
+        let closureMetadata: BurnBarMetadata = [
+            "mission_id": .string(missionID.rawValue),
+            "question_kind": .string("mission_closure_approval"),
+            "closure_state": .string("awaiting_approval")
+        ]
+
+        var projection = BurnBarMissionControlProjectionFile.empty(now: baseline)
+        projection.projects["apollo"] = project(slug: "apollo")
+        projection.missions[missionID.rawValue] = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Persisted closure invariant mission",
+            summary: "Projection load should normalize stale duplicate closure prompts.",
+            status: .awaitingApproval,
+            recommendation: .review,
+            createdAt: baseline,
+            updatedAt: baseline,
+            approval: BurnBarMissionApprovalSnapshot(approved: false)
+        )
+        projection.questions[firstQuestionID.rawValue] = BurnBarPendingQuestionSnapshot(
+            id: firstQuestionID,
+            projectSlug: "apollo",
+            title: "First closure approval",
+            prompt: "Should closure proceed?",
+            stageLabel: "Mission Closure",
+            status: .pending,
+            priority: .high,
+            askedAt: baseline,
+            metadata: closureMetadata
+        )
+        projection.questions[secondQuestionID.rawValue] = BurnBarPendingQuestionSnapshot(
+            id: secondQuestionID,
+            projectSlug: "apollo",
+            title: "Second closure approval",
+            prompt: "Duplicate persisted closure prompt.",
+            stageLabel: "Mission Closure",
+            status: .pending,
+            priority: .high,
+            askedAt: baseline.addingTimeInterval(10),
+            metadata: closureMetadata
+        )
+        projection.followups["followup-persisted-closure-a"] = BurnBarFollowupSnapshot(
+            id: BurnBarFollowupID(rawValue: "followup-persisted-closure-a"),
+            projectSlug: "apollo",
+            questionID: firstQuestionID,
+            title: "First closure approval",
+            summary: "Track first closure approval.",
+            status: .open,
+            kind: .pendingQuestion,
+            createdAt: baseline
+        )
+        projection.followups["followup-persisted-closure-b"] = BurnBarFollowupSnapshot(
+            id: BurnBarFollowupID(rawValue: "followup-persisted-closure-b"),
+            projectSlug: "apollo",
+            questionID: secondQuestionID,
+            title: "Second closure approval",
+            summary: "Track duplicate closure approval.",
+            status: .open,
+            kind: .pendingQuestion,
+            createdAt: baseline.addingTimeInterval(10)
+        )
+
+        try JSONEncoder().encode(projection).write(to: projectionFileURL, options: .atomic)
+        try String(repeating: "not-json\n", count: 512)
+            .write(to: eventsFileURL, atomically: true, encoding: .utf8)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+        )
+        let service = BurnBarMissionControlService(
+            store: store,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            transport: .live(),
+            activitySnapshotURL: nil,
+            reviewRunLauncher: nil,
+            runSnapshotLookup: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+        )
+
+        let questions = try await service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 20)
+        ).questions
+        let closureQuestions = questions.filter {
+            stringValue($0.metadata["mission_id"]) == missionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+        }
+        XCTAssertEqual(closureQuestions.map(\.id), [firstQuestionID])
+        XCTAssertEqual(
+            stringValue(closureQuestions.first?.metadata["closure_merged_from_question_id"]),
+            secondQuestionID.rawValue
+        )
+
+        let followups = try await service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "apollo", statuses: [.open], limit: 20)
+        ).followups
+        XCTAssertEqual(followups.compactMap(\.questionID), [firstQuestionID])
+
+        let summary = try await service.controllerSummary(BurnBarControllerSummaryRequest(projectSlug: "apollo"))
+        XCTAssertEqual(summary.summary.counts.pendingQuestionCount, 1)
+        XCTAssertEqual(summary.summary.counts.openFollowupCount, 1)
+
+        let reloadedProjection = try JSONDecoder().decode(
+            BurnBarMissionControlProjectionFile.self,
+            from: Data(contentsOf: projectionFileURL)
+        )
+        XCTAssertNil(reloadedProjection.questions[secondQuestionID.rawValue])
+        XCTAssertNil(reloadedProjection.followups["followup-persisted-closure-b"])
+    }
+
+    func testMissionClosureQuestionInvariantNormalizesJournalRebuild() async throws {
+        let baseline = Date(timeIntervalSince1970: 1_710_620_700)
+        let missionID = BurnBarMissionID(rawValue: "mission-rebuild-closure")
+        let firstQuestionID = BurnBarQuestionID(rawValue: "question-rebuild-closure-a")
+        let secondQuestionID = BurnBarQuestionID(rawValue: "question-rebuild-closure-b")
+        let closureMetadata: BurnBarMetadata = [
+            "mission_id": .string(missionID.rawValue),
+            "question_kind": .string("mission_closure_approval"),
+            "closure_state": .string("awaiting_approval")
+        ]
+
+        func makeEvent<Payload: Encodable>(
+            id: String,
+            sequence: Int,
+            family: BurnBarControllerEventFamily,
+            eventType: String,
+            projectSlug: String,
+            recordedAt: Date,
+            summary: String,
+            payload: Payload
+        ) throws -> BurnBarControllerEvent {
+            BurnBarControllerEvent(
+                id: BurnBarControllerEventID(rawValue: id),
+                family: family,
+                eventType: eventType,
+                projectSlug: projectSlug,
+                recordedAt: recordedAt,
+                sequence: sequence,
+                summary: summary,
+                metadata: ["payload": try BurnBarJSONValue.fromEncodable(payload)]
+            )
+        }
+
+        let mission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Rebuild closure invariant mission",
+            summary: "Journal rebuild should converge duplicate closure prompts.",
+            status: .awaitingApproval,
+            recommendation: .review,
+            createdAt: baseline,
+            updatedAt: baseline,
+            approval: BurnBarMissionApprovalSnapshot(approved: false)
+        )
+        let firstQuestion = BurnBarPendingQuestionSnapshot(
+            id: firstQuestionID,
+            projectSlug: "apollo",
+            title: "First rebuild closure approval",
+            prompt: "Should closure proceed?",
+            stageLabel: "Mission Closure",
+            status: .pending,
+            priority: .high,
+            askedAt: baseline.addingTimeInterval(30),
+            metadata: closureMetadata
+        )
+        let secondQuestion = BurnBarPendingQuestionSnapshot(
+            id: secondQuestionID,
+            projectSlug: "apollo",
+            title: "Second rebuild closure approval",
+            prompt: "Duplicate rebuilt closure prompt.",
+            stageLabel: "Mission Closure",
+            status: .pending,
+            priority: .high,
+            askedAt: baseline.addingTimeInterval(40),
+            metadata: closureMetadata
+        )
+
+        let events = try [
+            makeEvent(
+                id: "event-rebuild-project",
+                sequence: 10,
+                family: .controller,
+                eventType: "project_upserted",
+                projectSlug: "apollo",
+                recordedAt: baseline,
+                summary: "Project",
+                payload: project(slug: "apollo")
+            ),
+            makeEvent(
+                id: "event-rebuild-mission",
+                sequence: 20,
+                family: .mission,
+                eventType: "mission_created",
+                projectSlug: "apollo",
+                recordedAt: baseline.addingTimeInterval(10),
+                summary: "Mission",
+                payload: mission
+            ),
+            makeEvent(
+                id: "event-rebuild-question-a",
+                sequence: 30,
+                family: .question,
+                eventType: "question_created",
+                projectSlug: "apollo",
+                recordedAt: baseline.addingTimeInterval(20),
+                summary: "First question",
+                payload: firstQuestion
+            ),
+            makeEvent(
+                id: "event-rebuild-question-b",
+                sequence: 40,
+                family: .question,
+                eventType: "question_created",
+                projectSlug: "apollo",
+                recordedAt: baseline.addingTimeInterval(30),
+                summary: "Second question",
+                payload: secondQuestion
+            ),
+            makeEvent(
+                id: "event-rebuild-followup-b",
+                sequence: 50,
+                family: .followup,
+                eventType: "followup_created",
+                projectSlug: "apollo",
+                recordedAt: baseline.addingTimeInterval(40),
+                summary: "Duplicate followup",
+                payload: BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-rebuild-closure-b"),
+                    projectSlug: "apollo",
+                    questionID: secondQuestionID,
+                    title: "Second rebuild closure approval",
+                    summary: "Track duplicate rebuilt closure prompt.",
+                    status: .open,
+                    kind: .pendingQuestion,
+                    createdAt: baseline.addingTimeInterval(40)
+                )
+            )
+        ]
+
+        let harness = try makeSeededHarness(name: "rebuild-closure-invariant", events: events)
+        _ = try await harness.service.projectionRebuild(BurnBarProjectionRebuildRequest(projectionNames: []))
+
+        let questions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 20)
+        ).questions
+        let closureQuestions = questions.filter {
+            stringValue($0.metadata["mission_id"]) == missionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+        }
+        XCTAssertEqual(closureQuestions.map { $0.id }, [firstQuestionID])
+
+        let followups = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "apollo", statuses: [.open], limit: 20)
+        ).followups
+        XCTAssertEqual(followups.compactMap { $0.questionID }, [firstQuestionID])
+        XCTAssertEqual(
+            stringValue(followups.first?.metadata["closure_rebound_to_question_id"]),
+            firstQuestionID.rawValue
+        )
+    }
+
     func testVAL_CROSS_004_DaemonLifecycleApprovalRecoveryAndClosureFieldsStayDeterministic() async throws {
         let harness = try makeHarnessWithStore(name: "val-cross-004-daemon-parity")
         let baseline = Date(timeIntervalSince1970: 1_710_630_000)
