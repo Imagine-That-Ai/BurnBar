@@ -71,11 +71,16 @@ export function KineticHeadline({ text, className, font, as = "h1", style }: Pro
   const ref = React.useRef<HTMLHeadingElement>(null);
   const [lines, setLines] = React.useState<Line[] | null>(null);
   const [play, setPlay] = React.useState(false);
+  // Last committed wrapping key — guards against redundant re-splits/replays.
+  const lastKeyRef = React.useRef<string | null>(null);
 
   // Measure → split → arm, synchronously before paint. Re-split on resize.
   useIsoLayoutEffect(() => {
     const el = ref.current;
     if (!el || !inkEnabled) return;
+
+    // A real text/font/route change must force a fresh split + entrance.
+    lastKeyRef.current = null;
 
     // Respect reduced motion: never split → the plain-text branch renders.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
@@ -88,7 +93,15 @@ export function KineticHeadline({ text, className, font, as = "h1", style }: Pro
       const cs = getComputedStyle(el);
       const f = font ?? `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
       const width = el.clientWidth || el.getBoundingClientRect().width;
-      setLines(splitLines(text, f, Math.max(120, width)));
+      const next = splitLines(text, f, Math.max(120, width));
+      // Only commit when the wrapping actually changed. The ResizeObserver's
+      // initial callback and the fonts-ready re-measure usually reproduce the
+      // same split — committing a fresh array each time would re-arm and replay
+      // the entrance. A genuine reflow changes the key → one deliberate replay.
+      const key = next.map((l) => l.words.join("\u0001")).join("\u0002");
+      if (key === lastKeyRef.current) return;
+      lastKeyRef.current = key;
+      setLines(next);
     };
 
     measure();

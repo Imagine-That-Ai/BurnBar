@@ -59,10 +59,15 @@ export function GlobalBackdrop() {
     s.setProperty("--ink-halo", INK_HALO[ink.haloTier]);
     s.setProperty("--ink-scrim-hero", String(ink.scrim.hero));
     s.setProperty("--ink-scrim-read", String(ink.scrim.read));
+    // Optional top-strip nav darken — published only when this kernel needs it,
+    // removed otherwise so it never leaks onto the next (passing) kernel.
+    if (ink.scrim.nav != null) s.setProperty("--ink-scrim-nav", String(ink.scrim.nav));
+    else s.removeProperty("--ink-scrim-nav");
 
     return () => {
       body.removeAttribute("data-ink");
       delete body.dataset.kernel;
+      body.style.removeProperty("--ink-scrim-nav");
     };
   }, [resolved, inkEnabled]);
 

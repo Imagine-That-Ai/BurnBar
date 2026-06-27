@@ -1167,13 +1167,22 @@ body[data-ink="on"] .btn-accent:hover {
    hero band (top) stays light so the art breathes under the kinetic headline
    (the glyph halos carry it there); the reading band is a stronger column wash.
    A radial focus darkens behind the centered reading column and clears at the
-   page edges so the kernel shows at the margins. */
+   page edges so the kernel shows at the margins. A third, top-anchored nav band
+   (--ink-scrim-nav, default 0 → absent) adds a confined darken behind the small
+   inactive nav labels for bright/busy kernels that wash them out, fading away by
+   ~15vh so it rescues the nav strip without dimming the hero headline below. */
 .ink-scrim {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
+    linear-gradient(
+      180deg,
+      rgba(6, 7, 14, var(--ink-scrim-nav, 0)) 0,
+      rgba(6, 7, 14, var(--ink-scrim-nav, 0)) 6vh,
+      transparent 15vh
+    ),
     linear-gradient(
       180deg,
       rgba(6, 7, 14, var(--ink-scrim-hero, 0.32)) 0%,
