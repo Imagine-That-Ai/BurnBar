@@ -267,6 +267,31 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(appDelegate.contains("DeviceCheckProvider(app: app)"))
     }
 
+    func testPushNotificationEntitlementResolvesPerBuildConfiguration() throws {
+        try skipSourceInspectionInSimulatorAppHost()
+        let entitlementsURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("OpenBurnBarMobile.entitlements")
+        let projectURL = repoRoot().appendingPathComponent("project.yml")
+        let pbxprojURL = repoRoot()
+            .appendingPathComponent("OpenBurnBar.xcodeproj")
+            .appendingPathComponent("project.pbxproj")
+
+        let data = try Data(contentsOf: entitlementsURL)
+        let entitlements = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+        let project = try String(contentsOf: projectURL, encoding: .utf8)
+        let pbxproj = try String(contentsOf: pbxprojURL, encoding: .utf8)
+
+        XCTAssertEqual(entitlements["aps-environment"] as? String, "$(APS_ENVIRONMENT)")
+        XCTAssertTrue(project.contains("Debug:\n          APS_ENVIRONMENT: development"))
+        XCTAssertTrue(project.contains("Release:\n          APS_ENVIRONMENT: production"))
+        XCTAssertTrue(pbxproj.contains("APS_ENVIRONMENT = development;"))
+        XCTAssertTrue(pbxproj.contains("APS_ENVIRONMENT = production;"))
+    }
+
     func testInternalTestFlightAppCheckBuildInjectsRuntimeSwitchAndDebugToken() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let projectURL = repoRoot().appendingPathComponent("project.yml")
