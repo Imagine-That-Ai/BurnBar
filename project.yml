@@ -131,6 +131,16 @@ targets:
           - "PetCompanion/Resources/Pets/**"
           - "PetCompanion/Resources/Models"
           - "PetCompanion/Resources/Models/**"
+          # The kernel backdrop is a self-contained web bundle loaded at runtime
+          # via Bundle.main subdirectory "KernelBackdrop" (KernelBackdropView
+          # loads index.html + its sibling kernel-backdrop.js). Ship it as a
+          # folder reference so the directory survives into the bundle instead
+          # of being flattened into Resources/.
+          - "Resources/KernelBackdrop"
+          - "Resources/KernelBackdrop/**"
+      - path: AgentLens/Resources/KernelBackdrop
+        type: folder
+        buildPhase: resources
       - path: AgentLens/PetCompanion/Resources/Pets
         type: folder
         buildPhase: resources

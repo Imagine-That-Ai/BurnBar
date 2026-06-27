@@ -56,6 +56,7 @@ struct DashboardBackdrop: View {
     @Environment(SettingsManager.self) private var settingsManager
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
+    @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
     /// the blurred desktop shows through — the felt payoff of the preference
@@ -77,7 +78,14 @@ struct DashboardBackdrop: View {
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
             } else if settingsManager.useWebsiteBackground {
                 Group {
-                    if settingsManager.useConstellationBackground {
+                    if useKernelBackdrop {
+                        // Full-window WebGL2 kernel field (the bottom-most
+                        // backdrop layer). Reuses the same clear-surface
+                        // plumbing as the swarm, so dashboard content composites
+                        // on top.
+                        KernelBackdropView()
+                            .ignoresSafeArea()
+                    } else if settingsManager.useConstellationBackground {
                         ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
                     } else {
                         WebsiteBackgroundView(accent: DesignSystem.Colors.ember)

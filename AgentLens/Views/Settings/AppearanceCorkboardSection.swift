@@ -170,6 +170,10 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                KernelBackdropSettingsRow(swarmBackgroundEnabled: settingsManager.useWebsiteBackground)
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Enable Desktop Swarm Wallpaper",
                     subtitle: "Render the dynamic token ember swarm simulation directly as your macOS desktop wallpaper.",
@@ -665,6 +669,74 @@ struct AppearanceCorkboardSection: View {
         case .light: return "Light"
         case .dark: return "Dark"
         }
+    }
+}
+
+// MARK: - Window backdrop (kernel) row
+
+/// Master toggle + 30-kernel picker for the WebGL2 "Window Backdrop" field.
+/// Both controls bind directly to the shared `@AppStorage` keys that
+/// ``KernelBackdropView`` reads, so a selection applies to the live backdrop
+/// immediately. Gated on the Swarm Background being on, because the kernel
+/// field renders in that same clear-surface layer.
+private struct KernelBackdropSettingsRow: View {
+    let swarmBackgroundEnabled: Bool
+
+    @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            SettingsToggle(
+                title: "Window Backdrop",
+                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below. Requires Swarm Background.",
+                icon: "square.stack.3d.up.fill",
+                isOn: $useKernelBackdrop
+            )
+            .onChange(of: useKernelBackdrop) { _, newValue in
+                Analytics.shared.track(.settingsChanged, [
+                    "setting_key": "window_backdrop_kernel_enabled",
+                    "new_value": .bool(newValue)
+                ])
+            }
+
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "paintpalette.fill")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Backdrop Kernel")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Choose which of the 30 animated fields renders as the window backdrop.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                Picker("", selection: $backdropKernel) {
+                    ForEach(KernelCatalog.all) { kernel in
+                        Text(kernel.label).tag(kernel.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 200)
+                .onChange(of: backdropKernel) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "window_backdrop_kernel",
+                        "new_value": .string(newValue)
+                    ])
+                }
+            }
+            .padding(.leading, 32)
+            .opacity(useKernelBackdrop ? 1.0 : 0.55)
+            .disabled(!useKernelBackdrop)
+        }
+        .disabled(!swarmBackgroundEnabled)
+        .opacity(swarmBackgroundEnabled ? 1.0 : 0.45)
     }
 }
 
