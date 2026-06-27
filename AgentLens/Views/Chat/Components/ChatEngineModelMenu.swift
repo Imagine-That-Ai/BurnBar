@@ -192,7 +192,8 @@ struct ChatEngineModelMenu: View {
         case .forge: return .forge
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
-        case .openClaude: return .openClaude        case .hermes, .openclaw, .piAgent: return nil
+        case .openClaude: return .openClaude
+        case .hermes, .openclaw, .piAgent: return nil
         }
     }
 }
