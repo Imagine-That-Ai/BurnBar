@@ -85,6 +85,32 @@ class HermesRealtimeRelaySealWireTest {
     }
 
     @Test
+    fun `legacy seal key envelopes without senderPeerNodeId decode with null trust identity`() {
+        val legacyJson =
+            """
+            {
+              "encBase64": "enc-base64",
+              "wrappedKeyBase64": "wrapped-base64",
+              "senderDeviceId": "android-device-1",
+              "senderKeyId": "relay-v3-abcdef0123456789abcdef01",
+              "senderCounter": 7,
+              "relayKeyVersion": 3
+            }
+            """.trimIndent()
+
+        val decoded =
+            HermesRealtimeRelayJson.decodeFromString(
+                HermesRealtimeRelayControlSealKeyEnvelope.serializer(),
+                legacyJson,
+            )
+        assertEquals("android-device-1", decoded.senderDeviceId)
+        assertNull(decoded.senderPeerNodeId)
+        assertEquals("relay-v3-abcdef0123456789abcdef01", decoded.senderKeyId)
+        assertEquals(7L, decoded.senderCounter)
+        assertEquals(3, decoded.relayKeyVersion)
+    }
+
+    @Test
     fun `sealed control shells round trip with only streamClass visible`() {
         val frame =
             HermesRealtimeRelayFrame(

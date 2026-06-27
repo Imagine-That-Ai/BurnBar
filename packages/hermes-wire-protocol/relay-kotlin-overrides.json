@@ -101,7 +101,8 @@
           "encodeDefault": false
         },
         "senderPeerNodeId": {
-          "ktType": "String",
+          "ktType": "String?",
+          "default": "null",
           "serialName": null,
           "encodeDefault": false
         },

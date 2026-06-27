@@ -110,6 +110,28 @@ final class HermesRealtimeRelayTypesTests: XCTestCase {
         XCTAssertEqual(decoded.relayKeyVersion, 3)
     }
 
+    func testControlSealKeyEnvelopeDecodesLegacyJSONWithoutSenderPeerNodeId() throws {
+        let legacyJSON = """
+        {
+          "encBase64": "\(Data("enc-bytes".utf8).base64EncodedString())",
+          "wrappedKeyBase64": "\(Data("wrapped-key".utf8).base64EncodedString())",
+          "senderDeviceId": "iphone-device",
+          "senderKeyId": "key-legacy",
+          "senderCounter": 12,
+          "relayKeyVersion": 3
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayControlSealKeyEnvelope.self,
+            from: Data(legacyJSON.utf8)
+        )
+        XCTAssertEqual(decoded.senderDeviceId, "iphone-device")
+        XCTAssertNil(decoded.senderPeerNodeId)
+        XCTAssertEqual(decoded.senderKeyId, "key-legacy")
+        XCTAssertEqual(decoded.senderCounter, 12)
+        XCTAssertEqual(decoded.relayKeyVersion, 3)
+    }
+
     // MARK: - Control payload seal fields (F10)
 
     func testControlPayloadRoundTripsSealFieldsAndKeepsStreamClassVisible() throws {

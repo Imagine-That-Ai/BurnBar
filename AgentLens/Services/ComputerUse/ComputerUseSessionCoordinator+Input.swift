@@ -17,6 +17,10 @@ extension ComputerUseSessionCoordinator {
         var pendingSealSession: (peerNodeId: String, key: SymmetricKey)?
     }
 
+    private enum ControlSealOpenError: Error {
+        case missingSenderPeerNodeId
+    }
+
     func shouldUseVirtualHIDForLockedInput() -> Bool {
         let readiness = MacRemoteUnlockReadinessService.shared
         let snapshot = readiness.snapshot()
@@ -136,6 +140,9 @@ extension ComputerUseSessionCoordinator {
         connectionId: String,
         peerNodeId: String
     ) async throws -> SymmetricKey {
+        guard let senderPeerNodeId = envelope.senderPeerNodeId else {
+            throw ControlSealOpenError.missingSenderPeerNodeId
+        }
         let recipientKey = try controlSealRecipientPrivateKeyProvider.map { try $0() }
             ?? HermesRelayKeyStore().privateKey()
         // The trust resolver only consults uid + sender identity; the
@@ -149,7 +156,7 @@ extension ComputerUseSessionCoordinator {
             sender: HermesRelayAuthenticatedSender(
                 publicKeyBase64: "",
                 deviceID: envelope.senderDeviceId,
-                peerNodeID: envelope.senderPeerNodeId,
+                peerNodeID: senderPeerNodeId,
                 counter: envelope.senderCounter,
                 keyID: envelope.senderKeyId
             )

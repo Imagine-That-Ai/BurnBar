@@ -35,7 +35,7 @@ data class HermesRealtimeRelayControlSealKeyEnvelope(
     val encBase64: String,
     val wrappedKeyBase64: String,
     val senderDeviceId: String,
-    val senderPeerNodeId: String,
+    val senderPeerNodeId: String? = null,
     val senderKeyId: String,
     val senderCounter: Long,
     val relayKeyVersion: Int,
