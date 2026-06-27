@@ -2809,6 +2809,36 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
     }
 
+    @MainActor
+    func testIOSFileTransferSendAvailabilityRequiresBackendAndSetting() {
+        func makeService() -> MediaFileTransferService {
+            MediaFileTransferService(
+                backend: MobileFakeIrohBlobBackend(),
+                configuration: MediaFileTransferService.Configuration(
+                    storeDirectoryURL: FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString, isDirectory: true),
+                    inboxDirectoryURL: FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString, isDirectory: true),
+                    secretKeyProvider: { Data(repeating: 0x7, count: 32) }
+                )
+            )
+        }
+
+        let noBackend = iOSFileTransferService(service: nil, settingsProvider: { true })
+        XCTAssertFalse(noBackend.hasFileTransferBackend)
+        XCTAssertFalse(noBackend.canSendFiles)
+
+        let disabled = iOSFileTransferService(service: makeService(), settingsProvider: { false })
+        XCTAssertTrue(disabled.hasFileTransferBackend)
+        XCTAssertFalse(disabled.isFileTransferEnabledInSettings)
+        XCTAssertFalse(disabled.canSendFiles)
+
+        let enabled = iOSFileTransferService(service: makeService(), settingsProvider: { true })
+        XCTAssertTrue(enabled.hasFileTransferBackend)
+        XCTAssertTrue(enabled.isFileTransferEnabledInSettings)
+        XCTAssertTrue(enabled.canSendFiles)
+    }
+
     func testIrohRequestStreamRoutesSignalSessionMessagesToMediaDispatcher() {
         XCTAssertTrue(
             HermesIrohRelayTransport.routesRequestStreamFrameToMediaDispatcherForTesting(.signalSessionMessage)

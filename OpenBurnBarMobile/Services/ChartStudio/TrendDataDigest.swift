@@ -11,6 +11,9 @@ import OpenBurnBarCore
 // thread and unit-tested without view dependencies.
 
 public struct TrendDataDigest: Codable, Hashable, Sendable {
+    public static let otherProviderKey = "__other"
+    private static let dailySeriesLimit = 30
+    private static let dailyProviderStackLimit = 4
 
     // MARK: - Top-level totals
 
@@ -328,21 +331,33 @@ public struct TrendDataDigest: Codable, Hashable, Sendable {
             perDay[day, default: [:]][usage.provider.persistedToken, default: 0] += usage.cost
         }
 
-        // Cap to last 21 daily points and only keep top 4 providers per day
-        // — this keeps payload size predictable for small models.
-        return dailyPoints.suffix(21).map { point in
+        // Keep the chart's 30-day contract while compacting provider stacks.
+        // Overflow providers roll into `__other` instead of disappearing.
+        return dailyPoints.suffix(dailySeriesLimit).map { point in
             let day = formatter.string(from: point.date)
             let allProvidersForDay = perDay[day] ?? [:]
-            let top4 = allProvidersForDay
-                .sorted { $0.value > $1.value }
-                .prefix(4)
-            let trimmed = Dictionary(uniqueKeysWithValues: top4.map { ($0.key, $0.value) })
             return DailySeries(
                 date: day,
                 total: point.value,
-                perProvider: trimmed
+                perProvider: compactProviderStack(allProvidersForDay)
             )
         }
+    }
+
+    private static func compactProviderStack(_ values: [String: Double]) -> [String: Double] {
+        let sorted = values.sorted { lhs, rhs in
+            if lhs.value == rhs.value {
+                return lhs.key < rhs.key
+            }
+            return lhs.value > rhs.value
+        }
+        let visible = sorted.prefix(dailyProviderStackLimit)
+        var compacted = Dictionary(uniqueKeysWithValues: visible.map { ($0.key, $0.value) })
+        let overflow = sorted.dropFirst(dailyProviderStackLimit).reduce(0.0) { $0 + $1.value }
+        if overflow > 0 {
+            compacted[otherProviderKey] = overflow
+        }
+        return compacted
     }
 
     private static func buildHourly(
