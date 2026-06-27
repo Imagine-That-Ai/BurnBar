@@ -182,11 +182,9 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     }
 
     var frameMetricsForTesting: PetModel3DFrameMetrics? {
-        guard let contentRoot,
-              let framing = modelFraming,
-              let bounds = subtreeBoundingBox(for: contentRoot) else { return nil }
-        let (minB, maxB) = bounds
-        let maxExtent = Self.maxExtent(min: minB, max: maxB)
+        guard contentRoot != nil,
+              let framing = modelFraming else { return nil }
+        let maxExtent = Self.targetModelHeight / framing.baseScale
         guard maxExtent > 0 else { return nil }
         let scale = framing.baseScale * userScale
         return PetModel3DFrameMetrics(
@@ -207,7 +205,8 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     /// compared — a standing rig's bind pose can splay its arms wider than it is
     /// tall, which is upright, not supine. `false` when no model is mounted.
     var isUprightForTesting: Bool {
-        guard let contentRoot, let bounds = subtreeBoundingBox(for: contentRoot) else { return false }
+        guard let contentRoot,
+              let bounds = subtreeBoundingBox(for: contentRoot, excludingAttachedProps: true) else { return false }
         let (minB, maxB) = bounds
         let height = CGFloat(maxB.y - minB.y)
         let depth = CGFloat(maxB.z - minB.z)
@@ -700,7 +699,10 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         applyModelTransform()
     }
 
-    private func subtreeBoundingBox(for root: SCNNode) -> (SCNVector3, SCNVector3)? {
+    private func subtreeBoundingBox(
+        for root: SCNNode,
+        excludingAttachedProps: Bool = false
+    ) -> (SCNVector3, SCNVector3)? {
         var minPoint: SCNVector3?
         var maxPoint: SCNVector3?
 
@@ -739,7 +741,11 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
         }
 
         includeBounds(of: root)
-        root.enumerateChildNodes { node, _ in
+        root.enumerateChildNodes { node, stop in
+            if excludingAttachedProps, node.name?.hasPrefix("prop:") == true {
+                stop.pointee = true
+                return
+            }
             includeBounds(of: node)
         }
 
