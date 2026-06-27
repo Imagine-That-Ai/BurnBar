@@ -1752,9 +1752,7 @@ final class CursorConnectorManager {
                 return True
 
             def do_GET(self):
-                if _is_health_path(self.path):
-                    self.send_json(HTTPStatus.OK, {"ok": True})
-                    return
+                if _is_health_path(self.path): self.send_json(HTTPStatus.OK, {"ok": True}); return
                 if not self.check_auth():
                     return
                 # Record request for rate limiting after successful auth.
