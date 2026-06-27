@@ -273,7 +273,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             }
             let deduplicated = Self.deduplicated(discovered)
             options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
-        case .cursorAgent:
+        case .cursorAgent, .openClaude:
             _ = try await executable(named: "cursor-agent")
             options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:

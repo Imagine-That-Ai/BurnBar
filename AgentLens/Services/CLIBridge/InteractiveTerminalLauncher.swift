@@ -97,6 +97,11 @@ enum InteractiveTerminalLauncher {
         case "grok":
             return Invocation(executableName: "grok", arguments: [], extraEnvironment: [:])
         case "openclaw":
+            // Real OpenClaw (github.com/openclaw/openclaw) — its own assistant CLI.
+            // Model selection lives in OpenClaw's own provider config, not a flag.
+            return Invocation(executableName: "openclaw", arguments: [], extraEnvironment: [:])
+        case "openclaude":
+            // OpenClaude (github.com/Gitlawb/openclaude) — a Claude Code fork; takes --model.
             var arguments: [String] = []
             if let model { arguments += ["--model", model] }
             return Invocation(executableName: "openclaude", arguments: arguments, extraEnvironment: [:])

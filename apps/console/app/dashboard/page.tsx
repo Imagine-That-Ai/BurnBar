@@ -4,13 +4,14 @@ import * as React from "react";
 
 import { useDashboardUsage } from "@/lib/dashboard/useDashboardUsage";
 import type { UsageWindowKey } from "@/lib/usage";
+import { useBackdrop } from "@/lib/useBackdrop";
 import { DashboardToolbar } from "@/components/dashboard/DashboardToolbar";
 import { GlassGrid } from "@/components/dashboard/GlassGrid";
-import { KernelBackdrop } from "@/components/dashboard/KernelBackdrop";
 import { useDashboardController } from "@/components/dashboard/useDashboardController";
 
 export default function DashboardPage() {
   const controller = useDashboardController();
+  const { kernelId, setKernelId } = useBackdrop();
   const [window, setWindow] = React.useState<UsageWindowKey>("30d");
   const { data, loading, error, reload } = useDashboardUsage(window);
 
@@ -21,8 +22,6 @@ export default function DashboardPage() {
 
   return (
     <div className="lg-dashboard" style={frostStyle}>
-      <KernelBackdrop kernelId={controller.kernelId} />
-
       <header className="lg-bar mb-token-6 flex flex-col gap-token-3 sm:flex-row sm:items-center">
         <div className="shrink-0">
           <span className="eyebrow">Studio</span>
@@ -41,8 +40,8 @@ export default function DashboardPage() {
             removeCard={controller.removeCard}
             editable={controller.editable}
             setEditable={controller.setEditable}
-            kernelId={controller.kernelId}
-            setKernel={controller.setKernel}
+            kernelId={kernelId}
+            setKernel={setKernelId}
             frost={controller.frost}
             setFrost={controller.setFrost}
             reset={controller.reset}

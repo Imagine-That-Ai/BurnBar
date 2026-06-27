@@ -154,6 +154,139 @@ final class AnthropicCredentialProbeTests: XCTestCase {
         )
     }
 
+    // MARK: - RateLimitHeaders parsing
+
+    func test_RateLimitHeaders_parsesUnifiedHeaders() {
+        let response = HTTPURLResponse(
+            url: URL(string: "https://api.anthropic.com/v1/messages")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: [
+                "anthropic-ratelimit-unified-tokens-limit": "1000000",
+                "anthropic-ratelimit-unified-tokens-remaining": "750000",
+                "anthropic-ratelimit-unified-tokens-reset": "18000"
+            ]
+        )!
+        let headers = AnthropicCredentialProbe.RateLimitHeaders.parse(from: response)
+        XCTAssertTrue(headers.hasUnifiedData)
+        XCTAssertEqual(headers.unifiedTokensLimit, 1_000_000)
+        XCTAssertEqual(headers.unifiedTokensRemaining, 750_000)
+        XCTAssertEqual(headers.unifiedTokensResetSeconds, 18_000)
+        XCTAssertFalse(headers.hasStandardData)
+    }
+
+    func test_RateLimitHeaders_parsesStandardHeaders() {
+        let response = HTTPURLResponse(
+            url: URL(string: "https://api.anthropic.com/v1/messages")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: [
+                "anthropic-ratelimit-requests-limit": "4000",
+                "anthropic-ratelimit-requests-remaining": "3900",
+                "anthropic-ratelimit-requests-reset": "60",
+                "anthropic-ratelimit-input-tokens-limit": "10000000",
+                "anthropic-ratelimit-input-tokens-remaining": "9500000",
+                "anthropic-ratelimit-input-tokens-reset": "60",
+                "anthropic-ratelimit-output-tokens-limit": "800000",
+                "anthropic-ratelimit-output-tokens-remaining": "700000",
+                "anthropic-ratelimit-output-tokens-reset": "60"
+            ]
+        )!
+        let headers = AnthropicCredentialProbe.RateLimitHeaders.parse(from: response)
+        XCTAssertFalse(headers.hasUnifiedData)
+        XCTAssertTrue(headers.hasStandardData)
+        XCTAssertEqual(headers.requestsLimit, 4000)
+        XCTAssertEqual(headers.requestsRemaining, 3900)
+        XCTAssertEqual(headers.inputTokensRemaining, 9_500_000)
+        XCTAssertEqual(headers.outputTokensRemaining, 700_000)
+    }
+
+    func test_RateLimitHeaders_returnsEmptyWhenNoHeadersPresent() {
+        let response = HTTPURLResponse(
+            url: URL(string: "https://api.anthropic.com/v1/messages")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let headers = AnthropicCredentialProbe.RateLimitHeaders.parse(from: response)
+        XCTAssertTrue(headers.isEmpty)
+        XCTAssertFalse(headers.hasUnifiedData)
+        XCTAssertFalse(headers.hasStandardData)
+    }
+
+    func test_RateLimitHeaders_isCaseInsensitive() {
+        // HTTP headers are case-insensitive; verify via the response constructor
+        // which lowercases internally (same as real HTTPURLResponse).
+        let response = HTTPURLResponse(
+            url: URL(string: "https://api.anthropic.com/v1/messages")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: [
+                "Anthropic-RateLimit-Unified-Tokens-Limit": "500000",
+                "ANTHROPIC-RATELIMIT-UNIFIED-TOKENS-REMAINING": "250000",
+                "anthropic-ratelimit-unified-tokens-reset": "18000"
+            ]
+        )!
+        let headers = AnthropicCredentialProbe.RateLimitHeaders.parse(from: response)
+        XCTAssertTrue(headers.hasUnifiedData)
+        XCTAssertEqual(headers.unifiedTokensLimit, 500_000)
+        XCTAssertEqual(headers.unifiedTokensRemaining, 250_000)
+    }
+
+    // MARK: - probe captures headers
+
+    func test_probe_capturesUnifiedHeadersInResult() async {
+        let probe = makeMockedProbeWithHeaders(
+            status: 200,
+            body: #"{"id":"msg_01","type":"message"}"#,
+            headers: [
+                "anthropic-ratelimit-unified-tokens-limit": "1000000",
+                "anthropic-ratelimit-unified-tokens-remaining": "750000",
+                "anthropic-ratelimit-unified-tokens-reset": "18000"
+            ]
+        )
+        let result = await probe.probe(credential: "sk-ant-oat01-test-token")
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertTrue(result.rateLimitHeaders.hasUnifiedData)
+        XCTAssertEqual(result.rateLimitHeaders.unifiedTokensRemaining, 750_000)
+    }
+
+    func test_probe_capturesStandardHeadersInResult() async {
+        let probe = makeMockedProbeWithHeaders(
+            status: 200,
+            body: #"{"id":"msg_01"}"#,
+            headers: [
+                "anthropic-ratelimit-requests-limit": "4000",
+                "anthropic-ratelimit-requests-remaining": "3800",
+                "anthropic-ratelimit-requests-reset": "60"
+            ]
+        )
+        let result = await probe.probe(credential: "sk-ant-api03-test-key")
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertTrue(result.rateLimitHeaders.hasStandardData)
+        XCTAssertEqual(result.rateLimitHeaders.requestsLimit, 4000)
+    }
+
+    func test_probe_returnsEmptyHeadersWhenNonePresent() async {
+        let probe = makeMockedProbe(
+            status: 200,
+            body: #"{"id":"msg_01"}"#
+        )
+        let result = await probe.probe(credential: "sk-ant-api03-test-key")
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertTrue(result.rateLimitHeaders.isEmpty)
+    }
+
+    func test_probe_returnsEmptyHeadersOnAuthFailure() async {
+        let probe = makeMockedProbe(
+            status: 401,
+            body: #"{"error":"invalid"}"#
+        )
+        let result = await probe.probe(credential: "sk-ant-api03-bad-key")
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertTrue(result.rateLimitHeaders.isEmpty)
+    }
+
     // MARK: - helpers
 
     private func makeMockedProbe(
@@ -170,6 +303,32 @@ final class AnthropicCredentialProbeTests: XCTestCase {
                 statusCode: status,
                 httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "application/json"]
+            )!
+            return (http, Data(body.utf8))
+        }
+        let session = URLSession(configuration: configuration)
+        return AnthropicCredentialProbe(
+            session: session,
+            baseURL: URL(string: "https://api.anthropic.test/v1")!,
+            clock: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+    }
+
+    private func makeMockedProbeWithHeaders(
+        status: Int,
+        body: String,
+        headers: [String: String]
+    ) -> AnthropicCredentialProbe {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var mergedHeaders = ["Content-Type": "application/json"]
+        mergedHeaders.merge(headers) { _, new in new }
+        MockURLProtocol.registerResponder { request in
+            let http = HTTPURLResponse(
+                url: request.url!,
+                statusCode: status,
+                httpVersion: "HTTP/1.1",
+                headerFields: mergedHeaders
             )!
             return (http, Data(body.utf8))
         }

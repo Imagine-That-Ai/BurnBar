@@ -29,7 +29,8 @@ struct AssistantsPopoverStrip: View {
         case .droid: return "Ask Droid…"
         case .forge: return "Ask Forge…"
         case .antigravity: return "Ask Antigravity…"
-        case .cursorAgent: return "Ask Cursor Agent…"
+        case .cursorAgent: return "Ask Cursor Agentâ¦"
+        case .openClaude: return "Ask OpenClaude…"
         }
     }
 

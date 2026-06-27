@@ -86,6 +86,9 @@ extension ChatSessionController {
             case .cursorAgent:
                 let m = chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "cursor-agent"
                 return (.cursorAgent, "OpenBurnBar Cursor Agent Chat", m)
+            case .openClaude:
+                let m = chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "openclaude"
+                return (.openClaude, "OpenBurnBar OpenClaude Chat", m)
             }
         }()
 

@@ -262,7 +262,7 @@ final class HermesConversationStateStore {
         modelID: String? = nil,
         modelName: String? = nil
     ) {
-        let threadID = reply.threadId?.nilIfBlank ?? explicitThreadID
+        let threadID = explicitThreadID.nilIfBlank ?? HermesGatewayMessageResolver.defaultThreadID
         let finalText = reply.chatRenderText(emptyFallback: "Hermes sent a reply through BurnBar Cloud.")
         let timestamp = Self.gatewayReplyDate(from: reply.createdAt) ?? Date()
         let resolvedModelName = modelName?.nilIfBlank ?? modelID?.nilIfBlank

@@ -25,6 +25,22 @@ struct HermesSettingsView: View {
 
     @State var editingToken = ""
 
+    @State var gatewayDraftURL = ""
+
+    @State var gatewayDraftToken = ""
+
+    @State var gatewayDraftModel = ""
+
+    @State var gatewaySettingsError: String?
+
+    @State var isSavingGatewaySettings = false
+
+    @State var didPrimeGatewaySettingsDraft = false
+
+    @State var isAddingDirectConnection = false
+
+    @State var directConnectionError: String?
+
     @State var newDirectURL = ""
 
     @State var newDirectName = ""
@@ -174,6 +190,12 @@ struct HermesSettingsView: View {
                 gatewayPairingCode = formatted
             }
         }
+        .onAppear {
+            primeGatewaySettingsDrafts()
+        }
+        .onChange(of: service.selectedConnection.id) { _, _ in
+            primeGatewaySettingsDrafts(force: true)
+        }
     }
 
     var headerCard: some View {
@@ -224,6 +246,8 @@ struct HermesSettingsView: View {
                 }
 
                 Button {
+                    directConnectionError = nil
+                    editingToken = ""
                     showAddDirectSheet = true
                 } label: {
                     HStack(spacing: MobileTheme.Spacing.sm) {
@@ -623,35 +647,66 @@ struct HermesSettingsView: View {
             Form {
                 Section("Connection Details") {
                     TextField("Name (e.g. Home Mac)", text: $newDirectName)
+                        .textInputAutocapitalization(.words)
                     TextField("URL (e.g. http://192.168.1.42:8642)", text: $newDirectURL)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                    SecureField("Bearer token (optional)", text: $editingToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                if let directConnectionError {
+                    Section {
+                        Label(directConnectionError, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(MobileTheme.warning)
+                    }
                 }
                 Section {
-                    Button("Save") {
-                        // Direct URL connections are ephemeral until
-                        // validated. The service will auto-discover or
-                        // the user can select this as a custom entry.
-                        // For now, we just store as a preference that
-                        // the gateway URL text field already captures.
-                        // Future: add to HermesConnectionRecord via a
-                        // pairing / discovery flow.
-                        showAddDirectSheet = false
-                        newDirectName = ""
-                        newDirectURL = ""
+                    Button {
+                        Task { await addDirectConnectionFromSettings() }
+                    } label: {
+                        if isAddingDirectConnection {
+                            ProgressView()
+                        } else {
+                            Text("Save and Connect")
+                        }
                     }
-                    .disabled(newDirectURL.isEmpty)
+                    .disabled(!canSaveDirectConnection)
                 }
             }
             .navigationTitle("Add Direct Hermes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showAddDirectSheet = false }
+                    Button("Cancel") {
+                        directConnectionError = nil
+                        showAddDirectSheet = false
+                    }
+                        .disabled(isAddingDirectConnection)
                 }
             }
         }
+    }
+
+    var canSaveDirectConnection: Bool {
+        !isAddingDirectConnection
+            && !newDirectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && HermesService.validatedEndpointURL(newDirectURL) != nil
+    }
+
+    var canSaveGatewaySettings: Bool {
+        !isSavingGatewaySettings
+            && HermesService.validatedEndpointURL(gatewayDraftURL) != nil
+    }
+
+    func primeGatewaySettingsDrafts(force: Bool = false) {
+        guard force || !didPrimeGatewaySettingsDraft else { return }
+        gatewayDraftURL = service.selectedConnection.endpointURL ?? service.baseURL.absoluteString
+        gatewayDraftToken = (try? service.secretStore.load(connectionID: service.selectedConnection.id)) ?? ""
+        gatewayDraftModel = service.selectedModelID ?? ""
+        gatewaySettingsError = nil
+        didPrimeGatewaySettingsDraft = true
     }
 
     func sectionTitle(_ title: String, icon: String, color: Color) -> some View {
@@ -705,31 +760,6 @@ struct HermesSettingsView: View {
         }
     }
 
-    var urlBinding: Binding<String> {
-        Binding(
-            get: { service.selectedConnection.endpointURL ?? "http://localhost:8642" },
-            set: { _ in
-                // Update the selected connection's endpoint URL
-                // This is a mutable property on the service's selectedConnection
-                // In practice, HermesService manages this via its own persistence
-            }
-        )
-    }
-
-    var tokenBinding: Binding<String> {
-        Binding(
-            get: { "" },
-            set: { _ in }
-        )
-    }
-
-    var modelBinding: Binding<String> {
-        Binding(
-            get: { "" },
-            set: { _ in }
-        )
-    }
-
     var relayBinding: Binding<Bool> {
         Binding(
             get: { service.isRemoteRelayEnabled },
@@ -764,6 +794,87 @@ struct HermesSettingsView: View {
 
     func presentModelPicker() {
         showModelPicker = true
+    }
+
+    @MainActor
+    func addDirectConnectionFromSettings() async {
+        let displayName = newDirectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpointURL = newDirectURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bearerToken = editingToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !displayName.isEmpty, HermesService.validatedEndpointURL(endpointURL) != nil else {
+            directConnectionError = "Use a name and a supported HTTPS, localhost, or private-LAN Hermes URL."
+            return
+        }
+
+        directConnectionError = nil
+        isAddingDirectConnection = true
+        defer { isAddingDirectConnection = false }
+
+        do {
+            try await service.addDirectConnection(
+                displayName: displayName,
+                endpointURL: endpointURL,
+                bearerToken: bearerToken.isEmpty ? nil : bearerToken
+            )
+            newDirectName = ""
+            newDirectURL = ""
+            editingToken = ""
+            showAddDirectSheet = false
+            HapticBus.primaryAction()
+        } catch {
+            directConnectionError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func saveGatewaySettingsFromGatewaySection() async {
+        let endpointURL = gatewayDraftURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bearerToken = gatewayDraftToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelID = gatewayDraftModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let endpoint = HermesService.validatedEndpointURL(endpointURL) else {
+            gatewaySettingsError = "Use a supported HTTPS, localhost, or private-LAN Hermes URL."
+            return
+        }
+
+        gatewaySettingsError = nil
+        isSavingGatewaySettings = true
+        defer { isSavingGatewaySettings = false }
+
+        do {
+            if service.selectedConnection.mode == .directURL,
+               let selectedURL = service.selectedConnection.endpointURL,
+               HermesService.validatedEndpointURL(selectedURL)?.absoluteString == endpoint.absoluteString {
+                if bearerToken.isEmpty {
+                    try service.secretStore.delete(connectionID: service.selectedConnection.id)
+                } else {
+                    try service.secretStore.save(bearerToken, connectionID: service.selectedConnection.id)
+                }
+            } else {
+                try await service.addDirectConnection(
+                    displayName: gatewayDirectConnectionDisplayName(for: endpoint),
+                    endpointURL: endpoint.absoluteString,
+                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                )
+            }
+
+            if modelID.isEmpty {
+                service.clearSelectedModel()
+            } else {
+                service.selectGatewayModelID(modelID)
+            }
+
+            HapticBus.primaryAction()
+        } catch {
+            gatewaySettingsError = error.localizedDescription
+        }
+    }
+
+    func gatewayDirectConnectionDisplayName(for endpoint: URL) -> String {
+        if service.selectedConnection.mode == .directURL,
+           !service.selectedConnection.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return service.selectedConnection.displayName
+        }
+        return endpoint.host.map { "Hermes \($0)" } ?? "Direct Hermes"
     }
 
     var shouldShowGatewayPairingControls: Bool {

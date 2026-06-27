@@ -107,17 +107,17 @@ const DEVICE_SCAN_EXTENSIONS = new Set([
 const DEVICE_IDENTIFIER_PATTERNS = [
   {
     kind: "physical iOS CoreDevice identifier",
-    context: /\b(?:iPhone|iOS|CoreDevice|devicectl|physical device)\b/i,
+    context: /\b(?:iPhone|iPad|iOS|CoreDevice|devicectl|physical device|Device|deviceId|device)\b/i,
     token: /\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b/i,
   },
   {
     kind: "physical iOS CoreDevice identifier",
     pattern:
-      /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
+      /\b(?:id=|--device\s+|Device:\s*|["']device(?:Id)?["']\s*:\s*["'])([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
   },
   {
     kind: "physical iOS USB UDID",
-    context: /\b(?:iPhone|iOS|USB|UDID|ios-deploy)\b/i,
+    context: /\b(?:iPhone|iPad|iOS|USB|UDID|ios-deploy|Device|deviceId|device)\b/i,
     token: /\b[0-9A-F]{8}-[0-9A-F]{16}\b/i,
   },
   {

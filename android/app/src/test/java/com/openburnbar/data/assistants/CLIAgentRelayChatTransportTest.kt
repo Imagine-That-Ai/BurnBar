@@ -23,7 +23,9 @@ class CLIAgentRelayChatTransportTest {
                               "modelID": "gpt-test",
                               "transcriptPieces": [
                                 {"id": "p1", "kind": "text", "value": "Mac Codex answered."},
-                                {"id": "p2", "kind": "toolUse", "value": "Read", "detail": "AgentLens/App.swift"}
+                                {"id": "p2", "kind": "reasoning", "value": "Checked local context."},
+                                {"id": "p3", "kind": "refusal", "value": "No unsafe action needed."},
+                                {"id": "p4", "kind": "toolUse", "value": "Read", "detail": "AgentLens/App.swift"}
                               ]
                             }
                     """.trimIndent(),
@@ -63,8 +65,10 @@ class CLIAgentRelayChatTransportTest {
         assertEquals(CLIAgentRelayChatEventKind.COMPLETED, events.first().kind)
         assertEquals("Mac Codex answered.", events.first().text)
         assertEquals("gpt-test", events.first().modelID)
-        assertEquals(CLIAgentRelayTranscriptPieceKind.TOOL_USE, events.first().transcriptPieces[1].kind)
-        assertEquals("AgentLens/App.swift", events.first().transcriptPieces[1].detail)
+        assertEquals(CLIAgentRelayTranscriptPieceKind.REASONING, events.first().transcriptPieces[1].kind)
+        assertEquals(CLIAgentRelayTranscriptPieceKind.REFUSAL, events.first().transcriptPieces[2].kind)
+        assertEquals(CLIAgentRelayTranscriptPieceKind.TOOL_USE, events.first().transcriptPieces[3].kind)
+        assertEquals("AgentLens/App.swift", events.first().transcriptPieces[3].detail)
     }
 
     @Test

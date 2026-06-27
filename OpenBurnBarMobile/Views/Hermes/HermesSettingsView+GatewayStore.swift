@@ -1010,7 +1010,7 @@ final class HermesGatewaySettingsStore {
             // open surfaces the calm re-pair line, never an empty preview.
             preview: reply.chatRenderText(emptyFallback: "Hermes sent a reply through BurnBar Cloud."),
             runtime: AssistantRuntimeID.hermes.rawValue,
-            threadID: reply.threadId ?? gatewayThreadID,
+            threadID: gatewayThreadID,
             provider: gatewayReplyModelProvider(modelID: modelID)
         )
     }
@@ -1019,7 +1019,7 @@ final class HermesGatewaySettingsStore {
         let modelID = gatewayReplyModelID()
         HermesService.shared.recordBurnBarGatewayReply(
             reply,
-            threadID: reply.threadId ?? gatewayThreadID,
+            threadID: gatewayThreadID,
             modelID: modelID,
             modelName: modelID
         )

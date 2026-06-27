@@ -190,6 +190,40 @@ final class HermesAttachmentEncoderTests: XCTestCase {
         XCTAssertTrue(text.contains("/Users/me/Library/Group/HermesChats/default/attachments/x-session.zip"))
     }
 
+    func testWorkspaceReferenceOnlyAttachmentsDoNotRequireByteLoading() {
+        let video = HermesAttachment(
+            kind: .video,
+            displayName: "clip.mov",
+            mimeType: "video/quicktime",
+            byteSize: HermesAttachmentLimits.maxGenericBytes,
+            workspaceRelativePath: "attachments/x-clip.mov"
+        )
+        let generic = HermesAttachment(
+            kind: .generic,
+            displayName: "archive.data",
+            mimeType: "application/octet-stream",
+            byteSize: HermesAttachmentLimits.maxGenericBytes,
+            workspaceRelativePath: "attachments/x-archive.data"
+        )
+        let (image, _) = makeImageAttachment()
+        let audio = HermesAttachment(
+            kind: .audio,
+            displayName: "voice.wav",
+            mimeType: "audio/wav",
+            byteSize: 1024,
+            workspaceRelativePath: "attachments/x-voice.wav"
+        )
+
+        XCTAssertFalse(HermesAttachmentEncoder.shouldLoadAttachmentBytes(for: video))
+        XCTAssertFalse(HermesAttachmentEncoder.shouldLoadAttachmentBytes(for: generic))
+        XCTAssertTrue(HermesAttachmentEncoder.shouldLoadAttachmentBytes(for: image))
+        XCTAssertFalse(HermesAttachmentEncoder.shouldLoadAttachmentBytes(for: audio))
+        XCTAssertTrue(HermesAttachmentEncoder.shouldLoadAttachmentBytes(
+            for: audio,
+            capabilities: HermesBackendCapabilities(vision: true, audio: true)
+        ))
+    }
+
     func testMissingTextWithImageStillEmitsTextPart() {
         let (attachment, bytes) = makeImageAttachment()
         let userMessage = HermesAttachmentEncoder.Message(

@@ -10,6 +10,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const DIST = new URL("../dist", import.meta.url).pathname;
 const RED = "\x1b[31m";
@@ -38,7 +39,11 @@ function builtRoutes(dir) {
       const rel = "/" + relative(DIST, dir).replace(/\\/g, "/");
       set.add(rel === "/." ? "/" : rel);
     } else if (e.endsWith(".html")) {
-      const rel = "/" + relative(DIST, p).replace(/\\/g, "/").replace(/\.html$/, "");
+      const rel =
+        "/" +
+        relative(DIST, p)
+          .replace(/\\/g, "/")
+          .replace(/\.html$/, "");
       set.add(rel);
     }
   }
@@ -56,68 +61,91 @@ function* hrefs(html) {
   while ((m = re.exec(html)) !== null) yield m[1];
 }
 
-if (!existsSync(DIST)) {
-  console.error(`${RED}dist/ does not exist — run "astro build" first.${RESET}`);
-  process.exit(1);
+export function isExecutableHrefScheme(href) {
+  const normalized = String(href ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalized.startsWith("javascript:") ||
+    normalized.startsWith("vbscript:") ||
+    normalized.startsWith("data:")
+  );
 }
 
-const routes = builtRoutes(DIST);
-const files = walk(DIST);
-let totalLinks = 0;
-let broken = 0;
-const issues = [];
+function shouldSkipHref(href) {
+  const normalized = String(href ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalized.startsWith("#") || normalized.startsWith("mailto:") || normalized.startsWith("tel:")
+  );
+}
 
-for (const f of files) {
-  const html = readFileSync(f, "utf-8");
-  const fileRel = relative(DIST, f);
-  for (const h of hrefs(html)) {
-    totalLinks++;
-    // Strip any leading whitespace / quotes before scheme check so URLs like
-    // " javascript:..." or "JaVaScRiPt:..." cannot bypass the prefix match
-    // (CodeQL: js/incomplete-url-scheme-check).
-    const trimmed = h.trim().toLowerCase();
-    if (
-      trimmed.startsWith("#") ||
-      trimmed.startsWith("mailto:") ||
-      trimmed.startsWith("tel:") ||
-      trimmed.startsWith("data:") ||
-      trimmed.startsWith("javascript:") ||
-      trimmed.startsWith("vbscript:")
-    ) continue;
-
-    if (h.startsWith("http://") || h.startsWith("https://")) {
-      // Validate format only (no network).
-      try {
-        new URL(h);
-      } catch {
-        broken++;
-        issues.push(`${fileRel}: malformed URL ${h}`);
-      }
-      continue;
-    }
-
-    // Internal href — strip query/fragment, normalize trailing slash
-    const cleaned = h.replace(/[?#].*$/, "").replace(/\/$/, "") || "/";
-    if (routes.has(cleaned)) continue;
-    if (cleaned !== "/" && routes.has(cleaned + "/")) continue;
-    if (hasAsset(cleaned)) continue;
-
-    // macOS DMG is published out-of-band (not copied into dist/ on CI).
-    if (/^\/downloads\/OpenBurnBar-.*\.(dmg|zip)$/.test(cleaned)) continue;
-
-    // Allow "" empty
-    if (h === "") continue;
-
-    broken++;
-    issues.push(`${fileRel}: unresolved ${h}`);
+export function runLinkCheck() {
+  if (!existsSync(DIST)) {
+    console.error(`${RED}dist/ does not exist — run "astro build" first.${RESET}`);
+    process.exit(1);
   }
+
+  const routes = builtRoutes(DIST);
+  const files = walk(DIST);
+  let totalLinks = 0;
+  let broken = 0;
+  const issues = [];
+
+  for (const f of files) {
+    const html = readFileSync(f, "utf-8");
+    const fileRel = relative(DIST, f);
+    for (const h of hrefs(html)) {
+      totalLinks++;
+      if (isExecutableHrefScheme(h)) {
+        broken++;
+        issues.push(`${fileRel}: blocked executable URL scheme ${h}`);
+        continue;
+      }
+
+      if (shouldSkipHref(h)) continue;
+
+      const href = h.trim();
+      const normalizedHref = href.toLowerCase();
+      if (normalizedHref.startsWith("http://") || normalizedHref.startsWith("https://")) {
+        // Validate format only (no network).
+        try {
+          new URL(href);
+        } catch {
+          broken++;
+          issues.push(`${fileRel}: malformed URL ${h}`);
+        }
+        continue;
+      }
+
+      // Internal href — strip query/fragment, normalize trailing slash
+      const cleaned = href.replace(/[?#].*$/, "").replace(/\/$/, "") || "/";
+      if (routes.has(cleaned)) continue;
+      if (cleaned !== "/" && routes.has(cleaned + "/")) continue;
+      if (hasAsset(cleaned)) continue;
+
+      // macOS DMG is published out-of-band (not copied into dist/ on CI).
+      if (/^\/downloads\/OpenBurnBar-.*\.(dmg|zip)$/.test(cleaned)) continue;
+
+      // Allow "" empty
+      if (h === "") continue;
+
+      broken++;
+      issues.push(`${fileRel}: unresolved ${h}`);
+    }
+  }
+
+  console.log(`${DIM}Scanned ${files.length} HTML files, ${totalLinks} hrefs.${RESET}`);
+  console.log(`${DIM}Known routes: ${routes.size}${RESET}`);
+  if (broken > 0) {
+    console.log(`${RED}✗ ${broken} broken link(s):${RESET}`);
+    for (const i of issues) console.log(`  ${RED}—${RESET} ${i}`);
+    process.exit(1);
+  }
+  console.log(`${GREEN}✓ All links resolve.${RESET}`);
 }
 
-console.log(`${DIM}Scanned ${files.length} HTML files, ${totalLinks} hrefs.${RESET}`);
-console.log(`${DIM}Known routes: ${routes.size}${RESET}`);
-if (broken > 0) {
-  console.log(`${RED}✗ ${broken} broken link(s):${RESET}`);
-  for (const i of issues) console.log(`  ${RED}—${RESET} ${i}`);
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runLinkCheck();
 }
-console.log(`${GREEN}✓ All links resolve.${RESET}`);

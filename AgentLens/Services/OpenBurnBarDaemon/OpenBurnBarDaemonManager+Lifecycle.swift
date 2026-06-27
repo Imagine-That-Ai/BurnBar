@@ -120,13 +120,11 @@ extension OpenBurnBarDaemonManager {
         dependencies: OpenBurnBarDaemonDependencies
     ) -> Bool {
         guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else {
-            return dependencies.fileManager.isExecutableFile(atPath: paths.installedBinaryURL.path)
-                && !dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path)
+            return false
         }
         let sourceURL = sourceBinaryURL.standardizedFileURL
         let installedURL = paths.installedBinaryURL.standardizedFileURL
         guard dependencies.fileManager.isExecutableFile(atPath: sourceURL.path) else { return false }
-        guard dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path) else { return true }
         guard sourceURL != installedURL else { return false }
         guard dependencies.fileManager.fileExists(atPath: installedURL.path) else { return true }
 
@@ -149,10 +147,28 @@ extension OpenBurnBarDaemonManager {
             )
             return true
         }
+
+        func trustedSourceCanDriveRefresh() -> Bool {
+            // Never refresh a working installed daemon from a source binary that
+            // fails the first-party signature requirement. A stale/ad-hoc leftover
+            // source should not block provider mutations while the installed daemon
+            // is otherwise healthy, and a trusted newer source still upgrades.
+            do {
+                try dependencies.validateDaemonBinary(sourceURL)
+                return true
+            } catch {
+                AppLogger.network.notice(
+                    "daemon_refresh_skipped_untrusted_source",
+                    metadata: ["reason": error.localizedDescription]
+                )
+                return false
+            }
+        }
+
         let sourceSize = (sourceAttributes[.size] as? NSNumber)?.int64Value
         let installedSize = (installedAttributes[.size] as? NSNumber)?.int64Value
         if sourceSize != installedSize {
-            return true
+            return trustedSourceCanDriveRefresh()
         }
 
         let sourceModifiedAt = sourceAttributes[.modificationDate] as? Date
@@ -160,11 +176,13 @@ extension OpenBurnBarDaemonManager {
         if let sourceModifiedAt,
            let installedModifiedAt,
            sourceModifiedAt.timeIntervalSince(installedModifiedAt) > 1 {
-            return true
+            return trustedSourceCanDriveRefresh()
         }
 
         do {
-            return try daemonBinaryDigest(at: sourceURL) != daemonBinaryDigest(at: installedURL)
+            let digestDiffers = try daemonBinaryDigest(at: sourceURL) != daemonBinaryDigest(at: installedURL)
+            guard digestDiffers else { return false }
+            return trustedSourceCanDriveRefresh()
         } catch {
             AppLogger.network.error("daemon_launchctl_loaded_check_failed", metadata: ["error": error.localizedDescription])
             return true

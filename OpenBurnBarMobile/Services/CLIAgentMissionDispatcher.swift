@@ -625,7 +625,7 @@ final class CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }

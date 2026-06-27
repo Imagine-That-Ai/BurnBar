@@ -72,6 +72,7 @@ type CounterWriter = {
 
 function eventDate(ev: UsageEventDoc): Date | undefined {
   return (
+    coerceFirestoreDate(ev.recordedAt) ??
     coerceFirestoreDate(ev.timestamp) ??
     coerceFirestoreDate(ev.startTime) ??
     coerceFirestoreDate(ev.endTime) ??

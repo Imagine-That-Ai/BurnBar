@@ -565,6 +565,41 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    /// Streams using the OpenClaude CLI (github.com/Gitlawb/openclaude) — an open
+    /// fork of Claude Code. It speaks the same `-p` / `--output-format stream-json`
+    /// / `--model` protocol, so it reuses the Claude process runner with the
+    /// `openclaude` binary. (Distinct from OpenClaw, which is a gateway provider.)
+    func chatOpenClaudeStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "openclaude") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runClaude(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     /// Streams using Factory Droid CLI only.
     func chatDroidStream(
         systemPrompt: String,
@@ -702,10 +737,51 @@ final class CLIBridge: ObservableObject {
         hermesModels: [HermesAdvertisedModel],
         models: [OpenAICompatibleAdvertisedModel]
     ) {
-        await OpenAICompatibleModelProbe.probeWithModels(
+        // Read the live /v1/models catalog (the picker's source of truth) and
+        // probe /health concurrently. The catalog can lag a cold-started gateway
+        // by a few seconds while it aggregates upstream providers, but /health
+        // answers immediately — and the gateway routes the canonical family names
+        // ("claude", "codex", "ollama", …) without needing the catalog. So we
+        // treat the gateway as available whenever EITHER endpoint answers, rather
+        // than dead-ending chat on a transient catalog read.
+        async let healthy = OpenAICompatibleModelProbe.healthReachable(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            timeout: 6
+        )
+        let catalog = await OpenAICompatibleModelProbe.probeWithModels(
             baseURL: baseURL,
             bearerToken: bearerToken,
             timeout: 8
         )
+        return Self.resolveHermesAvailability(catalog: catalog, healthReachable: await healthy)
+    }
+
+    /// Pure availability decision for the Hermes probe (extracted so the
+    /// catalog-vs-health fallback is unit-testable without a live gateway).
+    ///
+    /// - When the catalog read succeeds, use it verbatim (full model list).
+    /// - When the catalog read fails but `/health` answers, report the gateway as
+    ///   available with an empty (not-yet-readable) catalog — chat still functions
+    ///   because the gateway routes the selected family directly, and the picker
+    ///   self-heals on the next probe.
+    /// - When neither answers, the gateway is genuinely down.
+    nonisolated static func resolveHermesAvailability(
+        catalog: (
+            available: Bool,
+            modelName: String?,
+            hermesModels: [HermesAdvertisedModel],
+            models: [OpenAICompatibleAdvertisedModel]
+        ),
+        healthReachable: Bool
+    ) -> (
+        available: Bool,
+        modelName: String?,
+        hermesModels: [HermesAdvertisedModel],
+        models: [OpenAICompatibleAdvertisedModel]
+    ) {
+        if catalog.available { return catalog }
+        if healthReachable { return (true, nil, [], []) }
+        return catalog
     }
 }

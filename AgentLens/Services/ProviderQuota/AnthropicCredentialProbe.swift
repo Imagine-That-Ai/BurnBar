@@ -64,11 +64,83 @@ struct AnthropicCredentialProbe: Sendable {
         }
     }
 
+    /// Authoritative per-organization rate-limit data extracted from the
+    /// `anthropic-ratelimit-*` headers Anthropic returns on every Messages API
+    /// response. For Claude Max/Pro consumer plans these are the `unified-*`
+    /// headers (5-hour/7-day rolling token budget); for Console API keys they
+    /// are the standard per-minute RPM/ITPM/OTPM headers.
+    ///
+    /// The `-reset` values are seconds-until-reset (per Anthropic's docs), not
+    /// absolute timestamps. The caller converts to an absolute `Date`.
+    struct RateLimitHeaders: Sendable, Equatable {
+        // Unified (Claude Max / Pro consumer plans)
+        let unifiedTokensLimit: Double?
+        let unifiedTokensRemaining: Double?
+        let unifiedTokensResetSeconds: Double?
+
+        // Standard (Console API keys)
+        let requestsLimit: Double?
+        let requestsRemaining: Double?
+        let requestsResetSeconds: Double?
+        let inputTokensLimit: Double?
+        let inputTokensRemaining: Double?
+        let inputTokensResetSeconds: Double?
+        let outputTokensLimit: Double?
+        let outputTokensRemaining: Double?
+        let outputTokensResetSeconds: Double?
+
+        var hasUnifiedData: Bool {
+            unifiedTokensLimit != nil || unifiedTokensRemaining != nil
+        }
+
+        var hasStandardData: Bool {
+            requestsLimit != nil || requestsRemaining != nil
+                || inputTokensLimit != nil || inputTokensRemaining != nil
+                || outputTokensLimit != nil || outputTokensRemaining != nil
+        }
+
+        var isEmpty: Bool { !hasUnifiedData && !hasStandardData }
+
+        static let empty = RateLimitHeaders(
+            unifiedTokensLimit: nil, unifiedTokensRemaining: nil, unifiedTokensResetSeconds: nil,
+            requestsLimit: nil, requestsRemaining: nil, requestsResetSeconds: nil,
+            inputTokensLimit: nil, inputTokensRemaining: nil, inputTokensResetSeconds: nil,
+            outputTokensLimit: nil, outputTokensRemaining: nil, outputTokensResetSeconds: nil
+        )
+
+        /// Parse rate-limit headers from an HTTP response. Header lookup is
+        /// case-insensitive via `HTTPURLResponse.value(forHTTPHeaderField:)`.
+        static func parse(from response: HTTPURLResponse) -> RateLimitHeaders {
+            func doubleValue(_ name: String) -> Double? {
+                guard let raw = response.value(forHTTPHeaderField: name),
+                      let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines) as String?,
+                      !trimmed.isEmpty else { return nil }
+                return Double(trimmed)
+            }
+
+            return RateLimitHeaders(
+                unifiedTokensLimit: doubleValue("anthropic-ratelimit-unified-tokens-limit"),
+                unifiedTokensRemaining: doubleValue("anthropic-ratelimit-unified-tokens-remaining"),
+                unifiedTokensResetSeconds: doubleValue("anthropic-ratelimit-unified-tokens-reset"),
+                requestsLimit: doubleValue("anthropic-ratelimit-requests-limit"),
+                requestsRemaining: doubleValue("anthropic-ratelimit-requests-remaining"),
+                requestsResetSeconds: doubleValue("anthropic-ratelimit-requests-reset"),
+                inputTokensLimit: doubleValue("anthropic-ratelimit-input-tokens-limit"),
+                inputTokensRemaining: doubleValue("anthropic-ratelimit-input-tokens-remaining"),
+                inputTokensResetSeconds: doubleValue("anthropic-ratelimit-input-tokens-reset"),
+                outputTokensLimit: doubleValue("anthropic-ratelimit-output-tokens-limit"),
+                outputTokensRemaining: doubleValue("anthropic-ratelimit-output-tokens-remaining"),
+                outputTokensResetSeconds: doubleValue("anthropic-ratelimit-output-tokens-reset")
+            )
+        }
+    }
+
     struct Result: Sendable, Equatable {
         let verdict: Verdict
         let shape: Shape
         let redactedLabel: String
         let probedAt: Date
+        let rateLimitHeaders: RateLimitHeaders
 
         var isHealthy: Bool { verdict.isHealthy }
     }
@@ -145,7 +217,8 @@ struct AnthropicCredentialProbe: Sendable {
                 verdict: .unexpected(status: 0, message: "could not encode probe body"),
                 shape: shape,
                 redactedLabel: label,
-                probedAt: clock()
+                probedAt: clock(),
+                rateLimitHeaders: .empty
             )
         }
         let request = built.request
@@ -158,18 +231,21 @@ struct AnthropicCredentialProbe: Sendable {
                     verdict: .networkError(message: "missing HTTP response"),
                     shape: shape,
                     redactedLabel: label,
-                    probedAt: clock()
+                    probedAt: clock(),
+                    rateLimitHeaders: .empty
                 )
             }
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             let verdict = classify(status: http.statusCode, body: bodyText)
-            return Result(verdict: verdict, shape: shape, redactedLabel: label, probedAt: clock())
+            let headers = RateLimitHeaders.parse(from: http)
+            return Result(verdict: verdict, shape: shape, redactedLabel: label, probedAt: clock(), rateLimitHeaders: headers)
         } catch {
             return Result(
                 verdict: .networkError(message: error.localizedDescription),
                 shape: shape,
                 redactedLabel: label,
-                probedAt: clock()
+                probedAt: clock(),
+                rateLimitHeaders: .empty
             )
         }
     }

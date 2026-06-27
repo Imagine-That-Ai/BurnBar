@@ -36,7 +36,8 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("forge"), "forge")
         XCTAssertEqual(exe("antigravity"), "agy")
         XCTAssertEqual(exe("grok"), "grok")
-        XCTAssertEqual(exe("openclaw"), "openclaude")
+        XCTAssertEqual(exe("openclaw"), "openclaw")
+        XCTAssertEqual(exe("openclaude"), "openclaude")
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
         XCTAssertEqual(exe("ollama"), "zsh")
@@ -836,6 +837,110 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8317/v1/models")
         XCTAssertEqual(request.timeoutInterval, 10)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer gateway-token")
+    }
+
+    // MARK: - Hermes catalog dead-end fix
+    //
+    // Regression coverage for "Hermes gateway is running, but OpenBurnBar could
+    // not read its live model catalog." — a running gateway whose /v1/models
+    // read is slow/transient must NOT dead-end chat.
+
+    func test_openAICompatibleModelProbe_healthURLReplacesPath() throws {
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:8642"))
+        XCTAssertEqual(OpenAICompatibleModelProbe.healthURL(baseURL: base)?.absoluteString,
+                       "http://127.0.0.1:8642/health")
+        let baseWithPath = try XCTUnwrap(URL(string: "http://127.0.0.1:8642/api"))
+        XCTAssertEqual(OpenAICompatibleModelProbe.healthURL(baseURL: baseWithPath)?.absoluteString,
+                       "http://127.0.0.1:8642/health")
+    }
+
+    func test_resolveHermesAvailability_catalogReadablePassesThrough() {
+        let models = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            )
+        ]
+        let hermesModels = [HermesAdvertisedModel(id: "claude-haiku-4-5", displayName: "Claude Haiku", family: .claude)]
+        let resolved = CLIBridge.resolveHermesAvailability(
+            catalog: (available: true, modelName: "claude-haiku-4-5", hermesModels: hermesModels, models: models),
+            healthReachable: false
+        )
+        XCTAssertTrue(resolved.available)
+        XCTAssertEqual(resolved.modelName, "claude-haiku-4-5")
+        XCTAssertEqual(resolved.models, models)
+    }
+
+    func test_resolveHermesAvailability_catalogUnreadableButHealthyStaysAvailableWithEmptyCatalog() {
+        let resolved = CLIBridge.resolveHermesAvailability(
+            catalog: (available: false, modelName: nil, hermesModels: [], models: []),
+            healthReachable: true
+        )
+        XCTAssertTrue(resolved.available,
+                      "a gateway answering /health must read as available even when /v1/models is unreadable")
+        XCTAssertNil(resolved.modelName)
+        XCTAssertTrue(resolved.models.isEmpty)
+    }
+
+    func test_resolveHermesAvailability_catalogUnreadableAndUnhealthyIsUnavailable() {
+        let resolved = CLIBridge.resolveHermesAvailability(
+            catalog: (available: false, modelName: nil, hermesModels: [], models: []),
+            healthReachable: false
+        )
+        XCTAssertFalse(resolved.available)
+    }
+
+    func test_selectedModelRoutingError_hermesEmptyCatalogWithSelectedFamilyProceeds() {
+        // Exactly the screenshot case: gateway up, /v1/models not yet readable,
+        // user picked a family ("claude"). Must NOT block — the gateway routes
+        // the canonical family name directly.
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes, selectedModel: "claude", liveModels: []
+        ))
+    }
+
+    func test_selectedModelRoutingError_hermesEmptySelectionStillBlocks() {
+        XCTAssertEqual(
+            ChatSessionController.selectedModelRoutingError(backend: .hermes, selectedModel: "", liveModels: []),
+            "No eligible route for Hermes. Add or enable an account/provider that serves this model."
+        )
+    }
+
+    func test_selectedModelRoutingError_openClawEmptyCatalogStillVerifies() {
+        // OpenClaw is a generic OpenAI-compatible gateway: its model id must match
+        // the advertised catalog, so an unread catalog keeps the verify guard.
+        let error = ChatSessionController.selectedModelRoutingError(
+            backend: .openclaw, selectedModel: "gpt-4o-mini", liveModels: []
+        )
+        XCTAssertEqual(
+            error,
+            "Selected OpenClaw model 'gpt-4o-mini' has not been verified against this gateway's live /v1/models catalog. Refresh the gateway before sending, so the request is not silently rerouted."
+        )
+    }
+
+    func test_selectedModelRoutingError_hermesPopulatedCatalogStillBlocksUnroutableModel() {
+        let models = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            )
+        ]
+        XCTAssertEqual(
+            ChatSessionController.selectedModelRoutingError(backend: .hermes, selectedModel: "ghost-model", liveModels: models),
+            "No eligible route for ghost-model. Add or enable an account/provider that serves this model."
+        )
+    }
+
+    func test_selectedModelRoutingError_hermesPopulatedCatalogAllowsEligibleModel() {
+        let models = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            )
+        ]
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes, selectedModel: "claude-haiku-4-5", liveModels: models
+        ))
     }
 
     func test_cliBridge_codexArguments_includesReasoningEffort() {

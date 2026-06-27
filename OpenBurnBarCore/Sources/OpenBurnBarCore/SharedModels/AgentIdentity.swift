@@ -443,6 +443,11 @@ extension AgentIdentity {
             tagline = "Local-first agent runtime. Yours by default."
             capabilities = [.fullCLI, .memory, .mcpUI]
             dispatchTransport = .macRelay(runtime: "openclaw")
+        case .openClaude:
+            paletteHex = "D97757"
+            tagline = "OpenClaude — an open fork of Claude Code, on your Mac."
+            capabilities = [.fullCLI, .codeExecution, .memory, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "openclaude")
         case .droid:
             paletteHex = "8B5CF6"
             tagline = "Factory Droid via your Mac."
