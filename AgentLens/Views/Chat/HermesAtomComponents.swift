@@ -20,6 +20,39 @@ import OpenBurnBarCore
 // AgentLens already groups Chat code under one folder. Keep iOS components
 // in a separate file (lives in OpenBurnBarMobile/Views/Components/).
 
+enum ChatMeasurementWidthSanitizer {
+    static let fallbackFrameWidth: CGFloat = 1
+    static let maximumFrameWidth: CGFloat = 16_384
+
+    static func frameWidth(_ rawWidth: CGFloat) -> CGFloat {
+        guard rawWidth.isFinite, rawWidth > 0 else {
+            return fallbackFrameWidth
+        }
+        return min(max(rawWidth, fallbackFrameWidth), maximumFrameWidth)
+    }
+
+    static func measurementWidth(_ rawWidth: CGFloat) -> CGFloat? {
+        guard rawWidth.isFinite, rawWidth > 0 else {
+            return nil
+        }
+        return min(rawWidth, maximumFrameWidth)
+    }
+
+    static func bucketKey(_ rawWidth: CGFloat, quantum: CGFloat = 8) -> String {
+        guard let width = measurementWidth(rawWidth), quantum.isFinite, quantum > 0 else {
+            return "invalid"
+        }
+        return "\(Int((width / quantum).rounded(.down)))"
+    }
+
+    static func logValue(_ rawWidth: CGFloat) -> String {
+        guard let width = measurementWidth(rawWidth) else {
+            return "invalid"
+        }
+        return "\(Int(width.rounded()))"
+    }
+}
+
 // MARK: - Environment
 
 private struct MacHermesAtomNavigatorKey: EnvironmentKey {
@@ -338,14 +371,15 @@ struct HermesRichBubble: View {
 
     @ViewBuilder
     private func content(width: CGFloat) -> some View {
+        let safeWidth = ChatMeasurementWidthSanitizer.frameWidth(width)
         // During a resize drag the bubble width can momentarily collapse toward
         // zero. Laying the resolved fragments into a 0-wide frame would stack
         // every fragment on top of each other; render the self-sizing fallback
         // at a 1pt floor instead until the width recovers. `measure()` already
         // no-ops at width <= 0, so the resolved `lines` are still valid once it
         // widens again.
-        if lines.isEmpty || width < 1 {
-            attributedFallback(width: max(width, 1))
+        if lines.isEmpty || safeWidth <= ChatMeasurementWidthSanitizer.fallbackFrameWidth {
+            attributedFallback(width: safeWidth)
                 .task(id: measureKey(width: width)) { await measure(at: width) }
         } else {
             VStack(alignment: .leading, spacing: 0) {
@@ -357,10 +391,10 @@ struct HermesRichBubble: View {
                         Spacer(minLength: 0)
                     }
                     .frame(height: resolvedLineHeight, alignment: .leading)
-                    .frame(maxWidth: width, alignment: .leading)
+                    .frame(maxWidth: safeWidth, alignment: .leading)
                 }
             }
-            .frame(maxWidth: width, alignment: .leading)
+            .frame(maxWidth: safeWidth, alignment: .leading)
             .task(id: measureKey(width: width)) { await measure(at: width) }
         }
     }
@@ -471,19 +505,19 @@ struct HermesRichBubble: View {
         // float would spawn an async Pretext relayout on every sample. Pretext
         // re-wraps at the bucket width, which is visually indistinguishable from
         // the exact width at this granularity.
-        let bucket = Int((width / 8).rounded(.down))
+        let bucket = ChatMeasurementWidthSanitizer.bucketKey(width)
         return "\(text.hashValue)|\(baseSize)|\(bucket)|\(resolvedLineHeight)"
     }
 
     private func measure(at width: CGFloat) async {
-        guard width > 0, !text.isEmpty else { return }
+        guard let safeWidth = ChatMeasurementWidthSanitizer.measurementWidth(width), !text.isEmpty else { return }
         let parsed = HermesAtomParser.parse(text)
         let items = parsed.map { Self.toPretextItem($0, baseSize: baseSize) }
         guard !items.isEmpty else { return }
         do {
             let engine = PretextEngine.shared
             let handle = try await engine.prepareRichInline(items: items)
-            let resolved = try await engine.layoutRichInline(handle: handle, maxWidth: width)
+            let resolved = try await engine.layoutRichInline(handle: handle, maxWidth: safeWidth)
             await engine.release(handle: handle)
             await MainActor.run {
                 self.runs = parsed
@@ -494,7 +528,7 @@ struct HermesRichBubble: View {
             AppLogger.chat.silentFailure(
                 "HermesRichBubble.measure",
                 error: error,
-                context: ["width": "\(Int(width))", "textLength": "\(text.count)"]
+                context: ["width": ChatMeasurementWidthSanitizer.logValue(width), "textLength": "\(text.count)"]
             )
         }
     }
@@ -571,10 +605,12 @@ struct StreamingBubble<Content: View>: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let rawWidth = proxy.size.width
+            let safeWidth = measuredWidth ?? ChatMeasurementWidthSanitizer.frameWidth(rawWidth)
             content()
-                .frame(maxWidth: measuredWidth ?? proxy.size.width, alignment: .leading)
-                .task(id: trigger(width: proxy.size.width)) {
-                    await measure(at: proxy.size.width)
+                .frame(maxWidth: safeWidth, alignment: .leading)
+                .task(id: trigger(width: rawWidth)) {
+                    await measure(at: rawWidth)
                 }
         }
         .frame(height: measuredHeight)
@@ -584,16 +620,17 @@ struct StreamingBubble<Content: View>: View {
 
     private func trigger(width: CGFloat) -> String {
         let bucket = isStreaming ? text.count / 32 : -1
-        return "\(text.hashValue)|\(width)|\(isStreaming ? 1 : 0)|\(isError ? 1 : 0)|\(bucket)"
+        let widthBucket = ChatMeasurementWidthSanitizer.bucketKey(width)
+        return "\(text.hashValue)|\(widthBucket)|\(isStreaming ? 1 : 0)|\(isError ? 1 : 0)|\(bucket)"
     }
 
     private func measure(at width: CGFloat) async {
-        guard width > 0, !text.isEmpty else { return }
+        guard let safeWidth = ChatMeasurementWidthSanitizer.measurementWidth(width), !text.isEmpty else { return }
         let canvasFont = "400 \(Int(baseSize))px -apple-system"
         do {
             let engine = PretextEngine.shared
             let prepared = try await engine.prepare(text: text, font: canvasFont)
-            let layout = try await engine.layout(handle: prepared, maxWidth: width, lineHeight: lineHeight)
+            let layout = try await engine.layout(handle: prepared, maxWidth: safeWidth, lineHeight: lineHeight)
             await MainActor.run {
                 self.measuredHeight = layout.height
             }
@@ -601,7 +638,7 @@ struct StreamingBubble<Content: View>: View {
                 let preparedSegments = try await engine.prepareWithSegments(text: text, font: canvasFont)
                 let tightest = try await engine.shrinkWrapWidth(
                     handle: preparedSegments,
-                    upper: width,
+                    upper: safeWidth,
                     targetLines: shrinkTargetLines
                 )
                 let final = try await engine.layoutWithLines(handle: preparedSegments, maxWidth: tightest, lineHeight: lineHeight)
@@ -620,7 +657,7 @@ struct StreamingBubble<Content: View>: View {
                 "StreamingBubble.measure",
                 error: error,
                 context: [
-                    "width": "\(Int(width))",
+                    "width": ChatMeasurementWidthSanitizer.logValue(width),
                     "textLength": "\(text.count)",
                     "isStreaming": "\(isStreaming)"
                 ]

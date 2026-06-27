@@ -8,6 +8,30 @@ import ViewInspector
 @MainActor
 final class ChatMessageViewTests: XCTestCase {
 
+    func test_chatMeasurementWidthSanitizerRejectsNonFiniteWidths() {
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.frameWidth(.nan), ChatMeasurementWidthSanitizer.fallbackFrameWidth)
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.frameWidth(.infinity), ChatMeasurementWidthSanitizer.fallbackFrameWidth)
+        XCTAssertNil(ChatMeasurementWidthSanitizer.measurementWidth(.nan))
+        XCTAssertNil(ChatMeasurementWidthSanitizer.measurementWidth(.infinity))
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.bucketKey(.nan), "invalid")
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.logValue(.infinity), "invalid")
+    }
+
+    func test_chatMeasurementWidthSanitizerBoundsFrameAndMeasurementWidths() {
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.frameWidth(-4), ChatMeasurementWidthSanitizer.fallbackFrameWidth)
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.frameWidth(0), ChatMeasurementWidthSanitizer.fallbackFrameWidth)
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.frameWidth(512), 512)
+        XCTAssertEqual(ChatMeasurementWidthSanitizer.measurementWidth(512), 512)
+        XCTAssertEqual(
+            ChatMeasurementWidthSanitizer.frameWidth(.greatestFiniteMagnitude),
+            ChatMeasurementWidthSanitizer.maximumFrameWidth
+        )
+        XCTAssertEqual(
+            ChatMeasurementWidthSanitizer.measurementWidth(.greatestFiniteMagnitude),
+            ChatMeasurementWidthSanitizer.maximumFrameWidth
+        )
+    }
+
     func test_rendersUserMessage() throws {
         let message = ViewTestFixtures.makeUserMessage(content: "Hello world")
         let view = ChatMessageView(
