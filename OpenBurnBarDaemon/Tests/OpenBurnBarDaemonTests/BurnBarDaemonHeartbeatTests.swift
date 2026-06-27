@@ -20,7 +20,7 @@ final class BurnBarDaemonHeartbeatTests: XCTestCase {
         XCTAssertEqual(BurnBarDaemonHeartbeat.readSnapshot(from: fileURL), snapshot)
     }
 
-    func test_writeSnapshot_overwriteKeepsOwnerOnlyPermissions() throws {
+    func test_writeSnapshot_overwriteRepairsOwnerOnlyPermissions() throws {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("daemon-heartbeat-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -32,8 +32,8 @@ final class BurnBarDaemonHeartbeatTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        // chmod runs only on first create; the atomic overwrite must keep 0o600.
         try BurnBarDaemonHeartbeat.writeSnapshot(snapshot, to: fileURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: fileURL.path)
         try BurnBarDaemonHeartbeat.writeSnapshot(snapshot, to: fileURL)
 
         let permissions = try XCTUnwrap(
