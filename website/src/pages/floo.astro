@@ -40,12 +40,6 @@ const moments = [
         remote control for it. See the screen, reach in and steer, send a file, take a call, even unlock
         it. From the next room or the next city.
       </p>
-      <p class="floo-backronym mono">
-        <span class="tag tag--mercury tag--plain mono">{FLOO.statusLabel}</span>
-        <span aria-hidden="true">·</span>
-        <span>{FLOO.name} — {FLOO.expansion}</span>
-        <span class="floo-wink">(or, if you prefer, <em>{FLOO.expansionWhimsical}</em>)</span>
-      </p>
       <div class="pagehead__ctas">
         <a class="btn btn--ember" href="/download"
           >Get OpenBurnBar <span aria-hidden="true">→</span></a
@@ -156,24 +150,6 @@ const moments = [
     justify-content: center;
     flex-wrap: wrap;
     margin-top: var(--s-5);
-  }
-  .floo-backronym {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-2);
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-top: var(--s-4);
-    font-size: var(--t-caption);
-    color: var(--text-mute);
-  }
-  .floo-backronym em {
-    color: var(--text-base);
-    font-style: italic;
-  }
-  .floo-wink {
-    color: var(--text-mute);
-    opacity: 0.85;
   }
   .floogroup {
     padding: var(--s-8) 0;

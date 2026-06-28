@@ -11,9 +11,8 @@ import {
 
 const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
 
-// Counts come from the data so headline copy can never drift out of sync.
+// Count comes from the data so headline copy can never drift out of sync.
 const primaryCount = PROVIDERS_PRIMARY.length;
-const detectedCount = PROVIDERS_DETECTED.length;
 ---
 
 <BaseLayout
@@ -24,13 +23,6 @@ const detectedCount = PROVIDERS_DETECTED.length;
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Providers</span>
       <h1 class="pagehead__h">An honest provider matrix.</h1>
-      <div class="lead-glass-wrap glass-pane">
-        <p class="lead">
-          {primaryCount} providers ship with real usage data today. {detectedCount} more are detected
-          but expose no usage API — we mark them so, rather than pretending. Confidence labels live on
-          every row.
-        </p>
-      </div>
     </div>
   </section>
 
