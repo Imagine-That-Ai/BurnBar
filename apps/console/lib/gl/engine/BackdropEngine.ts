@@ -297,7 +297,8 @@ export class BackdropEngine {
       }
     } else if (substrate === "webgl2") {
       ctx = canvas.getContext("webgl2", {
-        alpha: false,
+        // Keep host/native fallback surfaces visible until a shader paints.
+        alpha: true,
         antialias: false,
         depth: false,
         stencil: false,

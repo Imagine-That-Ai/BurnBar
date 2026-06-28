@@ -12,18 +12,24 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: #000;
+    background: transparent;
   }
-  /* Full-bleed dark stage. The engine mounts its canvases inside #host. */
+  /*
+   Keep the stage transparent until a kernel paints. The native dashboard
+   backdrop stays underneath as the cheap fallback for WebKit/WebGL failures.
+   */
   #host {
     position: fixed;
     inset: 0;
     width: 100%;
     height: 100%;
-    background: #000;
+    background: transparent;
     overflow: hidden;
   }
-  #host canvas { display: block; }
+  #host canvas {
+    display: block;
+    background: transparent;
+  }
 </style>
 </head>
 <body>

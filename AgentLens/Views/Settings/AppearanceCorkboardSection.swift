@@ -170,7 +170,7 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
-                KernelBackdropSettingsRow(swarmBackgroundEnabled: settingsManager.useWebsiteBackground)
+                KernelBackdropSettingsRow()
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -677,11 +677,9 @@ struct AppearanceCorkboardSection: View {
 /// Master toggle + 30-kernel picker for the WebGL2 "Window Backdrop" field.
 /// Both controls bind directly to the shared `@AppStorage` keys that
 /// ``KernelBackdropView`` reads, so a selection applies to the live backdrop
-/// immediately. Gated on the Swarm Background being on, because the kernel
-/// field renders in that same clear-surface layer.
+/// immediately. Kernels render independently from the native swarm so enabling
+/// this option does not start a second animated background renderer.
 private struct KernelBackdropSettingsRow: View {
-    let swarmBackgroundEnabled: Bool
-
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
@@ -689,10 +687,11 @@ private struct KernelBackdropSettingsRow: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             SettingsToggle(
                 title: "Window Backdrop",
-                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below. Requires Swarm Background.",
+                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below; a static plate stays behind the renderer as a cheap fallback.",
                 icon: "square.stack.3d.up.fill",
                 isOn: $useKernelBackdrop
             )
+            .settingsAnchor(SettingsAnchor.useKernelBackdrop)
             .onChange(of: useKernelBackdrop) { _, newValue in
                 Analytics.shared.track(.settingsChanged, [
                     "setting_key": "window_backdrop_kernel_enabled",
@@ -734,9 +733,8 @@ private struct KernelBackdropSettingsRow: View {
             .padding(.leading, 32)
             .opacity(useKernelBackdrop ? 1.0 : 0.55)
             .disabled(!useKernelBackdrop)
+            .settingsAnchor(SettingsAnchor.backdropKernel)
         }
-        .disabled(!swarmBackgroundEnabled)
-        .opacity(swarmBackgroundEnabled ? 1.0 : 0.45)
     }
 }
 

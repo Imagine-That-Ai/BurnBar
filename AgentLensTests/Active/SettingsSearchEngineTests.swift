@@ -177,6 +177,16 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertTrue(ids.contains("agents.clis"))
     }
 
+    func test_manifestFindsWindowBackdropControls() {
+        let windowBackdropIDs = SettingsSearchEngine.search("window backdrop", in: SettingsManifest.all).map(\.id)
+        XCTAssertEqual(windowBackdropIDs.first, "general.appearance.useKernelBackdrop")
+        XCTAssertTrue(windowBackdropIDs.contains("general.appearance.backdropKernel"))
+
+        let shaderIDs = SettingsSearchEngine.search("shader", in: SettingsManifest.all).map(\.id)
+        XCTAssertTrue(shaderIDs.contains("general.appearance.useKernelBackdrop"))
+        XCTAssertTrue(shaderIDs.contains("general.appearance.backdropKernel"))
+    }
+
     func test_legacyRoutingVocabularyLandsOnAgents() {
         // Vocabulary the user has typed for years — must still route them to
         // the Agents page, not return an empty result.

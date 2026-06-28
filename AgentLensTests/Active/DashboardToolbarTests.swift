@@ -81,6 +81,52 @@ final class DashboardToolbarTests: XCTestCase {
             .inspect())
     }
 
+    func test_dashboardBackdropKeepsCheapFallbackWhenKernelIsEnabled() throws {
+        let defaults = UserDefaults.standard
+        let previousKernelBackdrop = defaults.object(forKey: KernelBackdropPreferences.enabledKey)
+        defer {
+            if let previousKernelBackdrop {
+                defaults.set(previousKernelBackdrop, forKey: KernelBackdropPreferences.enabledKey)
+            } else {
+                defaults.removeObject(forKey: KernelBackdropPreferences.enabledKey)
+            }
+        }
+
+        defaults.set(true, forKey: KernelBackdropPreferences.enabledKey)
+
+        let settings = makeSettingsManager()
+        settings.useWebsiteBackground = false
+        settings.useConstellationBackground = false
+
+        XCTAssertNoThrow(try DashboardBackdrop(moodBand: .baseline)
+            .environment(settings)
+            .inspect())
+        XCTAssertNoThrow(try DashboardDepthBackdrop(density: .full)
+            .environment(settings)
+            .frame(width: 640, height: 420)
+            .inspect())
+    }
+
+    func test_kernelBackdropBundleKeepsNativeFallbackVisibleBeforeFirstPaint() throws {
+        let htmlURL = try XCTUnwrap(Bundle.main.url(
+            forResource: "index",
+            withExtension: "html",
+            subdirectory: "KernelBackdrop"
+        ))
+        let html = try String(contentsOf: htmlURL, encoding: .utf8)
+        XCTAssertTrue(html.contains("background: transparent;"))
+        XCTAssertFalse(html.contains("background: #000;"))
+
+        let scriptURL = try XCTUnwrap(Bundle.main.url(
+            forResource: "kernel-backdrop",
+            withExtension: "js",
+            subdirectory: "KernelBackdrop"
+        ))
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("getContext(\"webgl2\",{alpha:!0"))
+        XCTAssertFalse(script.contains("getContext(\"webgl2\",{alpha:!1"))
+    }
+
     func test_dashboardDepthBackdropRendersFlatAndDynamicBranches() throws {
         let flatSettings = makeSettingsManager()
         flatSettings.useWebsiteBackground = false

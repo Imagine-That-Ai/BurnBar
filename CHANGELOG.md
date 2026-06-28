@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Kept a static dashboard fallback underneath the experimental Window Backdrop
+  kernels, so a WebKit/WebGL renderer failure no longer leaves the dashboard
+  blank while avoiding a permanent second native swarm renderer. The bundled
+  WebKit stage and WebGL2 drawing buffer stay transparent until a kernel paints,
+  and Window Backdrop now works independently from the Swarm Background toggle.
 - Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
   "Credential not found" badge and a permanent "Refresh credential" button even
   right after a successful sign-in. Claude Max/Pro OAuth profiles routinely

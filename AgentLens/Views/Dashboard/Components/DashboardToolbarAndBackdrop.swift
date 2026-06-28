@@ -65,6 +65,10 @@ struct DashboardBackdrop: View {
         max(0, LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency))
     }
 
+    private var dynamicBackdropEnabled: Bool {
+        settingsManager.useWebsiteBackground || useKernelBackdrop
+    }
+
     var body: some View {
         ZStack {
             // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
@@ -76,13 +80,16 @@ struct DashboardBackdrop: View {
                 // Editorial / Paper skin: the light dot-crest (provider logos
                 // drifting from coloured dots on paper), like app.burnbar.ai.
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
-            } else if settingsManager.useWebsiteBackground {
+            } else if dynamicBackdropEnabled {
                 Group {
                     if useKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
-                        // on top.
+                        // on top. Keep the fallback static: running the native
+                        // swarm underneath every kernel frame would double-render
+                        // the expensive animated backdrop path.
+                        staticKernelFallback
                         KernelBackdropView()
                             .ignoresSafeArea()
                     } else if settingsManager.useConstellationBackground {
@@ -93,32 +100,43 @@ struct DashboardBackdrop: View {
                 }
                 .opacity(1 - 0.82 * clarity)
             } else {
-                DesignSystem.Colors.background
-                    .ignoresSafeArea()
+                staticDashboardFallback
                     .opacity(1 - 0.82 * clarity)
-
-                DesignSystem.Colors.ember
-                    .opacity(0.035)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .mask(alignment: .topLeading) {
-                        Rectangle()
-                            .frame(width: 520)
-                            .rotationEffect(.degrees(-11))
-                            .offset(x: -260, y: -80)
-                    }
-
-                DesignSystem.Colors.whimsy
-                    .opacity(0.025)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .mask(alignment: .bottomTrailing) {
-                        Rectangle()
-                            .frame(width: 460)
-                            .rotationEffect(.degrees(15))
-                            .offset(x: 220, y: 110)
-                    }
             }
             // cov:ignore-end
         }
+    }
+
+    @ViewBuilder
+    private var staticDashboardFallback: some View {
+        ZStack {
+            DesignSystem.Colors.background
+                .ignoresSafeArea()
+
+            DesignSystem.Colors.ember
+                .opacity(0.035)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .topLeading) {
+                    Rectangle()
+                        .frame(width: 520)
+                        .rotationEffect(.degrees(-11))
+                        .offset(x: -260, y: -80)
+                }
+
+            DesignSystem.Colors.whimsy
+                .opacity(0.025)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .bottomTrailing) {
+                    Rectangle()
+                        .frame(width: 460)
+                        .rotationEffect(.degrees(15))
+                        .offset(x: 220, y: 110)
+                }
+        }
+    }
+
+    private var staticKernelFallback: some View {
+        staticDashboardFallback
     }
 }
 

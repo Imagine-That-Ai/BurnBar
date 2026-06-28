@@ -201,7 +201,6 @@ private final class NonInteractiveWebView: WKWebView {
 enum KernelBackdropPreferences {
     /// Selected kernel id. Default `KernelCatalog.defaultID` ("fluid-aurora").
     static let kernelKey = "backdropKernel"
-    /// Master gate: when on, the dashboard backdrop renders the kernel field
-    /// instead of the ember swarm.
+    /// Master gate: when on, the dashboard backdrop renders the kernel field.
     static let enabledKey = "useKernelBackdrop"
 }
