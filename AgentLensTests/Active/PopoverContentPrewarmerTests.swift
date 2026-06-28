@@ -127,7 +127,11 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
 
         let popover = delegate.popover
         XCTAssertNotNil(popover?.contentViewController, "The prime must build real popover content")
-        XCTAssertEqual(popover?.behavior, .transient)
+        XCTAssertEqual(
+            popover?.behavior,
+            .applicationDefined,
+            "App-defined dismissal keeps sibling pet/avatar panels from looking like outside clicks"
+        )
         XCTAssertIdentical(popover?.delegate, delegate)
         let size = popover?.contentViewController?.view.fittingSize ?? .zero
         XCTAssertGreaterThan(size.width, 1, "The prime must pay the first layout off the click path")
@@ -173,7 +177,7 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         )
     }
 
-    func testPopoverDidShow_doesNotPromoteBackingWindow() {
+    func testPopoverDidShow_ignoresNotificationsWithoutTheMenuPopover() {
         let delegate = AppDelegate()
         AppCommandRouter.shared.makeMenuBarPopoverContent = { _ in AnyView(Text("Stable")) }
         delegate.primePopoverContent()
@@ -191,7 +195,7 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
 
         XCTAssertFalse(
             window.isVisible,
-            "The delegate must not force the transient popover panel key; AppKit owns show-time ordering"
+            "The delegate must ignore notifications that are not for the menu popover it owns"
         )
         window.close()
     }

@@ -676,6 +676,7 @@
 		5246A0685FC4DBD19A9BAB2A /* DataStoreStartupRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC34DC5BDC47F9CF57237B3F /* DataStoreStartupRecoveryView.swift */; };
 		5273A45BE58E6F23FCDBB9FA /* HermesRuntimeGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E60D57AD7995336DE633752 /* HermesRuntimeGate.swift */; };
 		52751E0EC42CF7271CC03069 /* StandardGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E349ABE3F28F5893424F45 /* StandardGallery.swift */; };
+		5300016E3513B8C61D761483 /* PopoverDismissController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7AB7407B065D8B1332A3F2F /* PopoverDismissController.swift */; };
 		5327AB07B47BC7986E16A0AA /* OpenBurnBarProviderCredentialNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5A9B6EF026F88B40744569 /* OpenBurnBarProviderCredentialNormalizer.swift */; };
 		534D61D68AFA6556C1D9D8FF /* SmartZoomContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04871BE2409862D1E9401A60 /* SmartZoomContextProviderTests.swift */; };
 		5357146B609CA413318F262A /* VoIPCallTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4189A1FE938A2AB45C360ED4 /* VoIPCallTrigger.swift */; };
@@ -3629,6 +3630,7 @@
 		B74B557366128B9BDF6DDEFE /* PetChatBackendAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetChatBackendAvailabilityTests.swift; sourceTree = "<group>"; };
 		B7742B0E83FDEB218EA50F96 /* AnalyticsTaxonomyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsTaxonomyTests.swift; sourceTree = "<group>"; };
 		B7A5A2558E567A495F10843B /* ManagedAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedAgentRuntime.swift; sourceTree = "<group>"; };
+		B7AB7407B065D8B1332A3F2F /* PopoverDismissController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverDismissController.swift; sourceTree = "<group>"; };
 		B8137EF7B8902918C3D41F79 /* PetDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDefinition.swift; sourceTree = "<group>"; };
 		B8214B3FA52967A1F16353B8 /* BUILD-NOTES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "BUILD-NOTES.md"; sourceTree = "<group>"; };
 		B822B7F184BA30B373B390B6 /* AntigravityQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -6264,6 +6266,7 @@
 				84CCFBECFAFA744C7E64FCC1 /* AppDelegate.swift */,
 				F42D0E82B5E3AF8D83CB4D46 /* OpenBurnBarAppSentryDSN.swift */,
 				F692EBE26CB89E924812CDCB /* PopoverContentPrewarmer.swift */,
+				B7AB7407B065D8B1332A3F2F /* PopoverDismissController.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -10649,6 +10652,7 @@
 				C132C3155571BBA4CB1B2B3E /* PixelClockSettingsCard.swift in Sources */,
 				E0C2FC880459D4C30A3222B9 /* PixelClockSnapshotAdapter.swift in Sources */,
 				93271D7720822F9847BF6F91 /* PopoverContentPrewarmer.swift in Sources */,
+				5300016E3513B8C61D761483 /* PopoverDismissController.swift in Sources */,
 				601643D1FD373A0645E4DFD6 /* PopoverQuickSwitchView.swift in Sources */,
 				E6F4AB5B102E3A0AC0C7BBC2 /* PopoverTooltip.swift in Sources */,
 				7ADC9B979EB5FB9ABEB3E9FD /* PrivacyIndexingSettingsView.swift in Sources */,
