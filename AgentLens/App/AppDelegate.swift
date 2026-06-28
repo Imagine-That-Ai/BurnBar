@@ -15,7 +15,7 @@ import OpenBurnBarCore
 /// popover's content is the same SwiftUI view tree (`MenuBarPopoverView`) used
 /// by the rest of the app, vended through `AppCommandRouter`.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     // Internal read access (`private(set)`) is the unit-test seam for the
     // popover prewarm wiring — the menu-bar status item never exists in the
@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     private(set) var popover: NSPopover?
     private(set) var popoverPrewarmer: PopoverContentPrewarmer?
     private var statusItemLocalMouseMonitor: Any?
-    private var statusItemEventBridgeMenu: NSMenu?
+    private let popoverDismissController = PopoverDismissController()
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     private var lastHandledStatusItemEventTime: TimeInterval = 0
 
@@ -284,11 +284,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)
         }
-        let bridgeMenu = NSMenu()
-        bridgeMenu.addItem(withTitle: "Open OpenBurnBar", action: nil, keyEquivalent: "")
-        bridgeMenu.delegate = self
-        item.menu = bridgeMenu
-        statusItemEventBridgeMenu = bridgeMenu
         self.statusItem = item
         installStatusItemMouseFallback()
         observeMenuBarIconStyle()
@@ -400,25 +395,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         }
     }
 
-    nonisolated func menuWillOpen(_ menu: NSMenu) {
-        menu.cancelTracking()
-        Task { @MainActor [weak self] in
-            self?.handleStatusItemMenuBridgeOpen()
-        }
-    }
-
-    private func handleStatusItemMenuBridgeOpen() {
-        guard statusItemEventBridgeMenu != nil,
-              let button = statusItem?.button,
-              shouldHandleStatusItemEventWithoutEvent() else {
-            return
-        }
-        togglePopover(button)
-    }
-
     private func togglePopover(_ sender: NSStatusBarButton) {
         if let popover, popover.isShown {
-            popover.performClose(sender)
+            closePopover(sender)
         } else {
             showPopover(sender)
         }
@@ -443,6 +422,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
 
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        popoverDismissController.installEscapeKeyMonitor { [weak self] in
+            self?.closePopover(nil)
+        }
         Analytics.shared.track(.menubarPopoverShown)
     }
 
@@ -451,19 +433,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
             return popover
         }
         let popover = NSPopover()
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         popover.animates = true
         popover.delegate = self
         self.popover = popover
         return popover
     }
 
+    private func closePopover(_ sender: Any?) {
+        guard let popover, popover.isShown else { return }
+        popover.performClose(sender)
+    }
+
     /// Builds a brand-new content controller from the CURRENT router
     /// factory and installs it. Shared by the click-path fallback and the
     /// off-click prewarm.
     private func installPopoverContent(into popover: NSPopover) {
-        let content = AppCommandRouter.shared.makeMenuBarPopoverContent?({ [weak popover] in
-            popover?.performClose(nil)
+        let content = AppCommandRouter.shared.makeMenuBarPopoverContent?({ [weak self] in
+            self?.closePopover(nil)
         }) ?? AnyView(Text("No Content"))
 
         let host = NSHostingController(rootView: content)
@@ -1315,9 +1302,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) {
-        // `NSPopover.show` owns panel ordering and focus. Forcing the backing
-        // panel key here can look like an outside activation to transient
-        // popovers and immediately dismiss the menu-bar dropdown.
+        guard let shownPopover = notification.object as? NSPopover,
+              shownPopover === popover,
+              let window = shownPopover.contentViewController?.view.window
+        else {
+            return
+        }
+
+        configureMenuPopoverWindow(window)
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -1325,8 +1317,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         // (fd19d53ac) — then rebuild it on the next main-queue turn so the
         // following open pays no construction or first-layout cost on the
         // click path (§15).
+        popoverDismissController.uninstall()
         popover?.contentViewController = nil
         popoverPrewarmer?.schedulePrime()
+    }
+
+    private func configureMenuPopoverWindow(_ window: NSWindow) {
+        window.level = .statusBar
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        if let panel = window as? NSPanel {
+            panel.hidesOnDeactivate = false
+            panel.becomesKeyOnlyIfNeeded = true
+        }
+        window.orderFrontRegardless()
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {
