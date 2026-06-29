@@ -134,6 +134,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .dashboardLayoutDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .useWebsiteBackgroundDidChange,
             object: nil
         )
@@ -338,6 +344,12 @@ final class SettingsManager {
     var appearanceSkin: AppSkin {
         get { _ = appearanceMutationVersion; return appearance.appearanceSkin }
         set { appearance.appearanceSkin = newValue }
+    }
+
+
+    var dashboardLayout: DashboardLayout {
+        get { _ = appearanceMutationVersion; return appearance.dashboardLayout }
+        set { appearance.dashboardLayout = newValue }
     }
 
     var showInMenuBar: Bool {

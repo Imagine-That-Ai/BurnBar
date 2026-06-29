@@ -44,6 +44,8 @@ public struct SwarmCanvasView: View {
     public let rendersAsynchronously: Bool
     public let currentMode: Binding<SwarmFormationMode>?
     public let logoOffsets: [CGSize]
+    /// Active substrate (foreground material). `nil` ⇒ the default dot render.
+    public let substrate: SwarmSubstrate?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -79,7 +81,8 @@ public struct SwarmCanvasView: View {
         maxFrameRate: Double? = nil,
         rendersAsynchronously: Bool = false,
         currentMode: Binding<SwarmFormationMode>? = nil,
-        logoOffsets: [CGSize] = Array(repeating: .zero, count: 3)
+        logoOffsets: [CGSize] = Array(repeating: .zero, count: 3),
+        substrate: SwarmSubstrate? = nil
     ) {
         let normalizedProviderGlyphs = enabledProviderGlyphs.map(SwarmProviderGlyphSelection.normalized) ?? SwarmProviderGlyphSelection.allProviders
 
@@ -104,6 +107,7 @@ public struct SwarmCanvasView: View {
         self.rendersAsynchronously = rendersAsynchronously
         self.currentMode = currentMode
         self.logoOffsets = logoOffsets
+        self.substrate = substrate
 
         let sim = SwarmSimulation(
             particleCount: particleCount ?? Self.adaptiveParticleCount,
@@ -119,6 +123,9 @@ public struct SwarmCanvasView: View {
         sim.setColorDriver(colorDriver)
         sim.enableSwarmSparkles = enableSwarmSparkles
         sim.panOffsets = logoOffsets
+        sim.substrate = substrate
+        sim.substrateAccent = accent
+        sim.substrateBackdrop = backdropColor
         _simulation = State(initialValue: sim)
     }
 
@@ -189,6 +196,9 @@ public struct SwarmCanvasView: View {
         }
         .onChange(of: excludeBrandShapesFromSwarm) {
             simulation.setExcludeBrandShapes(excludeBrandShapesFromSwarm)
+        }
+        .onChange(of: substrate.map(ObjectIdentifier.init)) {
+            simulation.substrate = substrate
         }
         .onReceive(NotificationCenter.default.publisher(for: .cycleSwarmShapeRequested)) { _ in
             currentMode?.wrappedValue = simulation.forceCycleShape()
@@ -368,6 +378,30 @@ public final class SwarmSimulation {
 
     var pointer: CGPoint?
 
+
+    // MARK: - Substrate layer (pluggable per-particle material painter)
+
+    /// The active substrate, or nil/PlainDots for the default dot render. Built
+    /// once by the host and reused so it can hold per-layout caches.
+    var substrate: SwarmSubstrate?
+
+    /// Accent color forwarded into the substrate `stage` (the View's `accent`,
+    /// finally load-bearing). Defaults to the ember brand accent.
+    var substrateAccent: Color = Color(red: 0.96, green: 0.31, blue: 0.36)
+
+    /// Optional backdrop plate color the substrate may read for blend choices.
+    var substrateBackdrop: Color?
+
+    /// Reduced-motion, stashed during `advance()` so `draw()` (which has no such
+    /// argument) can hand it to the substrate frame.
+    var substrateReduceMotion: Bool = false
+
+    /// Last flowTime a substrate frame was built — drives the normalized `dt`.
+    var lastSubstrateT: Double = 0
+
+    /// Shared lazily-built NN/kNN structure provider handed to every frame.
+    let substrateStructure = SubstrateStructureProvider()
+
     public var enableSwarmSparkles: Bool = true
 
     public var panOffsets: [CGSize] = Array(repeating: .zero, count: 3)
@@ -460,6 +494,7 @@ public final class SwarmSimulation {
     var lastUIMode: UIMode?
 
     public func advance(to date: Date, bounds size: CGSize, reduceMotion: Bool, isBatteryThrottled: Bool, uiMode: UIMode = .standard) {
+        substrateReduceMotion = reduceMotion   // stashed for the substrate frame in draw()
         let now = date.timeIntervalSinceReferenceDate
         let frameScale = Self.animationFrameScale(elapsed: lastAdvanceAt.map { now - $0 })
         lastAdvanceAt = now
@@ -691,6 +726,17 @@ public final class SwarmSimulation {
         renderScheme = scheme   // drives the light/dark particle palette in colorFromKey
         refreshResolvedLogoColorsIfNeeded(for: scheme)
 
+        // Substrate layer: when an active (non-plain) substrate fully paints the
+        // field, skip the engine's own dot/twinkle loops. Glyph particles still
+        // render afterward unless the substrate suppresses them.
+        let substrateResult = paintSubstrate(into: ctx, size: size, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+        if substrateResult.handled {
+            if !substrateResult.suppressesGlyphs {
+                drawGlyphParticles(into: ctx, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+            }
+            return
+        }
+
         let shouldRenderIndividually: Bool = {
             if colorDriver != nil { return true }
             if case .shapeProviderLogo = mode { return true }
@@ -767,10 +813,13 @@ public final class SwarmSimulation {
             }
         }
 
-        // Glyphs — preserve draw order, but reuse resolved text for particles
-        // with identical stable glyph/color pairs. During active color
-        // transitions or logo-derived colors, each particle keeps its exact
-        // per-particle resolve path.
+        drawGlyphParticles(into: ctx, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+    }
+
+    /// The brand-glyph (`$`, `tok`, `429`, provider marks) text pass, factored out
+    /// of `draw()` verbatim so the substrate hook can run it independently of the
+    /// dot loop. Behavior-preserving extraction.
+    func drawGlyphParticles(into ctx: GraphicsContext, isBatteryThrottled: Bool, uiMode: UIMode) {
         let canReuseGlyphText = colorDriver == nil && colorTransitionProgress >= 1.0
         var resolvedGlyphTextByKey: [ResolvedGlyphTextKey: GraphicsContext.ResolvedText] = [:]
         resolvedGlyphTextByKey.reserveCapacity(32)

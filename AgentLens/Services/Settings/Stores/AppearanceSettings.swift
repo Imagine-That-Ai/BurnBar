@@ -114,6 +114,19 @@ final class AppearanceSettings {
         }
     }
 
+    /// The named dashboard *layout* concept the macOS overview renders (see
+    /// `DashboardLayout`). Defaults to `.atelier` — the design phase's "keeper".
+    /// Written straight to `UserDefaults.standard` (in addition to the debounced
+    /// coordinator) so `DashboardLayout.current` sees the change immediately and
+    /// after relaunch, mirroring ``appearanceSkin``.
+    var dashboardLayout: DashboardLayout = .atelier {
+        didSet {
+            UserDefaults.standard.set(dashboardLayout.rawValue, forKey: DashboardLayout.storageKey)
+            persistence.set(dashboardLayout.rawValue, forKey: DashboardLayout.storageKey)
+            NotificationCenter.default.post(name: .dashboardLayoutDidChange, object: nil)
+        }
+    }
+
     var showInMenuBar: Bool = true {
         didSet { persistence.set(showInMenuBar, forKey: "showInMenuBar") }
     }
@@ -241,6 +254,10 @@ final class AppearanceSettings {
         // dynamic color resolvers read `AppSkin.current`); mirror it back through
         // the coordinator so a fresh suite stays consistent.
         self.appearanceSkin = AppSkin.current
+        // Dashboard layout is canonically read from `UserDefaults.standard`
+        // (where `DashboardLayout.current` reads it); mirror it back through the
+        // coordinator so a fresh suite stays consistent. Defaults to `.atelier`.
+        self.dashboardLayout = DashboardLayout.current
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
@@ -304,6 +321,7 @@ final class AppearanceSettings {
 extension Notification.Name {
     static let appearanceModeDidChange = Notification.Name("com.openburnbar.appearance.appearanceModeDidChange")
     static let appearanceSkinDidChange = Notification.Name("com.openburnbar.appearance.appearanceSkinDidChange")
+    static let dashboardLayoutDidChange = Notification.Name("com.openburnbar.appearance.dashboardLayoutDidChange")
     static let useWebsiteBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useWebsiteBackgroundDidChange")
     static let useConstellationBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useConstellationBackgroundDidChange")
     static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")

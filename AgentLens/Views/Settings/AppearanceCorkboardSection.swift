@@ -117,6 +117,33 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Dashboard Layout")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("How the Overview arranges itself over the live backdrop. Atelier is the full-bleed, kernel-forward keeper; Classic is the information-dense scroll. You can also switch instantly from the Overview's top bar.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Spacer()
+                    Picker("", selection: $settingsManager.dashboardLayout) {
+                        ForEach(DashboardLayout.allCases, id: \.self) { layout in
+                            Label(layout.displayName, systemImage: layout.symbolName).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
+                    .onChange(of: settingsManager.dashboardLayout) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "dashboard_layout",
+                            "new_value": .string(newValue.rawValue)
+                        ])
+                    }
+                }
+
+                Divider().background(DesignSystem.Colors.border)
+
                 LiquidGlassTransparencyRow()
                     .settingsAnchor(SettingsAnchor.appearanceGlassTransparency)
 
@@ -232,6 +259,10 @@ struct AppearanceCorkboardSection: View {
                 Divider().background(DesignSystem.Colors.border)
 
                 KernelBackdropSettingsRow()
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SwarmSubstrateSettingsRow()
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -763,10 +794,9 @@ struct AppearanceCorkboardSection: View {
 /// Master toggle + 30-kernel picker for the WebGL2 "Window Backdrop" field.
 /// Both controls bind directly to the shared `@AppStorage` keys that
 /// ``KernelBackdropView`` reads, so a selection applies to the live backdrop
-/// immediately. Enabling the kernel also enables the shared dynamic background
-/// layer, and the native swarm remains underneath as the renderer fallback.
+/// immediately. Kernels render independently from the native swarm so enabling
+/// this option does not start a second animated background renderer.
 private struct KernelBackdropSettingsRow: View {
-    @Environment(SettingsManager.self) private var settingsManager
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
@@ -774,14 +804,11 @@ private struct KernelBackdropSettingsRow: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             SettingsToggle(
                 title: "Window Backdrop",
-                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below; the native swarm remains as a fallback.",
+                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below; a static plate stays behind the renderer as a cheap fallback.",
                 icon: "square.stack.3d.up.fill",
                 isOn: $useKernelBackdrop
             )
             .onChange(of: useKernelBackdrop) { _, newValue in
-                if newValue, !settingsManager.useWebsiteBackground {
-                    settingsManager.useWebsiteBackground = true
-                }
                 Analytics.shared.track(.settingsChanged, [
                     "setting_key": "window_backdrop_kernel_enabled",
                     "new_value": .bool(newValue)
@@ -823,6 +850,121 @@ private struct KernelBackdropSettingsRow: View {
             .opacity(useKernelBackdrop ? 1.0 : 0.55)
             .disabled(!useKernelBackdrop)
         }
+    }
+}
+
+// MARK: - Swarm substrate picker (per-theme, coupled to the active kernel)
+
+/// Lets the user pick the *substrate* — the material that composes the provider
+/// glyph swarm — from the active backdrop theme's family suite, exactly like the
+/// imaginethat-llc lab gallery. The offered styles re-couple live when the
+/// backdrop kernel changes; the selection persists to the shared
+/// `swarmSubstrate` key honored by the dashboard, wallpaper, and iOS.
+private struct SwarmSubstrateSettingsRow: View {
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
+
+    private var family: SubstrateFamily { SubstrateFamily.forKernel(backdropKernel) }
+    private var styles: [SubstrateDescriptor] { SubstrateCatalog.styles(forKernel: backdropKernel) }
+
+    private let columns = [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: DesignSystem.Spacing.sm)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            SettingsToggle(
+                title: "Swarm Substrate",
+                subtitle: "Compose the provider-glyph swarm from a material drawn from the active theme — twinkling stars, glass ribbons, caustic light, crepuscular shafts. Pick a style below; it re-couples to whichever backdrop theme is active.",
+                icon: "circle.hexagongrid.fill",
+                isOn: $substrateEnabled
+            )
+            .onChange(of: substrateEnabled) { _, newValue in
+                Analytics.shared.track(.settingsChanged, [
+                    "setting_key": "swarm_substrate_enabled",
+                    "new_value": .bool(newValue)
+                ])
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: family.symbolName)
+                    .font(.caption)
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Text(family.displayName)
+                    .font(DesignSystem.Typography.caption.weight(.semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("· substrate")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.leading, 32)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                ForEach(styles) { style in
+                    SubstrateTile(
+                        descriptor: style,
+                        isSelected: substrateID == style.id,
+                        action: {
+                            substrateID = style.id
+                            Analytics.shared.track(.settingsChanged, [
+                                "setting_key": "swarm_substrate",
+                                "new_value": .string(style.id)
+                            ])
+                        }
+                    )
+                }
+            }
+            .padding(.leading, 32)
+            .opacity(substrateEnabled ? 1.0 : 0.55)
+            .disabled(!substrateEnabled)
+        }
+    }
+}
+
+/// One Image #3-style substrate card: an accent gradient swatch, the style label,
+/// and its one-word texture hint, with a selection ring.
+private struct SubstrateTile: View {
+    let descriptor: SubstrateDescriptor
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [descriptor.accent.color, descriptor.accent2.color],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: 40)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
+                    )
+
+                Text(descriptor.label)
+                    .font(DesignSystem.Typography.caption.weight(.medium))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(descriptor.hint.uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(isSelected ? DesignSystem.Colors.ember : DesignSystem.Colors.border,
+                                  lineWidth: isSelected ? 1.5 : 0.5)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
