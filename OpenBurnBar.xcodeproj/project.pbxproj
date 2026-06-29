@@ -11087,7 +11087,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -11157,7 +11157,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -11202,7 +11202,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -11232,7 +11232,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
@@ -11289,7 +11289,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -11731,7 +11731,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 77;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
