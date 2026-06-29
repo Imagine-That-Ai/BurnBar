@@ -336,7 +336,17 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     }
                 }
                 let liveBlocksRouting = liveRefresh?.blocksRouting == true
+                let liveConfirmedForRouting = liveConfirmed ?? true
+                let permitsMissingLiveCatalogRoute = liveConfirmed == false
+                    && permitsConfiguredRouteWhenLiveCatalogOmitsModel(
+                        configuration: configuration,
+                        account: account
+                    )
                 let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
+                // Anthropic's `/v1/models` can be incomplete for Claude Code OAuth
+                // accounts even when `/v1/messages` accepts the configured model.
+                // Treat a missing live row as operator-visible metadata, not as a
+                // hard route gate. Auth failures still block via `liveBlocksRouting`.
                 let liveError: String? = {
                     if let error = liveRefresh?.error {
                         return error
@@ -370,7 +380,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                         && account.hasCredential
                         && isEligibleQuotaState(account.quotaState)
                         && !liveBlocksRouting
-                        && (liveConfirmed ?? true),
+                        && (liveConfirmedForRouting || permitsMissingLiveCatalogRoute),
                     lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                     lastError: liveError
                 )
@@ -439,6 +449,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
 
         return rows
+    }
+
+    private func permitsConfiguredRouteWhenLiveCatalogOmitsModel(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor
+    ) -> Bool {
+        configuration.provider.id.caseInsensitiveCompare("anthropic") == .orderedSame
+            && account.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
     }
 
     /// Emit one synthetic advertised row per `BurnBarModelVariant` whose

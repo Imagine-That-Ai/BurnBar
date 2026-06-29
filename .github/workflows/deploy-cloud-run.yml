@@ -249,12 +249,12 @@ jobs:
           }
           forbidden = {
               "roles/secretmanager.admin",
+              "roles/secretmanager.secretAccessor",
               "roles/secretmanager.secretVersionAdder",
               "roles/secretmanager.secretVersionManager",
           }
-          required_secret_roles = {
+          metadata_only_roles = {
               "roles/secretmanager.viewer",
-              "roles/secretmanager.secretAccessor",
           }
           member = f"serviceAccount:{service_account}"
           with open(path, encoding="utf-8") as handle:
@@ -270,11 +270,11 @@ jobs:
               sys.exit(1)
           present_forbidden = sorted(forbidden & roles)
           if present_forbidden:
-              print(f"::error::Deploy service account {service_account} must not hold Secret Manager write-capable roles: {', '.join(present_forbidden)}")
+              print(f"::error::Deploy service account {service_account} must not hold project-wide Secret Manager payload/write roles: {', '.join(present_forbidden)}")
               sys.exit(1)
-          missing_secret_roles = sorted(required_secret_roles - roles)
-          if missing_secret_roles:
-              print(f"::error::Deploy service account {service_account} must have read-only Secret Manager metadata and payload access: {', '.join(missing_secret_roles)}")
+          missing_metadata_roles = sorted(metadata_only_roles - roles)
+          if missing_metadata_roles:
+              print(f"::error::Deploy service account {service_account} must have read-only Secret Manager metadata access: {', '.join(missing_metadata_roles)}")
               sys.exit(1)
           print(f"deployer IAM ok: {service_account}")
           PY
@@ -312,6 +312,12 @@ jobs:
           service_url = service.get("status", {}).get("url")
           bucket = env_value(service, "OPENBURNBAR_STORAGE_BUCKET")
           issuer = env_value(service, "MCP_AUTH_ISSUER") or "<unset>"
+          runtime_service_account = (
+              service.get("spec", {})
+              .get("template", {})
+              .get("spec", {})
+              .get("serviceAccountName")
+          )
 
           if not revision:
               print("::error::Cloud Run service has no latestReadyRevisionName; refusing deploy without a rollback target.")
@@ -319,12 +325,16 @@ jobs:
           if not bucket:
               print("::error::Cloud Run service is missing OPENBURNBAR_STORAGE_BUCKET; refusing deploy rather than clearing body storage config.")
               sys.exit(1)
+          if not runtime_service_account:
+              print("::error::Cloud Run service must pin an explicit runtime service account before signer secrets can be attached.")
+              sys.exit(1)
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"previous_revision={revision}\n")
               output.write(f"service_url={service_url}\n")
               output.write(f"storage_bucket={bucket}\n")
               output.write(f"previous_issuer={issuer}\n")
+              output.write(f"runtime_service_account={runtime_service_account}\n")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"OPENBURNBAR_STORAGE_BUCKET={bucket}\n")
 
@@ -332,6 +342,7 @@ jobs:
           print(f"service url: {service_url}")
           print(f"storage bucket: {bucket}")
           print(f"previous issuer: {issuer}")
+          print(f"runtime service account: {runtime_service_account}")
           PY
 
       - name: Deploy hosted MCP
@@ -341,10 +352,15 @@ jobs:
           GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ needs.resolve-release.outputs.commit }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
+          CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: ${{ steps.current.outputs.runtime_service_account }}
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
+            exit 1
+          fi
+          if [[ -z "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT:-}" ]]; then
+            echo "::error::Missing Cloud Run runtime service account; refusing to attach signer secrets."
             exit 1
           fi
 
@@ -372,13 +388,42 @@ jobs:
             ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"
           fi
 
+          verify_runtime_secret_accessor() {
+            local secret_name="$1"
+            local policy_file
+            policy_file="$(mktemp)"
+            gcloud secrets get-iam-policy "$secret_name" \
+              --project "$GOOGLE_CLOUD_PROJECT" \
+              --format=json > "$policy_file"
+            python3 - "$CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT" "$secret_name" "$policy_file" <<'PY'
+          import json
+          import sys
+
+          runtime_service_account = sys.argv[1]
+          secret_name = sys.argv[2]
+          policy_path = sys.argv[3]
+          member = f"serviceAccount:{runtime_service_account}"
+          with open(policy_path, encoding="utf-8") as handle:
+              policy = json.load(handle)
+          for binding in policy.get("bindings", []):
+              if binding.get("role") == "roles/secretmanager.secretAccessor" and member in binding.get("members", []):
+                  raise SystemExit(0)
+          print(f"::error::Cloud Run runtime service account {runtime_service_account} must have per-secret roles/secretmanager.secretAccessor on {secret_name}; project-wide payload access is not accepted.")
+          raise SystemExit(1)
+          PY
+            rm -f "$policy_file"
+          }
+
           if gcloud secrets describe "$SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            verify_runtime_secret_accessor "$SECRET_NAME"
             SECRET_BINDINGS+=("MCP_TOKEN_HMAC_SECRET=${SECRET_NAME}:latest")
           fi
           if gcloud secrets describe "$ED25519_PRIVATE_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            verify_runtime_secret_accessor "$ED25519_PRIVATE_SECRET_NAME"
             SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=${ED25519_PRIVATE_SECRET_NAME}:latest")
           fi
           if gcloud secrets describe "$ED25519_PUBLIC_SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
+            verify_runtime_secret_accessor "$ED25519_PUBLIC_SECRET_NAME"
             SECRET_BINDINGS+=("MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=${ED25519_PUBLIC_SECRET_NAME}:latest")
             ENV_VARS="${ENV_VARS},MCP_ALLOW_LEGACY_HMAC_TOKENS=${MCP_ALLOW_LEGACY_HMAC_TOKENS:-false}"
           fi

@@ -1,39 +1,48 @@
-import { createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { rmSync } from "node:fs";
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { rmSync, writeFileSync } from 'node:fs';
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { OpenBurnBarDaemonClient } from "../src/daemon/client";
+import { OpenBurnBarDaemonClient } from '../src/daemon/client';
 
 const socketsToClean = new Set<string>();
+const filesToClean = new Set<string>();
 
 afterEach(() => {
   for (const socketPath of socketsToClean) {
     rmSync(socketPath, { force: true });
   }
   socketsToClean.clear();
+  for (const filePath of filesToClean) {
+    rmSync(filePath, { force: true });
+  }
+  filesToClean.clear();
+  delete process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
+  delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
+  delete process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+  delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
 });
 
-describe("OpenBurnBarDaemonClient", () => {
-  it("requests daemon health over the unix socket", async () => {
-    const socketPath = makeSocketPath("health");
+describe('OpenBurnBarDaemonClient', () => {
+  it('requests daemon health over the unix socket', async () => {
+    const socketPath = makeSocketPath('health');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
-        expect(request.method).toBe("daemon.health");
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
+        expect(request.method).toBe('daemon.health');
         socket.end(
           JSON.stringify({
             id: request.id,
             protocolVersion: 1,
             result: {
               ok: true,
-              daemonVersion: "0.1.0",
+              daemonVersion: '0.1.0',
               protocolVersion: 1,
               socketPath
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
@@ -43,38 +52,38 @@ describe("OpenBurnBarDaemonClient", () => {
     const client = new OpenBurnBarDaemonClient({ socketPath });
     await expect(client.health()).resolves.toMatchObject({
       ok: true,
-      daemonVersion: "0.1.0",
+      daemonVersion: '0.1.0',
       socketPath
     });
 
     await close(server);
   });
 
-  it("adds daemon auth token to socket envelopes", async () => {
-    const socketPath = makeSocketPath("auth-token");
+  it('adds daemon auth token to socket envelopes', async () => {
+    const socketPath = makeSocketPath('auth-token');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
-        expect(request.method).toBe("daemon.health");
-        expect(request.authToken).toBe("socket-secret");
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
+        expect(request.method).toBe('daemon.health');
+        expect(request.authToken).toBe('socket-secret');
         socket.end(
           JSON.stringify({
             id: request.id,
             protocolVersion: 1,
             result: {
               ok: true,
-              daemonVersion: "0.1.0",
+              daemonVersion: '0.1.0',
               protocolVersion: 1,
               socketPath
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
 
     await listen(server, socketPath);
 
-    const client = new OpenBurnBarDaemonClient({ socketPath, authToken: "socket-secret" });
+    const client = new OpenBurnBarDaemonClient({ socketPath, authToken: 'socket-secret' });
     await expect(client.health()).resolves.toMatchObject({
       ok: true
     });
@@ -82,10 +91,47 @@ describe("OpenBurnBarDaemonClient", () => {
     await close(server);
   });
 
-  it("rejects requests above the configured in-flight limit", async () => {
-    const socketPath = makeSocketPath("backpressure");
+  it('discovers daemon auth token from the private token file', async () => {
+    const socketPath = makeSocketPath('auth-token-file');
+    const tokenFile = join(tmpdir(), `openburnbar-daemon-token-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    filesToClean.add(tokenFile);
+    writeFileSync(tokenFile, 'file-secret\n', { mode: 0o600 });
+
     const server = createServer((socket) => {
-      socket.on("data", () => {
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
+        expect(request.method).toBe('daemon.health');
+        expect(request.authToken).toBe('file-secret');
+        socket.end(
+          JSON.stringify({
+            id: request.id,
+            protocolVersion: 1,
+            result: {
+              ok: true,
+              daemonVersion: '0.1.0',
+              protocolVersion: 1,
+              socketPath
+            }
+          }) + '\n'
+        );
+      });
+    });
+
+    await listen(server, socketPath);
+
+    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE = tokenFile;
+    const client = new OpenBurnBarDaemonClient({ socketPath });
+    await expect(client.health()).resolves.toMatchObject({
+      ok: true
+    });
+
+    await close(server);
+  });
+
+  it('rejects requests above the configured in-flight limit', async () => {
+    const socketPath = makeSocketPath('backpressure');
+    const server = createServer((socket) => {
+      socket.on('data', () => {
         // Keep the first request open until the client timeout so the second call
         // exercises client-side back-pressure deterministically.
       });
@@ -95,18 +141,18 @@ describe("OpenBurnBarDaemonClient", () => {
 
     const client = new OpenBurnBarDaemonClient({ socketPath, timeoutMs: 50, maxInFlight: 1 });
     const first = client.health();
-    await expect(client.health()).rejects.toThrow("RPCs in flight");
-    await expect(first).rejects.toThrow("Timed out waiting for OpenBurnBar daemon");
+    await expect(client.health()).rejects.toThrow('RPCs in flight');
+    await expect(first).rejects.toThrow('Timed out waiting for OpenBurnBar daemon');
 
     await close(server);
   });
 
-  it("loads the catalog payload", async () => {
-    const socketPath = makeSocketPath("catalog");
+  it('loads the catalog payload', async () => {
+    const socketPath = makeSocketPath('catalog');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
-        expect(request.method).toBe("daemon.catalog");
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
+        expect(request.method).toBe('daemon.catalog');
         socket.end(
           JSON.stringify({
             id: request.id,
@@ -116,16 +162,16 @@ describe("OpenBurnBarDaemonClient", () => {
                 schemaVersion: 1,
                 providers: [
                   {
-                    id: "z-ai",
-                    displayName: "Z.ai",
-                    baseURL: "https://api.z.ai",
-                    visibility: "public",
-                    capabilities: ["routing"],
+                    id: 'z-ai',
+                    displayName: 'Z.ai',
+                    baseURL: 'https://api.z.ai',
+                    visibility: 'public',
+                    capabilities: ['routing'],
                     models: [
                       {
-                        id: "glm-4.6",
-                        displayName: "GLM 4.6",
-                        visibility: "public",
+                        id: 'glm-4.6',
+                        displayName: 'GLM 4.6',
+                        visibility: 'public',
                         aliases: [],
                         pricing: {
                           inputPerMToken: 1,
@@ -138,7 +184,7 @@ describe("OpenBurnBarDaemonClient", () => {
                 ]
               }
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
@@ -150,7 +196,7 @@ describe("OpenBurnBarDaemonClient", () => {
       schemaVersion: 1,
       providers: [
         expect.objectContaining({
-          id: "z-ai"
+          id: 'z-ai'
         })
       ]
     });
@@ -158,20 +204,20 @@ describe("OpenBurnBarDaemonClient", () => {
     await close(server);
   });
 
-  it("surfaces rpc errors", async () => {
-    const socketPath = makeSocketPath("error");
+  it('surfaces rpc errors', async () => {
+    const socketPath = makeSocketPath('error');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
         socket.end(
           JSON.stringify({
             id: request.id,
             protocolVersion: 1,
             error: {
               code: -32601,
-              message: "Unsupported OpenBurnBar RPC method."
+              message: 'Unsupported OpenBurnBar RPC method.'
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
@@ -179,21 +225,21 @@ describe("OpenBurnBarDaemonClient", () => {
     await listen(server, socketPath);
 
     const client = new OpenBurnBarDaemonClient({ socketPath });
-    await expect(client.health()).rejects.toThrow("Unsupported OpenBurnBar RPC method.");
+    await expect(client.health()).rejects.toThrow('Unsupported OpenBurnBar RPC method.');
 
     await close(server);
   });
 
-  it("sends run.poll and workspace tool bridge RPC payloads", async () => {
-    const socketPath = makeSocketPath("tool-bridge");
+  it('sends run.poll and workspace tool bridge RPC payloads', async () => {
+    const socketPath = makeSocketPath('tool-bridge');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
 
-        if (request.method === "run.poll") {
+        if (request.method === 'run.poll') {
           expect(request.params).toEqual({
-            clientID: "client-a",
-            sessionID: "session-a"
+            clientID: 'client-a',
+            sessionID: 'session-a'
           });
           socket.end(
             JSON.stringify({
@@ -204,29 +250,29 @@ describe("OpenBurnBarDaemonClient", () => {
                 approvals: [],
                 pendingToolCalls: [],
                 arbitration: {
-                  activeClientID: "client-a",
-                  attachedClientIDs: ["client-a"]
+                  activeClientID: 'client-a',
+                  attachedClientIDs: ['client-a']
                 },
-                emittedAt: "2026-03-22T10:00:00.000Z"
+                emittedAt: '2026-03-22T10:00:00.000Z'
               }
-            }) + "\n"
+            }) + '\n'
           );
           return;
         }
 
-        expect(request.method).toBe("workspace.executeTool");
+        expect(request.method).toBe('workspace.executeTool');
         expect(request.params).toEqual({
-          clientID: "client-a",
-          sessionID: "session-a"
+          clientID: 'client-a',
+          sessionID: 'session-a'
         });
         socket.end(
           JSON.stringify({
             id: request.id,
             protocolVersion: 1,
             result: {
-              disposition: "no_pending_tool_call"
+              disposition: 'no_pending_tool_call'
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
@@ -236,8 +282,8 @@ describe("OpenBurnBarDaemonClient", () => {
     const client = new OpenBurnBarDaemonClient({ socketPath });
     await expect(
       client.pollRuns({
-        clientID: "client-a",
-        sessionID: "session-a"
+        clientID: 'client-a',
+        sessionID: 'session-a'
       })
     ).resolves.toMatchObject({
       runs: [],
@@ -246,36 +292,36 @@ describe("OpenBurnBarDaemonClient", () => {
 
     await expect(
       client.executeTool({
-        clientID: "client-a",
-        sessionID: "session-a"
+        clientID: 'client-a',
+        sessionID: 'session-a'
       })
     ).resolves.toMatchObject({
-      disposition: "no_pending_tool_call"
+      disposition: 'no_pending_tool_call'
     });
 
     await close(server);
   });
 
-  it("sends client.claimControl RPC payloads", async () => {
-    const socketPath = makeSocketPath("claim-control");
+  it('sends client.claimControl RPC payloads', async () => {
+    const socketPath = makeSocketPath('claim-control');
     const server = createServer((socket) => {
-      socket.on("data", (chunk) => {
-        const request = JSON.parse(chunk.toString("utf8").trim());
-        expect(request.method).toBe("client.claimControl");
+      socket.on('data', (chunk) => {
+        const request = JSON.parse(chunk.toString('utf8').trim());
+        expect(request.method).toBe('client.claimControl');
         expect(request.params).toEqual({
-          clientID: "client-a",
-          sessionID: "session-a"
+          clientID: 'client-a',
+          sessionID: 'session-a'
         });
         socket.end(
           JSON.stringify({
             id: request.id,
             protocolVersion: 1,
             result: {
-              activeClientID: "client-a",
-              attachedClientIDs: ["other-client", "client-a"],
-              reason: "controller_transferred_to_requesting_client"
+              activeClientID: 'client-a',
+              attachedClientIDs: ['other-client', 'client-a'],
+              reason: 'controller_transferred_to_requesting_client'
             }
-          }) + "\n"
+          }) + '\n'
         );
       });
     });
@@ -285,12 +331,12 @@ describe("OpenBurnBarDaemonClient", () => {
     const client = new OpenBurnBarDaemonClient({ socketPath });
     await expect(
       client.claimControl({
-        clientID: "client-a",
-        sessionID: "session-a"
+        clientID: 'client-a',
+        sessionID: 'session-a'
       })
     ).resolves.toMatchObject({
-      activeClientID: "client-a",
-      attachedClientIDs: ["other-client", "client-a"]
+      activeClientID: 'client-a',
+      attachedClientIDs: ['other-client', 'client-a']
     });
 
     await close(server);
@@ -305,7 +351,7 @@ function makeSocketPath(name: string): string {
 
 async function listen(server: ReturnType<typeof createServer>, socketPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
+    server.once('error', reject);
     server.listen(socketPath, () => resolve());
   });
 }

@@ -95,6 +95,25 @@ def default_ledger_path() -> Path:
     return Path.home() / "Library" / "Application Support" / "OpenBurnBar" / "usage-events.jsonl"
 
 
+def default_socket_auth_token_file_path() -> Path:
+    """Return the daemon's owner-only socket auth token file path."""
+    override = (
+        os.environ.get("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE")
+        or os.environ.get("BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE")
+        or ""
+    ).strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    support_override = (
+        os.environ.get("OPENBURNBAR_DAEMON_SUPPORT_DIR") or os.environ.get("BURNBAR_DAEMON_SUPPORT_DIR") or ""
+    ).strip()
+    if support_override:
+        return Path(support_override).expanduser().resolve() / "daemon-socket-auth-token"
+
+    return Path.home() / "Library" / "Application Support" / "OpenBurnBar" / "daemon-socket-auth-token"
+
+
 def _validate_ledger_path(path: Path) -> Path:
     """Reject paths that obviously don't look like the daemon ledger."""
     if "\x00" in str(path):
@@ -273,15 +292,23 @@ def _default_socket_path() -> Path:
 def _resolve_socket_auth_token() -> str | None:
     """Best-effort lookup of the daemon socket auth token.
 
-    The macOS app stamps the token into the launch-agent plist; the daemon
-    process picks it up from the `OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN`
-    env var. Hermes-launched MCP servers may inherit it directly.
+    The macOS app writes the token into an owner-only file and passes that file
+    to the daemon via `--socket-auth-token-file`. Hermes-launched MCP servers
+    may still inherit an explicit env override from older/manual setups.
     """
     env_token = os.environ.get("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN") or os.environ.get(
         "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"
     )
     if env_token and env_token.strip():
         return env_token.strip()
+
+    token_path = default_socket_auth_token_file_path()
+    try:
+        token = token_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if token:
+        return token
 
     plist_path = Path.home() / "Library" / "LaunchAgents" / "com.openburnbar.daemon.plist"
     if not plist_path.is_file():

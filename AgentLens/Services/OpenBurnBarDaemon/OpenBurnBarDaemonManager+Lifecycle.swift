@@ -387,13 +387,14 @@ extension OpenBurnBarDaemonManager {
             try validateDaemonBinary(at: paths.installedBinaryURL)
         }
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
-        let socketAuthToken = try launchAgentPlistStep("rotate_socket_token") {
+        _ = try launchAgentPlistStep("rotate_socket_token") {
             try rotateDaemonSocketAuthToken()
         }
 
         // SECURITY: pass the daemon socket token through an owner-only file path,
-        // never argv. CLI arguments are visible to any local user via `ps aux`;
-        // the gateway bearer remains in environment variables for the same reason.
+        // never argv or LaunchAgent environment. CLI arguments are visible to any
+        // local user via `ps aux`, and environment values are inherited by child
+        // processes. The daemon reads the token from --socket-auth-token-file.
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
@@ -402,8 +403,6 @@ extension OpenBurnBarDaemonManager {
         ]
 
         var environmentVariables: [String: String] = [:]
-        environmentVariables["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
-        environmentVariables["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = socketAuthToken
 
         // Propagate Sentry DSN only when crash reporting consent allows it.
         // Uses the same resolution helper as the app: Info.plist first, then

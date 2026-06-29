@@ -1,4 +1,5 @@
 import AppKit
+import OpenBurnBarCore
 import SwiftUI
 
 // MARK: - BurnBarTopRail
@@ -139,9 +140,10 @@ struct BurnBarTopRail: View {
             BurnRailActionsSection(
                 isScanning: isScanning,
                 onImport: onImport,
-                onRecount: onRecount,
-                onSettings: onSettings
+                onRecount: onRecount
             )
+
+            BurnRailSettingsButton(onSettings: onSettings)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -1009,8 +1011,13 @@ struct BurnRailTelemetryHero: View {
     }
 }
 
-// MARK: - Section: Actions (import / recount / settings)
+// MARK: - Section: Actions (import / recount)
 
+/// Hosts the import and recount ghost icons inside one capsule. The settings
+/// gear was promoted into its own ``BurnRailSettingsButton`` so it lands in a
+/// dedicated toolbar slot and never gets crowded off-screen at narrow window
+/// widths. See ``BurnRailAppearanceQuickMenu`` for the companion quick-theme
+/// menu that sits next to it.
 struct BurnRailActionsSection: View {
     let isScanning: Bool
     var onImport: () -> Void = {}
@@ -1030,12 +1037,6 @@ struct BurnRailActionsSection: View {
                 symbol: "arrow.counterclockwise",
                 help: "Recount totals",
                 action: onRecount
-            )
-            BurnRailCapsuleDivider()
-            BurnRailGhostIconButton(
-                symbol: "gearshape",
-                help: "Settings",
-                action: onSettings
             )
         }
         .padding(.horizontal, 4)
@@ -1057,6 +1058,209 @@ struct BurnRailActionsSection: View {
         } else {
             Capsule(style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.4))
+        }
+    }
+}
+
+// MARK: - Settings button (standalone)
+
+/// Standalone settings gear. Lives in its own ``ToolbarItem`` slot so the
+/// macOS toolbar never crowds it off-screen when the window is narrow. The
+/// capsule surface matches ``BurnRailActionsSection`` for visual continuity.
+struct BurnRailSettingsButton: View {
+    var onSettings: () -> Void
+
+    var body: some View {
+        BurnRailGhostIconButton(
+            symbol: "gearshape",
+            help: "Settings",
+            action: onSettings
+        )
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .background(settingsSurface)
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
+        .clipShape(Capsule(style: .continuous))
+    }
+
+    @ViewBuilder
+    private var settingsSurface: some View {
+        if #available(macOS 26.0, *) {
+            Capsule(style: .continuous)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
+                .opacity(0.65)
+        } else {
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.4))
+        }
+    }
+}
+
+// MARK: - Quick appearance / theme menu
+
+/// Compact menu-pill for the dashboard toolbar. Lets the user flip
+/// appearance mode, app skin, and dynamic background without opening
+/// Settings. Each branch writes directly to ``SettingsManager`` so the
+/// change applies instantly and mirrors what the Appearance pane would do.
+struct BurnRailAppearanceQuickMenu: View {
+    @Bindable var settingsManager: SettingsManager
+    var onOpenAppearanceSettings: () -> Void
+
+    var body: some View {
+        Menu {
+            Section("Appearance") {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Button {
+                        settingsManager.appearanceMode = mode
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "appearance_mode_quick_menu",
+                            "new_value": .string(mode.rawValue)
+                        ])
+                    } label: {
+                        if settingsManager.appearanceMode == mode {
+                            Label(mode.quickMenuLabel, systemImage: "checkmark")
+                        } else {
+                            Text(mode.quickMenuLabel)
+                        }
+                    }
+                }
+            }
+
+            Section("App Skin") {
+                ForEach(AppSkin.allCases, id: \.self) { skin in
+                    Button {
+                        settingsManager.appearanceSkin = skin
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "appearance_skin_quick_menu",
+                            "new_value": .string(skin.rawValue)
+                        ])
+                    } label: {
+                        if settingsManager.appearanceSkin == skin {
+                            Label(skin.quickMenuLabel, systemImage: "checkmark")
+                        } else {
+                            Text(skin.quickMenuLabel)
+                        }
+                    }
+                }
+            }
+
+            Section("Background") {
+                quickBackgroundOption(.off)
+                quickBackgroundOption(.swarm)
+                quickBackgroundOption(.constellation)
+            }
+
+            Section {
+                Button("Open Appearance Settings…") {
+                    onOpenAppearanceSettings()
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: backgroundGlyph(for: settingsManager))
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.leading, 1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.4))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+            )
+            .clipShape(Capsule(style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Quick theme, skin, and background")
+    }
+
+    fileprivate enum QuickBackgroundState {
+        case off
+        case swarm
+        case constellation
+    }
+
+    private var currentBackgroundState: QuickBackgroundState {
+        if !settingsManager.useWebsiteBackground { return .off }
+        return settingsManager.useConstellationBackground ? .constellation : .swarm
+    }
+
+    private func quickBackgroundOption(_ state: QuickBackgroundState) -> some View {
+        let isActive = currentBackgroundState == state
+        return Button {
+            switch state {
+            case .off:
+                settingsManager.useWebsiteBackground = false
+                settingsManager.useConstellationBackground = false
+            case .swarm:
+                settingsManager.useWebsiteBackground = true
+                settingsManager.useConstellationBackground = false
+            case .constellation:
+                settingsManager.useWebsiteBackground = true
+                settingsManager.useConstellationBackground = true
+            }
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "appearance_background_quick_menu",
+                "new_value": .string(String(describing: state))
+            ])
+        } label: {
+            if isActive {
+                Label(state.quickMenuLabel, systemImage: "checkmark")
+            } else {
+                Text(state.quickMenuLabel)
+            }
+        }
+    }
+
+    private func backgroundGlyph(for settings: SettingsManager) -> String {
+        switch currentBackgroundState {
+        case .off: return "moon.zzz"
+        case .swarm: return "sparkles"
+        case .constellation: return "star.circle"
+        }
+    }
+}
+
+private extension AppearanceMode {
+    var quickMenuLabel: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
+private extension AppSkin {
+    var quickMenuLabel: String {
+        switch self {
+        case .aurora: return "Aurora (dark ember)"
+        case .editorial: return "Editorial (paper)"
+        }
+    }
+}
+
+private extension BurnRailAppearanceQuickMenu.QuickBackgroundState {
+    var quickMenuLabel: String {
+        switch self {
+        case .off: return "Off"
+        case .swarm: return "Swarm"
+        case .constellation: return "Constellation"
         }
     }
 }

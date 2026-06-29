@@ -1,10 +1,13 @@
 import XCTest
 @testable import OpenBurnBar
 
-/// Coverage for the durability sentry that keeps Claude Code / Codex / Forge
-/// / OpenCode / Droid wired through the local BurnBar gateway when external
-/// tools (Claude Code's atomic settings.json rewrite, plugin installs, dotfile
-/// syncs) strip the env block.
+/// Coverage for the durability sentry that keeps Codex / Forge / OpenCode /
+/// Droid wired through the local BurnBar gateway when external tools (plugin
+/// installs, dotfile syncs) strip the OpenBurnBar-owned block.
+///
+/// Claude Code is intentionally excluded because its global
+/// `ANTHROPIC_BASE_URL` override disables claude.ai connectors and has no
+/// fallback when the local daemon is off.
 ///
 /// Every test runs against an isolated temp "home" and an isolated
 /// `UserDefaults` suite so we never touch the developer's real config files
@@ -57,30 +60,25 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     // MARK: - Initial repair on start
 
     @MainActor
-    func test_start_repairsEnrolledTargetWhenEnvBlockMissing() async throws {
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+    func test_start_repairsEnrolledCodexTargetWhenBlockMissing() async throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let stripped: [String: Any] = ["theme": "dark"]
-        let strippedData = try JSONSerialization.data(withJSONObject: stripped)
-        try strippedData.write(to: url)
+        try "model = \"native\"\n".write(to: url, atomically: true, encoding: .utf8)
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
         let wiring = makeWiring()
-        XCTAssertTrue(wiring.isWired(target: .claudeCode))
-        let root = try loadJSONObject(at: url)
-        let env = try XCTUnwrap(root["env"] as? [String: Any])
-        XCTAssertEqual(env["ANTHROPIC_BASE_URL"] as? String, "http://127.0.0.1:8317")
-        XCTAssertEqual(env["OPENBURNBAR_WIRED"] as? String, "1")
-        XCTAssertEqual(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String, "claude-opus-4-8")
-        XCTAssertEqual(root["theme"] as? String, "dark", "non-BurnBar keys must survive repair")
-        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+        XCTAssertTrue(wiring.isWired(target: .codex))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("# openburnbar:routing — start"))
+        XCTAssertTrue(text.contains("model = \"native\""))
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
     }
 
     @MainActor
@@ -101,7 +99,7 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     }
 
     @MainActor
-    func test_start_adoptsExistingClaudeWiringAndRefreshesStaleDiscoveryCatalog() async throws {
+    func test_start_doesNotAdoptExistingClaudeGlobalProxyWiring() async throws {
         let url = tempHome.appendingPathComponent(".claude/settings.json")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -126,30 +124,16 @@ final class RoutedClientWiringSentryTests: XCTestCase {
             "This reproduces an older install where Claude Code was wired before the durability sentry recorded enrollment."
         )
 
-        let liveModels = [
-            RoutingClientAdvertisedModel(
-                id: "anthropic.openburnbar.Y29kZXgvY29kZXgtZ3B0LTUuNS1mYW1pbHk",
-                displayName: "GPT-5.5 · Codex · via OpenBurnBar",
-                providerID: "codex",
-                providerName: "Codex",
-                formatFamily: "openai_compat",
-                servedEndpoints: ["/v1/messages", "/v1/responses", "/v1/chat/completions"],
-                routeEligible: true
-            )
-        ]
-        sentry = makeSentry(advertisedModels: liveModels)
+        let beforeData = try Data(contentsOf: url)
+        sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
-        XCTAssertTrue(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue))
-        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
 
-        let root = try loadJSONObject(at: url)
-        let env = try XCTUnwrap(root["env"] as? [String: Any])
-        let catalogIDs = try XCTUnwrap(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String)
-        XCTAssertEqual(catalogIDs, "anthropic.openburnbar.Y29kZXgvY29kZXgtZ3B0LTUuNS1mYW1pbHk")
-        XCTAssertFalse(catalogIDs.contains("claude-opus-4-8"))
-        XCTAssertEqual(root["theme"] as? String, "dark", "non-BurnBar keys must survive adoption repair")
+        let afterData = try Data(contentsOf: url)
+        XCTAssertEqual(afterData, beforeData, "Claude Code global proxy wiring must not be adopted or refreshed")
     }
 
     @MainActor
@@ -278,67 +262,92 @@ final class RoutedClientWiringSentryTests: XCTestCase {
 
     @MainActor
     func test_start_doesNotRepairWhenAutoRepairDisabled() async throws {
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("{}".utf8).write(to: url)
+        try Data("model = \"native\"\n".utf8).write(to: url)
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         settings.routedClientWiring.autoRepairEnabled = false
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
         let wiring = makeWiring()
-        XCTAssertFalse(wiring.isWired(target: .claudeCode))
+        XCTAssertFalse(wiring.isWired(target: .codex))
     }
 
     @MainActor
     func test_start_doesNotRepairWhenGatewayDisabled() async throws {
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("{}".utf8).write(to: url)
+        try Data("model = \"native\"\n".utf8).write(to: url)
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         settings.gateway.gatewayEnabled = false
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
         let wiring = makeWiring()
-        XCTAssertFalse(wiring.isWired(target: .claudeCode))
+        XCTAssertFalse(wiring.isWired(target: .codex))
     }
 
     @MainActor
     func test_start_isNoOpWhenAlreadyWired() async throws {
         let wiring = makeWiring()
         _ = try wiring.wire(
-            target: .claudeCode,
+            target: .codex,
             gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: ""),
             advertisedModels: Self.defaultAdvertisedModels
         )
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         let preRepairData = try Data(contentsOf: url)
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
         let postRepairData = try Data(contentsOf: url)
         XCTAssertEqual(preRepairData, postRepairData, "wired file must not be touched")
-        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
     }
 
     // MARK: - Repair after external rewrite
 
     @MainActor
     func test_externalStripTriggersRepairViaSweep() async throws {
+        let wiring = makeWiring()
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: ""),
+            advertisedModels: Self.defaultAdvertisedModels
+        )
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
+        sentry = makeSentry()
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try "model = \"native\"\n".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertFalse(makeWiring().isWired(target: .codex))
+
+        await sentry.sweepNow().value
+
+        XCTAssertTrue(makeWiring().isWired(target: .codex))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("model = \"native\""))
+        XCTAssertTrue(text.contains("# openburnbar:routing — start"))
+    }
+
+    @MainActor
+    func test_externalStripDoesNotRepairClaudeCodeViaSweep() async throws {
         let wiring = makeWiring()
         _ = try wiring.wire(
             target: .claudeCode,
@@ -358,54 +367,55 @@ final class RoutedClientWiringSentryTests: XCTestCase {
 
         await sentry.sweepNow().value
 
-        XCTAssertTrue(makeWiring().isWired(target: .claudeCode))
+        XCTAssertFalse(makeWiring().isWired(target: .claudeCode))
         let root = try loadJSONObject(at: url)
-        XCTAssertEqual(root["theme"] as? String, "dracula", "user keys preserved after repair")
+        XCTAssertEqual(root["theme"] as? String, "dracula")
         let permissions = try XCTUnwrap(root["permissions"] as? [String: Any])
         XCTAssertEqual((permissions["allow"] as? [String])?.first, "Read")
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
     }
 
     // MARK: - Enrollment changes
 
     @MainActor
     func test_unenrollViaSettingsRemovesAuditState() async throws {
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("{}".utf8).write(to: url)
+        try Data("model = \"native\"\n".utf8).write(to: url)
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
-        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
 
-        settings.routedClientWiring.unenroll(targetRawValue: "claudeCode")
-        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
-        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains("claudeCode"))
+        settings.routedClientWiring.unenroll(targetRawValue: "codex")
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains("codex"))
     }
 
     @MainActor
     func test_enrollmentNotificationRefreshesWatchers() async throws {
-        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("{}".utf8).write(to: url)
+        try Data("model = \"native\"\n".utf8).write(to: url)
 
         sentry = makeSentry()
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
-        XCTAssertFalse(makeWiring().isWired(target: .claudeCode), "no enrollment yet")
+        XCTAssertFalse(makeWiring().isWired(target: .codex), "no enrollment yet")
 
-        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
         await Task.yield()
         await sentry.sweepNow().value
 
-        XCTAssertTrue(makeWiring().isWired(target: .claudeCode))
+        XCTAssertTrue(makeWiring().isWired(target: .codex))
     }
 
     // MARK: - Persistence

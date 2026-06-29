@@ -76,6 +76,29 @@ final class BurnBarConfigStoreTests: XCTestCase {
         }
     }
 
+    func testClaudeCodeKeychainFallbackKeepsSecretCaptureInMemory() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let providerSource = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            providerSource.contains("let outputPipe = Pipe()")
+                && providerSource.contains("process.standardOutput = outputPipe"),
+            "Keychain CLI fallback must capture secret output through an in-memory pipe."
+        )
+        XCTAssertFalse(
+            providerSource.contains("openburnbar-keychain-")
+                || providerSource.contains("process.standardOutput = outputHandle")
+                || providerSource.contains("Data(contentsOf: outputURL)"),
+            "Keychain CLI fallback must not persist OAuth/keychain material through a temporary output file."
+        )
+    }
+
     func testSnapshotDefaultsToAllCatalogProviders() async throws {
         let harness = try makeHarness(name: "defaults")
         let snapshot = try await harness.configStore.snapshot()
@@ -112,6 +135,89 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(configuration.settings.baseURL, "https://proxy.example.com/zai")
         XCTAssertEqual(configuration.preferredModels.map(\.id), ["glm-5", "glm-5-turbo"])
         XCTAssertEqual(configuration.apiKey, "zai-secret")
+    }
+
+    func testResolvedConfigurationRepairsMissingSecretSlotWhenCredentialResolves() async throws {
+        let harness = try makeHarness(name: "missing-secret-repair")
+        let slotID = "current-claude-code-login"
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com",
+                preferredModelIDs: ["claude-opus-4-8"],
+                preferredCredentialSlotID: slotID
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: slotID,
+            label: "Current Claude Code login",
+            apiKey: "valid-claude-route-token",
+            authMethodID: "anthropic-claude-oauth"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "anthropic",
+            slotID: slotID,
+            status: .missingSecret,
+            cooldownUntil: nil,
+            message: "missingSecret"
+        )
+
+        let resolved = try await harness.configStore.resolvedConfiguration(for: "anthropic")
+        let resolvedSlot = try XCTUnwrap(resolved.settings.credentialSlots.first { $0.slotID == slotID })
+        XCTAssertTrue(resolved.hasCredential)
+        XCTAssertEqual(resolvedSlot.status, .ready)
+        XCTAssertNil(resolvedSlot.lastStatusMessage)
+
+        let persisted = try await harness.configStore.snapshot()
+        let persistedSlot = try XCTUnwrap(
+            persisted.providerSettings(id: "anthropic")?.credentialSlots.first { $0.slotID == slotID }
+        )
+        XCTAssertEqual(persistedSlot.status, .ready)
+        XCTAssertNil(persistedSlot.lastStatusMessage)
+    }
+
+    func testResolvedConfigurationDoesNotRepairNormalMissingSecretSlot() async throws {
+        let harness = try makeHarness(name: "normal-missing-secret-stays-blocked")
+        let slotID = "primary"
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/paas/v4",
+                preferredModelIDs: ["glm-5"],
+                preferredCredentialSlotID: slotID
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: slotID,
+            label: "Z.ai coding plan",
+            apiKey: "invalid-still-present-key",
+            authMethodID: "zai-coding-plan"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "zai",
+            slotID: slotID,
+            status: .missingSecret,
+            cooldownUntil: nil,
+            message: "Upstream rejected saved credential."
+        )
+
+        let resolved = try await harness.configStore.resolvedConfiguration(for: "zai")
+        let resolvedSlot = try XCTUnwrap(resolved.settings.credentialSlots.first { $0.slotID == slotID })
+        XCTAssertNil(resolved.apiKey)
+        XCTAssertEqual(resolvedSlot.status, .missingSecret)
+        XCTAssertEqual(resolvedSlot.lastStatusMessage, "Upstream rejected saved credential.")
+
+        let persisted = try await harness.configStore.snapshot()
+        let persistedSlot = try XCTUnwrap(
+            persisted.providerSettings(id: "zai")?.credentialSlots.first { $0.slotID == slotID }
+        )
+        XCTAssertEqual(persistedSlot.status, .missingSecret)
     }
 
     func testConfigStoreRejectsUnsupportedModel() async throws {
@@ -853,6 +959,45 @@ final class BurnBarConfigStoreTests: XCTestCase {
 
         let secret = try await store.secret(for: providerSlotKey)
         XCTAssertEqual(secret, "valid-slot-missing-cc-token")
+    }
+
+    func testKeychainSecretStorePrefersFreshClaudeCodeCredentialForCurrentLoginSlot() async throws {
+        let service = "com.openburnbar.tests.keychain.cc-current-slot.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.current-claude-code-login"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        let ccCredentialsURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cc-creds-current-slot-\(UUID().uuidString).json")
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            try? FileManager.default.removeItem(at: ccCredentialsURL)
+        }
+
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            claudeCodeCredentialsURL: ccCredentialsURL,
+            fallbackSecretFileURL: fallbackURL
+        )
+
+        let storedExpiresAtMilliseconds = Date().addingTimeInterval(3600).timeIntervalSince1970 * 1000
+        let storedPayload = """
+        {"claudeAiOauth":{"accessToken":"stale-copied-slot-token","refreshToken":"stale-refresh","expiresAt":\(storedExpiresAtMilliseconds)}}
+        """
+        try await store.setSecret(storedPayload, for: providerSlotKey)
+
+        let ccExpiresAtMilliseconds = Date().addingTimeInterval(7200).timeIntervalSince1970 * 1000
+        let ccPayload = """
+        {"claudeAiOauth":{"accessToken":"fresh-current-claude-code-token","refreshToken":"cc-refresh","expiresAt":\(ccExpiresAtMilliseconds)}}
+        """
+        try Data(ccPayload.utf8).write(to: ccCredentialsURL, options: .atomic)
+
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "fresh-current-claude-code-token")
+        let daemonKeychain = try keychainSecret(service: service, account: account)
+        let oauth = try XCTUnwrap(claudeOAuthPayload(from: daemonKeychain))
+        XCTAssertEqual(oauth["accessToken"] as? String, "stale-copied-slot-token")
     }
 
     func testKeychainSecretStoreReturnsNilWhenAllOAuthRefreshPathsFail() async throws {

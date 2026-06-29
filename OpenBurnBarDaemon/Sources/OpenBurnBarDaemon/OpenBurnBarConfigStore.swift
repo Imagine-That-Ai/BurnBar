@@ -812,7 +812,18 @@ public actor BurnBarConfigStore {
             resolvedSlots.reserveCapacity(mutableSettings.credentialSlots.count)
             for slot in mutableSettings.credentialSlots {
                 let key = try await secretStore.secret(for: slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID))
-                resolvedSlots.append(.init(slot: slot, apiKey: key))
+                var resolvedSlot = slot
+                if slot.status == .missingSecret,
+                   shouldRepairMissingSecretSlot(providerID: settings.providerID, slot: slot),
+                   key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                   let slotIndex = mutableSettings.credentialSlots.firstIndex(where: { $0.slotID == slot.slotID }) {
+                    resolvedSlot.status = .ready
+                    resolvedSlot.lastStatusMessage = nil
+                    resolvedSlot.updatedAt = Date()
+                    mutableSettings.credentialSlots[slotIndex] = resolvedSlot
+                    _ = try upsertProvider(mutableSettings)
+                }
+                resolvedSlots.append(.init(slot: resolvedSlot, apiKey: key))
             }
 
             let selectedKey = selectPreferredAPIKey(
@@ -973,6 +984,11 @@ public actor BurnBarConfigStore {
             return legacySecret
         }
         return nil
+    }
+
+    private func shouldRepairMissingSecretSlot(providerID: String, slot: BurnBarProviderCredentialSlot) -> Bool {
+        providerID.caseInsensitiveCompare("anthropic") == .orderedSame
+            && slot.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
     }
 
     private func normalize(

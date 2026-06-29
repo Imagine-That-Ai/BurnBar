@@ -74,10 +74,10 @@ export interface MediaSessionEventDoc {
 }
 
 /**
- * Daily quota usage counter per user. Updated by the Mac during active
- * sessions every 30 s (batched), corrected by the hourly
- * `recomputeMediaQuotaUsage` Cloud Function. The Mac is the source of truth
- * for live capability gating; this doc is the reconcile target.
+ * Daily quota usage counter per user. Written only by the hourly
+ * `recomputeMediaQuotaUsage` Cloud Function from bounded media session
+ * metadata. The Mac is the source of truth for live capability gating; this
+ * server-owned doc is the persisted start-of-session reconcile target.
  *
  * Path: `users/{uid}/media_quota_usage/{YYYY-MM-DD}`
  */

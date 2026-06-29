@@ -164,4 +164,54 @@ final class DashboardToolbarTests: XCTestCase {
         XCTAssertEqual(nav.mainRoute, .overview)
         XCTAssertTrue(nav.routeHistory.isEmpty)
     }
+
+    // MARK: - Settings button extraction + Quick-Theme menu
+
+    func test_burnRailActionsSectionRendersWithoutSettingsParameter() throws {
+        let section = BurnRailActionsSection(
+            isScanning: false,
+            onImport: {},
+            onRecount: {}
+        )
+        XCTAssertNoThrow(try section.inspect())
+    }
+
+    func test_burnRailSettingsButtonRendersStandalone() throws {
+        let button = BurnRailSettingsButton(onSettings: {})
+        XCTAssertNoThrow(try button.inspect())
+    }
+
+    func test_burnRailAppearanceQuickMenuRendersAndReflectsSettings() throws {
+        let settings = makeSettingsManager()
+        settings.useWebsiteBackground = true
+        settings.useConstellationBackground = false
+
+        let menu = BurnRailAppearanceQuickMenu(
+            settingsManager: settings,
+            onOpenAppearanceSettings: {}
+        )
+        XCTAssertNoThrow(try menu.inspect())
+    }
+
+    func test_appearancePreviewCardRendersForAuroraDark() throws {
+        let settings = makeSettingsManager()
+        settings.appearanceMode = .dark
+        settings.appearanceSkin = .aurora
+        settings.useWebsiteBackground = true
+
+        let preview = AppearancePreviewCard(settingsManager: settings)
+            .environment(settings)
+        XCTAssertNoThrow(try preview.inspect())
+    }
+
+    func test_appearancePreviewCardRendersForEditorialLight() throws {
+        let settings = makeSettingsManager()
+        settings.appearanceMode = .light
+        settings.appearanceSkin = .editorial
+        settings.useWebsiteBackground = false
+
+        let preview = AppearancePreviewCard(settingsManager: settings)
+            .environment(settings)
+        XCTAssertNoThrow(try preview.inspect())
+    }
 }

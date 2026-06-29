@@ -1,23 +1,23 @@
 /**
  * @fileoverview Hourly reconciliation of `media_quota_usage` per user.
  *
- * The Mac writes per-session deltas to `users/{uid}/media_quota_usage/{day}`
- * during active sessions in batched updates every 30 s. This worker
- * recomputes the same documents from authoritative
- * `users/{uid}/iroh_audit_events/*` filtered to `streamClass: "media.*"`
- * so client-side drift never becomes a quota dispute. Mirrors the
- * `rollupIrohTransportDaily` shape from `irohMonitoring.ts`.
+ * This worker writes `users/{uid}/media_quota_usage/{day}` from
+ * `users/{uid}/media_session_events/*`, the bounded metadata stream that
+ * already carries feature, byte, and duration fields for media sessions.
+ * Firestore rules keep that quota document read-only to clients so admission
+ * checks never trust owner-writable counters. Mirrors the bounded
+ * `mediaMonitoring.ts` rollup query shape.
  *
  * Source of truth contract:
  * - During a session, the Mac is authoritative for live capability gating
  *   (Decision 2 — see `plans/2026-05-15-mercury-media-master-plan.md`).
- * - Hourly, this Function corrects the persisted counter so the next
- *   session starts from a true cumulative number.
+ * - Hourly, this Function publishes the persisted counter so the next
+ *   session starts from a server-reconciled cumulative number.
  */
 
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import type { SetOptions, WhereFilterOp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { logError } from "./logging.js";
 import type { MediaFeature, MediaQuotaUsageDoc } from "./types.js";
@@ -32,6 +32,25 @@ interface FeatureAccumulator {
   secondsUsed: number;
   sessionCount: number;
   failureCount: number;
+}
+
+type MediaQuotaSourceDoc = {
+  data(): Record<string, unknown>;
+};
+
+interface MediaQuotaSourceQuery {
+  where(field: string, op: WhereFilterOp, value: string): MediaQuotaSourceQuery;
+  get(): Promise<{ readonly docs: readonly MediaQuotaSourceDoc[] }>;
+}
+
+interface MediaQuotaCollection extends MediaQuotaSourceQuery {
+  doc(id: string): {
+    set(data: MediaQuotaUsageDoc, options: SetOptions): Promise<unknown>;
+  };
+}
+
+interface MediaQuotaFirestore {
+  collection(path: string): MediaQuotaCollection;
 }
 
 function newAccumulator(): FeatureAccumulator {
@@ -66,20 +85,42 @@ function inferFeature(streamClass: string | undefined): MediaFeature | undefined
   return undefined;
 }
 
+function isMediaFeature(value: unknown): value is MediaFeature {
+  return value === "fileTransfer" || value === "screenShare" || value === "videoCall";
+}
+
+function nonNegativeNumber(value: number | undefined): number {
+  return value !== undefined && value >= 0 ? value : 0;
+}
+
+function durationSeconds(raw: Record<string, unknown>): number {
+  const startedAt = stringField(raw, "startedAt");
+  const endedAt = stringField(raw, "endedAt");
+  if (!startedAt || !endedAt) return 0;
+  const startedMs = Date.parse(startedAt);
+  const endedMs = Date.parse(endedAt);
+  if (!Number.isFinite(startedMs) || !Number.isFinite(endedMs) || endedMs <= startedMs) return 0;
+  return Math.round((endedMs - startedMs) / 1000);
+}
+
+function isFailureEndReason(value: string | undefined): boolean {
+  return Boolean(value && !value.startsWith("completed"));
+}
+
 interface RecomputeOptions {
   uid: string;
   dateUTC: Date;
-  firestore?: Firestore;
+  firestore?: MediaQuotaFirestore;
 }
 
-async function recomputeQuotaUsageForUid(options: RecomputeOptions): Promise<MediaQuotaUsageDoc> {
-  const firestore = options.firestore ?? getFirestore();
+export async function recomputeQuotaUsageForUid(options: RecomputeOptions): Promise<MediaQuotaUsageDoc> {
+  const firestore: MediaQuotaFirestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 
   const snapshot = await firestore
-    .collection(`users/${options.uid}/iroh_audit_events`)
-    .where("createdAt", ">=", window.start)
-    .where("createdAt", "<", window.end)
+    .collection(`users/${options.uid}/media_session_events`)
+    .where("startedAt", ">=", window.start.toISOString())
+    .where("startedAt", "<", window.end.toISOString())
     .get();
 
   const buckets: Record<MediaFeature, FeatureAccumulator> = {
@@ -90,16 +131,15 @@ async function recomputeQuotaUsageForUid(options: RecomputeOptions): Promise<Med
 
   for (const doc of snapshot.docs) {
     const data = doc.data();
-    const feature = inferFeature(stringField(data, "streamClass"));
+    const featureFromDoc = stringField(data, "feature");
+    const feature = isMediaFeature(featureFromDoc) ? featureFromDoc : inferFeature(stringField(data, "streamClass"));
     if (!feature) continue;
     const bucket = buckets[feature];
-    bucket.bytesIn += numberField(data, "bytesInbound") ?? 0;
-    bucket.bytesOut += numberField(data, "bytesOutbound") ?? 0;
-    const eventType = stringField(data, "eventType");
-    if (eventType === "iroh_stream_closed") {
-      bucket.sessionCount += 1;
-      bucket.secondsUsed += Math.round((numberField(data, "durationMillis") ?? 0) / 1000);
-    } else if (eventType === "iroh_stream_failed") {
+    bucket.bytesIn += nonNegativeNumber(numberField(data, "byteCountInbound"));
+    bucket.bytesOut += nonNegativeNumber(numberField(data, "byteCountOutbound"));
+    bucket.sessionCount += 1;
+    bucket.secondsUsed += durationSeconds(data);
+    if (isFailureEndReason(stringField(data, "endReason"))) {
       bucket.failureCount += 1;
     }
   }

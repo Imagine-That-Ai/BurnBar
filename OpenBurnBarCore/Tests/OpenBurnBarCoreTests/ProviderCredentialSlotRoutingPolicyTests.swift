@@ -69,6 +69,28 @@ final class ProviderCredentialSlotRoutingPolicyTests: XCTestCase {
         )
     }
 
+    func testMissingSecretDoesNotRouteEvenWhenCredentialStillExists() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let slot = BurnBarProviderCredentialSlot(
+            label: "Current Claude Code login",
+            status: .missingSecret,
+            lastStatusMessage: "Previous OAuth copy expired.",
+            updatedAt: now
+        )
+
+        XCTAssertEqual(
+            BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: slot, now: now),
+            .missingSecret
+        )
+        XCTAssertFalse(
+            BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(slot: slot, hasCredential: false, now: now)
+        )
+        XCTAssertFalse(
+            BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(slot: slot, hasCredential: true, now: now),
+            "A plain missingSecret slot must stay blocked until the daemon proves it recovered the credential."
+        )
+    }
+
     private func formattedResetDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

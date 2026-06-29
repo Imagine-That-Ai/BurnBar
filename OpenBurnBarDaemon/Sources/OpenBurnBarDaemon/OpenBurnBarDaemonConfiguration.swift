@@ -278,7 +278,7 @@ public struct BurnBarDaemonConfiguration: Sendable {
         public var errorDescription: String? {
             switch self {
             case .missingSocketAuthToken:
-                return "Socket auth token is required. Provide it via --socket-auth-token TOKEN or OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN environment variable. The OpenBurnBar app automatically generates and passes a token."
+                return "Socket auth token is required. Provide it via --socket-auth-token-file PATH, --socket-auth-token TOKEN, or OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN. The OpenBurnBar app automatically generates a private token file."
             }
         }
     }
