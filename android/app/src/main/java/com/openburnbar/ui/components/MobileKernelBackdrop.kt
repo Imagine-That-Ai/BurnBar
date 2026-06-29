@@ -28,11 +28,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 @Composable
-fun MobileKernelBackdrop(
-    kernel: MobileBackdropKernel,
-    accentColor: Color,
-    modifier: Modifier = Modifier,
-) {
+fun MobileKernelBackdrop(kernel: MobileBackdropKernel, accentColor: Color, modifier: Modifier = Modifier) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "mobile-kernel-backdrop")
     val animatedPhase by transition.animateFloat(
@@ -73,24 +69,22 @@ fun MobileKernelBackdrop(
     }
 }
 
-private fun MobileBackdropKernel.palette(accentColor: Color): List<Color> =
-    when (this) {
-        MobileBackdropKernel.ORIGAMI -> listOf(Color(0xFFF0DEC0), Color(0xFFC78C6F), Color(0xFF5C2E2A))
-        MobileBackdropKernel.STORM_SIGNAL -> listOf(Color(0xFF05070D), Color(0xFF1A2233), Color(0xFF59617A))
-        MobileBackdropKernel.CLOUDFIELD, MobileBackdropKernel.VOLUMETRIC -> listOf(Color(0xFF080D1F), Color(0xFF22385F), Color(0xFF7F91C2))
-        MobileBackdropKernel.PETROLEUM_SHEEN, MobileBackdropKernel.OILFIELD -> listOf(Color(0xFF020709), Color(0xFF0F423B), Color(0xFF6B2E8C))
-        MobileBackdropKernel.INK_DIFFUSION, MobileBackdropKernel.SUMINAGASHI_DRIFT -> listOf(Color(0xFF0A0D17), Color(0xFF212E47), Color(0xFF9470C2))
-        MobileBackdropKernel.RETRO_PLASMA -> listOf(Color(0xFF0A001A), Color(0xFF450D85), Color(0xFF009EC2))
-        else -> listOf(Color(0xFF050509), accentColor.copy(alpha = 0.72f), Color(0xFFF57A2E))
-    }
+private fun MobileBackdropKernel.palette(accentColor: Color): List<Color> = when (this) {
+    MobileBackdropKernel.ORIGAMI -> listOf(Color(0xFFF0DEC0), Color(0xFFC78C6F), Color(0xFF5C2E2A))
+    MobileBackdropKernel.STORM_SIGNAL -> listOf(Color(0xFF05070D), Color(0xFF1A2233), Color(0xFF59617A))
+    MobileBackdropKernel.CLOUDFIELD, MobileBackdropKernel.VOLUMETRIC -> listOf(Color(0xFF080D1F), Color(0xFF22385F), Color(0xFF7F91C2))
+    MobileBackdropKernel.PETROLEUM_SHEEN, MobileBackdropKernel.OILFIELD -> listOf(Color(0xFF020709), Color(0xFF0F423B), Color(0xFF6B2E8C))
+    MobileBackdropKernel.INK_DIFFUSION, MobileBackdropKernel.SUMINAGASHI_DRIFT -> listOf(Color(0xFF0A0D17), Color(0xFF212E47), Color(0xFF9470C2))
+    MobileBackdropKernel.RETRO_PLASMA -> listOf(Color(0xFF0A001A), Color(0xFF450D85), Color(0xFF009EC2))
+    else -> listOf(Color(0xFF050509), accentColor.copy(alpha = 0.72f), Color(0xFFF57A2E))
+}
 
-private fun MobileBackdropKernel.readabilityScrim(): Float =
-    when (this) {
-        MobileBackdropKernel.ORIGAMI -> 0.18f
-        MobileBackdropKernel.CONSTELLATION, MobileBackdropKernel.VOGEL_BLOOM, MobileBackdropKernel.MYCELIUM_MESH -> 0.28f
-        MobileBackdropKernel.RETRO_PLASMA, MobileBackdropKernel.MOIRE, MobileBackdropKernel.LIQUID_LUMEN -> 0.46f
-        else -> 0.36f
-    }
+private fun MobileBackdropKernel.readabilityScrim(): Float = when (this) {
+    MobileBackdropKernel.ORIGAMI -> 0.18f
+    MobileBackdropKernel.CONSTELLATION, MobileBackdropKernel.VOGEL_BLOOM, MobileBackdropKernel.MYCELIUM_MESH -> 0.28f
+    MobileBackdropKernel.RETRO_PLASMA, MobileBackdropKernel.MOIRE, MobileBackdropKernel.LIQUID_LUMEN -> 0.46f
+    else -> 0.36f
+}
 
 private fun DrawScope.drawConstellation(phase: Float) {
     val count = 90

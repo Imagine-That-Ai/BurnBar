@@ -300,12 +300,7 @@ internal fun ThemePrefsBackdropKernelSelector(
 }
 
 @Composable
-private fun ThemePrefsBackdropKernelChip(
-    kernel: MobileBackdropKernel,
-    selected: Boolean,
-    useWebsiteBackground: Boolean,
-    haptic: HapticFeedback,
-) {
+private fun ThemePrefsBackdropKernelChip(kernel: MobileBackdropKernel, selected: Boolean, useWebsiteBackground: Boolean, haptic: HapticFeedback) {
     val primaryColor = MaterialTheme.colorScheme.primary
     Surface(
         shape = RoundedCornerShape(999.dp),
