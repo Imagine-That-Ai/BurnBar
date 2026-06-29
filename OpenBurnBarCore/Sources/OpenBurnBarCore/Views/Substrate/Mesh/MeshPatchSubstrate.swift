@@ -36,10 +36,10 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     /// Max grid resolution along either canvas axis (cells). The grid is ADAPTIVE —
     /// chosen so each pane stays a small, fixed SCREEN size rather than scaling with
     /// the cloud/screen (a sparse full-screen swarm must never yield huge tiles).
-    private static let MAXGRID = 80
+    private static let MAXGRID = 160
     /// Total-cell budget. Keeps the per-frame paint bounded on very wide canvases;
     /// when exceeded the cell size is grown until the count fits.
-    private static let MAXCELLS = 2800
+    private static let MAXCELLS = 6000
     /// Pane overlap so adjacent cells leave no seam gaps (continuous sheet).
     private static let overlap = 1.12
     /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges.
@@ -71,6 +71,8 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     private var cells = 0                // cols * rows
     private var cellW: Double = 0        // cell width  (screen px)
     private var cellH: Double = 0        // cell height (screen px)
+    private var originX: Double = 0      // grid origin x (cloud-bbox left, screen px)
+    private var originY: Double = 0      // grid origin y (cloud-bbox top, screen px)
     private var ext: Double = 0          // pane half-extent (screen px, bounded)
 
     // MARK: Per-frame scratch (reused; sized cols*rows)
@@ -113,30 +115,55 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     /// reusable density/colour field. Nothing positional is baked here — the field
     /// is splatted live each frame so the sheet tracks the moving cloud.
     private func layout(_ frame: SwarmSubstrateFrame) {
-        let w = max(frame.size.width, 1)
-        let h = max(frame.size.height, 1)
+        let cw = max(frame.size.width, 1)
+        let ch = max(frame.size.height, 1)
         builtCount = frame.dots.count
         built = frame.settleProgress >= 0.6 || frame.reduced
-        lastW = Int(w.rounded())
-        lastH = Int(h.rounded())
+        lastW = Int(cw.rounded())
+        lastH = Int(ch.rounded())
 
-        // Target pane ≈ a small ceramic lozenge in SCREEN px. On a sparse full-screen
-        // swarm this means MORE, still-small cells — never the giant slabs a cloud-
-        // radius-scaled tile would produce.
-        let targetCellPx = max(18.0, frame.sizePx * 8.5)
-        var c = max(8, min(Self.MAXGRID, Int((w / targetCellPx).rounded())))
-        var r = max(8, min(Self.MAXGRID, Int((h / targetCellPx).rounded())))
+        // Tessellate the CLOUD BOUNDING BOX, not the whole canvas. A concentrated
+        // logo (shape mode) gets a fine grid of small panes; a spread free-swarm
+        // covers the field. This is what keeps panes small when the swarm forms a
+        // big mark — the old full-canvas grid made the panes track the mark's span.
+        var minX = Double.greatestFiniteMagnitude, minY = Double.greatestFiniteMagnitude
+        var maxX = -Double.greatestFiniteMagnitude, maxY = -Double.greatestFiniteMagnitude
+        for d in frame.dots {
+            if d.x < minX { minX = d.x }; if d.x > maxX { maxX = d.x }
+            if d.y < minY { minY = d.y }; if d.y > maxY { maxY = d.y }
+        }
+        if !(maxX > minX) { minX = 0; maxX = cw }
+        if !(maxY > minY) { minY = 0; maxY = ch }
+
+        // Target pane = a small ceramic lozenge, HARD-CAPPED in absolute screen px so
+        // it never balloons when the host renders large particles (the wallpaper feeds
+        // a big sizePx). Cap is independent of sizePx and cloudRadius.
+        let throttle = frame.batteryThrottled
+        let targetCellPx = clampD(frame.sizePx * 4.5, 15.0, throttle ? 34.0 : 24.0)
+        // Pad the bbox by ~1.5 cells so the tessellation feathers just past the cloud.
+        let pad = targetCellPx * 1.5
+        var x0 = max(0.0, minX - pad), y0 = max(0.0, minY - pad)
+        var x1 = min(cw, maxX + pad), y1 = min(ch, maxY + pad)
+        if !(x1 > x0) { x0 = 0; x1 = cw }
+        if !(y1 > y0) { y0 = 0; y1 = ch }
+        let bw = x1 - x0, bh = y1 - y0
+
+        var c = max(8, min(Self.MAXGRID, Int((bw / targetCellPx).rounded())))
+        var r = max(8, min(Self.MAXGRID, Int((bh / targetCellPx).rounded())))
         // Honour the total-cell budget (grow cells, never explode the paint loop).
-        if c * r > Self.MAXCELLS {
-            let s = (Double(c * r) / Double(Self.MAXCELLS)).squareRoot()
+        let budget = throttle ? Self.MAXCELLS / 2 : Self.MAXCELLS
+        if c * r > budget {
+            let s = (Double(c * r) / Double(budget)).squareRoot()
             c = max(8, Int(Double(c) / s))
             r = max(8, Int(Double(r) / s))
         }
         cols = c
         rows = r
         cells = c * r
-        cellW = w / Double(c)
-        cellH = h / Double(r)
+        originX = x0
+        originY = y0
+        cellW = bw / Double(c)
+        cellH = bh / Double(r)
         // Bound the pane half-extent in absolute px (never cloud-radius scaled).
         ext = max(cellW, cellH) * 0.5 * Self.overlap
 
@@ -160,15 +187,15 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         let dots = frame.dots
         for i in 0..<cells { wsum[i] = 0; crsum[i] = 0; cgsum[i] = 0; cbsum[i] = 0 }
 
-        let invCW = Double(cols) / max(frame.size.width, 1)
-        let invCH = Double(rows) / max(frame.size.height, 1)
+        let invCW = 1.0 / max(cellW, 1e-6)
+        let invCH = 1.0 / max(cellH, 1e-6)
         let twoSig2 = 2 * Self.splatSigma * Self.splatSigma
         let R = Self.splatR
 
         for d in dots {
-            // Fractional cell coordinate of the particle.
-            let fx = d.x * invCW
-            let fy = d.y * invCH
+            // Fractional cell coordinate of the particle (relative to the bbox origin).
+            let fx = (d.x - originX) * invCW
+            let fy = (d.y - originY) * invCH
             let cc = Int(fx)
             let rr = Int(fy)
             let cr = d.rgba.r, cg = d.rgba.g, cb = d.rgba.b
@@ -284,8 +311,8 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                     if br < 0.12 { continue }
                     let col = (i % cols)
                     let row = i / cols
-                    let x = (Double(col) + 0.5) * cellW
-                    let y = (Double(row) + 0.5) * cellH - hf * baseExt * 0.5
+                    let x = originX + (Double(col) + 0.5) * cellW
+                    let y = originY + (Double(row) + 0.5) * cellH - hf * baseExt * 0.5
                     let glow = RGBA(r: colR[i], g: colG[i], b: colB[i])
                         .toWhite(0.26).mix(with: accent, amount: 0.18)
                     let rr = baseExt * (1.35 + 0.5 * br)
@@ -305,8 +332,8 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             let hf = hcache[i]
             let col = i % cols
             let row = i / cols
-            let cxp = (Double(col) + 0.5) * cellW
-            let cyp = (Double(row) + 0.5) * cellH - hf * baseExt * 0.45   // draped lift
+            let cxp = originX + (Double(col) + 0.5) * cellW
+            let cyp = originY + (Double(row) + 0.5) * cellH - hf * baseExt * 0.45   // draped lift
 
             // Pane tilt from the height-field gradient → the gradient axis + hotspot
             // slide as the sheet breathes (flat under reduced motion).
