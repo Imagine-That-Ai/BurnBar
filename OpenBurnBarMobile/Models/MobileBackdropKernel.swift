@@ -33,7 +33,9 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
     case petroleumSheen = "petroleum-sheen"
 
     static let storageKey = "mobileBackdropKernel"
-    static let defaultKernel: MobileBackdropKernel = .fluidAurora
+    /// Keep first launch on the original provider-dot look. The heavier
+    /// app.burnbar.ai-inspired kernels remain opt-in from Settings.
+    static let defaultKernel: MobileBackdropKernel = .constellation
 
     var id: String { rawValue }
 
