@@ -45,7 +45,7 @@ private enum MobileKernelBackdropRenderer {
         let rect = CGRect(origin: .zero, size: size)
         context.fill(Path(rect), with: .linearGradient(
             Gradient(colors: palette(for: kernel, accent: accent)),
-            startPoint: CGPoint(x: 0, y: 0),
+            startPoint: .zero,
             endPoint: CGPoint(x: size.width, y: size.height)
         ))
 
@@ -321,8 +321,10 @@ private extension MobileBackdropKernel {
     }
 }
 
-private func + (lhs: CGFloat, rhs: Double) -> CGFloat { lhs + CGFloat(rhs) }
-private func - (lhs: CGFloat, rhs: Double) -> CGFloat { lhs - CGFloat(rhs) }
-private func * (lhs: CGFloat, rhs: Double) -> CGFloat { lhs * CGFloat(rhs) }
-private func * (lhs: Double, rhs: CGFloat) -> CGFloat { CGFloat(lhs) * rhs }
-private func / (lhs: CGFloat, rhs: Double) -> CGFloat { lhs / CGFloat(rhs) }
+private extension CGFloat {
+    static func + (lhs: CGFloat, rhs: Double) -> CGFloat { lhs + CGFloat(rhs) }
+    static func - (lhs: CGFloat, rhs: Double) -> CGFloat { lhs - CGFloat(rhs) }
+    static func * (lhs: CGFloat, rhs: Double) -> CGFloat { lhs * CGFloat(rhs) }
+    static func * (lhs: Double, rhs: CGFloat) -> CGFloat { CGFloat(lhs) * rhs }
+    static func / (lhs: CGFloat, rhs: Double) -> CGFloat { lhs / CGFloat(rhs) }
+}
