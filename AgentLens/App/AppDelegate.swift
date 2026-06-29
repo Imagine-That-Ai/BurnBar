@@ -1683,6 +1683,14 @@ public final class SwarmWallpaperViewModel {
 /// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
 struct SwarmWallpaperView: View {
     let viewModel: SwarmWallpaperViewModel
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     var body: some View {
         let background = viewModel.background
@@ -1712,7 +1720,8 @@ struct SwarmWallpaperView: View {
             // asynchronously halves CPU work with no perceptible change in
             // the ambient field.
             maxFrameRate: 30.0,
-            rendersAsynchronously: true
+            rendersAsynchronously: true,
+            substrate: substrate
         )
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.18), value: background)

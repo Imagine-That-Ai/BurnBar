@@ -44,7 +44,15 @@ struct ConstellationBackgroundView: View {
     @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var envMonitor = SwarmEnvironmentMonitor.shared
+    @StateObject private var substrateBox = SwarmSubstrateBox()
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     /// Index into ``providers`` for the logo currently materialising.
     @State private var providerIndex = Int.random(in: 0..<max(1, ConstellationBackgroundView.providers.count))
@@ -113,7 +121,8 @@ struct ConstellationBackgroundView: View {
             maxFrameRate: plan.maxFrameRate,
             rendersAsynchronously: true,
             // Re-place the lone logo somewhere new each materialisation.
-            logoOffsets: [logoOffset, .zero, .zero]
+            logoOffsets: [logoOffset, .zero, .zero],
+            substrate: substrate
         )
         .ignoresSafeArea()
         .overlay(rotationDriver(plan: plan))

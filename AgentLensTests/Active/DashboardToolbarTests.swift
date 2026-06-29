@@ -81,7 +81,7 @@ final class DashboardToolbarTests: XCTestCase {
             .inspect())
     }
 
-    func test_dashboardBackdropKeepsDynamicLayerWhenKernelIsEnabled() throws {
+    func test_dashboardBackdropKeepsCheapFallbackWhenKernelIsEnabled() throws {
         let defaults = UserDefaults.standard
         let previousKernelBackdrop = defaults.object(forKey: KernelBackdropPreferences.enabledKey)
         defer {

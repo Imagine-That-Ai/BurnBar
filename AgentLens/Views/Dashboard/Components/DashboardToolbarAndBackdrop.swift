@@ -57,6 +57,10 @@ struct DashboardBackdrop: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
     /// the blurred desktop shows through — the felt payoff of the preference
@@ -67,6 +71,10 @@ struct DashboardBackdrop: View {
 
     private var dynamicBackdropEnabled: Bool {
         settingsManager.useWebsiteBackground || useKernelBackdrop
+    }
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
     }
 
     var body: some View {
@@ -86,12 +94,13 @@ struct DashboardBackdrop: View {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
-                        // on top. Keep the native swarm/constellation below it
-                        // so a WebKit/WebGL failure never leaves the dashboard
-                        // with no animated backdrop at all.
-                        nativeDynamicBackdrop
+                        // on top. Keep the normal fallback static; add the native
+                        // swarm only when the substrate layer is explicitly enabled
+                        // so the substrate picker still has a live host in kernel mode.
+                        staticKernelFallback
                         KernelBackdropView()
                             .ignoresSafeArea()
+                        kernelSubstrateOverlay
                     } else if settingsManager.useConstellationBackground {
                         ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
                     } else {
@@ -100,41 +109,61 @@ struct DashboardBackdrop: View {
                 }
                 .opacity(1 - 0.82 * clarity)
             } else {
-                DesignSystem.Colors.background
-                    .ignoresSafeArea()
+                staticDashboardFallback
                     .opacity(1 - 0.82 * clarity)
-
-                DesignSystem.Colors.ember
-                    .opacity(0.035)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .mask(alignment: .topLeading) {
-                        Rectangle()
-                            .frame(width: 520)
-                            .rotationEffect(.degrees(-11))
-                            .offset(x: -260, y: -80)
-                    }
-
-                DesignSystem.Colors.whimsy
-                    .opacity(0.025)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .mask(alignment: .bottomTrailing) {
-                        Rectangle()
-                            .frame(width: 460)
-                            .rotationEffect(.degrees(15))
-                            .offset(x: 220, y: 110)
-                    }
             }
             // cov:ignore-end
         }
     }
 
     @ViewBuilder
-    private var nativeDynamicBackdrop: some View {
-        if settingsManager.useConstellationBackground {
-            ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
-        } else {
-            WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+    private var kernelSubstrateOverlay: some View {
+        if substrateEnabled {
+            SwarmCanvasView(
+                accent: DesignSystem.Colors.ember,
+                pace: .cinematic,
+                isTransparent: true,
+                motionSpeedMultiplier: 0.6,
+                enableSwarmSparkles: false,
+                rendersAsynchronously: true,
+                substrate: substrate
+            )
+            .ignoresSafeArea()
+            .opacity(0.58)
+            .allowsHitTesting(false)
         }
+    }
+
+    @ViewBuilder
+    private var staticDashboardFallback: some View {
+        ZStack {
+            DesignSystem.Colors.background
+                .ignoresSafeArea()
+
+            DesignSystem.Colors.ember
+                .opacity(0.035)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .topLeading) {
+                    Rectangle()
+                        .frame(width: 520)
+                        .rotationEffect(.degrees(-11))
+                        .offset(x: -260, y: -80)
+                }
+
+            DesignSystem.Colors.whimsy
+                .opacity(0.025)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .mask(alignment: .bottomTrailing) {
+                    Rectangle()
+                        .frame(width: 460)
+                        .rotationEffect(.degrees(15))
+                        .offset(x: 220, y: 110)
+                }
+        }
+    }
+
+    private var staticKernelFallback: some View {
+        staticDashboardFallback
     }
 }
 
@@ -150,6 +179,16 @@ struct DashboardBackdrop: View {
 struct WebsiteBackgroundView: View {
     let accent: Color
     @Environment(SettingsManager.self) private var settingsManager
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
+
+    /// The resolved substrate for the active backdrop theme + persisted pick.
+    /// Plain (no-op) unless enabled and the pick belongs to the theme's family.
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     var body: some View {
         // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
@@ -166,13 +205,14 @@ struct WebsiteBackgroundView: View {
                     isTransparent: true,
                     motionSpeedMultiplier: 0.7,
                     enableSwarmSparkles: false,
-                    rendersAsynchronously: true
+                    rendersAsynchronously: true,
+                    substrate: substrate
                 )
                 .ignoresSafeArea()
                 .opacity(0.85)
             }
         } else {
-            SwarmCanvasView(accent: accent, pace: .energetic, rendersAsynchronously: true)
+            SwarmCanvasView(accent: accent, pace: .energetic, rendersAsynchronously: true, substrate: substrate)
                 .ignoresSafeArea()
         }
         // cov:ignore-end

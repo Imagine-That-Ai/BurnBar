@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Swarm substrates** — the provider-glyph swarm can now be composed in any of
+  ~24 hand-tuned *materials* ported from the imaginethat-llc lab, organized into
+  six families that couple to the active backdrop theme exactly like the web
+  glyph gallery: **Constellation** (Stellar Plasma, Cut Star Sapphire, Drawn
+  Constellation, Dendritic Frost), **Flow Field** (Plankton Wake, Glass Ribbon,
+  Silk Streamline, Petal Drift), **Aurora** (Wisp Plasma, Polar Ice Prism, Aurora
+  Filament, Drift Motes), **Iridescent Mesh** (Caustic Pool, Gradient Patch, Iso
+  Contour, Living Grain), **Moiré** (Fringe Bloom, Lattice Facet, Ruling Grating,
+  Film Bubble), and **Volumetric** (Crepuscular Shafts, Smoked Glass Slab, Silk
+  Filament, Dust Motes). Each repaints the live particle field in its own idiom
+  (additive bloom + hot cores, silk streamlines, faceted gems, godrays…) on a
+  native SwiftUI `Canvas`, perf-tuned with cached sprites and a shared
+  nearest-neighbor structure provider to hold 60fps. Pick one per theme in
+  Settings → Appearance → Background & Effects → Swarm Substrate; the offered
+  styles re-couple live when you switch the backdrop kernel. Persisted via the
+  shared `swarmSubstrate` preference and honored by the dashboard backdrop. The
+  default ("Plain · DOTS") is the original dot look, so nothing changes until you
+  opt in.
+- **Dashboard layout concepts** — the macOS Overview can now render in any of
+  six named layouts: **Atelier** (the default; a full-bleed, kernel-forward
+  hero with floating glass stat cards), **Aurora** (provider rail + open swarm
+  field + data band), **Nebula** (bento grid), **Constellation** (centered
+  command column over a full swarm), **Cockpit** (mission-control KPI grid with
+  spend-share rail, routing stage, and The Wand), and **Classic** (the original
+  information-dense scroll). Switch instantly from the inline switcher pinned
+  atop the Overview, or set a default in Settings → Appearance → Theme. Every
+  concept floats glass over the shared kernel + provider-swarm backdrop and
+  keeps the full provider / model / activity lanes one click away in a "more
+  details" drawer, so no information is lost. Persisted via the shared
+  `DashboardLayout` preference (`dashboardLayout` key), mirroring `AppSkin`.
 - Live Appearance Preview card at the top of the Appearance settings page.
   Renders a miniature dashboard mockup (toolbar, sparkline, provider cards,
   backdrop) that reflects the current theme, skin, background, and Liquid
@@ -72,11 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Kept the native swarm/constellation dashboard background alive underneath the
-  experimental Window Backdrop kernels, so a WebKit/WebGL renderer failure no
-  longer leaves the dashboard with a flat or missing animated background.
-  Enabling Window Backdrop from Appearance now also enables the shared dynamic
-  background layer instead of depending on a separate Swarm Background toggle.
+- Kept a static dashboard fallback underneath the experimental Window Backdrop
+  kernels, so a WebKit/WebGL renderer failure no longer leaves the dashboard
+  blank while avoiding a permanent second native swarm renderer. Window
+  Backdrop now works independently from the Swarm Background toggle.
 - Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
   "Credential not found" badge and a permanent "Refresh credential" button even
   right after a successful sign-in. Claude Max/Pro OAuth profiles routinely

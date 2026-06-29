@@ -391,7 +391,7 @@ struct DashboardView: View {
             Group {
                 switch mainRoute {
                 case .overview:
-                    overviewView
+                    overviewRouteView
                 case .insights:
                     MacAgentInsightsWorkspace(
                         dataStore: dataStore,
@@ -620,6 +620,61 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Overview route (layout dispatch)
+    //
+    // The overview can render in any of the named `DashboardLayout` concepts.
+    // `classic` (and any not-yet-built concept) routes to the original
+    // `overviewView`; built concepts get their own composition over the shared
+    // kernel + swarm backdrop. The inline `DashboardLayoutSwitcher` (the
+    // prototype's top-rail concept switcher) is pinned above the content via a
+    // top safe-area inset, shown only once there's data to arrange.
+
+    @ViewBuilder
+    private var overviewRouteView: some View {
+        Group {
+            if dataStore.totalUsageSessionCount > 0 {
+                switch settingsManager.dashboardLayout {
+                case .classic:       overviewView
+                case .aurora:        auroraLayout
+                case .nebula:        nebulaLayout
+                case .constellation: constellationLayout
+                case .cockpit:       cockpitLayout
+                case .atelier:       atelierLayout
+                }
+            } else {
+                // No usage data yet: every layout shows the shared welcome
+                // empty state that `overviewView` renders.
+                overviewView
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if dataStore.totalUsageSessionCount > 0 {
+                layoutSwitcherBar
+            }
+        }
+    }
+
+    private var layoutSwitcherBar: some View {
+        HStack {
+            DashboardLayoutSwitcher(selection: Binding(
+                get: { settingsManager.dashboardLayout },
+                set: { newValue in
+                    guard newValue != settingsManager.dashboardLayout else { return }
+                    settingsManager.dashboardLayout = newValue
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "dashboard_layout",
+                        "new_value": .string(newValue.rawValue),
+                        "source": "overview_switcher"
+                    ])
+                }
+            ))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.top, DesignSystem.Spacing.sm)
+        .padding(.bottom, DesignSystem.Spacing.xs)
+    }
+
     @ViewBuilder
     private var overviewView: some View {
         if dataStore.totalUsageSessionCount == 0 {
@@ -744,7 +799,7 @@ struct DashboardView: View {
     // activity yet so the band still feels alive.
 
     @ViewBuilder
-    private var liveCostCurveBand: some View {
+    var liveCostCurveBand: some View {
         DashboardLiveCostCurve(
             usages: dashboardUsageWindow.usages,
             usagesRevision: dataStore.usagesVersion,
@@ -755,13 +810,13 @@ struct DashboardView: View {
         )
     }
 
-    private var curveGranularityForCurrentRange: DashboardLiveCostCurve.Granularity {
+    var curveGranularityForCurrentRange: DashboardLiveCostCurve.Granularity {
         switch selectedTimeRange {
         case .today, .thisMonth, .last7Days, .last30Days, .allTime: return .day
         }
     }
 
-    private var curveDomainForCurrentRange: ClosedRange<Date> {
+    var curveDomainForCurrentRange: ClosedRange<Date> {
         if let range = selectedTimeRange.dateRange() {
             return range
         }
@@ -794,7 +849,7 @@ struct DashboardView: View {
         overviewUsesStackedLanes = shouldStack
     }
 
-    private var liveCostCurveAccent: Color {
+    var liveCostCurveAccent: Color {
         if let top = dashboardProviderSummaries.first {
             return DesignSystem.Colors.primary(for: top.provider)
         }

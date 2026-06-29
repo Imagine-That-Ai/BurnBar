@@ -132,6 +132,7 @@ excluded:
   - OpenBurnBarCore/.swiftpm
   - OpenBurnBarDaemon/.build
   - OpenBurnBarDaemon/.swiftpm
+  - tools/CUClickSmoke/.build
   - OpenBurnBar.xcodeproj
   - Vendor
   - DerivedSources

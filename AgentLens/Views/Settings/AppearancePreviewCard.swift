@@ -17,8 +17,16 @@ struct AppearancePreviewCard: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
     @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
 
     private let previewProviders: [AgentProvider] = [.claudeCode, .codex, .factory]
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     var body: some View {
         GlassCard {
@@ -218,7 +226,8 @@ struct AppearancePreviewCard: View {
                     pace: .cinematic,
                     motionSpeedMultiplier: 0.8,
                     enableSwarmSparkles: settingsManager.enableSwarmSparkles,
-                    rendersAsynchronously: true
+                    rendersAsynchronously: true,
+                    substrate: substrate
                 )
                 .opacity(0.55)
             }

@@ -39,6 +39,79 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// The named dashboard *layout* concept the macOS overview renders.
+///
+/// These are the five full-dashboard arrangements from the "Liquid Glass
+/// Studio" design phase plus `classic` (the original information-dense scroll
+/// overview, retained). Each concept floats glass cards over the shared
+/// kernel + provider-swarm backdrop; `classic` keeps the legacy composition.
+///
+/// Shared across platforms (same `String` raw values + `storageKey`) so future
+/// iOS/Android parity can read the same preference, mirroring `AppSkin`.
+public enum DashboardLayout: String, CaseIterable, Codable, Sendable {
+    /// The original macOS overview: a vertical scroll of stat cards, the live
+    /// cost curve, the Great Hall, the narrative banner, and the provider /
+    /// model / activity lanes. Information-dense; the safe fallback.
+    case classic
+    /// Provider list + open hero swarm field + a bottom data band.
+    case aurora
+    /// Bento grid: provider panel, a big burn card, a framed swarm stage, and
+    /// a tokens / sessions / cost-curve row.
+    case nebula
+    /// Centered command column: a search/Hermes bar over a full swarm stage,
+    /// three stat pills, and a wrap of provider chips.
+    case constellation
+    /// Mission-control grid: spend-share provider rail, four KPI tiles
+    /// (incl. cache hit), a routing swarm stage with TPS, cost curve + The Wand.
+    case cockpit
+    /// The keeper: a full-bleed kernel-forward hero with a headline and three
+    /// floating glass stat cards over the live substrate. The default.
+    case atelier
+
+    /// `UserDefaults` / `@AppStorage` key. Shared verbatim across platforms.
+    public static let storageKey = "dashboardLayout"
+
+    /// The currently-selected layout, read live from `UserDefaults.standard`.
+    /// Defaults to ``atelier`` — the design phase's "keeper" — when unset.
+    public static var current: DashboardLayout {
+        guard let raw = UserDefaults.standard.string(forKey: storageKey),
+              let layout = DashboardLayout(rawValue: raw) else { return .atelier }
+        return layout
+    }
+
+    public var displayName: String {
+        switch self {
+        case .classic:       return "Classic"
+        case .aurora:        return "Aurora"
+        case .nebula:        return "Nebula"
+        case .constellation: return "Constellation"
+        case .cockpit:       return "Cockpit"
+        case .atelier:       return "Atelier"
+        }
+    }
+
+    /// SF Symbol used in pickers and the inline switcher.
+    public var symbolName: String {
+        switch self {
+        case .classic:       return "rectangle.grid.1x2"
+        case .aurora:        return "sun.haze"
+        case .nebula:        return "rectangle.grid.2x2"
+        case .constellation: return "sparkles"
+        case .cockpit:       return "gauge.with.dots.needle.67percent"
+        case .atelier:       return "paintpalette"
+        }
+    }
+
+    /// Whether the concept is kernel-forward (full-bleed backdrop is the hero)
+    /// versus a structured panel layout. Drives small-window fallbacks.
+    public var isKernelForward: Bool {
+        switch self {
+        case .constellation, .atelier: return true
+        case .classic, .aurora, .nebula, .cockpit: return false
+        }
+    }
+}
+
 // MARK: - Hex Color Helpers
 
 public extension Color {

@@ -16,7 +16,7 @@ struct KernelCatalogEntry: Identifiable, Hashable {
 /// in sync with the engine's `KERNEL_META`.
 enum KernelCatalog {
     /// Matches the bundle's own fallback when no `#hash`/`?kernel=` is supplied.
-    static let defaultID = "fluid-aurora"
+    static let defaultID = SwarmSubstratePreferences.defaultKernelID
 
     static let all: [KernelCatalogEntry] = [
         KernelCatalogEntry(id: "constellation", label: "Constellation"),
@@ -200,7 +200,7 @@ private final class NonInteractiveWebView: WKWebView {
 /// settings picker bind to the exact same `UserDefaults` entries.
 enum KernelBackdropPreferences {
     /// Selected kernel id. Default `KernelCatalog.defaultID` ("fluid-aurora").
-    static let kernelKey = "backdropKernel"
+    static let kernelKey = SwarmSubstratePreferences.backdropKernelKey
     /// Master gate: when on, the dashboard backdrop renders the kernel field
     /// instead of the ember swarm.
     static let enabledKey = "useKernelBackdrop"

@@ -298,6 +298,51 @@ extension SwarmSimulation {
         return Color(red: fallbackRGBA.r, green: fallbackRGBA.g, blue: fallbackRGBA.b).opacity(fallbackRGBA.a * intensity)
     }
 
+    /// Numeric (`RGBA`) form of ``resolvedColor(for:at:isBatteryThrottled:uiMode:)``,
+    /// used by the substrate layer so ports get parse-free sRGB channels with the
+    /// same driver / palette / scheme / transition logic the dot loop uses. Alpha
+    /// already folds in the effective opacity, matching the painted dot exactly.
+    func resolvedRGBA(for p: Particle, at index: Int, isBatteryThrottled: Bool = false, uiMode: UIMode = .standard) -> RGBA {
+        if let providerLogoRGBA = resolvedProviderLogoRGBA(for: p, at: index) {
+            var intensity = 1.0
+            if let driver = colorDriver, driver.mode == .active {
+                intensity = driver.intensityMultiplier
+            }
+            if isBatteryThrottled { intensity *= 0.5 }
+            return RGBA(r: providerLogoRGBA.r, g: providerLogoRGBA.g, b: providerLogoRGBA.b,
+                        a: (providerLogoRGBA.a * intensity).clamped(to: 0...1))
+        }
+
+        if let driver = colorDriver, driver.mode == .active {
+            if let rgba = resolvedDriverRGBA(driver, for: p, at: index) {
+                var intensity = driver.intensityMultiplier
+                if isBatteryThrottled { intensity *= 0.5 }
+                let effectiveOpacity = (p.opacity * intensity).clamped(to: 0...1)
+                if colorTransitionProgress < 1.0, index < previousColors.count, let prev = previousColors[index] {
+                    let t = colorTransitionProgress
+                    return RGBA(r: prev.r * (1 - t) + rgba.r * t,
+                                g: prev.g * (1 - t) + rgba.g * t,
+                                b: prev.b * (1 - t) + rgba.b * t,
+                                a: effectiveOpacity)
+                }
+                return RGBA(r: rgba.r, g: rgba.g, b: rgba.b, a: effectiveOpacity)
+            }
+        }
+
+        let fallbackRGBA = rgbaFromKey(colorKey(for: p), uiMode: uiMode)
+        var intensity = 1.0
+        if isBatteryThrottled { intensity *= 0.5 }
+        if colorTransitionProgress < 1.0, index < previousColors.count, let prev = previousColors[index] {
+            let t = colorTransitionProgress
+            return RGBA(r: prev.r * (1 - t) + fallbackRGBA.r * t,
+                        g: prev.g * (1 - t) + fallbackRGBA.g * t,
+                        b: prev.b * (1 - t) + fallbackRGBA.b * t,
+                        a: (fallbackRGBA.a * intensity).clamped(to: 0...1))
+        }
+        return RGBA(r: fallbackRGBA.r, g: fallbackRGBA.g, b: fallbackRGBA.b,
+                    a: (fallbackRGBA.a * intensity).clamped(to: 0...1))
+    }
+
     func resolvedDriverRGBA(_ driver: SwarmColorDriver, for p: Particle, at index: Int) -> RGBA? {
         if let providerLogoRGBA = resolvedProviderLogoRGBA(for: p, at: index) {
             return providerLogoRGBA
