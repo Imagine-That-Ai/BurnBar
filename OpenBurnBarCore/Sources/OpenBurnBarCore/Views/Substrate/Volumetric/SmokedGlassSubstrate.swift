@@ -129,11 +129,22 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         let lx = cos(lightAng), ly = sin(lightAng)
         // 1.8s breath modulates the trapped-glow alpha (the medium inhaling).
         let breath = reduced ? 0.6 : 0.5 + 0.5 * sin(t * (TAU / 1.8))
+        // Sparse free-swarm vs. dense shape mode. On the full-bleed sparse field
+        // (isShapeMode == false) the chips are scattered specks, so we lift their
+        // footprint a touch and pool a smoked HAZE plate beneath them for presence.
+        // In dense shape mode the packed chips already fill the silhouette → ease
+        // both back so the carved-solid look is preserved.
+        let dense = frame.isShapeMode
+        let sparseLift = dense ? 1.0 : 1.18    // chip-size lift on the sparse field
+        let opLift = dense ? 0.0 : 0.07        // body-opacity floor lift when sparse
+        let hazeK = dense ? 0.30 : 1.0         // haze-plate strength
+
         // chip footprint scales with the cloud so it stays a packed solid. Slightly
         // larger than the source so the slab reads as solid mass, not gappy dots.
         // Chip footprint stays a small jewel in screen px; only a whisper of the
-        // cloud span so it never balloons on a sparse full-screen swarm.
-        let chipR = clampD(sizePx * 1.9 + radius * 0.006, 1.7, 5.5)
+        // cloud span so it never balloons on a sparse full-screen swarm. The sparse
+        // lift bumps the floor a little but the absolute px clamp is unchanged.
+        let chipR = clampD((sizePx * 1.9 + radius * 0.006) * sparseLift, 1.7, 5.5)
 
         // smoked, low-saturation cool slate the base is pulled toward.
         let smoke = dark ? 0.30 : 0.18
@@ -177,6 +188,64 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         // a tight hot core for the most strongly-lit chips (the brightest catch).
         let coreImg = baseCtx.resolve(sprites.whiteGlow(diameter: 48))
 
+        // ── layer -1: a CONTINUOUS frosted smoked-glass VOLUME filling the canvas.
+        //    On the sparse free-swarm this is the load-bearing material: a full-bleed
+        //    brand-tinted smoked fog (a solid presence FLOOR everywhere) with bloomed,
+        //    overlapping haze POOLS that intensify where the swarm locally clusters,
+        //    all read as layered glass — not scattered discs. Additive on dark (a
+        //    luminous fog), source-over on light (a translucent frost). The full-canvas
+        //    floor is FREE-SWARM ONLY (a canvas wash would bleed outside the silhouette
+        //    in dense shape mode); the pools ride on top so the sparse field reads as
+        //    looking THROUGH smoked glass, with the chips as crisp highlights above. ──
+        if hazeK > 0.01 {
+            // fog hue: smoked cool slate pulled toward the stage accent (brand tint).
+            let fogR = lerp(coolR, accent.r, 0.26)
+            let fogG = lerp(coolG, accent.g, 0.26)
+            let fogB = lerp(coolB, accent.b, 0.26)
+
+            // (1) FREE-SWARM ONLY presence FLOOR: a continuous full-canvas wash so the
+            //     whole field reads as one frosted volume, not faint specks. Uniform →
+            //     drawn flat (no blur needed, no edge vignette). Skipped in dense shape
+            //     mode where a canvas wash would paint outside the silhouette. ─────────
+            if !dense {
+                let floorA = clampD((dark ? 0.12 : 0.095) * (lite ? 0.82 : 1.0) * f, 0, 0.20)
+                if floorA > 0.004 {
+                    var floor = baseCtx
+                    floor.blendMode = dark ? .plusLighter : .normal
+                    floor.fill(Path(CGRect(origin: .zero, size: frame.size)),
+                               with: .color(RGBA(r: fogR, g: fogG, b: fogB, a: floorA).color))
+                }
+            }
+
+            // (2) bloomed haze POOLS that intensify where the swarm clusters, in ONE
+            //     blur layer. Big, soft, overlapping discs — bounded in screen px
+            //     (chipR is already px-clamped), NEVER cloudRadius — so the medium is
+            //     continuous, only relatively BRIGHTER under local clusters. Larger +
+            //     heavier on the sparse field; cheaper under throttle. On light the
+            //     pools run a touch darker so clusters read as denser frost, not lighter.
+            let hazeDisc = chipR * (dense ? 6.0 : 10.0)
+            let hazeBlur = lite ? max(9.0, chipR * 3.4) : max(16.0, chipR * 6.2)
+            let poolA = (dark ? 0.060 : 0.050) * hazeK * (lite ? 0.7 : 1.0)
+            let poolCol = dark
+                ? RGBA(r: fogR, g: fogG, b: fogB, a: 1).toWhite(0.05)
+                : RGBA(r: lerp(fogR, 0.20, 0.30), g: lerp(fogG, 0.25, 0.30), b: lerp(fogB, 0.38, 0.30), a: 1)
+            let haze = baseCtx
+            haze.drawLayer { layer in
+                layer.addFilter(.blur(radius: hazeBlur))
+                layer.blendMode = dark ? .plusLighter : .normal
+                for i in 0..<count {
+                    let d = frame.dots[i]
+                    // nearer (lower) chips pool a hair denser → a grounded slab.
+                    let a = clampD(poolA * (0.78 + 0.22 * depthA[i]) * f, 0, 0.16)
+                    if a < 0.004 { continue }
+                    layer.fill(
+                        Path(ellipseIn: CGRect(x: d.x - hazeDisc, y: d.y - hazeDisc,
+                                               width: hazeDisc * 2, height: hazeDisc * 2)),
+                        with: .color(poolCol.withOpacity(a).color))
+                }
+            }
+        }
+
         // ── layer 0 (DARK only): a real GAUSSIAN bloom bed under the slab. Each
         //    chip's color, pushed toward accent + a jewel-ramp hue and kissed white,
         //    is drawn additively into one blurred layer so the whole field rests in
@@ -218,7 +287,9 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
             let r0 = lerp(base.r, coolR, smoke) * shade
             let g0 = lerp(base.g, coolG, smoke) * shade
             let b0 = lerp(base.b, coolB, smoke) * shade
-            let a = clampD((dark ? 0.5 + 0.32 * dep : 0.6 + 0.24 * dep) * f, 0, dark ? 0.92 : 0.95)
+            // sparse-field opacity floor lift (opLift) so scattered chips read as
+            // solid mass, not faint specks; caps nudged up to let the lift show.
+            let a = clampD(((dark ? 0.5 + 0.32 * dep : 0.6 + 0.24 * dep) + opLift) * f, 0, dark ? 0.94 : 0.97)
             return RGBA(r: clampD(r0, 0, 1), g: clampD(g0, 0, 1), b: clampD(b0, 0, 1), a: a)
         }
 

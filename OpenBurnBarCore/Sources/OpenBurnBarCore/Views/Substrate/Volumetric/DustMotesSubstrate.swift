@@ -210,23 +210,45 @@ public final class DustMotesSubstrate: SwarmSubstrate {
             ink.opacity = clampD(0.55 * env, 0, 0.6)
             ink.draw(halo, in: CGRect(x: cx - rr, y: cy - rr, width: rr * 2, height: rr * 2))
 
-            // ── VOLUMETRIC LIGHT WASH (dark): a broad additive accent-tinted glow
-            // seated over the cloud so the entire field rests INSIDE a soft shaft of
-            // light — the beam volume made visible everywhere, not only where single
-            // motes catch it. Centered soft radial (no bounding-box edge); a 1.8s
-            // breath lifts it so the volume gently inhales with the beam.
-            var wash = baseCtx
-            wash.blendMode = .plusLighter
-            let wc = accent.mix(with: frame.stage.accent2, amount: 0.35).toWhite(0.22)
-            let washImg = wash.resolve(sprites.radial(diameter: 160, stops: [
-                (0.0, wc.withOpacity(0.5)),
-                (0.42, wc.withOpacity(0.22)),
-                (1.0, wc.withOpacity(0.0))
-            ]))
-            let wr = max(radius * 1.5, 1)
-            let washBreath = reduced ? 0.85 : 0.72 + 0.28 * (0.5 + 0.5 * sin(t * (TAU / 1.8)))
-            wash.opacity = clampD(0.32 * env * washBreath, 0, 0.4)
-            wash.draw(washImg, in: CGRect(x: cx - wr, y: cy - wr, width: wr * 2, height: wr * 2))
+        }
+
+        // ── VOLUMETRIC GOD-RAY SHAFT: the diagonal beam rendered ONCE per frame as a
+        // single global gaussian band of haze raked across the WHOLE canvas — a
+        // linear gradient laid perpendicular to the ~-38° beam axis and centered on
+        // the sweeping beamCenter. THIS is the light volume the motes drift INSIDE;
+        // each mote is already tinted by its local beam intensity (pBeam) so the
+        // shaft and the glitter agree. Bounded in absolute screen px (never a
+        // cloudRadius-scaled "piece" that explodes on a wide field), one feathered
+        // fill, gentle at both edges. A 1.8s breath inhales it with the beam.
+        do {
+            let ux = 0.788, uy = 0.616                        // unit beam-axis dir
+            let s0 = beamCenter * radius                      // band center along axis (px)
+            let diag = (frame.size.width * frame.size.width
+                      + frame.size.height * frame.size.height).squareRoot()
+            // half-width bounded so a wide SPARSE field still shows a coherent shaft
+            // of haze (not a hairline, not a full-screen flood).
+            let sigmaPx = clampD(beamSigma * radius, 80, max(diag * 0.30, 80))
+            let span = sigmaPx * 3.2
+            let sp = CGPoint(x: cx + ux * (s0 - span), y: cy + uy * (s0 - span))
+            let ep = CGPoint(x: cx + ux * (s0 + span), y: cy + uy * (s0 + span))
+            let shaftCol = dark
+                ? accent.mix(with: frame.stage.accent2, amount: 0.35).toWhite(0.30)
+                : accent.mix(with: frame.stage.accent2, amount: 0.55).toWhite(0.55)
+            let breath = reduced ? 0.85 : 0.72 + 0.28 * (0.5 + 0.5 * sin(t * (TAU / 1.8)))
+            let peak = (dark ? 0.34 : 0.15) * env * breath
+            // gaussian opacity sampled across the band (t maps linearly to ±3.2σ).
+            let ts: [Double] = [0.0, 0.16, 0.30, 0.40, 0.5, 0.60, 0.70, 0.84, 1.0]
+            let stops = ts.map { tt -> Gradient.Stop in
+                let dd = (tt - 0.5) * 6.4
+                let g = exp(-(dd * dd) * 0.5)
+                return Gradient.Stop(color: shaftCol.withOpacity(clampD(peak * g, 0, 0.6)).color,
+                                     location: tt)
+            }
+            var shaft = baseCtx
+            shaft.blendMode = .plusLighter
+            shaft.fill(
+                Path(CGRect(origin: .zero, size: frame.size)),
+                with: .linearGradient(Gradient(stops: stops), startPoint: sp, endPoint: ep))
         }
 
         let moteD = max(3.2, sizePx * 3.15)

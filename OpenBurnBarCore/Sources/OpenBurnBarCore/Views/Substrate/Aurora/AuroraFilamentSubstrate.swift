@@ -66,8 +66,13 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
         let s = frame.structure.structure(for: frame.dots, k: 6)
         let order: [Int] = (s.order.count == count) ? s.order : Array(0..<count)
 
-        // formed gate: while assembling, fade the wire in (settleProgress == source `formed`).
-        let formGate = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1)
+        // Presence gate. In SHAPE MODE we keep the source behaviour exactly: while
+        // the mark assembles, the wire fades in by settleProgress (== source `formed`).
+        // In FREE-SWARM settleProgress sits at ~0 forever, so gating by it would render
+        // pure black — instead the field is FULLY PRESENT (presence floor 1.0). This is
+        // the fix: a sparse uniform swarm must always show a luminous filament aurora.
+        let isShape = frame.isShapeMode
+        let formGate = reduced ? 1.0 : (isShape ? clampD(frame.settleProgress, 0, 1) : 1.0)
 
         // Undulation amplitude — clamped below point spacing so the wire never
         // self-crosses. spacing ≈ R / sqrt(count); cap to ~42% of it (max 5.5px).
@@ -146,10 +151,20 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
             // additively (`.plusLighter`). This is the deep luminous glow under the
             // wire — never the flat wide stroke a fake halo gives.
             if !lite {
-                let bloomR = max(6.0, w * 3.2)
+                // FREE-SWARM widens the SAME single bloom layer into a soft aurora
+                // glow FIELD (an ambient luminous haze the thread drags across the whole
+                // dark canvas) so the sparse uniform swarm reads as continuous cold
+                // light, never black. SHAPE MODE keeps the original radius/strokes exactly.
+                let bloomR = isShape ? max(6.0, w * 3.2) : max(8.0, w * 5.0)
                 ctx.drawLayer { l in
                     l.addFilter(.blur(radius: bloomR))
                     l.blendMode = .plusLighter
+                    if !isShape {
+                        // wide soft aurora glow field — only in free-swarm
+                        l.opacity = clampD(0.40 * formGate, 0, 0.7)
+                        l.stroke(path, with: gradShading,
+                                 style: StrokeStyle(lineWidth: w * 3.6, lineCap: .round, lineJoin: .round))
+                    }
                     // wide saturated aurora halo
                     l.opacity = clampD(0.55 * formGate, 0, 0.9)
                     l.stroke(path, with: gradShading,

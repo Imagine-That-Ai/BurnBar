@@ -48,13 +48,18 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         }
         let outDir = "/tmp/substrate-previews-real"
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
-        // A real macOS dashboard window; 900 particles → match the screen density.
-        let size = CGSize(width: 1280, height: 820)
-        let dots = Self.realisticSwarmCloud(in: size, count: 760)
+        // A real full-bleed Atelier window at 2x (points): ~1512×982 with ~1000
+        // free-swarm particles — the genuine sparse desktop density where
+        // "confetti" sizing/coverage bugs appear.
+        let size = CGSize(width: 1512, height: 982)
+        let dots = Self.realisticSwarmCloud(in: size, count: 1000)
         var rendered = 0
         for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
             let substrate = d.make()
-            let frame = Self.frame(dots: dots, size: size, dark: true)
+            // The real Atelier backdrop is a FREE SWARM: isShapeMode=false,
+            // formed=false, inShape=false. Render that exact regime so the
+            // continuous-field (sparse) code paths are the ones under test.
+            let frame = Self.frame(dots: dots, size: size, dark: true, shapeMode: false)
             let img = Self.render(size: size, dark: true) { ctx in _ = substrate.paint(frame, into: ctx) }
             if let png = img?.pngData() {
                 try png.write(to: URL(fileURLWithPath: "\(outDir)/\(d.id)-dark.png"))
@@ -158,7 +163,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         return dots
     }
 
-    private static func frame(dots: [SwarmSubstrateDot], size: CGSize, dark: Bool) -> SwarmSubstrateFrame {
+    private static func frame(dots: [SwarmSubstrateDot], size: CGSize, dark: Bool, shapeMode: Bool = true) -> SwarmSubstrateFrame {
         var sumX = 0.0, sumY = 0.0
         for d in dots { sumX += d.x; sumY += d.y }
         let n = Double(max(1, dots.count))
@@ -173,7 +178,8 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
             dark: dark)
         return SwarmSubstrateFrame(
             size: size, dark: dark, reduced: false, batteryThrottled: false,
-            uiMode: .standard, isShapeMode: true, formed: true, settleProgress: 1.0,
+            uiMode: .standard, isShapeMode: shapeMode, formed: shapeMode,
+            settleProgress: shapeMode ? 1.0 : 0.0,
             t: 12.34, dt: 1.0, stage: stage, backdrop: nil, dots: dots,
             cx: cx, cy: cy, cloudRadius: dsum / n, sizePx: 1.7,
             structure: SubstrateStructureProvider())
