@@ -5,14 +5,14 @@
 /// Self-healing watchdog for routed-client wiring. Maintains a `DispatchSource`
 /// file-system watcher per enrolled `RoutingClientWiringTarget` and re-applies
 /// `RoutingClientWiring.wire(target:gateway:advertisedModels:)` whenever an
-/// external rewrite (Claude Code's own atomic settings.json save, a plugin
-/// install, a dotfile sync, etc.) strips the env block / sentinel.
+/// external rewrite (plugin install, dotfile sync, etc.) strips the
+/// OpenBurnBar-owned block.
 ///
-/// Why this exists: Claude Code rewrites `~/.claude/settings.json` whenever
-/// the user signs in/out, edits options, or installs a plugin. Those writes
-/// happen via `rename(2)`, which means our env block is silently replaced.
-/// Before the sentry, the user had to open BurnBar Settings and press
-/// Connect again every time the file got rewritten. Now they don't.
+/// Why this exists: tools such as Codex, Droid, OpenCode, and Forge can safely
+/// keep OpenBurnBar-owned routing config durable because they retain native
+/// profiles or dedicated OpenBurnBar profiles. Claude Code is excluded: its
+/// global `ANTHROPIC_BASE_URL` override disables claude.ai connectors and has
+/// no fallback when the local daemon is off, so cleanup must stick.
 ///
 /// Architectural contract:
 /// - The sentry is the *only* component that schedules unattended re-wires.
@@ -22,7 +22,7 @@
 /// - It is gated by `RoutedClientWiringSettings.autoRepairEnabled`, which
 ///   defaults to `true` per Decision 2026-05-17.
 /// - It coalesces bursts of FS events into a single repair via a 400 ms
-///   debounce. Atomic rename-replace writes (Claude Code's pattern) emit
+///   debounce. Atomic rename-replace writes emit
 ///   `.delete` + `.rename` + `.write`; the debounce makes those land as one
 ///   repair, and the watcher re-arms on the new inode.
 /// - It supplements the watcher with a 60 s periodic sweep so any missed
@@ -155,6 +155,7 @@ final class RoutedClientWiringSentry {
         let wiring = wiringFactory()
         var adopted: [String] = []
         for target in RoutingClientWiringTarget.allCases.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard Self.supportsDurableRepair(target) else { continue }
             guard !intent.enrolledTargets.contains(target.rawValue),
                   wiring.hasOpenBurnBarOwnershipMarker(target: target) else {
                 continue
@@ -239,6 +240,7 @@ final class RoutedClientWiringSentry {
         guard let settingsManager else { return }
         let desired = settingsManager.routedClientWiring.enrolledTargets
             .compactMap(RoutingClientWiringTarget.init(rawValue:))
+            .filter(Self.supportsDurableRepair)
         let desiredSet = Set(desired)
 
         for target in Array(watchers.keys) where !desiredSet.contains(target) {
@@ -320,6 +322,7 @@ final class RoutedClientWiringSentry {
                   .contains(target.rawValue) else {
                 return
             }
+            guard Self.supportsDurableRepair(target) else { return }
             self.armWatcher(for: target)
             self.scheduleRepair(for: target, reason: "watcher_reopen")
         }
@@ -363,6 +366,10 @@ final class RoutedClientWiringSentry {
         target: RoutingClientWiringTarget,
         reason: String
     ) async {
+        guard Self.supportsDurableRepair(target) else {
+            logger.debug("repair_skipped_unsupported_durable_target", metadata: ["target": target.rawValue])
+            return
+        }
         guard let settingsManager else { return }
         let intent = settingsManager.routedClientWiring
         guard intent.autoRepairEnabled else {
@@ -434,6 +441,15 @@ final class RoutedClientWiringSentry {
         }
     }
 
+    private static func supportsDurableRepair(_ target: RoutingClientWiringTarget) -> Bool {
+        switch target {
+        case .claudeCode, .antigravity, .cursorAgent:
+            return false
+        case .codex, .opencode, .droid, .forge, .grok:
+            return true
+        }
+    }
+
     // MARK: - Sweep
 
     private func triggerInitialSweep() {
@@ -461,6 +477,7 @@ final class RoutedClientWiringSentry {
         guard let settingsManager else { return }
         let targets = settingsManager.routedClientWiring.enrolledTargets
             .compactMap(RoutingClientWiringTarget.init(rawValue:))
+            .filter(Self.supportsDurableRepair)
         for target in targets {
             await repairIfNeeded(target: target, reason: "sweep")
         }

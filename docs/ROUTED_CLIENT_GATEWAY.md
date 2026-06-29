@@ -261,6 +261,13 @@ The client config receives the local gateway URL and either the gateway auth
 token or the harmless `openburnbar-local` placeholder when the loopback gateway
 is intentionally authless. Raw upstream provider API keys stay in OpenBurnBar's
 Keychain-backed provider store.
+
+Claude Code is the exception to background durability. Its global
+`ANTHROPIC_BASE_URL` override takes precedence over the user's claude.ai login,
+disables claude.ai connectors, and has no safe fallback when the local daemon is
+off. OpenBurnBar can still remove its owned Claude Code keys, but the durability
+sentry does not auto-adopt or auto-repair Claude Code wiring; cleanup must stick.
+
 Every write snapshots the prior file as
 `<filename>.openburnbar-backup-<UTC-YYYYMMDD-HHMMSS>` so the change is
 reversible by hand if the helper is ever uninstalled.
