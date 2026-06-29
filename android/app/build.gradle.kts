@@ -495,8 +495,8 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraXVersion")
     // CameraX hands out a `ListenableFuture<ProcessCameraProvider>`; the
     // kotlinx-coroutines-guava bridge provides `.await()`.
-    implementation("androidx.concurrent:concurrent-futures:1.2.0")
-    implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
+    implementation("androidx.concurrent:concurrent-futures:1.3.0")
+    implementation("androidx.concurrent:concurrent-futures-ktx:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
     // Auth — Credential Manager is the single Google sign-in path; the
     // googleid bridge returns the ID token that Firebase Auth exchanges.
