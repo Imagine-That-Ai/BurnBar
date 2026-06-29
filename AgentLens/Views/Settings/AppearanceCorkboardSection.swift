@@ -808,6 +808,7 @@ private struct KernelBackdropSettingsRow: View {
                 icon: "square.stack.3d.up.fill",
                 isOn: $useKernelBackdrop
             )
+            .settingsAnchor(SettingsAnchor.useKernelBackdrop)
             .onChange(of: useKernelBackdrop) { _, newValue in
                 Analytics.shared.track(.settingsChanged, [
                     "setting_key": "window_backdrop_kernel_enabled",
@@ -849,6 +850,7 @@ private struct KernelBackdropSettingsRow: View {
             .padding(.leading, 32)
             .opacity(useKernelBackdrop ? 1.0 : 0.55)
             .disabled(!useKernelBackdrop)
+            .settingsAnchor(SettingsAnchor.backdropKernel)
         }
     }
 }
