@@ -155,6 +155,25 @@ enum SettingsManifest {
             keywords: ["constellation", "calm", "slow", "ambient", "dots", "logo", "crest", "provider", "shimmer", "dissolve", "background", "swarm", "style"]
         ),
         SettingsItem(
+            id: "general.appearance.useKernelBackdrop",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.useKernelBackdrop,
+            title: "Window Backdrop",
+            subtitle: "Live WebGL2 dashboard backdrop with a static native fallback",
+            keywords: ["kernel", "kernels", "window", "backdrop", "background", "webgl", "webgl2", "shader", "sota", "ambient", "animated", "fluid", "aurora"],
+            helpText: "Enable the experimental kernel field without requiring the native Swarm Background renderer."
+        ),
+        SettingsItem(
+            id: "general.appearance.backdropKernel",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.backdropKernel,
+            title: "Backdrop Kernel",
+            subtitle: "Choose which animated field renders behind the dashboard",
+            keywords: ["kernel", "picker", "fluid aurora", "mesh", "moire", "plasma", "lattice", "shader", "field", "window backdrop"]
+        ),
+        SettingsItem(
             id: "general.appearance.desktopWallpaperEnabled",
             tab: .general,
             pageRoute: .appearance,
@@ -802,6 +821,8 @@ enum SettingsManifest {
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,
         SettingsAnchor.useConstellationBackground,
+        SettingsAnchor.useKernelBackdrop,
+        SettingsAnchor.backdropKernel,
         SettingsAnchor.desktopWallpaperEnabled,
         SettingsAnchor.desktopWallpaperBackground,
         SettingsAnchor.desktopWallpaperSpeed,

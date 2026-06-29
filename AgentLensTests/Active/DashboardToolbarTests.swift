@@ -107,6 +107,26 @@ final class DashboardToolbarTests: XCTestCase {
             .inspect())
     }
 
+    func test_kernelBackdropBundleKeepsStaticFallbackVisibleBeforeFirstPaint() throws {
+        let htmlURL = try XCTUnwrap(Bundle.main.url(
+            forResource: "index",
+            withExtension: "html",
+            subdirectory: "KernelBackdrop"
+        ))
+        let html = try String(contentsOf: htmlURL, encoding: .utf8)
+        XCTAssertTrue(html.contains("background: transparent;"))
+        XCTAssertFalse(html.contains("background: #000;"))
+
+        let scriptURL = try XCTUnwrap(Bundle.main.url(
+            forResource: "kernel-backdrop",
+            withExtension: "js",
+            subdirectory: "KernelBackdrop"
+        ))
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("getContext(\"webgl2\",{alpha:!0"))
+        XCTAssertFalse(script.contains("getContext(\"webgl2\",{alpha:!1"))
+    }
+
     func test_dashboardDepthBackdropRendersFlatAndDynamicBranches() throws {
         let flatSettings = makeSettingsManager()
         flatSettings.useWebsiteBackground = false

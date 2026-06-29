@@ -297,7 +297,7 @@ export class BackdropEngine {
       }
     } else if (substrate === "webgl2") {
       ctx = canvas.getContext("webgl2", {
-        alpha: false,
+        alpha: true,
         antialias: false,
         depth: false,
         stencil: false,
