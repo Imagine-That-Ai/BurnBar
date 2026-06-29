@@ -435,6 +435,7 @@ public actor BurnBarMissionControlStore {
 
     public func createMission(_ request: BurnBarMissionCreateRequest) throws -> BurnBarMissionMutationResponse {
         let now = Date()
+        let clientMetadata = Self.clientCreatableMissionMetadata(request.metadata)
         let mission = BurnBarMissionSnapshot(
             id: BurnBarMissionID(rawValue: "mission-\(UUID().uuidString)"),
             projectSlug: request.projectSlug,
@@ -451,7 +452,7 @@ public actor BurnBarMissionControlStore {
                 note: nil
             ),
             takeoverHistory: nil,
-            metadata: request.metadata.merging(["created_by": .string(request.createdBy)]) { _, new in new }
+            metadata: clientMetadata.merging(["created_by": .string(request.createdBy)]) { _, new in new }
         )
 
         let event = try appendEvent(
@@ -467,6 +468,12 @@ public actor BurnBarMissionControlStore {
             mission: try missionValue(mission.id),
             emittedEvent: event
         )
+    }
+
+    private static func clientCreatableMissionMetadata(_ metadata: BurnBarMetadata) -> BurnBarMetadata {
+        metadata.filter { key, _ in
+            !BurnBarEnterprisePolicyMetadataKey.missionServerOwnedKeys.contains(key)
+        }
     }
 
     public func approveMission(_ request: BurnBarMissionApproveRequest) throws -> BurnBarMissionMutationResponse {

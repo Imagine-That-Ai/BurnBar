@@ -128,20 +128,7 @@ enum CLIAgentMissionRuntimePlanner {
         ) {
             return true
         }
-        if isLocalMacMission(data: data) {
-            return false
-        }
         return requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
-    }
-
-    static func isLocalMacMission(data: [String: Any]) -> Bool {
-        let source = ((data["source"] as? String) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let sourceSurface = ((data["sourceSurface"] as? String) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        return source == "mac" || sourceSurface == "mac-wand"
     }
 
     static func requiresMacCLIAssistantConsentForRemoteMission(
@@ -229,7 +216,16 @@ enum CLIAgentMissionRuntimePlanner {
                 "--verbose"
             ]
             if commandsAllowed || fileEditsAllowed {
-                arguments += ["--permission-mode", "auto"]
+                var allowedTools: [String] = []
+                if commandsAllowed {
+                    allowedTools.append("Bash")
+                }
+                if fileEditsAllowed {
+                    allowedTools += ["Edit", "MultiEdit", "Write", "NotebookEdit"]
+                }
+                if !allowedTools.isEmpty {
+                    arguments += ["--allowedTools", allowedTools.joined(separator: ",")]
+                }
                 var disallowedTools: [String] = []
                 if !commandsAllowed {
                     disallowedTools.append("Bash")
@@ -239,6 +235,9 @@ enum CLIAgentMissionRuntimePlanner {
                 }
                 if !disallowedTools.isEmpty {
                     arguments += ["--disallowedTools", disallowedTools.joined(separator: ",")]
+                }
+                if fileEditsAllowed {
+                    arguments += ["--permission-mode", "acceptEdits"]
                 }
             } else {
                 arguments += ["--permission-mode", "plan", "--tools", ""]

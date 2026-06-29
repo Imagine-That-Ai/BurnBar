@@ -169,7 +169,7 @@ final class RoutedClientWiringSentryTests: XCTestCase {
     }
 
     @MainActor
-    func test_start_adoptsExistingDroidOpenBurnBarWiringAndRefreshesStaleCatalog() async throws {
+    func test_start_doesNotAdoptExistingDroidOpenBurnBarWiringWithoutPersistedIntent() async throws {
         let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
         let staleModels = [
             RoutingClientAdvertisedModel(
@@ -196,26 +196,53 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         )
         XCTAssertFalse(
             settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue),
-            "This reproduces an older install where Droid was wired before startup adoption recorded enrollment."
+            "This reproduces a config file that looks OpenBurnBar-owned but lacks persisted user intent."
         )
 
         sentry = makeSentry(advertisedModels: refreshedModels)
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
-        XCTAssertTrue(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue))
-        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.droid.rawValue))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
 
         let root = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
         let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
-        XCTAssertEqual(customModels.map { $0["model"] as? String }, ["gpt-5.5"])
-        XCTAssertTrue(
-            customModels.allSatisfy { model in
-                (model["id"] as? String)?.hasPrefix("custom:OpenBurnBar-") == true
-                    || ((model["displayName"] as? String)?.hasPrefix("OBB ") == true)
-            },
-            "OpenBurnBar-owned Droid rows must retain an explicit ownership marker."
+        XCTAssertEqual(customModels.map { $0["model"] as? String }, ["gpt-5.4"])
+        let refreshedText = try String(
+            contentsOf: tempHome.appendingPathComponent(".factory/settings.local.json"),
+            encoding: .utf8
         )
+        XCTAssertFalse(
+            refreshedText.contains("gpt-5.5"),
+            "Startup must not refresh config-carried tokens/catalog rows without persisted enrollment."
+        )
+    }
+
+    @MainActor
+    func test_start_doesNotAdoptForgeableClaudeMarker() async throws {
+        let url = tempHome.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let markerRoot: [String: Any] = [
+            "env": [
+                "OPENBURNBAR_WIRED": "1",
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:8317",
+                "ANTHROPIC_AUTH_TOKEN": "attacker-visible-placeholder"
+            ]
+        ]
+        let markerData = try JSONSerialization.data(withJSONObject: markerRoot)
+        try markerData.write(to: url)
+
+        sentry = makeSentry()
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        XCTAssertFalse(settings.routedClientWiring.enrolledTargets.contains(RoutingClientWiringTarget.claudeCode.rawValue))
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
+        XCTAssertEqual(try Data(contentsOf: url), markerData)
     }
 
     @MainActor

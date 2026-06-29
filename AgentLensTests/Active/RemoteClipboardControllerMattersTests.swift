@@ -161,6 +161,46 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
         XCTAssertEqual(response.detail, "attestation_mismatch")
     }
 
+    func testRemoteUnlockCredentialPreservesStrictUnboundHostRejection() async throws {
+        let now = Date()
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = makeValidator()
+        XCTAssertTrue(validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey))
+        let readiness = makeRemoteUnlockReadinessService()
+        readiness.recordRemoteUnlockSession(
+            remoteUnlockSession(
+                sessionId: "remote-unlock-session",
+                peerNodeId: "peer-1",
+                viewerDeviceId: "iphone-1",
+                attestationHashBlake3: "session-attestation",
+                now: now
+            ),
+            now: now
+        )
+        let credential = try signedRemoteUnlockCredential(
+            privateKey: privateKey,
+            attestationHashBlake3: "session-attestation",
+            now: now
+        )
+        let controller = RemoteUnlockCredentialController(keyStore: FaultingKeyStore())
+
+        let response = await controller.handle(
+            credential: credential,
+            context: RemoteUnlockCredentialController.RuntimeContext(
+                validator: validator,
+                activeSessionId: ComputerUseSessionID("computer-use-session"),
+                state: makeSessionState(phoneViewerNodeId: "peer-1", now: now),
+                isDirectPhoneControl: true,
+                authorizedPeerNodeId: "peer-1",
+                attestation: .rejectUnboundHost,
+                readiness: readiness
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.detail, "mac_attestation_unbound")
+    }
+
     // MARK: - Helpers
 
     private func temporaryFileURL(_ name: String) -> URL {
