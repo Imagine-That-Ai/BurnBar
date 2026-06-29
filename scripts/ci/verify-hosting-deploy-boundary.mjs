@@ -265,9 +265,25 @@ requireNoPattern(
   "credentialed deploy-hosting job must not run npm after auth path begins",
 );
 requireNoPattern(
+  deployJob,
+  /--token(?:\s|$)/u,
+  "credentialed deploy-hosting job must not use Firebase CLI legacy token auth",
+);
+requireNoPattern(
   source,
   /\brelease_hold_bypass_reason\b/u,
   "hosting deploy must not add self-authorized release hold bypass input",
+);
+
+requireIncludes(
+  deployJob,
+  "node-version: 22",
+  "credentialed deploy-hosting job must run the Firebase CLI under Node 22",
+);
+requireIncludes(
+  deployJob,
+  "FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json",
+  "credentialed deploy-hosting job must keep firebase-hosting.ci.json under the artifact root",
 );
 
 if (failures.length > 0) {

@@ -64,12 +64,19 @@ jobs:
       - name: Download immutable hosting artifact
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
       - name: Verify hosting artifact and CI config
+        env:
+          FIREBASE_HOSTING_CI_CONFIG: \${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: sha256sum -c SHA256SUMS
       - name: Prepare pinned Firebase CLI before auth
         run: bash prepare-firebase-tools.sh
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
       - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
       - name: Deploy Hosting (marketing + console)
+        env:
+          FIREBASE_HOSTING_CI_CONFIG: \${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: firebase deploy --only hosting
 `;
 
@@ -192,6 +199,27 @@ expect(
     "      - name: Deploy Hosting (marketing + console)",
     "      - name: Run post-auth npm\n        run: npm ci\n      - name: Deploy Hosting (marketing + console)",
   ),
+  1,
+);
+expect(
+  "legacy Firebase token auth fails",
+  GOOD.replace(
+    "        run: firebase deploy --only hosting",
+    "        run: firebase deploy --only hosting --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"",
+  ),
+  1,
+);
+expect(
+  "artifact config moved outside artifact root fails",
+  GOOD.replaceAll(
+    "${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json",
+    "${{ runner.temp }}/firebase-hosting.ci.json",
+  ),
+  1,
+);
+expect(
+  "Firebase CLI Node 24 runtime fails",
+  GOOD.replace("node-version: 22", "node-version: 24"),
   1,
 );
 expect(

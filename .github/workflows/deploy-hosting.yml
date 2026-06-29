@@ -151,7 +151,7 @@ jobs:
       - name: Verify hosting artifact and CI config
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
-          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/firebase-hosting.ci.json
+          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: |
           set -euo pipefail
           cd "$ARTIFACT_ROOT"
@@ -164,7 +164,7 @@ jobs:
           sha256sum -c SHA256SUMS
           test -d website/dist
           test -d apps/console/out
-          cp firebase-hosting.ci.json "$FIREBASE_HOSTING_CI_CONFIG"
+          test -f "$FIREBASE_HOSTING_CI_CONFIG"
           python3 - "$FIREBASE_HOSTING_CI_CONFIG" <<'PY'
           import json
           import sys
@@ -192,7 +192,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 24
+          node-version: 22
 
       - name: Prepare pinned Firebase CLI before auth
         run: bash "${{ runner.temp }}/hosting-artifact/scripts/ci/prepare-firebase-tools.sh"
@@ -203,26 +203,23 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}
-          token_format: access_token
-          access_token_lifetime: 900s
 
       - name: Deploy Hosting (marketing + console)
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
-          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/firebase-hosting.ci.json
-          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}
+          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Production hosting deploy requires workload identity federation."
             exit 1
           fi
-          if [[ -z "${FIREBASE_HOSTING_OIDC_ACCESS_TOKEN:-}" ]]; then
-            echo "::error::No short-lived WIF access token was exported for Firebase Hosting deploy."
-            exit 1
-          fi
           if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
             echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          if [[ ! -f "$FIREBASE_HOSTING_CI_CONFIG" ]]; then
+            echo "::error::Firebase Hosting CI config is missing from the immutable artifact root."
             exit 1
           fi
           cd "$ARTIFACT_ROOT"
@@ -230,8 +227,7 @@ jobs:
             --only hosting \
             --project burnbar \
             --config "$FIREBASE_HOSTING_CI_CONFIG" \
-            --non-interactive \
-            --token "$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN"
+            --non-interactive
 
   hosting-smoke-result:
     needs: deploy-hosting

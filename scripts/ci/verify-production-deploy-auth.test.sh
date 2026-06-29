@@ -174,10 +174,20 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT", "GCP_DEPLOY_SERVICE_ACCOUNT")'
 expect_fail "shared deploy service account in hosting fails" run_gate "$fixture"
 
-fixture="$TMP_ROOT/hosting-missing-ephemeral-token"
+fixture="$TMP_ROOT/hosting-legacy-token-auth"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "", 1).replace(" \\\n            --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"", "", 1)'
-expect_fail "hosting missing ephemeral WIF token fails" run_gate "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}\n", "          service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}\n          token_format: access_token\n", 1).replace("          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json\n", "          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json\n          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", 1).replace("            --non-interactive", "            --non-interactive \\\n            --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"", 1)'
+expect_fail "hosting legacy Firebase token auth fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/hosting-config-outside-artifact-root"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json", "${{ runner.temp }}/firebase-hosting.ci.json")'
+expect_fail "hosting config outside artifact root fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/hosting-node24-firebase-cli"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("node-version: 22", "node-version: 24", 1)'
+expect_fail "hosting Firebase CLI under Node 24 fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-top-level-oidc"
 copy_base_fixture "$fixture"
