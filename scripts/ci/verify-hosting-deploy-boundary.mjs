@@ -275,6 +275,11 @@ requireNoPattern(
   "credentialed deploy-hosting job must not use Firebase CLI deploy auth",
 );
 requireNoPattern(
+  deployJob,
+  /-x\s+"\$ARTIFACT_ROOT\/scripts\/ci\/deploy-firebase-hosting-rest\.mjs"/u,
+  "credentialed deploy-hosting job must not require executable mode on artifact-downloaded deployer scripts",
+);
+requireNoPattern(
   source,
   /\brelease_hold_bypass_reason\b/u,
   "hosting deploy must not add self-authorized release hold bypass input",

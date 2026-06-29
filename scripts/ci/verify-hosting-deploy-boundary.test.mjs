@@ -230,6 +230,14 @@ expect(
   1,
 );
 expect(
+  "artifact-downloaded REST deployer executable-bit requirement fails",
+  GOOD.replace(
+    '          node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs"',
+    '          test -x "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs"\n          node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs"',
+  ),
+  1,
+);
+expect(
   "self-authorized hold bypass input fails",
   GOOD.replace(
     "      dry_run:\n        required: false\n        type: boolean",
