@@ -336,6 +336,12 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     }
                 }
                 let liveBlocksRouting = liveRefresh?.blocksRouting == true
+                let liveConfirmedForRouting = liveConfirmed ?? true
+                let permitsMissingLiveCatalogRoute = liveConfirmed == false
+                    && permitsConfiguredRouteWhenLiveCatalogOmitsModel(
+                        configuration: configuration,
+                        account: account
+                    )
                 let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
                 // Anthropic's `/v1/models` can be incomplete for Claude Code OAuth
                 // accounts even when `/v1/messages` accepts the configured model.
@@ -373,7 +379,8 @@ public struct BurnBarLiveModelCatalog: Sendable {
                         && account.enabled
                         && account.hasCredential
                         && isEligibleQuotaState(account.quotaState)
-                        && !liveBlocksRouting,
+                        && !liveBlocksRouting
+                        && (liveConfirmedForRouting || permitsMissingLiveCatalogRoute),
                     lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                     lastError: liveError
                 )
@@ -442,6 +449,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
 
         return rows
+    }
+
+    private func permitsConfiguredRouteWhenLiveCatalogOmitsModel(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor
+    ) -> Bool {
+        configuration.provider.id.caseInsensitiveCompare("anthropic") == .orderedSame
+            && account.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
     }
 
     /// Emit one synthetic advertised row per `BurnBarModelVariant` whose
@@ -1212,11 +1227,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         case .disabled:
             return .disabled
         case .missingSecret:
-            // `missingSecret` can be stale after the secret store resolves a
-            // fresh credential from a fallback source such as Claude Code's
-            // Keychain item. Treat resolved credential truth as authoritative;
-            // a real upstream 401/403 still blocks routing through liveRefresh.
-            return hasCredential ? .unknown : .authFailed
+            return .authFailed
         }
     }
 

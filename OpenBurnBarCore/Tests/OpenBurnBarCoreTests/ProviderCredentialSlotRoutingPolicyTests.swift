@@ -69,7 +69,7 @@ final class ProviderCredentialSlotRoutingPolicyTests: XCTestCase {
         )
     }
 
-    func testRecoveredCredentialCanRouteThroughStaleMissingSecretStatus() {
+    func testMissingSecretDoesNotRouteEvenWhenCredentialStillExists() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let slot = BurnBarProviderCredentialSlot(
             label: "Current Claude Code login",
@@ -85,9 +85,9 @@ final class ProviderCredentialSlotRoutingPolicyTests: XCTestCase {
         XCTAssertFalse(
             BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(slot: slot, hasCredential: false, now: now)
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(slot: slot, hasCredential: true, now: now),
-            "A recovered Keychain credential must override stale missingSecret status."
+            "A plain missingSecret slot must stay blocked until the daemon proves it recovered the credential."
         )
     }
 

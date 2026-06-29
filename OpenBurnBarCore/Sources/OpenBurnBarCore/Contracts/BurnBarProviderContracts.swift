@@ -78,9 +78,8 @@ public enum BurnBarProviderCredentialSlotRoutingPolicy {
         exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
     ) -> Bool {
         guard isEnabled, hasCredential else { return false }
-        let statusForCredential = status == .missingSecret ? BurnBarProviderCredentialSlotStatus.ready : status
         return effectiveStatus(
-            status: statusForCredential,
+            status: status,
             isEnabled: isEnabled,
             cooldownUntil: cooldownUntil,
             lastQuotaRemainingPercent: lastQuotaRemainingPercent,

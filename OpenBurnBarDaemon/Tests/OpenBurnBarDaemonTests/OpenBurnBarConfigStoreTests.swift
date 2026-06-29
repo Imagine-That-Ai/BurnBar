@@ -156,6 +156,47 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertNil(persistedSlot.lastStatusMessage)
     }
 
+    func testResolvedConfigurationDoesNotRepairNormalMissingSecretSlot() async throws {
+        let harness = try makeHarness(name: "normal-missing-secret-stays-blocked")
+        let slotID = "primary"
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/paas/v4",
+                preferredModelIDs: ["glm-5"],
+                preferredCredentialSlotID: slotID
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: slotID,
+            label: "Z.ai coding plan",
+            apiKey: "invalid-still-present-key",
+            authMethodID: "zai-coding-plan"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "zai",
+            slotID: slotID,
+            status: .missingSecret,
+            cooldownUntil: nil,
+            message: "Upstream rejected saved credential."
+        )
+
+        let resolved = try await harness.configStore.resolvedConfiguration(for: "zai")
+        let resolvedSlot = try XCTUnwrap(resolved.settings.credentialSlots.first { $0.slotID == slotID })
+        XCTAssertNil(resolved.apiKey)
+        XCTAssertEqual(resolvedSlot.status, .missingSecret)
+        XCTAssertEqual(resolvedSlot.lastStatusMessage, "Upstream rejected saved credential.")
+
+        let persisted = try await harness.configStore.snapshot()
+        let persistedSlot = try XCTUnwrap(
+            persisted.providerSettings(id: "zai")?.credentialSlots.first { $0.slotID == slotID }
+        )
+        XCTAssertEqual(persistedSlot.status, .missingSecret)
+    }
+
     func testConfigStoreRejectsUnsupportedModel() async throws {
         let harness = try makeHarness(name: "validation")
 

@@ -3,6 +3,7 @@ import SwiftUI
 import OpenBurnBarCore
 
 struct AppearanceCorkboardSection: View {
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
     @Bindable var settingsManager: SettingsManager
     @State private var isProviderGlyphCustomizerExpanded = true
     @State private var selectedSection: AppearanceSection = .theme
@@ -49,6 +50,10 @@ struct AppearanceCorkboardSection: View {
             }
 
             applyAndRestartButton
+        }
+        .onAppear(perform: selectSectionForPendingAnchor)
+        .onChange(of: router?.pendingAnchor) { _, _ in
+            selectSectionForPendingAnchor()
         }
     }
 
@@ -324,6 +329,37 @@ struct AppearanceCorkboardSection: View {
 
     private var applyAndRestartButton: some View {
         ApplyAndRestartRow(applyAction: applyAndRestart)
+    }
+
+    static func section(containingAnchor anchor: String) -> AppearanceSection? {
+        switch anchor {
+        case SettingsAnchor.appearanceTheme,
+             SettingsAnchor.appearanceSkin,
+             SettingsAnchor.appearanceGlassTransparency:
+            return .theme
+        case SettingsAnchor.appearanceMenuBar,
+             SettingsAnchor.appearanceLaunchAtLogin,
+             SettingsAnchor.usePremiumSOTAUX:
+            return .menuBar
+        case SettingsAnchor.useWebsiteBackground,
+             SettingsAnchor.useConstellationBackground,
+             SettingsAnchor.desktopWallpaperEnabled,
+             SettingsAnchor.desktopWallpaperBackground,
+             SettingsAnchor.desktopWallpaperSpeed,
+             SettingsAnchor.desktopWallpaperProviderGlyphs,
+             SettingsAnchor.desktopWallpaperClickCycle:
+            return .background
+        default:
+            return nil
+        }
+    }
+
+    private func selectSectionForPendingAnchor() {
+        guard let anchor = router?.pendingAnchor,
+              let section = Self.section(containingAnchor: anchor) else {
+            return
+        }
+        selectedSection = section
     }
 
     private func applyAndRestart() {
