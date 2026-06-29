@@ -7,6 +7,8 @@ struct ThemeSettingsView: View {
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
 
     @StateObject private var customization = AppCustomization.shared
     @State private var dashboard = DashboardStore()
@@ -115,6 +117,8 @@ struct ThemeSettingsView: View {
                 Text("Choose from the same app.burnbar.ai backdrop kernels on iPhone and iPad. Constellation still follows provider glyph filters.")
             }
 
+            substrateSection
+
             Section {
                 Button {
                     showWallpaperGenerator = true
@@ -181,6 +185,91 @@ struct ThemeSettingsView: View {
             WallpaperGeneratorView(colorDriver: dashboard.swarmColorDriver)
         }
         .task { await dashboard.load() }
+    }
+
+    /// The substrate family coupled to the active iOS backdrop kernel.
+    private var substrateFamily: SubstrateFamily { SubstrateFamily.forKernel(mobileBackdropKernel) }
+
+    /// Per-theme substrate picker — mirrors the macOS Appearance picker, coupled
+    /// to the iOS `mobileBackdropKernel`. The host views already honor the shared
+    /// `swarmSubstrate` selection, so toggling here lights up the swarm immediately.
+    @ViewBuilder
+    private var substrateSection: some View {
+        Section {
+            Toggle(isOn: $substrateEnabled) {
+                SettingsLabel(icon: "circle.hexagongrid.fill", color: MobileTheme.whimsy, title: "Swarm Substrate")
+            }
+            .tint(MobileTheme.ember)
+            .disabled(appSkin == .editorial)
+            .opacity(appSkin == .editorial ? 0.45 : 1)
+
+            if substrateEnabled, appSkin != .editorial {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: substrateFamily.symbolName)
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.ember)
+                        Text(substrateFamily.displayName)
+                            .font(.subheadline.weight(.semibold))
+                        Text("· substrate")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(SubstrateCatalog.styles(forKernel: mobileBackdropKernel)) { style in
+                                MobileSubstrateTile(descriptor: style, isSelected: substrateID == style.id) {
+                                    substrateID = style.id
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12))
+            }
+        } header: {
+            Text("Swarm Substrate")
+        } footer: {
+            Text("Compose the provider-glyph swarm from a material drawn from the active backdrop theme — twinkling stars, glass ribbons, caustic light, crepuscular shafts. The styles re-couple to whichever backdrop kernel is selected above.")
+        }
+    }
+}
+
+/// One Image #3-style substrate card for the iOS picker.
+private struct MobileSubstrateTile: View {
+    let descriptor: SubstrateDescriptor
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(LinearGradient(colors: [descriptor.accent.color, descriptor.accent2.color],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 96, height: 46)
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                Text(descriptor.label)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(descriptor.hint.uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 96, alignment: .leading)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isSelected ? MobileTheme.ember : Color.primary.opacity(0.08),
+                              lineWidth: isSelected ? 1.6 : 0.5))
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -38,6 +38,56 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         print("RENDERED \(id) → \(outDir)")
     }
 
+    /// Render every bespoke at REAL desktop density — ~900 particles spread over a
+    /// full-screen canvas (sparse, ~40–96px spacing), the condition that exposes
+    /// "huge piece" sizing bugs. Gated like the others.
+    ///   SUBSTRATE_RENDER_PREVIEWS=1 swift test --filter testRenderRealisticDensity
+    func testRenderRealisticDensity() throws {
+        guard ProcessInfo.processInfo.environment["SUBSTRATE_RENDER_PREVIEWS"] == "1" else {
+            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1")
+        }
+        let outDir = "/tmp/substrate-previews-real"
+        try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+        // A real macOS dashboard window; 900 particles → match the screen density.
+        let size = CGSize(width: 1280, height: 820)
+        let dots = Self.realisticSwarmCloud(in: size, count: 760)
+        var rendered = 0
+        for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
+            let substrate = d.make()
+            let frame = Self.frame(dots: dots, size: size, dark: true)
+            let img = Self.render(size: size, dark: true) { ctx in _ = substrate.paint(frame, into: ctx) }
+            if let png = img?.pngData() {
+                try png.write(to: URL(fileURLWithPath: "\(outDir)/\(d.id)-dark.png"))
+                rendered += 1
+            }
+        }
+        print("RENDERED \(rendered) realistic previews → \(outDir)")
+        XCTAssertGreaterThan(rendered, 0)
+    }
+
+    /// Free-swarm field: `count` dots spread quasi-uniformly across the WHOLE
+    /// canvas (blue-noise-ish), mirroring the real sparse swarm in non-shape mode.
+    private static func realisticSwarmCloud(in size: CGSize, count: Int) -> [SwarmSubstrateDot] {
+        var dots: [SwarmSubstrateDot] = []
+        let brand = [RGBA(r: 0.80, g: 0.47, b: 0.36), RGBA(r: 0.66, g: 0.40, b: 1.0),
+                     RGBA(r: 0.0, g: 0.65, b: 0.49), RGBA(r: 0.26, g: 0.92, b: 0.23),
+                     RGBA(r: 0.0, g: 0.65, b: 0.89)]
+        var rng = XorShift32(seed: 0xA11CE)
+        for i in 0..<count {
+            let x = rng.next() * Double(size.width)
+            let y = rng.next() * Double(size.height)
+            let col = brand[i % brand.count]
+            // real particle.size is 0.8…2.3; inShape false in free swarm → radius ~0.85*size
+            let sz = 0.8 + rng.next() * 1.5
+            dots.append(SwarmSubstrateDot(
+                x: x, y: y, vx: rng.next() * 2 - 1, vy: rng.next() * 2 - 1,
+                radius: max(0.4, sz * 0.85), baseSize: sz, rgba: col, opacity: 0.85,
+                inShape: false, role: nil, slotIndex: i % 5,
+                colorIndex: shash(Double(i) * 1.7), flowProgress: 0))
+        }
+        return dots
+    }
+
     func testRenderAllSubstratePreviews() throws {
         // Dev artifact, not a CI assertion — gated so normal test runs skip it.
         guard ProcessInfo.processInfo.environment["SUBSTRATE_RENDER_PREVIEWS"] == "1" else {

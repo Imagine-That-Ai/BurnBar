@@ -30,8 +30,11 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
 
     // MARK: Tunables
 
-    /// Grid resolution along the cloud's longer axis (cells).
-    private static let GRID = 16
+    /// Max grid resolution along the cloud's longer axis (cells). The grid is
+    /// ADAPTIVE — chosen so each pane stays a small, fixed screen size rather than
+    /// scaling with the cloud/screen (a sparse full-screen swarm must never yield
+    /// huge tiles). This cap bounds memory/cell count on very large fields.
+    private static let MAXGRID = 80
     /// Pane overlap so adjacent (interior) cells leave no seam gaps.
     private static let overlap = 1.18
     /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges, not
@@ -102,11 +105,16 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         let dots = frame.dots
         let count = dots.count
         let cx = frame.cx, cy = frame.cy
-        let grid = Self.GRID
         builtCount = count
         built = frame.settleProgress >= 0.6 || frame.reduced
 
         let span = max(frame.cloudRadius, 1) * 2.1
+        // Target pane ≈ a small ceramic lozenge in SCREEN px (independent of how
+        // far the cloud spreads). Adapt the grid so cells land at this size; on a
+        // sparse full-screen swarm that means MORE, still-small cells — never the
+        // ~50px slabs a fixed 16×16 grid produced over a wide field.
+        let targetCellPx = max(13.0, frame.sizePx * 8.5)
+        let grid = max(8, min(Self.MAXGRID, Int((span / targetCellPx).rounded())))
         let inv = Double(grid) / span
         let half = Double(grid) * 0.5
 
@@ -136,7 +144,10 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         sumy = [Double](repeating: 0, count: cellCount)
         hcache = [Double](repeating: 0, count: cellCount)
         order = Array(0..<cellCount)
-        storedExt = span / Double(grid) / 2
+        // Hard-cap the pane half-extent so even at the grid clamp (huge fields)
+        // panes never balloon — discrete small lozenges with gaps when sparse,
+        // tessellated when the shape is dense.
+        storedExt = min(span / Double(grid) / 2, targetCellPx * 0.62)
 
         // Recover each cell's logical grid coord (for the height-field phase).
         for key in 0..<keyToCell.count {

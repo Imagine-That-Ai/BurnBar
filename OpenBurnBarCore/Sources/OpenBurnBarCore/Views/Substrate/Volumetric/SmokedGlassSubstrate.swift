@@ -131,7 +131,9 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         let breath = reduced ? 0.6 : 0.5 + 0.5 * sin(t * (TAU / 1.8))
         // chip footprint scales with the cloud so it stays a packed solid. Slightly
         // larger than the source so the slab reads as solid mass, not gappy dots.
-        let chipR = clampD(sizePx * 2.0 + radius * 0.013, 1.7, 8)
+        // Chip footprint stays a small jewel in screen px; only a whisper of the
+        // cloud span so it never balloons on a sparse full-screen swarm.
+        let chipR = clampD(sizePx * 1.9 + radius * 0.006, 1.7, 5.5)
 
         // smoked, low-saturation cool slate the base is pulled toward.
         let smoke = dark ? 0.30 : 0.18
