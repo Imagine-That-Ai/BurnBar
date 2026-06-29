@@ -18,7 +18,7 @@
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
     "firebase-admin": "13.10.0",
     "ioredis": "^5.4.2",
-    "protobufjs": "8.6.4",
+    "protobufjs": "8.6.5",
     "ws": "8.21.0"
   },
   "devDependencies": {
