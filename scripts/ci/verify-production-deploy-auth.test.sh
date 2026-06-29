@@ -174,6 +174,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT", "GCP_DEPLOY_SERVICE_ACCOUNT")'
 expect_fail "shared deploy service account in hosting fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/hosting-missing-ephemeral-token"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "", 1).replace(" \\\n            --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"", "", 1)'
+expect_fail "hosting missing ephemeral WIF token fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/cloud-run-top-level-oidc"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("permissions:\n  contents: read\n", "permissions:\n  contents: read\n  id-token: write\n", 1)'

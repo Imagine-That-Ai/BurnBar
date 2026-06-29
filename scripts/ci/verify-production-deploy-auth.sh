@@ -240,6 +240,14 @@ def validate_hosting(text: str) -> None:
         fail(f"{path} deploy-hosting must grant id-token:write")
     if "service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}" not in deploy_job:
         fail(f"{path} deploy-hosting must authenticate as GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT")
+    if "id: hosting_auth" not in deploy_job:
+        fail(f"{path} deploy-hosting auth step must expose outputs through id: hosting_auth")
+    if "token_format: access_token" not in deploy_job:
+        fail(f"{path} deploy-hosting must request an ephemeral WIF access_token")
+    if "FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}" not in deploy_job:
+        fail(f"{path} deploy-hosting must pass the auth action access_token through an ephemeral env var")
+    if '--token "$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN"' not in deploy_job:
+        fail(f"{path} deploy-hosting must give Firebase CLI the short-lived WIF access token explicitly")
     if "actions/checkout" in deploy_job:
         fail(f"{path} deploy-hosting must not check out repository code")
     if "uses: ./.github/actions" in deploy_job:
