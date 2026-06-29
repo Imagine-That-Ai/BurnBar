@@ -22,6 +22,7 @@ object GlobalVisualSettings {
     private const val KEY_PREMIUM_SOTA_UX = "usePremiumSOTAUX"
     private const val KEY_WEBSITE_BACKGROUND = "useWebsiteBackground"
     private const val KEY_BACKGROUND_STYLE = "backgroundStyle"
+    private const val KEY_MOBILE_BACKDROP_KERNEL = "mobileBackdropKernel"
     private const val KEY_SWARM_SPARKLES = "enableSwarmSparkles"
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
@@ -33,6 +34,7 @@ object GlobalVisualSettings {
     // Underlying Compose mutable states to trigger reactive updates globally.
     private val _usePremiumSOTAUX = mutableStateOf(false)
     private val _backgroundStyle = mutableStateOf(BackgroundStyle.AURORA)
+    private val _mobileBackdropKernel = mutableStateOf(MobileBackdropKernel.DEFAULT)
 
     // Derived flag kept for back-compat: callers across the app read this to know a
     // custom dark backdrop is active (so they flip text to white / drop solid fills).
@@ -64,6 +66,7 @@ object GlobalVisualSettings {
                         ?: BackgroundStyle.SWARM
                 _backgroundStyle.value = migratedStyle
                 _useWebsiteBackground.value = migratedStyle.usesCustomBackdrop
+                _mobileBackdropKernel.value = MobileBackdropKernel.resolved(prefs.getString(KEY_MOBILE_BACKDROP_KERNEL, null))
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
                 GlobalVisualSettingsPalette.loadFromPrefs(prefs)
@@ -94,6 +97,12 @@ object GlobalVisualSettings {
     val backgroundStyle: State<BackgroundStyle> get() {
         ensureLoaded()
         return _backgroundStyle
+    }
+
+    /** Exposes read-only access to the app.burnbar.ai kernel selected for mobile backdrops. */
+    val mobileBackdropKernel: State<MobileBackdropKernel> get() {
+        ensureLoaded()
+        return _mobileBackdropKernel
     }
 
     /**
@@ -149,6 +158,13 @@ object GlobalVisualSettings {
             // Mirror into the legacy boolean so older reads/migrations stay coherent.
             putBoolean(KEY_WEBSITE_BACKGROUND, value.usesCustomBackdrop)
         }
+    }
+
+    /** Selects the app.burnbar.ai kernel used by the native mobile backdrop renderer. */
+    fun setMobileBackdropKernel(value: MobileBackdropKernel) {
+        ensureLoaded()
+        _mobileBackdropKernel.value = value
+        GlobalVisualSettingsPersistence.persistString(KEY_MOBILE_BACKDROP_KERNEL, value.key)
     }
 
     /**
@@ -230,6 +246,10 @@ fun rememberPremiumSOTAUX(): State<Boolean> = remember { GlobalVisualSettings.us
 /** Composable shorthand helper to observe the selected background style. */
 @Composable
 fun rememberBackgroundStyle(): State<BackgroundStyle> = remember { GlobalVisualSettings.backgroundStyle }
+
+/** Composable shorthand helper to observe the selected app.burnbar.ai backdrop kernel. */
+@Composable
+fun rememberMobileBackdropKernel(): State<MobileBackdropKernel> = remember { GlobalVisualSettings.mobileBackdropKernel }
 
 /**
  * Composable shorthand helper to observe global Website Background setting.

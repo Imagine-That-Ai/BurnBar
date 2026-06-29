@@ -6,6 +6,7 @@ struct ThemeSettingsView: View {
     @AppStorage("usePremiumSOTAUX") private var usePremiumSOTAUX: Bool = false
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
+    @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
 
     @StateObject private var customization = AppCustomization.shared
     @State private var dashboard = DashboardStore()
@@ -85,6 +86,24 @@ struct ThemeSettingsView: View {
                 .tint(MobileTheme.ember)
                 .settingsAnchor(SettingsAnchor.useWebsiteBackground)
 
+                if useWebsiteBackground, appSkin != .editorial {
+                    Picker(selection: $mobileBackdropKernel) {
+                        ForEach(MobileBackdropKernel.allCases) { kernel in
+                            Text(kernel.label).tag(kernel.rawValue)
+                        }
+                    } label: {
+                        SettingsLabel(icon: "rectangle.3.group.bubble.left.fill", color: MobileTheme.amber, title: "Backdrop Kernel")
+                    }
+                    .pickerStyle(.menu)
+                    .settingsAnchor(SettingsAnchor.backdropKernel)
+
+                    if let kernel = MobileBackdropKernel(rawValue: mobileBackdropKernel) {
+                        Text(kernel.blurb)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 NavigationLink {
                     SwarmBackgroundSettingsView()
                 } label: {
@@ -93,7 +112,7 @@ struct ThemeSettingsView: View {
             } header: {
                 Text("Backdrop style")
             } footer: {
-                Text("Live swarm backdrop that follows the selected app palette and provider glyph filters.")
+                Text("Choose from the same app.burnbar.ai backdrop kernels on iPhone and iPad. Constellation still follows provider glyph filters.")
             }
 
             Section {

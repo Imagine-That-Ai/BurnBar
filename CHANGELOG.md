@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mobile backdrop kernels** — iOS/iPadOS and Android now expose the same 30
+  app.burnbar.ai backdrop kernel IDs, labels, and default (`fluid-aurora`) used
+  by the website console. The existing Website Background switch remains the
+  coarse on/off control; when enabled, Theme settings now include a Backdrop
+  Kernel picker backed by native SwiftUI/Compose Canvas renderers, with
+  Constellation continuing to use the provider-glyph field. Added catalog and
+  persistence tests on both mobile platforms so future website kernel additions
+  cannot silently drift from the apps.
 - **Swarm substrates** — the provider-glyph swarm can now be composed in any of
   ~24 hand-tuned *materials* ported from the imaginethat-llc lab, organized into
   six families that couple to the active backdrop theme exactly like the web

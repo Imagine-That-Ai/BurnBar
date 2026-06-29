@@ -139,10 +139,11 @@ internal fun ThemePrefsToggleSection(
     haptic: HapticFeedback,
     usePremiumSOTAUX: Boolean,
     backgroundStyle: BackgroundStyle,
+    mobileBackdropKernel: MobileBackdropKernel,
     enableSwarmSparkles: Boolean,
     excludeBrandShapes: Boolean,
 ) {
-    ThemePrefsPrimaryToggles(router, haptic, usePremiumSOTAUX, backgroundStyle, enableSwarmSparkles)
+    ThemePrefsPrimaryToggles(router, haptic, usePremiumSOTAUX, backgroundStyle, mobileBackdropKernel, enableSwarmSparkles)
     ThemePrefsDivider()
     AuroraSettingsToggle(
         icon = Icons.Filled.AutoAwesome,
@@ -163,6 +164,7 @@ internal fun ThemePrefsPrimaryToggles(
     haptic: HapticFeedback,
     usePremiumSOTAUX: Boolean,
     backgroundStyle: BackgroundStyle,
+    mobileBackdropKernel: MobileBackdropKernel,
     enableSwarmSparkles: Boolean,
 ) {
     ThemePrefsHaloToggle(
@@ -183,6 +185,15 @@ internal fun ThemePrefsPrimaryToggles(
         backgroundStyle = backgroundStyle,
         haptic = haptic,
     )
+    if (backgroundStyle == BackgroundStyle.SWARM) {
+        ThemePrefsDivider()
+        ThemePrefsBackdropKernelSelector(
+            highlighted = router.highlightedAnchor == SettingsAnchor.MOBILE_BACKDROP_KERNEL,
+            selectedKernel = mobileBackdropKernel,
+            useWebsiteBackground = true,
+            haptic = haptic,
+        )
+    }
     ThemePrefsDivider()
     ThemePrefsHaloToggle(
         model = ThemePrefsHaloToggleModel(
@@ -206,7 +217,7 @@ private data class BackgroundStyleOption(
 private val backgroundStyleOptions =
     listOf(
         BackgroundStyleOption(BackgroundStyle.AURORA, "Soft drifting gradient orbs and ember ribbons"),
-        BackgroundStyleOption(BackgroundStyle.SWARM, "Active, reconverging token-ember swarms from burnbar.ai"),
+        BackgroundStyleOption(BackgroundStyle.SWARM, "Choose any app.burnbar.ai backdrop kernel"),
         BackgroundStyleOption(BackgroundStyle.DOT_CONSTELLATION, "Calm field: one crest or provider logo resolves, shimmers, and dissolves"),
     )
 
@@ -241,6 +252,77 @@ internal fun ThemePrefsBackgroundStyleSelector(highlighted: Boolean, useWebsiteB
                 )
             }
         }
+    }
+}
+
+@Composable
+internal fun ThemePrefsBackdropKernelSelector(
+    highlighted: Boolean,
+    selectedKernel: MobileBackdropKernel,
+    useWebsiteBackground: Boolean,
+    haptic: HapticFeedback,
+) {
+    val haloColor by animateColorAsState(
+        targetValue = if (highlighted) Color(0xFFFFA800).copy(alpha = 0.18f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 350),
+        label = "backdrop-kernel-halo",
+    )
+    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.MD.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Filled.Wallpaper, contentDescription = null, modifier = Modifier.size(22.dp), tint = AuroraColors.amber)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Backdrop Kernel",
+                        fontWeight = FontWeight.Bold,
+                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        selectedKernel.blurb,
+                        fontSize = 12.sp,
+                        lineHeight = 15.sp,
+                        color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(MobileBackdropKernel.entries) { _, kernel ->
+                    ThemePrefsBackdropKernelChip(
+                        kernel = kernel,
+                        selected = selectedKernel == kernel,
+                        useWebsiteBackground = useWebsiteBackground,
+                        haptic = haptic,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePrefsBackdropKernelChip(
+    kernel: MobileBackdropKernel,
+    selected: Boolean,
+    useWebsiteBackground: Boolean,
+    haptic: HapticFeedback,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = if (selected) primaryColor.copy(alpha = 0.20f) else MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.22f else 0.55f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        onClick = {
+            GlobalVisualSettings.setMobileBackdropKernel(kernel)
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        },
+    ) {
+        Text(
+            text = kernel.displayName,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -638,6 +720,7 @@ internal fun ThemePrefsHighlightEffect(router: SettingsRouter) {
         val isSwarmSettingsAnchor =
             pending == SettingsAnchor.USE_PREMIUM_SOTA_UX ||
                 pending == SettingsAnchor.USE_WEBSITE_BACKGROUND ||
+                pending == SettingsAnchor.MOBILE_BACKDROP_KERNEL ||
                 pending == SettingsAnchor.ENABLE_SWARM_SPARKLES
         if (pending != null && isSwarmSettingsAnchor) {
             router.consumePendingAnchor(pending)
@@ -651,6 +734,7 @@ internal data class ThemePrefsScreenState(
     val isDark: Boolean,
     val useWebsiteBackground: Boolean,
     val backgroundStyle: BackgroundStyle,
+    val mobileBackdropKernel: MobileBackdropKernel,
     val haptic: HapticFeedback,
     val usePremiumSOTAUX: Boolean,
     val enableSwarmSparkles: Boolean,
@@ -694,6 +778,7 @@ internal fun ThemePrefsScreenBody(router: SettingsRouter, onBack: () -> Unit, st
                     state.haptic,
                     state.usePremiumSOTAUX,
                     state.backgroundStyle,
+                    state.mobileBackdropKernel,
                     state.enableSwarmSparkles,
                     state.excludeBrandShapes,
                 )
@@ -720,6 +805,7 @@ fun ThemePrefsScreen(router: SettingsRouter, onBack: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     val useWebsiteBackground by rememberWebsiteBackground()
     val backgroundStyle by rememberBackgroundStyle()
+    val mobileBackdropKernel by rememberMobileBackdropKernel()
     val usePremiumSOTAUX by rememberPremiumSOTAUX()
     val enableSwarmSparkles by rememberSwarmSparkles()
     val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()
@@ -738,6 +824,7 @@ fun ThemePrefsScreen(router: SettingsRouter, onBack: () -> Unit) {
                 isDark = isDark,
                 useWebsiteBackground = useWebsiteBackground,
                 backgroundStyle = backgroundStyle,
+                mobileBackdropKernel = mobileBackdropKernel,
                 haptic = haptic,
                 usePremiumSOTAUX = usePremiumSOTAUX,
                 enableSwarmSparkles = enableSwarmSparkles,

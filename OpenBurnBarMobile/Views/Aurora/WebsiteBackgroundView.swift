@@ -1,16 +1,12 @@
 import SwiftUI
 import OpenBurnBarCore
 
-/// Active, reconverging token-ember swarm pulled directly from burnbar.ai.
+/// Shared app.burnbar.ai-inspired backdrop surface for iPhone and iPad.
 ///
-/// Hundreds of particles murmurate across the screen, periodically
-/// reconverging into "$", "</>", concentric quota rings, and a router
-/// failover S-curve — then breaking apart again. Reduce Motion locks the
-/// pace and pauses the shape cycle.
-///
-/// When a `colorDriver` is provided, the swarm's palette shifts from its
-/// default ember/amber/blaze to data-driven provider brand colors —
-/// reflecting which providers are actively working or most heavily used.
+/// Aurora/editorial skins keep their existing specialized paths, while the
+/// dark Website Background mode dispatches through the mobile kernel picker.
+/// Power, scene, visibility, and Reduce Motion policy still decide whether the
+/// active kernel renders live, static, or falls back to the native aurora.
 struct WebsiteBackgroundView: View {
     let accent: Color
     var colorDriver: SwarmColorDriver?
@@ -29,6 +25,7 @@ struct WebsiteBackgroundView: View {
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+    @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
 
     private var substrate: SwarmSubstrate {
         substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
@@ -122,6 +119,7 @@ struct WebsiteBackgroundView: View {
     private var swarmBody: some View {
         let prefs = SwarmBackgroundPreferences.from(jsonString: prefsJSON)
         let effectiveVisibility = visibility.constrained(by: inheritedVisibility)
+        let selectedKernel = MobileBackdropKernel.resolved(mobileBackdropKernel)
         let plan = SwarmBackgroundPowerPolicy.resolve(
             location: prefs.location,
             conditionMet: envMonitor.meetsCondition(prefs.condition),
@@ -133,26 +131,7 @@ struct WebsiteBackgroundView: View {
 
         switch plan.mode {
         case .live:
-            SwarmCanvasView(
-                accent: accent,
-                pace: .cinematic,
-                particleCount: resolvedParticleCount(scale: plan.particleScale),
-                colorDriver: colorDriver,
-                isBatteryThrottled: plan.isBatteryThrottled,
-                backdropColors: themePalette.backdropColors,
-                colorPalette: themePalette.swarmPalette,
-                motionSpeedMultiplier: plan.motionSpeedMultiplierScale,
-                isAutoCyclingEnabled: plan.allowsAutoCycling,
-                enabledProviderGlyphs: prefs.selectedGlyphs,
-                isAvatarEnabled: prefs.isAvatarEnabled,
-                isBrandTextEnabled: prefs.isBrandTextEnabled,
-                enableSwarmSparkles: plan.allowsSparkles,
-                excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
-                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
-                rendersAsynchronously: true,
-                substrate: substrate
-            )
-            .ignoresSafeArea()
+            liveBackdrop(for: selectedKernel, visibility: effectiveVisibility)
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
                 isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
@@ -172,6 +151,19 @@ struct WebsiteBackgroundView: View {
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
                 isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
+        }
+    }
+
+    @ViewBuilder
+    private func liveBackdrop(
+        for kernel: MobileBackdropKernel,
+        visibility: MobileBackgroundVisibility
+    ) -> some View {
+        switch kernel {
+        case .constellation:
+            ConstellationBackgroundView(accent: accent, visibility: visibility)
+        default:
+            MobileKernelBackdropView(kernel: kernel, accent: accent, visibility: visibility)
         }
     }
 
