@@ -603,8 +603,8 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
-    func test_writeLaunchAgentPlistPreservesDaemonSocketTokenDiscoveryEnvironment() throws {
-        let harness = try makeRuntimePathsHarness(name: "launch-agent-socket-token-env")
+    func test_writeLaunchAgentPlistUsesPrivateDaemonSocketTokenFileOnly() throws {
+        let harness = try makeRuntimePathsHarness(name: "launch-agent-socket-token-file")
         defer { harness.cleanup() }
 
         try FileManager.default.createDirectory(
@@ -636,11 +636,12 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         let environment = try XCTUnwrap(plist["EnvironmentVariables"] as? [String: String])
 
         XCTAssertFalse(token.isEmpty)
-        XCTAssertEqual(environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
-        XCTAssertEqual(environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"], token)
+        XCTAssertNil(environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
+        XCTAssertNil(environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
         XCTAssertTrue(arguments.contains("--socket-auth-token-file"))
         XCTAssertTrue(arguments.contains(harness.paths.socketAuthTokenFileURL.path))
         XCTAssertFalse(arguments.contains(token), "daemon socket token must stay out of argv")
+        XCTAssertFalse(environment.values.contains(token), "daemon socket token must stay out of the LaunchAgent environment")
     }
 
     func test_usageSync_readsProviderConfigurationSnapshot() async throws {

@@ -81,5 +81,35 @@ await assertFails(
   })
 );
 
+const quotaDay = "2026-06-29";
+const mediaQuotaDoc = {
+  id: quotaDay,
+  schemaVersion: 1,
+  bytesUploadedFile: 0,
+  bytesDownloadedFile: 0,
+  fileTransfersInitiated: 0,
+  fileTransfersFailed: 0,
+  screenShareSecondsUsed: 0,
+  screenShareSessions: 0,
+  videoCallSecondsUsed: 0,
+  videoCallSessions: 0,
+  updatedAt: Timestamp.now(),
+};
+
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), `users/${aliceUid}/media_quota_usage/${quotaDay}`), mediaQuotaDoc);
+});
+
+await assertSucceeds(getDoc(doc(aliceDB, `users/${aliceUid}/media_quota_usage/${quotaDay}`)));
+await assertFails(
+  setDoc(doc(aliceDB, `users/${aliceUid}/media_quota_usage/${quotaDay}`), mediaQuotaDoc)
+);
+await assertFails(
+  setDoc(doc(aliceDB, `users/${aliceUid}/media_quota_usage/${quotaDay}-new`), {
+    ...mediaQuotaDoc,
+    id: `${quotaDay}-new`,
+  })
+);
+
 console.log("media-budget: all assertions passed");
 await testEnv.cleanup();

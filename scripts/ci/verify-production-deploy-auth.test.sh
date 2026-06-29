@@ -219,6 +219,21 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("roles/secretmanager.viewer", "roles/secretmanager.metadataReader_removed", 1)'
 expect_fail "cloud run secret metadata role missing fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/cloud-run-project-wide-payload-required"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("metadata_only_roles = {\n              \"roles/secretmanager.viewer\",", "metadata_only_roles = {\n              \"roles/secretmanager.viewer\",\n              \"roles/secretmanager.secretAccessor\",", 1)'
+expect_fail "cloud run project-wide payload role requirement fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-project-wide-payload-not-forbidden"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("              \"roles/secretmanager.secretAccessor\",\n", "", 1)'
+expect_fail "cloud run missing project-wide payload denylist fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-runtime-secret-iam-check"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("            verify_runtime_secret_accessor \"$SECRET_NAME\"\n", "", 1)'
+expect_fail "cloud run missing runtime secret accessor check fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/cloud-run-signer-secret-env"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n", "          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source\n          REMOTE_MCP_TOKEN_HMAC_SECRET: ${{ secrets.REMOTE_MCP_TOKEN_HMAC_SECRET }}\n", 1)'

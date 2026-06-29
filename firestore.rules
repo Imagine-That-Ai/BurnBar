@@ -3838,23 +3838,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Owner-writable daily quota counter. The Mac batches updates every
-    // 30 s during active sessions; the hourly `recomputeMediaQuotaUsage`
-    // Cloud Function reconciles drift from `iroh_audit_events`.
+    // Server-reconciled daily quota counter. Capability enforcement must not
+    // trust client-writable counters; the hourly `recomputeMediaQuotaUsage`
+    // Cloud Function writes this from bounded `media_session_events`; clients
+    // may read their reconciled quota snapshot but cannot write counters.
     match /users/{userId}/media_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.id == day
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && request.resource.data.bytesUploadedFile is number
-        && request.resource.data.bytesDownloadedFile is number
-        && request.resource.data.fileTransfersInitiated is number
-        && request.resource.data.fileTransfersFailed is number
-        && request.resource.data.screenShareSecondsUsed is number
-        && request.resource.data.screenShareSessions is number
-        && request.resource.data.videoCallSecondsUsed is number
-        && request.resource.data.videoCallSessions is number;
+      allow create, update: if false;
       allow delete: if false;
     }
 

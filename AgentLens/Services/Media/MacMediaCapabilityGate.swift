@@ -21,7 +21,7 @@ import Security
 /// Composes three signals:
 ///   1. `MacCloudEntitlementStore.hostedMediaEntitlement` (Apple-verified
 ///      `hosted_media_sync` doc).
-///   2. Local 24-hour quota counter cache from `media_quota_usage`.
+///   2. Server-reconciled 24-hour quota counter cache from `media_quota_usage`.
 ///   3. `ops/media_budget_status/state/current` (n0 hosted-relay budget
 ///      envelope, see `docs/runbooks/media-budget.md`).
 @MainActor
@@ -323,9 +323,10 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
     }
 }
 
-/// Snapshot mirror of `MediaQuotaUsageDoc` for in-memory use by the
-/// capability gate. Refreshed by the Mac side from the cached
-/// `media_quota_usage/{day}` document every 30 s.
+/// Snapshot mirror of the server-reconciled `MediaQuotaUsageDoc` for in-memory
+/// use by the capability gate. Refreshed from `media_quota_usage/{day}`, whose
+/// Firestore rules are read-only to clients so a user-controlled write cannot
+/// lower usage counters and bypass admission.
 struct MediaQuotaUsageSnapshot: Sendable, Equatable {
     var bytesUploadedFile: Int64 = 0
     var bytesDownloadedFile: Int64 = 0
