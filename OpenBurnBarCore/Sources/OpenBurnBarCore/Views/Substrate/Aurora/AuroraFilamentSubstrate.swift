@@ -68,7 +68,7 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
 
         // Undulation amplitude — clamped below point spacing so the wire never
         // self-crosses. spacing ≈ R / sqrt(count); cap to ~42% of it (max 5.5px).
-        let spacing = max(2.0, frame.R / max(1.0, Double(count).squareRoot()))
+        let spacing = max(2.0, frame.cloudRadius / max(1.0, Double(count).squareRoot()))
         let amp = reduced ? 0.0 : min(spacing * 0.42, 5.5)
 
         if px.count != count {
@@ -116,8 +116,8 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
         }
 
         // Screen-space vertical warm→cool gradient, brand accents woven in.
-        let top = max(0.0, frame.cy - frame.R * 1.15)
-        let bot = frame.cy + frame.R * 1.15
+        let top = max(0.0, frame.cy - frame.cloudRadius * 1.15)
+        let bot = frame.cy + frame.cloudRadius * 1.15
         let crown = Self.hueCrown.mix(with: stage.accent, amount: smoothstep(0, 1, 0.32))
         let mid   = Self.hueMid.mix(with: stage.accent2, amount: smoothstep(0, 1, 0.32))
         let hem   = Self.hueHem.mix(with: stage.accent, amount: smoothstep(0, 1, 0.28))
@@ -125,7 +125,7 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
             Gradient(stops: [
                 .init(color: crown.color, location: 0.0),
                 .init(color: mid.color, location: 0.5),
-                .init(color: hem.color, location: 1.0),
+                .init(color: hem.color, location: 1.0)
             ]),
             startPoint: CGPoint(x: 0, y: top),
             endPoint: CGPoint(x: 0, y: bot))

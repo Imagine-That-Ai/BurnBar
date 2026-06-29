@@ -71,7 +71,7 @@ public struct SubstrateStage: Sendable {
 
 /// The per-frame draw context handed to a substrate — the native `rc`. Mirrors
 /// the source `GlyphRenderContext`: host-transformed dot positions live in `dots`;
-/// `cx/cy/R/sizePx` are computed once; `t`/`dt` drive animation; `formed`/
+/// `cx/cy/cloudRadius/sizePx` are computed once; `t`/`dt` drive animation; `formed`/
 /// `settleProgress` gate assembly; `structure` is built lazily and cached across
 /// frames by the simulation.
 public struct SwarmSubstrateFrame {
@@ -95,7 +95,7 @@ public struct SwarmSubstrateFrame {
     // Derived cloud anchors (computed once per frame from `dots`).
     public let cx: Double
     public let cy: Double
-    public let R: Double                  // representative cloud radius
+    public let cloudRadius: Double        // representative cloud radius
     public let sizePx: Double             // suggested base point px (median dot radius)
 
     /// Lazily-built, cached NN order + kNN neighbor lists for lattice / stroke /
@@ -106,13 +106,13 @@ public struct SwarmSubstrateFrame {
     public init(size: CGSize, dark: Bool, reduced: Bool, batteryThrottled: Bool,
                 uiMode: UIMode, isShapeMode: Bool, formed: Bool, settleProgress: Double,
                 t: Double, dt: Double, stage: SubstrateStage, backdrop: RGBA?,
-                dots: [SwarmSubstrateDot], cx: Double, cy: Double, R: Double,
+                dots: [SwarmSubstrateDot], cx: Double, cy: Double, cloudRadius: Double,
                 sizePx: Double, structure: SubstrateStructureProvider) {
         self.size = size; self.dark = dark; self.reduced = reduced
         self.batteryThrottled = batteryThrottled; self.uiMode = uiMode
         self.isShapeMode = isShapeMode; self.formed = formed; self.settleProgress = settleProgress
         self.t = t; self.dt = dt; self.stage = stage; self.backdrop = backdrop
-        self.dots = dots; self.cx = cx; self.cy = cy; self.R = R; self.sizePx = sizePx
+        self.dots = dots; self.cx = cx; self.cy = cy; self.cloudRadius = cloudRadius; self.sizePx = sizePx
         self.structure = structure
     }
 }

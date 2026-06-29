@@ -51,8 +51,8 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
 
     public func paint(_ frame: SwarmSubstrateFrame, into ctx: GraphicsContext) -> Bool {
         let count = frame.dots.count
-        let R = frame.R
-        guard count > 0, R > 0 else { return false }
+        let radius = frame.cloudRadius
+        guard count > 0, radius > 0 else { return false }
 
         let dark = frame.dark
         let reduced = frame.reduced
@@ -73,14 +73,14 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
         let lx = cos(lightA), ly = sin(lightA)
 
         // gem radius — clamped so cells never bloat across negative space.
-        let rad = clampD(sizePx * 1.55, 1.3, R * 0.055) * reveal
+        let rad = clampD(sizePx * 1.55, 1.3, radius * 0.055) * reveal
         let r = rad * inhale
         guard r > 0.01 else { return true }
 
         // moiré carrier frequencies (cloud-normalized). The slight detune is what
         // makes the bright band a moiré, not a plain sweep.
         let freqA = 9.5, freqB = 8.2
-        let invR = R > 0 ? 1.0 / R : 0
+        let invR = radius > 0 ? 1.0 / radius : 0
 
         let sh = dark ? 0.34 : 0.5             // shadow floor (solid silhouette on light)
         let edgeAlpha = (dark ? 0.5 : 0.34)
@@ -133,8 +133,7 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
                 let px = pent[k].cx, py = pent[k].cy
                 let vx = (px * ca - py * sa) * r
                 let vy = (px * sa + py * ca) * r
-                if k == 0 { path.move(to: CGPoint(x: x + vx, y: y + vy)) }
-                else { path.addLine(to: CGPoint(x: x + vx, y: y + vy)) }
+                if k == 0 { path.move(to: CGPoint(x: x + vx, y: y + vy)) } else { path.addLine(to: CGPoint(x: x + vx, y: y + vy)) }
             }
             path.closeSubpath()
 
@@ -147,7 +146,7 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
                 let grad = Gradient(stops: [
                     .init(color: stop0.color, location: 0.0),
                     .init(color: body.color, location: 0.55),
-                    .init(color: top.color, location: 1.0),
+                    .init(color: top.color, location: 1.0)
                 ])
                 ctx.fill(path, with: .linearGradient(
                     grad,

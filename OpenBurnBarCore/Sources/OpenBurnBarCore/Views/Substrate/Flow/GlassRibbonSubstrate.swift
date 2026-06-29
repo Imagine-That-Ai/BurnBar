@@ -37,8 +37,8 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
     public func paint(_ frame: SwarmSubstrateFrame, into ctx: GraphicsContext) -> Bool {
         let dots = frame.dots
         let count = dots.count
-        let R = frame.R
-        guard count >= 2, R > 0 else { return false }
+        let radius = frame.cloudRadius
+        guard count >= 2, radius > 0 else { return false }
 
         let dark = frame.dark
         let reduced = frame.reduced
@@ -60,12 +60,12 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
 
         // half-width budget, clamped so glass never bloats across negative space.
         let wMin = max(1.6, sizePx * 0.85)
-        let wMax = max(wMin + 0.6, R * 0.062)
+        let wMax = max(wMin + 0.6, radius * 0.062)
 
         // resting clocks: twist sampler + travelling specular head (frozen when calm).
         let tt = reduced ? 0.6 : t * 0.42
         let specHead = reduced ? 0.5 : frac(t * 0.075)
-        let seamGap = R * 0.42
+        let seamGap = radius * 0.42
         let seamGap2 = seamGap * seamGap
 
         // ── build rail vertices from the NN walk ──────────────────────────────
@@ -75,8 +75,8 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
             mx[k] = x; my[k] = y
 
             // cloud-normalized sample coords keep the pattern scale-stable.
-            let ux = (x - cx) / R
-            let uy = (y - cy) / R
+            let ux = (x - cx) / radius
+            let uy = (y - cy) / radius
             let wind = Self.curlAngle(ux * 2.4, uy * 2.4, tt)
             let wind2 = Self.curlAngle(ux * 2.4 + 0.3, uy * 2.4 + 0.3, tt)
             var turn = abs(atan2(sin(wind2 - wind), cos(wind2 - wind)))
@@ -91,7 +91,7 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
             lx[k] = x - cxn; ly[k] = y - cyn
             rx[k] = x + cxn; ry[k] = y + cyn
 
-            // seam flag for the segment leaving this vertex (source threshold R*0.42).
+            // seam flag for the segment leaving this vertex (source threshold radius*0.42).
             if k < nv - 1 {
                 let ni = order[k + 1]
                 let dx = dots[ni].x - x, dy = dots[ni].y - y
@@ -133,7 +133,7 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
             let grad = Gradient(stops: [
                 .init(color: edgeC, location: 0),
                 .init(color: body.withOpacity(fillAlpha).color, location: 0.5),
-                .init(color: edgeC, location: 1),
+                .init(color: edgeC, location: 1)
             ])
             var quad = Path()
             quad.move(to: CGPoint(x: lx0, y: ly0))

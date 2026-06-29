@@ -39,7 +39,6 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
     }
 }
 
-
 /// The named dashboard *layout* concept the macOS overview renders.
 ///
 /// These are the five full-dashboard arrangements from the "Liquid Glass

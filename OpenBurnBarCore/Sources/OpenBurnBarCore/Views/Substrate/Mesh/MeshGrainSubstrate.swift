@@ -91,7 +91,7 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         let reduced = frame.reduced
         let lite = frame.batteryThrottled
         let t = frame.t
-        let R = frame.R
+        let radius = frame.cloudRadius
         let sizePx = frame.sizePx
 
         // assembly fade-in: grain kindles as the mark forms (fade = 1, no dissolve).
@@ -113,7 +113,7 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         let spring = (0.05 + 0.22 * cohesion) * dtf
         let drag = pow(0.86, dtf)
         let curlGain = (1 - cohesion) * 1.6
-        let looseR = R * (0.10 + 0.42 * (1 - cohesion))
+        let looseR = radius * (0.10 + 0.42 * (1 - cohesion))
         let irisPhase = t * (TAU / 14)
         let jf = floor(t * 24) // ~24Hz grain refresh
 
@@ -124,10 +124,10 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         // Skip on light canvas and when battery-throttled.
         let mote: GraphicsContext.ResolvedImage? = (dark && !lite)
             ? ctx.resolve(sprites.radial(diameter: 32, stops: [
-                (0.0,  RGBA(r: 1, g: 1, b: 1, a: 0.85)),
+                (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.85)),
                 (0.28, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
-                (0.6,  RGBA(r: 1, g: 1, b: 1, a: 0.12)),
-                (1.0,  RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+                (0.6, RGBA(r: 1, g: 1, b: 1, a: 0.12)),
+                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
               ]))
             : nil
 

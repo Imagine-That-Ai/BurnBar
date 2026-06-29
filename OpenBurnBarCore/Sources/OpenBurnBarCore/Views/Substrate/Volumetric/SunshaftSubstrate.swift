@@ -17,7 +17,7 @@ import SwiftUI
 /// (gives additive `.plusLighter` a field to sum into), then shafts + cores
 /// additive. LIGHT page skips the ink and drops shaft alpha hard so it reads as
 /// caustic light, not smear. A hard 0.7px source-over crisp dot per core fires at
-/// small radii (`R<64`). `reduced` freezes one poised raked still frame
+/// small radii (`radius < 64`). `reduced` freezes one poised raked still frame
 /// (swivel=0, widthBreath=1, static per-seed breath). `batteryThrottled` drops
 /// the ink halo. Death hooks (dissolve/melt/armed/alive) are the held-look
 /// identity here, so they collapse to rest and are omitted.
@@ -52,7 +52,7 @@ public final class SunshaftSubstrate: SwarmSubstrate {
         let reduced = frame.reduced
         let throttle = frame.batteryThrottled
         let t = frame.t
-        let R = frame.R, cx = frame.cx, cy = frame.cy
+        let radius = frame.cloudRadius, cx = frame.cx, cy = frame.cy
         let sizePx = frame.sizePx
 
         // assembly gate: the medium ignites as the mark forms (env == source).
@@ -67,8 +67,8 @@ public final class SunshaftSubstrate: SwarmSubstrate {
         let widthBreath = reduced ? 1.0
             : 0.86 + 0.28 * smootherstep(0, 1, 0.5 + 0.5 * sin(t * (TAU / 1.8)))
 
-        let shaftH = R * 1.2
-        let shaftW = max(2.0, R * 0.18)
+        let shaftH = radius * 1.2
+        let shaftW = max(2.0, radius * 0.18)
         let shaftAlpha = dark ? 0.22 : 0.085          // light reads as caustic light
         let coreAlpha = dark ? 0.62 : 0.5
 
@@ -82,9 +82,9 @@ public final class SunshaftSubstrate: SwarmSubstrate {
                 (0.0, ic.withOpacity(0.55)),
                 (0.15, ic.withOpacity(0.55)),
                 (0.7, ic.withOpacity(0.22)),
-                (1.0, ic.withOpacity(0.0)),
+                (1.0, ic.withOpacity(0.0))
             ]))
-            let rr = max(R * 1.9, 1)
+            let rr = max(radius * 1.9, 1)
             ink.opacity = clampD(0.5 * env, 0, 0.6)
             ink.draw(halo, in: CGRect(x: cx - rr, y: cy - rr, width: rr * 2, height: rr * 2))
         }
@@ -100,7 +100,7 @@ public final class SunshaftSubstrate: SwarmSubstrate {
                 (0.0, col.withOpacity(1.0)),
                 (0.32, col.withOpacity(0.55)),
                 (0.7, col.withOpacity(0.12)),
-                (1.0, col.withOpacity(0.0)),
+                (1.0, col.withOpacity(0.0))
             ]))
         }
         guard shaftRes.count == Self.hueSteps else { return true }
@@ -141,9 +141,9 @@ public final class SunshaftSubstrate: SwarmSubstrate {
                                                   width: coreD, height: coreD))
         }
 
-        // ── PASS 3: small-R crispening — a hard 0.7px source-over definition dot on
+        // ── PASS 3: small-radius crispening — a hard 0.7px source-over definition dot on
         // each locked core so the silhouette reads even when the bloom smears.
-        if R < 64 {
+        if radius < 64 {
             var crisp = baseCtx
             crisp.blendMode = .normal
             let ca = clampD(0.85 * env, 0, 1)
@@ -163,13 +163,13 @@ public final class SunshaftSubstrate: SwarmSubstrate {
 
     private func ensureAttrs(_ frame: SwarmSubstrateFrame) {
         let count = frame.dots.count
-        if count == attrCount && frame.cx == attrCx && frame.cy == attrCy && frame.R == attrR { return }
-        attrCount = count; attrCx = frame.cx; attrCy = frame.cy; attrR = frame.R
+        if count == attrCount && frame.cx == attrCx && frame.cy == attrCy && frame.cloudRadius == attrR { return }
+        attrCount = count; attrCx = frame.cx; attrCy = frame.cy; attrR = frame.cloudRadius
         hueIdx = [Int](repeating: 0, count: count)
         seedA = [Double](repeating: 0, count: count)
         lenJit = [Double](repeating: 0, count: count)
         isCore = [Bool](repeating: false, count: count)
-        let invR = frame.R > 0 ? 1 / frame.R : 0
+        let invR = frame.cloudRadius > 0 ? 1 / frame.cloudRadius : 0
         let steps = Self.hueSteps
         for i in 0..<count {
             let di = Double(i)
@@ -207,25 +207,25 @@ public final class SunshaftSubstrate: SwarmSubstrate {
     /// (bright foot blooming up to a soft crown) × horizontal filament (tight bright
     /// center x with a soft skirt). White × col, premultiplied, once per ramp step.
     private static func bakeShaft(_ col: RGBA) -> Image {
-        let W = 48, H = 256
+        let rampWidth = 48, rampHeight = 256
         guard let cs = CGColorSpace(name: CGColorSpace.sRGB),
-              let cg = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8,
-                                 bytesPerRow: W * 4, space: cs,
+              let cg = CGContext(data: nil, width: rampWidth, height: rampHeight, bitsPerComponent: 8,
+                                 bytesPerRow: rampWidth * 4, space: cs,
                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
               let buf = cg.data
         else { return Image(systemName: "circle.fill") }
-        let ptr = buf.bindMemory(to: UInt8.self, capacity: W * H * 4)
+        let ptr = buf.bindMemory(to: UInt8.self, capacity: rampWidth * rampHeight * 4)
         let r8 = col.r, g8 = col.g, b8 = col.b
         // vertical envelope keyed on `up` (0 at foot → 1 at crown). Buffer row 0 is
-        // the crown (top), row H-1 the bright foot (bottom of the produced image).
+        // the crown (top), final row the bright foot (bottom of the produced image).
         let vStops: [(Double, Double)] = [(0.0, 0.96), (0.4, 0.46), (0.78, 0.14), (1.0, 0.0)]
         let hStops: [(Double, Double)] = [(0.0, 0.0), (0.36, 0.14), (0.5, 1.0), (0.64, 0.14), (1.0, 0.0)]
-        for row in 0..<H {
-            let up = Double(H - 1 - row) / Double(H - 1)
+        for row in 0..<rampHeight {
+            let up = Double(rampHeight - 1 - row) / Double(rampHeight - 1)
             let vA = Self.pw(vStops, up)
-            let base = row * W * 4
-            for cIdx in 0..<W {
-                let hx = Double(cIdx) / Double(W - 1)
+            let base = row * rampWidth * 4
+            for cIdx in 0..<rampWidth {
+                let hx = Double(cIdx) / Double(rampWidth - 1)
                 let a = vA * Self.pw(hStops, hx)
                 let o = base + cIdx * 4
                 ptr[o + 0] = UInt8(max(0, min(255, r8 * a * 255)))

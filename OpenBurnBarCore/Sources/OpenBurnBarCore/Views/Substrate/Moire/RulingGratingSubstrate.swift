@@ -38,8 +38,8 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
     public func paint(_ frame: SwarmSubstrateFrame, into baseCtx: GraphicsContext) -> Bool {
         let dots = frame.dots
         let count = dots.count
-        let R = frame.R
-        guard count > 0, R > 0 else { return true }
+        let radius = frame.cloudRadius
+        guard count > 0, radius > 0 else { return true }
 
         let dark = frame.dark
         let reduced = frame.reduced
@@ -51,19 +51,19 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         // ── ruling geometry ────────────────────────────────────────────────────
         // Angle A is fixed to the mark; B = A + drift breathes a couple of degrees on
         // a slow sine (no reaction kick available in the substrate frame → 0 held).
-        let A = -22.0 * .pi / 180.0
+        let baseAngle = -22.0 * .pi / 180.0
         let restDrift = 7.0 * .pi / 180.0
         let breath = reduced ? 0 : sin(t * 0.55) * 3.2 * .pi / 180.0
         let drift = restDrift + breath
-        let B = A + drift
-        let cosA = cos(A), sinA = sin(A)
-        let cosB = cos(B), sinB = sin(B)
+        let driftedAngle = baseAngle + drift
+        let cosA = cos(baseAngle), sinA = sin(baseAngle)
+        let cosB = cos(driftedAngle), sinB = sin(driftedAngle)
         // Grating normals (perpendicular to each line direction).
         let nAx = -sinA, nAy = cosA
         let nBx = -sinB, nBy = cosB
         // Carrier spatial frequency: ~5.5 fringe cycles across the cloud; same pitch
         // on both rulings so only the angle differs → pure line-on-line moiré.
-        let kA = (TAU * 5.5) / max(40.0, R * 2.0)
+        let kA = (TAU * 5.5) / max(40.0, radius * 2.0)
         let kB = kA
         // Band phase scroll so the dark fringes crawl even at a fixed drift.
         let scroll = reduced ? 0 : t * 0.6

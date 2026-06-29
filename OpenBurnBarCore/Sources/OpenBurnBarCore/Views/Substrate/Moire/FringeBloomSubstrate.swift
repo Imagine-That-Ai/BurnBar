@@ -39,7 +39,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         let lite = frame.batteryThrottled
         let sizePx = frame.sizePx
         let t = frame.t
-        let cx = frame.cx, cy = frame.cy, R = frame.R
+        let cx = frame.cx, cy = frame.cy, radius = frame.cloudRadius
 
         // Assembly fade so the fringes bloom in as the mark forms (vis/armPulse fold
         // to 1 for the held substrate look). reduced → treat as fully formed.
@@ -48,7 +48,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         // Grating geometry: spatial frequency scales with cloud size so the band
         // count reads the same on any logo. Two gratings at slightly different
         // orientation + frequency beat into the crawling moiré.
-        let base = 5.6 / max(R, 1)
+        let base = 5.6 / max(radius, 1)
         let beat = reduced ? 0 : sin(t * Self.BEAT) * 0.5
         let kx = base * (1 + 0.05 * beat)
         let ky = base * (1 + 0.05 * beat) * 0.92
@@ -72,7 +72,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
             (0.18, RGBA(r: 1, g: 1, b: 1, a: 0.62)),
             (0.42, RGBA(r: 1, g: 1, b: 1, a: 0.22)),
             (0.72, RGBA(r: 1, g: 1, b: 1, a: 0.05)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ])) : nil
 
         let bodyR = max(0.9, sizePx * 1.25)        // dark colored-body radius (constant)

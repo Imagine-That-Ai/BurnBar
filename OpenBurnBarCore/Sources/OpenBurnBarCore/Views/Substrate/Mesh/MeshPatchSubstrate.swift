@@ -38,7 +38,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         RGBA(r: 150.0 / 255, g: 150.0 / 255, b: 255.0 / 255),
         RGBA(r: 232.0 / 255, g: 150.0 / 255, b: 232.0 / 255),
         RGBA(r: 255.0 / 255, g: 168.0 / 255, b: 150.0 / 255),
-        RGBA(r: 150.0 / 255, g: 236.0 / 255, b: 210.0 / 255),
+        RGBA(r: 150.0 / 255, g: 236.0 / 255, b: 210.0 / 255)
     ]
 
     // MARK: Per-layout cache (built once per (count, settled-layout))
@@ -96,7 +96,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         builtCount = count
         built = frame.settleProgress >= 0.6 || frame.reduced
 
-        let span = max(frame.R, 1) * 2.1
+        let span = max(frame.cloudRadius, 1) * 2.1
         let inv = Double(grid) / span
         let half = Double(grid) * 0.5
 
@@ -236,7 +236,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.95)),
             (0.32, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
             (0.7, RGBA(r: 1, g: 1, b: 1, a: 0.08)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
         // ── Pass A (dark only, full power): faint additive bloom under lit panes ──
@@ -244,7 +244,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             let bloom = ctx.resolve(sprites.radial(diameter: 56, stops: [
                 (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.7)),
                 (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.16)),
-                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
             ]))
             ctx.blendMode = .plusLighter
             let r = baseExt * Self.overlap * 1.5
@@ -301,7 +301,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             let grad = Gradient(stops: [
                 .init(color: startC.color, location: 0.0),
                 .init(color: midC.color, location: 0.5),
-                .init(color: endC.color, location: 1.0),
+                .init(color: endC.color, location: 1.0)
             ])
 
             ctx.opacity = clampD(f, 0, 1)

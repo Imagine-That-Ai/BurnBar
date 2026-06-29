@@ -346,7 +346,6 @@ final class SettingsManager {
         set { appearance.appearanceSkin = newValue }
     }
 
-
     var dashboardLayout: DashboardLayout {
         get { _ = appearanceMutationVersion; return appearance.dashboardLayout }
         set { appearance.dashboardLayout = newValue }

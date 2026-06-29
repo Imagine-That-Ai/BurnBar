@@ -47,11 +47,11 @@ public final class IcePrismSubstrate: SwarmSubstrate {
 
     /// Deterministic facet geometry sized for the current point count.
     private func buildGeometry(_ count: Int) {
-        let V = Self.VERTS
+        let vertexCount = Self.VERTS
         n = count
-        vcos = [Double](repeating: 0, count: count * V)
-        vsin = [Double](repeating: 0, count: count * V)
-        vrad = [Double](repeating: 0, count: count * V)
+        vcos = [Double](repeating: 0, count: count * vertexCount)
+        vsin = [Double](repeating: 0, count: count * vertexCount)
+        vrad = [Double](repeating: 0, count: count * vertexCount)
         fsize = [Double](repeating: 0, count: count)
         fnorm = [Double](repeating: 0, count: count)
         fphase = [Double](repeating: 0, count: count)
@@ -61,12 +61,12 @@ public final class IcePrismSubstrate: SwarmSubstrate {
             let s0 = shash(fi * 2.17 + 0.31)
             let s1 = shash(fi * 3.91 + 1.77)
             let base = s0 * TAU
-            for v in 0..<V {
+            for v in 0..<vertexCount {
                 // jittered angular slot → irregular (non-regular) polygon.
                 let jit = (shash(fi * 7.3 + Double(v) * 11.9 + 4.1) - 0.5) * 0.7
-                let a = base + (Double(v) / Double(V)) * TAU + jit
+                let a = base + (Double(v) / Double(vertexCount)) * TAU + jit
                 let r = 0.78 + shash(fi * 5.5 + Double(v) * 2.3 + 0.9) * 0.46 // 0.78…1.24
-                let k = i * V + v
+                let k = i * vertexCount + v
                 vcos[k] = cos(a)
                 vsin[k] = sin(a)
                 vrad[k] = r
@@ -83,7 +83,7 @@ public final class IcePrismSubstrate: SwarmSubstrate {
         guard count > 0 else { return true }
         if n != count { buildGeometry(count) }
 
-        let V = Self.VERTS
+        let vertexCount = Self.VERTS
         let dark = frame.dark
         let reduced = frame.reduced
         let lite = frame.batteryThrottled
@@ -109,7 +109,7 @@ public final class IcePrismSubstrate: SwarmSubstrate {
             let icy = sprites.radial(diameter: 48, stops: [
                 (0.0, RGBA(r: 214.0 / 255, g: 244.0 / 255, b: 255.0 / 255, a: 0.9)),
                 (0.4, RGBA(r: 150.0 / 255, g: 210.0 / 255, b: 240.0 / 255, a: 0.3)),
-                (1.0, RGBA(r: 120.0 / 255, g: 180.0 / 255, b: 230.0 / 255, a: 0.0)),
+                (1.0, RGBA(r: 120.0 / 255, g: 180.0 / 255, b: 230.0 / 255, a: 0.0))
             ])
             var bloomCtx = baseCtx
             bloomCtx.blendMode = .plusLighter
@@ -166,16 +166,15 @@ public final class IcePrismSubstrate: SwarmSubstrate {
             let fill = RGBA(r: clampD(rr, 0, 1), g: clampD(gg, 0, 1), b: clampD(bb, 0, 1), a: alpha)
 
             // build & fill the irregular facet polygon (verts rotated by hand).
-            let o = i * V
+            let o = i * vertexCount
             var poly = Path()
-            for v in 0..<V {
+            for v in 0..<vertexCount {
                 let k = o + v
                 let vr = vrad[k] * sz
                 let lx = vcos[k] * vr, ly = vsin[k] * vr
                 let px = x + lx * rc2 - ly * rs
                 let py = y + lx * rs + ly * rc2
-                if v == 0 { poly.move(to: CGPoint(x: px, y: py)) }
-                else { poly.addLine(to: CGPoint(x: px, y: py)) }
+                if v == 0 { poly.move(to: CGPoint(x: px, y: py)) } else { poly.addLine(to: CGPoint(x: px, y: py)) }
             }
             poly.closeSubpath()
             fillCtx.fill(poly, with: .color(fill.color))
@@ -185,7 +184,7 @@ public final class IcePrismSubstrate: SwarmSubstrate {
             if spec > 0.02 {
                 // lit corner = the vertex most aligned with the light direction.
                 var bestV = 0, bestD = -2.0
-                for v in 0..<V {
+                for v in 0..<vertexCount {
                     let k = o + v
                     let dd = vcos[k] * lcos + vsin[k] * lsin
                     if dd > bestD { bestD = dd; bestV = v }
@@ -196,8 +195,8 @@ public final class IcePrismSubstrate: SwarmSubstrate {
                     return CGPoint(x: x + lx * rc2 - ly * rs, y: y + lx * rs + ly * rc2)
                 }
                 let c0 = corner(o + bestV, 1)
-                let c1 = corner(o + ((bestV + V - 1) % V), 0.46)
-                let c2 = corner(o + ((bestV + 1) % V), 0.46)
+                let c1 = corner(o + ((bestV + vertexCount - 1) % vertexCount), 0.46)
+                let c2 = corner(o + ((bestV + 1) % vertexCount), 0.46)
                 var wedge = Path()
                 wedge.move(to: c0)
                 wedge.addLine(to: c1)

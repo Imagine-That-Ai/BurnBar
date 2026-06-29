@@ -14,8 +14,8 @@ import SwiftUI
 /// LEGIBLE — ~38% of motes are spring-locked cores that DON'T drift and hold a
 /// floored alpha (lifted above the beam falloff) so the silhouette never
 /// dissolves outside the current beam. Free dust drifts on a 2-octave value-noise
-/// flow field + per-seed Brownian micro-wander, leashed to R*0.05. At small radii
-/// (R<70) a hard 0.7px source-over dot per core guarantees the read.
+/// flow field + per-seed Brownian micro-wander, leashed to radius*0.05. At small radii
+/// (radius < 70) a hard 0.7px source-over dot per core guarantees the read.
 ///
 /// ALIVE — beamCenter sweeps on sin(t*0.045); a 1.8s breath inhales the beam
 /// width; per-mote twinkle on sin(t*1.2+seed); ~10% "lit specks" inside the beam
@@ -81,8 +81,8 @@ public final class DustMotesSubstrate: SwarmSubstrate {
     /// when the cloud changes. Cheap; never per-frame.
     private func ensureAttrs(_ frame: SwarmSubstrateFrame) {
         let count = frame.dots.count
-        if count == attrCount && frame.cx == attrCx && frame.cy == attrCy && frame.R == attrR { return }
-        attrCount = count; attrCx = frame.cx; attrCy = frame.cy; attrR = frame.R
+        if count == attrCount && frame.cx == attrCx && frame.cy == attrCy && frame.cloudRadius == attrR { return }
+        attrCount = count; attrCx = frame.cx; attrCy = frame.cy; attrR = frame.cloudRadius
         hueIdx = [Int](repeating: 0, count: count)
         seedA = [Double](repeating: 0, count: count)
         driftA = [Double](repeating: 0, count: count)
@@ -90,7 +90,7 @@ public final class DustMotesSubstrate: SwarmSubstrate {
         isCore = [Bool](repeating: false, count: count)
         isSpeck = [Bool](repeating: false, count: count)
         bx = [Double](repeating: 0, count: count)
-        let invR = frame.R > 0 ? 1 / frame.R : 0
+        let invR = frame.cloudRadius > 0 ? 1 / frame.cloudRadius : 0
         let steps = Self.hueSteps
         for i in 0..<count {
             let di = Double(i)
@@ -120,8 +120,8 @@ public final class DustMotesSubstrate: SwarmSubstrate {
         let throttle = frame.batteryThrottled
         let sizePx = frame.sizePx
         let t = frame.t
-        let R = frame.R, cx = frame.cx, cy = frame.cy
-        let invR = R > 0 ? 1 / R : 0
+        let radius = frame.cloudRadius, cx = frame.cx, cy = frame.cy
+        let invR = radius > 0 ? 1 / radius : 0
 
         // assembly gate: the dust ignites as the mark forms.
         let env = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.55 + 0.45
@@ -132,7 +132,7 @@ public final class DustMotesSubstrate: SwarmSubstrate {
         let widthBreath = reduced ? 0.85 : 0.7 + 0.3 * smoothstep(0, 1, 0.5 + 0.5 * sin(t * (TAU / 1.8)))
         let beamSigma = 0.42 * widthBreath
         let invBeam2 = 1 / (2 * beamSigma * beamSigma)
-        let leash = R * 0.05
+        let leash = radius * 0.05
         let tFlow = reduced ? 0 : t * 0.06
 
         // ── dark page: soft centered ink field so additive 'lighter' has somewhere
@@ -145,9 +145,9 @@ public final class DustMotesSubstrate: SwarmSubstrate {
                 (0.0, ic.withOpacity(0.55)),
                 (0.12, ic.withOpacity(0.55)),
                 (0.7, ic.withOpacity(0.2)),
-                (1.0, ic.withOpacity(0.0)),
+                (1.0, ic.withOpacity(0.0))
             ]))
-            let rr = max(R * 1.8, 1)
+            let rr = max(radius * 1.8, 1)
             ink.opacity = clampD(0.5 * env, 0, 0.55)
             ink.draw(halo, in: CGRect(x: cx - rr, y: cy - rr, width: rr * 2, height: rr * 2))
         }
@@ -161,7 +161,7 @@ public final class DustMotesSubstrate: SwarmSubstrate {
                 (0.0, col.withOpacity(1.0)),
                 (0.3, col.withOpacity(0.5)),
                 (0.62, col.withOpacity(0.12)),
-                (1.0, col.withOpacity(0.0)),
+                (1.0, col.withOpacity(0.0))
             ]))
         }
 
@@ -187,7 +187,7 @@ public final class DustMotesSubstrate: SwarmSubstrate {
                 let dxo = (fx + 0.35 * cos(t * 0.23 + ph)) * leash * wob
                 let dyo = (fy + 0.35 * sin(t * 0.19 + ph * 1.3)) * leash * wob
                 x = ox + dxo; y = oy + dyo
-                // drifting shifts where the beam catches it (R-normalized axis).
+                // drifting shifts where the beam catches it (radius-normalized axis).
                 axis += (dxo * 0.788 + dyo * 0.616) * invR
             }
 
@@ -228,9 +228,9 @@ public final class DustMotesSubstrate: SwarmSubstrate {
             }
         }
 
-        // ── PASS 2: small-R crispening — a hard 0.7px source-over dot on each
+        // ── PASS 2: small-radius crispening — a hard 0.7px source-over dot on each
         // locked core so the silhouette reads even when the bloom is too soft.
-        if R < 70 {
+        if radius < 70 {
             var crisp = baseCtx
             crisp.blendMode = .normal
             let ca = clampD((dark ? 0.8 : 0.7) * env, 0, 1)

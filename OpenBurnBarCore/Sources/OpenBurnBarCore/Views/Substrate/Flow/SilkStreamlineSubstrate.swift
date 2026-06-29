@@ -60,14 +60,14 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
     public func paint(_ frame: SwarmSubstrateFrame, into ctx: GraphicsContext) -> Bool {
         let dots = frame.dots
         let count = dots.count
-        guard count > 0, frame.R > 0 else { return true }
+        guard count > 0, frame.cloudRadius > 0 else { return true }
 
         // Rebuild the streamline grouping + cached gradients only when the cloud
         // layout (or polarity) changes — never per frame.
         let newSig = Double(count) * 131.0
             + (dots[0].x).rounded() * 0.13
             + (dots[0].y).rounded() * 0.071
-            + frame.R.rounded() * 1.7
+            + frame.cloudRadius.rounded() * 1.7
             + frame.cx.rounded() * 0.011
             + frame.cy.rounded() * 0.017
         if newSig != sig || streams.isEmpty || frame.dark != builtDark {
@@ -81,7 +81,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
         let dark = frame.dark
         // Nib width: bounded so the ribbon always reproduces the contour with
         // confident weight. Grows in slightly as the mark forms.
-        let nibW = clampD(frame.R * 0.09, 3.2, 22)
+        let nibW = clampD(frame.cloudRadius * 0.09, 3.2, 22)
             * (reduced ? 1 : 0.6 + 0.4 * clampD(frame.settleProgress, 0, 1))
         let wave = reduced ? 0 : frame.t * (TAU * 0.18)   // ~0.18 Hz travelling pressure
         let t = frame.t
@@ -128,8 +128,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
                 let w = halfAt(i), wd = wanderAt(i)
                 let x = Double(p.x) + ex * w + nx * wd
                 let y = Double(p.y) + ey * w + ny * wd
-                if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                else { path.addLine(to: CGPoint(x: x, y: y)) }
+                if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
             }
             // reverse edge: centre − E·half + perp·wander
             for i in stride(from: n - 1, through: 0, by: -1) {

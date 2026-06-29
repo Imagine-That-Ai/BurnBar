@@ -378,7 +378,6 @@ public final class SwarmSimulation {
 
     var pointer: CGPoint?
 
-
     // MARK: - Substrate layer (pluggable per-particle material painter)
 
     /// The active substrate, or nil/PlainDots for the default dot render. Built
@@ -387,7 +386,7 @@ public final class SwarmSimulation {
 
     /// Accent color forwarded into the substrate `stage` (the View's `accent`,
     /// finally load-bearing). Defaults to the ember brand accent.
-    var substrateAccent: Color = Color(red: 0.96, green: 0.31, blue: 0.36)
+    var substrateAccent = Color(red: 0.96, green: 0.31, blue: 0.36)
 
     /// Optional backdrop plate color the substrate may read for blend choices.
     var substrateBackdrop: Color?

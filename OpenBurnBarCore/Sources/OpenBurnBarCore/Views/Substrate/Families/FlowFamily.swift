@@ -23,6 +23,6 @@ enum FlowFamily {
             id: "flow.petal-drift", family: .flow,
             label: "Petal Drift", hint: "petals",
             accent: RGBA(r: 1.0, g: 150/255, b: 190/255), accent2: RGBA(r: 1.0, g: 200/255, b: 170/255),
-            make: { PetalDriftSubstrate() }),
+            make: { PetalDriftSubstrate() })
     ]
 }

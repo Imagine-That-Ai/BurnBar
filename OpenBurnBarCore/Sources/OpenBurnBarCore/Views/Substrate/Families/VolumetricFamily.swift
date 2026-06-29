@@ -23,6 +23,6 @@ enum VolumetricFamily {
             id: "volumetric.dust-motes", family: .volumetric,
             label: "Dust Motes", hint: "motes",
             accent: RGBA(r: 200/255, g: 200/255, b: 220/255), accent2: RGBA(r: 1.0, g: 210/255, b: 180/255),
-            make: { DustMotesSubstrate() }),
+            make: { DustMotesSubstrate() })
     ]
 }

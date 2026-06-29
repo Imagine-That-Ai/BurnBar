@@ -23,6 +23,6 @@ enum MeshFamily {
             id: "mesh.mesh-grain", family: .mesh,
             label: "Living Grain", hint: "grain",
             accent: RGBA(r: 1.0, g: 160/255, b: 170/255), accent2: RGBA(r: 1.0, g: 200/255, b: 150/255),
-            make: { MeshGrainSubstrate() }),
+            make: { MeshGrainSubstrate() })
     ]
 }

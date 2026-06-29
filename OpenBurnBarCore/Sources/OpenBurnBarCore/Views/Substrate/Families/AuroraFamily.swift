@@ -23,6 +23,6 @@ enum AuroraFamily {
             id: "aurora.drift-motes", family: .aurora,
             label: "Drift Motes", hint: "spores",
             accent: RGBA(r: 200/255, g: 180/255, b: 1.0), accent2: RGBA(r: 1.0, g: 220/255, b: 240/255),
-            make: { DriftMotesSubstrate() }),
+            make: { DriftMotesSubstrate() })
     ]
 }

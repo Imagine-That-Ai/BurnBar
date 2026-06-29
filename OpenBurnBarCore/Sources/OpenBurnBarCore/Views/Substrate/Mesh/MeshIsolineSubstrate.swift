@@ -48,8 +48,8 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
 
     public func paint(_ frame: SwarmSubstrateFrame, into baseCtx: GraphicsContext) -> Bool {
         let count = frame.dots.count
-        let R = frame.R
-        guard count > 0, R > 0 else { return true }
+        let radius = frame.cloudRadius
+        guard count > 0, radius > 0 else { return true }
 
         let dark = frame.dark
         let reduced = frame.reduced
@@ -63,7 +63,7 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
         let newSig = Double(count) * 131.0
             + (s0.x).rounded() * 0.13
             + (s0.y).rounded() * 0.071
-            + R.rounded() * 1.7
+            + radius.rounded() * 1.7
             + cx.rounded() * 0.011
             + cy.rounded() * 0.017
         if newSig != sig || dark != builtDark {
@@ -83,7 +83,7 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
         let y0 = gy0 - Double(meshPAD) * gh
 
         // Line weight scales with the mark size; bounded so filaments stay delicate.
-        let baseW = clampD(R * 0.006, 0.6, 1.5)
+        let baseW = clampD(radius * 0.006, 0.6, 1.5)
 
         // ── inner contours: all drift together; level u → color / weight ────────
         let loBand = meshBOUNDARY_LEVEL + 0.08
@@ -136,12 +136,12 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
     private func rebuild(_ frame: SwarmSubstrateFrame) {
         let dots = frame.dots
         let count = dots.count
-        let R = frame.R
+        let radius = frame.cloudRadius
         for i in 0..<meshCELLS { field[i] = 0 }
-        guard count > 0, R > 0 else { sig = .nan; return }
+        guard count > 0, radius > 0 else { sig = .nan; return }
 
         // Map the cloud bbox (padded) onto the grid using centroid + radius.
-        let span = R * 2.35
+        let span = radius * 2.35
         let half = span / 2
         gx0 = frame.cx - half
         gy0 = frame.cy - half

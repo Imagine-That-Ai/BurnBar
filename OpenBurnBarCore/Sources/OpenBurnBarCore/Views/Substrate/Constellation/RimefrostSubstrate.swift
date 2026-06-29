@@ -41,7 +41,7 @@ public final class RimefrostSubstrate: SwarmSubstrate {
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.45 + 0.55
 
         // cap arm length below inter-point spacing so feathering never smears.
-        let spacing = frame.R / max(2.0, sqrt(Double(count)))
+        let spacing = frame.cloudRadius / max(2.0, sqrt(Double(count)))
         let armCap = clampD(spacing * 0.42, sizePx * 2.4, sizePx * 6)
         let armMin = clampD(spacing * 0.16, sizePx * 1.2, armCap)
         // imperceptible global rotation of the whole field.
@@ -56,7 +56,7 @@ public final class RimefrostSubstrate: SwarmSubstrate {
                 (0.0, RGBA(r: 232.0 / 255, g: 244.0 / 255, b: 1.0, a: 1.0)),
                 (0.28, RGBA(r: 206.0 / 255, g: 228.0 / 255, b: 1.0, a: 0.5)),
                 (0.6, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.12)),
-                (1.0, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.0)),
+                (1.0, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.0))
             ]))
 
         // ice target the per-point brand color is lifted toward.

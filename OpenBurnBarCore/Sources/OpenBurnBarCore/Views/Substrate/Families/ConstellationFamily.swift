@@ -24,6 +24,6 @@ enum ConstellationFamily {
             id: "constellation.rimefrost", family: .constellation,
             label: "Dendritic Frost", hint: "frost",
             accent: RGBA(r: 190/255, g: 215/255, b: 1.0), accent2: RGBA(r: 225/255, g: 240/255, b: 1.0),
-            make: { RimefrostSubstrate() }),
+            make: { RimefrostSubstrate() })
     ]
 }

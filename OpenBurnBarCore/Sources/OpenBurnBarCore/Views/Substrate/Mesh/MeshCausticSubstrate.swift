@@ -35,7 +35,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         RGBA(r: 150 / 255, g: 235 / 255, b: 150 / 255),
         RGBA(r: 235 / 255, g: 200 / 255, b: 120 / 255),
         RGBA(r: 235 / 255, g: 130 / 255, b: 200 / 255),
-        RGBA(r: 140 / 255, g: 120 / 255, b: 240 / 255),
+        RGBA(r: 140 / 255, g: 120 / 255, b: 240 / 255)
     ]
 
     /// Sample the closed iris ramp at `u` (wraps; matches source `iris()`).
@@ -77,7 +77,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         let lite = frame.batteryThrottled
         let sizePx = frame.sizePx
         let t = frame.t
-        let cx = frame.cx, cy = frame.cy, R = frame.R
+        let cx = frame.cx, cy = frame.cy, radius = frame.cloudRadius
 
         // Master fade: assembly ramp (alive/dissolve/armed default to held look).
         let f = clampD(frame.settleProgress, 0, 1) * 0.55 + 0.45
@@ -85,7 +85,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         // Animation drivers — frozen into a poised pose under reduced motion.
         let phase = reduced ? 0.6 : t * (TAU * 0.08)
         let hueDrift = reduced ? 0.15 : frac(t / 14)
-        let fs = 3.4 / max(R, 1)
+        let fs = 3.4 / max(radius, 1)
 
         if inten.count != count {
             inten = [Double](repeating: 0, count: count)
@@ -138,7 +138,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
             (0.28, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
             (0.6, RGBA(r: 1, g: 1, b: 1, a: 0.1)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ])) : nil
 
         // ── pass 2: pooled-light glow at every vertex ──────────────────────────
@@ -186,7 +186,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         // strength — still only ≤6 strokes/frame.
         let neighbors = frame.structure.structure(for: frame.dots, k: 6).neighbors
         if neighbors.count >= count {
-            let gapSq = R * R * 0.16
+            let gapSq = radius * radius * 0.16
             let nb = Self.iris.count // 6 hue buckets matching the iris stops
             var bucketPath = [Path](repeating: Path(), count: nb)
             var bucketStrSum = [Double](repeating: 0, count: nb)
@@ -237,7 +237,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
             let spark = ctx.resolve(sprites.radial(diameter: 32, stops: [
                 (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
                 (0.32, RGBA(r: 214 / 255, g: 236 / 255, b: 1, a: 0.6)),
-                (1.0, RGBA(r: 190 / 255, g: 220 / 255, b: 1, a: 0.0)),
+                (1.0, RGBA(r: 190 / 255, g: 220 / 255, b: 1, a: 0.0))
             ]))
             for i in 0..<count {
                 let k = inten[i] * invMax

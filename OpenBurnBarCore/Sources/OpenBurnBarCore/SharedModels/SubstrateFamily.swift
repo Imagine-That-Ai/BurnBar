@@ -72,7 +72,7 @@ public enum SubstrateFamily: String, CaseIterable, Codable, Sendable {
         "storm-signal": .constellation, "origami": .mesh,
         // Thin-film iridescent sheen reads as Moiré's spectral-interference idiom.
         "petroleum-sheen": .moire,
-        "ink-diffusion": .flow,
+        "ink-diffusion": .flow
     ]
 
     /// Heuristic family for a never-before-seen kernel id (mirrors source `guessFamily`).
@@ -121,9 +121,9 @@ public enum FamilyAccent {
     public static func a(_ fam: SubstrateFamily) -> RGBA {
         switch fam {
         case .constellation: return RGBA(r: 131/255, g: 142/255, b: 1.0)
-        case .flow:          return RGBA(r: 86/255,  g: 198/255, b: 224/255)
+        case .flow:          return RGBA(r: 86/255, g: 198/255, b: 224/255)
         case .aurora:        return RGBA(r: 170/255, g: 130/255, b: 1.0)
-        case .mesh:          return RGBA(r: 1.0,     g: 120/255, b: 180/255)
+        case .mesh:          return RGBA(r: 1.0, g: 120/255, b: 180/255)
         case .moire:         return RGBA(r: 188/255, g: 208/255, b: 1.0)
         case .volumetric:    return RGBA(r: 120/255, g: 180/255, b: 1.0)
         }
@@ -134,9 +134,9 @@ public enum FamilyAccent {
         case .constellation: return RGBA(r: 150/255, g: 200/255, b: 1.0)
         case .flow:          return RGBA(r: 150/255, g: 236/255, b: 232/255)
         case .aurora:        return RGBA(r: 236/255, g: 150/255, b: 232/255)
-        case .mesh:          return RGBA(r: 1.0,     g: 186/255, b: 140/255)
+        case .mesh:          return RGBA(r: 1.0, g: 186/255, b: 140/255)
         case .moire:         return RGBA(r: 150/255, g: 150/255, b: 1.0)
-        case .volumetric:    return RGBA(r: 1.0,     g: 200/255, b: 150/255)
+        case .volumetric:    return RGBA(r: 1.0, g: 200/255, b: 150/255)
         }
     }
 }

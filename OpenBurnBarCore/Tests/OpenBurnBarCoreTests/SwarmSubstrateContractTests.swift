@@ -153,8 +153,7 @@ final class SwarmSubstrateContractTests: XCTestCase {
         let priorID = std.string(forKey: SwarmSubstratePreferences.substrateKey)
         defer {
             std.set(priorEnabled, forKey: SwarmSubstratePreferences.enabledKey)
-            if let priorID { std.set(priorID, forKey: SwarmSubstratePreferences.substrateKey) }
-            else { std.removeObject(forKey: SwarmSubstratePreferences.substrateKey) }
+            if let priorID { std.set(priorID, forKey: SwarmSubstratePreferences.substrateKey) } else { std.removeObject(forKey: SwarmSubstratePreferences.substrateKey) }
         }
         std.set(false, forKey: SwarmSubstratePreferences.enabledKey)
         std.set("constellation.starfire", forKey: SwarmSubstratePreferences.substrateKey)
@@ -215,6 +214,6 @@ private enum KnownKernelIDs {
         "liquid-lumen", "spectral-drift", "mycelium-mesh", "oilfield",
         "suminagashi-drift", "kinetic-stipple", "agent1", "neural-bloom",
         "aether-lattice", "bat-signal", "storm-signal", "origami", "ink-diffusion",
-        "petroleum-sheen",
+        "petroleum-sheen"
     ]
 }

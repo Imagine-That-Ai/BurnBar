@@ -207,7 +207,7 @@ public final class StellariumSubstrate: SwarmSubstrate {
                 i += step
             }
             samples.sort()
-            let med = samples.isEmpty ? frame.R * frame.R * 0.01 : samples[samples.count >> 1]
+            let med = samples.isEmpty ? frame.cloudRadius * frame.cloudRadius * 0.01 : samples[samples.count >> 1]
             // Gate generously (a chart spans a couple node-gaps) but finite, so
             // sparse outliers don't sprout long crossing struts.
             let gate = med * 6.0 + 1

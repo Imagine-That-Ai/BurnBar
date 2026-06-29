@@ -106,7 +106,7 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
         // assembly fade-in: the dust ignites as the mark forms.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.45 + 0.55
         // shared ribbon-drift amplitude, frozen under reduced motion.
-        let driftAmp = reduced ? 0.0 : clampD(frame.R * 0.02, 1.6, 5.0)
+        let driftAmp = reduced ? 0.0 : clampD(frame.cloudRadius * 0.02, 1.6, 5.0)
 
         var ctx = baseCtx
         ctx.blendMode = dark ? .plusLighter : .normal
@@ -118,7 +118,7 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
                 (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
                 (0.25, RGBA(r: 1, g: 1, b: 1, a: 0.5)),
                 (0.55, RGBA(r: 1, g: 1, b: 1, a: 0.12)),
-                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
             ]))
             : nil
 

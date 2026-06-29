@@ -57,12 +57,12 @@ public final class PlanktonWakeSubstrate: SwarmSubstrate {
         // Fixed bioluminescent hue (independent of theme color); only alpha/radius vary.
         let ember: GraphicsContext.ResolvedImage? = (dark && !lite)
             ? ctx.resolve(sprites.radial(diameter: 96, stops: [
-                (0.00, RGBA(r: 236.0/255, g: 1.0,       b: 1.0,       a: 1.00)),
-                (0.04, RGBA(r: 208.0/255, g: 252.0/255, b: 1.0,       a: 0.95)),
-                (0.16, RGBA(r: 90.0/255,  g: 224.0/255, b: 238.0/255, a: 0.55)),
-                (0.38, RGBA(r: 58.0/255,  g: 196.0/255, b: 214.0/255, a: 0.22)),
-                (0.66, RGBA(r: 64.0/255,  g: 210.0/255, b: 190.0/255, a: 0.07)),
-                (1.00, RGBA(r: 64.0/255,  g: 210.0/255, b: 190.0/255, a: 0.00)),
+                (0.00, RGBA(r: 236.0/255, g: 1.0, b: 1.0, a: 1.00)),
+                (0.04, RGBA(r: 208.0/255, g: 252.0/255, b: 1.0, a: 0.95)),
+                (0.16, RGBA(r: 90.0/255, g: 224.0/255, b: 238.0/255, a: 0.55)),
+                (0.38, RGBA(r: 58.0/255, g: 196.0/255, b: 214.0/255, a: 0.22)),
+                (0.66, RGBA(r: 64.0/255, g: 210.0/255, b: 190.0/255, a: 0.07)),
+                (1.00, RGBA(r: 64.0/255, g: 210.0/255, b: 190.0/255, a: 0.00))
             ]))
             : nil
 

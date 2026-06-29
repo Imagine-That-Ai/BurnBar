@@ -112,7 +112,7 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         let reduced = frame.reduced
         let lite = frame.batteryThrottled
         let t = frame.t
-        let R = frame.R
+        let radius = frame.cloudRadius
         let sizePx = frame.sizePx
         // fade-in × (no in-place fracture in the substrate): formGate 0.5…1.
         let f = clampD(frame.settleProgress, 0, 1) * 0.5 + 0.5
@@ -123,7 +123,7 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         // 1.8s breath modulates the trapped-glow alpha (the medium inhaling).
         let breath = reduced ? 0.6 : 0.5 + 0.5 * sin(t * (TAU / 1.8))
         // chip footprint scales with the cloud so it stays a packed solid.
-        let chipR = clampD(sizePx * 1.85 + R * 0.012, 1.4, 7)
+        let chipR = clampD(sizePx * 1.85 + radius * 0.012, 1.4, 7)
 
         // smoked, low-saturation cool slate the base is pulled toward.
         let smoke = dark ? 0.32 : 0.18
@@ -155,7 +155,7 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         let trapImg = baseCtx.resolve(sprites.radial(diameter: 40, stops: [
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.95)),
             (0.4, RGBA(r: 1, g: 1, b: 1, a: 0.34)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
         // colored smoked base fill for chip `i` (the glass body mass).

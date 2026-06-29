@@ -41,7 +41,7 @@ public final class WispSubstrate: SwarmSubstrate {
         // assembly fade-in: orbs ignite as the mark forms.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.45 + 0.55
         // drift amplitude clamped well below inter-point spacing → cores never cross-read.
-        let amp = reduced ? 0.0 : clampD(frame.R * 0.018, 1.4, 4.2)
+        let amp = reduced ? 0.0 : clampD(frame.cloudRadius * 0.018, 1.4, 4.2)
 
         // Single additive pass on dark, source-over on light — flip blend once.
         var pctx = ctx
@@ -52,7 +52,7 @@ public final class WispSubstrate: SwarmSubstrate {
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
             (0.28, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
             (0.6, RGBA(r: 1, g: 1, b: 1, a: 0.1)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
         @inline(__always) func drawGlow(_ x: Double, _ y: Double, _ r: Double, _ alpha: Double) {
@@ -68,7 +68,7 @@ public final class WispSubstrate: SwarmSubstrate {
             let vig = pctx.resolve(sprites.radial(diameter: 256, stops: [
                 (0.0, tint.withOpacity(1.0)),
                 (0.5, tint.withOpacity(0.35)),
-                (1.0, tint.withOpacity(0.0)),
+                (1.0, tint.withOpacity(0.0))
             ]))
             let breath = reduced ? 0.5 : 0.5 + 0.5 * sin(t * 0.55)
             pctx.opacity = (0.05 + 0.03 * breath) * f
@@ -133,12 +133,12 @@ public final class WispSubstrate: SwarmSubstrate {
             }
         }
 
-        // ── gust crest: a slow brightness band sweeping the curtain L→R ─────────
+        // ── gust crest: a slow brightness band sweeping the curtain left-to-right ───
         if dark && !reduced && !throttled {
-            let R = frame.R
-            let span = R * 2.6
-            let crestX = frame.cx - R * 1.3 + (t * (span / 9)).truncatingRemainder(dividingBy: span)
-            let band = R * 0.32
+            let radius = frame.cloudRadius
+            let span = radius * 2.6
+            let crestX = frame.cx - radius * 1.3 + (t * (span / 9)).truncatingRemainder(dividingBy: span)
+            let band = radius * 0.32
             if band > 0 {
                 for i in 0..<dots.count {
                     let d = dots[i].x - crestX

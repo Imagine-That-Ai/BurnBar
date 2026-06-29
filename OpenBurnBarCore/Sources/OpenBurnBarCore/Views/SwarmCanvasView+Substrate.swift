@@ -41,7 +41,7 @@ extension SwarmSimulation {
         // Representative cloud radius: mean distance from centroid.
         var distSum = 0.0
         for d in dots { distSum += hypot(d.x - cx, d.y - cy) }
-        let R = dots.isEmpty ? min(size.width, size.height) * 0.3 : distSum / Double(n)
+        let cloudRadius = dots.isEmpty ? min(size.width, size.height) * 0.3 : distSum / Double(n)
         let sizePx = radii.isEmpty ? 1.6 : radii.sorted()[radii.count / 2]
 
         let accentRGBA = RGBA(substrateAccent, fallback: RGBA(r: 0.96, g: 0.31, b: 0.36))
@@ -64,7 +64,7 @@ extension SwarmSimulation {
             batteryThrottled: isBatteryThrottled, uiMode: uiMode,
             isShapeMode: isShapeMode, formed: shapeSettledAt != nil, settleProgress: settle,
             t: now, dt: dt, stage: stage, backdrop: backdrop, dots: dots,
-            cx: cx, cy: cy, R: R, sizePx: sizePx, structure: substrateStructure)
+            cx: cx, cy: cy, cloudRadius: cloudRadius, sizePx: sizePx, structure: substrateStructure)
     }
 
     /// Continuous 0…1 analog of `currentShapeIsSettled()` — the fraction of

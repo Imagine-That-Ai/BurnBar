@@ -23,6 +23,6 @@ enum MoireFamily {
             id: "moire.film-bubble", family: .moire,
             label: "Film Bubble", hint: "bubbles",
             accent: RGBA(r: 180/255, g: 220/255, b: 1.0), accent2: RGBA(r: 220/255, g: 190/255, b: 1.0),
-            make: { FilmBubbleSubstrate() }),
+            make: { FilmBubbleSubstrate() })
     ]
 }

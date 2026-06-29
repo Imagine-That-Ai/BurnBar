@@ -155,7 +155,7 @@ public final class SpriteCache {
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
             (0.22, RGBA(r: 1, g: 1, b: 1, a: 0.55)),
             (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.14)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ])
     }
 
@@ -164,7 +164,7 @@ public final class SpriteCache {
         radial(diameter: diameter, stops: [
             (0.0, rgba.withOpacity(0.9)),
             (0.35, rgba.withOpacity(0.32)),
-            (1.0, rgba.withOpacity(0.0)),
+            (1.0, rgba.withOpacity(0.0))
         ])
     }
 
@@ -198,7 +198,7 @@ public final class SpriteCache {
 /// a single-stroke nearest-neighbor walk (`order`), per-point k-NN lists
 /// (`neighbors`), and segment-break flags for polylines (`breaks`). Rebuilds only
 /// when the topology signature changes, so it's free for styles that ignore it.
-public final class SubstrateStructureProvider: @unchecked Sendable {
+public final class SubstrateStructureProvider {
     public struct Structure: Sendable {
         public let order: [Int]
         public let neighbors: [[Int]]
@@ -332,9 +332,9 @@ public enum SubstrateRamp {
         RGBA(r: 0.42, g: 0.36, b: 1.0),   // iris
         RGBA(r: 0.30, g: 0.72, b: 0.96),  // cyan
         RGBA(r: 0.36, g: 0.95, b: 0.78),  // mint
-        RGBA(r: 1.0,  g: 0.82, b: 0.36),  // gold
-        RGBA(r: 1.0,  g: 0.45, b: 0.62),  // rose
-        RGBA(r: 0.67, g: 0.40, b: 1.0),   // violet
+        RGBA(r: 1.0, g: 0.82, b: 0.36),  // gold
+        RGBA(r: 1.0, g: 0.45, b: 0.62),  // rose
+        RGBA(r: 0.67, g: 0.40, b: 1.0)   // violet
     ]
 
     /// Sample a ramp at 0…1 with linear interpolation (wraps).

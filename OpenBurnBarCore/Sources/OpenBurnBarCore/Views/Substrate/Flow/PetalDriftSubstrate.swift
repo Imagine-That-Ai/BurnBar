@@ -43,28 +43,28 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
     /// Bake the soft petal sheen sprite ONCE (source `ensureSheen`): clip to the
     /// teardrop, fill the cream core→rim radial, stroke the specular sheen arc
     /// along the upper flank, then overlay the faint mauve base-fold tint. Long
-    /// axis points along +X with the base at sprite (0.32·S, 0.5·S). Cached.
+    /// axis points along +X with the base at sprite (0.32·spriteSide, 0.5·spriteSide). Cached.
     private func ensureSheen() -> Image? {
         if sheenTried { return sheen }
         sheenTried = true
 
-        let S = SPRITE
+        let spriteSide = SPRITE
         let cs = CGColorSpaceCreateDeviceRGB()
         guard let g = CGContext(
-            data: nil, width: S, height: S, bitsPerComponent: 8, bytesPerRow: 0,
+            data: nil, width: spriteSide, height: spriteSide, bitsPerComponent: 8, bytesPerRow: 0,
             space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
         // Flip into a top-left-origin (canvas) coordinate system so the source
         // coordinates port verbatim — upper flank stays upper in the final image.
-        g.translateBy(x: 0, y: CGFloat(S))
+        g.translateBy(x: 0, y: CGFloat(spriteSide))
         g.scaleBy(x: 1, y: -1)
 
-        let Sd = Double(S)
-        let cx = Sd * 0.32       // petal base x (occupies the right ~3/4)
-        let cy = Sd * 0.5
-        let len = Sd * 0.62      // tip distance from base
-        let halfW = Sd * 0.27    // max half-width
+        let spriteSideD = Double(spriteSide)
+        let cx = spriteSideD * 0.32       // petal base x (occupies the right ~3/4)
+        let cy = spriteSideD * 0.5
+        let len = spriteSideD * 0.62      // tip distance from base
+        let halfW = spriteSideD * 0.27    // max half-width
 
         // Teardrop path: upper flank base→tip, lower flank tip→base (two quads).
         let tipX = cx + len
@@ -83,7 +83,7 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.95),
             CGColor(srgbRed: 1, green: 250.0 / 255, blue: 252.0 / 255, alpha: 0.62),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24),
-            CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0),
+            CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0)
         ] as CFArray, locations: [0, 0.28, 0.62, 1])!
         let creamC = CGPoint(x: cx + len * 0.34, y: cy)
         g.drawRadialGradient(cream, startCenter: creamC, startRadius: 0,
@@ -97,14 +97,14 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         arc.addQuadCurve(to: CGPoint(x: cx + len * 0.92, y: cy - halfW * 0.1),
                          control: CGPoint(x: cx + len * 0.55, y: cy - halfW * 0.78))
         g.addPath(arc)
-        g.setLineWidth(Sd * 0.05)
+        g.setLineWidth(spriteSideD * 0.05)
         g.setLineCap(.butt)
         g.replacePathWithStrokedPath()
         g.clip()
         let spec = CGGradient(colorsSpace: cs, colors: [
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.5),
-            CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0),
+            CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0)
         ] as CFArray, locations: [0, 0.5, 1])!
         g.drawLinearGradient(spec, start: CGPoint(x: cx, y: cy - halfW),
                              end: CGPoint(x: cx + len, y: cy + halfW * 0.2), options: [])
@@ -116,7 +116,7 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         let fold = CGGradient(colorsSpace: cs, colors: [
             CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.30),
             CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.05),
-            CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.0),
+            CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.0)
         ] as CFArray, locations: [0, 0.7, 1])!
         let foldC = CGPoint(x: cx, y: cy)
         g.drawRadialGradient(fold, startCenter: foldC, startRadius: 0,
@@ -143,7 +143,7 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
 
         // Petal scale: a touch below inter-point spacing so petals cluster into a
         // readable blossom-mosaic. R / sqrt(count) ≈ inter-point spacing.
-        let spacing = frame.R / max(8, (Double(count)).squareRoot())
+        let spacing = frame.cloudRadius / max(8, (Double(count)).squareRoot())
         let petalLen = clampD(frame.sizePx * 3.0 + spacing * 0.9, 5, 11)
 
         // Fixed top-left key light for the back-facing orientation cull.
@@ -222,12 +222,12 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             //    Additive on dark, source-over on light; narrows with `broad` so
             //    an edge-on petal sheds its sheen. Dropped under battery throttle.
             //    Placement mirrors the source: scale local space, then draw the
-            //    SPRITE-square so its internal base (0.32·S, 0.5·S) lands at (0,0).
+            //    SPRITE-square so its internal base (0.32·spriteSide, 0.5·spriteSide) lands at (0,0).
             if let sheen {
                 let aSheen = clampD((dark ? 0.5 : 0.4) * lit * f, 0, 0.7)
                 if aSheen > 0.003 {
-                    let S = Double(SPRITE)
-                    let scaleX = (len / (S * 0.62)) * 1.04
+                    let spriteSide = Double(SPRITE)
+                    let scaleX = (len / (spriteSide * 0.62)) * 1.04
                     let scaleY = scaleX * broad
                     var sctx = ctx
                     sctx.translateBy(x: x, y: y)
@@ -235,8 +235,8 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
                     sctx.scaleBy(x: scaleX, y: scaleY)
                     sctx.blendMode = dark ? .plusLighter : .normal
                     sctx.opacity = aSheen
-                    sctx.draw(sheen, in: CGRect(x: -S * 0.32, y: -S * 0.5,
-                                                width: S, height: S))
+                    sctx.draw(sheen, in: CGRect(x: -spriteSide * 0.32, y: -spriteSide * 0.5,
+                                                width: spriteSide, height: spriteSide))
                 }
             }
         }

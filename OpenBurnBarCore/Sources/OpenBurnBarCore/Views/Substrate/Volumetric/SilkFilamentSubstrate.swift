@@ -111,7 +111,7 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
         // ── form gate + dim baseline (the silhouette is ALWAYS faintly readable) ──
         let formGate = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.5 + 0.5
         let baseDim = dark ? 0.16 : 0.34 // armBright == 1 (no armed hook)
-        let invR = frame.R > 0 ? 1.0 / frame.R : 0.0
+        let invR = frame.cloudRadius > 0 ? 1.0 / frame.cloudRadius : 0.0
         let cy = frame.cy
 
         // ── rake phase, derived purely from frame.t (≈0.07 laps/s shaft) ──
@@ -121,8 +121,8 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
 
         // transverse sway amplitude — clamped below point spacing so the strand
         // never blurs into illegibility. spacing ≈ R / sqrt(count).
-        let spacing = max(2.0, frame.R / max(1.0, Double(count).squareRoot()))
-        let sway = reduced ? 0.0 : min(spacing * 0.3, frame.R * 0.035)
+        let spacing = max(2.0, frame.cloudRadius / max(1.0, Double(count).squareRoot()))
+        let sway = reduced ? 0.0 : min(spacing * 0.3, frame.cloudRadius * 0.035)
 
         // ── PASS A: lay out vertices, arc-length, altitude hue (un-swayed first) ──
         var prevX = 0.0, prevY = 0.0
@@ -179,7 +179,7 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
         }
 
         // ── geometry constants ──
-        let tiny = frame.R < 56
+        let tiny = frame.cloudRadius < 56
         let drawHalo = dark && !tiny && !throttled
         let wHalo = max(1.0, sizePx) * 3.0
         let wCore = clampD(sizePx * 0.6, 0.7, 1.6)

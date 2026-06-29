@@ -56,12 +56,7 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         let hp = frac(h) * 6
         let x = c * (1 - abs(hp.truncatingRemainder(dividingBy: 2) - 1))
         var r = 0.0, g = 0.0, b = 0.0
-        if hp < 1 { r = c; g = x }
-        else if hp < 2 { r = x; g = c }
-        else if hp < 3 { g = c; b = x }
-        else if hp < 4 { g = x; b = c }
-        else if hp < 5 { r = x; b = c }
-        else { r = c; b = x }
+        if hp < 1 { r = c; g = x } else if hp < 2 { r = x; g = c } else if hp < 3 { g = c; b = x } else if hp < 4 { g = x; b = c } else if hp < 5 { r = x; b = c } else { r = c; b = x }
         let m = l - c / 2
         return (r + m, g + m, b + m)
     }
@@ -75,7 +70,7 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         let lite = frame.batteryThrottled        // drop halo + spec catchlight when throttled
         let sizePx = frame.sizePx
         let t = frame.t
-        let cx = frame.cx, cy = frame.cy, R = frame.R
+        let cx = frame.cx, cy = frame.cy, radius = frame.cloudRadius
 
         // Global film bloom-in: fades the film in as the mark forms (vis/armed fold
         // to 1 for the held substrate look). reduced → treat as fully formed.
@@ -84,7 +79,7 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
 
         // Two interfering thickness wave fields. Slightly different spatial freq +
         // temporal rate → they beat, rolling rainbow moiré bands across the cluster.
-        let invR = 1 / max(1, R)
+        let invR = 1 / max(1, radius)
         let tt = reduced ? 1.7 : t                // frozen-but-pretty phase under reduced motion
         let aFx = 2.1 * invR
         let aFy = 1.3 * invR
@@ -104,12 +99,12 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
             (0.42, RGBA(r: 1, g: 1, b: 1, a: 0.10)),
             (0.78, RGBA(r: 1, g: 1, b: 1, a: 0.55)),
             (0.93, RGBA(r: 1, g: 1, b: 1, a: 1.0)),   // bright iridescent rim
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
         let specImg: GraphicsContext.ResolvedImage? = lite ? nil : ctx.resolve(sprites.radial(diameter: 32, stops: [
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
             (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.5)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
         let specN = Double(Self.spectrumN)
