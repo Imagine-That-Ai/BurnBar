@@ -55,6 +55,12 @@ public actor BurnBarGatewayModelHealthStore {
             formatFamily: formatFamily
         )
         guard let record = records[lookupKey] else { return nil }
+        if Self.shouldDiscardActiveFailure(record) {
+            records.removeValue(forKey: lookupKey)
+            loadedRecords = records
+            persist(records)
+            return nil
+        }
         guard record.blockedUntil > now else {
             records.removeValue(forKey: lookupKey)
             loadedRecords = records
@@ -165,6 +171,9 @@ public actor BurnBarGatewayModelHealthStore {
             return isAnthropicOAuth(route) ? 15 * 60 : 5 * 60
         }
         if statusCode == 401 || statusCode == 403 {
+            if isCurrentClaudeCodeSlot(route) {
+                return nil
+            }
             return 60 * 60
         }
         if statusCode == 402
@@ -210,6 +219,22 @@ public actor BurnBarGatewayModelHealthStore {
     private static func isAnthropicOAuth(_ route: BurnBarProviderRoute) -> Bool {
         route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame
             && route.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("sk-ant-oat")
+    }
+
+    private static func isCurrentClaudeCodeSlot(_ route: BurnBarProviderRoute) -> Bool {
+        guard route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              let slotID = route.credentialSlotID?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+        return slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
+    }
+
+    private static func shouldDiscardActiveFailure(_ record: BurnBarGatewayModelHealthRecord) -> Bool {
+        guard record.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              record.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame else {
+            return false
+        }
+        return record.statusCode == 401 || record.statusCode == 403
     }
 
     private func loadRecords() -> [String: BurnBarGatewayModelHealthRecord] {

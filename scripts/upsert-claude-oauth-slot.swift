@@ -38,6 +38,102 @@ struct SlotMutationResponse: Codable {
     struct Slot: Codable { let slotID: String }
 }
 
+func trimmedNonEmpty(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !trimmed.isEmpty else { return nil }
+    return trimmed
+}
+
+func readClaudeCodeKeychainPayload(account: String) -> String? {
+    #if os(macOS)
+    let securityURL = URL(fileURLWithPath: "/usr/bin/security")
+    guard FileManager.default.isExecutableFile(atPath: securityURL.path),
+          !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return nil
+    }
+
+    let process = Process()
+    process.executableURL = securityURL
+    process.arguments = [
+        "find-generic-password",
+        "-w",
+        "-s", "Claude Code-credentials",
+        "-a", account
+    ]
+    process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+
+    let outputPipe = Pipe()
+    process.standardOutput = outputPipe
+    let errorSink = FileHandle(forWritingAtPath: "/dev/null")
+    process.standardError = errorSink
+    defer {
+        try? errorSink?.close()
+    }
+
+    do {
+        try process.run()
+    } catch {
+        return nil
+    }
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else { return nil }
+    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+    return trimmedNonEmpty(String(data: data, encoding: .utf8))
+    #else
+    return nil
+    #endif
+}
+
+func normalizedClaudeOAuthStoragePayload(from raw: String) throws -> String? {
+    guard let data = raw.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+          let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+    guard trimmedNonEmpty(oauth["accessToken"] as? String) != nil else {
+        return nil
+    }
+    guard !claudeOAuthPayloadIsExpired(oauth["expiresAt"]) else {
+        return nil
+    }
+
+    var payload: [String: Any] = ["claudeAiOauth": oauth]
+    if let organizationUuid = trimmedNonEmpty((root["organizationUuid"] as? String) ?? (oauth["organizationUuid"] as? String)) {
+        payload["organizationUuid"] = organizationUuid
+    }
+    let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+    guard let string = String(data: encoded, encoding: .utf8) else {
+        return nil
+    }
+    return string
+}
+
+func claudeOAuthPayloadIsExpired(_ value: Any?) -> Bool {
+    guard let milliseconds = expiresAtMilliseconds(value) else { return false }
+    let expiresAt = Date(timeIntervalSince1970: milliseconds / 1_000)
+    return expiresAt <= Date().addingTimeInterval(60)
+}
+
+func expiresAtMilliseconds(_ value: Any?) -> Double? {
+    if let double = value as? Double { return double }
+    if let int = value as? Int { return Double(int) }
+    if let string = value as? String {
+        if let double = Double(string) {
+            return double
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date.timeIntervalSince1970 * 1_000
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: string) {
+            return date.timeIntervalSince1970 * 1_000
+        }
+    }
+    return nil
+}
+
 let environment = ProcessInfo.processInfo.environment
 let home = FileManager.default.homeDirectoryForCurrentUser
 let supportDirectory: URL
@@ -49,7 +145,6 @@ if let override = environment["OPENBURNBAR_DAEMON_SUPPORT_DIR"] ?? environment["
 }
 let socketPath = supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false).path
 let tokenPath = supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
-let credsPath = home.appendingPathComponent(".claude/.credentials.json")
 
 guard let authToken = try? String(contentsOf: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
       !authToken.isEmpty else {
@@ -57,22 +152,32 @@ guard let authToken = try? String(contentsOf: tokenPath, encoding: .utf8).trimmi
     exit(1)
 }
 
-guard let credsData = try? Data(contentsOf: credsPath),
-      let credsRoot = try? JSONSerialization.jsonObject(with: credsData) as? [String: Any] else {
-    fputs("Missing ~/.claude/.credentials.json\n", stderr)
-    exit(1)
+var credentialCandidates: [String] = []
+if environment["BURNBAR_DISABLE_CLAUDE_CODE_KEYCHAIN_FALLBACK"] != "1",
+   let keychainPayload = readClaudeCodeKeychainPayload(account: NSUserName()) {
+    credentialCandidates.append(keychainPayload)
+}
+for path in [
+    home.appendingPathComponent(".claude/.credentials.json"),
+    home.appendingPathComponent(".claude/credentials.json")
+] {
+    if let raw = try? String(contentsOf: path, encoding: .utf8),
+       let trimmed = trimmedNonEmpty(raw) {
+        credentialCandidates.append(trimmed)
+    }
 }
 
-let oauth = credsRoot["claudeAiOauth"] as? [String: Any] ?? credsRoot
-guard let accessToken = oauth["accessToken"] as? String,
-      !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-    fputs("Missing non-empty Claude OAuth accessToken in ~/.claude/.credentials.json\n", stderr)
+var apiKey: String?
+for raw in credentialCandidates {
+    if let normalized = try normalizedClaudeOAuthStoragePayload(from: raw) {
+        apiKey = normalized
+        break
+    }
+}
+guard let apiKey else {
+    fputs("No non-expired Claude Code OAuth token found in Keychain or ~/.claude/.credentials.json\n", stderr)
     exit(1)
 }
-var payload: [String: Any] = ["claudeAiOauth": oauth]
-if let org = credsRoot["organizationUuid"] as? String { payload["organizationUuid"] = org }
-let apiKeyData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-guard let apiKey = String(data: apiKeyData, encoding: .utf8) else { exit(1) }
 
 let request = UpsertRequest(
     id: UUID().uuidString,

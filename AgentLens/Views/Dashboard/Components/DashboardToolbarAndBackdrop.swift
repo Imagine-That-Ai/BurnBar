@@ -65,6 +65,10 @@ struct DashboardBackdrop: View {
         max(0, LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency))
     }
 
+    private var dynamicBackdropEnabled: Bool {
+        settingsManager.useWebsiteBackground || useKernelBackdrop
+    }
+
     var body: some View {
         ZStack {
             // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
@@ -76,13 +80,16 @@ struct DashboardBackdrop: View {
                 // Editorial / Paper skin: the light dot-crest (provider logos
                 // drifting from coloured dots on paper), like app.burnbar.ai.
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
-            } else if settingsManager.useWebsiteBackground {
+            } else if dynamicBackdropEnabled {
                 Group {
                     if useKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
-                        // on top.
+                        // on top. Keep the native swarm/constellation below it
+                        // so a WebKit/WebGL failure never leaves the dashboard
+                        // with no animated backdrop at all.
+                        nativeDynamicBackdrop
                         KernelBackdropView()
                             .ignoresSafeArea()
                     } else if settingsManager.useConstellationBackground {
@@ -118,6 +125,15 @@ struct DashboardBackdrop: View {
                     }
             }
             // cov:ignore-end
+        }
+    }
+
+    @ViewBuilder
+    private var nativeDynamicBackdrop: some View {
+        if settingsManager.useConstellationBackground {
+            ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
+        } else {
+            WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
         }
     }
 }

@@ -213,6 +213,13 @@ extension ProviderPlanWizardView {
                 providerID: target.providerID,
                 slotID: target.slotID
             )
+            if removed {
+                let accountID = DaemonCredentialSlotAccountProjection.accountID(
+                    providerID: ProviderID(rawValue: target.providerID),
+                    slotID: target.slotID
+                )
+                try? await dataStore.deleteProviderAccount(id: accountID)
+            }
             await refreshGatewayAdvertisementState()
             await MainActor.run {
                 deletingAccountID = nil

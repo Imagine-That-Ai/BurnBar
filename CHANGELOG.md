@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Kept the native swarm/constellation dashboard background alive underneath the
+  experimental Window Backdrop kernels, so a WebKit/WebGL renderer failure no
+  longer leaves the dashboard with a flat or missing animated background.
+  Enabling Window Backdrop from Appearance now also enables the shared dynamic
+  background layer instead of depending on a separate Swarm Background toggle.
 - Fixed isolated Claude OAuth accounts (Settings → Accounts) showing a red
   "Credential not found" badge and a permanent "Refresh credential" button even
   right after a successful sign-in. Claude Max/Pro OAuth profiles routinely

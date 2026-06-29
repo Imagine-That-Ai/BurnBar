@@ -5,11 +5,59 @@ import OpenBurnBarCore
 struct AppearanceCorkboardSection: View {
     @Bindable var settingsManager: SettingsManager
     @State private var isProviderGlyphCustomizerExpanded = true
+    @State private var selectedSection: AppearanceSection = .theme
+
+    enum AppearanceSection: String, CaseIterable, Identifiable {
+        case theme
+        case menuBar
+        case background
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .theme: return "Theme"
+            case .menuBar: return "Menu Bar & Launch"
+            case .background: return "Background & Effects"
+            }
+        }
+    }
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                HStack {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            AppearancePreviewCard(settingsManager: settingsManager)
+
+            Picker("", selection: $selectedSection) {
+                ForEach(AppearanceSection.allCases) { section in
+                    Text(section.label).tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            GlassCard {
+                Group {
+                    switch selectedSection {
+                    case .theme:
+                        themeSection
+                    case .menuBar:
+                        menuBarSection
+                    case .background:
+                        backgroundSection
+                    }
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+
+            applyAndRestartButton
+        }
+    }
+
+    // MARK: - Theme section
+
+    @ViewBuilder
+    private var themeSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Appearance")
                             .font(DesignSystem.Typography.body)
@@ -70,10 +118,14 @@ struct AppearanceCorkboardSection: View {
                 Divider().background(DesignSystem.Colors.border)
 
                 LiquidGlassContentSurfacesToggleRow()
+        }
+    }
 
-                Divider().background(DesignSystem.Colors.border)
+    // MARK: - Menu Bar & Launch section
 
-                SettingsToggle(
+    private var menuBarSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            SettingsToggle(
                     title: "Show in Menu Bar",
                     subtitle: "Keep OpenBurnBar available as a menu-bar utility.",
                     icon: "menubar.rectangle",
@@ -133,13 +185,17 @@ struct AppearanceCorkboardSection: View {
                         "new_value": .bool(newValue)
                     ])
                 }
+        }
+    }
 
-                Divider().background(DesignSystem.Colors.border)
+    // MARK: - Background & Effects section
 
-                SettingsToggle(
-                    title: "Swarm Background",
-                    subtitle: "Active, reconverging token-ember swarms pulled from burnbar.ai. Particles drift and reform into $, </>, the BurnBar logo, quota rings, and router failover paths.",
-                    icon: "sparkles",
+    private var backgroundSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            SettingsToggle(
+                title: "Swarm Background",
+                subtitle: "Active, reconverging token-ember swarms pulled from burnbar.ai. Particles drift and reform into $, </>, the BurnBar logo, quota rings, and router failover paths.",
+                icon: "sparkles",
                     isOn: $settingsManager.useWebsiteBackground
                 )
                 .settingsAnchor(SettingsAnchor.useWebsiteBackground)
@@ -170,7 +226,7 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
-                KernelBackdropSettingsRow(swarmBackgroundEnabled: settingsManager.useWebsiteBackground)
+                KernelBackdropSettingsRow()
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -262,13 +318,7 @@ struct AppearanceCorkboardSection: View {
                         "setting_key": "desktop_click_cycle",
                         "new_value": .bool(newValue)
                     ])
-                }
-
-                Divider().background(DesignSystem.Colors.border)
-
-                applyAndRestartButton
             }
-            .padding(DesignSystem.Spacing.lg)
         }
     }
 
@@ -677,11 +727,10 @@ struct AppearanceCorkboardSection: View {
 /// Master toggle + 30-kernel picker for the WebGL2 "Window Backdrop" field.
 /// Both controls bind directly to the shared `@AppStorage` keys that
 /// ``KernelBackdropView`` reads, so a selection applies to the live backdrop
-/// immediately. Gated on the Swarm Background being on, because the kernel
-/// field renders in that same clear-surface layer.
+/// immediately. Enabling the kernel also enables the shared dynamic background
+/// layer, and the native swarm remains underneath as the renderer fallback.
 private struct KernelBackdropSettingsRow: View {
-    let swarmBackgroundEnabled: Bool
-
+    @Environment(SettingsManager.self) private var settingsManager
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
@@ -689,11 +738,14 @@ private struct KernelBackdropSettingsRow: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             SettingsToggle(
                 title: "Window Backdrop",
-                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below. Requires Swarm Background.",
+                subtitle: "Replace the swarm with a live WebGL2 backdrop field rendered behind the dashboard. Pick from 30 animated kernels below; the native swarm remains as a fallback.",
                 icon: "square.stack.3d.up.fill",
                 isOn: $useKernelBackdrop
             )
             .onChange(of: useKernelBackdrop) { _, newValue in
+                if newValue, !settingsManager.useWebsiteBackground {
+                    settingsManager.useWebsiteBackground = true
+                }
                 Analytics.shared.track(.settingsChanged, [
                     "setting_key": "window_backdrop_kernel_enabled",
                     "new_value": .bool(newValue)
@@ -735,8 +787,6 @@ private struct KernelBackdropSettingsRow: View {
             .opacity(useKernelBackdrop ? 1.0 : 0.55)
             .disabled(!useKernelBackdrop)
         }
-        .disabled(!swarmBackgroundEnabled)
-        .opacity(swarmBackgroundEnabled ? 1.0 : 0.45)
     }
 }
 

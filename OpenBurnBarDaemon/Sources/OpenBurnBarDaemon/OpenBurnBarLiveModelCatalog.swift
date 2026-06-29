@@ -337,6 +337,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 }
                 let liveBlocksRouting = liveRefresh?.blocksRouting == true
                 let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
+                // Anthropic's `/v1/models` can be incomplete for Claude Code OAuth
+                // accounts even when `/v1/messages` accepts the configured model.
+                // Treat a missing live row as operator-visible metadata, not as a
+                // hard route gate. Auth failures still block via `liveBlocksRouting`.
                 let liveError: String? = {
                     if let error = liveRefresh?.error {
                         return error
@@ -369,8 +373,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                         && account.enabled
                         && account.hasCredential
                         && isEligibleQuotaState(account.quotaState)
-                        && !liveBlocksRouting
-                        && (liveConfirmed ?? true),
+                        && !liveBlocksRouting,
                     lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                     lastError: liveError
                 )
@@ -1209,7 +1212,11 @@ public struct BurnBarLiveModelCatalog: Sendable {
         case .disabled:
             return .disabled
         case .missingSecret:
-            return .authFailed
+            // `missingSecret` can be stale after the secret store resolves a
+            // fresh credential from a fallback source such as Claude Code's
+            // Keychain item. Treat resolved credential truth as authoritative;
+            // a real upstream 401/403 still blocks routing through liveRefresh.
+            return hasCredential ? .unknown : .authFailed
         }
     }
 

@@ -81,6 +81,32 @@ final class DashboardToolbarTests: XCTestCase {
             .inspect())
     }
 
+    func test_dashboardBackdropKeepsDynamicLayerWhenKernelIsEnabled() throws {
+        let defaults = UserDefaults.standard
+        let previousKernelBackdrop = defaults.object(forKey: KernelBackdropPreferences.enabledKey)
+        defer {
+            if let previousKernelBackdrop {
+                defaults.set(previousKernelBackdrop, forKey: KernelBackdropPreferences.enabledKey)
+            } else {
+                defaults.removeObject(forKey: KernelBackdropPreferences.enabledKey)
+            }
+        }
+
+        defaults.set(true, forKey: KernelBackdropPreferences.enabledKey)
+
+        let settings = makeSettingsManager()
+        settings.useWebsiteBackground = false
+        settings.useConstellationBackground = false
+
+        XCTAssertNoThrow(try DashboardBackdrop(moodBand: .baseline)
+            .environment(settings)
+            .inspect())
+        XCTAssertNoThrow(try DashboardDepthBackdrop(density: .full)
+            .environment(settings)
+            .frame(width: 640, height: 420)
+            .inspect())
+    }
+
     func test_dashboardDepthBackdropRendersFlatAndDynamicBranches() throws {
         let flatSettings = makeSettingsManager()
         flatSettings.useWebsiteBackground = false
@@ -117,5 +143,55 @@ final class DashboardToolbarTests: XCTestCase {
         nav.resetToOverview()
         XCTAssertEqual(nav.mainRoute, .overview)
         XCTAssertTrue(nav.routeHistory.isEmpty)
+    }
+
+    // MARK: - Settings button extraction + Quick-Theme menu
+
+    func test_burnRailActionsSectionRendersWithoutSettingsParameter() throws {
+        let section = BurnRailActionsSection(
+            isScanning: false,
+            onImport: {},
+            onRecount: {}
+        )
+        XCTAssertNoThrow(try section.inspect())
+    }
+
+    func test_burnRailSettingsButtonRendersStandalone() throws {
+        let button = BurnRailSettingsButton(onSettings: {})
+        XCTAssertNoThrow(try button.inspect())
+    }
+
+    func test_burnRailAppearanceQuickMenuRendersAndReflectsSettings() throws {
+        let settings = makeSettingsManager()
+        settings.useWebsiteBackground = true
+        settings.useConstellationBackground = false
+
+        let menu = BurnRailAppearanceQuickMenu(
+            settingsManager: settings,
+            onOpenAppearanceSettings: {}
+        )
+        XCTAssertNoThrow(try menu.inspect())
+    }
+
+    func test_appearancePreviewCardRendersForAuroraDark() throws {
+        let settings = makeSettingsManager()
+        settings.appearanceMode = .dark
+        settings.appearanceSkin = .aurora
+        settings.useWebsiteBackground = true
+
+        let preview = AppearancePreviewCard(settingsManager: settings)
+            .environment(settings)
+        XCTAssertNoThrow(try preview.inspect())
+    }
+
+    func test_appearancePreviewCardRendersForEditorialLight() throws {
+        let settings = makeSettingsManager()
+        settings.appearanceMode = .light
+        settings.appearanceSkin = .editorial
+        settings.useWebsiteBackground = false
+
+        let preview = AppearancePreviewCard(settingsManager: settings)
+            .environment(settings)
+        XCTAssertNoThrow(try preview.inspect())
     }
 }

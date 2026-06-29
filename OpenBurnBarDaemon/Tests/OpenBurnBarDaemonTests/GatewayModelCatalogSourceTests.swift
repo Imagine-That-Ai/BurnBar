@@ -137,4 +137,42 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
 
         XCTAssertEqual(droid.count, 2, "a config edit must invalidate the catalog cache immediately")
     }
+
+    func test_modelHealthDoesNotBlockCurrentClaudeCodeSlotOnAuthFailure() async throws {
+        let store = BurnBarGatewayModelHealthStore(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("obb-current-claude-health-\(UUID().uuidString).json")
+        )
+        let route = BurnBarProviderRoute(
+            providerID: "anthropic",
+            providerDisplayName: "Anthropic",
+            credentialSlotID: "current-claude-code-login",
+            credentialSlotLabel: "Current Claude Code login",
+            baseURL: "https://api.anthropic.com/v1",
+            requestedModel: "claude-opus-4-8",
+            resolvedModelID: "claude-opus-4-8",
+            canonicalModelID: "claude-opus-4-8",
+            apiKey: "sk-ant-oat-stale",
+            pricing: BurnBarModelPricing(inputPerMToken: 0, outputPerMToken: 0, cacheReadPerMToken: 0),
+            formatFamily: .anthropic
+        )
+
+        await store.recordFailure(
+            modelID: "claude-opus-4-8",
+            formatFamily: .anthropic,
+            route: route,
+            error: BurnBarProviderExecutorError.upstreamError(
+                401,
+                #"{"error":{"message":"Invalid authentication credentials"}}"#
+            )
+        )
+
+        let failure = await store.activeFailure(
+            modelID: "claude-opus-4-8",
+            providerID: "anthropic",
+            accountID: "current-claude-code-login",
+            formatFamily: .anthropic
+        )
+        XCTAssertNil(failure)
+    }
 }
