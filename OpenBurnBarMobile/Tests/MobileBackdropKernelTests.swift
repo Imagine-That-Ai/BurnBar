@@ -40,14 +40,14 @@ final class MobileBackdropKernelTests: XCTestCase {
         )
     }
 
-    func testDefaultMatchesWebsitePersistedBackdropDefault() {
-        XCTAssertEqual(MobileBackdropKernel.defaultKernel, .fluidAurora)
-        XCTAssertEqual(MobileBackdropKernel.defaultKernel.rawValue, "fluid-aurora")
+    func testDefaultKeepsFirstLaunchOnOriginalDotBackdrop() {
+        XCTAssertEqual(MobileBackdropKernel.defaultKernel, .constellation)
+        XCTAssertEqual(MobileBackdropKernel.defaultKernel.rawValue, "constellation")
     }
 
     func testInvalidStoredKernelFallsBackToDefault() {
         XCTAssertEqual(MobileBackdropKernel.resolved("petroleum-sheen"), .petroleumSheen)
-        XCTAssertEqual(MobileBackdropKernel.resolved("not-a-kernel"), .fluidAurora)
+        XCTAssertEqual(MobileBackdropKernel.resolved("not-a-kernel"), .constellation)
     }
 
     func testLabelsAndBlurbsAreAvailableForPicker() {
