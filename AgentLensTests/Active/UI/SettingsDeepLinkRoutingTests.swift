@@ -111,6 +111,14 @@ final class SettingsDeepLinkRoutingTests: XCTestCase {
             AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.desktopWallpaperProviderGlyphs),
             .background
         )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.useKernelBackdrop),
+            .background
+        )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.backdropKernel),
+            .background
+        )
         XCTAssertNil(AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.agentsQuotaDisplay))
     }
 }

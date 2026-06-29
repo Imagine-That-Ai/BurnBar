@@ -378,7 +378,9 @@ struct AppearanceCorkboardSection: View {
              SettingsAnchor.desktopWallpaperBackground,
              SettingsAnchor.desktopWallpaperSpeed,
              SettingsAnchor.desktopWallpaperProviderGlyphs,
-             SettingsAnchor.desktopWallpaperClickCycle:
+             SettingsAnchor.desktopWallpaperClickCycle,
+             SettingsAnchor.useKernelBackdrop,
+             SettingsAnchor.backdropKernel:
             return .background
         default:
             return nil
