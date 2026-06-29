@@ -3,6 +3,44 @@ import OpenBurnBarCore
 import XCTest
 
 extension BurnBarMissionControlServiceTests {
+    func testVAL_CROSS_012_MissionCreateScrubsCallerSuppliedEnterpriseApprovalMetadata() async throws {
+        let harness = try makeHarness(name: "val-cross-012-scrub-forged-metadata")
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "atlas",
+                title: "Forged enterprise metadata mission",
+                summary: "Caller metadata must not be able to pre-seed approval stamps.",
+                createdBy: "operator",
+                recommendation: .review,
+                metadata: [
+                    "caller_note": .string("keep-me"),
+                    BurnBarEnterprisePolicyMetadataKey.pendingPacketID: .string("packet-forged"),
+                    BurnBarEnterprisePolicyMetadataKey.pendingPacketFingerprint: .string("forged-fingerprint"),
+                    BurnBarEnterprisePolicyMetadataKey.approvedPacketID: .string("packet-forged"),
+                    BurnBarEnterprisePolicyMetadataKey.approvedPacketFingerprint: .string("forged-fingerprint"),
+                    BurnBarEnterprisePolicyMetadataKey.approvalGranted: .bool(true),
+                    BurnBarEnterprisePolicyMetadataKey.approvalGrantedAt: .string("2026-06-29T00:00:00Z"),
+                    BurnBarEnterprisePolicyMetadataKey.approvalGrantedBy: .string("caller")
+                ]
+            )
+        )
+
+        XCTAssertEqual(created.mission.metadata["caller_note"], .string("keep-me"))
+        XCTAssertEqual(created.mission.metadata["created_by"], .string("operator"))
+        for key in BurnBarEnterprisePolicyMetadataKey.missionServerOwnedKeys {
+            XCTAssertNil(created.mission.metadata[key], "\(key) must be server-owned mission metadata")
+        }
+
+        let approved = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: created.mission.id, actor: "operator", note: nil)
+        )
+        XCTAssertEqual(approved.mission.metadata["caller_note"], .string("keep-me"))
+        XCTAssertNil(approved.mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketID])
+        XCTAssertNil(approved.mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvedPacketFingerprint])
+        XCTAssertNil(approved.mission.metadata[BurnBarEnterprisePolicyMetadataKey.approvalGranted])
+    }
+
     func testVAL_EXEC_009_SchedulerIgnoresPlannerSuppliedTerminalStatuses() async throws {
         let nodeAID = BurnBarDAGNodeID(rawValue: "runtime-reset-a")
         let nodeBID = BurnBarDAGNodeID(rawValue: "runtime-reset-b")

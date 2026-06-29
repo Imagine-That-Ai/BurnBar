@@ -785,10 +785,13 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             ]
         ))
 
-        XCTAssertTrue(plan.arguments.contains("--permission-mode"))
-        XCTAssertTrue(plan.arguments.contains("auto"))
+        XCTAssertFalse(plan.arguments.contains("auto"))
+        XCTAssertTrue(plan.arguments.contains("--allowedTools"))
+        let allowedIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--allowedTools"))
+        XCTAssertEqual(plan.arguments[allowedIndex + 1], "Bash")
         XCTAssertTrue(plan.arguments.contains("--disallowedTools"))
-        let disallowed = try XCTUnwrap(plan.arguments.last)
+        let disallowedIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--disallowedTools"))
+        let disallowed = plan.arguments[disallowedIndex + 1]
         XCTAssertTrue(disallowed.contains("Edit"))
         XCTAssertTrue(disallowed.contains("MultiEdit"))
         XCTAssertTrue(disallowed.contains("Write"))
@@ -859,7 +862,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         ))
     }
 
-    func test_missionRuntimePlanner_keepsLocalMacWandDispatchNonBlocking() {
+    func test_missionRuntimePlanner_doesNotTrustSpoofableMacWandSourceForLocalAgentApproval() {
         let readOnlyData: [String: Any] = [
             "source": "mac",
             "sourceSurface": "mac-wand",
@@ -869,7 +872,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             "fileEditsAllowed": false
         ]
 
-        XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
+        XCTAssertTrue(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
             data: readOnlyData,
             backend: CLIAgentMissionBackend(chatBackend: .droid)
         ))

@@ -752,6 +752,9 @@ final class RemoteUnlockCredentialController {
         base: PhoneControlAttestationRequirement,
         activeBinding: MacRemoteUnlockReadinessService.ActiveRemoteUnlockBinding
     ) -> PhoneControlAttestationRequirement {
+        if case .rejectUnboundHost = base {
+            return base
+        }
         guard let activeAttestation = activeBinding.attestationHashBlake3,
               activeAttestation.isEmpty == false else {
             return base

@@ -32,6 +32,20 @@ enum BurnBarEnterprisePolicyMetadataKey {
     static let approvalGrantedAt = "enterprise_policy_approval_granted_at"
     static let approvalGrantedBy = "enterprise_policy_approval_granted_by"
     static let defaultPacketRiskLevel = "enterprise_default_packet_risk_level"
+
+    static let missionServerOwnedKeys: Set<String> = [
+        block,
+        blockReasonCode,
+        blockedAt,
+        blockedBy,
+        pendingPacketID,
+        pendingPacketFingerprint,
+        approvedPacketID,
+        approvedPacketFingerprint,
+        approvalGranted,
+        approvalGrantedAt,
+        approvalGrantedBy
+    ]
 }
 
 extension BurnBarMissionControlService {

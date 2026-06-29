@@ -124,17 +124,15 @@ final class RoutedClientWiringSentry {
     // MARK: - Lifecycle
 
     /// Start the sentry against the given settings manager. Re-runs are safe;
-    /// repeated calls adopt existing OpenBurnBar-owned configs and trigger the
+    /// repeated calls only repair persisted enrolled targets and trigger the
     /// initial sweep.
     func start(settingsManager: SettingsManager) {
         self.settingsManager = settingsManager
         guard !isStarted else {
-            adoptAlreadyWiredTargets(settingsManager: settingsManager)
             triggerInitialSweep()
             return
         }
         isStarted = true
-        adoptAlreadyWiredTargets(settingsManager: settingsManager)
         logger.info("sentry_started", metadata: [
             "enrolled": settingsManager.routedClientWiring.enrolledTargets.sorted().joined(separator: ",")
         ])
@@ -146,29 +144,6 @@ final class RoutedClientWiringSentry {
             triggerInitialSweep()
         }
         startPeriodicSweep()
-    }
-
-    private func adoptAlreadyWiredTargets(settingsManager: SettingsManager) {
-        let intent = settingsManager.routedClientWiring
-        guard intent.autoRepairEnabled else { return }
-
-        let wiring = wiringFactory()
-        var adopted: [String] = []
-        for target in RoutingClientWiringTarget.allCases.sorted(by: { $0.rawValue < $1.rawValue }) {
-            guard Self.supportsDurableRepair(target) else { continue }
-            guard !intent.enrolledTargets.contains(target.rawValue),
-                  wiring.hasOpenBurnBarOwnershipMarker(target: target) else {
-                continue
-            }
-            intent.enroll(targetRawValue: target.rawValue)
-            adopted.append(target.rawValue)
-        }
-
-        if !adopted.isEmpty {
-            logger.notice("sentry_adopted_existing_wiring", metadata: [
-                "targets": adopted.joined(separator: ",")
-            ])
-        }
     }
 
     /// Tear down all watchers and pending work. Intended for explicit

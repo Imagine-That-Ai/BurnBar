@@ -4686,7 +4686,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
 }
 
 extension BurnBarMissionControlServiceTests {
-    private func makeHarness(
+    func makeHarness(
         name: String,
         transport: BurnBarMissionControlTransport = .live(),
         activitySnapshot: BurnBarControllerActivitySnapshot? = nil,
