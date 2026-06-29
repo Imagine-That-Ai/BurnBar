@@ -12,8 +12,11 @@ import SwiftUI
 /// accumulating arc length; any segment far longer than the local mean is BROKEN
 /// (a new sub-path) so the wire never slashes a bright chord across empty space.
 /// That single broken polyline is then stroked in stacked passes:
-///   DARK (additive `.plusLighter`): wide aurora halo → mid glow → hot near-white
-///   core → a crawling "charge" (animated dash phase) in gradient + white head.
+///   DARK (additive `.plusLighter`): a TRUE Gaussian bloom layer (a colored aurora
+///   halo + a brighter inner thread, run through a real `.blur` filter so the wire
+///   glows like cold light) → a saturated mid-glow body → a hot near-white core →
+///   a crawling "charge" (animated dash phase) in gradient + white head. The three
+///   stacked widths give real depth: soft bloom under, saturated body, hot core on top.
 ///   LIGHT (`.normal`): soft gradient under-glow → crisp `stage.ink` core → a
 ///   travelling accent sheen.
 /// The stroke colour is a screen-space vertical warm→cool gradient (amber crown →
@@ -137,17 +140,36 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
         let w = max(1.0, frame.sizePx)
 
         if dark {
-            // pass 1 — wide soft aurora halo (dropped when battery-throttled).
+            // pass 1 — TRUE GAUSSIAN BLOOM: the premium aurora glow. A real `.blur`
+            // layer holds a wide colored aurora halo plus a brighter inner thread;
+            // run through the blur it blooms into soft cold light, composited
+            // additively (`.plusLighter`). This is the deep luminous glow under the
+            // wire — never the flat wide stroke a fake halo gives.
             if !lite {
-                strokePass(ctx, path, gradShading, width: w * 3.6,
-                           alpha: clampD(0.1 * formGate, 0, 0.3))
+                let bloomR = max(6.0, w * 3.2)
+                ctx.drawLayer { l in
+                    l.addFilter(.blur(radius: bloomR))
+                    l.blendMode = .plusLighter
+                    // wide saturated aurora halo
+                    l.opacity = clampD(0.55 * formGate, 0, 0.9)
+                    l.stroke(path, with: gradShading,
+                             style: StrokeStyle(lineWidth: w * 2.1, lineCap: .round, lineJoin: .round))
+                    // brighter inner thread → feeds a hot, near-white bloom core
+                    l.opacity = clampD(0.62 * formGate * breath, 0, 0.95)
+                    l.stroke(path, with: gradShading,
+                             style: StrokeStyle(lineWidth: w * 0.95, lineCap: .round, lineJoin: .round))
+                }
+            } else {
+                // throttled: a single cheap wide stroke stands in for the blur bloom.
+                strokePass(ctx, path, gradShading, width: w * 3.4,
+                           alpha: clampD(0.14 * formGate, 0, 0.32))
             }
-            // pass 2 — mid glow.
-            strokePass(ctx, path, gradShading, width: w * 1.7,
-                       alpha: clampD(0.26 * formGate, 0, 0.6))
+            // pass 2 — saturated mid-glow body (crisp, sits inside the bloom).
+            strokePass(ctx, path, gradShading, width: w * 1.6,
+                       alpha: clampD(0.32 * formGate, 0, 0.62))
             // pass 3 — hot near-white core (the legible silhouette skeleton).
-            strokePass(ctx, path, .color(.white.opacity(0.96)), width: max(0.8, w * 0.62),
-                       alpha: clampD(0.92 * formGate * breath, 0, 1))
+            strokePass(ctx, path, .color(.white.opacity(0.97)), width: max(0.85, w * 0.6),
+                       alpha: clampD(0.96 * formGate * breath, 0, 1))
             // pass 4 — travelling "charge": a bright dash crawling the wire.
             if !reduced && !lite && arcTotal > 4 {
                 let dash = max(14.0, arcTotal * 0.07)
@@ -161,9 +183,10 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
             }
         } else {
             // LIGHT stage (source-over): a darker ink thread, no blow-out.
-            // soft colored under-glow so it still feels like light.
-            strokePass(ctx, path, gradShading, width: w * 2.6,
-                       alpha: clampD(0.18 * formGate, 0, 0.32))
+            // soft colored under-glow so it still feels like light (a touch richer
+            // aurora presence, still safely under blow-out on the pale canvas).
+            strokePass(ctx, path, gradShading, width: w * 2.8,
+                       alpha: clampD(0.21 * formGate, 0, 0.34))
             // crisp dark ink core — the legible line on a bright canvas.
             strokePass(ctx, path, .color(stage.ink.color), width: max(0.9, w * 0.7),
                        alpha: clampD(0.85 * formGate * breath, 0, 1))

@@ -34,6 +34,38 @@ public final class StarfireSubstrate: SwarmSubstrate {
         // Resolve the additive bloom sprite ONCE per frame, draw it many times.
         let glow = (dark && !lite) ? ctx.resolve(sprites.whiteGlow(diameter: 64)) : nil
 
+        // (0) DEEP GAUSSIAN BLOOM — a real blurred under-glow, the premium depth
+        // layer the silhouette sits in. Each star's color, pushed toward the
+        // stage accent and lifted slightly toward white, is drawn additively into
+        // a single blurred layer, so the whole field rests in one cohesive
+        // luminous wash beneath the crisp sprite bloom and hot cores. This is the
+        // heaviest extra pass → dropped when batteryThrottled, where the cached
+        // sprite bloom alone still reads richly.
+        if dark, !lite {
+            let accent = frame.stage.accent
+            let bloomDisc = sizePx * 1.85
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: sizePx * 2.6))
+                layer.blendMode = .plusLighter
+                for i in 0..<count {
+                    let d = frame.dots[i]
+                    let seed = shash(Double(i) * 1.37 + 0.5)
+                    var k = 0.82 + 0.18 * (reduced ? 0.5 + 0.5 * sin(seed * 19) : sin(t * 1.6 + seed * TAU))
+                    if !reduced {
+                        let s = sin(t * (1.1 + seed) + seed * 7.0)
+                        if s > 0.93 { k += (s - 0.93) / 0.07 * 0.7 }
+                    }
+                    k = clampD(k, 0.35, 1.7) * f
+                    // glow hue: brand color biased to accent, kissed toward white.
+                    let glowCol = d.rgba.mix(with: accent, amount: 0.34).toWhite(0.16)
+                    layer.fill(
+                        Path(ellipseIn: CGRect(x: d.x - bloomDisc, y: d.y - bloomDisc,
+                                               width: bloomDisc * 2, height: bloomDisc * 2)),
+                        with: .color(glowCol.withOpacity(clampD(0.20 * k, 0, 0.5)).color))
+                }
+            }
+        }
+
         // Bucketed diffraction-cross paths (dark, brightest ~20%, not throttled).
         // Source strokes each star's cross with its OWN alpha clamp(0.16*k,0,0.4) so
         // bright stars flare and dim ones stay faint. We preserve that per-star
@@ -63,9 +95,9 @@ public final class StarfireSubstrate: SwarmSubstrate {
             if dark {
                 // (1) additive white bloom (cached sprite) — skip when throttled.
                 if let glow {
-                    let bloomR = sizePx * 3.2 * (0.7 + 0.5 * k)
+                    let bloomR = sizePx * 3.4 * (0.7 + 0.5 * k)
                     var g = ctx
-                    g.opacity = 0.10 * k
+                    g.opacity = 0.13 * k
                     g.draw(glow, in: CGRect(x: x - bloomR, y: y - bloomR,
                                             width: bloomR * 2, height: bloomR * 2))
                 }

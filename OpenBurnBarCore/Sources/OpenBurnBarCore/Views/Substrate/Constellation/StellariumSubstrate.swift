@@ -73,77 +73,140 @@ public final class StellariumSubstrate: SwarmSubstrate {
                    g: acc.g + (1 - acc.g) * 0.72,
                    b: acc.b + (1 - acc.b) * 0.78)
             : RGBA(r: acc.r * 0.45, g: acc.g * 0.45, b: acc.b * 0.5)
+        // Apex of the survey beam — near-white on dark, deepened accent on light.
+        let beamCol: RGBA = dark ? RGBA(r: 0.96, g: 0.975, b: 1.0) : crispCol
 
         var ctx = baseCtx
         ctx.blendMode = dark ? .plusLighter : .normal
 
-        // ── PASS 1: wide soft glow — one batched Path over every edge ──────────
+        // ── Build the edge geometry ONCE — reused by the bloom layer and the
+        //    crisp base passes (point-index space already tracks the moving dots).
+        var allEdges = Path()   // every edge — the soft body + bloom base
+        var solid = Path()      // non-guide crisp filament
+        var guide = Path()      // guide ticks (dashed, crawling)
         if ec > 0 {
-            var p = Path()
             for e in 0..<ec {
                 let a = edgeA[e], b = edgeB[e]
-                p.move(to: CGPoint(x: dots[a].x, y: dots[a].y))
-                p.addLine(to: CGPoint(x: dots[b].x, y: dots[b].y))
+                let pa = CGPoint(x: dots[a].x, y: dots[a].y)
+                let pb = CGPoint(x: dots[b].x, y: dots[b].y)
+                allEdges.move(to: pa); allEdges.addLine(to: pb)
+                if e % Self.guideEvery == 0 {
+                    guide.move(to: pa); guide.addLine(to: pb)
+                } else {
+                    solid.move(to: pa); solid.addLine(to: pb)
+                }
             }
-            ctx.stroke(p,
-                       with: .color(acc.withOpacity((dark ? 0.1 : 0.07) * f).color),
+        }
+
+        // ── SURVEY BEAM geometry: the few edges the sweep is currently lighting.
+        //    Collected once so it can be both bloomed (soft halo) and drawn crisp
+        //    (hot core). The heaviest extra pass → dropped when battery-throttled.
+        var beamPath = Path()
+        var beamLit: [(Int, Double)] = []
+        let beamActive = !reduced && !throttled && ec > 0
+        if beamActive {
+            let ecD = Double(ec)
+            let beamPos = ecD * frac(t * 0.11)
+            // Tighter sweep than the source (was 5% of edges) so a dense cluster
+            // never lights all at once into a blown-out white slab.
+            let beamWidth = max(2.0, ecD * 0.028)
+            for e in 0..<ec {
+                var dd = Double(e) - beamPos
+                if dd < -ecD / 2 { dd += ecD } else if dd > ecD / 2 { dd -= ecD }
+                let k = 1 - abs(dd) / beamWidth
+                if k <= 0 { continue }
+                let a = edgeA[e], b = edgeB[e]
+                beamPath.move(to: CGPoint(x: dots[a].x, y: dots[a].y))
+                beamPath.addLine(to: CGPoint(x: dots[b].x, y: dots[b].y))
+                beamLit.append((e, k))
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // BLOOM (dark only): a real Gaussian glow layer under the crisp chart —
+        // additive, blurred. The filaments and star cores spill light into the
+        // page so the sky-atlas GLOWS instead of reading as faint thread. On
+        // light we skip it (additive blur blows out a pale page) and lean on
+        // raised crisp alphas + a soft per-node halo for presence.
+        // ════════════════════════════════════════════════════════════════════
+        if dark && ec > 0 {
+            let bloomR = max(2.5, sizePx * 1.7)
+            let wideW = max(1.6, sizePx * 1.25)
+            let glowW = max(1.0, sizePx * 0.72)
+            let glowTint = acc.toWhite(0.32)
+            let nodeGlowR = max(1.4, sizePx * 1.55)
+            ctx.drawLayer { layer in
+                layer.blendMode = .plusLighter
+                layer.addFilter(.blur(radius: bloomR))
+                // Wide accent wash over the whole graph — the atmospheric base.
+                layer.stroke(allEdges,
+                             with: .color(acc.withOpacity(0.42 * f).color),
+                             style: StrokeStyle(lineWidth: wideW, lineCap: .round))
+                // Brighter filament glow on the working (non-guide) edges.
+                layer.stroke(solid,
+                             with: .color(crispCol.withOpacity(0.5 * f).color),
+                             style: StrokeStyle(lineWidth: glowW, lineCap: .round))
+                // Survey beam halo.
+                if beamActive {
+                    layer.stroke(beamPath,
+                                 with: .color(beamCol.withOpacity(0.75 * f).color),
+                                 style: StrokeStyle(lineWidth: glowW * 1.4, lineCap: .round))
+                }
+                // Star cores spill light — one batched bright dot per node.
+                var coresGlow = Path()
+                for i in 0..<count {
+                    let x = dots[i].x, y = dots[i].y
+                    coresGlow.addEllipse(in: CGRect(x: x - nodeGlowR, y: y - nodeGlowR,
+                                                    width: nodeGlowR * 2, height: nodeGlowR * 2))
+                }
+                layer.fill(coresGlow, with: .color(glowTint.withOpacity(0.5 * f).color))
+            }
+        }
+
+        // ── PASS 1: wide soft body over every edge (crisp ctx) — keeps the chart
+        //    present even outside the bloom and carries the light page on its own.
+        if ec > 0 {
+            ctx.stroke(allEdges,
+                       with: .color(acc.withOpacity((dark ? 0.14 : 0.1) * f).color),
                        style: StrokeStyle(lineWidth: max(1.4, sizePx * 1.05), lineCap: .round))
         }
 
         // ── PASS 2: crisp thin filament + engraved guide-dash crawl ────────────
         if ec > 0 {
-            let crispW = max(0.75, sizePx * 0.42)
+            let crispW = max(0.8, sizePx * 0.45)
 
-            // Non-guide crisp lines (solid), one batched Path.
-            var solid = Path()
-            for e in 0..<ec where e % Self.guideEvery != 0 {
-                let a = edgeA[e], b = edgeB[e]
-                solid.move(to: CGPoint(x: dots[a].x, y: dots[a].y))
-                solid.addLine(to: CGPoint(x: dots[b].x, y: dots[b].y))
-            }
             ctx.stroke(solid,
-                       with: .color(crispCol.withOpacity((dark ? 0.5 : 0.62) * f).color),
+                       with: .color(crispCol.withOpacity((dark ? 0.62 : 0.72) * f).color),
                        style: StrokeStyle(lineWidth: crispW, lineCap: .round))
 
             // Guide edges: dashed, slowly crawling — the engraved-chart ticks.
-            var guide = Path()
-            for e in stride(from: 0, to: ec, by: Self.guideEvery) {
-                let a = edgeA[e], b = edgeB[e]
-                guide.move(to: CGPoint(x: dots[a].x, y: dots[a].y))
-                guide.addLine(to: CGPoint(x: dots[b].x, y: dots[b].y))
-            }
             ctx.stroke(guide,
-                       with: .color(crispCol.withOpacity((dark ? 0.42 : 0.5) * f).color),
+                       with: .color(crispCol.withOpacity((dark ? 0.52 : 0.58) * f).color),
                        style: StrokeStyle(lineWidth: crispW, lineCap: .round,
                                           dash: [2.4, 4.2],
                                           dashPhase: reduced ? 0 : -t * 9))
 
-            // ── SURVEY BEAM: brighten the edges the sweep is passing over ──────
-            if !reduced && !throttled && ec > 0 {
-                let ecD = Double(ec)
-                let beamPos = ecD * frac(t * 0.11)
-                let beamWidth = max(2.0, ecD * 0.05)
-                let beamCol: RGBA = dark ? RGBA(r: 244.0 / 255, g: 248.0 / 255, b: 1.0) : crispCol
-                for e in 0..<ec {
-                    var dd = Double(e) - beamPos
-                    if dd < -ecD / 2 { dd += ecD } else if dd > ecD / 2 { dd -= ecD }
-                    let k = 1 - abs(dd) / beamWidth
-                    if k <= 0 { continue }
+            // ── SURVEY BEAM crisp core: bright traced line over the bloom halo,
+            //    width + alpha falling off across the sweep. Tamed alpha so the
+            //    additive cores never stack into a white slab.
+            if beamActive {
+                for (e, k) in beamLit {
                     let a = edgeA[e], b = edgeB[e]
                     var seg = Path()
                     seg.move(to: CGPoint(x: dots[a].x, y: dots[a].y))
                     seg.addLine(to: CGPoint(x: dots[b].x, y: dots[b].y))
-                    let alpha = clampD(smoothstep(0, 1, k) * (dark ? 0.85 : 0.7) * f, 0, 1)
+                    let alpha = clampD(smoothstep(0, 1, k) * (dark ? 0.7 : 0.65) * f, 0, 1)
                     ctx.stroke(seg,
                                with: .color(beamCol.withOpacity(alpha).color),
-                               style: StrokeStyle(lineWidth: max(0.9, sizePx * (0.5 + 0.5 * k)),
+                               style: StrokeStyle(lineWidth: max(0.9, sizePx * (0.55 + 0.6 * k)),
                                                   lineCap: .round))
                 }
             }
         }
 
-        // ── NODES: open ring + breathing centre dot, exactly on the points ─────
-        let ringR = max(1.3, sizePx * 0.92)
+        // ── NODES: layered depth — soft per-colour halo, luminous open ring,
+        //    hot near-white breathing core sitting exactly on the silhouette.
+        let ringR = max(1.4, sizePx * 0.95)
         let ringW = max(0.7, sizePx * 0.34)
         let ringStyle = StrokeStyle(lineWidth: ringW, lineCap: .round)
         for i in 0..<count {
@@ -153,16 +216,24 @@ public final class StellariumSubstrate: SwarmSubstrate {
             let tw = reduced ? 0.6 + 0.4 * sin(ph) : 0.5 + 0.5 * sin(t * 1.5 + ph)
             let col = d.rgba
 
-            // Open star ring (the chart node).
+            // Soft per-colour halo (depth) — additive on dark, a faint wash on
+            // light. Pushes node colour into the glow so the field reads in hue.
+            let haloR = max(1.2, sizePx * (1.05 + 0.45 * tw))
+            ctx.fill(Path(ellipseIn: CGRect(x: x - haloR, y: y - haloR,
+                                            width: haloR * 2, height: haloR * 2)),
+                     with: .color(col.withOpacity((dark ? 0.2 : 0.13) * f).color))
+
+            // Open star ring — lifted toward white on dark so it glows, not greys.
+            let ringCol = dark ? col.toWhite(0.28) : col
             ctx.stroke(Path(ellipseIn: CGRect(x: x - ringR, y: y - ringR,
                                               width: ringR * 2, height: ringR * 2)),
-                       with: .color(col.withOpacity((dark ? 0.5 : 0.55) * f).color),
+                       with: .color(ringCol.withOpacity((dark ? 0.62 : 0.6) * f).color),
                        style: ringStyle)
 
             // Hot breathing centre dot — near-white on dark so it always reads.
-            let coreCol = dark ? col.toWhite(0.56) : col
-            let coreR = max(0.7, sizePx * (0.34 + 0.12 * tw))
-            let coreA = clampD((dark ? 0.7 + 0.3 * tw : 0.78 + 0.22 * tw) * f, 0, 1)
+            let coreCol = dark ? col.toWhite(0.62) : col
+            let coreR = max(0.8, sizePx * (0.38 + 0.14 * tw))
+            let coreA = clampD((dark ? 0.8 + 0.2 * tw : 0.82 + 0.18 * tw) * f, 0, 1)
             ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
                                             width: coreR * 2, height: coreR * 2)),
                      with: .color(coreCol.withOpacity(coreA).color))

@@ -141,10 +141,11 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         // Slow current drift; frozen to a fixed phase under reduced motion.
         let phase = reduced ? 1.1 : t * 0.22
 
-        // Petal scale: a touch below inter-point spacing so petals cluster into a
-        // readable blossom-mosaic. R / sqrt(count) ≈ inter-point spacing.
+        // Petal scale: sized so each teardrop reads clearly as a petal (with its
+        // cream sheen) rather than collapsing to a dot, while still clustering
+        // into a readable blossom-mosaic. R / sqrt(count) ≈ inter-point spacing.
         let spacing = frame.cloudRadius / max(8, (Double(count)).squareRoot())
-        let petalLen = clampD(frame.sizePx * 3.0 + spacing * 0.9, 5, 11)
+        let petalLen = clampD(frame.sizePx * 3.4 + spacing * 1.05, 7, 15)
 
         // Fixed top-left key light for the back-facing orientation cull.
         let lightX = -0.62, lightY = -0.78
@@ -154,27 +155,33 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             ? RGBA(r: 70.0 / 255, g: 40.0 / 255, b: 58.0 / 255, a: 1)
             : RGBA(r: 150.0 / 255, g: 120.0 / 255, b: 140.0 / 255, a: 1)
 
+        // Glow tint the bloom halo is pushed toward — unifies the field into one
+        // luminous blossom-cloud rather than disconnected sparks.
+        let accent = frame.stage.accent
+
         // Base teardrop is always source-over (both polarities). The colored
         // body sits on this context; the sheen gets its own per-petal copy.
         var ctx = baseCtx
         ctx.blendMode = .normal
 
         // Cached cream→transparent teardrop sheen (soft pastel petal gradient +
-        // specular streak + mauve fold). Baked ONCE, then resolved once per frame
-        // and drawn many times — never re-baked per dot.
-        let sheenImg: Image? = lite ? nil : ensureSheen()
-        let sheen: GraphicsContext.ResolvedImage? = sheenImg.map { ctx.resolve($0) }
+        // specular streak + mauve fold). Baked ONCE, resolved once per frame, then
+        // drawn many times. Kept even under battery throttle (it IS the petal).
+        let sheen: GraphicsContext.ResolvedImage? = ensureSheen().map { ctx.resolve($0) }
 
-        for i in 0..<count {
+        // Per-petal geometry: orientation by the curl wind, a ≤3px capped curl
+        // orbit, the edge-on↔broadside flutter, and the key-light back-facing
+        // dimming — computed once and shared by every pass (bloom, shadow, body).
+        @inline(__always)
+        func petalGeom(_ i: Int)
+            -> (x: Double, y: Double, ang: Double, len: Double, halfW: Double,
+                broad: Double, lit: Double, cc: RGBA, aBody: Double) {
             let d = frame.dots[i]
             let tx = d.x, ty = d.y
             let seed = shash(Double(i) * 1.93 + 0.27)
             let ph = seed * TAU
-
-            // Local wind orients the petal's long axis along the current.
             let wind = windAngle(tx, ty, phase + seed * 0.6)
 
-            // Tiny curl orbit (≤3px), flutter (edge-on↔broadside), slow spin.
             var ox = 0.0, oy = 0.0, flutter = 1.0, spin = 0.0
             if !reduced {
                 let orbT = t * 0.55 + ph
@@ -186,52 +193,101 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             }
             let x = tx + ox, y = ty + oy
             let ang = wind + spin
-
-            // |flutter| maps edge-on (thin) → broadside (full), with a floor.
             let broad = 0.32 + 0.68 * abs(flutter)
 
-            // Orientation cull: broadside normal vs the key light. A petal tipped
-            // away from the light (and near edge-on) reads darker/edge-lit.
             let nx = cos(ang + .pi / 2), ny = sin(ang + .pi / 2)
             let facing = nx * lightX + ny * lightY
             let lit = 0.6 + 0.4 * smoothstep(-1, 1, facing * (flutter >= 0 ? 1 : -1))
 
             let len = petalLen * (0.85 + 0.3 * seed)
             let halfW = len * 0.42 * broad
-
-            // Body alpha eases in with assembly; back-facing petals lift lighter.
             let aBody = clampD((0.62 + 0.34 * lit) * f, 0, 1) * d.rgba.a
-
-            // 1) Colored teardrop BASE — brand-tinted petal body, shaded toward
-            //    the cool fold when back-lit. One filled path per petal.
             let cc: RGBA = lit >= 0.999 ? d.rgba
                 : d.rgba.mix(with: fold, amount: 1 - clampD(lit, 0.4, 1))
+            return (x, y, ang, len, halfW, broad, lit, cc, aBody)
+        }
 
-            var petal = Path()
-            petal.move(to: .zero)
-            petal.addQuadCurve(to: CGPoint(x: len, y: 0),
-                               control: CGPoint(x: len * 0.45, y: -halfW))
-            petal.addQuadCurve(to: .zero,
-                               control: CGPoint(x: len * 0.45, y: halfW))
-            petal.closeSubpath()
-            let xform = CGAffineTransform(translationX: x, y: y).rotated(by: ang)
-            ctx.fill(petal.applying(xform),
-                     with: .color(cc.withOpacity(aBody).color))
+        // Build a teardrop path (two quadratics) placed at the petal centroid.
+        @inline(__always)
+        func teardrop(len: Double, halfW: Double, x: Double, y: Double, ang: Double) -> Path {
+            var p = Path()
+            p.move(to: .zero)
+            p.addQuadCurve(to: CGPoint(x: len, y: 0), control: CGPoint(x: len * 0.45, y: -halfW))
+            p.addQuadCurve(to: .zero, control: CGPoint(x: len * 0.45, y: halfW))
+            p.closeSubpath()
+            return p.applying(CGAffineTransform(translationX: x, y: y).rotated(by: ang))
+        }
 
-            // 2) Soft sheen sprite over the base → the pastel gradient + highlight.
-            //    Additive on dark, source-over on light; narrows with `broad` so
-            //    an edge-on petal sheds its sheen. Dropped under battery throttle.
-            //    Placement mirrors the source: scale local space, then draw the
-            //    SPRITE-square so its internal base (0.32·spriteSide, 0.5·spriteSide) lands at (0,0).
+        // ── PASS 1 · DEPTH UNDER ────────────────────────────────────────────
+        // Dark: ONE real Gaussian bloom layer — enlarged petal-shaped glows,
+        // tinted toward the accent, blurred and composited additively so the
+        // whole field fills its silhouette and luminously glows. Light: ONE soft
+        // contact-shadow layer so petals read with real grounding/contrast on
+        // the cream. The blur layer is the heaviest pass → dropped under throttle.
+        if !lite {
+            if dark {
+                let bloomR = clampD(petalLen * 0.5, 3, 9)
+                var bloomCtx = ctx
+                bloomCtx.blendMode = .plusLighter
+                bloomCtx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: bloomR))
+                    layer.blendMode = .plusLighter
+                    for i in 0..<count {
+                        let g = petalGeom(i)
+                        // Rounder, enlarged halo centred on the petal body.
+                        let len = g.len * 1.5
+                        let halfW = g.halfW * 1.45 + g.len * 0.14
+                        let off = g.len * 0.18
+                        let path = teardrop(len: len, halfW: halfW,
+                                            x: g.x - cos(g.ang) * off,
+                                            y: g.y - sin(g.ang) * off,
+                                            ang: g.ang)
+                        let glow = g.cc.mix(with: accent, amount: 0.35)
+                        let aGlow = clampD(g.aBody * 0.5 * g.lit, 0, 0.6)
+                        layer.fill(path, with: .color(glow.withOpacity(aGlow).color))
+                    }
+                }
+            } else {
+                let shadowR = clampD(petalLen * 0.42, 2, 7)
+                let ink = frame.stage.ink
+                var shCtx = ctx
+                shCtx.blendMode = .normal
+                shCtx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: shadowR))
+                    for i in 0..<count {
+                        let g = petalGeom(i)
+                        let len = g.len * 1.18
+                        let halfW = g.halfW * 1.12 + g.len * 0.08
+                        let path = teardrop(len: len, halfW: halfW,
+                                            x: g.x + g.len * 0.05,
+                                            y: g.y + g.len * 0.10,
+                                            ang: g.ang)
+                        let aSh = clampD(g.aBody * 0.22, 0, 0.3)
+                        layer.fill(path, with: .color(ink.withOpacity(aSh).color))
+                    }
+                }
+            }
+        }
+
+        // ── PASS 2 · BODY + SHEEN ───────────────────────────────────────────
+        // The saturated colored teardrop, then the crisp cream sheen sprite on
+        // top (additive hot core on dark, source-over on light). Depth reads as
+        // soft glow UNDER → saturated body → bright cream core ON TOP.
+        for i in 0..<count {
+            let g = petalGeom(i)
+
+            let body = teardrop(len: g.len, halfW: g.halfW, x: g.x, y: g.y, ang: g.ang)
+            ctx.fill(body, with: .color(g.cc.withOpacity(g.aBody).color))
+
             if let sheen {
-                let aSheen = clampD((dark ? 0.5 : 0.4) * lit * f, 0, 0.7)
+                let aSheen = clampD((dark ? 0.62 : 0.5) * g.lit * f, 0, 0.85)
                 if aSheen > 0.003 {
                     let spriteSide = Double(SPRITE)
-                    let scaleX = (len / (spriteSide * 0.62)) * 1.04
-                    let scaleY = scaleX * broad
+                    let scaleX = (g.len / (spriteSide * 0.62)) * 1.04
+                    let scaleY = scaleX * g.broad
                     var sctx = ctx
-                    sctx.translateBy(x: x, y: y)
-                    sctx.rotate(by: .radians(ang))
+                    sctx.translateBy(x: g.x, y: g.y)
+                    sctx.rotate(by: .radians(g.ang))
                     sctx.scaleBy(x: scaleX, y: scaleY)
                     sctx.blendMode = dark ? .plusLighter : .normal
                     sctx.opacity = aSheen

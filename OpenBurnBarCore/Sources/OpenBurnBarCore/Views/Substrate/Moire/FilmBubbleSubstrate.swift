@@ -1,6 +1,7 @@
 import SwiftUI
+import CoreGraphics
 
-/// Film Bubble — faithful port of imaginethat `moire/film-bubble.ts` drawBody (L189-339).
+/// Film Bubble — premium port of imaginethat `moire/film-bubble.ts` drawBody (L189-339).
 ///
 /// Every silhouette point is a tiny iridescent soap bubble. Surface color comes
 /// from thin-film interference: a virtual film thickness = the SUM of two slightly
@@ -12,26 +13,32 @@ import SwiftUI
 /// brand color so the mark stays on-brand while the rainbow only RECOLORS an
 /// already-complete shape.
 ///
-/// Each bubble = TWO cached sprites + cheap discs (allocation-free hot loop):
-///   • a white sphere sprite (clear core → bright iridescent rim → clear) drawn
-///     OVER a colored disc, so the translucent rim reads as the film hue — the
-///     tinted-sphere trick, no per-point gradient;
-///   • a small white specular catchlight, upper-left.
-/// DARK (additive `.plusLighter`): colored bloom halo (rad*1.35, 0.16f) → colored
-/// core disc (rad*0.92, 0.5f) → white sphere (rad*2, 0.9f) → spec dot (0.85f).
-/// LIGHT (`.normal`): rim disc (rad*1.05, 0.32f) → sphere (rad*2, 0.82f) → spec (0.7f).
+/// PREMIUM build — layered, luminous depth per bubble (allocation-free hot loop;
+/// per-dot values are precomputed once into reused scratch arrays):
+///   1. DARK — a true GAUSSIAN bloom field (one `drawLayer` with `.blur` +
+///      `.plusLighter`) lays an iridescent glow UNDER the whole cloud so it clearly
+///      fills the silhouette and glows; then per bubble: a saturated colored body
+///      disc → a glassy translucent sphere sprite (clear core → bright rim) → a
+///      bright iridescent RIM RING (the soap-film tell, pushed toward white) → a
+///      crisp white specular catchlight. The bloom is the only throttled pass.
+///   2. LIGHT (`.normal`, no additive blowout) — a soft colored under-halo for
+///      presence, a darkened lower-lip disc for real sphere volume, the glassy
+///      sphere, a crisp saturated rim ring for edge definition, and a specular dot.
+///
 /// A slow lissajous micro-drift + radius wobble + the two beating waves are all
 /// driven purely by `frame.t`; `reduced` pins the thickness phase to 1.7 and drops
-/// drift/wobble → a poised still frozen-film frame. `batteryThrottled` drops the
-/// bloom halo + specular catchlight (the expendable passes). No wall clock.
-///
-/// Faithful simplifications vs source: the sphere sprite omits the dark lower-lip
-/// volume overlay (the kit's radial cache is center-symmetric); destruction/ripple
-/// event paths (pop/deflate/impact ripple, `dissolve`/`melt`/`armed`) are not part
-/// of the steady substrate frame, so `vis=1`, `armSwell=1`, no ripple.
+/// drift/wobble → a poised still frozen-film frame (the bloom field stays). No wall
+/// clock; no Date()/random — per-point phase is `shash(i)`.
 public final class FilmBubbleSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
+
+    // Reused per-dot scratch (resized only when the cloud count changes) so the
+    // bloom pass and the crisp pass share one cheap precompute — no per-frame churn.
+    private var pxs: [Double] = []
+    private var pys: [Double] = []
+    private var rads: [Double] = []
+    private var rims: [RGBA] = []
 
     // ── thin-film spectrum LUT (built once; the hot loop never touches HSL math) ──
     private static let spectrumN = 256
@@ -40,10 +47,11 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         out.reserveCapacity(spectrumN)
         for i in 0..<spectrumN {
             let u = Double(i) / Double(spectrumN)
-            // thin-film hue loops with shifting saturation, heavy in cyan/magenta.
+            // thin-film hue loops with shifting saturation, heavy in cyan/magenta —
+            // pushed a touch richer/brighter so the iridescence reads as luminous.
             let hue = frac(0.58 + 0.92 * u)            // start near cyan, sweep > 1 cycle
-            let sat = clampD(0.55 + 0.35 * sin(u * TAU * 2 + 0.4), 0.2, 0.95)
-            let lit = clampD(0.62 + 0.1 * sin(u * TAU + 1.1), 0.45, 0.78)
+            let sat = clampD(0.62 + 0.34 * sin(u * TAU * 2 + 0.4), 0.32, 0.98)
+            let lit = clampD(0.60 + 0.12 * sin(u * TAU + 1.1), 0.46, 0.80)
             let (r, g, b) = FilmBubbleSubstrate.hslToRgb(hue, sat, lit)
             out.append(RGBA(r: r, g: g, b: b, a: 1))
         }
@@ -67,7 +75,7 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
 
         let dark = frame.dark
         let reduced = frame.reduced
-        let lite = frame.batteryThrottled        // drop halo + spec catchlight when throttled
+        let lite = frame.batteryThrottled        // drop only the heaviest pass (the bloom field)
         let sizePx = frame.sizePx
         let t = frame.t
         let cx = frame.cx, cy = frame.cy, radius = frame.cloudRadius
@@ -75,7 +83,6 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         // Global film bloom-in: fades the film in as the mark forms (vis/armed fold
         // to 1 for the held substrate look). reduced → treat as fully formed.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.55 + 0.45
-        let armSwell = 1.0                        // no scroll-verdict arming in the steady frame
 
         // Two interfering thickness wave fields. Slightly different spatial freq +
         // temporal rate → they beat, rolling rainbow moiré bands across the cluster.
@@ -87,32 +94,18 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         let bFy = 1.05 * invR
         let aRate = 0.55
         let bRate = -0.42
-
-        var ctx = baseCtx
-        ctx.blendMode = dark ? .plusLighter : .normal
-
-        // Cached sprites resolved ONCE per frame, drawn many. Sphere: clear core →
-        // bright iridescent-able rim → clear (white so the colored disc beneath tints
-        // it). Spec: crisp white catchlight.
-        let sphereImg = ctx.resolve(sprites.radial(diameter: 64, stops: [
-            (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.04)),
-            (0.42, RGBA(r: 1, g: 1, b: 1, a: 0.10)),
-            (0.78, RGBA(r: 1, g: 1, b: 1, a: 0.55)),
-            (0.93, RGBA(r: 1, g: 1, b: 1, a: 1.0)),   // bright iridescent rim
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
-        ]))
-        let specImg: GraphicsContext.ResolvedImage? = lite ? nil : ctx.resolve(sprites.radial(diameter: 32, stops: [
-            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
-            (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.5)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
-        ]))
-
         let specN = Double(Self.spectrumN)
 
+        // ── pass 0: precompute drift, radius + iridescent rim hue per bubble once ──
+        if pxs.count != count {
+            pxs = .init(repeating: 0, count: count)
+            pys = .init(repeating: 0, count: count)
+            rads = .init(repeating: 0, count: count)
+            rims = .init(repeating: RGBA(r: 1, g: 1, b: 1), count: count)
+        }
         for i in 0..<count {
             let d = frame.dots[i]
-            let px = d.x
-            let py = d.y
+            let px = d.x, py = d.y
             let seed = shash(Double(i) * 1.37 + 0.5)
 
             // surface-tension micro-drift on a slow lissajous (±~1px) + radius wobble.
@@ -123,60 +116,118 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
                 dyo = sin(t * 0.47 + ph * 1.7 + 1.3) * 0.9
                 wob = 0.9 + 0.12 * sin(t * 1.3 + ph * 2.3)
             }
-            let x = px + dxo
-            let y = py + dyo
 
             // virtual film thickness = sum of two detuned waves (the beating pair).
-            let rx = px - cx
-            let ry = py - cy
+            let rx = px - cx, ry = py - cy
             let thick = sin(rx * aFx + ry * aFy * 0.6 + tt * aRate)
                 + sin(rx * bFx * 0.7 + ry * bFy + tt * bRate + seed * 1.1)
-
-            // thickness (-2..2) → spectrum index.
             let u = frac(thick * 0.25 + 0.5)
             let si = min(Self.spectrumN - 1, max(0, Int(u * specN)))
 
             // rim hue: 62% iridescent spectrum / 38% per-point brand color so the
             // mark stays on-brand and legible while the rainbow only recolors it.
-            let rim = d.rgba.mix(with: Self.spectrum[si], amount: 0.62)
+            pxs[i] = px + dxo
+            pys[i] = py + dyo
+            rads[i] = max(0.6, sizePx * 2.5 * wob * (0.74 + 0.26 * f))
+            rims[i] = d.rgba.mix(with: Self.spectrum[si], amount: 0.62)
+        }
 
-            let rad = sizePx * 2.35 * wob * armSwell * (0.7 + 0.3 * f)
-            let r2 = max(0.5, rad)
+        var ctx = baseCtx
+        ctx.blendMode = dark ? .plusLighter : .normal
+
+        // Cached sprites resolved ONCE per frame, drawn many. Sphere: clear core →
+        // bright iridescent-able rim → clear (white glass body, tinted from beneath).
+        // Spec: crisp white catchlight with a hot center for sparkle.
+        let sphereImg = ctx.resolve(sprites.radial(diameter: 64, stops: [
+            (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.05)),
+            (0.42, RGBA(r: 1, g: 1, b: 1, a: 0.12)),
+            (0.74, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
+            (0.92, RGBA(r: 1, g: 1, b: 1, a: 0.95)),   // bright iridescent rim
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+        ]))
+        let specImg = ctx.resolve(sprites.radial(diameter: 32, stops: [
+            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
+            (0.34, RGBA(r: 1, g: 1, b: 1, a: 0.78)),
+            (0.7, RGBA(r: 1, g: 1, b: 1, a: 0.22)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+        ]))
+
+        // ── BLOOM FIELD (the biggest premium lever) ───────────────────────────────
+        // One real Gaussian-blurred layer of iridescent cores → a luminous haze that
+        // fills the silhouette and glows. Dark: additive `.plusLighter`. Light: a
+        // gentle `.normal` colored halo for presence (never blown out). Throttle
+        // drops ONLY this pass (the heaviest); everything else still reads richly.
+        if !lite {
+            let blurScale = dark ? 1.15 : 0.9
+            let haloR = dark ? 1.35 : 1.1
+            let haloA = (dark ? 0.24 : 0.16) * f
+            ctx.drawLayer { layer in
+                layer.blendMode = dark ? .plusLighter : .normal
+                layer.addFilter(.blur(radius: max(2.0, sizePx * 2.0 * blurScale)))
+                for i in 0..<count {
+                    let r = rads[i] * haloR
+                    // glow leans iridescent (toward the rim hue's lit color), kept
+                    // saturated so the field glows in rainbow sheets, not grey mush.
+                    let glow = rims[i].withOpacity(clampD(haloA, 0, 1))
+                    layer.fill(
+                        Path(ellipseIn: CGRect(x: pxs[i] - r, y: pys[i] - r, width: r * 2, height: r * 2)),
+                        with: .color(glow.color))
+                }
+            }
+        }
+
+        // ── per-bubble crisp passes (layered depth: body → glass → rim → spark) ────
+        for i in 0..<count {
+            let x = pxs[i], y = pys[i]
+            let rad = rads[i]
+            let r2 = rad
+            let rim = rims[i]
 
             if dark {
-                // (1) soft colored bloom halo (iridescent), additive — expendable.
-                if !lite {
-                    let rh = rad * 1.35
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - rh, y: y - rh, width: rh * 2, height: rh * 2)),
-                             with: .color(rim.withOpacity(clampD(0.16 * f, 0, 1)).color))
-                }
-                // (2) colored core disc carrying the hue.
-                let rc = rad * 0.92
+                // (1) saturated colored BODY disc — carries the iridescent hue.
+                let rc = rad * 0.95
                 ctx.fill(Path(ellipseIn: CGRect(x: x - rc, y: y - rc, width: rc * 2, height: rc * 2)),
                          with: .color(rim.withOpacity(clampD(0.5 * f, 0, 1)).color))
-                // (3) white rim sphere sprite on top → bright iridescent edge + glassy body.
+                // (2) glassy translucent sphere → bright iridescent edge + glass body.
                 var sg = ctx
-                sg.opacity = clampD(0.9 * f, 0, 1)
+                sg.opacity = clampD(0.66 * f, 0, 1)
                 sg.draw(sphereImg, in: CGRect(x: x - r2, y: y - r2, width: r2 * 2, height: r2 * 2))
+                // (3) bright iridescent RIM RING (the soap-film tell), pushed to white.
+                let rr = rad * 0.84
+                ctx.stroke(
+                    Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2)),
+                    with: .color(rim.toWhite(0.32).withOpacity(clampD(0.7 * f, 0, 1)).color),
+                    lineWidth: max(0.6, rad * 0.3))
             } else {
-                // LIGHT canvas: source-over, lower alpha, no additive blowout.
-                let rd = rad * 1.05
+                // LIGHT canvas: source-over, real volume + crisp edge, no blowout.
+                // (1) darkened lower-lip disc (offset down) → sphere shadow/volume.
+                let lipR = rad * 0.92
+                ctx.fill(Path(ellipseIn: CGRect(x: x - lipR, y: y + rad * 0.16 - lipR, width: lipR * 2, height: lipR * 2)),
+                         with: .color(rim.darkened(by: 0.45).withOpacity(clampD(0.22 * f, 0, 1)).color))
+                // (2) saturated colored body disc.
+                let rd = rad * 1.0
                 ctx.fill(Path(ellipseIn: CGRect(x: x - rd, y: y - rd, width: rd * 2, height: rd * 2)),
-                         with: .color(rim.withOpacity(clampD(0.32 * f, 0, 1)).color))
+                         with: .color(rim.withOpacity(clampD(0.4 * f, 0, 1)).color))
+                // (3) glassy sphere sprite.
                 var sg = ctx
-                sg.opacity = clampD(0.82 * f, 0, 1)
+                sg.opacity = clampD(0.8 * f, 0, 1)
                 sg.draw(sphereImg, in: CGRect(x: x - r2, y: y - r2, width: r2 * 2, height: r2 * 2))
+                // (4) crisp saturated rim ring → defines the edge against the cream.
+                let rr = rad * 0.86
+                ctx.stroke(
+                    Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2)),
+                    with: .color(rim.darkened(by: 0.12).withOpacity(clampD(0.55 * f, 0, 1)).color),
+                    lineWidth: max(0.6, rad * 0.26))
             }
 
-            // (4) crisp specular catchlight, upper-left (same blend as base).
-            if let specImg {
-                let sr = max(0.4, rad * 0.42)
-                let ox = x - rad * 0.34
-                let oy = y - rad * 0.36
-                var sp = ctx
-                sp.opacity = clampD((dark ? 0.85 : 0.7) * f, 0, 1)
-                sp.draw(specImg, in: CGRect(x: ox - sr, y: oy - sr, width: sr * 2, height: sr * 2))
-            }
+            // (5) crisp white specular catchlight, upper-left — the hot glass spark.
+            let sr = max(0.4, rad * 0.4)
+            let ox = x - rad * 0.34
+            let oy = y - rad * 0.36
+            var sp = ctx
+            sp.blendMode = dark ? .plusLighter : .normal
+            sp.opacity = clampD((dark ? 0.95 : 0.7) * f, 0, 1)
+            sp.draw(specImg, in: CGRect(x: ox - sr, y: oy - sr, width: sr * 2, height: sr * 2))
         }
 
         return true

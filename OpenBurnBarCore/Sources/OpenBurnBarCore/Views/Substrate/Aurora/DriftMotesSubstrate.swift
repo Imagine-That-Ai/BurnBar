@@ -35,6 +35,12 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
     private var spark: [Bool] = []
     private var msz: [Double] = []
 
+    // Per-frame scratch (reused across frames; resized only when count changes) so
+    // the multi-pass paint computes each mote's orbit/drift/twinkle exactly once.
+    private var mx: [Double] = []
+    private var my: [Double] = []
+    private var mb: [Double] = []
+
     private static let motesPerPoint = 1.6
     private static let maxMotes = 900
 
@@ -62,6 +68,9 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
         twk = [Double](repeating: 0, count: m)
         spark = [Bool](repeating: false, count: m)
         msz = [Double](repeating: 0, count: m)
+        mx = [Double](repeating: 0, count: m)
+        my = [Double](repeating: 0, count: m)
+        mb = [Double](repeating: 0, count: m)
         guard count > 0 else { return }
 
         for k in 0..<m {
@@ -102,41 +111,26 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
         let lite = frame.batteryThrottled
         let sizePx = frame.sizePx
         let t = frame.t
+        let stage = frame.stage
+        let cyc = frame.cy
+        let RR = max(1.0, frame.cloudRadius)
 
         // assembly fade-in: the dust ignites as the mark forms.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.45 + 0.55
         // shared ribbon-drift amplitude, frozen under reduced motion.
         let driftAmp = reduced ? 0.0 : clampD(frame.cloudRadius * 0.02, 1.6, 5.0)
 
-        var ctx = baseCtx
-        ctx.blendMode = dark ? .plusLighter : .normal
-
-        // Resolve the additive soft-grain bloom sprite ONCE per frame, draw many.
-        // Source 48px stops: bright tight core, long gentle falloff (no hard edge).
-        let grain: GraphicsContext.ResolvedImage? = (dark && !lite)
-            ? ctx.resolve(sprites.radial(diameter: 48, stops: [
-                (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
-                (0.25, RGBA(r: 1, g: 1, b: 1, a: 0.5)),
-                (0.55, RGBA(r: 1, g: 1, b: 1, a: 0.12)),
-                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
-            ]))
-            : nil
-
-        // Batched diffraction-cross path (dark, brightest ~5%, not throttled).
-        var crossPath = Path()
-        var crossK = 0.0
-        var crossN = 0
-
+        // ── Pass 0: resolve every mote's live orbit + drift + twinkle ONCE ─────
+        // (the layered premium passes below each reuse mx/my/mb, no re-trig).
         for k in 0..<m {
             let ai = anchor[k]
             let hx = frame.dots[ai].x
             let hy = frame.dots[ai].y
             let d = depth[k]
 
-            // ── Lissajous orbit around the anchor (per-mote shimmer) ──────────
+            // Lissajous orbit around the anchor (the per-mote shimmer).
             let r = orad[k] * sizePx
-            let ox: Double
-            let oy: Double
+            let ox: Double, oy: Double
             if reduced {
                 ox = cos(opx[k]) * r
                 oy = sin(opy[k]) * r * 0.85
@@ -145,9 +139,8 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
                 oy = sin(t * ofy[k] + opy[k]) * r * 0.85
             }
 
-            // ── shared domain-warped ribbon drift; deeper motes lag (parallax) ─
-            var dx = 0.0
-            var dy = 0.0
+            // Shared domain-warped ribbon drift; deeper motes lag for parallax.
+            var dx = 0.0, dy = 0.0
             if !reduced {
                 let lag = (1 - d) * 0.9
                 let fv = flow(hx, hy, t - lag)
@@ -156,75 +149,163 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
                 dy = cos(fv * 0.7 + opy[k] * 0.3) * driftAmp * 0.55 * par
             }
 
-            let x = hx + ox + dx
-            let y = hy + oy + dy
-
-            // ── per-mote brightness twinkle (slow) ────────────────────────────
-            let bright: Double = reduced
+            mx[k] = hx + ox + dx
+            my[k] = hy + oy + dy
+            mb[k] = reduced
                 ? 0.6 + 0.4 * (0.5 + 0.5 * sin(twk[k]))
                 : 0.62 + 0.38 * (0.5 + 0.5 * sin(t * 1.3 + twk[k]))
+        }
 
-            let col = frame.dots[ai].rgba
-            let sz = sizePx * msz[k] * (1.1 + 0.45 * d)
+        if dark {
+            paintDark(frame, into: baseCtx, m: m, sizePx: sizePx, t: t, f: f,
+                      reduced: reduced, lite: lite, stage: stage, cyc: cyc, RR: RR)
+        } else {
+            paintLight(frame, into: baseCtx, m: m, sizePx: sizePx, f: f)
+        }
+        return true
+    }
 
-            if dark {
-                // (1) colored disc — tints the bloom drawn over it (additive).
-                let discA = clampD(0.18 * d * bright, 0, 0.5) * f
-                let discR = sz * 1.15
-                ctx.fill(Path(ellipseIn: CGRect(x: x - discR, y: y - discR,
-                                                width: discR * 2, height: discR * 2)),
-                         with: .color(col.withOpacity(discA).color))
-                // (2) additive soft-grain bloom (cached sprite) — white, tinted
-                //     by the disc beneath via additive compositing.
-                if let grain {
-                    let bloomR = sz * (2.6 + 1.4 * bright)
-                    var g = ctx
-                    g.opacity = clampD(0.1 + 0.2 * d * bright, 0, 0.6) * f
-                    g.draw(grain, in: CGRect(x: x - bloomR, y: y - bloomR,
-                                             width: bloomR * 2, height: bloomR * 2))
+    // MARK: - Dark: layered luminous spore-motes (glow → body → hot core)
+
+    private func paintDark(_ frame: SwarmSubstrateFrame, into baseCtx: GraphicsContext,
+                           m: Int, sizePx: Double, t: Double, f: Double,
+                           reduced: Bool, lite: Bool, stage: SubstrateStage,
+                           cyc: Double, RR: Double) {
+        @inline(__always) func disc(_ x: Double, _ y: Double, _ rr: Double) -> Path {
+            Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2))
+        }
+        // Per-mote aurora glow tint: warm accent low → cool accent2 high, nudged
+        // toward each mote's own hue so the bloom field reads as branded aurora.
+        @inline(__always) func glowTint(_ ai: Int, _ d: Double) -> RGBA {
+            let hy = frame.dots[ai].y
+            let vT = clampD((hy - (cyc - RR)) / (2 * RR), 0, 1)        // 0 top … 1 bottom
+            let aurora = stage.accent2.mix(with: stage.accent, amount: vT)
+            return frame.dots[ai].rgba.mix(with: aurora, amount: 0.34)
+        }
+
+        // ── Pass A — TRUE GAUSSIAN under-glow (the premium lever). One blurred,
+        //    additive layer: soft colored discs bloom together into a continuous
+        //    luminous aurora haze that fills the silhouette. Dropped under battery
+        //    throttle (heaviest pass) — the body bloom below still carries it.
+        if !lite {
+            var glowCtx = baseCtx
+            glowCtx.blendMode = .plusLighter
+            let blurR = max(3.0, sizePx * 2.6)
+            glowCtx.drawLayer { layer in
+                layer.addFilter(.blur(radius: blurR))
+                layer.blendMode = .plusLighter
+                for k in 0..<m {
+                    let ai = anchor[k]
+                    let d = depth[k]
+                    let bright = mb[k]
+                    let sz = sizePx * msz[k] * (1.1 + 0.45 * d)
+                    let gR = sz * (1.5 + 0.9 * bright)
+                    let gA = clampD(0.12 + 0.20 * d * bright, 0, 0.6) * f
+                    layer.fill(disc(mx[k], my[k], gR),
+                               with: .color(glowTint(ai, d).withOpacity(gA).color))
                 }
-                // (3) hot grain core — the legible silhouette point, whitened.
-                let coreA = clampD((0.42 + 0.5 * d) * bright, 0, 1) * f
-                let w = 0.45 + 0.3 * bright
-                let coreR = max(0.5, sz * 0.42)
-                ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
-                                                width: coreR * 2, height: coreR * 2)),
-                         with: .color(col.toWhite(w).withOpacity(coreA).color))
-                // (4) ~5% sparkle: faint additive diffraction cross (batched).
-                if !lite && spark[k] && bright > 0.7 {
-                    let len = sz * (2.2 + 2.0 * (bright - 0.5))
-                    let ang = reduced ? twk[k] : t * 0.18 + twk[k]
-                    let cx0 = cos(ang) * len, cy0 = sin(ang) * len
-                    let cx1 = cos(ang + .pi / 2) * len, cy1 = sin(ang + .pi / 2) * len
-                    crossPath.move(to: CGPoint(x: x - cx0, y: y - cy0))
-                    crossPath.addLine(to: CGPoint(x: x + cx0, y: y + cy0))
-                    crossPath.move(to: CGPoint(x: x - cx1, y: y - cy1))
-                    crossPath.addLine(to: CGPoint(x: x + cx1, y: y + cy1))
-                    crossK += clampD(0.14 * d * bright, 0, 0.32) * f
-                    crossN += 1
-                }
-            } else {
-                // LIGHT canvas: soft colored grain + crisp core (source-over).
-                let haloA = clampD(0.1 * d * bright, 0, 0.22) * f
-                let haloR = sz * 2.0
-                ctx.fill(Path(ellipseIn: CGRect(x: x - haloR, y: y - haloR,
-                                                width: haloR * 2, height: haloR * 2)),
-                         with: .color(col.withOpacity(haloA).color))
-                let coreA = clampD((0.45 + 0.5 * d) * bright, 0, 0.95) * f
-                let coreR = max(0.55, sz * 0.46)
-                ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
-                                                width: coreR * 2, height: coreR * 2)),
-                         with: .color(col.withOpacity(coreA).color))
             }
         }
 
-        // One batched stroke for all diffraction spikes (white, additive).
-        if crossN > 0 {
-            ctx.stroke(crossPath,
-                       with: .color(.white.opacity(crossK / Double(crossN))),
-                       style: StrokeStyle(lineWidth: 0.7, lineCap: .round))
+        // ── Body + core passes (additive). Resolve the soft-grain bloom sprite
+        //    once; draw it many. Kept even under throttle so presence never drops.
+        var ctx = baseCtx
+        ctx.blendMode = .plusLighter
+        let grain = ctx.resolve(sprites.radial(diameter: 48, stops: [
+            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
+            (0.22, RGBA(r: 1, g: 1, b: 1, a: 0.62)),
+            (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.16)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+        ]))
+
+        var crossPath = Path()
+        var crossK = 0.0
+        var crossN = 0
+
+        for k in 0..<m {
+            let ai = anchor[k]
+            let d = depth[k]
+            let bright = mb[k]
+            let col = frame.dots[ai].rgba
+            let x = mx[k], y = my[k]
+            let sz = sizePx * msz[k] * (1.1 + 0.45 * d)
+
+            // (1) saturated colored body disc — the material's hue, tinting the
+            //     white grain bloom above it via additive compositing.
+            let discA = clampD(0.20 + 0.22 * d * bright, 0, 0.62) * f
+            let discR = sz * 1.25
+            ctx.fill(disc(x, y, discR), with: .color(col.withOpacity(discA).color))
+
+            // (2) soft-grain bloom (cached sprite) — the white-hot pollen halo.
+            let bloomR = sz * (2.5 + 1.5 * bright)
+            var g = ctx
+            g.opacity = clampD(0.16 + 0.26 * d * bright, 0, 0.7) * f
+            g.draw(grain, in: CGRect(x: x - bloomR, y: y - bloomR,
+                                     width: bloomR * 2, height: bloomR * 2))
+
+            // (3) hot grain core — the crisp legible silhouette point, whitened.
+            let coreA = clampD((0.52 + 0.5 * d) * bright, 0, 1) * f
+            let w = 0.48 + 0.32 * bright
+            let coreR = max(0.7, sz * 0.52)
+            ctx.fill(disc(x, y, coreR),
+                     with: .color(col.toWhite(w).withOpacity(coreA).color))
+
+            // (4) ~5% sparkle: faint additive diffraction cross (batched; dropped
+            //     first under throttle).
+            if !lite && spark[k] && bright > 0.7 {
+                let len = sz * (2.4 + 2.2 * (bright - 0.5))
+                let ang = reduced ? twk[k] : t * 0.18 + twk[k]
+                let cx0 = cos(ang) * len, cy0 = sin(ang) * len
+                let cx1 = cos(ang + .pi / 2) * len, cy1 = sin(ang + .pi / 2) * len
+                crossPath.move(to: CGPoint(x: x - cx0, y: y - cy0))
+                crossPath.addLine(to: CGPoint(x: x + cx0, y: y + cy0))
+                crossPath.move(to: CGPoint(x: x - cx1, y: y - cy1))
+                crossPath.addLine(to: CGPoint(x: x + cx1, y: y + cy1))
+                crossK += clampD(0.18 * d * bright, 0, 0.4) * f
+                crossN += 1
+            }
         }
 
-        return true
+        if crossN > 0 {
+            ctx.stroke(crossPath,
+                       with: .color(.white.opacity(clampD(crossK / Double(crossN), 0, 0.5))),
+                       style: StrokeStyle(lineWidth: 0.8, lineCap: .round))
+        }
+    }
+
+    // MARK: - Light: soft luminous pollen, source-over (never blown out)
+
+    private func paintLight(_ frame: SwarmSubstrateFrame, into baseCtx: GraphicsContext,
+                            m: Int, sizePx: Double, f: Double) {
+        @inline(__always) func disc(_ x: Double, _ y: Double, _ rr: Double) -> Path {
+            Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2))
+        }
+        var ctx = baseCtx
+        ctx.blendMode = .normal
+        for k in 0..<m {
+            let ai = anchor[k]
+            let d = depth[k]
+            let bright = mb[k]
+            let col = frame.dots[ai].rgba
+            let x = mx[k], y = my[k]
+            let sz = sizePx * msz[k] * (1.1 + 0.45 * d)
+
+            // (1) soft outer halo — the gentle glow of suspended pollen.
+            let haloA = clampD(0.10 + 0.11 * d * bright, 0, 0.26) * f
+            let haloR = sz * 2.2
+            ctx.fill(disc(x, y, haloR), with: .color(col.withOpacity(haloA).color))
+
+            // (2) saturated body — gives the grain real presence on a light field.
+            let bodyA = clampD(0.16 + 0.18 * d * bright, 0, 0.5) * f
+            let bodyR = sz * 1.1
+            ctx.fill(disc(x, y, bodyR), with: .color(col.withOpacity(bodyA).color))
+
+            // (3) crisp core — a slightly deepened hue anchors the silhouette
+            //     point with real contrast against the pale background.
+            let coreA = clampD((0.50 + 0.5 * d) * bright, 0, 0.95) * f
+            let coreR = max(0.6, sz * 0.5)
+            ctx.fill(disc(x, y, coreR),
+                     with: .color(col.darkened(by: 0.12).withOpacity(coreA).color))
+        }
     }
 }
