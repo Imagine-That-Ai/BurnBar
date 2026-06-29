@@ -889,6 +889,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return "openburnbar-fake-provider-key-\(providerID)"
         }
 
+        if Self.isCurrentClaudeCodeCredentialSlot(providerID),
+           let ccToken = try await claudeCodeCredentialSecret(
+            for: providerID,
+            expectedOrganizationUuid: nil,
+            enforceOrganizationMatch: false
+           ) {
+            return ccToken
+        }
+
         let account = "provider.\(providerID).apiKey"
         var storedAnthropicCredentialRefreshFailed = false
         var failedAnthropicOrganizationUuid: String?
@@ -975,6 +984,12 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func isCurrentClaudeCodeCredentialSlot(_ providerID: String) -> Bool {
+        providerID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "anthropic.slot.current-claude-code-login"
     }
 
     private static func isExpiredClaudeOAuthSecret(_ storedSecret: String, providerID: String) -> Bool {

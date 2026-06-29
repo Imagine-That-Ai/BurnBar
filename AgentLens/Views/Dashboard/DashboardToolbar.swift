@@ -99,9 +99,15 @@ struct DashboardToolbar: ToolbarContent {
             BurnRailActionsSection(
                 isScanning: isScanning,
                 onImport: onScan,
-                onRecount: onRecount,
-                onSettings: onSettings
+                onRecount: onRecount
             )
+
+            BurnRailAppearanceQuickMenu(
+                settingsManager: settingsManager,
+                onOpenAppearanceSettings: onSettings
+            )
+
+            BurnRailSettingsButton(onSettings: onSettings)
         }
     }
 }

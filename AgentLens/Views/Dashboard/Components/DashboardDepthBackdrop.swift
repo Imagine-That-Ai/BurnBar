@@ -18,6 +18,7 @@ struct DashboardDepthBackdrop: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(SettingsManager.self) private var settingsManager
+    @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
 
     enum Density { case full, subtle }
 
@@ -26,7 +27,7 @@ struct DashboardDepthBackdrop: View {
             let w = geo.size.width
             let h = geo.size.height
             ZStack {
-                if settingsManager.useWebsiteBackground || settingsManager.useConstellationBackground {
+                if settingsManager.useWebsiteBackground || settingsManager.useConstellationBackground || useKernelBackdrop {
                     // Let the dynamic swarm / constellation backdrop show
                     // through instead of stacking an opaque plate on top of it.
                     // The tint washes stay off too: over the moving swarm their

@@ -82,9 +82,15 @@ extension DashboardView {
             BurnRailActionsSection(
                 isScanning: isScanning,
                 onImport: runScan,
-                onRecount: runRecount,
-                onSettings: { showingSettings = true }
+                onRecount: runRecount
             )
+
+            BurnRailAppearanceQuickMenu(
+                settingsManager: settingsManager,
+                onOpenAppearanceSettings: { showingSettings = true }
+            )
+
+            BurnRailSettingsButton(onSettings: { showingSettings = true })
         }
     }
 

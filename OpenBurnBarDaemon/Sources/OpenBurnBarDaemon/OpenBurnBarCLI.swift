@@ -680,34 +680,132 @@ public struct BurnBarCLIRunner {
 
     private static func claudeCodeOAuthStoragePayload() throws -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
+        var candidates: [String] = []
+
+        if ProcessInfo.processInfo.environment["BURNBAR_DISABLE_CLAUDE_CODE_KEYCHAIN_FALLBACK"] != "1",
+           let keychainPayload = readClaudeCodeKeychainPayload() {
+            candidates.append(keychainPayload)
+        }
+
+        let fileCandidates = [
             home.appendingPathComponent(".claude/.credentials.json"),
             home.appendingPathComponent(".claude/credentials.json")
         ]
-        for url in candidates {
+        for url in fileCandidates {
             guard let data = try? Data(contentsOf: url),
-                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue
-            }
-            let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
-            guard let accessToken = (oauth["accessToken"] as? String)?
+                  let raw = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !accessToken.isEmpty else {
+                  !raw.isEmpty else {
                 continue
             }
-            var payload: [String: Any] = ["claudeAiOauth": oauth]
-            if let organizationUuid = root["organizationUuid"] as? String {
-                payload["organizationUuid"] = organizationUuid
-            }
-            let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-            guard let string = String(data: encoded, encoding: .utf8) else {
-                throw BurnBarCLIError.missingArgument("Could not encode Claude OAuth credentials.")
-            }
-            return string
+            candidates.append(raw)
         }
+
+        for raw in candidates {
+            if let payload = try normalizedClaudeOAuthStoragePayload(from: raw) {
+                return payload
+            }
+        }
+
         throw BurnBarCLIError.missingArgument(
-            "No readable Claude Code OAuth token was found at ~/.claude/.credentials.json."
+            "No non-expired Claude Code OAuth token was found in the Claude Code Keychain item or ~/.claude/.credentials.json."
         )
+    }
+
+    private static func readClaudeCodeKeychainPayload() -> String? {
+        #if os(macOS)
+        let username = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !username.isEmpty else { return nil }
+        let securityURL = URL(fileURLWithPath: "/usr/bin/security")
+        guard FileManager.default.isExecutableFile(atPath: securityURL.path) else { return nil }
+
+        let process = Process()
+        process.executableURL = securityURL
+        process.arguments = [
+            "find-generic-password",
+            "-w",
+            "-s", "Claude Code-credentials",
+            "-a", username
+        ]
+        process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        let errorSink = FileHandle(forWritingAtPath: "/dev/null")
+        process.standardError = errorSink
+        defer {
+            try? errorSink?.close()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+        #else
+        return nil
+        #endif
+    }
+
+    private static func normalizedClaudeOAuthStoragePayload(from raw: String) throws -> String? {
+        guard let data = raw.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+        guard let accessToken = (oauth["accessToken"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !accessToken.isEmpty else {
+            return nil
+        }
+        guard !claudeOAuthPayloadIsExpired(oauth["expiresAt"]) else {
+            return nil
+        }
+
+        var payload: [String: Any] = ["claudeAiOauth": oauth]
+        if let organizationUuid = ((root["organizationUuid"] as? String) ?? (oauth["organizationUuid"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty {
+            payload["organizationUuid"] = organizationUuid
+        }
+        let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        guard let string = String(data: encoded, encoding: .utf8) else {
+            throw BurnBarCLIError.missingArgument("Could not encode Claude OAuth credentials.")
+        }
+        return string
+    }
+
+    private static func claudeOAuthPayloadIsExpired(_ value: Any?) -> Bool {
+        guard let milliseconds = expiresAtMilliseconds(value) else { return false }
+        let expiresAt = Date(timeIntervalSince1970: milliseconds / 1_000)
+        return expiresAt <= Date().addingTimeInterval(60)
+    }
+
+    private static func expiresAtMilliseconds(_ value: Any?) -> Double? {
+        if let double = value as? Double { return double }
+        if let int = value as? Int { return Double(int) }
+        if let string = value as? String {
+            if let double = Double(string) {
+                return double
+            }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: string) {
+                return date.timeIntervalSince1970 * 1_000
+            }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: string) {
+                return date.timeIntervalSince1970 * 1_000
+            }
+        }
+        return nil
     }
 
     private static let claudeHandoffUsageText = """

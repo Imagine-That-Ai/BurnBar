@@ -93,4 +93,24 @@ final class SettingsDeepLinkRoutingTests: XCTestCase {
             )
         }
     }
+
+    func test_appearanceAnchorsSelectMountedSegment() {
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.appearanceTheme),
+            .theme
+        )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.appearanceLaunchAtLogin),
+            .menuBar
+        )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.useWebsiteBackground),
+            .background
+        )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.desktopWallpaperProviderGlyphs),
+            .background
+        )
+        XCTAssertNil(AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.agentsQuotaDisplay))
+    }
 }
