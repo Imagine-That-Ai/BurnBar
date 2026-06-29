@@ -28,8 +28,8 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "oilfield",
                 "suminagashi-drift",
                 "kinetic-stipple",
-                "neural-bloom",
                 "agent1",
+                "neural-bloom",
                 "aether-lattice",
                 "bat-signal",
                 "storm-signal",
@@ -55,5 +55,14 @@ final class MobileBackdropKernelTests: XCTestCase {
             XCTAssertFalse(kernel.label.isEmpty)
             XCTAssertFalse(kernel.blurb.isEmpty)
         }
+    }
+
+    func testNativeKernelFrameRateSanitizesPowerPlanRates() {
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(15), 15)
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(30), 30)
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(120), 30)
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(nil), 30)
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(.nan), 30)
+        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(0), 30)
     }
 }

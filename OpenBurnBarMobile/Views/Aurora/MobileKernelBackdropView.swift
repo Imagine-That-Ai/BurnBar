@@ -1,26 +1,38 @@
 import SwiftUI
+import OpenBurnBarCore
 
 struct MobileKernelBackdropView: View {
     let kernel: MobileBackdropKernel
     let accent: Color
     var visibility: MobileBackgroundVisibility = .prominent
+    var colorDriver: SwarmColorDriver?
+    var backdropColors: [Color]?
+    var maxFrameRate: Double?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 30.0)) { timeline in
+        let fps = Self.sanitizedFrameRate(maxFrameRate)
+        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
             Canvas(opaque: true, rendersAsynchronously: true) { context, size in
                 MobileKernelBackdropRenderer.draw(
                     kernel: kernel,
                     accent: accent,
                     time: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate,
                     opacity: opacity,
+                    colorDriver: colorDriver,
+                    backdropColors: backdropColors,
                     size: size,
                     context: &context
                 )
             }
             .ignoresSafeArea()
         }
+    }
+
+    nonisolated static func sanitizedFrameRate(_ maxFrameRate: Double?) -> Double {
+        guard let maxFrameRate, maxFrameRate.isFinite, maxFrameRate > 0 else { return 30 }
+        return max(1, min(maxFrameRate, 30))
     }
 
     private var opacity: Double {
@@ -39,12 +51,14 @@ private enum MobileKernelBackdropRenderer {
         accent: Color,
         time: TimeInterval,
         opacity: Double,
+        colorDriver: SwarmColorDriver?,
+        backdropColors: [Color]?,
         size: CGSize,
         context: inout GraphicsContext
     ) {
         let rect = CGRect(origin: .zero, size: size)
         context.fill(Path(rect), with: .linearGradient(
-            Gradient(colors: palette(for: kernel, accent: accent)),
+            Gradient(colors: palette(for: kernel, accent: accent, colorDriver: colorDriver, backdropColors: backdropColors)),
             startPoint: .zero,
             endPoint: CGPoint(x: size.width, y: size.height)
         ))
@@ -83,7 +97,18 @@ private enum MobileKernelBackdropRenderer {
         context.fill(Path(rect), with: .color(.black.opacity(kernel.readabilityScrim * opacity)))
     }
 
-    private static func palette(for kernel: MobileBackdropKernel, accent: Color) -> [Color] {
+    private static func palette(
+        for kernel: MobileBackdropKernel,
+        accent: Color,
+        colorDriver: SwarmColorDriver?,
+        backdropColors: [Color]?
+    ) -> [Color] {
+        if let dataPalette = dataDrivenPalette(for: colorDriver, accent: accent) {
+            return dataPalette
+        }
+        if let backdropColors, backdropColors.count >= 2 {
+            return backdropColors
+        }
         switch kernel {
         case .origami:
             return [Color(red: 0.94, green: 0.87, blue: 0.75), Color(red: 0.78, green: 0.55, blue: 0.42), Color(red: 0.36, green: 0.18, blue: 0.16)]
@@ -100,6 +125,25 @@ private enum MobileKernelBackdropRenderer {
         default:
             return [Color(red: 0.02, green: 0.02, blue: 0.05), accent.opacity(0.65), Color(red: 0.96, green: 0.48, blue: 0.18)]
         }
+    }
+
+    private static func dataDrivenPalette(for colorDriver: SwarmColorDriver?, accent: Color) -> [Color]? {
+        guard let colorDriver else { return nil }
+        let providerColors = colorDriver.providers
+            .filter { $0.weight > 0 }
+            .prefix(3)
+            .map { DesignSystemColors.providerRGBA(for: $0.provider).color.opacity(0.52 + 0.34 * colorDriver.intensityMultiplier) }
+        guard !providerColors.isEmpty else { return nil }
+
+        var colors: [Color] = [
+            Color(red: 0.02, green: 0.02, blue: 0.05),
+            accent.opacity(0.28)
+        ]
+        colors.append(contentsOf: providerColors)
+        if providerColors.count < 3 {
+            colors.append(Color(red: 0.96, green: 0.48, blue: 0.18).opacity(0.42))
+        }
+        return colors
     }
 
     private static func drawConstellation(time: TimeInterval, opacity: Double, size: CGSize, context: inout GraphicsContext) {

@@ -131,7 +131,7 @@ struct WebsiteBackgroundView: View {
 
         switch plan.mode {
         case .live:
-            liveBackdrop(for: selectedKernel, visibility: effectiveVisibility)
+            liveBackdrop(for: selectedKernel, prefs: prefs, plan: plan, visibility: effectiveVisibility)
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
                 isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
@@ -157,13 +157,26 @@ struct WebsiteBackgroundView: View {
     @ViewBuilder
     private func liveBackdrop(
         for kernel: MobileBackdropKernel,
+        prefs: SwarmBackgroundPreferences,
+        plan: SwarmBackgroundRenderPlan,
         visibility: MobileBackgroundVisibility
     ) -> some View {
         switch kernel {
         case .constellation:
-            ConstellationBackgroundView(accent: accent, visibility: visibility)
+            ConstellationBackgroundView(
+                accent: accent,
+                visibility: visibility,
+                enabledProviderGlyphs: prefs.selectedGlyphs
+            )
         default:
-            MobileKernelBackdropView(kernel: kernel, accent: accent, visibility: visibility)
+            MobileKernelBackdropView(
+                kernel: kernel,
+                accent: accent,
+                visibility: visibility,
+                colorDriver: colorDriver,
+                backdropColors: themePalette.backdropColors,
+                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate)
+            )
         }
     }
 
@@ -182,7 +195,7 @@ struct WebsiteBackgroundView: View {
     /// Pure policy so the swarm-throttle behavior is unit-testable: while a
     /// Hermes reply streams, cap at 20 fps; never raise an already-slower
     /// plan; pass the plan through untouched when not streaming.
-    static func throttledFrameRate(planRate: Double?, streamingActive: Bool) -> Double? {
+    nonisolated static func throttledFrameRate(planRate: Double?, streamingActive: Bool) -> Double? {
         guard streamingActive else { return planRate }
         return min(planRate ?? 20, 20)
     }

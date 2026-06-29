@@ -30,6 +30,10 @@ import kotlin.math.sqrt
 @Composable
 fun MobileKernelBackdrop(kernel: MobileBackdropKernel, accentColor: Color, modifier: Modifier = Modifier) {
     val reduceMotion = LocalAuroraReduceMotion.current
+    if (reduceMotion) {
+        MobileKernelBackdropCanvas(kernel = kernel, accentColor = accentColor, phase = 0f, modifier = modifier)
+        return
+    }
     val transition = rememberInfiniteTransition(label = "mobile-kernel-backdrop")
     val animatedPhase by transition.animateFloat(
         initialValue = 0f,
@@ -37,8 +41,11 @@ fun MobileKernelBackdrop(kernel: MobileBackdropKernel, accentColor: Color, modif
         animationSpec = infiniteRepeatable(tween(durationMillis = 18_000, easing = LinearEasing), RepeatMode.Restart),
         label = "mobile-kernel-phase",
     )
-    val phase = if (reduceMotion) 0f else animatedPhase
+    MobileKernelBackdropCanvas(kernel = kernel, accentColor = accentColor, phase = animatedPhase, modifier = modifier)
+}
 
+@Composable
+private fun MobileKernelBackdropCanvas(kernel: MobileBackdropKernel, accentColor: Color, phase: Float, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.fillMaxSize()) {
         drawRect(
             brush = Brush.linearGradient(

@@ -28,15 +28,11 @@ import OpenBurnBarCore
 struct ConstellationBackgroundView: View {
     let accent: Color
     var visibility: MobileBackgroundVisibility = .prominent
+    var enabledProviderGlyphs: [AgentProvider] = SwarmProviderGlyphSelection.allProviders
 
     /// Seconds a logo holds before the field rotates to the next provider +
     /// position. Mirrors the web canvas's ~9.5s period.
     private static let rotationPeriod: TimeInterval = 9.5
-
-    /// Providers the constellation cycles through — the engine's curated
-    /// showcase set (BurnBar surfaces + provider logos), all of which ship
-    /// sampled-colour glyph assets.
-    private static let providers: [AgentProvider] = SwarmProviderGlyphSelection.allProviders
 
     @AppStorage("appThemePalette") private var themePalette: AppThemePalette = .system
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
@@ -55,9 +51,13 @@ struct ConstellationBackgroundView: View {
     }
 
     /// Index into ``providers`` for the logo currently materialising.
-    @State private var providerIndex = Int.random(in: 0..<max(1, ConstellationBackgroundView.providers.count))
+    @State private var providerIndex = Int.random(in: 0..<max(1, SwarmProviderGlyphSelection.allProviders.count))
     /// Per-cycle pan offset so each logo resolves somewhere new.
     @State private var logoOffset: CGSize = ConstellationBackgroundView.randomOffset()
+
+    private var providers: [AgentProvider] {
+        SwarmProviderGlyphSelection.normalized(enabledProviderGlyphs)
+    }
 
     var body: some View {
         let effectiveVisibility = visibility.constrained(by: inheritedVisibility)
@@ -112,7 +112,8 @@ struct ConstellationBackgroundView: View {
             motionSpeedMultiplier: plan.motionSpeedMultiplierScale,
             isAutoCyclingEnabled: plan.allowsAutoCycling,
             // A single enabled provider → exactly one logo on screen at a time.
-            enabledProviderGlyphs: [Self.providers[currentProviderIndex]],
+            // An empty selection is meaningful ("None") and renders a calm swarm.
+            enabledProviderGlyphs: currentProviderGlyphs,
             isAvatarEnabled: false,
             isBrandTextEnabled: false,
             enableSwarmSparkles: plan.allowsSparkles,
@@ -134,7 +135,7 @@ struct ConstellationBackgroundView: View {
     /// policy, leaving a single calm logo.
     @ViewBuilder
     private func rotationDriver(plan: SwarmBackgroundRenderPlan) -> some View {
-        if !reduceMotion, plan.allowsAutoCycling {
+        if !reduceMotion, plan.allowsAutoCycling, providers.count > 1 {
             TimelineView(.periodic(from: .now, by: Self.rotationPeriod)) { context in
                 Color.clear
                     .onChange(of: context.date) {
@@ -146,16 +147,18 @@ struct ConstellationBackgroundView: View {
     }
 
     private func advanceToNextLogo() {
-        guard Self.providers.count > 1 else { return }
+        let providers = providers
+        guard providers.count > 1 else { return }
         // Step a random distance forward so consecutive logos never repeat and
         // the order feels organic rather than a fixed marching list.
-        providerIndex = (providerIndex + Int.random(in: 1..<Self.providers.count)) % Self.providers.count
+        providerIndex = (providerIndex + Int.random(in: 1..<providers.count)) % providers.count
         logoOffset = Self.randomOffset()
     }
 
-    private var currentProviderIndex: Int {
-        guard !Self.providers.isEmpty else { return 0 }
-        return providerIndex % Self.providers.count
+    private var currentProviderGlyphs: [AgentProvider] {
+        let providers = providers
+        guard !providers.isEmpty else { return [] }
+        return [providers[providerIndex % providers.count]]
     }
 
     private func resolvedParticleCount(scale: Double) -> Int {

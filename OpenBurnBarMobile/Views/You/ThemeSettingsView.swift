@@ -86,22 +86,22 @@ struct ThemeSettingsView: View {
                 .tint(MobileTheme.ember)
                 .settingsAnchor(SettingsAnchor.useWebsiteBackground)
 
-                if useWebsiteBackground, appSkin != .editorial {
-                    Picker(selection: $mobileBackdropKernel) {
-                        ForEach(MobileBackdropKernel.allCases) { kernel in
-                            Text(kernel.label).tag(kernel.rawValue)
-                        }
-                    } label: {
-                        SettingsLabel(icon: "rectangle.3.group.bubble.left.fill", color: MobileTheme.amber, title: "Backdrop Kernel")
+                Picker(selection: $mobileBackdropKernel) {
+                    ForEach(MobileBackdropKernel.allCases) { kernel in
+                        Text(kernel.label).tag(kernel.rawValue)
                     }
-                    .pickerStyle(.menu)
-                    .settingsAnchor(SettingsAnchor.backdropKernel)
+                } label: {
+                    SettingsLabel(icon: "rectangle.3.group.bubble.left.fill", color: MobileTheme.amber, title: "Backdrop Kernel")
+                }
+                .pickerStyle(.menu)
+                .disabled(!useWebsiteBackground || appSkin == .editorial)
+                .opacity(useWebsiteBackground && appSkin != .editorial ? 1 : 0.45)
+                .settingsAnchor(SettingsAnchor.backdropKernel)
 
-                    if let kernel = MobileBackdropKernel(rawValue: mobileBackdropKernel) {
-                        Text(kernel.blurb)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                if useWebsiteBackground, appSkin != .editorial, let kernel = MobileBackdropKernel(rawValue: mobileBackdropKernel) {
+                    Text(kernel.blurb)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 NavigationLink {
