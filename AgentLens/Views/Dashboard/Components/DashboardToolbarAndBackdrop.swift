@@ -57,6 +57,10 @@ struct DashboardBackdrop: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
     /// the blurred desktop shows through — the felt payoff of the preference
@@ -67,6 +71,10 @@ struct DashboardBackdrop: View {
 
     private var dynamicBackdropEnabled: Bool {
         settingsManager.useWebsiteBackground || useKernelBackdrop
+    }
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
     }
 
     var body: some View {
@@ -86,12 +94,13 @@ struct DashboardBackdrop: View {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
-                        // on top. Keep the fallback static: running the native
-                        // swarm underneath every kernel frame would double-render
-                        // the expensive animated backdrop path.
+                        // on top. Keep the normal fallback static; add the native
+                        // swarm only when the substrate layer is explicitly enabled
+                        // so the substrate picker still has a live host in kernel mode.
                         staticKernelFallback
                         KernelBackdropView()
                             .ignoresSafeArea()
+                        kernelSubstrateOverlay
                     } else if settingsManager.useConstellationBackground {
                         ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
                     } else {
@@ -104,6 +113,24 @@ struct DashboardBackdrop: View {
                     .opacity(1 - 0.82 * clarity)
             }
             // cov:ignore-end
+        }
+    }
+
+    @ViewBuilder
+    private var kernelSubstrateOverlay: some View {
+        if substrateEnabled {
+            SwarmCanvasView(
+                accent: DesignSystem.Colors.ember,
+                pace: .cinematic,
+                isTransparent: true,
+                motionSpeedMultiplier: 0.6,
+                enableSwarmSparkles: false,
+                rendersAsynchronously: true,
+                substrate: substrate
+            )
+            .ignoresSafeArea()
+            .opacity(0.58)
+            .allowsHitTesting(false)
         }
     }
 

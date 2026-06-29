@@ -100,6 +100,11 @@ public enum SwarmSubstratePreferences {
     public static let substrateKey = "swarmSubstrate"
     /// Master gate so the picker can be toggled off without losing the pick.
     public static let enabledKey = "swarmSubstrateEnabled"
+    /// Shared kernel id key read by every native swarm host when resolving which
+    /// substrate family should render. Matches the macOS kernel backdrop picker.
+    public static let backdropKernelKey = "backdropKernel"
+    /// The bundled kernel fallback used when no explicit kernel has been chosen.
+    public static let defaultKernelID = "fluid-aurora"
 
     /// The live selected id, clamped to a real catalog entry. Defaults to plain.
     public static var currentID: String {

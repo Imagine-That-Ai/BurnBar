@@ -10,18 +10,38 @@ import SwiftUI
 
 extension DashboardView {
 
+    /// Same non-MAS update prompt Classic renders at the top of Overview. Concept
+    /// layouts call this before their hero so update availability is never hidden
+    /// behind a collapsed details drawer.
+    @ViewBuilder
+    var conceptUpdateBanner: some View {
+        #if !DISTRIBUTION_MAS
+        UpdateBannerCard()
+        #endif
+    }
+
     /// The collapsed "more details" drawer every concept embeds beneath its
-    /// curated hero — narrative banner + provider / model / activity lanes — so
-    /// the curated layouts never *lose* information relative to Classic.
-    var conceptMoreDrawer: some View {
+    /// curated hero. It carries every Classic-only section a concept does not
+    /// already show directly, so curated layouts never lose Overview information.
+    func conceptDetailsDrawer(includesLiveCurve: Bool = true, includesCastle: Bool = true) -> some View {
         ConceptMoreDrawer {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                if includesLiveCurve {
+                    conceptCurveCard.frame(height: 170)
+                }
+                if includesCastle {
+                    CastleGreatHallContainer()
+                }
                 NarrativeCardView(dataStore: dataStore)
                 providerLane
                 modelLane
                 activityLane
             }
         }
+    }
+
+    var conceptMoreDrawer: some View {
+        conceptDetailsDrawer()
     }
 
     /// The shared live cost curve wrapped in a glass card, for concepts that

@@ -30,6 +30,14 @@ import SwiftUI
 /// reduced-motion requirement is satisfied by reusing the engine as-is.
 struct ConstellationBackgroundView: View {
     let accent: Color
+    @StateObject private var substrateBox = SwarmSubstrateBox()
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     var body: some View {
         SwarmCanvasView(
@@ -40,7 +48,8 @@ struct ConstellationBackgroundView: View {
             isAutoCyclingEnabled: true,
             enableSwarmSparkles: true,
             excludeBrandShapesFromSwarm: true,
-            rendersAsynchronously: true
+            rendersAsynchronously: true,
+            substrate: substrate
         )
         .ignoresSafeArea()
     }

@@ -12,6 +12,8 @@ extension DashboardView {
         GeometryReader { geo in
             ScrollView {
                 VStack(spacing: DesignSystem.Spacing.xl) {
+                    conceptUpdateBanner
+
                     constellationSearchBar
                         .frame(maxWidth: 620)
 

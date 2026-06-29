@@ -24,7 +24,15 @@ struct WebsiteBackgroundView: View {
     @Environment(\.hermesStreamingActive) private var hermesStreamingActive
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var envMonitor = SwarmEnvironmentMonitor.shared
+    @StateObject private var substrateBox = SwarmSubstrateBox()
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     var body: some View {
         // Editorial / Paper skin renders the light "dot-crest" — provider logos
@@ -81,7 +89,8 @@ struct WebsiteBackgroundView: View {
                     enableSwarmSparkles: false,
                     excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
                     maxFrameRate: streamingThrottledFrameRate(nil),
-                    rendersAsynchronously: true
+                    rendersAsynchronously: true,
+                    substrate: substrate
                 )
                 .ignoresSafeArea()
                 .opacity(editorialOpacity(for: effectiveVisibility))
@@ -140,7 +149,8 @@ struct WebsiteBackgroundView: View {
                 enableSwarmSparkles: plan.allowsSparkles,
                 excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
                 maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
-                rendersAsynchronously: true
+                rendersAsynchronously: true,
+                substrate: substrate
             )
             .ignoresSafeArea()
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in

@@ -13,6 +13,7 @@ extension DashboardView {
             let wide = geo.size.width >= 940
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    conceptUpdateBanner
                     if wide {
                         HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                             cockpitProviderRail
@@ -26,7 +27,7 @@ extension DashboardView {
                         cockpitProviderRail.frame(height: 300)
                     }
                     cockpitBottomBand
-                    conceptMoreDrawer
+                    conceptDetailsDrawer(includesLiveCurve: false, includesCastle: false)
                 }
                 .padding(DesignSystem.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .topLeading)

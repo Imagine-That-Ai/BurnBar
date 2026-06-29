@@ -43,6 +43,7 @@ struct WallpaperGeneratorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @StateObject private var substrateBox = SwarmSubstrateBox()
 
     // Persistent style choice. Defaults to .appDefault so the wallpaper
     // preview follows the app's current color scheme until the user picks
@@ -70,6 +71,9 @@ struct WallpaperGeneratorView: View {
     @State private var showTapHint = true
     @State private var tapHintOpacity: Double = 1.0
     @AppStorage("burnbar.wallpaper.providerGlyphs") private var providerGlyphSelectionRaw = SwarmProviderGlyphSelection.allSentinel
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
     @State private var currentMode: SwarmFormationMode = .swarm
 
     // Resizable sidebar (iPad / macOS) state. Width persists across launches.
@@ -86,6 +90,10 @@ struct WallpaperGeneratorView: View {
     }
     private var usesSidebar: Bool { horizontalSizeClass == .regular }
     private var sidebarVisible: Bool { usesSidebar && showProviderGlyphCustomizer }
+
+    private var substrate: SwarmSubstrate {
+        substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
+    }
 
     enum WallpaperStyle: String, CaseIterable, Identifiable {
         // .appDefault delegates to the app's current color scheme for the
@@ -209,7 +217,8 @@ struct WallpaperGeneratorView: View {
                 motionSpeedMultiplier: isHolding ? 2.5 : 1.0,
                 enabledProviderGlyphs: selectedProviderGlyphs,
                 currentMode: $currentMode,
-                logoOffsets: logoOffsets
+                logoOffsets: logoOffsets,
+                substrate: substrate
             )
 
             // Subtle radial vignette
@@ -864,7 +873,8 @@ struct WallpaperGeneratorView: View {
                 colorDriver: colorDriver,
                 colorPalette: effectiveStyle.swarmPalette,
                 enabledProviderGlyphs: selectedProviderGlyphs,
-                logoOffsets: logoOffsets
+                logoOffsets: logoOffsets,
+                substrate: substrate
             )
             RadialGradient(
                 colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],

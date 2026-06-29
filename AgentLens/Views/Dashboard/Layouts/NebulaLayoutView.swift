@@ -13,6 +13,7 @@ extension DashboardView {
             let wide = geo.size.width >= 900
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    conceptUpdateBanner
                     if wide {
                         HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
                             nebulaProviderRail
@@ -26,7 +27,7 @@ extension DashboardView {
                         nebulaProviderRail
                             .frame(height: 320)
                     }
-                    conceptMoreDrawer
+                    conceptDetailsDrawer(includesLiveCurve: false)
                 }
                 .padding(DesignSystem.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
