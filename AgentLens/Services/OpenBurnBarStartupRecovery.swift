@@ -624,12 +624,13 @@ final class OpenBurnBarRuntimeContext {
         importListener.start()
     }
 
-    /// Boot the durability sentry that keeps Claude Code / Codex / Forge /
-    /// OpenCode / Droid wired through the local BurnBar gateway after
-    /// external rewrites (Claude Code's atomic settings.json save, plugin
-    /// installs, dotfile syncs). The sentry follows persisted Connect intent
-    /// and also adopts already-wired configs from older builds so stale client
-    /// catalogs can self-heal after upgrades.
+    /// Boot the durability sentry that keeps Codex / Forge / OpenCode / Droid
+    /// wired through the local BurnBar gateway after external rewrites (plugin
+    /// installs, dotfile syncs). Claude Code is excluded from unattended repair
+    /// because its global Anthropic override disables claude.ai connector
+    /// fallback when the daemon is off. The sentry follows persisted Connect
+    /// intent and adopts already-wired configs for supported durable targets so
+    /// stale client catalogs can self-heal after upgrades.
     func startRoutedClientWiringSentry() {
         let sentry: RoutedClientWiringSentry
         if let existing = routedClientWiringSentry {

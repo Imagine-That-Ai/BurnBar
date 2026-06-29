@@ -11,11 +11,12 @@ extension Notification.Name {
 
 // MARK: - Routed Client Wiring Settings
 
-/// Persisted intent for routed-client (Claude Code / Codex / Forge / OpenCode
-/// / Droid) wiring durability. The sentry uses this store to know which CLI
-/// configs the user expects to stay wired through the local BurnBar gateway,
-/// even when an external tool (Claude Code's own settings rewrites, plugin
-/// installs, dotfile syncs, etc.) strips the env block.
+/// Persisted intent for routed-client wiring durability. The sentry uses this
+/// store to know which CLI configs the user expects to stay wired through the
+/// local BurnBar gateway, even when an external tool strips the env block.
+/// Claude Code enrollment may exist for explicit connect/disconnect state, but
+/// the sentry does not auto-repair it because its global Anthropic override has
+/// no native fallback when the daemon is off.
 @Observable
 @MainActor
 final class RoutedClientWiringSettings {
