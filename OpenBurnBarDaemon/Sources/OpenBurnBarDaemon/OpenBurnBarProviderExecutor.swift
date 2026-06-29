@@ -1253,18 +1253,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         #if os(macOS)
         let securityURL = URL(fileURLWithPath: "/usr/bin/security")
         guard FileManager.default.isExecutableFile(atPath: securityURL.path) else { return nil }
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openburnbar-keychain-\(UUID().uuidString).out")
-        FileManager.default.createFile(
-            atPath: outputURL.path,
-            contents: nil,
-            attributes: [.posixPermissions: 0o600]
-        )
-        guard let outputHandle = FileHandle(forWritingAtPath: outputURL.path) else { return nil }
-        defer {
-            try? outputHandle.close()
-            try? FileManager.default.removeItem(at: outputURL)
-        }
 
         let process = Process()
         process.executableURL = securityURL
@@ -1276,11 +1264,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         ]
         process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
 
-        process.standardOutput = outputHandle
-        let errorSink = FileHandle(forWritingAtPath: "/dev/null")
-        process.standardError = errorSink
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.nullDevice
         defer {
-            try? errorSink?.close()
+            try? outputPipe.fileHandleForReading.close()
         }
 
         do {
@@ -1298,11 +1286,12 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             if process.isRunning {
                 process.terminate()
             }
+            try? outputPipe.fileHandleForReading.close()
             return nil
         }
         guard process.terminationStatus == 0 else { return nil }
 
-        guard let data = try? Data(contentsOf: outputURL) else { return nil }
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)
         #else
         return nil

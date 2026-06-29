@@ -362,17 +362,31 @@ def validate_cloud_run(text: str) -> None:
         "gcloud run deploy \"$SERVICE\"",
         "gcloud run services update-traffic \"$SERVICE\"",
         "roles/secretmanager.admin",
+        "roles/secretmanager.secretAccessor",
         "roles/secretmanager.secretVersionAdder",
         "roles/secretmanager.secretVersionManager",
-        "required_secret_roles",
+        "metadata_only_roles",
         "roles/secretmanager.viewer",
-        "roles/secretmanager.secretAccessor",
+        "project-wide Secret Manager payload/write roles",
+        "CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT",
+        "runtime_service_account",
+        "Cloud Run service must pin an explicit runtime service account",
+        "gcloud secrets get-iam-policy",
+        "serviceAccount:{runtime_service_account}",
+        "per-secret roles/secretmanager.secretAccessor",
+        "verify_runtime_secret_accessor \"$SECRET_NAME\"",
+        "verify_runtime_secret_accessor \"$ED25519_PRIVATE_SECRET_NAME\"",
+        "verify_runtime_secret_accessor \"$ED25519_PUBLIC_SECRET_NAME\"",
         "for forbidden_secret_env in",
         "Production Cloud Run deploy must not receive signer secret values",
-        "must have read-only Secret Manager metadata and payload access",
+        "must have read-only Secret Manager metadata access",
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-hosted-mcp is missing deploy boundary marker {marker!r}")
+    if not re.search(r"forbidden\s*=\s*\{[^}]*roles/secretmanager\.secretAccessor", deploy_job, re.S):
+        fail(f"{path} deploy-hosted-mcp must forbid project-wide roles/secretmanager.secretAccessor on the deploy service account")
+    if re.search(r"metadata_only_roles\s*=\s*\{[^}]*roles/secretmanager\.secretAccessor", deploy_job, re.S):
+        fail(f"{path} deploy-hosted-mcp must not require project-wide Secret Manager payload access for the deploy service account")
 
     if "id-token: write" in result_job:
         fail(f"{path} cloud-run-deploy-result must not grant id-token:write")

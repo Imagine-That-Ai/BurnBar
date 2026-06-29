@@ -62,12 +62,9 @@ const DEFAULT_BURNBAR_SOCKET_PATH = join(
   'OpenBurnBar',
   'openburnbar-daemon.sock'
 );
-const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(
-  homedir(),
-  'Library',
-  'LaunchAgents',
-  'com.openburnbar.daemon.plist'
-);
+const DEFAULT_BURNBAR_SUPPORT_DIR = join(homedir(), 'Library', 'Application Support', 'OpenBurnBar');
+const DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE = join(DEFAULT_BURNBAR_SUPPORT_DIR, 'daemon-socket-auth-token');
+const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(homedir(), 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist');
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
 function resolveDefaultSocketPath(): string {
@@ -76,10 +73,36 @@ function resolveDefaultSocketPath(): string {
   );
 }
 
+function resolveDefaultAuthTokenFilePath(): string {
+  return (
+    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
+    process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
+    (process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR
+      ? join(process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
+      : process.env.BURNBAR_DAEMON_SUPPORT_DIR
+        ? join(process.env.BURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
+        : DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE)
+  );
+}
+
+function readTrimmedFile(path: string): string | undefined {
+  try {
+    const value = readFileSync(path, 'utf8').trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function resolveDefaultAuthToken(): string | undefined {
   const envToken = process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN ?? process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
   if (envToken?.trim()) {
     return envToken.trim();
+  }
+
+  const fileToken = readTrimmedFile(resolveDefaultAuthTokenFilePath());
+  if (fileToken) {
+    return fileToken;
   }
 
   try {

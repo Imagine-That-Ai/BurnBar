@@ -76,6 +76,29 @@ final class BurnBarConfigStoreTests: XCTestCase {
         }
     }
 
+    func testClaudeCodeKeychainFallbackKeepsSecretCaptureInMemory() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let providerSource = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            providerSource.contains("let outputPipe = Pipe()")
+                && providerSource.contains("process.standardOutput = outputPipe"),
+            "Keychain CLI fallback must capture secret output through an in-memory pipe."
+        )
+        XCTAssertFalse(
+            providerSource.contains("openburnbar-keychain-")
+                || providerSource.contains("process.standardOutput = outputHandle")
+                || providerSource.contains("Data(contentsOf: outputURL)"),
+            "Keychain CLI fallback must not persist OAuth/keychain material through a temporary output file."
+        )
+    }
+
     func testSnapshotDefaultsToAllCatalogProviders() async throws {
         let harness = try makeHarness(name: "defaults")
         let snapshot = try await harness.configStore.snapshot()

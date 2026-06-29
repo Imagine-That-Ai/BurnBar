@@ -186,11 +186,13 @@ class DaemonSocketRoutingTests(unittest.TestCase):
         self._tmp = TemporaryDirectory()
         self.ledger_path = Path(self._tmp.name) / "usage-events.jsonl"
         self.socket_path = Path(self._tmp.name) / "openburnbar-daemon.sock"
+        self.token_path = Path(self._tmp.name) / "daemon-socket-auth-token"
+        self.token_path.write_text("test-token\n", encoding="utf-8")
         self._server_thread, self._stop_event, self.captured = self._start_fake_daemon(self.socket_path)
         # Point the writer at our fake socket without leaning on the user's
         # real `~/Library/Application Support/OpenBurnBar` directory.
         os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(self.socket_path)
-        os.environ["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] = "test-token"
+        os.environ["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE"] = str(self.token_path)
 
     def tearDown(self) -> None:
         self._stop_event.set()
@@ -201,7 +203,11 @@ class DaemonSocketRoutingTests(unittest.TestCase):
                 poke.connect(str(self.socket_path))
         self._server_thread.join(timeout=2)
         os.environ.pop("OPENBURNBAR_DAEMON_SOCKET_PATH", None)
+        os.environ.pop("BURNBAR_DAEMON_SOCKET_PATH", None)
         os.environ.pop("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN", None)
+        os.environ.pop("BURNBAR_DAEMON_SOCKET_AUTH_TOKEN", None)
+        os.environ.pop("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE", None)
+        os.environ.pop("BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE", None)
         self._tmp.cleanup()
 
     @staticmethod
