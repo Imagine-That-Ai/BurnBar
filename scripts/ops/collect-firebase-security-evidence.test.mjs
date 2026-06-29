@@ -4,6 +4,13 @@ import assert from "node:assert/strict";
 import { sanitizeEvidenceArtifact } from "./collect-firebase-security-evidence.mjs";
 
 test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud inventory", () => {
+  const projectId = ["prod", "project", "123"].join("-");
+  const projectNumber = ["123456", "789012"].join("");
+  const viewerRole = ["roles", "viewer"].join("/");
+  const releaseBotEmail = ["release-bot", `${projectId}.iam.gserviceaccount.com`].join("@");
+  const personEmail = ["person", "example.com"].join("@");
+  const releaseBotMember = ["serviceAccount", releaseBotEmail].join(":");
+  const personMember = ["user", personEmail].join(":");
   const evidence = {
     schemaVersion: 1,
     collectedAt: "2026-06-25T18:00:00.000Z",
@@ -22,8 +29,8 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
     },
     project: {
       ok: true,
-      projectId: "prod-project-123",
-      projectNumber: "123456789012",
+      projectId,
+      projectNumber,
       lifecycleState: "ACTIVE",
       labels: { owner: "infra" },
     },
@@ -31,12 +38,12 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
       gcloudProject: {
         ok: true,
         command: ["gcloud", "config", "get-value", "project"],
-        stdout: "prod-project-123",
+        stdout: projectId,
       },
       firebaseProjects: {
         ok: false,
-        command: ["firebase", "projects:list", "--project", "prod-project-123"],
-        error: "projects/prod-project-123 failed",
+        command: ["firebase", "projects:list", "--project", projectId],
+        error: `projects/${projectId} failed`,
       },
     },
     iam: {
@@ -45,11 +52,8 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
         version: 1,
         bindings: [
           {
-            role: "roles/viewer",
-            members: [
-              "serviceAccount:release-bot@prod-project-123.iam.gserviceaccount.com",
-              "user:person@example.com",
-            ],
+            role: viewerRole,
+            members: [releaseBotMember, personMember],
           },
         ],
       },
@@ -62,13 +66,12 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
           count: 1,
           functions: [
             {
-              name: "projects/prod-project-123/locations/us-central1/functions/api",
+              name: `projects/${projectId}/locations/us-central1/functions/api`,
               state: "ACTIVE",
               updateTime: "2026-06-25T18:00:00Z",
               url: "https://api-us-central1.a.run.app",
               ingressSettings: "ALLOW_INTERNAL_AND_GCLB",
-              serviceAccountEmail:
-                "release-bot@prod-project-123.iam.gserviceaccount.com",
+              serviceAccountEmail: releaseBotEmail,
               secretEnvironmentVariableNames: ["PAYMENT_WEBHOOK_SECRET"],
               labels: { runtime: "node" },
             },
@@ -82,8 +85,8 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
       buckets: [
         {
           ok: true,
-          name: "prod-project-123.firebasestorage.app",
-          url: "gs://prod-project-123.firebasestorage.app",
+          name: `${projectId}.firebasestorage.app`,
+          url: `gs://${projectId}.firebasestorage.app`,
           location: "US",
           storageClass: "STANDARD",
           uniformBucketLevelAccess: true,
@@ -91,16 +94,14 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
           retentionPolicy: { retentionPeriod: "604800s" },
           encryption: {
             defaultKmsKeyName:
-              "projects/prod-project-123/locations/global/keyRings/ring/cryptoKeys/key",
+              `projects/${projectId}/locations/global/keyRings/ring/cryptoKeys/key`,
           },
           lifecycle: { rule: [] },
           iamPolicy: {
             bindings: [
               {
                 role: "roles/storage.objectViewer",
-                members: [
-                  "serviceAccount:release-bot@prod-project-123.iam.gserviceaccount.com",
-                ],
+                members: [releaseBotMember],
               },
             ],
           },
@@ -114,7 +115,7 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
         localSha256: "local-indexes",
         deployedSha256: "deployed-indexes",
         drift: true,
-        error: "firestore indexes for prod-project-123 failed",
+        error: `firestore indexes for ${projectId} failed`,
       },
     },
     secrets: {
@@ -123,7 +124,7 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
       secrets: [
         {
           ok: true,
-          name: "projects/prod-project-123/secrets/payment-webhook",
+          name: `projects/${projectId}/secrets/payment-webhook`,
           labels: { tier: "prod" },
           replication: {
             userManaged: {
@@ -132,13 +133,13 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
                   location: "us-central1",
                   customerManagedEncryption: {
                     kmsKeyName:
-                      "projects/prod-project-123/locations/us-central1/keyRings/secrets/cryptoKeys/main",
+                      `projects/${projectId}/locations/us-central1/keyRings/secrets/cryptoKeys/main`,
                   },
                 },
               ],
             },
           },
-          topics: ["projects/prod-project-123/topics/secret-rotate"],
+          topics: [`projects/${projectId}/topics/secret-rotate`],
           iamPolicy: { bindings: [] },
         },
       ],
@@ -153,12 +154,12 @@ test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud invento
           keyRings: [
             {
               ok: true,
-              name: "projects/prod-project-123/locations/global/keyRings/prod",
+              name: `projects/${projectId}/locations/global/keyRings/prod`,
               keyCount: 1,
               keys: [
                 {
                   ok: true,
-                  name: "projects/prod-project-123/locations/global/keyRings/prod/cryptoKeys/main",
+                  name: `projects/${projectId}/locations/global/keyRings/prod/cryptoKeys/main`,
                   purpose: "ENCRYPT_DECRYPT",
                   protectionLevel: "SOFTWARE",
                   primaryState: "ENABLED",

@@ -106,6 +106,7 @@ object SettingsAnchor {
     const val USE_PREMIUM_SOTA_UX = "themePrefs.usePremiumSOTAUX"
     const val APPEARANCE_SKIN = "themePrefs.appAppearance"
     const val USE_WEBSITE_BACKGROUND = "themePrefs.useWebsiteBackground"
+    const val MOBILE_BACKDROP_KERNEL = "themePrefs.mobileBackdropKernel"
     const val ENABLE_SWARM_SPARKLES = "themePrefs.enableSwarmSparkles"
 
     // Hermes

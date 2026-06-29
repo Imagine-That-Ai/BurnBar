@@ -62,6 +62,7 @@ import com.openburnbar.ui.settings.BackgroundStyle
 import com.openburnbar.ui.settings.rememberAppearance
 import com.openburnbar.ui.settings.rememberBackgroundStyle
 import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
+import com.openburnbar.ui.settings.rememberMobileBackdropKernel
 import com.openburnbar.ui.settings.rememberProviderGlyphs
 import com.openburnbar.ui.settings.rememberThemePalette
 import com.openburnbar.ui.theme.AppAppearance
@@ -204,21 +205,28 @@ private fun AuroraAnimatedBackdrop(isDark: Boolean, density: AuroraDensity, redu
 }
 
 /**
- * The custom dark backdrop selected by the user. Dispatches on the active
- * [BackgroundStyle]: DOT_CONSTELLATION renders the calm, one-logo-at-a-time
- * constellation field; every other custom style renders the active, reconverging
- * token-ember swarm from burnbar.ai (which murmurates and periodically reconverges
- * into "$", "</>", provider logos, concentric quota rings, and a router-failover
- * S-curve). Screens call this only when a custom backdrop is active, so this stays
- * the single dispatch point keeping all surfaces coherent.
+ * The custom dark backdrop selected by the user. DOT_CONSTELLATION renders the
+ * calm, one-logo-at-a-time constellation field; SWARM dispatches through the
+ * mobile kernel picker; the editorial force-light path keeps the old light
+ * provider swarm. Screens call this only when a custom backdrop is active, so
+ * this stays the single dispatch point keeping all surfaces coherent.
  */
 @Composable
 fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifier = Modifier, forceLight: Boolean = false) {
     val backgroundStyle by rememberBackgroundStyle()
+    val mobileKernel by rememberMobileBackdropKernel()
     // Editorial forces the light dot-crest, so it bypasses the constellation
     // style and always renders the swarm in light mode.
     if (!forceLight && backgroundStyle == BackgroundStyle.DOT_CONSTELLATION) {
         DotConstellationBackground(modifier = modifier)
+        return
+    }
+    if (!forceLight && backgroundStyle == BackgroundStyle.SWARM) {
+        if (mobileKernel.rendererFamily == com.openburnbar.ui.settings.MobileBackdropKernelFamily.CONSTELLATION) {
+            DotConstellationBackground(modifier = modifier)
+        } else {
+            MobileKernelBackdrop(kernel = mobileKernel, accentColor = accentColor, modifier = modifier)
+        }
         return
     }
 

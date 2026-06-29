@@ -33,11 +33,13 @@ class GlobalVisualSettingsTest {
         installAppContext(null)
         setLoaded(true)
         resetStyle(BackgroundStyle.AURORA)
+        setMobileKernelState(MobileBackdropKernel.DEFAULT)
     }
 
     @After
     fun tearDown() {
         resetStyle(BackgroundStyle.AURORA)
+        setMobileKernelState(MobileBackdropKernel.DEFAULT)
         setProviderGlyphsState(AgentProvider.swarmGlyphProviders.toSet())
         setLoaded(false)
         unmockkStatic(Log::class)
@@ -87,6 +89,15 @@ class GlobalVisualSettingsTest {
     }
 
     @Test
+    fun `mobile backdrop kernel setter updates in-memory state`() {
+        GlobalVisualSettings.setMobileBackdropKernel(MobileBackdropKernel.PETROLEUM_SHEEN)
+        assertEquals(MobileBackdropKernel.PETROLEUM_SHEEN, GlobalVisualSettings.mobileBackdropKernel.value)
+
+        GlobalVisualSettings.setMobileBackdropKernel(MobileBackdropKernel.FLUID_AURORA)
+        assertEquals(MobileBackdropKernel.DEFAULT, GlobalVisualSettings.mobileBackdropKernel.value)
+    }
+
+    @Test
     fun `background style keys round trip through fromKey`() {
         for (style in BackgroundStyle.entries) {
             assertEquals(style, BackgroundStyle.fromKey(style.key))
@@ -124,6 +135,12 @@ class GlobalVisualSettingsTest {
 
     private fun setProviderGlyphsState(value: Set<AgentProvider>) {
         val field = GlobalVisualSettings::class.java.getDeclaredField("_providerGlyphs")
+        field.isAccessible = true
+        (field.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = value
+    }
+
+    private fun setMobileKernelState(value: MobileBackdropKernel) {
+        val field = GlobalVisualSettings::class.java.getDeclaredField("_mobileBackdropKernel")
         field.isAccessible = true
         (field.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = value
     }

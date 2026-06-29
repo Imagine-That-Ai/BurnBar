@@ -167,6 +167,16 @@ object SettingsManifest {
                 keywords = listOf("swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"),
             ),
             SettingsItem(
+                id = "themePrefs.mobileBackdropKernel",
+                section = SettingsSection.THEME,
+                pageRoute = SettingsPageRoute.THEME_PREFS,
+                anchorId = SettingsAnchor.MOBILE_BACKDROP_KERNEL,
+                title = "Backdrop Kernel",
+                subtitle = "Choose the same app.burnbar.ai backdrop kernel on Android",
+                keywords = MobileBackdropKernel.entries.flatMap { listOf(it.key, it.displayName.lowercase()) } +
+                    listOf("kernel", "fluid aurora", "petroleum sheen", "website background", "mobile backdrop", "android"),
+            ),
+            SettingsItem(
                 id = "themePrefs.enableSwarmSparkles",
                 section = SettingsSection.THEME,
                 pageRoute = SettingsPageRoute.THEME_PREFS,
@@ -313,6 +323,7 @@ object SettingsManifest {
             SettingsAnchor.APPEARANCE_SKIN,
             SettingsAnchor.USE_PREMIUM_SOTA_UX,
             SettingsAnchor.USE_WEBSITE_BACKGROUND,
+            SettingsAnchor.MOBILE_BACKDROP_KERNEL,
             SettingsAnchor.ENABLE_SWARM_SPARKLES,
             SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
             SettingsAnchor.BUDGET_ROW,

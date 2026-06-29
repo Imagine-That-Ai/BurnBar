@@ -68,6 +68,7 @@ class GlobalVisualSettingsLoadTest {
         installAppContext(null)
         setLoaded(false)
         resetState("_usePremiumSOTAUX", false)
+        resetState("_mobileBackdropKernel", MobileBackdropKernel.DEFAULT)
     }
 
     @After
@@ -126,6 +127,14 @@ class GlobalVisualSettingsLoadTest {
         // The failure is terminal for this process: no full prefs re-read per getter.
         GlobalVisualSettings.backgroundStyle.value
         assertEquals(1, styleReads.get())
+    }
+
+    @Test
+    fun `stored mobile backdrop kernel loads from prefs`() {
+        backing["mobileBackdropKernel"] = "petroleum-sheen"
+        installAppContext(context)
+
+        assertEquals(MobileBackdropKernel.PETROLEUM_SHEEN, GlobalVisualSettings.mobileBackdropKernel.value)
     }
 
     @Test
