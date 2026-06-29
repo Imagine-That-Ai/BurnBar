@@ -16,9 +16,7 @@ on:
       - "apps/console/**"
       - "firebase.json"
       - ".firebaserc"
-      - "functions/package.json"
-      - "functions/package-lock.json"
-      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/deploy-firebase-hosting-rest.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - ".github/workflows/deploy-hosting.yml"
   workflow_dispatch:
@@ -90,14 +88,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$ARTIFACT_ROOT"
-          mkdir -p "$ARTIFACT_ROOT/website" "$ARTIFACT_ROOT/apps/console" "$ARTIFACT_ROOT/functions" "$ARTIFACT_ROOT/scripts/ci"
+          mkdir -p "$ARTIFACT_ROOT/website" "$ARTIFACT_ROOT/apps/console" "$ARTIFACT_ROOT/scripts/ci"
 
           cp -a website/dist "$ARTIFACT_ROOT/website/dist"
           cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
           cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
-          cp functions/package.json functions/package-lock.json "$ARTIFACT_ROOT/functions/"
-          cp -R functions/vendor "$ARTIFACT_ROOT/functions/vendor"
-          cp scripts/ci/prepare-firebase-tools.sh "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
 
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode hosting \
@@ -194,28 +190,32 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare pinned Firebase CLI before auth
-        run: bash "${{ runner.temp }}/hosting-artifact/scripts/ci/prepare-firebase-tools.sh"
-
       - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
         id: hosting_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
 
       - name: Deploy Hosting (marketing + console)
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
           FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
+          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Production hosting deploy requires workload identity federation."
             exit 1
           fi
-          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
-            echo "::error::Pinned Firebase CLI path is missing or not executable."
+          if [[ -z "${FIREBASE_HOSTING_REST_ACCESS_TOKEN:-}" ]]; then
+            echo "::error::No Google access token from WIF/OIDC auth. Production hosting deploy requires token_format: access_token for the Hosting REST API."
+            exit 1
+          fi
+          if [[ ! -x "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" ]]; then
+            echo "::error::Hosting REST deployer is missing from the immutable artifact root."
             exit 1
           fi
           if [[ ! -f "$FIREBASE_HOSTING_CI_CONFIG" ]]; then
@@ -223,11 +223,11 @@ jobs:
             exit 1
           fi
           cd "$ARTIFACT_ROOT"
-          "$FIREBASE_TOOLS_BIN" deploy \
-            --only hosting \
+          node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" \
             --project burnbar \
             --config "$FIREBASE_HOSTING_CI_CONFIG" \
-            --non-interactive
+            --firebaserc "$ARTIFACT_ROOT/.firebaserc" \
+            --message "GitHub Actions ${GITHUB_SHA}"
 
   hosting-smoke-result:
     needs: deploy-hosting

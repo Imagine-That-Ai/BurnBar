@@ -176,8 +176,18 @@ expect_fail "shared deploy service account in hosting fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/hosting-legacy-token-auth"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}\n", "          service_account: ${{ secrets.GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT }}\n          token_format: access_token\n", 1).replace("          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json\n", "          FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json\n          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", 1).replace("            --non-interactive", "            --non-interactive \\\n            --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", 1).replace("          node \"$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs\" \\\n            --project burnbar \\\n            --config \"$FIREBASE_HOSTING_CI_CONFIG\" \\\n            --firebaserc \"$ARTIFACT_ROOT/.firebaserc\" \\\n            --message \"GitHub Actions ${GITHUB_SHA}\"", "          firebase deploy --only hosting --project burnbar --config \"$FIREBASE_HOSTING_CI_CONFIG\" --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"", 1)'
 expect_fail "hosting legacy Firebase token auth fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/hosting-missing-rest-token-format"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          token_format: access_token\n", "", 1)'
+expect_fail "hosting missing REST token format fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/hosting-missing-rest-token-env"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "", 1)'
+expect_fail "hosting missing REST token env fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/hosting-config-outside-artifact-root"
 copy_base_fixture "$fixture"
@@ -187,7 +197,7 @@ expect_fail "hosting config outside artifact root fails" run_gate "$fixture"
 fixture="$TMP_ROOT/hosting-node24-firebase-cli"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("node-version: 22", "node-version: 24", 1)'
-expect_fail "hosting Firebase CLI under Node 24 fails" run_gate "$fixture"
+expect_fail "hosting REST deployer under Node 24 fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-top-level-oidc"
 copy_base_fixture "$fixture"
