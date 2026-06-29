@@ -214,7 +214,7 @@ jobs:
             echo "::error::No Google access token from WIF/OIDC auth. Production hosting deploy requires token_format: access_token for the Hosting REST API."
             exit 1
           fi
-          if [[ ! -x "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" ]]; then
+          if [[ ! -f "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" ]]; then
             echo "::error::Hosting REST deployer is missing from the immutable artifact root."
             exit 1
           fi
