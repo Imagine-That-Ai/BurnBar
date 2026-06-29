@@ -9,26 +9,33 @@ import SwiftUI
 /// altitude. A single slow top-light rakes the slab — `lightAng = -1.05 + 0.5·sin(t·0.04)`
 /// — so the per-chip `lit = clamp(n·light·0.5+0.5)` migrates and specular rims crawl.
 /// Chips draw DEPTH-SORTED back→front (the load-bearing correctness detail) so the
-/// cluster reads as one carved, semi-transparent solid. Per chip, back→front:
-///   1. a colored smoked rounded-quad BASE (.normal) — `lerp(color, cool-slate, smoke)`
-///      darkened by depth `·(0.62+0.28·depth)`, alpha `clamp((dark .52/light .6)·f, …, .85)`;
-///   2. a white facet-shading overlay quad (additive on dark / source-over on light)
-///      at alpha `clamp((dark .5/light .34)·(0.5+0.7·lit)·f, …, .9)` — the lit form;
-///   3. a soft inner trapped-glow radial when `lit>0.42`, gated by a 1.8s breath
-///      (dropped under battery throttle).
-/// A second face-culled pass strokes a thin near-white specular rim on the lit edge
-/// of facets whose `n·light ≥ 0.45`, twinkling on `t·1.7+phase` (dropped under throttle).
+/// cluster reads as one carved, semi-transparent solid. The render is layered for
+/// real volumetric depth — soft glow UNDER, saturated body, hot catch ON TOP:
+///   0. (DARK) a real GAUSSIAN bloom bed — every chip's color pushed toward
+///      stage.accent + a jewel-ramp hue and kissed white, drawn additively into one
+///      `.blur` layer so the whole field rests in a cohesive luminous wash (presence
+///      floor 0.42 + a strong lit-side lift). The heaviest pass → dropped on throttle.
+///   1. the depth-sorted colored smoked BASE slabs (.normal) — `lerp(color, cool-slate,
+///      smoke)` shaded `·(0.58+0.34·depth)` (back of the slab darker), alpha rising with
+///      depth so the nearer face reads as solid mass and the chips stay LEGIBLE.
+///   2. light, GATED TO THE LIT SIDE so the shadow side stays deep (the key to depth,
+///      not a whiteout): a directional corner SHEEN sprite at the lit corner, a
+///      breathing interior TRAPPED-GLOW radial (`lit>0.44`), and a tight HOT CORE
+///      sprite on the strongest catches (`lit>0.66`) — additive on dark / source-over
+///      on light. On LIGHT a soft contact SHADOW under each chip gives stacked depth.
+///   3. a face-culled near-white specular RIM stroke on facets whose `n·light ≥ 0.45`,
+///      twinkling on `t·1.7+phase` (dropped under throttle).
 /// Sub-pixel sway (`sin/cos(t·~0.5+phase)`) breathes the volume without blurring the
 /// silhouette. `reduced` → a poised STILL slab (light frozen at -1.05, breath 0.6,
 /// no sway, twinkle 0.7). Normals/depth/phase/rotation and the depth draw-order are
-/// baked once per count; the exact alpha/cool/smoke constants ARE the look.
+/// baked once per count; sprites (sheen / trapped-glow / hot-core) resolve once per
+/// frame and draw many.
 ///
-/// Faithful simplification vs. source: the source bakes 12 linear-gradient chip
-/// sprites (a cool→rim luminance ramp along the lit diagonal). Here the in-chip
-/// gradient — sub-pixel at the 1.4…7px chip footprint — is collapsed to one uniform
-/// white overlay quad keyed to `lit`, so the dominant per-chip brightness + the
-/// depth sort + the crawling rims (the actual readable signals) are preserved with
-/// ≤2 fills + 1 stroke per chip and zero per-frame gradient allocation.
+/// Premium vs. the source's 12 baked linear-gradient chip sprites: the cool→rim
+/// facet ramp is reproduced as an OFFSET radial sheen sprite at the lit corner
+/// (light catching one edge) over a depth-shaded colored body, plus a real Gaussian
+/// bloom bed the source can't cheaply do on web — so the slab glows on dark, reads
+/// crisply on light, and never collapses to flat dots or blows out to white mush.
 public final class SmokedGlassSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
@@ -122,14 +129,21 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         let lx = cos(lightAng), ly = sin(lightAng)
         // 1.8s breath modulates the trapped-glow alpha (the medium inhaling).
         let breath = reduced ? 0.6 : 0.5 + 0.5 * sin(t * (TAU / 1.8))
-        // chip footprint scales with the cloud so it stays a packed solid.
-        let chipR = clampD(sizePx * 1.85 + radius * 0.012, 1.4, 7)
+        // chip footprint scales with the cloud so it stays a packed solid. Slightly
+        // larger than the source so the slab reads as solid mass, not gappy dots.
+        // Chip footprint stays a small jewel in screen px; only a whisper of the
+        // cloud span so it never balloons on a sparse full-screen swarm.
+        let chipR = clampD(sizePx * 1.9 + radius * 0.006, 1.7, 5.5)
 
         // smoked, low-saturation cool slate the base is pulled toward.
-        let smoke = dark ? 0.32 : 0.18
-        let coolR = dark ? 120.0 / 255 : 70.0 / 255
-        let coolG = dark ? 140.0 / 255 : 84.0 / 255
-        let coolB = dark ? 175.0 / 255 : 116.0 / 255
+        let smoke = dark ? 0.30 : 0.18
+        let coolR = dark ? 122.0 / 255 : 70.0 / 255
+        let coolG = dark ? 142.0 / 255 : 84.0 / 255
+        let coolB = dark ? 178.0 / 255 : 116.0 / 255
+
+        // jewel glow tint per chip — its own color mixed toward stage.accent and a
+        // jewel-ramp sample (richer than a flat accent), used for the bloom bed.
+        let accent = frame.stage.accent
 
         // ── per-frame preloop: sub-pixel sway + facet lighting (reused by all passes)
         for i in 0..<count {
@@ -147,83 +161,183 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
             litA[i] = clampD(ndl * 0.5 + 0.5, 0, 1)    // 0 away → 1 toward light
         }
 
-        // ── pass 1: depth-sorted chips — colored smoked BASE + white facet overlay
-        //            + soft trapped glow, painted back→front (matches source pass 1) ──
-        let baseA = clampD((dark ? 0.52 : 0.6) * f, 0, 0.85)
-        let drawR = chipR * 1.18
-        // trapped-glow sprite: soft inner white radial (resolved ONCE per frame).
-        let trapImg = baseCtx.resolve(sprites.radial(diameter: 40, stops: [
+        // ── cached sprites (resolved ONCE per frame, drawn many) ─────────────────
+        // soft inner trapped-glow radial: light caught in the medium.
+        let trapImg = baseCtx.resolve(sprites.radial(diameter: 44, stops: [
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.95)),
-            (0.4, RGBA(r: 1, g: 1, b: 1, a: 0.34)),
+            (0.42, RGBA(r: 1, g: 1, b: 1, a: 0.34)),
             (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
+        // a soft directional sheen — the bright catch where a facet meets the light.
+        let sheenImg = baseCtx.resolve(sprites.radial(diameter: 52, stops: [
+            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
+            (0.45, RGBA(r: 1, g: 1, b: 1, a: 0.38)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+        ]))
+        // a tight hot core for the most strongly-lit chips (the brightest catch).
+        let coreImg = baseCtx.resolve(sprites.whiteGlow(diameter: 48))
 
-        // colored smoked base fill for chip `i` (the glass body mass).
-        func paintBase(_ ctx: inout GraphicsContext, _ i: Int) {
-            let base = frame.dots[i].rgba
-            let dep = depthA[i]
-            let r0 = lerp(base.r, coolR, smoke) * (0.62 + 0.28 * dep)
-            let g0 = lerp(base.g, coolG, smoke) * (0.62 + 0.28 * dep)
-            let b0 = lerp(base.b, coolB, smoke) * (0.62 + 0.30 * dep)
-            let col = RGBA(r: clampD(r0, 0, 1), g: clampD(g0, 0, 1), b: clampD(b0, 0, 1), a: baseA)
-            ctx.fill(chipPath(swX[i], swY[i], chipR, rotC[i], rotS[i]), with: .color(col.color))
-        }
-        // white facet-shading overlay + breathing trapped glow for chip `i`.
-        // `ctx`'s blend mode is set by the caller (additive on dark / source-over on light).
-        func paintFacet(_ ctx: inout GraphicsContext, _ i: Int) {
-            let lit = litA[i]
-            let facetA = clampD((dark ? 0.5 : 0.34) * (0.5 + 0.7 * lit) * f, 0, 0.9)
-            if facetA > 0.004 {
-                ctx.fill(chipPath(swX[i], swY[i], drawR, rotC[i], rotS[i]),
-                         with: .color(.white.opacity(facetA)))
-            }
-            // soft inner trapped glow — light caught in the medium, breathing.
-            // An extra halo pass: dropped when battery-throttled.
-            if !lite && lit > 0.42 {
-                let tg = (lit - 0.42) / 0.58
-                let ta = clampD((dark ? 0.3 : 0.16) * tg * (0.6 + 0.4 * breath) * f, 0, 0.55)
-                if ta > 0.01 {
-                    let tr = chipR * (0.85 + 0.4 * tg)
-                    var g = ctx
-                    g.opacity = ta
-                    g.draw(trapImg, in: CGRect(x: swX[i] - tr, y: swY[i] - tr, width: tr * 2, height: tr * 2))
+        // ── layer 0 (DARK only): a real GAUSSIAN bloom bed under the slab. Each
+        //    chip's color, pushed toward accent + a jewel-ramp hue and kissed white,
+        //    is drawn additively into one blurred layer so the whole field rests in
+        //    a cohesive luminous wash — brighter on the lit side, never empty on the
+        //    shadow side. This is the heaviest extra pass → dropped under throttle. ─
+        if dark && !lite {
+            let bloomDisc = chipR * 2.7
+            let blurR = max(4.0, chipR * 1.9)
+            let bloom = baseCtx
+            bloom.drawLayer { layer in
+                layer.addFilter(.blur(radius: blurR))
+                layer.blendMode = .plusLighter
+                for i in 0..<count {
+                    let d = frame.dots[i]
+                    let lit = litA[i]
+                    let dep = depthA[i]
+                    // jewel-tinted glow: own color → accent → ramp hue, lifted white.
+                    let hue = accent.mix(with: SubstrateRamp.sample(SubstrateRamp.iris, d.colorIndex), amount: 0.34)
+                    let gcol = d.rgba.mix(with: hue, amount: 0.42).toWhite(0.10)
+                    // presence everywhere (0.42 floor) + a strong lit-side lift.
+                    let k = (0.42 + 0.58 * lit) * (0.7 + 0.3 * dep)
+                    let a = clampD(0.16 * k * f, 0, 0.42)
+                    layer.fill(
+                        Path(ellipseIn: CGRect(x: d.x - bloomDisc, y: d.y - bloomDisc,
+                                               width: bloomDisc * 2, height: bloomDisc * 2)),
+                        with: .color(gcol.withOpacity(a).color))
                 }
             }
         }
 
+        // colored smoked base fill for chip `i` (the glass body mass). Deeper chips
+        // sit darker (back of the slab); nearer chips brighter + more opaque so the
+        // depth stack reads as one carved solid.
+        @inline(__always)
+        func baseColor(_ i: Int) -> RGBA {
+            let base = frame.dots[i].rgba
+            let dep = depthA[i]
+            let shade = 0.58 + 0.34 * dep
+            let r0 = lerp(base.r, coolR, smoke) * shade
+            let g0 = lerp(base.g, coolG, smoke) * shade
+            let b0 = lerp(base.b, coolB, smoke) * shade
+            let a = clampD((dark ? 0.5 + 0.32 * dep : 0.6 + 0.24 * dep) * f, 0, dark ? 0.92 : 0.95)
+            return RGBA(r: clampD(r0, 0, 1), g: clampD(g0, 0, 1), b: clampD(b0, 0, 1), a: a)
+        }
+
         if dark {
-            // Dark: the overlay is additive (.plusLighter), which COMMUTES across
-            // layers, so we may split into two whole-field passes (cheaper state
-            // churn) without changing the composite — base pass then glow pass.
-            var fillCtx = baseCtx
-            fillCtx.blendMode = .normal
-            for oi in 0..<count { paintBase(&fillCtx, orderA[oi]) }
-            var overlayCtx = baseCtx
-            overlayCtx.blendMode = .plusLighter
-            for oi in 0..<count { paintFacet(&overlayCtx, orderA[oi]) }
+            // ── DARK ──────────────────────────────────────────────────────────────
+            // Body (.normal, back→front): the depth-sorted colored smoked slabs. The
+            // additive light layers COMMUTE, so we draw all bodies first (correct
+            // occlusion), then all highlights in one additive pass.
+            var body = baseCtx
+            body.blendMode = .normal
+            for oi in 0..<count {
+                let i = orderA[oi]
+                body.fill(chipPath(swX[i], swY[i], chipR, rotC[i], rotS[i]),
+                          with: .color(baseColor(i).color))
+            }
+
+            // Highlights (.plusLighter): gated to the lit side so the shadow side
+            // stays deep + smoked (real depth, not whiteout). Per chip: a corner
+            // sheen catch, a breathing interior glow, and a tight hot core on the
+            // brightest facets.
+            var glow = baseCtx
+            glow.blendMode = .plusLighter
+            for i in 0..<count {
+                let lit = litA[i]
+                if lit <= 0.30 { continue }
+                let x = swX[i], y = swY[i]
+                // (a) directional sheen at the lit corner.
+                let sk = smoothstep(0.30, 1.0, lit)
+                let sa = clampD(0.42 * sk * f, 0, 0.55)
+                if sa > 0.01 {
+                    let sr = chipR * 1.05
+                    let ex = x + lx * chipR * 0.5
+                    let ey = y + ly * chipR * 0.5
+                    glow.opacity = sa
+                    glow.draw(sheenImg, in: CGRect(x: ex - sr, y: ey - sr, width: sr * 2, height: sr * 2))
+                }
+                // (b) breathing interior trapped glow.
+                if !lite && lit > 0.44 {
+                    let tg = (lit - 0.44) / 0.56
+                    let ta = clampD(0.26 * tg * (0.6 + 0.4 * breath) * f, 0, 0.42)
+                    if ta > 0.01 {
+                        let tr = chipR * (0.7 + 0.35 * tg)
+                        glow.opacity = ta
+                        glow.draw(trapImg, in: CGRect(x: x - tr, y: y - tr, width: tr * 2, height: tr * 2))
+                    }
+                }
+                // (c) tight hot core on the strongest catches (the brightest point).
+                if lit > 0.66 {
+                    let tw = reduced ? 0.7 : 0.6 + 0.4 * sin(t * 1.7 + phaseA[i] * 1.7)
+                    let ck = smoothstep(0.66, 1.0, lit) * tw
+                    let ca = clampD(0.5 * ck * f, 0, 0.7)
+                    if ca > 0.01 {
+                        let cr = chipR * 0.62
+                        glow.opacity = ca
+                        glow.draw(coreImg, in: CGRect(x: x - cr, y: y - cr, width: cr * 2, height: cr * 2))
+                    }
+                }
+            }
         } else {
-            // Light: the overlay is source-over (.normal), which does NOT commute —
-            // a split would let a FARTHER chip's facet land over a NEARER chip's
-            // base. Fuse base+facet+trap into one back→front loop on a single
-            // .normal ctx so a nearer base correctly occludes a farther facet
-            // (matches the source's per-chip back-to-front draw).
+            // ── LIGHT ─────────────────────────────────────────────────────────────
+            // Source-over does NOT commute, so draw each chip's full stack back→front
+            // in one pass: a soft contact shadow (depth), the colored smoked body,
+            // the corner sheen, and the interior glow — a nearer chip correctly
+            // occludes a farther one's highlight.
             var ctx = baseCtx
             ctx.blendMode = .normal
             for oi in 0..<count {
                 let i = orderA[oi]
-                paintBase(&ctx, i)
-                paintFacet(&ctx, i)
+                let x = swX[i], y = swY[i]
+                let lit = litA[i]
+                let dep = depthA[i]
+                // (a) contact shadow under the chip → stacked-slab depth on a bright
+                //     page. Nearer chips cast a stronger shadow.
+                let shA = clampD((0.10 + 0.10 * dep) * f, 0, 0.22)
+                if shA > 0.01 {
+                    let so = chipR * 0.3
+                    ctx.opacity = 1
+                    ctx.fill(chipPath(x + so, y + so * 1.2, chipR, rotC[i], rotS[i]),
+                             with: .color(RGBA(r: 0.20, g: 0.25, b: 0.38, a: shA).color))
+                }
+                // (b) colored smoked body.
+                ctx.opacity = 1
+                ctx.fill(chipPath(x, y, chipR, rotC[i], rotS[i]),
+                         with: .color(baseColor(i).color))
+                // (c) corner sheen.
+                if lit > 0.28 {
+                    let sk = smoothstep(0.28, 1.0, lit)
+                    let sa = clampD(0.36 * sk * f, 0, 0.5)
+                    if sa > 0.01 {
+                        let sr = chipR * 0.95
+                        let ex = x + lx * chipR * 0.46
+                        let ey = y + ly * chipR * 0.46
+                        ctx.opacity = sa
+                        ctx.draw(sheenImg, in: CGRect(x: ex - sr, y: ey - sr, width: sr * 2, height: sr * 2))
+                    }
+                }
+                // (d) soft interior glow.
+                if !lite && lit > 0.44 {
+                    let tg = (lit - 0.44) / 0.56
+                    let ta = clampD(0.15 * tg * (0.6 + 0.4 * breath) * f, 0, 0.3)
+                    if ta > 0.01 {
+                        let tr = chipR * 0.72
+                        ctx.opacity = ta
+                        ctx.draw(trapImg, in: CGRect(x: x - tr, y: y - tr, width: tr * 2, height: tr * 2))
+                    }
+                }
             }
         }
 
-        // ── pass 2: thin specular rim strokes on light-facing facets (face-culled) ──
-        // Orientation culling so the slab catches a coherent specular sheet, not every
-        // chip. An extra pass: dropped when battery-throttled.
+        // ── specular rim strokes on light-facing facets (face-culled) ──────────────
+        // Orientation culling so the slab catches a coherent crawling specular sheet,
+        // not every chip. Crisp near-white edges, additive on dark / source-over on
+        // light. An extra pass: dropped when battery-throttled.
         if !lite {
             var specCtx = baseCtx
             specCtx.blendMode = dark ? .plusLighter : .normal
-            let specCap = dark ? 0.95 : 0.7
-            let lineW = dark ? 1.1 : 1.0
+            specCtx.opacity = 1
+            let specCap = dark ? 0.85 : 0.62
+            let lineW = dark ? 1.25 : 1.0
             for oi in 0..<count {
                 let i = orderA[oi]
                 let ndl = nxA[i] * lx + nyA[i] * ly
@@ -231,7 +345,7 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
                 let spec = (ndl - 0.45) / 0.55             // 0…1 over the lit band
                 // faint per-chip twinkle so glints scintillate as the light drifts.
                 let tw = reduced ? 0.7 : 0.65 + 0.35 * sin(t * 1.7 + phaseA[i] * 1.7)
-                let a = clampD((dark ? 0.5 : 0.4) * spec * tw * f, 0, specCap)
+                let a = clampD((dark ? 0.55 : 0.42) * spec * tw * f, 0, specCap)
                 if a < 0.02 { continue }
                 let x = swX[i], y = swY[i]
                 // rim runs along the lit edge (perpendicular to the light dir),

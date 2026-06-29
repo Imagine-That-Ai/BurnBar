@@ -24,8 +24,8 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
     public init() {}
 
     // ── tunables (mirror the source) ────────────────────────────────────────
-    private static let FLOOR = 0.16   // dim legibility glow every node always emits
-    private static let GAMMA = 1.9    // contrast on the fringe product (antinodes pop)
+    private static let FLOOR = 0.22   // legibility glow every node always emits (lifted so the mark FILLS)
+    private static let GAMMA = 1.7    // contrast on the fringe product (eased so bands stay luminous, antinodes still pop)
     private static let DRIFT_A = 0.55 // primary grating temporal drift (rad/s)
     private static let DRIFT_B = 0.44 // second grating drift (~0.8×) → the beat envelope
     private static let BEAT = 0.085   // slow whole-mark breathing of the carrier freq
@@ -62,6 +62,29 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         let floor = Self.FLOOR
         let gamma = Self.GAMMA
 
+        // Spectral interferogram palette: real two-grating fringes carry a thin-film
+        // rainbow, so the moiré bands are tinted across the iris jewel ramp (not just
+        // brightness). The local fringe phase indexes the ramp → adjacent antinodes
+        // shimmer cyan/mint/gold/rose as the gratings crawl. The dot's own brand hue
+        // is preserved and only nudged toward this spectral tint, never overwritten.
+        let iris = SubstrateRamp.iris
+        let accent = frame.stage.accent
+
+        // The interference field, sampled in the mark's own frame. Returns the
+        // floor-lifted, contrast-shaped, form-gated intensity plus the blended
+        // grating value that indexes the spectral ramp. Captures the grating
+        // constants; allocates nothing (recomputed in both passes, cheap sin math).
+        @inline(__always)
+        func fringe(_ px: Double, _ py: Double) -> (inten: Double, gmix: Double) {
+            let g1 = 0.5 + 0.5 * sin(px * kx + py * ky * 0.18 + phA)
+            let u2 = px * c2 - py * s2
+            let g2 = 0.5 + 0.5 * sin(u2 * k2 + phB)
+            var inten = pow(g1 * g2, gamma)
+            inten = floor + (1 - floor) * inten
+            inten *= form
+            return (inten, g1 * 0.5 + g2 * 0.5)
+        }
+
         var ctx = baseCtx
         ctx.blendMode = dark ? .plusLighter : .normal
 
@@ -75,8 +98,41 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
             (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ])) : nil
 
-        let bodyR = max(0.9, sizePx * 1.25)        // dark colored-body radius (constant)
-        let coreR = max(0.85, sizePx * 0.7)        // light crisp-core radius (constant)
+        // ── (0) TRUE GAUSSIAN BLOOM — the premium depth layer ────────────────────
+        // One real blurred wash the whole interferogram rests in, so the field
+        // clearly FILLS its silhouette and the antinode bands GLOW instead of
+        // reading as faint dots. Every node deposits a spectral-tinted, intensity-
+        // scaled disc into a single blurred layer; on dark it's additive
+        // (`.plusLighter`), on light it's `.normal` (overlap saturates into soft
+        // colored haze without blowing the bright canvas out). This is the heaviest
+        // extra pass → dropped under battery throttle, where the crisp passes below
+        // still read richly.
+        if !lite {
+            let bloomR = sizePx * (dark ? 2.9 : 2.1)
+            let blurRad = sizePx * (dark ? 3.4 : 2.3)
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: blurRad))
+                layer.blendMode = dark ? .plusLighter : .normal
+                for i in 0..<count {
+                    let d = frame.dots[i]
+                    let (inten, gmix) = fringe(d.x - cx, d.y - cy)
+                    let k = clampD(inten, 0, 1.9)
+                    if k < 0.05 { continue }
+                    let spec = SubstrateRamp.sample(iris, frac(gmix + d.colorIndex * 0.2))
+                    // glow hue: brand color pushed hard toward the spectral fringe tint,
+                    // kissed toward the stage accent + white so antinodes go luminous and
+                    // the band rainbow clearly tints the wash (richer spectral presence).
+                    let glowCol = d.rgba.mix(with: spec, amount: 0.62)
+                        .mix(with: accent, amount: dark ? 0.22 : 0.05)
+                        .toWhite(dark ? 0.16 : 0.0)
+                    let r = bloomR * (0.6 + 0.9 * min(k, 1.4))
+                    let a = dark ? clampD(0.42 * k, 0, 0.88) : clampD(0.24 * k, 0, 0.5)
+                    layer.fill(Path(ellipseIn: CGRect(x: d.x - r, y: d.y - r,
+                                                      width: r * 2, height: r * 2)),
+                               with: .color(glowCol.withOpacity(a).color))
+                }
+            }
+        }
 
         for i in 0..<count {
             let d = frame.dots[i]
@@ -85,54 +141,65 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
             let px = x - cx
             let py = y - cy
 
-            // two gratings (axis-aligned A, rotated B): their PRODUCT is the
-            // interference. Each in [0,1].
-            let g1 = 0.5 + 0.5 * sin(px * kx + py * ky * 0.18 + phA)
-            let u2 = px * c2 - py * s2
-            let g2 = 0.5 + 0.5 * sin(u2 * k2 + phB)
-
-            // interference brightness: product, contrast-shaped, lifted off the floor.
-            var inten = pow(g1 * g2, gamma)
-            inten = floor + (1 - floor) * inten
-            inten *= form
+            let (inten, gmix) = fringe(px, py)
             if inten <= 0 { continue }
 
-            let col = d.rgba
+            // spectral fringe tint for this node, blended off its own brand hue.
+            let spec = SubstrateRamp.sample(iris, frac(gmix + d.colorIndex * 0.2))
 
             if dark {
                 let k = clampD(inten, 0, 1.9)
-                // (1) primary emissive node — cached white bloom sized by k.
-                let r0 = sizePx * (2.0 + 2.4 * min(k, 1.0))
+                // (1) primary emissive node — cached white bloom sized by k. Boosted
+                //     opacity + reach so even floor-lit nodes carry strong glow (no faint
+                //     gaps) and antinodes flare hard — the field reads as light, not dots.
+                let r0 = sizePx * (2.4 + 2.8 * min(k, 1.0))
                 if let glow {
                     var g = ctx
-                    g.opacity = clampD(0.5 * k, 0, 0.95)
+                    g.opacity = clampD(0.44 + 0.72 * k, 0, 1.0)
                     g.draw(glow, in: CGRect(x: x - r0, y: y - r0, width: r0 * 2, height: r0 * 2))
                 }
-                // (2) colored body carries the brand hue through the bloom.
+                // (2) saturated spectral body — the brand hue carried through the
+                //     bloom, pushed harder toward the fringe tint for richer spectral
+                //     presence (the band rainbow clearly colors each node).
+                let bodyCol = d.rgba.mix(with: spec, amount: 0.46)
+                let bodyR = max(1.0, sizePx * 1.5)
                 ctx.fill(Path(ellipseIn: CGRect(x: x - bodyR, y: y - bodyR,
                                                 width: bodyR * 2, height: bodyR * 2)),
-                         with: .color(col.withOpacity(clampD(0.42 * k, 0, 0.85)).color))
-                // (3) antinode bloom: brightest nodes get a wide faint disc.
-                // Dropped under battery throttle (the expendable extra pass).
-                if !lite, k > 0.85, let glow {
-                    let rb = sizePx * (4.5 + 3.0 * (k - 0.85))
+                         with: .color(bodyCol.withOpacity(clampD(0.64 * k, 0, 0.95)).color))
+                // (3) hot core ON TOP — crisp luminous point that whitens at antinodes
+                //     (depth: blur wash → spectral body → hot core). Dim floor nodes
+                //     stay colored; bright bands punch white-hot with extra contrast.
+                let coreR = max(0.72, sizePx * 0.62)
+                let coreCol = bodyCol.toWhite(0.36 + 0.55 * min(k, 1.0))
+                ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
+                                                width: coreR * 2, height: coreR * 2)),
+                         with: .color(coreCol.withOpacity(clampD(0.42 + 0.6 * (k - 0.4), 0.28, 1.0)).color))
+                // (4) antinode bloom: bright nodes get a wide spectral-white disc — wider,
+                //     more of them, and brighter so the moiré antinodes clearly blaze.
+                //     Dropped under battery throttle (the expendable extra pass).
+                if !lite, k > 0.7, let glow {
+                    let rb = sizePx * (4.8 + 3.6 * (k - 0.7))
                     var g = ctx
-                    g.opacity = clampD(0.12 * (k - 0.85) * 2.4, 0, 0.3)
+                    g.opacity = clampD(0.2 * (k - 0.7) * 2.6, 0, 0.46)
                     g.draw(glow, in: CGRect(x: x - rb, y: y - rb, width: rb * 2, height: rb * 2))
                 }
             } else {
-                // LIGHT canvas: source-over accent discs; alpha IS the fringe so the
-                // bands read as tonal modulation and never blow the canvas to white.
+                // LIGHT canvas: source-over discs; alpha IS the fringe so the bands
+                // read as tonal modulation and never blow the canvas to white. The
+                // spectral tint + boosted alpha give crisp, saturated presence.
                 let k = clampD(inten, 0, 1.4)
-                // soft outer halo.
-                let haloR = sizePx * (1.8 + 1.2 * min(k, 1.0))
+                // soft outer halo — a touch wider + richer spectral tint for presence.
+                let haloCol = d.rgba.mix(with: spec, amount: 0.36)
+                let haloR = sizePx * (2.0 + 1.4 * min(k, 1.0))
                 ctx.fill(Path(ellipseIn: CGRect(x: x - haloR, y: y - haloR,
                                                 width: haloR * 2, height: haloR * 2)),
-                         with: .color(col.withOpacity(clampD(0.14 * k, 0, 0.34)).color))
-                // crisp core that keeps the silhouette dense.
+                         with: .color(haloCol.withOpacity(clampD(0.26 * k, 0, 0.5)).color))
+                // crisp saturated core that keeps the silhouette dense.
+                let coreCol = d.rgba.mix(with: spec, amount: 0.26)
+                let coreR = max(0.92, sizePx * 0.82)
                 ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR,
                                                 width: coreR * 2, height: coreR * 2)),
-                         with: .color(col.withOpacity(clampD(0.52 + 0.4 * (k - floor), 0.3, 0.95)).color))
+                         with: .color(coreCol.withOpacity(clampD(0.6 + 0.42 * (k - floor), 0.4, 0.97)).color))
             }
         }
 

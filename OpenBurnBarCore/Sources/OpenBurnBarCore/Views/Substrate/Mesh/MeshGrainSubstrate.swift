@@ -13,11 +13,18 @@ import SwiftUI
 /// grains keep their bright brand hue (the dense stipple = the shape); grains that
 /// wander lerp by far² toward a cool iris jewel tint and dim.
 ///
-/// DARK canvas → additive `.plusLighter`: a cached soft white mote bloom sprite +
-/// a small colored body + a whitened lifted core on settled grain. LIGHT canvas →
-/// `.normal` cool ink motes (colored body + faint settled halo), never blown out.
-/// `reduced` → cohesion fixed 0.92, no integration/jitter, static brightness — a
-/// poised settled stipple. `batteryThrottled` → drops the white bloom sprite pass.
+/// DARK canvas → additive `.plusLighter`, four layered passes for real depth and
+/// PRESENCE: a WIDE Gaussian bloom BED (`.blur` + `.plusLighter`, broad radius)
+/// whose ~880 overlapping discs fuse into one continuous luminous iridescent wash
+/// that lifts the whole silhouette off the black, a tighter per-mote bloom halo on
+/// top, then saturated brand-hued bodies, then hot whitened cores. The field glows
+/// rather than whispers — density, sizes and alphas are pushed for real presence.
+/// LIGHT canvas →
+/// `.normal`: a soft blurred colored haze under + crisp cool ink motes with a deep
+/// micro-core, never blown out. `reduced` → cohesion fixed 0.92, no integration/
+/// jitter, static brightness — a poised, still settled stipple (bloom still drawn).
+/// `batteryThrottled` → drops only the heaviest extra pass (the blur layer); the
+/// crisp luminous motes still carry full presence.
 /// Persistent grain arrays are seeded ONCE per point-count; nothing allocates in
 /// the hot loop. Destruction inputs (dissolve/melt/armed) are absent here, so the
 /// held look defaults them to 0 with all homes alive.
@@ -25,9 +32,11 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
 
-    // Tuning constants (verbatim from the source).
-    private static let grainsPerPoint = 1.6
-    private static let grainBudget = 520
+    // Tuning constants. Density raised over the web source so the mote-cloud
+    // clearly FILLS its silhouette (the web port read too sparse/dim): more
+    // grains per point and a higher budget pack the field for real presence.
+    private static let grainsPerPoint = 2.6
+    private static let grainBudget = 880
     private static let cohesionFloor = 0.35
 
     // Persistent grain state — seeded ONCE (lazily), sized to the live point count.
@@ -39,6 +48,19 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
     private var dvy: [Double] = []
     private var gseed: [Double] = []
     private var builtFor = -1
+
+    // Reusable per-grain draw scratch (computed in the integration pass, consumed
+    // by the bloom + crisp passes). Allocated ONCE per point-count alongside the
+    // grain state, so the multi-pass render never allocates in the hot loop.
+    private var px: [Double] = []   // final screen x
+    private var py: [Double] = []   // final screen y
+    private var pk: [Double] = []   // brightness 0…1.6
+    private var pfar: [Double] = [] // distance-from-home 0…1
+    private var psz: [Double] = []  // grain size px
+    private var pcr: [Double] = []  // iridescent body color r
+    private var pcg: [Double] = []  // g
+    private var pcb: [Double] = []  // b
+    private var poa: [Double] = []  // engine per-dot opacity
 
     /// Analytic divergence-free curl of a sum-of-sines stream function — the dust
     /// "breeze" that advects loose grain. Allocation-free, deterministic.
@@ -67,6 +89,15 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         dx = [Double](repeating: 0, count: want)
         dy = [Double](repeating: 0, count: want)
         gseed = [Double](repeating: 0, count: want)
+        px = [Double](repeating: 0, count: want)
+        py = [Double](repeating: 0, count: want)
+        pk = [Double](repeating: 0, count: want)
+        pfar = [Double](repeating: 0, count: want)
+        psz = [Double](repeating: 0, count: want)
+        pcr = [Double](repeating: 0, count: want)
+        pcg = [Double](repeating: 0, count: want)
+        pcb = [Double](repeating: 0, count: want)
+        poa = [Double](repeating: 0, count: want)
         for i in 0..<want {
             // round-robin homes so every point is covered, extras pile on dense regions.
             home[i] = i % count
@@ -117,20 +148,13 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         let irisPhase = t * (TAU / 14)
         let jf = floor(t * 24) // ~24Hz grain refresh
 
-        var ctx = baseCtx
-        ctx.blendMode = dark ? .plusLighter : .normal
+        // Accent / iris tint for the bloom haze: settled grain blooms in its brand
+        // hue, wandering grain shifts toward the cool jewel accent — the field reads
+        // iridescent, never grey.
+        let accent = frame.stage.accent
 
-        // Resolve the additive soft white mote ONCE per frame, draw it many times.
-        // Skip on light canvas and when battery-throttled.
-        let mote: GraphicsContext.ResolvedImage? = (dark && !lite)
-            ? ctx.resolve(sprites.radial(diameter: 32, stops: [
-                (0.0, RGBA(r: 1, g: 1, b: 1, a: 0.85)),
-                (0.28, RGBA(r: 1, g: 1, b: 1, a: 0.42)),
-                (0.6, RGBA(r: 1, g: 1, b: 1, a: 0.12)),
-                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
-              ]))
-            : nil
-
+        // ── PASS 1 — integrate the particle system & bake per-grain draw state into
+        //    the reusable scratch arrays. No drawing here, no allocation.
         for i in 0..<n {
             let hi = home[i]
             let d = frame.dots[hi]
@@ -175,9 +199,6 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
                 jy = (shash(Double(i) * 3.71 + jf * 1.7) - 0.5) * 0.9
             }
 
-            let x = hx + ox + jx
-            let y = hy + oy + jy
-
             // distance-from-home → 0 settled .. 1 far in the haze.
             let dist = (ox * ox + oy * oy).squareRoot()
             let far = clampD(dist / (looseR + 1), 0, 1)
@@ -186,50 +207,168 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
             let brand = d.rgba
             let tint = iris(irisPhase + phase * 0.3 + far * 1.4)
             let mixT = far * far
-            let cr = brand.r + (tint.0 - brand.r) * mixT
-            let cg = brand.g + (tint.1 - brand.g) * mixT
-            let cb = brand.b + (tint.2 - brand.b) * mixT
+            // pull the wandering hue toward the stage accent so the haze is a cohesive
+            // iridescent jewel sweep rather than scattered confetti.
+            let jr = tint.0 + (accent.r - tint.0) * 0.30
+            let jg = tint.1 + (accent.g - tint.1) * 0.30
+            let jb = tint.2 + (accent.b - tint.2) * 0.30
+            let cr = brand.r + (jr - brand.r) * mixT
+            let cg = brand.g + (jg - brand.g) * mixT
+            let cb = brand.b + (jb - brand.b) * mixT
 
-            // brightness: settled bright, far dim; own breathe phase keeps it shimmering.
+            // brightness: settled bright, far dim; own breathe phase keeps it
+            // shimmering. Lifted floor (0.72 base) + gentler far falloff so the
+            // whole field reads luminous instead of whispering — it should glow.
             let br = reduced ? 0.5 + 0.5 * sin(phase * 11) : 0.5 + 0.5 * sin(t * 1.7 + phase)
-            let k = clampD((0.5 + 0.5 * br) * (1 - 0.62 * far) * form, 0, 1.6)
+            let k = clampD((0.72 + 0.5 * br) * (1 - 0.34 * far) * form, 0, 1.8)
 
-            // honor the engine's per-dot opacity (folded into the resolved alpha).
-            let oa = brand.a
-            let grainSz = sizePx * (0.7 + 0.5 * seed) * (1 - 0.25 * far)
+            px[i] = hx + ox + jx
+            py[i] = hy + oy + jy
+            pk[i] = k
+            pfar[i] = far
+            // larger motes so the dense cloud reads with body, not pinpricks.
+            psz[i] = sizePx * (1.05 + 0.6 * seed) * (1 - 0.18 * far)
+            pcr[i] = cr
+            pcg[i] = cg
+            pcb[i] = cb
+            poa[i] = brand.a
+        }
 
-            if dark {
-                // soft additive white mote bloom (cached sprite).
-                if let mote {
-                    let r = grainSz * (2.0 + 0.8 * (1 - far))
-                    var g = ctx
-                    g.opacity = clampD(0.16 * k, 0, 0.5) * oa
-                    g.draw(mote, in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
+        var ctx = baseCtx
+        ctx.blendMode = dark ? .plusLighter : .normal
+
+        if dark {
+            // ── PASS 2a (dark) — WIDE BLOOM BED. A heavily-blurred, broad-radius
+            //    additive wash whose overlapping discs fuse into one continuous
+            //    iridescent glow that fills the WHOLE silhouette and lifts it off
+            //    the black — the additive bed that makes the field read instantly.
+            //    This is the single heaviest pass, so it (and only it) is dropped
+            //    under battery throttling; the tighter bloom below keeps the glow.
+            if !lite {
+                let bedR = max(8.0, sizePx * 6.5)
+                ctx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: bedR))
+                    layer.blendMode = .plusLighter
+                    for i in 0..<n {
+                        let k = pk[i]
+                        if k <= 0.02 { continue }
+                        let sz = psz[i]
+                        let r = sz * 4.4
+                        // bed hue: grain color lifted toward white so the wash reads
+                        // as light. Broad + low-alpha → a smooth luminous floor.
+                        let gr = pcr[i] + (1 - pcr[i]) * 0.34
+                        let gg = pcg[i] + (1 - pcg[i]) * 0.34
+                        let gb = pcb[i] + (1 - pcb[i]) * 0.34
+                        let a = clampD(0.16 * k, 0, 0.4) * poa[i]
+                        layer.fill(
+                            Path(ellipseIn: CGRect(x: px[i] - r, y: py[i] - r, width: r * 2, height: r * 2)),
+                            with: .color(Color(red: gr, green: gg, blue: gb).opacity(a)))
+                    }
                 }
-                // colored grain body — small, keeps the stipple read.
-                let bodyR = max(0.5, grainSz * 0.8)
+            }
+
+            // ── PASS 2b (dark) — TIGHTER GRAIN BLOOM. The per-mote glow that gives
+            //    each grain its own halo on top of the bed. Kept even under battery
+            //    throttle so the field still glows.
+            do {
+                let bloomR = max(3.0, sizePx * 2.6)
+                ctx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: bloomR))
+                    layer.blendMode = .plusLighter
+                    for i in 0..<n {
+                        let k = pk[i]
+                        if k <= 0.02 { continue }
+                        let far = pfar[i]
+                        let sz = psz[i]
+                        // wide soft glow radius — bigger for settled grain so the
+                        // core anchors brightest, looser dust feathers out.
+                        let r = sz * (2.9 + 1.5 * (1 - far))
+                        // bloom hue: the grain color lifted toward white so it reads
+                        // as light, not paint. Settled grain glows hotter.
+                        let lift = 0.34 + 0.32 * (1 - far)
+                        let gr = pcr[i] + (1 - pcr[i]) * lift
+                        let gg = pcg[i] + (1 - pcg[i]) * lift
+                        let gb = pcb[i] + (1 - pcb[i]) * lift
+                        let a = clampD(0.5 * k, 0, 0.95) * poa[i]
+                        layer.fill(
+                            Path(ellipseIn: CGRect(x: px[i] - r, y: py[i] - r, width: r * 2, height: r * 2)),
+                            with: .color(Color(red: gr, green: gg, blue: gb).opacity(a)))
+                    }
+                }
+            }
+
+            // ── PASS 3 (dark) — crisp saturated bodies + hot whitened cores ON TOP of
+            //    the bloom, so each grain reads as a real lit mote with depth:
+            //    soft glow under → saturated body → hot core.
+            for i in 0..<n {
+                let k = pk[i]
+                if k <= 0.02 { continue }
+                let far = pfar[i]
+                let sz = psz[i]
+                let oa = poa[i]
+                let x = px[i], y = py[i]
+
+                // saturated iridescent body — fuller alpha so the stipple has real
+                // weight against the bloom bed.
+                let bodyR = max(0.6, sz * 1.0)
                 ctx.fill(Path(ellipseIn: CGRect(x: x - bodyR, y: y - bodyR, width: bodyR * 2, height: bodyR * 2)),
-                         with: .color(Color(red: cr, green: cg, blue: cb).opacity(clampD(0.5 * k, 0, 0.8) * oa)))
-                // a tiny lifted (whitened) core on settled grain so the silhouette reads crisp.
-                if far < 0.35 {
-                    let coreR = max(0.4, grainSz * 0.42)
-                    let wr = cr + (1 - cr) * 0.5, wg = cg + (1 - cg) * 0.5, wb = cb + (1 - cb) * 0.5
+                         with: .color(Color(red: pcr[i], green: pcg[i], blue: pcb[i])
+                            .opacity(clampD(0.82 * k, 0, 1.0) * oa)))
+
+                // hot whitened core on settled grain — keeps the silhouette crisp.
+                if far < 0.55 {
+                    let coreR = max(0.4, sz * 0.52)
+                    let wr = pcr[i] + (1 - pcr[i]) * 0.74
+                    let wg = pcg[i] + (1 - pcg[i]) * 0.74
+                    let wb = pcb[i] + (1 - pcb[i]) * 0.74
                     ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR, width: coreR * 2, height: coreR * 2)),
                              with: .color(Color(red: wr, green: wg, blue: wb)
-                                .opacity(clampD(0.55 * k * (1 - far / 0.35), 0, 0.9) * oa)))
+                                .opacity(clampD(0.92 * k * (1 - far / 0.55), 0, 1.0) * oa)))
                 }
-            } else {
-                // LIGHT canvas: cool ink motes, source-over, never blown out.
-                let bodyR = max(0.5, grainSz * 0.92)
+            }
+        } else {
+            // ── PASS 2 (light) — soft colored HAZE: a blurred under-layer (normal
+            //    blend, never blown out) gives the dense core depth and atmosphere.
+            //    Dropped first under battery throttling.
+            if !lite {
+                let hazeR = max(3.0, sizePx * 2.0)
+                ctx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: hazeR))
+                    layer.opacity = 0.55
+                    for i in 0..<n {
+                        let k = pk[i]
+                        if k <= 0.02 { continue }
+                        let far = pfar[i]
+                        let r = psz[i] * (1.8 + 0.9 * (1 - far))
+                        let a = clampD(0.22 * k * (1 - 0.4 * far), 0, 0.4) * poa[i]
+                        layer.fill(
+                            Path(ellipseIn: CGRect(x: px[i] - r, y: py[i] - r, width: r * 2, height: r * 2)),
+                            with: .color(Color(red: pcr[i], green: pcg[i], blue: pcb[i]).opacity(a)))
+                    }
+                }
+            }
+
+            // ── PASS 3 (light) — crisp cool ink motes on top, saturated + readable.
+            for i in 0..<n {
+                let k = pk[i]
+                if k <= 0.02 { continue }
+                let far = pfar[i]
+                let sz = psz[i]
+                let oa = poa[i]
+                let x = px[i], y = py[i]
+
+                let bodyR = max(0.6, sz * 0.98)
                 ctx.fill(Path(ellipseIn: CGRect(x: x - bodyR, y: y - bodyR, width: bodyR * 2, height: bodyR * 2)),
-                         with: .color(Color(red: cr, green: cg, blue: cb)
-                            .opacity(clampD((0.32 + 0.5 * (1 - far)) * k, 0, 0.92) * oa)))
-                // a soft halo only on settled grain so the dense core feathers gently.
-                if far < 0.4 {
-                    let haloR = grainSz * 1.8
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - haloR, y: y - haloR, width: haloR * 2, height: haloR * 2)),
-                             with: .color(Color(red: cr, green: cg, blue: cb)
-                                .opacity(clampD(0.1 * k * (1 - far / 0.4), 0, 0.18) * oa)))
+                         with: .color(Color(red: pcr[i], green: pcg[i], blue: pcb[i])
+                            .opacity(clampD((0.42 + 0.5 * (1 - far)) * k, 0, 0.95) * oa)))
+
+                // a deep saturated micro-core on settled grain so the stipple bites.
+                if far < 0.45 {
+                    let coreR = max(0.4, sz * 0.46)
+                    let dr = pcr[i] * 0.7, dg = pcg[i] * 0.7, db = pcb[i] * 0.7
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - coreR, y: y - coreR, width: coreR * 2, height: coreR * 2)),
+                             with: .color(Color(red: dr, green: dg, blue: db)
+                                .opacity(clampD(0.4 * k * (1 - far / 0.45), 0, 0.6) * oa)))
                 }
             }
         }

@@ -27,15 +27,20 @@ import SwiftUI
 /// never blurs the silhouette). Greedy-NN order occasionally leaps across negative
 /// space; segments far longer than the local mean are BROKEN so gaps read as gaps.
 ///
-/// Compositing: dark stage additive `.plusLighter`; light stage `.normal`. Per
-/// non-tiny segment on dark: a wide soft bloom HALO then a thin CORE drawing the
-/// exact outline; on light only the crisp ink core. To keep the draw cheap the
-/// segments are bucketed by (altitude hue × quantized rake band) and each bucket
-/// strokes ONE batched Path — the travelling glint stays smooth while stroke calls
-/// stay ≤ a couple hundred instead of one-per-segment.
+/// Compositing: dark stage additive `.plusLighter`; light stage `.normal`. The
+/// strand is built as three depth layers for an Apple-grade luminous look:
+///   1. a TRUE GAUSSIAN bloom (`drawLayer` + `.blur` + additive) strokes the lit
+///      strand wide & saturated so light fills the silhouette and glows — soft
+///      everywhere, hot along the rake (dark only);
+///   2. a crisp accent-graded body HALO (dark) / a faint tinted under-wash (light);
+///   3. the thin near-white CORE on top (dark) / a saturated ink strand (light).
+/// To keep the draw cheap the segments are bucketed by (altitude hue × quantized
+/// rake band) into ONE geometry set per bucket, stroked a few times — the
+/// travelling glint stays smooth while stroke calls stay ≤ a few hundred.
 ///
 /// `reduced` → a poised STILL frame: the rake parks (one glint mid-strand) and the
-/// sway is zeroed. `batteryThrottled` → drop the bloom halo, keep the crisp core.
+/// sway is zeroed (the bloom remains, a held lit thread). `batteryThrottled` →
+/// drop only the gaussian bloom layer; the body halo is boosted to keep it glowing.
 /// `count == 1` → a single soft seed. The native substrate has no destruction
 /// lifecycle, so the source's dissolve/melt/armed/alive death hooks and the
 /// reaction glint heads (PASS C) are intentionally omitted (held/forming look).
@@ -64,8 +69,8 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
     private var brk: [Bool] = []
 
     // ── reusable bucket paths (hue × rake band), reset each frame ──
+    // One geometry set per bucket; stroked several times (bloom → body → core).
     private var coreBuckets: [Path] = []
-    private var haloBuckets: [Path] = []
 
     public init() {}
 
@@ -110,7 +115,9 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
 
         // ── form gate + dim baseline (the silhouette is ALWAYS faintly readable) ──
         let formGate = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.5 + 0.5
-        let baseDim = dark ? 0.16 : 0.34 // armBright == 1 (no armed hook)
+        // Lifted from the source's faint 0.16 so the whole strand reads as a living
+        // luminous thread (not a near-black maze); the rake still pops above it.
+        let baseDim = dark ? 0.24 : 0.36 // armBright == 1 (no armed hook)
         let invR = frame.cloudRadius > 0 ? 1.0 / frame.cloudRadius : 0.0
         let cy = frame.cy
 
@@ -180,20 +187,25 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
 
         // ── geometry constants ──
         let tiny = frame.cloudRadius < 56
-        let drawHalo = dark && !tiny && !throttled
-        let wHalo = max(1.0, sizePx) * 3.0
-        let wCore = clampD(sizePx * 0.6, 0.7, 1.6)
+        let wCore = clampD(sizePx * 0.6, 0.7, 1.6)        // crisp hot core
+        let wBody = max(1.0, sizePx) * 1.9                // saturated mid strand
+        let wHalo = max(1.0, sizePx) * 3.2                // wide soft body halo
+        let wBloom = max(1.5, sizePx) * 4.0               // blurred glow footprint
+        let bloomR = clampD(sizePx * 2.8, 6, 14)          // gaussian bloom radius
         let coreMax = dark ? 1.0 : 0.92
+        // The true-gaussian bloom layer is the heaviest extra pass → it is the one
+        // thing we drop under battery throttle (the body/core still glow & read).
+        let drawBloom = dark && !tiny && !throttled
+        let drawHalo = dark && !tiny
 
-        // ── PASS B: bucket segments by (altitude hue × rake band), stroke once each.
-        // Each segment's rake is evaluated at its midpoint; bucketing keeps the
-        // travelling glint smooth while collapsing ~count strokes to a couple hundred.
+        // ── PASS B: bucket segments by (altitude hue × rake band) into ONE geometry
+        // set; each bucket is stroked several times (bloom → body → core) so the
+        // travelling glint stays smooth while strokes collapse to a couple hundred.
         let nBuckets = Self.rampSteps * Self.rakeBands
         if coreBuckets.count != nBuckets {
             coreBuckets = [Path](repeating: Path(), count: nBuckets)
-            haloBuckets = [Path](repeating: Path(), count: nBuckets)
         } else {
-            for i in 0..<nBuckets { coreBuckets[i] = Path(); haloBuckets[i] = Path() }
+            for i in 0..<nBuckets { coreBuckets[i] = Path() }
         }
 
         for step in 1..<count {
@@ -206,45 +218,83 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
             let bucket = hueIdx[step] * Self.rakeBands + band
             coreBuckets[bucket].move(to: CGPoint(x: px[step - 1], y: py[step - 1]))
             coreBuckets[bucket].addLine(to: CGPoint(x: px[step], y: py[step]))
-            if drawHalo {
-                haloBuckets[bucket].move(to: CGPoint(x: px[step - 1], y: py[step - 1]))
-                haloBuckets[bucket].addLine(to: CGPoint(x: px[step], y: py[step]))
+        }
+
+        // representative rake/lit for a bucket band (used by every stroke pass).
+        @inline(__always) func bandLit(_ band: Int) -> (Double, Double) {
+            let rkRep = (Double(band) + 0.5) * Self.bandWidth
+            return (rkRep, clampD(baseDim + rkRep, 0, 1.35) * formGate)
+        }
+
+        // ── DEPTH PASS 1: true GAUSSIAN bloom (the premium glow). Every lit segment
+        // is stroked wide & saturated into a blurred, additive layer so the strand
+        // reads as volumetric light filling the silhouette — brightest along the
+        // travelling rake, a soft cyan→rose wash everywhere else.
+        if drawBloom {
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: bloomR))
+                layer.blendMode = .plusLighter
+                for hi in 0..<Self.rampSteps {
+                    let cBloom = rampCore[hi]
+                    for band in 0..<Self.rakeBands {
+                        let bucket = hi * Self.rakeBands + band
+                        if coreBuckets[bucket].isEmpty { continue }
+                        let (rkRep, litRep) = bandLit(band)
+                        let ab = clampD(litRep * 0.5, 0, 0.8)
+                        if ab <= 0.01 { continue }
+                        layer.stroke(coreBuckets[bucket],
+                                     with: .color(cBloom.withOpacity(ab).color),
+                                     style: StrokeStyle(lineWidth: wBloom * (0.8 + 0.6 * rkRep),
+                                                        lineCap: .round, lineJoin: .round))
+                    }
+                }
             }
         }
 
-        // Stroke the halo first (wide soft bloom), then the crisp core on top.
-        if drawHalo {
-            for hi in 0..<Self.rampSteps {
-                let cHalo = rampCore[hi]
-                for band in 0..<Self.rakeBands {
-                    let bucket = hi * Self.rakeBands + band
-                    if haloBuckets[bucket].isEmpty { continue }
-                    let rkRep = (Double(band) + 0.5) * Self.bandWidth
-                    let litRep = clampD(baseDim + rkRep, 0, 1.35) * formGate
-                    let ah = clampD(litRep * 0.32, 0, 0.5)
+        // ── DEPTH PASS 2: soft body halo. On dark a crisp wide accent-graded stroke
+        // (boosted when throttled to compensate for the dropped bloom); on light a
+        // low-alpha colour wash UNDER the ink for tinted depth.
+        let throttleBoost = (throttled && dark) ? 1.5 : 1.0
+        for hi in 0..<Self.rampSteps {
+            let cHalo = rampCore[hi]
+            for band in 0..<Self.rakeBands {
+                let bucket = hi * Self.rakeBands + band
+                if coreBuckets[bucket].isEmpty { continue }
+                let (rkRep, litRep) = bandLit(band)
+                if dark {
+                    if !drawHalo { continue }
+                    let ah = clampD(litRep * 0.34 * throttleBoost, 0, 0.6)
                     if ah <= 0.01 { continue }
-                    ctx.stroke(haloBuckets[bucket],
+                    ctx.stroke(coreBuckets[bucket],
                                with: .color(cHalo.withOpacity(ah).color),
-                               style: StrokeStyle(lineWidth: wHalo * (0.7 + 0.5 * rkRep),
+                               style: StrokeStyle(lineWidth: wHalo * (0.7 + 0.5 * rkRep) * throttleBoost,
+                                                  lineCap: .round, lineJoin: .round))
+                } else {
+                    // light page: a faint colour halo gives the strand depth without
+                    // greying — kept well under the ink so contrast stays crisp.
+                    let ah = clampD(litRep * 0.16, 0, 0.28)
+                    if ah <= 0.01 { continue }
+                    ctx.stroke(coreBuckets[bucket],
+                               with: .color(cHalo.withOpacity(ah).color),
+                               style: StrokeStyle(lineWidth: wBody * (0.8 + 0.4 * rkRep),
                                                   lineCap: .round, lineJoin: .round))
                 }
             }
         }
 
+        // ── DEPTH PASS 3: the crisp CORE on top. Near-white where the rake is hot
+        // (dark), accent-graded where dim, a saturated dark strand on a light page.
         for hi in 0..<Self.rampSteps {
             for band in 0..<Self.rakeBands {
                 let bucket = hi * Self.rakeBands + band
                 if coreBuckets[bucket].isEmpty { continue }
-                let rkRep = (Double(band) + 0.5) * Self.bandWidth
-                let litRep = clampD(baseDim + rkRep, 0, 1.35) * formGate
-                // near-white where the rake is hot (dark); accent-graded where dim;
-                // a baked dark ink strand on a light page.
+                let (rkRep, litRep) = bandLit(band)
                 let cCore = dark
                     ? (rkRep > 0.18 ? rampHot[hi] : rampCore[hi])
                     : rampInk[hi]
-                let alpha = clampD(litRep * (dark ? 0.9 : 0.85), 0, coreMax)
+                let alpha = clampD(litRep * (dark ? 0.95 : 0.9), 0, coreMax)
                 if alpha <= 0.01 { continue }
-                let width = tiny ? max(0.7, wCore * 0.85) : wCore * (1 + 0.5 * rkRep)
+                let width = tiny ? max(0.7, wCore * 0.9) : wCore * (1 + 0.6 * rkRep)
                 ctx.stroke(coreBuckets[bucket],
                            with: .color(cCore.withOpacity(alpha).color),
                            style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
@@ -290,10 +340,19 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
         let k = frame.reduced ? 0.9 : 0.7 + 0.3 * (0.5 + 0.5 * sin(frame.t * 1.2))
         let glow = rampCore.isEmpty ? frame.stage.accent : rampCore[Self.rampSteps >> 1]
         let gr = frame.sizePx * 3 * k
-        var g = ctx
-        g.opacity = 0.3 * k
-        g.fill(Path(ellipseIn: CGRect(x: d.x - gr, y: d.y - gr, width: gr * 2, height: gr * 2)),
-               with: .color(glow.color))
+        let glowRect = CGRect(x: d.x - gr, y: d.y - gr, width: gr * 2, height: gr * 2)
+        // dark: a true-gaussian bloom seed; light: a soft tinted halo.
+        if dark {
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: max(3, frame.sizePx * 2)))
+                layer.blendMode = .plusLighter
+                layer.fill(Path(ellipseIn: glowRect), with: .color(glow.withOpacity(0.55 * k).color))
+            }
+        } else {
+            var g = ctx
+            g.opacity = 0.22 * k
+            g.fill(Path(ellipseIn: glowRect), with: .color(glow.color))
+        }
         let cr = max(0.8, frame.sizePx * 0.7)
         let core: Color = dark ? .white.opacity(0.95) : frame.stage.ink.color
         var c = ctx

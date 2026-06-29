@@ -73,7 +73,7 @@ struct WallpaperGeneratorView: View {
     @AppStorage("burnbar.wallpaper.providerGlyphs") private var providerGlyphSelectionRaw = SwarmProviderGlyphSelection.allSentinel
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
-    @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
+    @AppStorage(MobileBackdropKernel.storageKey) private var backdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
     @State private var currentMode: SwarmFormationMode = .swarm
 
     // Resizable sidebar (iPad / macOS) state. Width persists across launches.

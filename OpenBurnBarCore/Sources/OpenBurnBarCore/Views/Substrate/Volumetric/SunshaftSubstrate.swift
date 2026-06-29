@@ -13,23 +13,33 @@ import SwiftUI
 /// together. ~38% of points carry a hot near-white radial CORE spring-locked on
 /// the exact target — that's the legible silhouette; the soft shafts fan past it.
 ///
-/// Compositing: DARK page lays ONE soft centered ink radial source-over first
-/// (gives additive `.plusLighter` a field to sum into), then shafts + cores
-/// additive. LIGHT page skips the ink and drops shaft alpha hard so it reads as
-/// caustic light, not smear. A hard 0.7px source-over crisp dot per core fires at
-/// small radii (`radius < 64`). `reduced` freezes one poised raked still frame
-/// (swivel=0, widthBreath=1, static per-seed breath). `batteryThrottled` drops
-/// the ink halo. Death hooks (dissolve/melt/armed/alive) are the held-look
-/// identity here, so they collapse to rest and are omitted.
+/// Compositing & depth: DARK page lays ONE soft centered ink radial source-over
+/// first (gives additive `.plusLighter` a field to sum into), then the layered
+/// foot light — (1) a TRUE GAUSSIAN bloom plate (one `drawLayer` with `.blur` +
+/// `.plusLighter`) of saturated altitude-tinted glows pooled at the locked feet:
+/// the soft light UNDER; (2) the near-white core sprites: the saturated body; (3)
+/// a tiny pure-white hot pinpoint: the hot core on top — over the additive shafts.
+/// LIGHT page skips the ink/bloom (additive blows out on cream): the shafts ride at
+/// a lifted source-over alpha and the cores stay SATURATED (whitened only ~0.26,
+/// not ~0.6) so the foot reads crisply instead of washing out. A per-core crisp
+/// definition dot in the dot's own colour (hot-white centre on dark, saturated on
+/// light) fires every frame. `reduced` freezes one poised raked still frame
+/// (swivel=0, widthBreath=1, static per-seed breath). `batteryThrottled` drops the
+/// ink halo AND the bloom plate (the heaviest extra pass) — the field still glows
+/// from the additive shafts + cores. Death hooks (dissolve/melt/armed/alive) are
+/// the held-look identity here, so they collapse to rest and are omitted.
 public final class SunshaftSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
 
     private static let hueSteps = 32
 
-    // Pre-tinted shaft luminance masks (white mask × OKLab altitude ramp), and the
-    // near-white core colours — rebuilt only on palette change (never per frame).
+    // Pre-tinted shaft luminance masks (white mask × OKLab altitude ramp), the hot
+    // core colours, and the saturated bloom-halo colours — rebuilt only on palette
+    // change (never per frame). `coreCols` whitening is polarity-aware so light pages
+    // keep a legible saturated foot instead of washing to near-white on cream.
     private var shaftImgs: [Image] = []
-    private var coreCols: [RGBA] = []
+    private var coreCols: [RGBA] = []     // hot foot (whitened per polarity)
+    private var rampCols: [RGBA] = []     // saturated altitude colour (bloom-halo tint)
     private var rampKey: UInt64 = .max
 
     // Per-point static attributes, rebuilt only on count/geometry change.
@@ -69,8 +79,10 @@ public final class SunshaftSubstrate: SwarmSubstrate {
 
         let shaftH = radius * 1.2
         let shaftW = max(2.0, radius * 0.18)
-        let shaftAlpha = dark ? 0.22 : 0.085          // light reads as caustic light
-        let coreAlpha = dark ? 0.62 : 0.5
+        // Light page was rendering near-invisible; lift the caustic shafts + cores so
+        // they read crisply against cream without blowing out (source-over, no bloom).
+        let shaftAlpha = dark ? 0.22 : 0.17           // light reads as caustic light
+        let coreAlpha = dark ? 0.62 : 0.62
 
         // ── dark page: soft centered ink field so 'lighter' has somewhere to sum.
         // Light page skips it; battery-throttle drops this extra full-field halo.
@@ -104,6 +116,14 @@ public final class SunshaftSubstrate: SwarmSubstrate {
             ]))
         }
         guard shaftRes.count == Self.hueSteps else { return true }
+        // Pure-white hot pinpoint for the very centre of each core (depth: soft glow
+        // under → saturated body → hot core on top). Dark-only bloom sprites are
+        // resolved inside the guarded bloom pass below.
+        let hotRes = ctx.resolve(sprites.radial(diameter: 24, stops: [
+            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
+            (0.4, RGBA(r: 1, g: 1, b: 1, a: 0.45)),
+            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+        ]))
 
         // ── PASS 1: the SHAFTS — one tall god-ray per point, all leaning along the
         // single global light direction, anchored AT the point (decorate outward).
@@ -126,10 +146,46 @@ public final class SunshaftSubstrate: SwarmSubstrate {
             g.draw(shaftRes[hueIdx[i]], in: CGRect(x: -w / 2, y: -h, width: w, height: h))
         }
 
-        // ── PASS 2: the CORES — bright near-white feet spring-locked on the exact
-        // mark targets, barely twinkling. THIS is the legible silhouette.
         let coreR = max(1.4, sizePx * 1.5)
         let coreD = coreR * 2.4
+
+        // ── PASS 2a: TRUE GAUSSIAN BLOOM (dark only) — a single blurred, additive
+        // layer of saturated altitude-tinted glows pooled at the locked feet. This is
+        // the soft light UNDER the cores: it makes the silhouette's foot region read
+        // as a luminous medium catching the sun, not a field of stickers. Dropped on
+        // battery throttle (the one heaviest extra pass) — the field still glows from
+        // the additive shafts + cores below.
+        if dark && !throttle {
+            let bloomRes: [GraphicsContext.ResolvedImage] = rampCols.map { col in
+                ctx.resolve(sprites.radial(diameter: 64, stops: [
+                    (0.0, col.withOpacity(0.95)),
+                    (0.35, col.withOpacity(0.42)),
+                    (0.7, col.withOpacity(0.12)),
+                    (1.0, col.withOpacity(0.0))
+                ]))
+            }
+            let bloomD = coreR * 6.0
+            let bloomBlur = max(2.5, coreR * 1.4)
+            var bloom = baseCtx
+            bloom.blendMode = .plusLighter
+            bloom.drawLayer { layer in
+                layer.addFilter(.blur(radius: bloomBlur))
+                layer.blendMode = .plusLighter
+                for i in 0..<count where isCore[i] {
+                    let x = frame.dots[i].x, y = frame.dots[i].y
+                    let k = reduced ? 0.85 : 0.7 + 0.3 * (0.5 + 0.5 * sin(t * 1.4 + seedA[i]))
+                    let a = clampD(0.55 * k * env, 0, 1)
+                    if a <= 0.004 { continue }
+                    var g = layer
+                    g.opacity = a
+                    g.draw(bloomRes[hueIdx[i]], in: CGRect(x: x - bloomD / 2, y: y - bloomD / 2,
+                                                           width: bloomD, height: bloomD))
+                }
+            }
+        }
+
+        // ── PASS 2b: the CORES — bright feet spring-locked on the exact mark targets,
+        // barely twinkling. THIS is the legible silhouette (the saturated body).
         for i in 0..<count where isCore[i] {
             let x = frame.dots[i].x, y = frame.dots[i].y
             let k = reduced ? 0.85 : 0.78 + 0.22 * (0.5 + 0.5 * sin(t * 1.4 + seedA[i]))
@@ -141,17 +197,38 @@ public final class SunshaftSubstrate: SwarmSubstrate {
                                                   width: coreD, height: coreD))
         }
 
-        // ── PASS 3: small-radius crispening — a hard 0.7px source-over definition dot on
-        // each locked core so the silhouette reads even when the bloom smears.
-        if radius < 64 {
+        // ── PASS 2c: the HOT CORE (dark only) — a tiny pure-white pinpoint additive on
+        // top of each foot so the brightest cores ignite (hot core ON the body).
+        if dark {
+            let hotD = max(2.4, coreR * 1.7)
+            for i in 0..<count where isCore[i] {
+                let x = frame.dots[i].x, y = frame.dots[i].y
+                let k = reduced ? 0.85 : 0.72 + 0.28 * (0.5 + 0.5 * sin(t * 1.4 + seedA[i]))
+                let a = clampD(0.7 * k * env, 0, 1)
+                if a <= 0.004 { continue }
+                var g = ctx
+                g.opacity = a
+                g.draw(hotRes, in: CGRect(x: x - hotD / 2, y: y - hotD / 2, width: hotD, height: hotD))
+            }
+        }
+
+        // ── PASS 3: crispening — a hard source-over definition dot on each locked core
+        // in its own per-point colour, pushed toward white at the centre, so the
+        // silhouette reads even when the bloom smears. On dark a tiny hot dot keeps the
+        // pinpoint sharp; on light it carries the saturated colour the cream needs.
+        do {
             var crisp = baseCtx
-            crisp.blendMode = .normal
-            let ca = clampD(0.85 * env, 0, 1)
+            crisp.blendMode = dark ? .plusLighter : .normal
+            let ca = clampD((dark ? 0.7 : 0.95) * env, 0, 1)
+            let dotR = dark ? 0.7 : max(0.9, sizePx * 0.7)
             for i in 0..<count where isCore[i] {
                 let c = frame.dots[i].rgba
-                let col = RGBA(r: c.r, g: c.g, b: c.b, a: ca).color
+                // push toward white at the very centre for a hot, legible point.
+                let tint = RGBA(r: c.r, g: c.g, b: c.b, a: 1).toWhite(dark ? 0.65 : 0.18)
+                let col = tint.withOpacity(ca).color
                 let x = frame.dots[i].x, y = frame.dots[i].y
-                crisp.fill(Path(ellipseIn: CGRect(x: x - 0.7, y: y - 0.7, width: 1.4, height: 1.4)),
+                crisp.fill(Path(ellipseIn: CGRect(x: x - dotR, y: y - dotR,
+                                                  width: dotR * 2, height: dotR * 2)),
                            with: .color(col))
             }
         }
@@ -187,19 +264,26 @@ public final class SunshaftSubstrate: SwarmSubstrate {
 
     private func ensureRamp(_ stage: SubstrateStage) {
         var hh = Hasher(); hh.combine(stage.accent.bucketKey); hh.combine(stage.accent2.bucketKey)
+        hh.combine(stage.dark)            // core whitening is polarity-aware → key on it
         let key = UInt64(bitPattern: Int64(hh.finalize()))
         if key == rampKey && shaftImgs.count == Self.hueSteps { return }
         rampKey = key
         let white = RGBA(r: 1, g: 1, b: 1, a: 1)
+        // DARK: drive the foot near-white so the additive core reads as a hot pinpoint.
+        // LIGHT: keep it mostly saturated — a near-white foot vanishes on cream.
+        let coreWhiten = stage.dark ? 0.6 : 0.26
         shaftImgs = []
         coreCols = []
+        rampCols = []
         shaftImgs.reserveCapacity(Self.hueSteps)
         coreCols.reserveCapacity(Self.hueSteps)
+        rampCols.reserveCapacity(Self.hueSteps)
         for i in 0..<Self.hueSteps {
             let tt = Double(i) / Double(Self.hueSteps - 1)
             let col = oklabMix(stage.accent, stage.accent2, tt)     // cool foot → warm crown
             shaftImgs.append(Self.bakeShaft(col))
-            coreCols.append(oklabMix(col, white, 0.6))              // hot near-white foot
+            coreCols.append(oklabMix(col, white, coreWhiten))       // hot foot
+            rampCols.append(col)                                    // saturated bloom-halo tint
         }
     }
 

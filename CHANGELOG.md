@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Swarm substrate renderers** — tightened the bespoke substrate ports with
+  frame-scratch reuse, cached glow/sprite work, safer contour/neighbor gating,
+  richer dark/light paint passes, and an explicit skipped preview-render test
+  harness that can rasterize every substrate for local visual QA without
+  running during normal CI.
+- **Swarm substrate throttling** — restored battery-mode gates for expensive
+  bloom, sheen, and sprite halo passes in the polished substrate renderers while
+  keeping the core dot/body marks visible.
 - Settings cog (gear icon) no longer disappears from the dashboard toolbar at
   narrow window widths. Previously it was bundled inside the
   `BurnRailActionsSection` capsule with import and recount, and macOS would

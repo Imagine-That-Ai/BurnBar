@@ -44,6 +44,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
         var arc: [Double]            // 0…1 arc-fraction head→tail
         var seed: Double
         var stops: [Gradient.Stop]   // cached ink gradient head→tail (≤8)
+        var glowStops: [Gradient.Stop] // cached luminous bloom gradient (dark)
         var head: CGPoint
         var tail: CGPoint
         var solid: RGBA              // orphan / zero-length fallback ink
@@ -89,69 +90,129 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
         let ex = Self.ex, ey = Self.ey
         let nx = -ey, ny = ex   // perpendicular nib axis (edge wander)
 
-        // INK body: opaque single source-over fill per stroke (reads dark AND light).
+        // ── per-vertex nib geometry (the travelling pressure wave + wet edge) ──
+        @inline(__always) func halfAt(_ s: Stream, _ i: Int) -> Double {
+            var pr = s.pressure[i]
+            if !reduced {
+                pr *= 0.78 + 0.34 * (0.5 + 0.5 * sin(wave - s.arc[i] * 5.0 + s.seed * 2.0))
+            }
+            return 0.5 * nibW * pr
+        }
+        @inline(__always) func wanderAt(_ s: Stream, _ i: Int) -> Double {
+            let base = wob[s.idx[i]] * nibW * 0.5
+            if reduced { return base }
+            return base + sin(t * 1.3 + Double(i) * 0.7 + s.seed * 3) * nibW * 0.06
+        }
+
+        // Build each broad-nib ribbon polygon + its centreline crease ONCE this
+        // frame (only a handful of fat paths → cheap to reuse across the bloom,
+        // ink, and sheen passes; this is what keeps the layered depth allocation-thin).
+        struct Ribbon { let body: Path; let crease: Path; let si: Int }
+        var ribbons: [Ribbon] = []
+        ribbons.reserveCapacity(streams.count)
+        for (si, s) in streams.enumerated() {
+            let n = s.pts.count
+            guard n >= 2 else { continue }
+            var bodyPath = Path()
+            var crease = Path()
+            // forward edge (centre + E·half) and the wandered centreline crease.
+            for i in 0..<n {
+                let p = s.pts[i]
+                let w = halfAt(s, i), wd = wanderAt(s, i)
+                let cx = Double(p.x) + nx * wd, cy = Double(p.y) + ny * wd
+                let x = cx + ex * w, y = cy + ey * w
+                if i == 0 {
+                    bodyPath.move(to: CGPoint(x: x, y: y))
+                    crease.move(to: CGPoint(x: cx, y: cy))
+                } else {
+                    bodyPath.addLine(to: CGPoint(x: x, y: y))
+                    crease.addLine(to: CGPoint(x: cx, y: cy))
+                }
+            }
+            // reverse edge (centre − E·half)
+            for i in stride(from: n - 1, through: 0, by: -1) {
+                let p = s.pts[i]
+                let w = halfAt(s, i), wd = wanderAt(s, i)
+                bodyPath.addLine(to: CGPoint(x: Double(p.x) - ex * w + nx * wd,
+                                             y: Double(p.y) - ey * w + ny * wd))
+            }
+            bodyPath.closeSubpath()
+            ribbons.append(Ribbon(body: bodyPath, crease: crease, si: si))
+        }
+
+        @inline(__always) func bodyShading(_ s: Stream) -> GraphicsContext.Shading {
+            if s.stops.count >= 2, s.head != s.tail {
+                return .linearGradient(Gradient(stops: s.stops), startPoint: s.head, endPoint: s.tail)
+            }
+            return .color(s.solid.color)
+        }
+        @inline(__always) func glowShading(_ s: Stream) -> GraphicsContext.Shading {
+            if s.glowStops.count >= 2, s.head != s.tail {
+                return .linearGradient(Gradient(stops: s.glowStops), startPoint: s.head, endPoint: s.tail)
+            }
+            return .color(s.solid.toWhite(0.26).color)
+        }
+
+        // ── PASS 1 (dark) — TRUE GAUSSIAN BLOOM under the ink: the silk's glow.
+        // A single blurred, additive layer of the ribbons lays a luminous,
+        // accent-tinged halo beneath the strokes so the field reads instantly and
+        // glows. Heaviest extra pass → dropped under battery throttle (ink alone
+        // still reads with full presence).
+        if dark && !frame.batteryThrottled {
+            let blurR = CGFloat(clampD(nibW * 0.95, 3, 15))
+            var bloom = ctx
+            bloom.opacity = reduced ? 0.44 : 0.52
+            bloom.drawLayer { layer in
+                layer.addFilter(.blur(radius: blurR))
+                layer.blendMode = .plusLighter
+                for r in ribbons { layer.fill(r.body, with: glowShading(streams[r.si])) }
+            }
+        }
+
+        // ── PASS 2 — the INK BODY: opaque single source-over fill per stroke,
+        // the saturated mid-layer riding over the soft bloom (reads dark AND light).
         var body = ctx
         body.blendMode = .normal
         body.opacity = dark ? 0.96 : 0.95
-
-        for s in streams {
-            let n = s.pts.count
-            if n < 2 {
-                // a field-orphaned mark point: a small flat-nib dab so it still reads.
-                let p = s.pts[0]
-                let r = nibW * 0.34
-                let rect = CGRect(x: -r, y: -r * 0.62, width: r * 2, height: r * 1.24)
-                let tf = CGAffineTransform(translationX: p.x, y: p.y).rotated(by: CGFloat(Self.theta))
-                body.fill(Path(ellipseIn: rect).applying(tf), with: .color(s.solid.color))
-                continue
-            }
-
-            // per-vertex half-width incl. the travelling pressure wave.
-            @inline(__always) func halfAt(_ i: Int) -> Double {
-                var pr = s.pressure[i]
-                if !reduced {
-                    pr *= 0.78 + 0.34 * (0.5 + 0.5 * sin(wave - s.arc[i] * 5.0 + s.seed * 2.0))
-                }
-                return 0.5 * nibW * pr
-            }
-            // per-vertex edge wander — the perpetually-wet organic nib edge.
-            @inline(__always) func wanderAt(_ i: Int) -> Double {
-                let base = wob[s.idx[i]] * nibW * 0.5
-                if reduced { return base }
-                return base + sin(t * 1.3 + Double(i) * 0.7 + s.seed * 3) * nibW * 0.06
-            }
-
-            var path = Path()
-            // forward edge: centre + E·half + perp·wander
-            for i in 0..<n {
-                let p = s.pts[i]
-                let w = halfAt(i), wd = wanderAt(i)
-                let x = Double(p.x) + ex * w + nx * wd
-                let y = Double(p.y) + ey * w + ny * wd
-                if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
-            }
-            // reverse edge: centre − E·half + perp·wander
-            for i in stride(from: n - 1, through: 0, by: -1) {
-                let p = s.pts[i]
-                let w = halfAt(i), wd = wanderAt(i)
-                let x = Double(p.x) - ex * w + nx * wd
-                let y = Double(p.y) - ey * w + ny * wd
-                path.addLine(to: CGPoint(x: x, y: y))
-            }
-            path.closeSubpath()
-
-            let shading: GraphicsContext.Shading
-            if s.stops.count >= 2, s.head != s.tail {
-                shading = .linearGradient(Gradient(stops: s.stops),
-                                          startPoint: s.head, endPoint: s.tail)
-            } else {
-                shading = .color(s.solid.color)
-            }
-            body.fill(path, with: shading)
+        for r in ribbons { body.fill(r.body, with: bodyShading(streams[r.si])) }
+        // field-orphaned mark points: a small flat-nib dab so each still reads.
+        for s in streams where s.pts.count < 2 {
+            let p = s.pts[0]
+            let rr = nibW * 0.34
+            let rect = CGRect(x: -rr, y: -rr * 0.62, width: rr * 2, height: rr * 1.24)
+            let tf = CGAffineTransform(translationX: p.x, y: p.y).rotated(by: CGFloat(Self.theta))
+            body.fill(Path(ellipseIn: rect).applying(tf), with: .color(s.solid.color))
         }
 
-        // Wet-head catchlight: a faint luminous bead riding each stroke head where
-        // the travelling pressure wave currently peaks — the perpetually-wet tip.
+        // ── PASS 3 — SATIN SHEEN: a thin luminous crease running the centreline,
+        // shimmering on the travelling wave so each silk ribbon catches the light.
+        let sheenStyle = StrokeStyle(lineWidth: CGFloat(max(0.6, nibW * 0.16)),
+                                     lineCap: .round, lineJoin: .round)
+        if dark {
+            let sheenInk = RGBA(r: 1, g: 1, b: 1).mix(with: frame.stage.accent2, amount: 0.34)
+            var sheen = ctx
+            sheen.blendMode = .plusLighter
+            for r in ribbons {
+                let s = streams[r.si]
+                let shimmer = reduced ? 0.5 : 0.5 + 0.5 * sin(wave * 1.3 + s.seed * 2.2)
+                let a = 0.07 + 0.10 * shimmer
+                sheen.stroke(r.crease, with: .color(sheenInk.withOpacity(clampD(a, 0, 1)).color),
+                             style: sheenStyle)
+            }
+        } else {
+            // light canvas: a whisper-soft satin glance (normal blend — never blows out).
+            var sheen = ctx
+            sheen.blendMode = .normal
+            for r in ribbons {
+                let s = streams[r.si]
+                let shimmer = reduced ? 0.5 : 0.5 + 0.5 * sin(wave * 1.3 + s.seed * 2.2)
+                let a = 0.05 + 0.06 * shimmer
+                sheen.stroke(r.crease, with: .color(.white.opacity(clampD(a, 0, 1))), style: sheenStyle)
+            }
+        }
+
+        // ── PASS 4 (dark) — WET-HEAD catchlight: a hot bright bead riding the
+        // travelling-wave peak, the perpetually-wet nib tip, with a soft halo.
         if dark && !reduced && !frame.batteryThrottled {
             var hctx = ctx
             hctx.blendMode = .plusLighter
@@ -162,8 +223,15 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
                 up -= floor(up)
                 let vi = min(n - 1, max(0, Int((up * Double(n - 1)).rounded())))
                 let p = s.pts[vi]
-                let a = 0.10 + 0.05 * sin(t * 2 + s.seed * 4)
-                let r = nibW * 0.22
+                let pulse = 0.5 + 0.5 * sin(t * 2 + s.seed * 4)
+                // soft halo under the hot core for depth.
+                let hr = nibW * 0.5
+                hctx.fill(Path(ellipseIn: CGRect(x: Double(p.x) - hr, y: Double(p.y) - hr,
+                                                 width: hr * 2, height: hr * 2)),
+                          with: .color(frame.stage.accent2.withOpacity(clampD(0.05 + 0.05 * pulse, 0, 1)).color))
+                // hot white core.
+                let r = nibW * 0.26
+                let a = 0.12 + 0.07 * pulse
                 hctx.fill(Path(ellipseIn: CGRect(x: Double(p.x) - r, y: Double(p.y) - r,
                                                  width: r * 2, height: r * 2)),
                           with: .color(.white.opacity(clampD(a, 0, 1))))
@@ -184,7 +252,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
         wob = (0..<count).map { Self.vnoise(Double($0) * 0.37, Double($0) * 0.91) - 0.5 }
 
         guard count > 1 else {
-            if count == 1 { streams.append(makeStream([0], dots, 0, frame.dark)) }
+            if count == 1 { streams.append(makeStream([0], dots, 0, frame.dark, frame.stage.accent)) }
             return
         }
 
@@ -208,7 +276,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
             let atBreak = (k < breaks.count) && breaks[k]
             let isLast = (k == n - 1)
             if isLast || atBreak || current.count >= segLen {
-                streams.append(makeStream(current, dots, seedN, frame.dark))
+                streams.append(makeStream(current, dots, seedN, frame.dark, frame.stage.accent))
                 seedN += 1
                 current.removeAll(keepingCapacity: true)
             }
@@ -216,7 +284,7 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
     }
 
     private func makeStream(_ idx: [Int], _ dots: [SwarmSubstrateDot],
-                            _ seedN: Int, _ dark: Bool) -> Stream {
+                            _ seedN: Int, _ dark: Bool, _ accent: RGBA) -> Stream {
         let n = idx.count
         let seed = 1 + Double(seedN) * 0.6180339887
         var pts = [CGPoint](repeating: .zero, count: n)
@@ -252,8 +320,10 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
 
         let solid = (n > 0 ? dots[idx[0]].rgba : RGBA(r: 0.8, g: 0.93, b: 1)).withOpacity(1)
         let stops = makeStops(idx, dots, pts, seed, dark)
+        let glowStops = makeGlowStops(idx, dots, accent)
         return Stream(idx: idx, pts: pts, pressure: pressure, arc: arc, seed: seed,
-                      stops: stops, head: pts.first ?? .zero, tail: pts.last ?? .zero,
+                      stops: stops, glowStops: glowStops,
+                      head: pts.first ?? .zero, tail: pts.last ?? .zero,
                       solid: solid)
     }
 
@@ -289,6 +359,29 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
                 }
             }
             out.append(Gradient.Stop(color: tone.withOpacity(1).color, location: CGFloat(u)))
+        }
+        return out
+    }
+
+    /// Cached LUMINOUS gradient for the dark bloom layer: lift each brand tone
+    /// toward white at the crest and tint it toward the stage accent in the
+    /// spread, so the blurred halo glows as accent-tinged silk rather than a
+    /// washed-out grey haze. Built once per layout — never per dot per frame.
+    private func makeGlowStops(_ idx: [Int], _ dots: [SwarmSubstrateDot],
+                               _ accent: RGBA) -> [Gradient.Stop] {
+        let n = idx.count
+        guard n >= 2 else { return [] }
+        let stopCount = min(8, n)
+        var out: [Gradient.Stop] = []
+        out.reserveCapacity(stopCount)
+        for k in 0..<stopCount {
+            let u = stopCount == 1 ? 0 : Double(k) / Double(stopCount - 1)
+            let pi = idx[min(n - 1, Int((u * Double(n - 1)).rounded()))]
+            let raw = dots[pi].rgba
+            // saturate the hue, lift toward white, then breathe a little accent in.
+            let mood = Self.vnoise(u * 3.1 + 7.0, 2.0)
+            let lit = raw.toWhite(0.22 + 0.16 * mood).mix(with: accent, amount: 0.16)
+            out.append(Gradient.Stop(color: lit.withOpacity(1).color, location: CGFloat(u)))
         }
         return out
     }

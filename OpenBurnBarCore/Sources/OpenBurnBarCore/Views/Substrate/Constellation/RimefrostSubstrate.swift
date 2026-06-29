@@ -1,28 +1,33 @@
 import SwiftUI
 
-/// Dendritic Frost — faithful port of imaginethat `constellation/rimefrost.ts`
+/// Dendritic Frost — premium port of imaginethat `constellation/rimefrost.ts`
 /// drawBody (L81–274, held "melt 0" look).
 ///
-/// Each silhouette point nucleates a six-armed rime crystal. Per crystal, in
-/// z-order: (1) a cached 48px white-blue radial frost-bloom anchoring the center;
-/// (2) six feathery dendrite spines (3 tapering segments 1.5→0.9→0.4 each, plus
-/// two short forward side-branches) stroked in a low-alpha ice tint; (3) a bright
-/// frozen core marking the exact logo point; (4) for the brightest seeds (>0.86)
-/// a pure-white twinkling glint cross (dark only). Crystals "grow & melt" on a
-/// slow `sin(0.5·t + seed·TAU + posPhase)` wave so the cloud crystallizes in soft
-/// travelling waves, under an imperceptible global rotation (`t·0.03`). Per-point
-/// brand colors are lifted 55/55/60% toward ice (224,238,255); the core is
-/// whitened a further 45/45/40% on dark, raw brand on light.
+/// Each silhouette point nucleates a six-armed rime crystal. The field is built
+/// in depth-ordered passes so it reads as luminous frost spreading across cold
+/// glass — never a scatter of flat specks:
+///   0. DEEP GAUSSIAN BLOOM (dark, the premium presence lever) — every crystal's
+///      own brand color, only lightly iced (NOT whitened away), is filled into ONE
+///      real `.blur`-filtered, additive `.plusLighter` layer, so each cluster rests
+///      in a single cohesive wash that glows in *its* hue rather than white noise.
+///   1. ICY BODY BLOOM — a cached 48px white-blue radial frost sprite drawn per
+///      crystal, `colorMultiply`-tinted to the dot's brand color (the brand-tinted
+///      glow), with a smaller untinted white-blue sheen on top so the very center
+///      stays a frost-blue/white core sitting inside the colored bloom.
+///   2. SIX DENDRITE ARMS — 3 tapering spines (1.5→0.9→0.4) + two forward
+///      side-branches each, batched per alpha-bin × width-group into a handful of
+///      strokes so the feathery six-fold structure stays crisp and cheap.
+///   3. HOT FROZEN CORE — the legible silhouette point, whitened on dark.
+///   4. FROST GLINT — a twinkling near-white cross on the brightest seeds (dark).
 ///
-/// Perf: the ~60 line-segments-per-crystal dendrite field would be ruinous to
-/// stroke individually for ~1k points, so arms are batched into ONE Path per
-/// (alpha-bin × spine-width-group) and stroked a fixed ≤16 times per frame; the
-/// glint crosses batch into a single white stroke. The frost-bloom is a cached
-/// sprite (resolved once, drawn many), cores stay cheap circles. Honors
-/// `frame.dark` (additive `.plusLighter` vs source-over), `frame.reduced` (a
-/// poised, mostly-grown still frost-field), and `frame.batteryThrottled` (drops
-/// the bloom halo + glint passes). The meltwater beads are destruction-only and
-/// omitted from the held look.
+/// Crystals "grow & melt" on a slow `sin(0.5·t + seed·TAU + posPhase)` wave so the
+/// cloud crystallizes in soft travelling waves under an imperceptible global
+/// rotation (`t·0.03`). Per-point brand colors are lifted toward ice (224,238,255);
+/// the under-wash also leans toward `stage.accent`. Honors `frame.dark` (additive
+/// `.plusLighter` vs source-over `.normal`), `frame.reduced` (a poised, mostly-grown
+/// still frost-field), and `frame.batteryThrottled` (drops only the heaviest pass —
+/// the gaussian under-wash — while the cached sprite bloom keeps the field rich).
+/// The meltwater beads are destruction-only and omitted from the held look.
 public final class RimefrostSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
@@ -36,6 +41,7 @@ public final class RimefrostSubstrate: SwarmSubstrate {
         let throttled = frame.batteryThrottled
         let sizePx = frame.sizePx
         let t = frame.t
+        let accent = frame.stage.accent
 
         // assembly gain — fade the crystal field in as the mark forms.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.45 + 0.55
@@ -51,37 +57,29 @@ public final class RimefrostSubstrate: SwarmSubstrate {
         ctx.blendMode = dark ? .plusLighter : .normal
 
         // cached white-blue frost-bloom sprite (resolved once; drawn many).
-        let bloom: GraphicsContext.ResolvedImage? = throttled ? nil : ctx.resolve(
-            sprites.radial(diameter: 48, stops: [
-                (0.0, RGBA(r: 232.0 / 255, g: 244.0 / 255, b: 1.0, a: 1.0)),
-                (0.28, RGBA(r: 206.0 / 255, g: 228.0 / 255, b: 1.0, a: 0.5)),
-                (0.6, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.12)),
-                (1.0, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.0))
-            ]))
+        let bloom = ctx.resolve(sprites.radial(diameter: 48, stops: [
+            (0.0, RGBA(r: 232.0 / 255, g: 244.0 / 255, b: 1.0, a: 1.0)),
+            (0.26, RGBA(r: 210.0 / 255, g: 230.0 / 255, b: 1.0, a: 0.62)),
+            (0.55, RGBA(r: 182.0 / 255, g: 214.0 / 255, b: 1.0, a: 0.20)),
+            (1.0, RGBA(r: 180.0 / 255, g: 212.0 / 255, b: 1.0, a: 0.0))
+        ]))
 
         // ice target the per-point brand color is lifted toward.
         let iceR = 224.0 / 255, iceG = 238.0 / 255, iceB = 1.0
+        let ice = RGBA(r: iceR, g: iceG, b: iceB, a: 1)
 
-        // batched dendrite arms: bin by alpha, split by spine-width-group so a
-        // single uniform stroke per bucket reproduces the taper + per-point glow.
-        let bins = 4
-        let widths: [Double] = [1.5, 0.9, 0.4, 0.55] // spine0, spine1, spine2, branches
-        var armPaths = [[Path]](repeating: [Path(), Path(), Path(), Path()], count: bins)
-        var binR = [Double](repeating: 0, count: bins)
-        var binG = [Double](repeating: 0, count: bins)
-        var binB = [Double](repeating: 0, count: bins)
-        var binA = [Double](repeating: 0, count: bins)
-        var binN = [Int](repeating: 0, count: bins)
-        let armAlphaBase = dark ? 0.34 : 0.26
-
-        // batched glint crosses (dark, brightest seeds), white + additive.
-        var glintPath = Path()
-        var glintA = 0.0
-        var glintN = 0
-
-        // cores deferred so they paint on top of the arms on light stages.
-        struct Core { let x, y, r: Double; let rgba: RGBA }
-        var cores = [Core](); cores.reserveCapacity(count)
+        // ── precompute per-crystal state once (shared by every pass) ─────────────
+        struct Crystal {
+            let x, y: Double
+            let grow, g: Double
+            let frost: RGBA          // ice-lifted brand color (dendrite arms)
+            let glow: RGBA           // brand-colored under-wash hue (bloom layer)
+            let bodyTint: RGBA       // brand tint multiplied into the body sprite
+            let radius, baseRot: Double
+            let seed, seed2: Double
+            let br, bodyA, coreSheenA: Double  // body sprite size + opacity + white core sheen
+        }
+        var xs = [Crystal](); xs.reserveCapacity(count)
 
         for i in 0..<count {
             let d = frame.dots[i]
@@ -96,27 +94,98 @@ public final class RimefrostSubstrate: SwarmSubstrate {
                                : 0.5 + 0.5 * sin(t * 0.5 + phase)
             let g = clampD(0.22 + grow * grow * 0.78, 0, 1) * f // ease-in growth
 
-            // frost tint: lift the brand color toward white-blue ice.
+            // frost tint: lift the brand color toward white-blue ice (the dendrite
+            // arms read as crisp frost while still carrying a hint of the hue).
             let c = d.rgba
-            let fr = c.r + (iceR - c.r) * 0.55
-            let fg = c.g + (iceG - c.g) * 0.55
-            let fb = c.b + (iceB - c.b) * 0.60
+            let frost = RGBA(r: c.r + (iceR - c.r) * 0.55,
+                             g: c.g + (iceG - c.g) * 0.55,
+                             b: c.b + (iceB - c.b) * 0.60, a: 1)
+            // under-wash hue: the dot's OWN brand color, only lightly iced and a
+            // touch lifted by the cold accent — so the deep bloom glows in-hue and
+            // each cluster is unmistakably its color, never a white-noise field.
+            let glow = c.mix(with: ice, amount: 0.16).mix(with: accent, amount: 0.10)
+            // body-sprite tint: brand kept saturated but lifted just enough to stay
+            // luminous when multiplied into the bright white-blue sprite (dark adds).
+            let bodyTint = c.mix(with: ice, amount: 0.28).toWhite(0.08)
 
             let radius = lerp(armMin, armCap, 0.45 + seed2 * 0.55) * (0.6 + 0.4 * grow)
-            let baseRot = spin + seed * TAU
+            let br = (sizePx * 2.8 + radius * 0.52) * (0.72 + 0.28 * grow)
+            // body sprite carries the saturated brand glow; on throttled stages
+            // (no under-wash) it leans brighter so presence never collapses.
+            let bodyBase = dark ? (throttled ? 0.54 : 0.42) : 0.26
+            let bodyA = clampD(bodyBase * (0.5 + g), 0, dark ? 0.74 : 0.50)
+            // frost-blue/white core sheen — small untinted white-blue cap drawn over
+            // the colored body so the very center stays icy (richer on dark).
+            let coreSheenA = dark ? clampD(0.34 * (0.45 + g), 0, 0.6)
+                                  : clampD(0.13 * (0.4 + g), 0, 0.22)
 
-            // ── 1. soft frost-bloom under the center ───────────────────────────
-            if let bloom {
-                let br = (sizePx * 2.6 + radius * 0.5) * (0.7 + 0.3 * grow)
-                var gc = ctx
-                gc.opacity = clampD((dark ? 0.16 : 0.1) * (0.5 + g), 0, 0.4)
-                gc.draw(bloom, in: CGRect(x: x - br, y: y - br, width: br * 2, height: br * 2))
+            xs.append(Crystal(x: x, y: y, grow: grow, g: g, frost: frost, glow: glow,
+                              bodyTint: bodyTint, radius: radius, baseRot: spin + seed * TAU,
+                              seed: seed, seed2: seed2, br: br, bodyA: bodyA, coreSheenA: coreSheenA))
+        }
+
+        // ── 0. DEEP GAUSSIAN UNDER-WASH (dark, premium presence) ─────────────────
+        // One blurred additive layer of accent-biased icy discs → the whole
+        // silhouette glows as a single cohesive frost field. Heaviest pass; dropped
+        // when throttled, where the cached sprite bloom alone still reads richly.
+        if dark, !throttled {
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: sizePx * 2.4))
+                layer.blendMode = .plusLighter
+                for c in xs {
+                    let r = (sizePx * 2.0 + c.radius * 0.40) * (0.7 + 0.3 * c.grow)
+                    let a = clampD(0.44 * c.g, 0, 0.7)
+                    layer.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r,
+                                                      width: r * 2, height: r * 2)),
+                               with: .color(c.glow.withOpacity(a).color))
+                }
             }
+        }
 
-            // ── 2. six feathery dendrite spines (accumulate into batched paths) ─
-            let armAlpha = clampD(armAlphaBase * g, 0, 0.6)
-            if armAlpha > 0.01, radius > sizePx * 0.6 {
-                let bin = min(bins - 1, Int(armAlpha / 0.6 * Double(bins)))
+        // ── 1. body bloom — cached frost sprite tinted to the dot's brand color ──
+        // colorMultiply turns the bright white-blue sprite into a brand-hued glow
+        // (the "brand-tinted glow"); a smaller untinted white-blue cap on top keeps
+        // the very center a frost-blue/white core. Two cheap sprite draws per dot.
+        for c in xs {
+            var gc = ctx
+            gc.opacity = c.bodyA
+            gc.addFilter(.colorMultiply(c.bodyTint.color))
+            gc.draw(bloom, in: CGRect(x: c.x - c.br, y: c.y - c.br,
+                                      width: c.br * 2, height: c.br * 2))
+
+            var wc = ctx
+            wc.opacity = c.coreSheenA
+            let wr = c.br * 0.42
+            wc.draw(bloom, in: CGRect(x: c.x - wr, y: c.y - wr,
+                                      width: wr * 2, height: wr * 2))
+        }
+
+        // ── 2. six feathery dendrite spines (batched by alpha × width-group) ─────
+        let bins = 4
+        let widths: [Double] = [1.5, 0.9, 0.4, 0.55] // spine0, spine1, spine2, branches
+        var armPaths = [[Path]](repeating: [Path(), Path(), Path(), Path()], count: bins)
+        var binR = [Double](repeating: 0, count: bins)
+        var binG = [Double](repeating: 0, count: bins)
+        var binB = [Double](repeating: 0, count: bins)
+        var binA = [Double](repeating: 0, count: bins)
+        var binN = [Int](repeating: 0, count: bins)
+        let armAlphaBase = dark ? 0.40 : 0.30
+
+        // batched glint crosses (dark, brightest seeds), near-white + additive.
+        var glintPath = Path()
+        var glintA = 0.0
+        var glintN = 0
+
+        struct Core { let x, y, r: Double; let rgba: RGBA }
+        var cores = [Core](); cores.reserveCapacity(count)
+
+        for (i, c) in xs.enumerated() {
+            let x = c.x, y = c.y, grow = c.grow, g = c.g
+            let radius = c.radius, baseRot = c.baseRot, seed = c.seed, seed2 = c.seed2
+
+            let armAlpha = clampD(armAlphaBase * g, 0, 0.66)
+            if armAlpha > 0.01, radius > sizePx * 0.55 {
+                let bin = min(bins - 1, Int(armAlpha / 0.66 * Double(bins)))
                 let r0 = radius * grow
                 for a in 0..<6 {
                     let jitter = (shash(Double(i) * 3.1 + Double(a) * 1.7) - 0.5) * 0.18
@@ -147,22 +216,23 @@ public final class RimefrostSubstrate: SwarmSubstrate {
                             y: by + (-perpS * 0.83 + sa * fwd) * blen))
                     }
                 }
-                binR[bin] += fr; binG[bin] += fg; binB[bin] += fb
+                binR[bin] += c.frost.r; binG[bin] += c.frost.g; binB[bin] += c.frost.b
                 binA[bin] += armAlpha; binN[bin] += 1
             }
 
             // ── 3. bright frozen core — the legible silhouette point ────────────
-            let coreA = clampD((dark ? 0.92 : 0.96) * f * (0.7 + 0.3 * g), 0, 1)
+            let coreA = clampD((dark ? 0.94 : 0.96) * f * (0.7 + 0.3 * g), 0, 1)
+            let fr = c.frost.r, fg = c.frost.g, fb = c.frost.b
             let coreCol: RGBA = dark
-                ? RGBA(r: fr + (1 - fr) * 0.45, g: fg + (1 - fg) * 0.45,
-                       b: fb + (1 - fb) * 0.40, a: coreA)
-                : c.withOpacity(coreA)
-            cores.append(Core(x: x, y: y, r: max(0.85, sizePx * 0.66), rgba: coreCol))
+                ? RGBA(r: fr + (1 - fr) * 0.55, g: fg + (1 - fg) * 0.55,
+                       b: fb + (1 - fb) * 0.50, a: coreA)
+                : frame.dots[i].rgba.withOpacity(coreA)
+            cores.append(Core(x: x, y: y, r: max(0.9, sizePx * 0.7), rgba: coreCol))
 
             // ── 4. frost glint for the brightest seeds (dark only) ──────────────
-            if dark, !throttled, seed > 0.86 {
+            if dark, seed > 0.86 {
                 let tw = reduced ? 0.5 : 0.5 + 0.5 * sin(t * 2.2 + seed * 31)
-                let len = sizePx * (1.6 + 1.4 * tw)
+                let len = sizePx * (1.7 + 1.5 * tw)
                 let ga = baseRot * 0.5
                 let cga = cos(ga), sga = sin(ga)
                 let cga2 = cos(ga + .pi / 2), sga2 = sin(ga + .pi / 2)
@@ -170,7 +240,7 @@ public final class RimefrostSubstrate: SwarmSubstrate {
                 glintPath.addLine(to: CGPoint(x: x + cga * len, y: y + sga * len))
                 glintPath.move(to: CGPoint(x: x - cga2 * len, y: y - sga2 * len))
                 glintPath.addLine(to: CGPoint(x: x + cga2 * len, y: y + sga2 * len))
-                glintA += clampD(0.3 * g * (0.4 + tw), 0, 0.5)
+                glintA += clampD(0.34 * g * (0.4 + tw), 0, 0.55)
                 glintN += 1
             }
         }

@@ -21,6 +21,14 @@ import SwiftUI
 public final class GlassRibbonSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
 
+    private struct StreakSegment {
+        let ax: Double
+        let ay: Double
+        let bx: Double
+        let by: Double
+        let spec: Double
+    }
+
     // Preallocated rail vertices (screen px), grown when the cloud grows — zero
     // per-frame heap churn for the hot arrays (mirrors the source Float32 buffers).
     private var mx: [Double] = []   // centreline = the mark point
@@ -171,36 +179,73 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
                        style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
         }
 
-        // ── PASS 2: sliding specular streak (additive on dark, soft on light) ──
-        var sctx = ctx
-        if dark { sctx.blendMode = .plusLighter }
+        // ── PASS 2: sliding specular streak — real Gaussian bloom + crisp core ──
+        //
+        // The blown highlight rides a moving arc-length window down the band. On
+        // dark we first lay the streak into a TRUE gaussian-blur layer (additive)
+        // for an Apple-grade glass bloom, then stamp a crisp hot core on top; on
+        // light we keep a single source-over core so a bright canvas never blows
+        // out. The bloom is the heaviest extra pass → dropped under battery throttle.
         let winK = Double(max(2, Int((Double(nv) * 0.12).rounded())))
         let headV = specHead * Double(nv)
-        let specAlphaBase = dark ? 0.75 : 0.5
-        for k in 0..<(nv - 1) {
-            if brk[k] { continue }
-            // distance of this vertex from the travelling highlight head (wrapped).
+        let specAlphaBase = dark ? 0.85 : 0.5
+        // A cool, glass-blue near-white for the bloom (keeps the specular feeling
+        // like a refracted glint rather than a flat white smear).
+        let bloomCol = RGBA(r: 1, g: 1, b: 1).mix(with: cyanRail, amount: 0.28)
+        let bloomR = max(2.5, sizePx * 1.5)
+
+        // Inline streak geometry/intensity for one segment, offset toward the lit rail.
+        @inline(__always) func streak(_ k: Int) -> StreakSegment? {
             var d = Double(k) - headV
             d -= (d / Double(nv)).rounded() * Double(nv)
             let along = abs(d)
-            if along > winK { continue }
+            if along > winK { return nil }
             let env = smoothstep(winK, 0, along)         // 1 at head → 0 at edge
             let facing = cos(nrm[k] - lightA)
             let spec = env * (0.45 + 0.55 * clampD(facing, 0, 1))
-            if spec <= 0.01 { continue }
+            if spec <= 0.01 { return nil }
+            let off = 0.42                               // fraction toward lit rail
+            return StreakSegment(
+                ax: mx[k] + (rx[k] - mx[k]) * off,
+                ay: my[k] + (ry[k] - my[k]) * off,
+                bx: mx[k + 1] + (rx[k + 1] - mx[k + 1]) * off,
+                by: my[k + 1] + (ry[k + 1] - my[k + 1]) * off,
+                spec: spec
+            )
+        }
 
-            // a thin blown streak offset toward the lit (right) rail.
-            let off = 0.42
-            let ax = mx[k] + (rx[k] - mx[k]) * off
-            let ay = my[k] + (ry[k] - my[k]) * off
-            let bx = mx[k + 1] + (rx[k + 1] - mx[k + 1]) * off
-            let by = my[k + 1] + (ry[k + 1] - my[k + 1]) * off
+        // PASS 2a — gaussian bloom halo (dark, non-throttled): the soft light the
+        // glass throws. Drawn fat & blurred into an additive layer that composites
+        // back over the body with `.plusLighter`.
+        if dark && !battery {
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: bloomR))
+                layer.blendMode = .plusLighter
+                for k in 0..<(nv - 1) {
+                    if brk[k] { continue }
+                    guard let s = streak(k) else { continue }
+                    let a = clampD(0.55 * s.spec, 0, 1)
+                    let lw = max(1.6, sizePx * 1.35 * (0.55 + s.spec))
+                    var sp = Path()
+                    sp.move(to: CGPoint(x: s.ax, y: s.ay))
+                    sp.addLine(to: CGPoint(x: s.bx, y: s.by))
+                    layer.stroke(sp, with: .color(bloomCol.withOpacity(a).color),
+                                 style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
+                }
+            }
+        }
 
-            let a = clampD(specAlphaBase * spec, 0, 1)
-            let lw = max(0.8, sizePx * 0.5 * (0.5 + spec))
+        // PASS 2b — crisp hot core: the sharp blown glint on top of the bloom.
+        var sctx = ctx
+        if dark { sctx.blendMode = .plusLighter }
+        for k in 0..<(nv - 1) {
+            if brk[k] { continue }
+            guard let s = streak(k) else { continue }
+            let a = clampD(specAlphaBase * s.spec, 0, 1)
+            let lw = max(0.85, sizePx * 0.55 * (0.5 + s.spec))
             var sp = Path()
-            sp.move(to: CGPoint(x: ax, y: ay))
-            sp.addLine(to: CGPoint(x: bx, y: by))
+            sp.move(to: CGPoint(x: s.ax, y: s.ay))
+            sp.addLine(to: CGPoint(x: s.bx, y: s.by))
             sctx.stroke(sp, with: .color(.white.opacity(a)),
                         style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
         }
