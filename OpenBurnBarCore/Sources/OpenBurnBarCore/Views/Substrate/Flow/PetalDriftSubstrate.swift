@@ -24,6 +24,18 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
 
+    private struct PetalGeometry {
+        let x: Double
+        let y: Double
+        let angle: Double
+        let length: Double
+        let halfWidth: Double
+        let broadside: Double
+        let lit: Double
+        let color: RGBA
+        let bodyAlpha: Double
+    }
+
     // Cached white soft-gradient petal sprite (teardrop-clipped cream radial +
     // specular sheen arc + mauve base-fold tint). Long axis points along +X,
     // tip at +X. Baked once via CoreGraphics; nil if no bitmap backend.
@@ -173,9 +185,7 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         // orbit, the edge-on↔broadside flutter, and the key-light back-facing
         // dimming — computed once and shared by every pass (bloom, shadow, body).
         @inline(__always)
-        func petalGeom(_ i: Int)
-            -> (x: Double, y: Double, ang: Double, len: Double, halfW: Double,
-                broad: Double, lit: Double, cc: RGBA, aBody: Double) {
+        func petalGeom(_ i: Int) -> PetalGeometry {
             let d = frame.dots[i]
             let tx = d.x, ty = d.y
             let seed = shash(Double(i) * 1.93 + 0.27)
@@ -204,7 +214,8 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             let aBody = clampD((0.62 + 0.34 * lit) * f, 0, 1) * d.rgba.a
             let cc: RGBA = lit >= 0.999 ? d.rgba
                 : d.rgba.mix(with: fold, amount: 1 - clampD(lit, 0.4, 1))
-            return (x, y, ang, len, halfW, broad, lit, cc, aBody)
+            return PetalGeometry(x: x, y: y, angle: ang, length: len, halfWidth: halfW,
+                                 broadside: broad, lit: lit, color: cc, bodyAlpha: aBody)
         }
 
         // Build a teardrop path (two quadratics) placed at the petal centroid.
@@ -235,15 +246,15 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
                     for i in 0..<count {
                         let g = petalGeom(i)
                         // Rounder, enlarged halo centred on the petal body.
-                        let len = g.len * 1.5
-                        let halfW = g.halfW * 1.45 + g.len * 0.14
-                        let off = g.len * 0.18
+                        let len = g.length * 1.5
+                        let halfW = g.halfWidth * 1.45 + g.length * 0.14
+                        let off = g.length * 0.18
                         let path = teardrop(len: len, halfW: halfW,
-                                            x: g.x - cos(g.ang) * off,
-                                            y: g.y - sin(g.ang) * off,
-                                            ang: g.ang)
-                        let glow = g.cc.mix(with: accent, amount: 0.35)
-                        let aGlow = clampD(g.aBody * 0.5 * g.lit, 0, 0.6)
+                                            x: g.x - cos(g.angle) * off,
+                                            y: g.y - sin(g.angle) * off,
+                                            ang: g.angle)
+                        let glow = g.color.mix(with: accent, amount: 0.35)
+                        let aGlow = clampD(g.bodyAlpha * 0.5 * g.lit, 0, 0.6)
                         layer.fill(path, with: .color(glow.withOpacity(aGlow).color))
                     }
                 }
@@ -256,13 +267,13 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
                     layer.addFilter(.blur(radius: shadowR))
                     for i in 0..<count {
                         let g = petalGeom(i)
-                        let len = g.len * 1.18
-                        let halfW = g.halfW * 1.12 + g.len * 0.08
+                        let len = g.length * 1.18
+                        let halfW = g.halfWidth * 1.12 + g.length * 0.08
                         let path = teardrop(len: len, halfW: halfW,
-                                            x: g.x + g.len * 0.05,
-                                            y: g.y + g.len * 0.10,
-                                            ang: g.ang)
-                        let aSh = clampD(g.aBody * 0.22, 0, 0.3)
+                                            x: g.x + g.length * 0.05,
+                                            y: g.y + g.length * 0.10,
+                                            ang: g.angle)
+                        let aSh = clampD(g.bodyAlpha * 0.22, 0, 0.3)
                         layer.fill(path, with: .color(ink.withOpacity(aSh).color))
                     }
                 }
@@ -276,18 +287,18 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         for i in 0..<count {
             let g = petalGeom(i)
 
-            let body = teardrop(len: g.len, halfW: g.halfW, x: g.x, y: g.y, ang: g.ang)
-            ctx.fill(body, with: .color(g.cc.withOpacity(g.aBody).color))
+            let body = teardrop(len: g.length, halfW: g.halfWidth, x: g.x, y: g.y, ang: g.angle)
+            ctx.fill(body, with: .color(g.color.withOpacity(g.bodyAlpha).color))
 
             if let sheen {
                 let aSheen = clampD((dark ? 0.62 : 0.5) * g.lit * f, 0, 0.85)
                 if aSheen > 0.003 {
                     let spriteSide = Double(SPRITE)
-                    let scaleX = (g.len / (spriteSide * 0.62)) * 1.04
-                    let scaleY = scaleX * g.broad
+                    let scaleX = (g.length / (spriteSide * 0.62)) * 1.04
+                    let scaleY = scaleX * g.broadside
                     var sctx = ctx
                     sctx.translateBy(x: g.x, y: g.y)
-                    sctx.rotate(by: .radians(g.ang))
+                    sctx.rotate(by: .radians(g.angle))
                     sctx.scaleBy(x: scaleX, y: scaleY)
                     sctx.blendMode = dark ? .plusLighter : .normal
                     sctx.opacity = aSheen

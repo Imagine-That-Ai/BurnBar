@@ -21,6 +21,14 @@ import SwiftUI
 public final class GlassRibbonSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
 
+    private struct StreakSegment {
+        let ax: Double
+        let ay: Double
+        let bx: Double
+        let by: Double
+        let spec: Double
+    }
+
     // Preallocated rail vertices (screen px), grown when the cloud grows — zero
     // per-frame heap churn for the hot arrays (mirrors the source Float32 buffers).
     private var mx: [Double] = []   // centreline = the mark point
@@ -187,7 +195,7 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
         let bloomR = max(2.5, sizePx * 1.5)
 
         // Inline streak geometry/intensity for one segment, offset toward the lit rail.
-        @inline(__always) func streak(_ k: Int) -> (ax: Double, ay: Double, bx: Double, by: Double, spec: Double)? {
+        @inline(__always) func streak(_ k: Int) -> StreakSegment? {
             var d = Double(k) - headV
             d -= (d / Double(nv)).rounded() * Double(nv)
             let along = abs(d)
@@ -197,11 +205,13 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
             let spec = env * (0.45 + 0.55 * clampD(facing, 0, 1))
             if spec <= 0.01 { return nil }
             let off = 0.42                               // fraction toward lit rail
-            return (mx[k] + (rx[k] - mx[k]) * off,
-                    my[k] + (ry[k] - my[k]) * off,
-                    mx[k + 1] + (rx[k + 1] - mx[k + 1]) * off,
-                    my[k + 1] + (ry[k + 1] - my[k + 1]) * off,
-                    spec)
+            return StreakSegment(
+                ax: mx[k] + (rx[k] - mx[k]) * off,
+                ay: my[k] + (ry[k] - my[k]) * off,
+                bx: mx[k + 1] + (rx[k + 1] - mx[k + 1]) * off,
+                by: my[k + 1] + (ry[k + 1] - my[k + 1]) * off,
+                spec: spec
+            )
         }
 
         // PASS 2a — gaussian bloom halo (dark, non-throttled): the soft light the

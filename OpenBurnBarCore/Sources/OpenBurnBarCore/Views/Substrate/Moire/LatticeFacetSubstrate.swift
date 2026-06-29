@@ -176,8 +176,11 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
                 let px = pent[k].cx, py = pent[k].cy
                 let vx = (px * ca - py * sa) * r
                 let vy = (px * sa + py * ca) * r
-                if k == 0 { path.move(to: CGPoint(x: x + vx, y: y + vy)) }
-                else { path.addLine(to: CGPoint(x: x + vx, y: y + vy)) }
+                if k == 0 {
+                    path.move(to: CGPoint(x: x + vx, y: y + vy))
+                } else {
+                    path.addLine(to: CGPoint(x: x + vx, y: y + vy))
+                }
             }
             path.closeSubpath()
 

@@ -20,7 +20,8 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
             throw XCTSkip("set SUBSTRATE_PREVIEW_ID")
         }
         guard let d = SubstrateCatalog.byID[id] ?? SubstrateCatalog.substrateList.first(where: { $0.id == id }) else {
-            return XCTFail("unknown substrate id \(id)")
+            XCTFail("unknown substrate id \(id)")
+            return
         }
         let outDir = "/tmp/substrate-previews"
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
@@ -70,27 +71,27 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
 
     // MARK: - synthetic field (a dense rounded glyph blob with internal structure)
 
-    static func syntheticCloud(in size: CGSize) -> [SwarmSubstrateDot] {
+    private static func syntheticCloud(in size: CGSize) -> [SwarmSubstrateDot] {
         // Uniform-density fill of a recognizable 5-point star silhouette — mirrors
         // how the real swarm fills a provider mark (no ring-density artifacts).
         var dots: [SwarmSubstrateDot] = []
         let cx = Double(size.width) * 0.5, cy = Double(size.height) * 0.5
-        let R = Double(min(size.width, size.height)) * 0.44
+        let radius = Double(min(size.width, size.height)) * 0.44
         let brand = [RGBA(r: 0.80, g: 0.47, b: 0.36), RGBA(r: 0.66, g: 0.40, b: 1.0),
                      RGBA(r: 0.0, g: 0.65, b: 0.49), RGBA(r: 0.26, g: 0.92, b: 0.23),
                      RGBA(r: 0.0, g: 0.65, b: 0.89)]
         // Smoothed 5-point star radius as a function of angle.
         func starR(_ ang: Double) -> Double {
             let spike = abs(cos(ang * 2.5))          // 5 lobes
-            return R * (0.46 + 0.54 * pow(spike, 0.7))
+            return radius * (0.46 + 0.54 * pow(spike, 0.7))
         }
         var rng = XorShift32(seed: 0x5757_BEEF)
         var i = 0
         var tries = 0
         while dots.count < 820 && tries < 400_000 {
             tries += 1
-            let x = (rng.next() * 2 - 1) * R
-            let y = (rng.next() * 2 - 1) * R
+            let x = (rng.next() * 2 - 1) * radius
+            let y = (rng.next() * 2 - 1) * radius
             let r = (x * x + y * y).squareRoot()
             let ang = atan2(y, x)
             guard r <= starR(ang) else { continue }
@@ -107,7 +108,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         return dots
     }
 
-    static func frame(dots: [SwarmSubstrateDot], size: CGSize, dark: Bool) -> SwarmSubstrateFrame {
+    private static func frame(dots: [SwarmSubstrateDot], size: CGSize, dark: Bool) -> SwarmSubstrateFrame {
         var sumX = 0.0, sumY = 0.0
         for d in dots { sumX += d.x; sumY += d.y }
         let n = Double(max(1, dots.count))
@@ -128,7 +129,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
             structure: SubstrateStructureProvider())
     }
 
-    static func render(size: CGSize, dark: Bool, _ draw: @escaping (inout GraphicsContext) -> Void) -> NSImage? {
+    private static func render(size: CGSize, dark: Bool, _ draw: @escaping (inout GraphicsContext) -> Void) -> NSImage? {
         let scale: CGFloat = 2
         let view = ZStack {
             (dark ? Color(red: 0.02, green: 0.02, blue: 0.03) : Color(red: 0.95, green: 0.94, blue: 0.91))
