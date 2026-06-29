@@ -208,15 +208,20 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
         }
 
         // ── Body + core passes (additive). Resolve the soft-grain bloom sprite
-        //    once; draw it many. Kept even under throttle so presence never drops.
+        //    once; draw it many. Dropped under throttle; discs + cores keep presence.
         var ctx = baseCtx
         ctx.blendMode = .plusLighter
-        let grain = ctx.resolve(sprites.radial(diameter: 48, stops: [
-            (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
-            (0.22, RGBA(r: 1, g: 1, b: 1, a: 0.62)),
-            (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.16)),
-            (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
-        ]))
+        let grain: GraphicsContext.ResolvedImage?
+        if lite {
+            grain = nil
+        } else {
+            grain = ctx.resolve(sprites.radial(diameter: 48, stops: [
+                (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
+                (0.22, RGBA(r: 1, g: 1, b: 1, a: 0.62)),
+                (0.5, RGBA(r: 1, g: 1, b: 1, a: 0.16)),
+                (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
+            ]))
+        }
 
         var crossPath = Path()
         var crossK = 0.0
@@ -237,11 +242,13 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
             ctx.fill(disc(x, y, discR), with: .color(col.withOpacity(discA).color))
 
             // (2) soft-grain bloom (cached sprite) — the white-hot pollen halo.
-            let bloomR = sz * (2.5 + 1.5 * bright)
-            var g = ctx
-            g.opacity = clampD(0.16 + 0.26 * d * bright, 0, 0.7) * f
-            g.draw(grain, in: CGRect(x: x - bloomR, y: y - bloomR,
-                                     width: bloomR * 2, height: bloomR * 2))
+            if let grain {
+                let bloomR = sz * (2.5 + 1.5 * bright)
+                var g = ctx
+                g.opacity = clampD(0.16 + 0.26 * d * bright, 0, 0.7) * f
+                g.draw(grain, in: CGRect(x: x - bloomR, y: y - bloomR,
+                                         width: bloomR * 2, height: bloomR * 2))
+            }
 
             // (3) hot grain core — the crisp legible silhouette point, whitened.
             let coreA = clampD((0.52 + 0.5 * d) * bright, 0, 1) * f

@@ -116,17 +116,9 @@ public final class SunshaftSubstrate: SwarmSubstrate {
             ]))
         }
         guard shaftRes.count == Self.hueSteps else { return true }
-        // saturated altitude-tinted glow for the additive bloom layer (dark only), and
-        // a pure-white hot pinpoint for the very centre of each core (depth: soft glow
-        // under → saturated body → hot core on top).
-        let bloomRes: [GraphicsContext.ResolvedImage] = rampCols.map { col in
-            ctx.resolve(sprites.radial(diameter: 64, stops: [
-                (0.0, col.withOpacity(0.95)),
-                (0.35, col.withOpacity(0.42)),
-                (0.7, col.withOpacity(0.12)),
-                (1.0, col.withOpacity(0.0))
-            ]))
-        }
+        // Pure-white hot pinpoint for the very centre of each core (depth: soft glow
+        // under → saturated body → hot core on top). Dark-only bloom sprites are
+        // resolved inside the guarded bloom pass below.
         let hotRes = ctx.resolve(sprites.radial(diameter: 24, stops: [
             (0.0, RGBA(r: 1, g: 1, b: 1, a: 1.0)),
             (0.4, RGBA(r: 1, g: 1, b: 1, a: 0.45)),
@@ -164,6 +156,14 @@ public final class SunshaftSubstrate: SwarmSubstrate {
         // battery throttle (the one heaviest extra pass) — the field still glows from
         // the additive shafts + cores below.
         if dark && !throttle {
+            let bloomRes: [GraphicsContext.ResolvedImage] = rampCols.map { col in
+                ctx.resolve(sprites.radial(diameter: 64, stops: [
+                    (0.0, col.withOpacity(0.95)),
+                    (0.35, col.withOpacity(0.42)),
+                    (0.7, col.withOpacity(0.12)),
+                    (1.0, col.withOpacity(0.0))
+                ]))
+            }
             let bloomD = coreR * 6.0
             let bloomBlur = max(2.5, coreR * 1.4)
             var bloom = baseCtx

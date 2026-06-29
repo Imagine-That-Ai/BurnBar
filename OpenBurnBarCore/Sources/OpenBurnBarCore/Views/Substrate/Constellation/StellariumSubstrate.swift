@@ -129,7 +129,7 @@ public final class StellariumSubstrate: SwarmSubstrate {
         // light we skip it (additive blur blows out a pale page) and lean on
         // raised crisp alphas + a soft per-node halo for presence.
         // ════════════════════════════════════════════════════════════════════
-        if dark && ec > 0 {
+        if dark && !throttled && ec > 0 {
             let bloomR = max(2.5, sizePx * 1.7)
             let wideW = max(1.6, sizePx * 1.25)
             let glowW = max(1.0, sizePx * 0.72)

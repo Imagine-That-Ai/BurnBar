@@ -178,8 +178,8 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
 
         // Cached cream→transparent teardrop sheen (soft pastel petal gradient +
         // specular streak + mauve fold). Baked ONCE, resolved once per frame, then
-        // drawn many times. Kept even under battery throttle (it IS the petal).
-        let sheen: GraphicsContext.ResolvedImage? = ensureSheen().map { ctx.resolve($0) }
+        // drawn many times. Dropped under battery throttle; the body path remains.
+        let sheen: GraphicsContext.ResolvedImage? = lite ? nil : ensureSheen().map { ctx.resolve($0) }
 
         // Per-petal geometry: orientation by the curl wind, a ≤3px capped curl
         // orbit, the edge-on↔broadside flutter, and the key-light back-facing

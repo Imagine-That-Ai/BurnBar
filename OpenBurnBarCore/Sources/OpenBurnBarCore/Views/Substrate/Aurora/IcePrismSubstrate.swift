@@ -129,11 +129,11 @@ public final class IcePrismSubstrate: SwarmSubstrate {
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // PASS A — PRESENCE UNDERGLOW (dark only): a cached icy halo under every
-        // facet, additive, so the whole silhouette reads as ONE continuous,
-        // luminous ice mass (never confetti, never near-empty). Brighter along
-        // the lit band, still present in the shadow so no facet floats alone.
-        if dark {
+        // PASS A — PRESENCE UNDERGLOW (dark, not throttled): a cached icy halo under
+        // every facet, additive, so the whole silhouette reads as ONE continuous,
+        // luminous ice mass (never confetti, never near-empty). Brighter along the
+        // lit band, still present in the shadow so no facet floats alone.
+        if dark && !lite {
             let icy = sprites.radial(diameter: 64, stops: [
                 (0.0, RGBA(r: 224.0 / 255, g: 246.0 / 255, b: 255.0 / 255, a: 0.95)),
                 (0.32, RGBA(r: 158.0 / 255, g: 214.0 / 255, b: 245.0 / 255, a: 0.40)),
