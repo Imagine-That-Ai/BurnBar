@@ -243,13 +243,25 @@ def validate_hosting(text: str) -> None:
     if "id: hosting_auth" not in deploy_job:
         fail(f"{path} deploy-hosting auth step must expose outputs through id: hosting_auth")
     if "node-version: 22" not in deploy_job:
-        fail(f"{path} deploy-hosting must run the pinned Firebase CLI under Node 22")
-    if "token_format: access_token" in deploy_job:
-        fail(f"{path} deploy-hosting must not request an auth action access_token for Firebase CLI --token")
+        fail(f"{path} deploy-hosting must run the Hosting REST deployer under Node 22")
+    if "          token_format: access_token" not in deploy_job:
+        fail(f"{path} deploy-hosting must request a WIF access token for the Hosting REST API")
+    if "FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}" not in deploy_job:
+        fail(f"{path} deploy-hosting must pass the WIF access token only to the Hosting REST deployer")
     if "FIREBASE_HOSTING_OIDC_ACCESS_TOKEN" in deploy_job:
         fail(f"{path} deploy-hosting must not pass WIF access tokens through Firebase CLI legacy token auth")
     if re.search(r"(?m)(?:^|\s)--token(?:\s|$)", deploy_job):
         fail(f"{path} deploy-hosting must not use Firebase CLI --token")
+    if "firebase deploy" in deploy_job:
+        fail(f"{path} deploy-hosting must not use Firebase CLI deploy auth")
+    if "deploy-firebase-hosting-rest.mjs" not in deploy_job:
+        fail(f"{path} deploy-hosting must use the artifact-bundled Hosting REST deployer")
+    if '--config "$FIREBASE_HOSTING_CI_CONFIG"' not in deploy_job:
+        fail(f"{path} deploy-hosting REST deployer must use the generated artifact-root CI config")
+    if '--firebaserc "$ARTIFACT_ROOT/.firebaserc"' not in deploy_job:
+        fail(f"{path} deploy-hosting REST deployer must use the artifact-root .firebaserc")
+    if re.search(r"--config\s+['\"]?firebase\.json['\"]?", deploy_job):
+        fail(f"{path} deploy-hosting must not deploy with raw firebase.json")
     if "FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json" not in deploy_job:
         fail(f"{path} deploy-hosting must keep firebase-hosting.ci.json under the artifact root so .firebaserc targets resolve")
     if "actions/checkout" in deploy_job:
@@ -269,7 +281,7 @@ def validate_hosting(text: str) -> None:
         "node_modules",
         "credential",
         "firebase-hosting.ci.json",
-        "FIREBASE_TOOLS_BIN",
+        "FIREBASE_HOSTING_REST_ACCESS_TOKEN",
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-hosting is missing artifact/config guard marker {marker!r}")

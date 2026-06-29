@@ -6,18 +6,17 @@ verify, or Firebase `predeploy` code.
 
 ## Invariant
 
-- Build before auth. `npm ci`, `npm run build`, website verification, trust-copy
-  drift checks, and Firebase CLI installation run before `google-github-actions/auth`.
+- Build before auth. `npm ci`, `npm run build`, website verification, and
+  trust-copy drift checks run before `google-github-actions/auth`.
 - CI never deploys with raw `firebase.json`. Deploy jobs use generated
   `firebase-*.ci.json` files from `scripts/ci/write-firebase-hosting-ci-config.mjs`;
   those configs recursively reject `predeploy`.
-- No npm after auth. Credentialed deploy steps invoke the prepared
-  `FIREBASE_TOOLS_BIN` directly, with `--config` pointing at the generated CI
-  config.
+- No npm after auth. Credentialed deploy steps invoke only artifact-bundled
+  deploy drivers with `--config` pointing at the generated CI config.
 - Hosting uses `GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT`. Functions and Firestore keep
   `GCP_DEPLOY_SERVICE_ACCOUNT`. Do not reuse the shared deploy service account
   for Hosting.
-- Logs may include artifact/config SHA-256 hashes and the Firebase CLI version.
+- Logs may include artifact/config SHA-256 hashes and deploy driver summaries.
   Do not print tokens, credential file paths beyond presence checks, `.env`
   contents, or service-account JSON.
 
@@ -31,10 +30,10 @@ verify, or Firebase `predeploy` code.
 2. `deploy-hosting` has production environment access and `id-token:write`. It
    does not check out the repository. It downloads the artifact, rejects
    symlinks, hardlinks, special files, `.env`, credential-looking paths, and
-   `node_modules`, verifies `SHA256SUMS`, installs the pinned Firebase CLI with
-   `--ignore-scripts` before auth, authenticates as
-   `GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT`, then deploys with:
-   `FIREBASE_TOOLS_BIN deploy --only hosting --config firebase-hosting.ci.json`.
+   `node_modules`, verifies `SHA256SUMS`, authenticates as
+   `GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT`, requests an ephemeral WIF access token,
+   then deploys with the artifact-bundled REST driver:
+   `node scripts/ci/deploy-firebase-hosting-rest.mjs --config firebase-hosting.ci.json --firebaserc .firebaserc`.
 3. `hosting-smoke-result` has `issues:write` but no `id-token`. It runs the
    public hosting smoke and opens or closes the ops-failure issue.
 
@@ -57,6 +56,8 @@ rules release and drift readback scripts may use the WIF token but must not call
 Required checks:
 
 ```bash
+node scripts/ci/deploy-firebase-hosting-rest.test.mjs
+node scripts/ci/verify-hosting-deploy-boundary.test.mjs
 bash scripts/ci/verify-production-deploy-auth.test.sh
 bash scripts/ci/verify-production-deploy-auth.sh
 bash scripts/ci/verify-codeowners-security-trees.sh

@@ -67,17 +67,24 @@ jobs:
         env:
           FIREBASE_HOSTING_CI_CONFIG: \${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: sha256sum -c SHA256SUMS
-      - name: Prepare pinned Firebase CLI before auth
-        run: bash prepare-firebase-tools.sh
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
       - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
+        id: hosting_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          token_format: access_token
       - name: Deploy Hosting (marketing + console)
         env:
+          ARTIFACT_ROOT: \${{ runner.temp }}/hosting-artifact
           FIREBASE_HOSTING_CI_CONFIG: \${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
-        run: firebase deploy --only hosting
+          FIREBASE_HOSTING_REST_ACCESS_TOKEN: \${{ steps.hosting_auth.outputs.access_token }}
+        run: |
+          node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" \
+            --project burnbar \
+            --config "$FIREBASE_HOSTING_CI_CONFIG" \
+            --firebaserc "$ARTIFACT_ROOT/.firebaserc"
 `;
 
 function buildTree(workflow) {
@@ -204,8 +211,8 @@ expect(
 expect(
   "legacy Firebase token auth fails",
   GOOD.replace(
-    "        run: firebase deploy --only hosting",
-    "        run: firebase deploy --only hosting --token \"$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN\"",
+    '          node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" \\\n            --project burnbar \\\n            --config "$FIREBASE_HOSTING_CI_CONFIG" \\\n            --firebaserc "$ARTIFACT_ROOT/.firebaserc"',
+    '          firebase deploy --only hosting --token "$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN"',
   ),
   1,
 );
@@ -218,7 +225,7 @@ expect(
   1,
 );
 expect(
-  "Firebase CLI Node 24 runtime fails",
+  "Hosting REST deployer Node 24 runtime fails",
   GOOD.replace("node-version: 22", "node-version: 24"),
   1,
 );

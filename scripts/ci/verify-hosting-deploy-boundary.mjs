@@ -243,15 +243,15 @@ requireOrder(
 );
 requireOrder(
   deployJob,
-  "Prepare pinned Firebase CLI before auth",
+  "node-version: 22",
   "Authenticate to Google Cloud (hosting-only WIF/OIDC)",
-  "Firebase CLI preparation must happen before GCP auth",
+  "Node 22 setup must happen before GCP auth",
 );
 requireOrder(
   deployJob,
   "Authenticate to Google Cloud (hosting-only WIF/OIDC)",
   "Deploy Hosting (marketing + console)",
-  "hosting deploy must authenticate before firebase deploy",
+  "hosting deploy must authenticate before the REST deployer runs",
 );
 
 requireNoPattern(
@@ -270,6 +270,11 @@ requireNoPattern(
   "credentialed deploy-hosting job must not use Firebase CLI legacy token auth",
 );
 requireNoPattern(
+  deployJob,
+  /\bfirebase\s+deploy\b/u,
+  "credentialed deploy-hosting job must not use Firebase CLI deploy auth",
+);
+requireNoPattern(
   source,
   /\brelease_hold_bypass_reason\b/u,
   "hosting deploy must not add self-authorized release hold bypass input",
@@ -278,7 +283,32 @@ requireNoPattern(
 requireIncludes(
   deployJob,
   "node-version: 22",
-  "credentialed deploy-hosting job must run the Firebase CLI under Node 22",
+  "credentialed deploy-hosting job must run the REST deployer under Node 22",
+);
+requireIncludes(
+  deployJob,
+  "          token_format: access_token",
+  "credentialed deploy-hosting job must request a WIF access token for the Hosting REST API",
+);
+requireIncludes(
+  deployJob,
+  "FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}",
+  "credentialed deploy-hosting job must pass the WIF access token only to the REST deployer",
+);
+requireIncludes(
+  deployJob,
+  "deploy-firebase-hosting-rest.mjs",
+  "credentialed deploy-hosting job must use the artifact-bundled Hosting REST deployer",
+);
+requireIncludes(
+  deployJob,
+  '--config "$FIREBASE_HOSTING_CI_CONFIG"',
+  "credentialed deploy-hosting job must deploy with the generated artifact-root CI config",
+);
+requireIncludes(
+  deployJob,
+  '--firebaserc "$ARTIFACT_ROOT/.firebaserc"',
+  "credentialed deploy-hosting job must deploy with the artifact-root .firebaserc",
 );
 requireIncludes(
   deployJob,
