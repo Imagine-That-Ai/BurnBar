@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Live Appearance Preview card at the top of the Appearance settings page.
+  Renders a miniature dashboard mockup (toolbar, sparkline, provider cards,
+  backdrop) that reflects the current theme, skin, background, and Liquid
+  Glass transparency selections in real time, so users see exactly what they
+  will get before applying changes.
+- Quick-Theme menu (`BurnRailAppearanceQuickMenu`) on the dashboard toolbar.
+  A compact menu-pill next to the actions capsule lets users flip appearance
+  mode (System/Light/Dark), app skin (Aurora/Editorial), and background
+  (Off/Swarm/Constellation) without opening Settings. Includes a shortcut to
+  open the full Appearance settings page.
+- Standalone settings gear (`BurnRailSettingsButton`) promoted to its own
+  toolbar slot so it is always visible regardless of window width.
+
+### Fixed
+
+- Settings cog (gear icon) no longer disappears from the dashboard toolbar at
+  narrow window widths. Previously it was bundled inside the
+  `BurnRailActionsSection` capsule with import and recount, and macOS would
+  crowd it off-screen. The gear now lives in its own `ToolbarItem` slot,
+  independent of the actions capsule.
+
+### Changed
+
+- Appearance settings page reorganized from a single 20+ row flat list into
+  three clearly-labeled sections behind a segmented control: **Theme**
+  (mode, skin, Liquid Glass), **Menu Bar & Launch** (menu bar, icon, login,
+  Premium UX), and **Background & Effects** (swarm, constellation, kernel
+  backdrop, desktop wallpaper, sparkles, shape cycling). All existing options
+  are preserved — just grouped for discoverability.
 - Drag-and-drop files onto the floating 3D pet (or 2D avatar) to auto-attach
   them as chat attachments from any page, Space, or fullscreen app. The pet
   floats above every desktop surface, so it's inherently a global drop target.
