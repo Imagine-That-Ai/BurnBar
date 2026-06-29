@@ -198,6 +198,7 @@ jobs:
         run: bash "${{ runner.temp }}/hosting-artifact/scripts/ci/prepare-firebase-tools.sh"
 
       - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
+        id: hosting_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -209,10 +210,15 @@ jobs:
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
           FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/firebase-hosting.ci.json
+          FIREBASE_HOSTING_OIDC_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Production hosting deploy requires workload identity federation."
+            exit 1
+          fi
+          if [[ -z "${FIREBASE_HOSTING_OIDC_ACCESS_TOKEN:-}" ]]; then
+            echo "::error::No short-lived WIF access token was exported for Firebase Hosting deploy."
             exit 1
           fi
           if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
@@ -224,7 +230,8 @@ jobs:
             --only hosting \
             --project burnbar \
             --config "$FIREBASE_HOSTING_CI_CONFIG" \
-            --non-interactive
+            --non-interactive \
+            --token "$FIREBASE_HOSTING_OIDC_ACCESS_TOKEN"
 
   hosting-smoke-result:
     needs: deploy-hosting
