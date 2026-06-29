@@ -870,9 +870,17 @@ jobs:
   twin-basenames:
     name: Swift twin basenames
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            AgentLens
+            OpenBurnBarMobile
+            docs/LINT_RATIONALE.md
+            scripts/ci/check-twin-basenames.sh
+            scripts/ci/check-twin-basenames.test.sh
 
       - name: Self-test Swift twin-basename gate
         run: bash scripts/ci/check-twin-basenames.test.sh
@@ -884,9 +892,15 @@ jobs:
   env-no-secrets:
     name: Production env has no secrets
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            functions/.env.burnbar.production
+            scripts/ci/check-env-no-secrets.sh
+            scripts/ci/check-env-no-secrets.test.sh
 
       - name: Self-test production env secret guard
         run: bash scripts/ci/check-env-no-secrets.test.sh
