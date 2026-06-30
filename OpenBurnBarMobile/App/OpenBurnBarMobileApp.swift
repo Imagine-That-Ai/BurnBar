@@ -85,6 +85,13 @@ struct OpenBurnBarMobileApp: App {
     // skin-aware design tokens re-resolve immediately.
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
 
+    /// Screenshot-only deep link: when launched with
+    /// `-OpenBurnBarScreenshotRoute theme`, present the Appearance / Theme page
+    /// (which hosts the swarm-substrate picker) over the root so App Store
+    /// screenshots — and automated visual audits — can capture it directly
+    /// without scripting two levels of navigation. No effect in normal runs.
+    @State private var showThemeScreenshotPage = false
+
     private var appearanceOverride: ColorScheme? {
         if appSkin == .editorial { return .light }
         switch preferredAppearance {
@@ -144,6 +151,21 @@ struct OpenBurnBarMobileApp: App {
                 // consent is `.unset`; never reappears after a decision.
                 .analyticsConsentPrompt()
                 .burnBarLaunchSplash(onHaptic: HapticBus.logoFormation)
+                .fullScreenCover(isPresented: $showThemeScreenshotPage) {
+                    NavigationStack {
+                        ThemeSettingsView()
+                            .navigationTitle("Appearance")
+                            .navigationBarTitleDisplayMode(.inline)
+                    }
+                }
+                .task {
+                    // Screenshot/audit affordance only — gated on the App Store
+                    // screenshot launch flag so it can never fire in a real session.
+                    if AppStoreScreenshotMode.isEnabled,
+                       AppStoreScreenshotMode.route == "theme" {
+                        showThemeScreenshotPage = true
+                    }
+                }
         }
     }
 

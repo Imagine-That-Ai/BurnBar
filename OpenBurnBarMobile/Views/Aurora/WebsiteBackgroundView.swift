@@ -16,6 +16,7 @@ struct WebsiteBackgroundView: View {
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
     @Environment(\.hermesStreamingActive) private var hermesStreamingActive
     @Environment(\.scenePhase) private var scenePhase
@@ -153,6 +154,14 @@ struct WebsiteBackgroundView: View {
         }
     }
 
+    /// The live kernel backdrop. Every kernel now renders through the WebGL
+    /// host (`MobileWebGLKernelBackdropView`) — the SAME offline bundle macOS
+    /// and the website use — as the BASE layer. When the substrate picker is
+    /// enabled we layer the transparent SwarmCanvasView + substrate OVER the
+    /// kernel, mirroring macOS `DashboardBackdrop` (kernel base, then optional
+    /// `kernelSubstrateOverlay`). This retires the old procedural
+    /// `MobileKernelBackdropView`/`ConstellationBackgroundView` live renderers
+    /// in favour of the real WebGL kernels, for parity across platforms.
     @ViewBuilder
     private func liveBackdrop(
         for kernel: MobileBackdropKernel,
@@ -160,22 +169,40 @@ struct WebsiteBackgroundView: View {
         plan: SwarmBackgroundRenderPlan,
         visibility: MobileBackgroundVisibility
     ) -> some View {
-        switch kernel {
-        case .constellation:
-            ConstellationBackgroundView(
-                accent: accent,
-                visibility: visibility,
-                enabledProviderGlyphs: prefs.selectedGlyphs
-            )
-        default:
-            MobileKernelBackdropView(
-                kernel: kernel,
-                accent: accent,
-                visibility: visibility,
-                colorDriver: colorDriver,
-                backdropColors: themePalette.backdropColors,
-                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate)
-            )
+        // Dark by default; light for the editorial/paper skin or a light scheme.
+        let theme = (appSkin == .editorial || colorScheme == .light) ? "light" : "dark"
+
+        ZStack {
+            // WebGL kernel base — same `KernelBackdrop` bundle as macOS/web,
+            // driven by the raw kernel id (e.g. "constellation", "fluid-aurora").
+            MobileWebGLKernelBackdropView(kernelID: kernel.rawValue, theme: theme)
+                .ignoresSafeArea()
+
+            // Transparent swarm + substrate over the kernel, like macOS
+            // DashboardBackdrop.kernelSubstrateOverlay. Skipped for the plain
+            // (no-op) substrate so the kernel field reads cleanly on its own.
+            if substrateEnabled && substrateID != SubstrateCatalog.plainID {
+                SwarmCanvasView(
+                    accent: accent,
+                    pace: .cinematic,
+                    particleCount: editorialParticleCount(for: visibility),
+                    colorDriver: colorDriver,
+                    isTransparent: true,
+                    colorPalette: themePalette.swarmPalette,
+                    motionSpeedMultiplier: 0.6,
+                    isAutoCyclingEnabled: true,
+                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
+                    isAvatarEnabled: prefs.isAvatarEnabled,
+                    isBrandTextEnabled: prefs.isBrandTextEnabled,
+                    enableSwarmSparkles: false,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
+                    rendersAsynchronously: true,
+                    substrate: substrate
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
         }
     }
 
