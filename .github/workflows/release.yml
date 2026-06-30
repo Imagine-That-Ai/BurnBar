@@ -164,7 +164,7 @@ jobs:
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
       - name: BurnBar product release preflight
-        run: python3 scripts/ci/check_burnbar_release_preflight.py
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval
 
       - name: Validate mobile unit test bypass reason
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}

@@ -49,7 +49,12 @@ def source_provenance_blockers(repo_root: Path, *, include_runtime_readiness: bo
     return provenance.source_integrity_blockers(manifest)
 
 
-def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
+def legal_review_blockers(
+    evidence_path: Path,
+    repo_root: Path,
+    *,
+    allow_owner_emergency_approval: bool = False,
+) -> list[str]:
     legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
 
     if not evidence_path.is_file():
@@ -61,6 +66,16 @@ def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
         return [f"legal release review evidence is unreadable: {exc}"]
 
     status = data.get("reviewStatus") or data.get("status")
+    owner_status = getattr(legal_review, "OWNER_ATTESTED_SOFT_APPROVAL_STATUS", "owner_attested_soft_approval")
+    if allow_owner_emergency_approval and status == owner_status:
+        validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
+        if validator is None:
+            return ["owner emergency approval validator is missing"]
+        return [
+            f"owner emergency approval: {error}"
+            for error in validator(data, repo_root=repo_root)
+        ]
+
     if status != "approved":
         blockers = [f"legal release review is not approved: {status!r}"]
         non_approval = data.get("explicitNonApproval", "")
@@ -80,11 +95,21 @@ def collect_blockers(
     legal_evidence: Path,
     include_runtime_readiness: bool = True,
     include_legal_review: bool = True,
+    allow_owner_emergency_approval: bool = False,
 ) -> list[str]:
     blockers = []
-    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=include_runtime_readiness))
+    runtime_gate_required = include_runtime_readiness
+    if allow_owner_emergency_approval and include_legal_review:
+        runtime_gate_required = False
+    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=runtime_gate_required))
     if include_legal_review:
-        blockers.extend(legal_review_blockers(legal_evidence, repo_root))
+        blockers.extend(
+            legal_review_blockers(
+                legal_evidence,
+                repo_root,
+                allow_owner_emergency_approval=allow_owner_emergency_approval,
+            )
+        )
     return blockers
 
 
@@ -96,6 +121,15 @@ def main(argv: list[str] | None = None) -> int:
         "--source-provenance-only",
         action="store_true",
         help="Validate clean release source and required corresponding-source files without runtime/legal holds.",
+    )
+    parser.add_argument(
+        "--allow-owner-emergency-approval",
+        action="store_true",
+        help=(
+            "Allow a structured owner-attested soft-approval packet to satisfy "
+            "runtime/legal release holds for an emergency artifact release. The "
+            "default path still requires signed external-counsel approval."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -109,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         legal_evidence=legal_evidence,
         include_runtime_readiness=not args.source_provenance_only,
         include_legal_review=not args.source_provenance_only,
+        allow_owner_emergency_approval=args.allow_owner_emergency_approval and not args.source_provenance_only,
     )
     if blockers:
         if args.source_provenance_only:

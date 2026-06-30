@@ -9,6 +9,7 @@ import scripts.ci.check_agpl_legal_release_review as agpl_review
 
 
 validate_legal_release_review = agpl_review.validate_legal_release_review
+validate_owner_attested_soft_approval = agpl_review.validate_owner_attested_soft_approval
 
 
 def valid_review() -> dict[str, object]:
@@ -56,6 +57,46 @@ def valid_review() -> dict[str, object]:
 
 def test_validates_approved_legal_release_review() -> None:
     assert validate_legal_release_review(valid_review()) == []
+
+
+def valid_owner_attestation() -> dict[str, object]:
+    review = valid_review()
+    review["status"] = agpl_review.OWNER_ATTESTED_SOFT_APPROVAL_STATUS
+    review["reviewStatus"] = agpl_review.OWNER_ATTESTED_SOFT_APPROVAL_STATUS
+    review["ownerAttestation"] = {
+        "ownerName": "Alberto Nunez",
+        "ownerGitHub": "Ajnunezg",
+        "ownerRole": "release_owner",
+        "attestedAt": "2026-06-30T05:33:10Z",
+        "counselName": "Heather Meeker",
+        "approvalType": "soft_approval",
+        "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact.",
+        "approvalBoundary": "Emergency owner-attested soft approval for v1.0.8.",
+        "ownerStatement": "As owner, Alberto Nunez attests that Heather Meeker gave soft approval.",
+        "followUpRequired": True,
+    }
+    return review
+
+
+def test_validates_owner_attested_soft_approval() -> None:
+    assert validate_owner_attested_soft_approval(valid_owner_attestation()) == []
+
+
+def test_owner_attested_soft_approval_is_not_signed_counsel_approval() -> None:
+    errors = validate_legal_release_review(valid_owner_attestation(), require_approved=True)
+
+    assert "reviewStatus must be 'approved'" in errors
+
+
+def test_owner_attested_soft_approval_requires_named_owner_and_counsel() -> None:
+    data = valid_owner_attestation()
+    data["ownerAttestation"]["ownerGitHub"] = "someone-else"  # type: ignore[index]
+    data["ownerAttestation"]["counselName"] = "Other Counsel"  # type: ignore[index]
+
+    errors = validate_owner_attested_soft_approval(data)
+
+    assert "ownerAttestation.ownerGitHub must be 'Ajnunezg'" in errors
+    assert "ownerAttestation.counselName must be 'Heather Meeker'" in errors
 
 
 def test_rejects_non_approved_or_placeholder_review() -> None:

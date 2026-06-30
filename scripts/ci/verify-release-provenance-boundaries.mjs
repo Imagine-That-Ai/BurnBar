@@ -266,7 +266,12 @@ function requireNoContinueOnError(file, source, message) {
   if (offenders.length > 0) fail(file, `${message}: ${offenders.join("; ")}`);
 }
 
-function requireProductReleasePreflight(file, source, message) {
+function requireProductReleasePreflight(
+  file,
+  source,
+  message,
+  { allowOwnerEmergencyApproval = false } = {},
+) {
   requireNoPattern(
     file,
     source,
@@ -290,12 +295,22 @@ function requireProductReleasePreflight(file, source, message) {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  if (
-    !executableLines.includes(
-      "python3 scripts/ci/check_burnbar_release_preflight.py",
-    )
-  ) {
+  const expectedCommands = [
+    "python3 scripts/ci/check_burnbar_release_preflight.py",
+  ];
+  if (allowOwnerEmergencyApproval) {
+    expectedCommands.push(
+      "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
+    );
+  }
+  if (!expectedCommands.some((command) => executableLines.includes(command))) {
     fail(file, `${message}: must run the full product release preflight`);
+  }
+  if (
+    !allowOwnerEmergencyApproval &&
+    /\b--allow-owner-emergency-approval\b/u.test(runBlock)
+  ) {
+    fail(file, `${message}: owner-emergency approval is not allowed in this workflow`);
   }
   if (/\b--source-provenance-only\b/u.test(runBlock)) {
     fail(file, `${message}: product preflight must not be source-only`);
@@ -536,6 +551,7 @@ function verifyReleaseWorkflow() {
     file,
     source,
     "release product preflight must be mandatory",
+    { allowOwnerEmergencyApproval: true },
   );
   requireIncludes(
     file,

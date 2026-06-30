@@ -97,6 +97,11 @@ def test_product_release_workflows_invoke_release_preflight():
         assert "Record owner-approved release hold bypass" not in body, workflow
         assert "trim(inputs.release_hold_bypass_reason)" not in body, workflow
 
+    release_body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    deploy_body = (ROOT / ".github/workflows/deploy-production.yml").read_text(encoding="utf-8")
+    assert "check_burnbar_release_preflight.py --allow-owner-emergency-approval" in release_body
+    assert "check_burnbar_release_preflight.py --allow-owner-emergency-approval" not in deploy_body
+
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
 
