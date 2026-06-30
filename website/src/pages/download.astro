@@ -7,12 +7,9 @@ const macUpdateBaseUrl = (SITE.macUpdateBaseUrl ?? SITE.macDownloadBaseUrl).repl
 const macDownloadHref = macDownloadBaseUrl
   ? `${macDownloadBaseUrl}/${SITE.macReleaseFile}`
   : `/downloads/${SITE.macReleaseFile}`;
-const macLatestHref = macUpdateBaseUrl
-  ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}`
-  : `/downloads/${SITE.macUpdateFeedFile}`;
-const macAppcastHref = macUpdateBaseUrl
-  ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}`
-  : `/downloads/${SITE.macAppcastFile}`;
+const hasMacUpdateFeed = Boolean(macUpdateBaseUrl);
+const macLatestHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}` : "";
+const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}` : "";
 ---
 
 <BaseLayout
@@ -56,16 +53,20 @@ const macAppcastHref = macUpdateBaseUrl
           <div class="step__card">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              The latest direct-download release is served from OpenBurnBar's download host. Each
-              one ships Developer ID signed, notarized, stapled, with SHA-256 and SHA-512 checksums,
-              a latest-release feed, and a Sparkle-compatible appcast next to it.
+              The public macOS DMG is served from GitHub Releases while OpenBurnBar's branded
+              direct-download host is being republished. The newer notarized 1.0.5 channel will
+              return here once its release pipeline has produced live artifacts.
             </p>
-            <p class="muted small">
-              Release feeds:
-              <a href={macLatestHref}>latest metadata</a>
-              ·
-              <a href={macAppcastHref}>appcast</a>
-            </p>
+            {
+              hasMacUpdateFeed && (
+                <p class="muted small">
+                  Release feeds:
+                  <a href={macLatestHref}>latest metadata</a>
+                  {" · "}
+                  <a href={macAppcastHref}>appcast</a>
+                </p>
+              )
+            }
           </div>
         </li>
         <li class="step">
