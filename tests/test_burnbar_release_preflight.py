@@ -188,6 +188,17 @@ def test_release_workflow_uses_bounded_release_critical_mobile_gate():
         assert required_filter in filters
 
 
+def test_release_workflow_bounds_sqlcipher_release_codec_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Verify SQLCipher codec in Release configuration")
+    step_end = body.index("- name: Run OpenBurnBar mobile unit tests")
+    sqlcipher_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 60" in sqlcipher_step
+    assert "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh" in sqlcipher_step
+
+
 def test_release_workflow_parallelizes_independent_publish_gates():
     body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 

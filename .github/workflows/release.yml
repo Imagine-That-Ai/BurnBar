@@ -429,6 +429,7 @@ jobs:
             ./scripts/test-openburnbar-app.sh
 
       - name: Verify SQLCipher codec in Release configuration
+        timeout-minutes: 60
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
 
       - name: Run OpenBurnBar mobile unit tests
