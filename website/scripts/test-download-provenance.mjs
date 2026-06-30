@@ -31,6 +31,7 @@ const uploadScript = read("scripts/upload-macos-downloads-r2.sh");
 const releaseDocs = read("docs/RELEASE_MACOS.md");
 
 const macDownloadBaseUrl = new URL(stringValue(siteSource, "macDownloadBaseUrl"));
+const macReleaseFile = stringValue(siteSource, "macReleaseFile");
 const isFirstPartyDownloadHost = macDownloadBaseUrl.hostname === "downloads.burnbar.ai";
 const isGitHubReleaseAsset =
   macDownloadBaseUrl.hostname === "github.com" &&
@@ -42,6 +43,19 @@ assert(
 assert(
   !/(^|\.)r2\.dev$/i.test(macDownloadBaseUrl.hostname),
   "SITE.macDownloadBaseUrl must not expose a raw R2 public bucket"
+);
+
+const macDownloadUrl = new URL(
+  `${macDownloadBaseUrl.toString().replace(/\/$/, "")}/${macReleaseFile}`
+);
+const macDownloadResponse = await fetch(macDownloadUrl, {
+  method: "HEAD",
+  redirect: "follow",
+  signal: AbortSignal.timeout(15_000)
+});
+assert(
+  macDownloadResponse.ok,
+  `SITE macOS download URL must be live: ${macDownloadUrl} returned ${macDownloadResponse.status}`
 );
 
 const macUpdateBaseUrlRaw = stringValue(siteSource, "macUpdateBaseUrl");
@@ -61,13 +75,13 @@ assert.match(sourcePage, /signed macOS\s+DMG, ZIP, SBOM, checksums, and release\
 
 assert.match(
   uploadScript,
-  /site_mac_download_base_url=/,
-  "upload script must derive the verification URL from site config by default"
+  /public_base_url="\$\{OPENBURNBAR_R2_PUBLIC_BASE_URL:-https:\/\/downloads\.burnbar\.ai\}"/,
+  "upload script must verify the branded download host by default, not a temporary website fallback"
 );
 assert.match(
   uploadScript,
-  /public_base_url="\$\{OPENBURNBAR_R2_PUBLIC_BASE_URL:-\$site_mac_download_base_url\}"/,
-  "upload script must verify the configured public download host unless explicitly overridden"
+  /OPENBURNBAR_R2_PUBLIC_BASE_URL/,
+  "upload script must allow operators to override the branded public verification host"
 );
 
 assert.match(releaseDocs, /downloads\.burnbar\.ai/);
