@@ -213,6 +213,7 @@ struct HermesSquareRoot: View {
         }
         .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
