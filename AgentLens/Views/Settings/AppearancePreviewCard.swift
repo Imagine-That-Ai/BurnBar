@@ -225,7 +225,9 @@ struct AppearancePreviewCard: View {
                     accent: DesignSystem.Colors.ember,
                     pace: .cinematic,
                     motionSpeedMultiplier: 0.8,
+                    enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs,
                     enableSwarmSparkles: settingsManager.enableSwarmSparkles,
+                    excludeBrandShapesFromSwarm: !settingsManager.desktopWallpaperProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
                     rendersAsynchronously: true,
                     substrate: substrate
                 )

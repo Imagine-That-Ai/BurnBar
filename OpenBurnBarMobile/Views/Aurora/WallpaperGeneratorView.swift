@@ -216,6 +216,7 @@ struct WallpaperGeneratorView: View {
                 colorPalette: effectiveStyle.swarmPalette,
                 motionSpeedMultiplier: isHolding ? 2.5 : 1.0,
                 enabledProviderGlyphs: selectedProviderGlyphs,
+                excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
                 currentMode: $currentMode,
                 logoOffsets: logoOffsets,
                 substrate: substrate
@@ -873,6 +874,7 @@ struct WallpaperGeneratorView: View {
                 colorDriver: colorDriver,
                 colorPalette: effectiveStyle.swarmPalette,
                 enabledProviderGlyphs: selectedProviderGlyphs,
+                excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
                 logoOffsets: logoOffsets,
                 substrate: substrate
             )

@@ -30,6 +30,7 @@ import SwiftUI
 /// reduced-motion requirement is satisfied by reusing the engine as-is.
 struct ConstellationBackgroundView: View {
     let accent: Color
+    var enabledProviderGlyphs: [AgentProvider] = SwarmProviderGlyphSelection.allProviders
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
@@ -46,6 +47,7 @@ struct ConstellationBackgroundView: View {
             isTransparent: true,
             motionSpeedMultiplier: 0.55,
             isAutoCyclingEnabled: true,
+            enabledProviderGlyphs: enabledProviderGlyphs,
             enableSwarmSparkles: true,
             excludeBrandShapesFromSwarm: true,
             rendersAsynchronously: true,

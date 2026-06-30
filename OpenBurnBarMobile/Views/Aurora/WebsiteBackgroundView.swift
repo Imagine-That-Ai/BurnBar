@@ -77,14 +77,14 @@ struct WebsiteBackgroundView: View {
                     colorPalette: themePalette.swarmPalette,
                     motionSpeedMultiplier: 0.7,
                     isAutoCyclingEnabled: true,
-                    // Empty selection (the "None" glyph choice) would yield a cycle
-                    // with no provider logos — fall back to the full roster so the
-                    // dot-crest always has logos to form.
-                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
+                    // Empty selection (the "None" glyph choice) is meaningful:
+                    // provider logos stay hidden while the non-provider cycle can
+                    // still run when brand shapes are enabled.
+                    enabledProviderGlyphs: prefs.selectedGlyphs,
                     isAvatarEnabled: prefs.isAvatarEnabled,
                     isBrandTextEnabled: prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
-                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || !prefs.selectedGlyphs.isEmpty,
                     maxFrameRate: streamingThrottledFrameRate(nil),
                     rendersAsynchronously: true,
                     substrate: substrate
@@ -171,6 +171,8 @@ struct WebsiteBackgroundView: View {
     ) -> some View {
         // Dark by default; light for the editorial/paper skin or a light scheme.
         let theme = (appSkin == .editorial || colorScheme == .light) ? "light" : "dark"
+        let providerGlyphsSelected = !prefs.selectedGlyphs.isEmpty
+        let substrateSelected = substrateEnabled && substrateID != SubstrateCatalog.plainID
 
         ZStack {
             // WebGL kernel base — same `KernelBackdrop` bundle as macOS/web,
@@ -179,28 +181,30 @@ struct WebsiteBackgroundView: View {
                 .ignoresSafeArea()
 
             // Transparent swarm + substrate over the kernel, like macOS
-            // DashboardBackdrop.kernelSubstrateOverlay. Skipped for the plain
-            // (no-op) substrate so the kernel field reads cleanly on its own.
-            if substrateEnabled && substrateID != SubstrateCatalog.plainID {
+            // DashboardBackdrop.kernelSubstrateOverlay. Provider glyphs are an
+            // independent wallpaper control, so a non-empty selection gets an
+            // overlay even when the substrate itself is disabled.
+            if substrateSelected || providerGlyphsSelected {
                 SwarmCanvasView(
                     accent: accent,
                     pace: .cinematic,
                     particleCount: editorialParticleCount(for: visibility),
-                    colorDriver: colorDriver,
+                    colorDriver: providerGlyphsSelected ? nil : colorDriver,
                     isTransparent: true,
                     colorPalette: themePalette.swarmPalette,
                     motionSpeedMultiplier: 0.6,
                     isAutoCyclingEnabled: true,
-                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
-                    isAvatarEnabled: prefs.isAvatarEnabled,
-                    isBrandTextEnabled: prefs.isBrandTextEnabled,
+                    enabledProviderGlyphs: prefs.selectedGlyphs,
+                    isAvatarEnabled: providerGlyphsSelected ? false : prefs.isAvatarEnabled,
+                    isBrandTextEnabled: providerGlyphsSelected ? false : prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
-                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || providerGlyphsSelected,
                     maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
                     rendersAsynchronously: true,
-                    substrate: substrate
+                    substrate: substrateSelected ? substrate : nil
                 )
                 .ignoresSafeArea()
+                .opacity(providerGlyphsSelected ? 0.62 : 0.58)
                 .allowsHitTesting(false)
             }
         }

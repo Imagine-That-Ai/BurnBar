@@ -102,7 +102,10 @@ struct DashboardBackdrop: View {
                             .ignoresSafeArea()
                         kernelSubstrateOverlay
                     } else if settingsManager.useConstellationBackground {
-                        ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
+                        ConstellationBackgroundView(
+                            accent: DesignSystem.Colors.ember,
+                            enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs
+                        )
                     } else {
                         WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
                     }
@@ -118,18 +121,21 @@ struct DashboardBackdrop: View {
 
     @ViewBuilder
     private var kernelSubstrateOverlay: some View {
-        if substrateEnabled {
+        let enabledProviderGlyphs = settingsManager.desktopWallpaperProviderGlyphs
+        if substrateEnabled || !enabledProviderGlyphs.isEmpty {
             SwarmCanvasView(
                 accent: DesignSystem.Colors.ember,
                 pace: .cinematic,
                 isTransparent: true,
                 motionSpeedMultiplier: 0.6,
+                enabledProviderGlyphs: enabledProviderGlyphs,
                 enableSwarmSparkles: false,
+                excludeBrandShapesFromSwarm: !enabledProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
                 rendersAsynchronously: true,
-                substrate: substrate
+                substrate: substrateEnabled ? substrate : nil
             )
             .ignoresSafeArea()
-            .opacity(0.58)
+            .opacity(substrateEnabled ? 0.58 : 0.5)
             .allowsHitTesting(false)
         }
     }
@@ -204,7 +210,9 @@ struct WebsiteBackgroundView: View {
                     pace: .cinematic,
                     isTransparent: true,
                     motionSpeedMultiplier: 0.7,
+                    enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs,
                     enableSwarmSparkles: false,
+                    excludeBrandShapesFromSwarm: !settingsManager.desktopWallpaperProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
                     rendersAsynchronously: true,
                     substrate: substrate
                 )
@@ -212,7 +220,14 @@ struct WebsiteBackgroundView: View {
                 .opacity(0.85)
             }
         } else {
-            SwarmCanvasView(accent: accent, pace: .energetic, rendersAsynchronously: true, substrate: substrate)
+            SwarmCanvasView(
+                accent: accent,
+                pace: .energetic,
+                enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs,
+                excludeBrandShapesFromSwarm: settingsManager.excludeBrandShapesFromSwarm,
+                rendersAsynchronously: true,
+                substrate: substrate
+            )
                 .ignoresSafeArea()
         }
         // cov:ignore-end

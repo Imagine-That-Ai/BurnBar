@@ -36,14 +36,21 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     /// Max grid resolution along either canvas axis (cells). The grid is ADAPTIVE —
     /// chosen so each pane stays a small, fixed SCREEN size rather than scaling with
     /// the cloud/screen (a sparse full-screen swarm must never yield huge tiles).
-    private static let MAXGRID = 160
+    private static let MAXGRID = 240
     /// Total-cell budget. Keeps the per-frame paint bounded on very wide canvases;
     /// when exceeded the cell size is grown until the count fits.
-    private static let MAXCELLS = 6000
+    private static let MAXCELLS = 22_000
     /// Pane overlap so adjacent cells leave no seam gaps (continuous sheet).
-    private static let overlap = 1.12
+    private static let overlap = 1.06
     /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges.
-    private static let cornerFrac = 0.22
+    private static let cornerFrac = 0.28
+    /// Keep the Gradient Patch idiom as fine texture, not a foreground tile wall.
+    /// The original mobile kernel path allowed 25-35 px panes; cap it near icon
+    /// detail size so wallpapers read as shimmer instead of masonry.
+    private static let minTargetCellPx = 7.0
+    private static let maxTargetCellPx = 10.5
+    private static let throttledMaxTargetCellPx = 13.0
+    private static let targetCellSizeMultiplier = 3.6
     /// Gaussian splat radius (cells) and width — controls how the cloud bleeds into
     /// the density/colour field (and therefore how softly the sheet feathers).
     private static let splatR = 2
@@ -114,6 +121,49 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         return Self.irisRamp[i0].mix(with: Self.irisRamp[i1], amount: fp - Double(i0))
     }
 
+    static func targetCellPx(forBaseSize sizePx: Double, batteryThrottled: Bool = false) -> Double {
+        clampD(
+            sizePx * targetCellSizeMultiplier,
+            minTargetCellPx,
+            batteryThrottled ? throttledMaxTargetCellPx : maxTargetCellPx
+        )
+    }
+
+    static func gridDimensions(
+        forWidth width: Double,
+        height: Double,
+        baseSize sizePx: Double,
+        batteryThrottled: Bool = false
+    ) -> (cols: Int, rows: Int) {
+        let targetCellPx = targetCellPx(forBaseSize: sizePx, batteryThrottled: batteryThrottled)
+        var cols = max(8, min(Self.MAXGRID, Int((width / targetCellPx).rounded())))
+        var rows = max(8, min(Self.MAXGRID, Int((height / targetCellPx).rounded())))
+        let budget = batteryThrottled ? Self.MAXCELLS / 2 : Self.MAXCELLS
+        if cols * rows > budget {
+            let scale = (Double(cols * rows) / Double(budget)).squareRoot()
+            cols = max(8, Int(Double(cols) / scale))
+            rows = max(8, Int(Double(rows) / scale))
+        }
+        return (cols, rows)
+    }
+
+    static func maximumPaintedPaneWidth(
+        width: Double,
+        height: Double,
+        baseSize sizePx: Double,
+        batteryThrottled: Bool = false
+    ) -> Double {
+        let dimensions = gridDimensions(
+            forWidth: width,
+            height: height,
+            baseSize: sizePx,
+            batteryThrottled: batteryThrottled
+        )
+        let cellW = width / Double(max(1, dimensions.cols))
+        let cellH = height / Double(max(1, dimensions.rows))
+        return max(cellW, cellH) * overlap
+    }
+
     // MARK: Layout (per (count, canvas size, settle))
 
     /// Size an ADAPTIVE grid over the FULL canvas so every cell is a small, fixed
@@ -146,7 +196,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         // it never balloons when the host renders large particles (the wallpaper feeds
         // a big sizePx). Cap is independent of sizePx and cloudRadius.
         let throttle = frame.batteryThrottled
-        let targetCellPx = clampD(frame.sizePx * 4.5, 15.0, throttle ? 34.0 : 24.0)
+        let targetCellPx = Self.targetCellPx(forBaseSize: frame.sizePx, batteryThrottled: throttle)
         // Pad the bbox by ~1.5 cells so the tessellation feathers just past the cloud.
         let pad = targetCellPx * 1.5
         var x0 = max(0.0, minX - pad), y0 = max(0.0, minY - pad)
@@ -155,15 +205,14 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         if !(y1 > y0) { y0 = 0; y1 = ch }
         let bw = x1 - x0, bh = y1 - y0
 
-        var c = max(8, min(Self.MAXGRID, Int((bw / targetCellPx).rounded())))
-        var r = max(8, min(Self.MAXGRID, Int((bh / targetCellPx).rounded())))
-        // Honour the total-cell budget (grow cells, never explode the paint loop).
-        let budget = throttle ? Self.MAXCELLS / 2 : Self.MAXCELLS
-        if c * r > budget {
-            let s = (Double(c * r) / Double(budget)).squareRoot()
-            c = max(8, Int(Double(c) / s))
-            r = max(8, Int(Double(r) / s))
-        }
+        let dimensions = Self.gridDimensions(
+            forWidth: bw,
+            height: bh,
+            baseSize: frame.sizePx,
+            batteryThrottled: throttle
+        )
+        let c = dimensions.cols
+        let r = dimensions.rows
         cols = c
         rows = r
         cells = c * r
@@ -341,7 +390,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                     let glow = RGBA(r: colR[i], g: colG[i], b: colB[i])
                         .toWhite(0.26).mix(with: accent, amount: 0.18)
                     let rr = baseExt * (1.35 + 0.5 * br)
-                    layer.opacity = clampD(0.55 * br * f, 0, 0.8)
+                    layer.opacity = clampD(0.42 * br * f, 0, 0.58)
                     layer.fill(Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2)),
                                with: .color(glow.color))
                 }
@@ -396,7 +445,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                 .init(color: botC.color, location: 1.0)
             ])
 
-            ctx.opacity = clampD(f * dn, 0, 1)
+            ctx.opacity = clampD(0.82 * f * dn, 0, 0.88)
             ctx.fill(quad, with: .linearGradient(grad, startPoint: pTop, endPoint: pBot))
 
             // Hot glossy specular core toward the upper-left lit corner. Additive on
@@ -408,14 +457,14 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                 let hyp = cyp + (ox * sinT + oy * cosT)
                 let hr = baseExt * (0.78 + 0.28 * specK)
                 ctx.blendMode = dark ? .plusLighter : .normal
-                ctx.opacity = clampD((dark ? 0.46 : 0.32) * specK * f, 0, dark ? 0.75 : 0.46)
+                ctx.opacity = clampD((dark ? 0.38 : 0.28) * specK * f, 0, dark ? 0.58 : 0.38)
                 ctx.draw(spot, in: CGRect(x: hxp - hr, y: hyp - hr, width: hr * 2, height: hr * 2))
                 ctx.blendMode = .normal
             }
 
             // Hairline iridescent thin-film seam — gated by density so it reads as an
             // INTERIOR grid shimmer that fades at the cloud edge, never an outline.
-            let seamA = clampD((0.18 + 0.34 * litK) * f * dn, 0, 0.72)
+            let seamA = clampD((0.12 + 0.26 * litK) * f * dn, 0, 0.46)
             if seamA > 0.02 {
                 ctx.opacity = seamA
                 ctx.stroke(quad, with: .color(iris.color),
