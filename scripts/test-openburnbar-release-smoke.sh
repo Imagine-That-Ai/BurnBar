@@ -4,8 +4,15 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# shellcheck source=scripts/lib/openburnbar-release-app-test-filters.sh
+source "$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh"
+
 "$repo_root/scripts/test-openburnbar-swift.sh"
-"$repo_root/scripts/test-openburnbar-app.sh"
+OPENBURNBAR_APP_TEST_ATTEMPTS="${OPENBURNBAR_APP_TEST_ATTEMPTS:-2}" \
+OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE="${OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE:-180}" \
+OPENBURNBAR_APP_TEST_MAX_ALLOWANCE="${OPENBURNBAR_APP_TEST_MAX_ALLOWANCE:-360}" \
+OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}" \
+  "$repo_root/scripts/test-openburnbar-app.sh"
 "$repo_root/scripts/test-openburnbar-retrieval-evals.sh"
 "$repo_root/scripts/test-openburnbar-ts.sh"
 "$repo_root/scripts/test-openburnbar-replay-evals.sh"
