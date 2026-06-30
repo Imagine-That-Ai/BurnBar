@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-06-30
+
+### Fixed
+
+- **macOS public release cut** — ships the public-download trust gate from
+  `1.0.6` on a fresh release tag after the `1.0.6` workflow failed before
+  GitHub Release asset publication. The publishable-tree secret scan now
+  allowlists only reviewed public Firebase client identifiers, deterministic
+  test/KAT strings, and fake no-secrets-test sentinels, and it handles
+  uninitialized gitlink submodules without trying to copy directory entries.
+
 ## [1.0.6] - 2026-06-29
 
 ### Added
