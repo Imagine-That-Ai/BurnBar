@@ -6,6 +6,9 @@ import OpenBurnBarCore
 struct ChatHistoryRow: View {
     let thread: ChatThreadSummary
     let isActive: Bool
+    /// True when this thread is open in a (non-active) tiling pane — drawn as a subtle
+    /// "open in a pane" hint so the rail shows which conversations are tiled.
+    var isOpenInPane: Bool = false
     var accent: Color = DesignSystem.Colors.whimsy
     let onSelect: () -> Void
 
@@ -24,6 +27,11 @@ struct ChatHistoryRow: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(accent)
+                    } else if isOpenInPane {
+                        Image(systemName: "rectangle.split.2x1")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(accent.opacity(0.7))
+                            .help("Open in a pane")
                     }
                 }
 
@@ -42,7 +50,8 @@ struct ChatHistoryRow: View {
             .padding(DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(isActive ? accent.opacity(0.10) : DesignSystem.Colors.surface.opacity(0.30))
+                    .fill(isActive ? accent.opacity(0.10)
+                        : (isOpenInPane ? accent.opacity(0.05) : DesignSystem.Colors.surface.opacity(0.30)))
             )
         }
         .buttonStyle(.plain)

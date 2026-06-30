@@ -72,27 +72,27 @@ final class ChatSessionController {
     /// Per-backend `model` selection for the active chat. Empty means the
     /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
-        didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) } }
     }
 
     var chatModelClaude: String = "" {
-        didSet { UserDefaults.standard.set(chatModelClaude, forKey: Self.udChatModelClaude) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelClaude, forKey: Self.udChatModelClaude) } }
     }
 
     var chatModelHermes: String = "" {
-        didSet { UserDefaults.standard.set(chatModelHermes, forKey: Self.udChatModelHermes) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelHermes, forKey: Self.udChatModelHermes) } }
     }
 
     var chatModelOpenClaw: String = "" {
-        didSet { UserDefaults.standard.set(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) } }
     }
 
     var chatModelPiAgent: String = "" {
-        didSet { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) } }
     }
 
     var chatModelDroid: String = "" {
-        didSet { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) } }
     }
 
     nonisolated static func buildFocusSessionPromptSection(
@@ -122,19 +122,19 @@ final class ChatSessionController {
     }
 
     var chatModelForge: String = "" {
-        didSet { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) } }
     }
 
     var chatModelAntigravity: String = "" {
-        didSet { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) } }
     }
 
     var chatModelCursorAgent: String = "" {
-        didSet { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) } }
     }
 
     var chatModelOpenClaude: String = "" {
-        didSet { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) } }
     }
 
     var hermesAvailable: Bool = false
@@ -269,7 +269,7 @@ final class ChatSessionController {
         }
         return .agent
     }() {
-        didSet { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") } }
     }
 
     /// User-attached files staged for the next outgoing message. Cleared on
@@ -371,14 +371,24 @@ final class ChatSessionController {
 
     var sharedFeaturesAvailable = true
 
+    /// When false, this controller is a tiling-pane instance: it owns its conversation
+    /// in memory but writes NO global chat UserDefaults keys (backend / model / viewMode /
+    /// geometry / thread slot) and never auto-resolves its thread from the shared slot.
+    /// The pane workspace owns all per-pane persistence. Default `true` preserves the
+    /// app-wide single-instance behavior for every existing call site.
+    let persistsViewState: Bool
+
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
         cliBridge: CLIBridge? = nil,
         memoryService: (any MemoryServing)? = nil,
-        memoryExtractionEngine: MemoryExtractionEngine? = nil
+        memoryExtractionEngine: MemoryExtractionEngine? = nil,
+        initialThreadID: String? = nil,
+        persistsViewState: Bool = true
     ) {
+        self.persistsViewState = persistsViewState
         self.dataStore = dataStore
         self.settingsManager = settingsManager
         self.memoryService = memoryService
@@ -426,6 +436,10 @@ final class ChatSessionController {
         // Validate offset is within reasonable bounds (-500 to 500 pixels)
         if abs(ox) <= 500 && abs(oy) <= 500 && (ox != 0 || oy != 0) {
             panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
+        }
+
+        if let initialThreadID {
+            activeThreadID = initialThreadID
         }
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -479,6 +493,32 @@ final class ChatSessionController {
         case .cursorAgent: chatModelCursorAgent = value
         case .openClaude: chatModelOpenClaude = value
         }
+    }
+
+    /// Copy non-global dependencies that pane controllers need to behave like
+    /// the app-wide chat controller. This intentionally avoids thread, message,
+    /// and stream state.
+    func copyPaneRuntimeBindings(from source: ChatSessionController) {
+        memoryService = source.memoryService
+        memoryExtractionEngine = source.memoryExtractionEngine
+        sharedFeaturesAvailable = source.sharedFeaturesAvailable
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        computerUseRuntimeController = source.computerUseRuntimeController
+        #endif
+    }
+
+    /// Copy the active conversation controls without resolving a new thread slot.
+    /// Used when creating or re-homing tiled panes, where backend/model state is
+    /// pane-local and must not fall back to the primary controller defaults.
+    func copyPaneConversationControls(from source: ChatSessionController) {
+        chatBackend = source.chatBackend
+        for backend in ChatBackendID.allCases {
+            setChatModelSelection(source.chatModelSelection(for: backend), for: backend)
+        }
+        chatViewMode = source.chatViewMode
+        hermesAvailable = source.hermesAvailable
+        openClawAvailable = source.openClawAvailable
+        piAgentAvailable = source.piAgentAvailable
     }
 
     var activeDesktopControlGrant: AgentCapabilityGrant? {
@@ -1198,30 +1238,35 @@ final class ChatSessionController {
             "backend": .string(backend.rawValue),
             "previous_backend": .string(previousBackend.rawValue)
         ])
-        UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
+        // A tiling pane (persistsViewState == false) is bound to a fixed thread:
+        // switching its engine keeps the SAME conversation and writes NO global keys.
+        // It must never re-resolve the thread from the shared per-backend slot.
+        if persistsViewState {
+            UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
 
-        let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
-        activeThreadID = nextThread
-        let fetchedMessages: [ChatMessageRecord]
-        do {
-            fetchedMessages = try await dataStore.fetchChatMessages(threadID: nextThread)
-        } catch {
-            AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
-            fetchedMessages = []
-        }
-        guard chatBackend == backend, activeThreadID == nextThread else { return }
-        messages = fetchedMessages
-
-        if messages.isEmpty {
-            if backend.requiresCLIAssistantConsent {
-                chatViewMode = .cli
-            } else {
-                chatViewMode = .agent
+            let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
+            activeThreadID = nextThread
+            let fetchedMessages: [ChatMessageRecord]
+            do {
+                fetchedMessages = try await dataStore.fetchChatMessages(threadID: nextThread)
+            } catch {
+                AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
+                fetchedMessages = []
             }
-        }
+            guard chatBackend == backend, activeThreadID == nextThread else { return }
+            messages = fetchedMessages
 
-        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
-        persistActiveThreadSlot()
+            if messages.isEmpty {
+                if backend.requiresCLIAssistantConsent {
+                    chatViewMode = .cli
+                } else {
+                    chatViewMode = .agent
+                }
+            }
+
+            firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+            persistActiveThreadSlot()
+        }
         await Task.yield()
         refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -1290,6 +1335,7 @@ final class ChatSessionController {
     }
 
     func persistPanelGeometry() {
+        guard persistsViewState else { return }
         UserDefaults.standard.set(Double(panelWidth), forKey: Self.udPanelW)
         UserDefaults.standard.set(Double(panelHeight), forKey: Self.udPanelH)
         UserDefaults.standard.set(Double(panelFloatOffset.width), forKey: Self.udOffsetX)
@@ -1297,12 +1343,14 @@ final class ChatSessionController {
     }
 
     func persistActiveThreadSlot() {
+        guard persistsViewState else { return }
         UserDefaults.standard.set(activeThreadID, forKey: Self.threadStorageKey(for: chatBackend))
         UserDefaults.standard.set(activeThreadID, forKey: Self.udActiveThreadID)
     }
 
     /// Copies legacy single-thread ID into the Codex slot once so existing users keep their history.
     func migrateCodexThreadFromLegacyIfNeeded() async {
+        guard persistsViewState else { return }
         let key = Self.threadStorageKey(for: .codex)
         guard UserDefaults.standard.string(forKey: key) == nil else { return }
         if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
@@ -1322,20 +1370,20 @@ final class ChatSessionController {
         case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
-                UserDefaults.standard.set(legacy, forKey: key)
+                if persistsViewState { UserDefaults.standard.set(legacy, forKey: key) }
                 return legacy
             }
             let hermesTid = UserDefaults.standard.string(forKey: Self.threadStorageKey(for: .hermes))
             if let mostRecent = try? await dataStore.fetchMostRecentChatThreadID(),
                mostRecent != hermesTid,
                (try? await dataStore.chatThreadExists(id: mostRecent)) == true {
-                UserDefaults.standard.set(mostRecent, forKey: key)
+                if persistsViewState { UserDefaults.standard.set(mostRecent, forKey: key) }
                 return mostRecent
             }
             if createIfMissing {
                 do {
                     let created = try await dataStore.createChatThread()
-                    UserDefaults.standard.set(created, forKey: key)
+                    if persistsViewState { UserDefaults.standard.set(created, forKey: key) }
                     return created
                 } catch {
                     AppLogger.chat.silentFailure("createChatThread (cli)", error: error)
@@ -1347,7 +1395,7 @@ final class ChatSessionController {
             if createIfMissing {
                 do {
                     let created = try await dataStore.createChatThread()
-                    UserDefaults.standard.set(created, forKey: key)
+                    if persistsViewState { UserDefaults.standard.set(created, forKey: key) }
                     return created
                 } catch {
                     AppLogger.chat.silentFailure("createChatThread (hermes/openclaw/pi)", error: error)

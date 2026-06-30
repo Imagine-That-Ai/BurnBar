@@ -11,6 +11,10 @@ struct DashboardChatWorkspaceToolbar: View {
     /// Mode controls which buttons are shown.
     var mode: DashboardChatWorkspaceView.Mode
 
+    /// When the pane workspace is tiled, each pane carries its own engine + model pickers,
+    /// so the shared toolbar hides them to avoid a duplicate control surface.
+    var showsEnginePickers: Bool = true
+
     var onNewChat: () -> Void
     var onShowClearChatPrompt: () -> Void
     var onPopOut: (() -> Void)?
@@ -48,9 +52,11 @@ struct DashboardChatWorkspaceToolbar: View {
     @ViewBuilder
     private func controlRow(compact: Bool) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
-            ChatEngineModelMenu(controller: controller)
-                .layoutPriority(1)
+            if showsEnginePickers {
+                ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+                ChatEngineModelMenu(controller: controller)
+                    .layoutPriority(1)
+            }
 
             if !compact {
                 ChatViewModePicker(controller: controller)

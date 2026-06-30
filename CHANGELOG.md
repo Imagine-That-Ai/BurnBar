@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **cmux-style multi-pane tiling for the Chat workspace** — the right-side
+  conversation viewer is now a tiling tree of independent panes. Press ⌘D to
+  split the active pane side-by-side, ⌘⇧D to split it stacked, and ⌘W to close
+  the active pane and re-flow its sibling into the freed space (the last pane is
+  indestructible — single-pane ⌘W falls through to the normal macOS window
+  close). Drag any thread from the left rail onto a specific pane to load that
+  conversation there, with a live drop highlight on the targeted pane and the
+  others unchanged. Each pane is a fully independent conversation — its own
+  thread, message stream, model/engine picker, and composer — streaming
+  concurrently with zero cross-talk (per-pane `ChatSessionController`,
+  `CLIBridge`, and search service; every pane shares the one GRDB-backed
+  `DataStore`, isolated by thread id). Dividers drag to resize neighbors. The
+  layout tree, split fractions, each pane's bound thread, and the active pane all
+  persist across relaunch. With a single pane the screen is pixel-identical to
+  before — per-pane chrome (header, focus ring, split/close affordances) appears
+  only once tiled, and the top toolbar hides its now-duplicate engine pickers.
+  The app-wide controller becomes the workspace's primary pane, so every other
+  surface that holds it is unaffected; tiling panes run with persistence disabled
+  so they never touch the global chat `UserDefaults` keys. Covered by
+  `PaneWorkspaceModelTests` (split / close / primary re-home / persistence
+  round-trip / exactly-one-primary repair / fraction clamp) and
+  `ChatSessionControllerPaneModeTests`. Design, adversarial loophole-hunt, and
+  review history documented in `docs/CHAT_PANE_TILING_PLAN.md`.
+
 ## [1.0.11] - 2026-06-30
 
 ### Fixed
