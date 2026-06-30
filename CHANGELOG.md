@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-06-30
+
+### Fixed
+
+- **Menu-bar flame and popover hotfix** — the macOS menu bar now defaults to
+  the flame-only status item while preserving the `OpenBurnBar` accessibility
+  label, and left-click reliably opens the popover instead of being swallowed by
+  the secondary-menu path. Added focused runtime/prewarm regression coverage and
+  verified the installed app live from `/Applications/OpenBurnBar.app`.
+- **Mobile Pulse top seam fix** — removes the scroll-edge suppression that
+  caused a visible hard seam under the iOS/iPadOS status bar after the latest
+  mobile backdrop work.
+
 ## [1.0.8] - 2026-06-30
 
 ### Fixed
