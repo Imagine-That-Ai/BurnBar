@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-06-30
+
+### Fixed
+
+- **Release-gate Pixel Clock test hardening** — prevents the no-controller
+  Pixel Clock settings adapter test path from starting a real controller and
+  scanning the LAN in CI, avoiding a full macOS app-test hang during release.
+- **Latest main inclusion** — carries forward the `v1.0.9` menu-bar flame,
+  left-click popover, mobile Pulse seam, and dashboard Liquid Glass sidebar
+  refinements now landed on `main`.
+
 ## [1.0.9] - 2026-06-30
 
 ### Fixed

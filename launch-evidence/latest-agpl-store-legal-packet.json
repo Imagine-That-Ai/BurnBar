@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-30T09:00:43Z",
+  "generatedAt": "2026-06-30T10:49:06Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "release/v1.0.9",
-    "originMain": "f523d77c0f496e38086c50b1001b57940f16de66",
-    "releaseTag": "v1.0.9"
+    "branch": "release/v1.0.10",
+    "originMain": "68716d54f73a3f2407ab497cc270c59f24cc7df2",
+    "releaseTag": "v1.0.10"
   },
   "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-06-30T09:00:43Z",
+    "attestedAt": "2026-06-30T10:49:06Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
     "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper, missing-Firebase-auth, menu-bar, and mobile Pulse launch regressions.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.9 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.9 public release lane.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.10 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.10 public release lane.",
     "followUpRequired": true
   },
   "scope": [
