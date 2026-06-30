@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.14"
+    assert data["repo"]["releaseTag"] == "v1.0.15"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.14",
+            "v1.0.15",
         ],
         cwd=ROOT,
         text=True,
@@ -156,6 +156,34 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
         "OpenBurnBarTests/PopoverContentPrewarmerTests",
         "OpenBurnBarTests/PaneWorkspaceModelTests",
         "OpenBurnBarTests/ChatSessionControllerPaneModeTests",
+    ):
+        assert required_filter in filters
+
+
+def test_release_workflow_uses_bounded_release_critical_mobile_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    filters = (ROOT / "scripts/lib/openburnbar-release-mobile-test-filters.sh").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Run OpenBurnBar mobile unit tests")
+    step_end = body.index("- name: Record owner-approved mobile unit test bypass")
+    mobile_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 75" in mobile_step
+    assert "source scripts/lib/openburnbar-release-mobile-test-filters.sh" in mobile_step
+    assert 'OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)"' in mobile_step
+    assert "./scripts/test-openburnbar-mobile.sh" in mobile_step
+    assert "full mobile suite is a PR/CI responsibility" in mobile_step
+    assert "AgentLiveStagePresenterTests" not in filters
+
+    for required_filter in (
+        "OpenBurnBarMobileTests/AppStoreReviewComplianceTests",
+        "OpenBurnBarMobileTests/AuthStoreTests",
+        "OpenBurnBarMobileTests/ConversationCockpitAuthTests",
+        "OpenBurnBarMobileTests/iPadNavigationUITests",
+        "OpenBurnBarMobileTests/MobileBackdropKernelTests",
+        "OpenBurnBarMobileTests/MobileSentryScrubberTests",
+        "OpenBurnBarMobileTests/MobileThemeTests",
+        "OpenBurnBarMobileTests/PulseWindowMetricsTests",
     ):
         assert required_filter in filters
 
