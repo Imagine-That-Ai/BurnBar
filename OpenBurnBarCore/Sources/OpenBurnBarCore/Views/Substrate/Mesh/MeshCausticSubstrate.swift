@@ -118,16 +118,16 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         let accent = frame.stage.accent
         let ink = frame.stage.ink
 
-        let W = frame.size.width, H = frame.size.height
-        guard W > 1, H > 1 else { return }
-        let minDim = min(W, H)
+        let width = frame.size.width, height = frame.size.height
+        guard width > 1, height > 1 else { return }
+        let minDim = min(width, height)
 
         // Cell step in ABSOLUTE px, proportional to the canvas (NOT cloudRadius) so the
         // caustic reads identically at a 460×320 thumbnail and full screen. Bounded so
         // it never produces giant or hairline cells.
         let step = clampD(minDim * 0.05, 12, 60)
-        let cols = max(3, Int((W / step).rounded(.up)) + 1)
-        let rows = max(3, Int((H / step).rounded(.up)) + 1)
+        let cols = max(3, Int((width / step).rounded(.up)) + 1)
+        let rows = max(3, Int((height / step).rounded(.up)) + 1)
         let nCells = cols * rows
 
         // (Re)allocate per-cell scratch on layout change; reset accumulators each frame.
@@ -201,7 +201,7 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         let nf = 1.0 / max(40.0, minDim * 0.16)
         let flowX = phase * 0.25
         let flowY = -phase * 0.18
-        let invW = 1 / W, invH = 1 / H
+        let invW = 1 / width, invH = 1 / height
 
         // ── resolve the caustic web + colour per cell (one fbm sample set / cell) ──
         for r in 0..<rows {
@@ -213,9 +213,9 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
                 let dn = wsum * invMaxW
 
                 // crawling caustic net: two decorrelated folded fbm layers, crossed.
-                let X = px * nf, Y = py * nf
-                let h1 = fbm2(X + flowX, Y + flowY)
-                let h2 = fbm2(Y * 0.92 - 11.0 - flowY, X * 0.92 + 7.0 + flowX)
+                let x = px * nf, y = py * nf
+                let h1 = fbm2(x + flowX, y + flowY)
+                let h2 = fbm2(y * 0.92 - 11.0 - flowY, x * 0.92 + 7.0 + flowX)
                 let s1 = abs(sin((h1 * 2.6 + phase) * .pi))
                 let s2 = abs(sin((h2 * 2.6 - phase * 0.8) * .pi))
                 let r1 = s1 * s1 * s1

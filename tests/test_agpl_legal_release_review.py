@@ -9,6 +9,7 @@ import scripts.ci.check_agpl_legal_release_review as agpl_review
 
 
 validate_legal_release_review = agpl_review.validate_legal_release_review
+validate_owner_attested_soft_approval = agpl_review.validate_owner_attested_soft_approval
 
 
 def valid_review() -> dict[str, object]:
@@ -56,6 +57,56 @@ def valid_review() -> dict[str, object]:
 
 def test_validates_approved_legal_release_review() -> None:
     assert validate_legal_release_review(valid_review()) == []
+
+
+def valid_owner_attestation() -> dict[str, object]:
+    review = valid_review()
+    review["status"] = agpl_review.OWNER_ATTESTED_SOFT_APPROVAL_STATUS
+    review["reviewStatus"] = agpl_review.OWNER_ATTESTED_SOFT_APPROVAL_STATUS
+    review["repo"] = {"releaseTag": "v1.0.8"}
+    review["ownerAttestation"] = {
+        "ownerName": "Alberto Nunez",
+        "ownerGitHub": "Ajnunezg",
+        "ownerRole": "release_owner",
+        "attestedAt": "2026-06-30T05:33:10Z",
+        "counselName": "Heather Meeker",
+        "approvalType": "soft_approval",
+        "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact.",
+        "approvalBoundary": "Emergency owner-attested soft approval for v1.0.8.",
+        "ownerStatement": "As owner, Alberto Nunez attests that Heather Meeker gave soft approval.",
+        "followUpRequired": True,
+    }
+    return review
+
+
+def test_validates_owner_attested_soft_approval() -> None:
+    assert validate_owner_attested_soft_approval(valid_owner_attestation(), expected_release_tag="v1.0.8") == []
+
+
+def test_owner_attested_soft_approval_is_bound_to_expected_release_tag() -> None:
+    data = valid_owner_attestation()
+    data["repo"]["releaseTag"] = "v1.0.7"  # type: ignore[index]
+
+    errors = validate_owner_attested_soft_approval(data, expected_release_tag="v1.0.8")
+
+    assert "repo.releaseTag must match the current release tag 'v1.0.8', found 'v1.0.7'" in errors
+
+
+def test_owner_attested_soft_approval_is_not_signed_counsel_approval() -> None:
+    errors = validate_legal_release_review(valid_owner_attestation(), require_approved=True)
+
+    assert "reviewStatus must be 'approved'" in errors
+
+
+def test_owner_attested_soft_approval_requires_named_owner_and_counsel() -> None:
+    data = valid_owner_attestation()
+    data["ownerAttestation"]["ownerGitHub"] = "someone-else"  # type: ignore[index]
+    data["ownerAttestation"]["counselName"] = "Other Counsel"  # type: ignore[index]
+
+    errors = validate_owner_attested_soft_approval(data, expected_release_tag="v1.0.8")
+
+    assert "ownerAttestation.ownerGitHub must be 'Ajnunezg'" in errors
+    assert "ownerAttestation.counselName must be 'Heather Meeker'" in errors
 
 
 def test_rejects_non_approved_or_placeholder_review() -> None:
@@ -147,20 +198,17 @@ def _signed_approval_review(repo_root: Path) -> tuple[dict[str, object], Path]:
     subprocess.run(
         [openssl, "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048", "-out", str(private_key)],
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     subprocess.run(
         [openssl, "pkey", "-in", str(private_key), "-pubout", "-out", str(public_key)],
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     subprocess.run(
         [openssl, "dgst", "-sha256", "-sign", str(private_key), "-out", str(signature), str(document)],
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
 
     review = valid_review()

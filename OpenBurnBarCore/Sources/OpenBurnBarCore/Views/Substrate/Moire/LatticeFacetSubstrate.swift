@@ -74,10 +74,12 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
         let nRows = Int(ceil(height / rowH)) + 2
         let nCols = Int(ceil(width / colW)) + 2
 
-        @inline(__always) func add(_ ax: Double, _ ay: Double,
-                                    _ bx: Double, _ by: Double,
-                                    _ cx: Double, _ cy: Double,
-                                    up: Bool, _ ri: Int, _ ci: Int) {
+        @inline(__always) func add(
+            _ ax: Double, _ ay: Double,
+            _ bx: Double, _ by: Double,
+            _ cx: Double, _ cy: Double,
+            up: Bool, _ ri: Int, _ ci: Int
+        ) {
             let fx = (ax + bx + cx) / 3.0
             let fy = (ay + by + cy) / 3.0
             let seed = shash2(Double(ci) * 1.7 + (up ? 0.31 : 0.74), Double(ri) * 1.3 + 0.17)
@@ -155,8 +157,8 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
 
     public func paint(_ frame: SwarmSubstrateFrame, into baseCtx: GraphicsContext) -> Bool {
         let count = frame.dots.count
-        let W = Double(frame.size.width), H = Double(frame.size.height)
-        guard count > 0, W > 1, H > 1 else { return false }
+        let width = Double(frame.size.width), height = Double(frame.size.height)
+        guard count > 0, width > 1, height > 1 else { return false }
 
         let dark = frame.dark
         let reduced = frame.reduced
@@ -170,7 +172,7 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
         // from cloudRadius (which scales with the screen → giant tiles on a wide
         // sparse field). Clamped so thumbnails and full-screen both read.
         let cell = clampD(30 + sizePx * 4.0, 30, 52)
-        ensureLattice(width: W, height: H, cell: cell)
+        ensureLattice(width: width, height: height, cell: cell)
         guard !facets.isEmpty else { return true }
 
         // assembly reveal — the lattice kindles as the cloud forms.
@@ -187,8 +189,8 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
 
         // ── build the coarse density + brand-colour field from the swarm ─────────
         let gridCellSize = clampD(cell * 2.2, 52, 130)
-        let cols = max(2, Int(ceil(W / gridCellSize)) + 1)
-        let rows = max(2, Int(ceil(H / gridCellSize)) + 1)
+        let cols = max(2, Int(ceil(width / gridCellSize)) + 1)
+        let rows = max(2, Int(ceil(height / gridCellSize)) + 1)
         ensureGrid(cols, rows)
         gCell = gridCellSize
         for i in 0..<gw.count { gw[i] = 0; gr[i] = 0; gg[i] = 0; gb[i] = 0 }

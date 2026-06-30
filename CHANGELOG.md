@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-06-30
+
+### Fixed
+
+- **Current public macOS release cut** — advances the direct-download release to
+  the current `main` tip after `v1.0.7` was cut before PR #1094 landed. The
+  release includes PR #1086's continuous-field substrates, Atelier spend graph,
+  iOS WebGL kernel parity, substrate picker redesign, and macOS tall-card
+  substrate previews; the popover keyboard retoggle fix; the v1.0.7 publishable
+  scanner repair; the mobile navigation/backdrop/kernel work already merged to
+  main; and a named owner-emergency release lane for the public macOS artifact
+  while the signed counsel packet is collected.
+
 ## [1.0.7] - 2026-06-30
 
 ### Fixed
