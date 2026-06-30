@@ -4,7 +4,6 @@ import { SITE } from "@data/site";
 
 const sourceCommit =
   import.meta.env.PUBLIC_SOURCE_COMMIT ?? import.meta.env.PUBLIC_SITE_VERSION ?? "unknown";
-const sourceArchiveName = `OpenBurnBar-${SITE.macReleaseLatest}-corresponding-source.tar.gz`;
 const sourceOfferUrl = `${SITE.url}/legal/source`;
 ---
 
@@ -33,9 +32,10 @@ const sourceOfferUrl = `${SITE.url}/legal/source`;
 
       <h2>Release source archive</h2>
       <p>
-        Direct-download releases publish a corresponding source archive named
-        <code>{sourceArchiveName}</code> next to the signed macOS DMG, ZIP, SBOM, checksums, and release
-        metadata.
+        New direct-download releases publish a corresponding source archive next to the signed macOS
+        DMG, ZIP, SBOM, checksums, and release metadata. While the branded direct-download host is
+        being republished, the public repository remains the canonical source offer for the current
+        website and GitHub-hosted macOS fallback.
       </p>
       <p>
         Release artifacts are listed at

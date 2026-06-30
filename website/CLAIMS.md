@@ -228,7 +228,9 @@ These are the recurring **[verify]** flags above, collected:
 1. **Canonical GitHub URL.** README + Homebrew formula say `Ajnunezg/BurnBar`. `git remote -v` says `Imagine-That-Ai/BurnBar`. Both repos exist publicly; only the latter has shipped release artifacts. Pick one and align everything.
 2. **iOS launch status.** Until Apple approves, the site copy says "in App Store review." When approved, set `SITE.iosStatus = "available on iPhone & iPad"` in `src/data/site.ts`.
 3. **Store price tiers.** Site advertises Cloud at $7.99/month or $79/year, Cloud Pro at $24.99/month or $249/year, and both top-ups at $4.99. Confirm Apple, Play, and Stripe live products match; if stores set different local prices, decide whether to footnote.
-4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` now target `v1.0`; verify the GitHub release asset exists before deployment.
+4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` currently target the
+   published `v0.1.2-beta.1` GitHub DMG as a public fallback. Restore `1.0.5` only after the
+   notarized direct-download pipeline publishes matching live assets.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `docs/reviews/SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
 7. **Team plan copy** — kept off the page until built.

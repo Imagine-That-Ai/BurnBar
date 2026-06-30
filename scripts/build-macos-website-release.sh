@@ -47,8 +47,9 @@ checksums_path="$release_dir/checksums-v${version}.txt"
 metadata_path="$release_dir/release-metadata.json"
 sbom_path="$release_dir/sbom-v${version}.spdx.json"
 default_update_base_url="$(
-  # shellcheck disable=SC2016 # reason: JavaScript template literals must be passed to node without shell expansion.
-  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const read=(name)=>source.match(new RegExp(`${name}:\\s*"([^"]+)"`))?.[1]; console.log(read("macUpdateBaseUrl") || read("macDownloadBaseUrl") || "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download");'
+  # Do not derive release-feed payload URLs from SITE.macDownloadBaseUrl: the website
+  # can temporarily fall back to an older public asset while new artifacts are rebuilt.
+  printf "%s\n" "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download"
 )"
 update_base_url="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-${OPENBURNBAR_R2_PUBLIC_BASE_URL:-$default_update_base_url}}"
 appcast_name="appcast.xml"
