@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
 
         FirebaseApp.configure()
-        Self.disableFirestoreNetworkForSimulatorIfNeeded()
+        Self.disableFirestoreNetworkOnIncompatibleOSIfNeeded()
         Self.configureGoogleSignIn()
         _ = MobileAppCheckAttestationMonitor.shared
         Task { @MainActor in
@@ -238,7 +238,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
     }
 
-    private static func disableFirestoreNetworkForSimulatorIfNeeded() {
+    private static func disableFirestoreNetworkOnIncompatibleOSIfNeeded() {
         guard shouldDisableFirestoreNetworkForRuntime(
             isSimulator: isRunningInSimulator,
             operatingSystemVersion: ProcessInfo.processInfo.operatingSystemVersion
@@ -248,19 +248,30 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Firestore.firestore().disableNetwork { error in
             #if DEBUG
             if let error {
-                print("warning: failed to disable Firestore network for iOS 27 Simulator: \(error.localizedDescription)")
+                print("warning: failed to disable Firestore network for iOS 27 gRPC compatibility: \(error.localizedDescription)")
             } else {
-                print("OpenBurnBarMobile disabled Firestore network for iOS 27 Simulator compatibility.")
+                print("OpenBurnBarMobile disabled Firestore network for iOS 27 gRPC/BoringSSL compatibility.")
             }
             #endif
         }
     }
 
+    /// iOS 27 ships a networking/security stack that faults inside the bundled
+    /// gRPC/BoringSSL (Firebase 11.15 / grpc-binary 1.69) the first time
+    /// Firestore opens its gRPC TLS channel: `EXC_BAD_ACCESS` (SIGBUS) in
+    /// `OPENSSL_cleanse` via `ssl_cert_dup` → `create_tsi_ssl_handshaker` on a
+    /// background connect thread, crashing the app before the dashboard appears.
+    /// First observed on the iOS 27 Simulator; it reproduces IDENTICALLY on a
+    /// physical iOS 27 device (verified by the on-device crash report). The gate
+    /// is therefore OS-version driven, NOT simulator-only — disable Firestore's
+    /// live network on iOS 27+ everywhere until Firebase ships an iOS-27
+    /// compatible gRPC, then drop this shim. `isSimulator` is retained for the
+    /// call site/tests but no longer narrows the gate.
     static func shouldDisableFirestoreNetworkForRuntime(
         isSimulator: Bool,
         operatingSystemVersion: OperatingSystemVersion
     ) -> Bool {
-        isSimulator && operatingSystemVersion.majorVersion >= 27
+        operatingSystemVersion.majorVersion >= 27
     }
 
     private static var isRunningInSimulator: Bool {

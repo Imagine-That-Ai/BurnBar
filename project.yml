@@ -714,6 +714,16 @@ targets:
       - path: OpenBurnBarMobile/Resources/Mermaid
         type: folder
         buildPhase: resources
+      # iOS shares the SAME macOS WebGL kernel backdrop bundle (no copy): the
+      # self-contained web bundle (index.html + kernel-backdrop.js) lives under
+      # AgentLens/Resources/KernelBackdrop and is loaded at runtime via
+      # Bundle.main subdirectory "KernelBackdrop" by MobileWebGLKernelBackdropView.
+      # Ship it as a folder reference so the "KernelBackdrop" directory survives
+      # into the iOS bundle instead of being flattened into Resources/ — mirroring
+      # exactly how the macOS AgentLens target includes it.
+      - path: AgentLens/Resources/KernelBackdrop
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile

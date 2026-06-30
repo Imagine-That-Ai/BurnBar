@@ -3,43 +3,51 @@ import CoreGraphics
 
 /// Gradient Patch — ported from imaginethat `glyph/stage/styles/mesh/mesh-patch.ts`.
 ///
-/// The literal anatomy of a gradient mesh. The point cloud is quantized to a
-/// coarse 16×16 quad grid; each occupied cell becomes one glossy ceramic-glass
-/// PANE filled with a per-cell linear gradient blended from its four sampled
-/// corner brand hues (an Illustrator-mesh / Coons-patch made solid). Each pane
-/// catches a single small specular hotspot in its upper-left, and a slow 2-octave
-/// height field advected by `t` lifts and tilts the panes so the sheet undulates
-/// like draped, breathing gradient cloth.
+/// A CONTINUOUS iridescent-mesh tessellation: an edge-to-edge sheet of glossy
+/// stained-glass panes that covers the WHOLE canvas, brightens where the swarm
+/// clusters and dissolves softly where it thins — never isolated confetti.
 ///
-/// PREMIUM PASS — kills the square-edge artifact and raises presence/depth:
-///   • NO bounding rectangle: panes are soft, ROUNDED gradient lozenges and each
-///     cell is DENSITY-GATED (sparse boundary cells fade to faint soft patches and
-///     shrink), so the field clips to the actual point cloud and feathers at its
-///     silhouette instead of tracing a hard rounded-rectangle frame. The iris seam
-///     is gated + rounded so it reads as an interior grid shimmer, never an outline.
-///   • Real GAUSSIAN bloom: on dark, a single blurred `.plusLighter` layer pools a
-///     soft colored under-glow beneath the lit panes (one blur for the whole field),
-///     so the sheet visibly GLOWS and fills its silhouette — never faint.
-///   • Layered depth: soft bloom UNDER → saturated rounded gradient body → hot white
-///     specular core ON TOP. Cores push toward white; glows push toward stage accent.
-/// Per-layout work (binning, corner-hue sampling, density) is cached; the hot loop
-/// recomputes live centroids, the height field, the painter sort, and ≤256 panes.
+/// CONTINUOUS-SHEET PASS — kills the "huge floating gradient pieces" artifact:
+///   • The grid is built over the FULL canvas (0…width × 0…height), not the cloud
+///     bbox, and EVERY cell is painted as a rounded gradient pane edge-to-edge
+///     (overlap ≥ 1, so no seam gaps). Pane existence is NOT decided per-particle;
+///     the whole sheet is always there.
+///   • A per-cell DENSITY field is splatted from the particles (normalized Gaussian
+///     kernel). Density MODULATES each pane — empty cells (density ≈ 0) fade out
+///     softly, mid cells feather, dense cells read saturated/opaque — so the sheet
+///     feathers to nothing at the cloud silhouette with NO rectangular boundary.
+///   • Each cell's hue is a Gaussian-weighted (inverse-distance) blend of the
+///     particles around it, so the entire sheet is a brand-coloured stained glass.
+///   • A slow 2-octave height field lifts/tilts the panes (draped breathing cloth),
+///     each pane catches a small specular hotspot, an iridescent thin-film seam
+///     shimmers along the grid, and ONE pooled Gaussian bloom layer glows under the
+///     lit panes (dropped under battery throttle).
+///   • Dense shape-mode is preserved automatically: when the cloud forms the logo,
+///     the density field concentrates on the silhouette and the SAME tessellation
+///     tightens onto it.
+/// The grid geometry is cached per layout; the hot loop re-splats the live cloud
+/// (O(dots·kernel)) and paints the cells in O(cells) with no per-frame sort.
 public final class MeshPatchSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
 
     // MARK: Tunables
 
-    /// Max grid resolution along the cloud's longer axis (cells). The grid is
-    /// ADAPTIVE — chosen so each pane stays a small, fixed screen size rather than
-    /// scaling with the cloud/screen (a sparse full-screen swarm must never yield
-    /// huge tiles). This cap bounds memory/cell count on very large fields.
-    private static let MAXGRID = 80
-    /// Pane overlap so adjacent (interior) cells leave no seam gaps.
-    private static let overlap = 1.18
-    /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges, not
-    /// hard squares (so the boundary never reads as a rectangle).
-    private static let cornerFrac = 0.24
+    /// Max grid resolution along either canvas axis (cells). The grid is ADAPTIVE —
+    /// chosen so each pane stays a small, fixed SCREEN size rather than scaling with
+    /// the cloud/screen (a sparse full-screen swarm must never yield huge tiles).
+    private static let MAXGRID = 160
+    /// Total-cell budget. Keeps the per-frame paint bounded on very wide canvases;
+    /// when exceeded the cell size is grown until the count fits.
+    private static let MAXCELLS = 6000
+    /// Pane overlap so adjacent cells leave no seam gaps (continuous sheet).
+    private static let overlap = 1.12
+    /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges.
+    private static let cornerFrac = 0.22
+    /// Gaussian splat radius (cells) and width — controls how the cloud bleeds into
+    /// the density/colour field (and therefore how softly the sheet feathers).
+    private static let splatR = 2
+    private static let splatSigma = 0.92
     /// The dark-corner sink color (near-black with a cool iris cast) for depth.
     private static let nearBlack = RGBA(r: 18.0 / 255, g: 22.0 / 255, b: 34.0 / 255)
     /// Iridescent thin-film ramp the seam hue creeps through (looped): cyan,
@@ -52,27 +60,38 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         RGBA(r: 150.0 / 255, g: 236.0 / 255, b: 210.0 / 255)
     ]
 
-    // MARK: Per-layout cache (built once per (count, settled-layout))
+    // MARK: Per-layout cache (rebuilt when count / canvas size / settle changes)
 
     private var builtCount = -1          // point count this geometry was built for
     private var built = false            // membership finalized (post-assembly)?
-    private var cells = 0                // occupied cell count
-    private var storedExt: Double = 0    // per-cell half-extent in screen px
-    private var cellOf: [Int] = []       // point → cell index (−1 unassigned)
-    private var cgx: [Double] = []       // per-cell logical grid X (height-field phase)
-    private var cgy: [Double] = []       // per-cell logical grid Y
-    private var cnt: [Int] = []          // members per cell
-    private var dens: [Double] = []      // 0…1 density weight (clips field to cloud)
-    private var cornerHue: [RGBA] = []   // per-cell sampled corner hues, [c*4 + {TL,TR,BR,BL}]
+    private var lastW = -1               // canvas width this grid was sized for
+    private var lastH = -1               // canvas height
+    private var cols = 0                 // grid columns over the full canvas
+    private var rows = 0                 // grid rows
+    private var cells = 0                // cols * rows
+    private var cellW: Double = 0        // cell width  (screen px)
+    private var cellH: Double = 0        // cell height (screen px)
+    private var originX: Double = 0      // grid origin x (cloud-bbox left, screen px)
+    private var originY: Double = 0      // grid origin y (cloud-bbox top, screen px)
+    private var ext: Double = 0          // pane half-extent (screen px, bounded)
+    // The raw cloud bbox this grid was tessellated for. The grid origin/cellW are
+    // derived from it, so when the swarm bounds move (a settled logo dissolving
+    // back into the free swarm keeps the same count + canvas) the grid must be
+    // rebuilt — otherwise `splat` clips dots outside the stale bbox and the field
+    // stays stuck around the previous shape until a resize forces a relayout.
+    private var builtMinX = 0.0, builtMinY = 0.0, builtMaxX = 0.0, builtMaxY = 0.0
 
-    // MARK: Per-frame scratch (reused; sized with the cells)
+    // MARK: Per-frame scratch (reused; sized cols*rows)
 
-    private var csx: [Double] = []       // live screen centroid X
-    private var csy: [Double] = []       // live screen centroid Y
-    private var sumx: [Double] = []
-    private var sumy: [Double] = []
+    private var wsum: [Double] = []      // splatted weight (raw density)
+    private var crsum: [Double] = []     // weighted colour accumulators
+    private var cgsum: [Double] = []
+    private var cbsum: [Double] = []
+    private var colR: [Double] = []      // normalized per-cell blended hue
+    private var colG: [Double] = []
+    private var colB: [Double] = []
+    private var dens: [Double] = []      // 0…1 presence (feathers field to cloud)
     private var hcache: [Double] = []    // height field per cell (this frame)
-    private var order: [Int] = []        // painter sort (back→front by height)
 
     // MARK: Deterministic field helpers
 
@@ -89,135 +108,151 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     private func irisAt(_ p: Double) -> RGBA {
         let n = Self.irisRamp.count
         let nn = Double(n)
-        let f = (p.truncatingRemainder(dividingBy: nn) + nn).truncatingRemainder(dividingBy: nn)
-        let i0 = Int(f)
+        let fp = (p.truncatingRemainder(dividingBy: nn) + nn).truncatingRemainder(dividingBy: nn)
+        let i0 = Int(fp)
         let i1 = (i0 + 1) % n
-        return Self.irisRamp[i0].mix(with: Self.irisRamp[i1], amount: f - Double(i0))
+        return Self.irisRamp[i0].mix(with: Self.irisRamp[i1], amount: fp - Double(i0))
     }
 
-    // MARK: Binning (per layout)
+    // MARK: Layout (per (count, canvas size, settle))
 
-    /// Quantize the cloud to a coarse quad grid, dedupe occupied cells, sample each
-    /// cell's four corner brand hues, and compute a per-cell DENSITY weight (so the
-    /// painted field clips to the dense cloud and feathers at its silhouette rather
-    /// than presenting a hard grid boundary). Everything positional is live.
-    private func bin(_ frame: SwarmSubstrateFrame) {
-        let dots = frame.dots
-        let count = dots.count
-        let cx = frame.cx, cy = frame.cy
-        builtCount = count
+    /// Size an ADAPTIVE grid over the FULL canvas so every cell is a small, fixed
+    /// screen-px pane (independent of how far the cloud spreads). Allocate the
+    /// reusable density/colour field. Nothing positional is baked here — the field
+    /// is splatted live each frame so the sheet tracks the moving cloud.
+    private func layout(_ frame: SwarmSubstrateFrame) {
+        let cw = max(frame.size.width, 1)
+        let ch = max(frame.size.height, 1)
+        builtCount = frame.dots.count
         built = frame.settleProgress >= 0.6 || frame.reduced
+        lastW = Int(cw.rounded())
+        lastH = Int(ch.rounded())
 
-        let span = max(frame.cloudRadius, 1) * 2.1
-        // Target pane ≈ a small ceramic lozenge in SCREEN px (independent of how
-        // far the cloud spreads). Adapt the grid so cells land at this size; on a
-        // sparse full-screen swarm that means MORE, still-small cells — never the
-        // ~50px slabs a fixed 16×16 grid produced over a wide field.
-        let targetCellPx = max(13.0, frame.sizePx * 8.5)
-        let grid = max(8, min(Self.MAXGRID, Int((span / targetCellPx).rounded())))
-        let inv = Double(grid) / span
-        let half = Double(grid) * 0.5
+        // Tessellate the CLOUD BOUNDING BOX, not the whole canvas. A concentrated
+        // logo (shape mode) gets a fine grid of small panes; a spread free-swarm
+        // covers the field. This is what keeps panes small when the swarm forms a
+        // big mark — the old full-canvas grid made the panes track the mark's span.
+        var minX = Double.greatestFiniteMagnitude, minY = Double.greatestFiniteMagnitude
+        var maxX = -Double.greatestFiniteMagnitude, maxY = -Double.greatestFiniteMagnitude
+        for d in frame.dots {
+            if d.x < minX { minX = d.x }; if d.x > maxX { maxX = d.x }
+            if d.y < minY { minY = d.y }; if d.y > maxY { maxY = d.y }
+        }
+        if !(maxX > minX) { minX = 0; maxX = cw }
+        if !(maxY > minY) { minY = 0; maxY = ch }
+        builtMinX = minX; builtMinY = minY; builtMaxX = maxX; builtMaxY = maxY
 
-        // First pass: discover occupied cells via a dense grid×grid lookup.
-        var keyToCell = [Int](repeating: -1, count: grid * grid)
-        var cellOf = [Int](repeating: -1, count: count)
-        var cellCount = 0
-        for i in 0..<count {
-            let gx = min(grid - 1, max(0, Int((dots[i].x - cx) * inv + half)))
-            let gy = min(grid - 1, max(0, Int((dots[i].y - cy) * inv + half)))
-            let key = gy * grid + gx
-            var c = keyToCell[key]
-            if c < 0 { c = cellCount; cellCount += 1; keyToCell[key] = c }
-            cellOf[i] = c
-        }
+        // Target pane = a small ceramic lozenge, HARD-CAPPED in absolute screen px so
+        // it never balloons when the host renders large particles (the wallpaper feeds
+        // a big sizePx). Cap is independent of sizePx and cloudRadius.
+        let throttle = frame.batteryThrottled
+        let targetCellPx = clampD(frame.sizePx * 4.5, 15.0, throttle ? 34.0 : 24.0)
+        // Pad the bbox by ~1.5 cells so the tessellation feathers just past the cloud.
+        let pad = targetCellPx * 1.5
+        var x0 = max(0.0, minX - pad), y0 = max(0.0, minY - pad)
+        var x1 = min(cw, maxX + pad), y1 = min(ch, maxY + pad)
+        if !(x1 > x0) { x0 = 0; x1 = cw }
+        if !(y1 > y0) { y0 = 0; y1 = ch }
+        let bw = x1 - x0, bh = y1 - y0
 
-        cells = cellCount
-        self.cellOf = cellOf
-        cgx = [Double](repeating: 0, count: cellCount)
-        cgy = [Double](repeating: 0, count: cellCount)
-        cnt = [Int](repeating: 0, count: cellCount)
-        dens = [Double](repeating: 1, count: cellCount)
-        cornerHue = [RGBA](repeating: Self.nearBlack, count: cellCount * 4)
-        csx = [Double](repeating: 0, count: cellCount)
-        csy = [Double](repeating: 0, count: cellCount)
-        sumx = [Double](repeating: 0, count: cellCount)
-        sumy = [Double](repeating: 0, count: cellCount)
-        hcache = [Double](repeating: 0, count: cellCount)
-        order = Array(0..<cellCount)
-        // Hard-cap the pane half-extent so even at the grid clamp (huge fields)
-        // panes never balloon — discrete small lozenges with gaps when sparse,
-        // tessellated when the shape is dense.
-        storedExt = min(span / Double(grid) / 2, targetCellPx * 0.62)
+        var c = max(8, min(Self.MAXGRID, Int((bw / targetCellPx).rounded())))
+        var r = max(8, min(Self.MAXGRID, Int((bh / targetCellPx).rounded())))
+        // Honour the total-cell budget (grow cells, never explode the paint loop).
+        let budget = throttle ? Self.MAXCELLS / 2 : Self.MAXCELLS
+        if c * r > budget {
+            let s = (Double(c * r) / Double(budget)).squareRoot()
+            c = max(8, Int(Double(c) / s))
+            r = max(8, Int(Double(r) / s))
+        }
+        cols = c
+        rows = r
+        cells = c * r
+        originX = x0
+        originY = y0
+        cellW = bw / Double(c)
+        cellH = bh / Double(r)
+        // Bound the pane half-extent in absolute px (never cloud-radius scaled).
+        ext = max(cellW, cellH) * 0.5 * Self.overlap
 
-        // Recover each cell's logical grid coord (for the height-field phase).
-        for key in 0..<keyToCell.count {
-            let c = keyToCell[key]
-            if c < 0 { continue }
-            cgx[c] = Double(key % grid)
-            cgy[c] = Double(key / grid)
-        }
-
-        // Per-cell screen centroid + member tally.
-        for i in 0..<count {
-            let c = cellOf[i]
-            csx[c] += dots[i].x
-            csy[c] += dots[i].y
-            cnt[c] += 1
-        }
-        for c in 0..<cellCount {
-            let k = Double(max(1, cnt[c]))
-            csx[c] /= k
-            csy[c] /= k
-        }
-
-        // Density weight: a fully-occupied interior cell holds ~mean members; sparse
-        // boundary cells (1–2 points sitting in mostly-empty grid) fade toward a
-        // faint soft patch. This is what clips the painted sheet to the real cloud
-        // and removes the square boundary artifact — no hull math required.
-        let meanCnt = max(1.0, Double(count) / Double(max(1, cellCount)))
-        for c in 0..<cellCount {
-            let ratio = Double(cnt[c]) / meanCnt
-            dens[c] = 0.25 + 0.75 * smoothstep(0.35, 1.05, ratio)
-        }
-
-        // Sample four corner hues per cell from the member lying most toward each
-        // corner (TL,TR,BR,BL) so the bilinear face reads as a true brand blend.
-        let cdx: [Double] = [-1, 1, 1, -1]
-        let cdy: [Double] = [-1, -1, 1, 1]
-        var bestIdx = [Int](repeating: -1, count: cellCount * 4)
-        var bestDot = [Double](repeating: -1e9, count: cellCount * 4)
-        for i in 0..<count {
-            let c = cellOf[i]
-            let px = dots[i].x - csx[c]
-            let py = dots[i].y - csy[c]
-            for k in 0..<4 {
-                let d = px * cdx[k] + py * cdy[k]
-                let bk = c * 4 + k
-                if d > bestDot[bk] { bestDot[bk] = d; bestIdx[bk] = i }
-            }
-        }
-        for c in 0..<cellCount {
-            for k in 0..<4 {
-                let idx = bestIdx[c * 4 + k]
-                cornerHue[c * 4 + k] = dots[idx >= 0 ? idx : 0].rgba.withOpacity(1)
-            }
-        }
+        wsum = [Double](repeating: 0, count: cells)
+        crsum = [Double](repeating: 0, count: cells)
+        cgsum = [Double](repeating: 0, count: cells)
+        cbsum = [Double](repeating: 0, count: cells)
+        colR = [Double](repeating: 0, count: cells)
+        colG = [Double](repeating: 0, count: cells)
+        colB = [Double](repeating: 0, count: cells)
+        dens = [Double](repeating: 0, count: cells)
+        hcache = [Double](repeating: 0, count: cells)
     }
 
-    /// Live per-frame refresh of each cell's screen centroid so the panes follow
-    /// the moving cloud (membership is fixed from `bin`).
-    private func refresh(_ frame: SwarmSubstrateFrame) {
+    /// Splat the live cloud into the full-canvas grid with a normalized Gaussian
+    /// kernel → a smooth per-cell density (presence) and an inverse-distance blend
+    /// of the nearby particle hues (the stained-glass colour). This is the live work
+    /// that makes the sheet brighten where the swarm clusters and feather to nothing
+    /// where it thins, with no rectangular edge.
+    private func splat(_ frame: SwarmSubstrateFrame) {
         let dots = frame.dots
-        for c in 0..<cells { sumx[c] = 0; sumy[c] = 0 }
-        for i in 0..<dots.count {
-            let c = cellOf[i]
-            if c < 0 { continue }
-            sumx[c] += dots[i].x
-            sumy[c] += dots[i].y
+        for i in 0..<cells { wsum[i] = 0; crsum[i] = 0; cgsum[i] = 0; cbsum[i] = 0 }
+
+        let invCW = 1.0 / max(cellW, 1e-6)
+        let invCH = 1.0 / max(cellH, 1e-6)
+        let twoSig2 = 2 * Self.splatSigma * Self.splatSigma
+        let R = Self.splatR
+
+        for d in dots {
+            // Fractional cell coordinate of the particle (relative to the bbox origin).
+            let fx = (d.x - originX) * invCW
+            let fy = (d.y - originY) * invCH
+            let cc = Int(fx)
+            let rr = Int(fy)
+            let cr = d.rgba.r, cg = d.rgba.g, cb = d.rgba.b
+            // Weight by particle opacity so faint dots contribute proportionally.
+            let wgt0 = max(0.15, d.opacity)
+            var dy = -R
+            while dy <= R {
+                let ry = rr + dy
+                if ry >= 0 && ry < rows {
+                    let ddy = (Double(ry) + 0.5) - fy
+                    let base = ry * cols
+                    var dx = -R
+                    while dx <= R {
+                        let cx = cc + dx
+                        if cx >= 0 && cx < cols {
+                            let ddx = (Double(cx) + 0.5) - fx
+                            let dist2 = ddx * ddx + ddy * ddy
+                            let wg = wgt0 * exp(-dist2 / twoSig2)
+                            let idx = base + cx
+                            wsum[idx] += wg
+                            crsum[idx] += wg * cr
+                            cgsum[idx] += wg * cg
+                            cbsum[idx] += wg * cb
+                        }
+                        dx += 1
+                    }
+                }
+                dy += 1
+            }
         }
-        for c in 0..<cells {
-            let k = cnt[c]
-            if k > 0 { csx[c] = sumx[c] / Double(k); csy[c] = sumy[c] / Double(k) }
+
+        // Field-relative normalizer: the typical occupied cell reads as "present",
+        // truly empty cells (no dot within the splat radius) fade out, dense clusters
+        // saturate. Adapts identically to a sparse uniform field and a tight logo.
+        var sumW = 0.0
+        var occ = 0
+        for i in 0..<cells where wsum[i] > 1e-4 { sumW += wsum[i]; occ += 1 }
+        let meanW = occ > 0 ? sumW / Double(occ) : 1.0
+        let norm = 1.0 / max(meanW * 1.45, 1e-6)
+        for i in 0..<cells {
+            let w = wsum[i]
+            if w > 1e-4 {
+                let inv = 1.0 / w
+                colR[i] = crsum[i] * inv
+                colG[i] = cgsum[i] * inv
+                colB[i] = cbsum[i] * inv
+                dens[i] = smoothstep(0.05, 1.0, w * norm)
+            } else {
+                dens[i] = 0
+            }
         }
     }
 
@@ -227,37 +262,49 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         let count = frame.dots.count
         if count <= 0 { return false }
 
-        // (Re)bin when count changes or the forge assembly has just settled.
-        if count != builtCount || (!built && (frame.settleProgress >= 0.6 || frame.reduced)) {
-            bin(frame)
+        // (Re)layout when count, canvas size, or the forge-assembly settle changes —
+        // AND when the cloud bounding box drifts past the cached grid. The grid
+        // origin/cellW are derived from the bbox, so a settled logo returning to the
+        // free swarm (same count + canvas) would otherwise keep the old small grid
+        // and `splat` would clip the field to the stale shape.
+        let wi = Int(max(frame.size.width, 1).rounded())
+        let hi = Int(max(frame.size.height, 1).rounded())
+        var bboxMoved = false
+        if cells > 0 {
+            var minX = Double.greatestFiniteMagnitude, minY = Double.greatestFiniteMagnitude
+            var maxX = -Double.greatestFiniteMagnitude, maxY = -Double.greatestFiniteMagnitude
+            for d in frame.dots {
+                if d.x < minX { minX = d.x }; if d.x > maxX { maxX = d.x }
+                if d.y < minY { minY = d.y }; if d.y > maxY { maxY = d.y }
+            }
+            // Trigger only once drift exceeds ~one cell on any edge, so a slowly
+            // breathing cloud doesn't thrash the allocator every frame.
+            let tol = max(cellW, cellH) * 1.25
+            bboxMoved = abs(minX - builtMinX) > tol || abs(maxX - builtMaxX) > tol
+                     || abs(minY - builtMinY) > tol || abs(maxY - builtMaxY) > tol
+        }
+        if count != builtCount || wi != lastW || hi != lastH || bboxMoved
+            || (!built && (frame.settleProgress >= 0.6 || frame.reduced)) {
+            layout(frame)
         }
         if cells <= 0 { return false }
-        refresh(frame)
+        splat(frame)
 
         let dark = frame.stage.dark
         let reduced = frame.reduced
         let throttled = frame.batteryThrottled
         let accent = frame.stage.accent
         // Assembly fade ramp (held look: dissolve fade = 1).
-        let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.6 + 0.4
+        let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.55 + 0.45
         let ht = reduced ? 0 : frame.t          // freeze the ripple under reduced motion
-        let baseExt = storedExt > 0 ? storedExt : frame.sizePx * 4
         let seamPhase = reduced ? 0 : frame.t * 0.18
+        let baseExt = ext > 0 ? ext : frame.sizePx * 4
 
-        // Height field per cell → painter sort (back/high → front/low).
-        for c in 0..<cells {
-            hcache[c] = heightField(cgx[c] * 0.5, cgy[c] * 0.5, ht * 0.4)
-        }
-        for c in 0..<cells { order[c] = c }
-        // Insertion sort (small, near-stable array) by height descending.
-        if cells > 1 {
-            for i in 1..<cells {
-                let a = order[i]
-                let ah = hcache[a]
-                var j = i - 1
-                while j >= 0 && hcache[order[j]] < ah { order[j + 1] = order[j]; j -= 1 }
-                order[j + 1] = a
-            }
+        // Height field per cell (logical grid coords drive the undulation phase).
+        for i in 0..<cells {
+            let gx = Double(i % cols)
+            let gy = Double(i / cols)
+            hcache[i] = heightField(gx * 0.5, gy * 0.5, ht * 0.4)
         }
 
         var ctx = ctx
@@ -270,103 +317,106 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
-        // ── Pass A (dark only): REAL Gaussian bloom under the lit panes ──
-        // One blurred additive layer pools a soft colored under-glow beneath the
-        // brighter (high) cells, so the sheet visibly glows and fills its
-        // silhouette. The heaviest extra pass → dropped under battery throttle.
+        // ── Pass A (dark only): ONE pooled Gaussian bloom under the lit panes ──
+        // A single blurred additive layer pools a soft colored under-glow beneath the
+        // present, high cells so the sheet visibly glows and fills its silhouette.
+        // The heaviest extra pass → dropped under battery throttle.
         if dark && !throttled {
-            let bloomR = max(3.0, baseExt * 1.4)
+            let bloomR = max(3.0, baseExt * 1.2)
             var bctx = ctx
             bctx.blendMode = .plusLighter
             bctx.drawLayer { layer in
                 layer.addFilter(.blur(radius: bloomR))
                 layer.blendMode = .plusLighter
-                for s in 0..<cells {
-                    let c = order[s]
-                    let hf = hcache[c]
-                    let d = dens[c]
-                    let br = clampD(0.4 + 0.6 * hf, 0, 1) * d
+                for i in 0..<cells {
+                    let dn = dens[i]
+                    if dn < 0.12 { continue }
+                    let hf = hcache[i]
+                    let br = clampD(0.42 + 0.58 * hf, 0, 1) * dn
                     if br < 0.12 { continue }
-                    let x = csx[c]
-                    let y = csy[c] - hf * baseExt * 0.5
-                    // Glow tint: the lit corner hue lifted toward white and pushed
-                    // toward the stage accent (rich, luminous — never grey mush).
-                    let glow = cornerHue[c * 4 + 0].toWhite(0.30).mix(with: accent, amount: 0.18)
-                    let rr = baseExt * (1.5 + 0.55 * br)
-                    layer.opacity = clampD(0.62 * br * f, 0, 0.85)
+                    let col = (i % cols)
+                    let row = i / cols
+                    let x = originX + (Double(col) + 0.5) * cellW
+                    let y = originY + (Double(row) + 0.5) * cellH - hf * baseExt * 0.5
+                    let glow = RGBA(r: colR[i], g: colG[i], b: colB[i])
+                        .toWhite(0.26).mix(with: accent, amount: 0.18)
+                    let rr = baseExt * (1.35 + 0.5 * br)
+                    layer.opacity = clampD(0.55 * br * f, 0, 0.8)
                     layer.fill(Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2)),
                                with: .color(glow.color))
                 }
             }
         }
 
-        // ── Pass B: the solid ROUNDED gradient panes (source-over on both stages) ──
-        for s in 0..<cells {
-            let c = order[s]
-            let hf = hcache[c]
-            let d = dens[c]
-            let x = csx[c]
-            let y = csy[c] - hf * baseExt * 0.6     // lift along screen-y (draped cloth)
-            // Sparse boundary cells shrink slightly → soft patches, not full tiles.
-            let ext = baseExt * Self.overlap * (0.82 + 0.18 * d)
+        // ── Pass B: the continuous ROUNDED gradient panes (edge-to-edge sheet) ──
+        // Iterate row-major top→bottom so lower (front) panes overpaint higher ones —
+        // a cheap, stable painter order for top-lit draped cloth (no per-frame sort).
+        for i in 0..<cells {
+            let dn = dens[i]
+            if dn < 0.025 { continue }              // empty → feathered away, skip
+            let hf = hcache[i]
+            let col = i % cols
+            let row = i / cols
+            let cxp = originX + (Double(col) + 0.5) * cellW
+            let cyp = originY + (Double(row) + 0.5) * cellH - hf * baseExt * 0.45   // draped lift
 
-            // Pane tilt: a few degrees from the height-field gradient → the gradient
-            // axis + hotspot slide as the sheet breathes (flat under reduced motion).
-            let tilt: Double = reduced ? 0 : 0.22 * (
-                heightField(cgx[c] * 0.5 + 0.6, cgy[c] * 0.5, ht * 0.4)
-                - heightField(cgx[c] * 0.5 - 0.6, cgy[c] * 0.5, ht * 0.4)
+            // Pane tilt from the height-field gradient → the gradient axis + hotspot
+            // slide as the sheet breathes (flat under reduced motion).
+            let gx = Double(col) * 0.5, gy = Double(row) * 0.5
+            let tilt: Double = reduced ? 0 : 0.20 * (
+                heightField(gx + 0.6, gy, ht * 0.4) - heightField(gx - 0.6, gy, ht * 0.4)
             )
             let cosT = cos(tilt), sinT = sin(tilt)
 
-            // Rounded, tilted glossy lozenge (NOT a hard square → no rectangle edge).
-            let rect = CGRect(x: x - ext, y: y - ext, width: ext * 2, height: ext * 2)
-            let xf = CGAffineTransform(translationX: x, y: y)
+            // Rounded, tilted glossy lozenge edge-to-edge (overlap ≥ 1 → no seam gaps).
+            let rect = CGRect(x: cxp - baseExt, y: cyp - baseExt, width: baseExt * 2, height: baseExt * 2)
+            let xf = CGAffineTransform(translationX: cxp, y: cyp)
                 .rotated(by: tilt)
-                .translatedBy(x: -x, y: -y)
-            let quad = Path(roundedRect: rect, cornerRadius: ext * Self.cornerFrac).applying(xf)
+                .translatedBy(x: -cxp, y: -cyp)
+            let quad = Path(roundedRect: rect, cornerRadius: baseExt * Self.cornerFrac).applying(xf)
 
-            // Gradient axis along the TL↔BR diagonal (rotated by tilt).
+            // Gradient axis runs top→bottom (rotated by tilt): HOT toward white on the
+            // lit (high) top, sunk toward iris-tinted near-black at the bottom.
             @inline(__always) func rp(_ lx: Double, _ ly: Double) -> CGPoint {
-                CGPoint(x: x + (lx * cosT - ly * sinT), y: y + (lx * sinT + ly * cosT))
+                CGPoint(x: cxp + (lx * cosT - ly * sinT), y: cyp + (lx * sinT + ly * cosT))
             }
-            let pTL = rp(-ext, -ext)
-            let pBR = rp(ext, ext)
+            let pTop = rp(-baseExt * 0.7, -baseExt)
+            let pBot = rp(baseExt * 0.7, baseExt)
 
-            // Bilinear corner blend: HOT toward white on the lit (high) corner,
-            // sunk toward iris-tinted near-black on the low corner (real depth).
+            let base = RGBA(r: colR[i], g: colG[i], b: colB[i])
             let litK = clampD(0.5 + 0.42 * hf, 0, 1)
-            let startC = cornerHue[c * 4 + 0].toWhite(0.16 + 0.42 * litK)
-            let endC = cornerHue[c * 4 + 2].mix(with: Self.nearBlack, amount: 0.20 * (1 - litK) + 0.06)
-            let midC = startC.mix(with: endC, amount: 0.5)
+            // A touch of travelling thin-film iridescence across the whole sheet.
+            let iris = irisAt(seamPhase + Double(col) * 0.18 + Double(row) * 0.12)
+            let topC = base.toWhite(0.12 + 0.40 * litK).mix(with: iris, amount: 0.10)
+            let botC = base.mix(with: Self.nearBlack, amount: 0.20 * (1 - litK) + 0.06)
+            let midC = topC.mix(with: botC, amount: 0.5)
             let grad = Gradient(stops: [
-                .init(color: startC.color, location: 0.0),
+                .init(color: topC.color, location: 0.0),
                 .init(color: midC.color, location: 0.5),
-                .init(color: endC.color, location: 1.0)
+                .init(color: botC.color, location: 1.0)
             ])
 
-            ctx.opacity = clampD(f * d, 0, 1)
-            ctx.fill(quad, with: .linearGradient(grad, startPoint: pTL, endPoint: pBR))
+            ctx.opacity = clampD(f * dn, 0, 1)
+            ctx.fill(quad, with: .linearGradient(grad, startPoint: pTop, endPoint: pBot))
 
             // Hot glossy specular core toward the upper-left lit corner. Additive on
             // dark (it blooms), source-over on light (never blows out the canvas).
-            let specK = clampD(litK * d, 0, 1)
+            let specK = clampD(litK * dn, 0, 1)
             if specK > 0.12 {
-                let ox = -ext * 0.42, oy = -ext * 0.42
-                let hxp = x + (ox * cosT - oy * sinT)
-                let hyp = y + (ox * sinT + oy * cosT)
-                let hr = ext * (0.82 + 0.3 * specK)
+                let ox = -baseExt * 0.40, oy = -baseExt * 0.40
+                let hxp = cxp + (ox * cosT - oy * sinT)
+                let hyp = cyp + (ox * sinT + oy * cosT)
+                let hr = baseExt * (0.78 + 0.28 * specK)
                 ctx.blendMode = dark ? .plusLighter : .normal
-                ctx.opacity = clampD((dark ? 0.5 : 0.36) * specK * f, 0, dark ? 0.8 : 0.5)
+                ctx.opacity = clampD((dark ? 0.46 : 0.32) * specK * f, 0, dark ? 0.75 : 0.46)
                 ctx.draw(spot, in: CGRect(x: hxp - hr, y: hyp - hr, width: hr * 2, height: hr * 2))
                 ctx.blendMode = .normal
             }
 
-            // Hairline iridescent thin-film seam — gated by density + rounded so it
-            // reads as an INTERIOR grid shimmer that fades at the cloud edge, never
-            // an outline. (This is the line that used to trace the broken rectangle.)
-            let seamA = clampD((0.22 + 0.4 * litK) * f * d, 0, 0.82)
+            // Hairline iridescent thin-film seam — gated by density so it reads as an
+            // INTERIOR grid shimmer that fades at the cloud edge, never an outline.
+            let seamA = clampD((0.18 + 0.34 * litK) * f * dn, 0, 0.72)
             if seamA > 0.02 {
-                let iris = irisAt(seamPhase + cgx[c] * 0.18 + cgy[c] * 0.12)
                 ctx.opacity = seamA
                 ctx.stroke(quad, with: .color(iris.color),
                            style: StrokeStyle(lineWidth: 1, lineJoin: .round))
