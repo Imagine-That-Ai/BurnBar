@@ -23,6 +23,16 @@ struct RootTabView: View {
     let transferStore: CredentialTransferStore
 
     @State private var selection: AuroraNavDestination = .pulse
+    /// Live preview destination during a nav-tray scrub. When non-nil, the
+    /// content area shows this tab so the user sees what they're about to
+    /// commit. Cleared on commit (selection binding updates) or cancel.
+    @State private var scrubPreview: AuroraNavDestination?
+    /// Horizontal swipe gesture state for root page swiping. Tracks whether
+    /// a recognized horizontal swipe has already committed, so one swipe =
+    /// one tab advance.
+    @State private var rootSwipeCommitted = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var didApplyScreenshotRoute = false
     #if DEBUG
     @State private var didApplyHermesE2EPrompt = false
@@ -83,7 +93,13 @@ struct RootTabView: View {
                     userPhotoURL: authStore.currentIdentity?.photoURL,
                     userDisplayName: authStore.currentIdentity?.displayName
                                   ?? authStore.currentIdentity?.email,
-                    isCloudMember: subscriptionStore.isActive
+                    isCloudMember: subscriptionStore.isActive,
+                    onScrubPreview: { dest in
+                        scrubPreview = dest
+                    },
+                    onScrubCommit: { _ in
+                        scrubPreview = nil
+                    }
                 )
                 .opacity(isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
@@ -147,6 +163,7 @@ struct RootTabView: View {
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .environment(\.mobileAuthStore, authStore)
+        .simultaneousGesture(rootSwipeGesture)
         .task {
             hermesService.bindElderWandEntitlement(to: subscriptionStore)
             pulseHermesService.bindElderWandEntitlement(to: subscriptionStore)
@@ -225,7 +242,8 @@ struct RootTabView: View {
 
     @ViewBuilder
     private var contentForSelection: some View {
-        switch selection {
+        let active = scrubPreview ?? selection
+        switch active {
         case .pulse:    pulseStack
         case .burn:     burnStack
         case .insights: insightsStack
@@ -256,6 +274,51 @@ struct RootTabView: View {
         case .maximize:
             return .obscured
         }
+    }
+
+    // MARK: - Root swipe gating
+
+    /// Whether root-level page swiping is currently enabled. Disabled when
+    /// any full-screen control surface is active so the gesture doesn't
+    /// fight with the overlay or change tabs underneath a modal.
+    private var isRootSwipeEnabled: Bool {
+        !isHermesKeyboardVisible
+            && !isCloudStoreChromeHidden
+            && studioPresenter.mode != .fullscreen
+            && !isMissionConsolePresented
+            && liveStagePresenter.mode != .split
+            && liveStagePresenter.mode != .maximize
+            && scrubPreview == nil
+    }
+
+    // MARK: - Root horizontal swipe gesture
+
+    /// Horizontal drag on the root content area. Recognizes clear horizontal
+    /// intent (translation.width dominates translation.height), advances one
+    /// destination per completed swipe, and preserves vertical scrolling
+    /// inside the current tab via the `minimumDistance` threshold.
+    private var rootSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onChanged { value in
+                guard isRootSwipeEnabled, !rootSwipeCommitted else { return }
+                guard let direction = AuroraNavGestureModel.swipeDirection(
+                    translation: value.translation
+                ) else { return }
+                let active = scrubPreview ?? selection
+                guard let next = AuroraNavGestureModel.adjacent(
+                    current: active,
+                    direction: direction,
+                    destinations: destinations
+                ) else { return }
+                rootSwipeCommitted = true
+                withAnimation(AuroraNavGestureModel.transitionAnimation(reduceMotion: reduceMotion)) {
+                    selection = next
+                }
+                HapticBus.tabChange()
+            }
+            .onEnded { _ in
+                rootSwipeCommitted = false
+            }
     }
 
     @State private var insightsDashboardStore = DashboardStore()

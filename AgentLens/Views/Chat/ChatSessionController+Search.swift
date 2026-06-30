@@ -46,6 +46,49 @@ extension ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
     }
 
+    /// Tiling-pane hydration. A pane controller is constructed with
+    /// `initialThreadID == its bound thread`, so `openHistoryThreadAsync` would
+    /// short-circuit on its `threadID != activeThreadID` guard and never load the
+    /// conversation. This loads the bound thread's messages unconditionally and
+    /// writes no global slot keys (panes set `persistsViewState == false`).
+    func hydratePaneThread() async {
+        // Never clobber an in-flight stream: when a pane view is recreated mid-stream
+        // (a sibling split/close re-parents it), onAppear re-hydrates, but the streaming
+        // assistant message is not yet persisted. Mirror loadPersistedMessagesAsync's guard.
+        guard !isStreaming else { return }
+        let threadID = activeThreadID
+        let fetchedMessages: [ChatMessageRecord]
+        do {
+            fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
+        } catch {
+            AppLogger.chat.silentFailure("fetchChatMessages (hydratePane)", error: error)
+            fetchedMessages = []
+        }
+        guard activeThreadID == threadID, !isStreaming else { return }
+        messages = fetchedMessages
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+        ensureChatWorkspaceDirectoryExists()
+    }
+
+    /// Explicit teardown for a tiling pane being closed. ARC will NOT free a
+    /// streaming controller on its own — the in-flight `streamTask` strongly
+    /// retains `self` via `guard let self` — and `deinit` never cancels the
+    /// `cliBridge`. The pane workspace calls this before dropping the leaf.
+    ///
+    /// This intentionally does NOT revoke the desktop-control grant: grants are
+    /// keyed process-wide by `(runtimeID, threadID)`, so a sibling pane showing the
+    /// same thread on the same backend may still be using it. Cancelling the stream
+    /// stops this pane from issuing further tool calls; the grant TTL-expires on its
+    /// own. (Thread-switch paths still revoke, because there the live controller is
+    /// leaving the thread rather than being destroyed.)
+    func teardownForPaneClose() {
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+    }
+
     /// E1 (citation jump): navigate to the chat message a recalled memory cites.
     ///
     /// Recall is app-wide (`recallChatMemorySnippets` carries no thread predicate),
