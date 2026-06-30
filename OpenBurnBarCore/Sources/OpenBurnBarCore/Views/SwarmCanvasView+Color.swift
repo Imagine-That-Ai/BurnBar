@@ -401,11 +401,13 @@ extension SwarmSimulation {
         modes = SwarmFormationMode.defaultCycle(for: enabledProviderGlyphs, excludeBrandShapes: exclude)
         cycleIndex = min(cycleIndex, max(0, modes.count - 1))
 
-        switch mode {
-        case .shapeDollar, .shapeCode, .shapeBurnBarLogo, .shapeRings, .shapeRouterFlow:
-            assignMode(.swarm)
-        default:
-            break
+        if !assignFirstProviderModeForProviderOnlyCycle() {
+            switch mode {
+            case .shapeDollar, .shapeCode, .shapeBurnBarLogo, .shapeRings, .shapeRouterFlow:
+                assignMode(.swarm)
+            default:
+                break
+            }
         }
 
         shouldResetCycleTimer = true
@@ -422,6 +424,9 @@ extension SwarmSimulation {
         if colorDriver?.mode == .active {
             let activeProvidersList = filteredEnabledProviders(colorDriver?.activeProviders ?? [])
             assignMode(activeProvidersList.isEmpty ? .swarm : .shapeProviderLogo(activeProvidersList))
+        } else if assignFirstProviderModeForProviderOnlyCycle() {
+            // The provider glyph toggle is a visual control; a non-empty selection
+            // should materialize immediately on provider-forward backgrounds.
         } else if case .shapeProviderLogo(let providers) = mode {
             let visibleProviders = filteredEnabledProviders(providers)
             assignMode(visibleProviders.isEmpty ? .swarm : .shapeProviderLogo(visibleProviders))
@@ -430,6 +435,17 @@ extension SwarmSimulation {
         }
 
         shouldResetCycleTimer = true
+    }
+
+    private func assignFirstProviderModeForProviderOnlyCycle() -> Bool {
+        guard excludeBrandShapes,
+              let firstMode = modes.first,
+              firstMode != .swarm else {
+            return false
+        }
+        cycleIndex = 0
+        assignMode(firstMode)
+        return true
     }
 
     /// Updates the color driver and triggers a smooth transition.

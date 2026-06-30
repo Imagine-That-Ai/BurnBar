@@ -1799,7 +1799,7 @@ struct SwarmWallpaperView: View {
             isAutoCyclingEnabled: autoCyclesShapes,
             enabledProviderGlyphs: providerGlyphs,
             enableSwarmSparkles: enableSparkles,
-            excludeBrandShapesFromSwarm: excludeBrandShapes,
+            excludeBrandShapesFromSwarm: excludeBrandShapes || !providerGlyphs.isEmpty,
             // The wallpaper is an ambient surface that sits behind every
             // window and icon — capping at 30 fps + rendering the Canvas
             // asynchronously halves CPU work with no perceptible change in

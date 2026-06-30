@@ -458,6 +458,7 @@ public final class SwarmSimulation {
         self.enabledProviderGlyphs = normalizedProviderGlyphs
         self.excludeBrandShapes = excludeBrandShapes
         self.modes = SwarmFormationMode.defaultCycle(for: normalizedProviderGlyphs, excludeBrandShapes: excludeBrandShapes)
+        self.mode = self.modes.first ?? .swarm
 
         switch pace {
         case .energetic:
