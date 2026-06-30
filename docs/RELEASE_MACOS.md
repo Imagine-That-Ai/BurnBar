@@ -81,6 +81,7 @@ that the Download button will use:
 
 ```bash
 npm run test:download-provenance --prefix website
+bash scripts/ci/verify-public-macos-download-trust.sh
 ```
 
 That guard compares `SITE.macDownloadBaseUrl/SITE.macReleaseFile` to the
@@ -92,6 +93,24 @@ guard must fail if DNS is missing, the object was not uploaded, or a release
 asset path is stale. Do not deploy the website with a dead direct-download host
 and do not rely on `burnbar.ai/downloads/*` Firebase fallback pages as proof
 that a DMG exists.
+
+The macOS trust gate downloads the same public DMG and runs Apple platform
+checks against the real artifact: Gatekeeper assessment for the DMG, stapler
+validation for the notarization ticket, app bundle code-signature verification,
+Developer ID certificate inspection, and Gatekeeper execution assessment for
+the mounted app. A public download is not shippable unless this command passes;
+URL liveness alone is not enough. The `Public macOS Download Trust` workflow
+runs this check automatically when `website/src/data/site.ts` changes, so a
+future button update cannot silently point users at an unsigned or unstapled
+DMG.
+
+Release artifacts must also include the shipped Firebase client plist. It is
+client configuration, not a private signing secret, and it must be embedded
+before Developer ID signing so the sealed app can initialize cloud auth. The
+release workflow runs `scripts/ci/verify-apple-release-firebase-config.sh` on
+the unsigned app and packaged DMG/ZIP; the website trust gate runs the same
+check against the downloaded public copy. A DMG that launches with "Cloud auth
+is unavailable" is not shippable.
 
 If the branded `downloads.burnbar.ai` host is down, the emergency recovery path
 is to repoint the website at a known live GitHub Release asset, rerun the
