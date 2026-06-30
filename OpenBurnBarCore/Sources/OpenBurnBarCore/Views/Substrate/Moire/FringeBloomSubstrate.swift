@@ -61,7 +61,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         let sizePx = frame.sizePx
         let t = frame.t
         let cx = frame.cx, cy = frame.cy, radius = frame.cloudRadius
-        let W = frame.size.width, H = frame.size.height
+        let width = frame.size.width, height = frame.size.height
 
         // Are we forming/holding the dense logo, or scattered as the free backdrop swarm?
         var inShapeN = 0
@@ -81,7 +81,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         let beat = reduced ? 0 : sin(t * Self.BEAT) * 0.5
         let kf: Double = shaped
             ? 5.6 / max(radius, 1)
-            : (2 * Double.pi) / clampD(min(W, H) / 8, 84, 150)
+            : (2 * Double.pi) / clampD(min(width, height) / 8, 84, 150)
         let kx = kf * (1 + 0.05 * beat)
         let ky = kf * (1 + 0.05 * beat) * 0.92
         let ang2 = 0.18 // ~10° rotation for the second grating → diagonal bands
@@ -133,7 +133,7 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         } else {
             paintField(frame, ctx: ctx, fringe: fringe, glow: glow,
                        dark: dark, lite: lite, reduced: reduced, sizePx: sizePx,
-                       cx: cx, cy: cy, W: W, H: H, iris: iris, accent: accent, count: count)
+                       cx: cx, cy: cy, width: width, height: height, iris: iris, accent: accent, count: count)
         }
 
         return true
@@ -149,21 +149,21 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         fringe: (Double, Double) -> (inten: Double, gmix: Double),
         glow: GraphicsContext.ResolvedImage?,
         dark: Bool, lite: Bool, reduced: Bool, sizePx: Double,
-        cx: Double, cy: Double, W: Double, H: Double,
+        cx: Double, cy: Double, width: Double, height: Double,
         iris: [RGBA], accent: RGBA, count: Int
     ) {
         // Fine fringe grid step: BOUNDED IN PX (sizePx-nudged, clamped), then capped so
         // total cell work stays O(~targetCells) on any canvas — wide screens coarsen, they
         // never explode. ~4 samples per wavelength keeps the bands smooth under the bloom.
-        let area = max(W * H, 1)
+        let area = max(width * height, 1)
         let targetCells = lite ? 1500.0 : 2800.0
         let stepMin = clampD(sizePx * 7.0, 15, 24)
         let gs = max(stepMin, (area / targetCells).squareRoot())
 
         // ── coarse particle density splat (feathers + tints the field) ──────────
         let cd = max(gs * 2.4, 42)
-        let cols = max(2, Int((W / cd).rounded(.up)) + 1)
-        let rows = max(2, Int((H / cd).rounded(.up)) + 1)
+        let cols = max(2, Int((width / cd).rounded(.up)) + 1)
+        let rows = max(2, Int((height / cd).rounded(.up)) + 1)
         if cols != gCols || rows != gRows || cd != gStep {
             gCols = cols; gRows = rows; gStep = cd
             let n = cols * rows
@@ -211,8 +211,8 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
 
         // bilinear sample of the (weight, weight-averaged brand colour) field.
         @inline(__always)
-        func sampleDens(_ X: Double, _ Y: Double) -> (w: Double, r: Double, g: Double, b: Double) {
-            let gx = X * invCd - 0.5, gy = Y * invCd - 0.5
+        func sampleDens(_ x: Double, _ y: Double) -> (w: Double, r: Double, g: Double, b: Double) {
+            let gx = x * invCd - 0.5, gy = y * invCd - 0.5
             let ix = Int(floor(gx)), iy = Int(floor(gy))
             let fx = gx - Double(ix), fy = gy - Double(iy)
             @inline(__always) func at(_ a: Int, _ b: Int) -> Int {
@@ -233,33 +233,33 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
 
         // ── evaluate the continuous fringe field over the canvas grid ───────────
         cells.removeAll(keepingCapacity: true)
-        let fCols = max(1, Int((W / gs).rounded(.up)))
-        let fRows = max(1, Int((H / gs).rounded(.up)))
+        let fCols = max(1, Int((width / gs).rounded(.up)))
+        let fRows = max(1, Int((height / gs).rounded(.up)))
         var fy = 0
         while fy < fRows {
-            let Y = (Double(fy) + 0.5) * gs
-            let py = Y - cy
+            let y = (Double(fy) + 0.5) * gs
+            let py = y - cy
             var fx = 0
             while fx < fCols {
-                let X = (Double(fx) + 0.5) * gs
-                let ds = sampleDens(X, Y)
+                let x = (Double(fx) + 0.5) * gs
+                let ds = sampleDens(x, y)
                 let densN = ds.w * invMax
                 // coverage feathers the field on at the swarm boundary (no rectangle);
                 // cluster boost intensifies the bands where the swarm bunches up.
                 let coverage = smoothstep(0.04, 0.20, densN)
                 if coverage > 0.02 {
-                    let (inten, gmix) = fringe(X - cx, py)
+                    let (inten, gmix) = fringe(x - cx, py)
                     let cluster = smoothstep(0.18, 0.62, densN)
                     let fInten = inten * coverage * (0.5 + 0.9 * cluster)
                     if fInten >= 0.035 {
                         // spectral fringe tint, kissed by the local brand hue + accent.
-                        let seed = frac(gmix + X * 0.00065 + Y * 0.00095)
+                        let seed = frac(gmix + x * 0.00065 + y * 0.00095)
                         let spec = SubstrateRamp.sample(iris, seed)
                         let brand = RGBA(r: ds.r, g: ds.g, b: ds.b, a: 1)
                         let col = brand.mix(with: spec, amount: 0.55)
                             .mix(with: accent, amount: dark ? 0.22 : 0.05)
                             .toWhite(dark ? 0.12 : 0.0)
-                        cells.append((X, Y, fInten, col))
+                        cells.append((x, y, fInten, col))
                     }
                 }
                 fx += 1

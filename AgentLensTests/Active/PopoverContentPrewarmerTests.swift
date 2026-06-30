@@ -200,6 +200,7 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         window.close()
     }
 
+    @MainActor
     func testPopoverWindowConfiguration_allowsTextInputToOwnKeyboardSpace() {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 340, height: 540),

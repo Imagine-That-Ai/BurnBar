@@ -43,6 +43,7 @@ struct AgentInsightsTabScreen: View {
     var body: some View {
         ZStack {
             AuroraBackdrop()
+                .ignoresSafeArea()
             adaptiveLayout
         }
         .sheet(isPresented: $showWorkspace) {
@@ -117,6 +118,7 @@ struct AgentInsightsTabScreen: View {
                 }
             }
             .navigationTitle(sectionTitle)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
@@ -154,6 +156,7 @@ struct AgentInsightsTabScreen: View {
                 }
             }
             .navigationTitle(sectionTitle)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent

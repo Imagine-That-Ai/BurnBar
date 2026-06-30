@@ -140,6 +140,13 @@ private struct PaneSplitContainer: View {
                 }
                 #endif
             }
+            .onDisappear {
+                if isHoveringDivider {
+                    #if canImport(AppKit)
+                    NSCursor.arrow.set()
+                    #endif
+                }
+            }
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in

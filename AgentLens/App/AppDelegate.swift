@@ -276,8 +276,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.image = OpenBurnBarStatusItemBrandMark.image(
                 colorful: shouldRenderColorfulMenuBarIcon
             )
-            button.imagePosition = .imageLeading
-            button.title = OpenBurnBarStatusItemBrandMark.fallbackTitle
+            button.imagePosition = .imageOnly
+            button.title = OpenBurnBarStatusItemBrandMark.menuBarTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
             button.target = self
@@ -371,11 +371,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         #endif
     }
 
-    @objc nonisolated private func handleStatusItemClick(_ sender: Any?) {
+    @objc private func handleStatusItemClick(_ sender: Any?) {
         let triggeringEvent = NSApp.currentEvent.map(OpenBurnBarStatusItemEventSnapshot.init)
-        Task { @MainActor [weak self] in
-            self?.handleStatusItemClickOnMainActor(triggeringEvent: triggeringEvent)
-        }
+        handleStatusItemClickOnMainActor(triggeringEvent: triggeringEvent)
     }
 
     private func handleStatusItemClickOnMainActor(triggeringEvent: OpenBurnBarStatusItemEventSnapshot?) {
@@ -580,19 +578,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showSecondaryMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d")
-        menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ",")
+        let dashboard = menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d"); dashboard.target = self
+        let settings = menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ","); settings.target = self
 #if !DISTRIBUTION_MAS
         // cov:ignore on the next line -- status-menu wiring; behavior is
         // line-gated in the DirectDownload* companion tests.
-        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "") // cov:ignore -- menu glue
+        let updates = menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: ""); updates.target = self // cov:ignore -- menu glue
 #endif
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); quit.target = NSApp
 
-        statusItem?.menu = menu
-        sender.performClick(nil)
-        statusItem?.menu = nil
+        let anchor = NSPoint(x: 0, y: sender.bounds.height + 2)
+        menu.popUp(positioning: nil, at: anchor, in: sender)
     }
 
     @objc private func openDashboardAction(_ sender: Any?) {
@@ -1399,13 +1396,13 @@ enum OpenBurnBarStatusItemClick {
         case ignore
     }
 
-    static let primaryActionMask: NSEvent.EventTypeMask = [.leftMouseUp]
-    static let fallbackActionMask: NSEvent.EventTypeMask = [.leftMouseUp, .rightMouseDown]
+    static let primaryActionMask: NSEvent.EventTypeMask = [.leftMouseDown]
+    static let fallbackActionMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
     static let actionMask: NSEvent.EventTypeMask = primaryActionMask.union(fallbackActionMask)
 
     static func action(for eventType: NSEvent.EventType?) -> Action {
         switch eventType {
-        case .leftMouseUp, nil:
+        case .leftMouseDown, nil:
             return .togglePopover
         case .rightMouseDown:
             return .showSecondaryMenu
@@ -1500,10 +1497,10 @@ private extension NSStatusBarButton {
     }
 }
 
-private enum OpenBurnBarStatusItemBrandMark {
+enum OpenBurnBarStatusItemBrandMark {
     private static let side: CGFloat = 18
-    static let statusItemWidth: CGFloat = 86
-    static let fallbackTitle = "BurnBar"
+    static let statusItemWidth: CGFloat = NSStatusItem.squareLength
+    static let menuBarTitle = ""
 
     /// Returns the menu-bar icon in either monochrome template mode or full color.
     static func image(colorful: Bool) -> NSImage {
@@ -1588,11 +1585,13 @@ enum OpenBurnBarPopoverClickRegion {
 }
 
 enum OpenBurnBarPopoverWindowConfigurator {
+    @MainActor
     static func apply(to window: NSWindow) {
         apply(to: window, orderFront: defaultOrderFront)
     }
 
-    static func apply(to window: NSWindow, orderFront: (NSWindow) -> Void) {
+    @MainActor
+    static func apply(to window: NSWindow, orderFront: @MainActor (NSWindow) -> Void) {
         window.level = .statusBar
         window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
         if let panel = window as? NSPanel {
@@ -1605,6 +1604,7 @@ enum OpenBurnBarPopoverWindowConfigurator {
         orderFront(window)
     }
 
+    @MainActor
     private static func defaultOrderFront(_ window: NSWindow) {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
@@ -1799,7 +1799,7 @@ struct SwarmWallpaperView: View {
             isAutoCyclingEnabled: autoCyclesShapes,
             enabledProviderGlyphs: providerGlyphs,
             enableSwarmSparkles: enableSparkles,
-            excludeBrandShapesFromSwarm: excludeBrandShapes,
+            excludeBrandShapesFromSwarm: excludeBrandShapes || !providerGlyphs.isEmpty,
             // The wallpaper is an ambient surface that sits behind every
             // window and icon — capping at 30 fps + rendering the Canvas
             // asynchronously halves CPU work with no perceptible change in

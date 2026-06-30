@@ -53,19 +53,30 @@ public enum SwarmFormationMode: Equatable {
         }
 
         let enabledProviders = SwarmProviderGlyphSelection.normalized(providers)
-        let providerCycle = providerLogoGroups(for: enabledProviders).flatMap { group in
+        let providerLogoModes = providerLogoGroups(for: enabledProviders).map {
+            SwarmFormationMode.shapeProviderLogo($0)
+        }
+        let grokModes: [SwarmFormationMode] = enabledProviders.contains(.xAI)
+            ? [.shapeGrok]
+            : []
+        if excludeBrandShapes {
+            let logoModes = providerLogoModes + grokModes
+            guard !logoModes.isEmpty else { return [.swarm] }
+            return logoModes.flatMap { mode in
+                [
+                    mode,
+                    SwarmFormationMode.swarm
+                ]
+            }
+        }
+
+        let providerCycle = providerLogoModes.flatMap { mode in
             [
                 SwarmFormationMode.swarm,
-                SwarmFormationMode.shapeProviderLogo(group)
+                mode
             ]
         }
-        let grokCycle: [SwarmFormationMode] = enabledProviders.contains(.xAI)
-            ? [.swarm, .shapeGrok]
-            : []
-
-        if excludeBrandShapes {
-            return [.swarm] + providerCycle + grokCycle
-        }
+        let grokCycle = grokModes.flatMap { [SwarmFormationMode.swarm, $0] }
 
         return [
             .swarm,

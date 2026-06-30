@@ -495,6 +495,32 @@ final class ChatSessionController {
         }
     }
 
+    /// Copy non-global dependencies that pane controllers need to behave like
+    /// the app-wide chat controller. This intentionally avoids thread, message,
+    /// and stream state.
+    func copyPaneRuntimeBindings(from source: ChatSessionController) {
+        memoryService = source.memoryService
+        memoryExtractionEngine = source.memoryExtractionEngine
+        sharedFeaturesAvailable = source.sharedFeaturesAvailable
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        computerUseRuntimeController = source.computerUseRuntimeController
+        #endif
+    }
+
+    /// Copy the active conversation controls without resolving a new thread slot.
+    /// Used when creating or re-homing tiled panes, where backend/model state is
+    /// pane-local and must not fall back to the primary controller defaults.
+    func copyPaneConversationControls(from source: ChatSessionController) {
+        chatBackend = source.chatBackend
+        for backend in ChatBackendID.allCases {
+            setChatModelSelection(source.chatModelSelection(for: backend), for: backend)
+        }
+        chatViewMode = source.chatViewMode
+        hermesAvailable = source.hermesAvailable
+        openClawAvailable = source.openClawAvailable
+        piAgentAvailable = source.piAgentAvailable
+    }
+
     var activeDesktopControlGrant: AgentCapabilityGrant? {
         let runtimeID = assistantRuntimeID(for: chatBackend)
         if let grant = desktopControlGrant,

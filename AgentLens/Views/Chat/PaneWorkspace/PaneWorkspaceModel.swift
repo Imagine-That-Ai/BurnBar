@@ -155,7 +155,7 @@ final class PaneWorkspaceModel {
     func splitActive(axis: PaneSplitAxis) {
         guard let target = leaf(activeLeafID) else { return }
         let newThreadID = UUID().uuidString
-        let controller = makePaneController(threadID: newThreadID)
+        let controller = makePaneController(threadID: newThreadID, source: target.controller)
         let newLeaf = PaneLeaf(controller: controller)
         let newSplit = PaneSplitNode(
             axis: axis,
@@ -179,7 +179,14 @@ final class PaneWorkspaceModel {
 
         if target.isPrimary {
             let survivor = Self.firstLeaf(in: siblingNode)
+            guard !survivor.controller.isSendBusy else {
+                activeLeafID = survivor.id
+                persist()
+                return
+            }
             let survivorThread = survivor.controller.activeThreadID
+            primaryController.teardownForPaneClose()
+            primaryController.copyPaneConversationControls(from: survivor.controller)
             survivor.controller.teardownForPaneClose()
             primaryController.openHistoryThread(survivorThread)
             let rehomed = PaneLeaf(id: survivor.id, controller: primaryController, isPrimary: true)
@@ -204,13 +211,35 @@ final class PaneWorkspaceModel {
         persist()
     }
 
-    func makePaneController(threadID: String) -> ChatSessionController {
-        ChatSessionController(
+    @discardableResult
+    func bindExistingThread(_ rawThreadID: String, toLeaf id: UUID) async -> Bool {
+        let threadID = rawThreadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !threadID.isEmpty, let target = leaf(id) else { return false }
+        do {
+            guard try await dataStore.chatThreadExists(id: threadID) else { return false }
+            await target.controller.openHistoryThreadAsync(threadID)
+            guard leaf(id) != nil else { return false }
+            activeLeafID = id
+            persist()
+            return true
+        } catch {
+            AppLogger.chat.silentFailure("chatThreadExists (pane drop)", error: error)
+            return false
+        }
+    }
+
+    func makePaneController(threadID: String, source: ChatSessionController? = nil) -> ChatSessionController {
+        let controller = ChatSessionController(
             dataStore: dataStore,
             settingsManager: settingsManager,
+            memoryService: (source ?? primaryController).memoryService,
+            memoryExtractionEngine: (source ?? primaryController).memoryExtractionEngine,
             initialThreadID: threadID,
             persistsViewState: false
         )
+        controller.copyPaneRuntimeBindings(from: source ?? primaryController)
+        controller.copyPaneConversationControls(from: source ?? primaryController)
+        return controller
     }
 
     // MARK: Persistence
@@ -258,9 +287,13 @@ final class PaneWorkspaceModel {
                 let controller = ChatSessionController(
                     dataStore: dataStore,
                     settingsManager: settingsManager,
+                    memoryService: primaryController.memoryService,
+                    memoryExtractionEngine: primaryController.memoryExtractionEngine,
                     initialThreadID: threadID,
                     persistsViewState: false
                 )
+                controller.copyPaneRuntimeBindings(from: primaryController)
+                controller.copyPaneConversationControls(from: primaryController)
                 return .leaf(PaneLeaf(id: paneID, controller: controller, isPrimary: false))
             case .split(let axis, let fraction, let first, let second):
                 return .split(PaneSplitNode(

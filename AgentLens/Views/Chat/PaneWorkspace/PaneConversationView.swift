@@ -1,6 +1,19 @@
 import Foundation
+import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
+
+struct PaneThreadDropPayload: Codable, Transferable {
+    let threadID: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .openBurnBarChatThread)
+    }
+}
+
+extension UTType {
+    static let openBurnBarChatThread = UTType(exportedAs: "ai.burnbar.chat-thread")
+}
 
 /// One full conversation rendered as a tiling pane: a per-pane header (engine + model
 /// pickers, split + close affordances), the message stream or welcome state, and the
@@ -60,9 +73,9 @@ struct PaneConversationView: View {
         .simultaneousGesture(TapGesture().onEnded {
             if showsChrome { workspace.setActive(leafID) }
         })
-        .dropDestination(for: String.self) { items, _ in
-            guard let threadID = items.first else { return false }
-            workspace.bind(threadID: threadID, toLeaf: leafID)
+        .dropDestination(for: PaneThreadDropPayload.self) { items, _ in
+            guard let threadID = items.first?.threadID else { return false }
+            Task { await workspace.bindExistingThread(threadID, toLeaf: leafID) }
             return true
         } isTargeted: { hovering in
             isDropTargeted = hovering
@@ -118,12 +131,18 @@ struct PaneConversationView: View {
             ChatEngineModelMenu(controller: controller)
                 .layoutPriority(1)
             Spacer(minLength: DesignSystem.Spacing.sm)
-            Button { workspace.splitActive(axis: .horizontal) } label: {
+            Button {
+                workspace.setActive(leafID)
+                workspace.splitActive(axis: .horizontal)
+            } label: {
                 Image(systemName: "rectangle.split.2x1")
             }
             .help("Split right (⌘D)")
             .accessibilityLabel("Split pane right")
-            Button { workspace.splitActive(axis: .vertical) } label: {
+            Button {
+                workspace.setActive(leafID)
+                workspace.splitActive(axis: .vertical)
+            } label: {
                 Image(systemName: "rectangle.split.1x2")
             }
             .help("Split down (⌘⇧D)")

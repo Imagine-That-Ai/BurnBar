@@ -20,6 +20,7 @@ from typing import Any
 
 
 APPROVED_STATUS = "approved"
+OWNER_ATTESTED_SOFT_APPROVAL_STATUS = "owner_attested_soft_approval"
 
 # Pinned external-counsel signing key. The approval signature is verified
 # against THIS key — never against a public key named by the evidence JSON,
@@ -89,6 +90,18 @@ APPROVAL_KEYS = {
     "signatureFormat",
     "signaturePath",
     "publicKeyPath",
+}
+OWNER_ATTESTATION_KEYS = {
+    "ownerName",
+    "ownerGitHub",
+    "ownerRole",
+    "attestedAt",
+    "counselName",
+    "approvalType",
+    "emergencyReason",
+    "approvalBoundary",
+    "ownerStatement",
+    "followUpRequired",
 }
 
 
@@ -394,6 +407,107 @@ def validate_legal_release_review(
                         "approval; the counsel signing key must be pinned in a prior, separately "
                         "reviewed change"
                     )
+
+    return errors
+
+
+def validate_owner_attested_soft_approval(
+    data: Any,
+    *,
+    repo_root: Path | None = None,
+    expected_release_tag: str | None = None,
+) -> list[str]:
+    """Validate the explicit owner-emergency release lane.
+
+    This is deliberately not treated as the normal signed external-counsel
+    approval. It exists for an emergency public release when the release owner
+    attests that external counsel gave soft approval, while preserving the
+    stronger signed-counsel packet as the default gate.
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return ["owner emergency approval root must be a JSON object"]
+
+    status = data.get("reviewStatus") or data.get("status")
+    if status != OWNER_ATTESTED_SOFT_APPROVAL_STATUS:
+        errors.append(
+            f"owner emergency approval status must be {OWNER_ATTESTED_SOFT_APPROVAL_STATUS!r}, found {status!r}"
+        )
+
+    if "explicitNonApproval" in data:
+        errors.append("owner emergency approval evidence must not carry explicitNonApproval")
+
+    if not expected_release_tag:
+        errors.append("expected_release_tag is required for owner emergency approval")
+    else:
+        repo = data.get("repo")
+        if not isinstance(repo, dict):
+            errors.append("repo must be an object for owner emergency approval")
+        elif repo.get("releaseTag") != expected_release_tag:
+            errors.append(
+                "repo.releaseTag must match the current release tag "
+                f"{expected_release_tag!r}, found {repo.get('releaseTag')!r}"
+            )
+
+    attestation = data.get("ownerAttestation")
+    if not isinstance(attestation, dict):
+        return errors + ["ownerAttestation must be an object"]
+
+    errors.extend(_unexpected_keys(attestation, OWNER_ATTESTATION_KEYS, ("ownerAttestation",)))
+    for key in (
+        "ownerName",
+        "ownerGitHub",
+        "ownerRole",
+        "attestedAt",
+        "counselName",
+        "approvalType",
+        "emergencyReason",
+        "approvalBoundary",
+        "ownerStatement",
+    ):
+        value = attestation.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"ownerAttestation.{key} must be a non-empty string")
+
+    if attestation.get("ownerRole") != "release_owner":
+        errors.append("ownerAttestation.ownerRole must be 'release_owner'")
+    if attestation.get("ownerGitHub") != "Ajnunezg":
+        errors.append("ownerAttestation.ownerGitHub must be 'Ajnunezg'")
+    if attestation.get("counselName") != "Heather Meeker":
+        errors.append("ownerAttestation.counselName must be 'Heather Meeker'")
+    if attestation.get("approvalType") != "soft_approval":
+        errors.append("ownerAttestation.approvalType must be 'soft_approval'")
+    if attestation.get("followUpRequired") is not True:
+        errors.append("ownerAttestation.followUpRequired must be true")
+
+    statement = str(attestation.get("ownerStatement", "")).lower()
+    for required in ("heather meeker", "soft approval", "owner"):
+        if required not in statement:
+            errors.append(f"ownerAttestation.ownerStatement must mention {required!r}")
+
+    scope, scope_errors = _string_list(data.get("scope"), "scope")
+    errors.extend(scope_errors)
+    missing_scope = sorted(REQUIRED_SCOPE.difference(scope))
+    if missing_scope:
+        errors.append("scope missing required item(s): " + ", ".join(missing_scope))
+
+    channels, channel_errors = _string_list(data.get("distributionChannels"), "distributionChannels")
+    errors.extend(channel_errors)
+    missing_channels = sorted(REQUIRED_DISTRIBUTION_CHANNELS.difference(channels))
+    if missing_channels:
+        errors.append("distributionChannels missing required item(s): " + ", ".join(missing_channels))
+
+    artifacts, artifact_errors = _string_list(data.get("reviewedArtifacts"), "reviewedArtifacts")
+    errors.extend(artifact_errors)
+    missing_artifacts = sorted(REQUIRED_ARTIFACTS.difference(artifacts))
+    if missing_artifacts:
+        errors.append("reviewedArtifacts missing required artifact(s): " + ", ".join(missing_artifacts))
+    if repo_root is not None:
+        for rel_path in artifacts:
+            if Path(rel_path).is_absolute() or ".." in Path(rel_path).parts:
+                errors.append(f"reviewedArtifacts path must be repo-relative: {rel_path}")
+            elif not (repo_root / rel_path).is_file():
+                errors.append(f"reviewedArtifacts path does not exist: {rel_path}")
 
     return errors
 

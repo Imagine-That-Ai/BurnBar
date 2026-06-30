@@ -94,6 +94,19 @@ final class PaneWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(ws.leaves.filter { $0.isPrimary }.count, 1)
     }
 
+    func test_splitActive_newPaneInheritsFocusedPaneBackendAndModelSelection() throws {
+        let ws = try makeWorkspace()
+        ws.primaryController.chatBackend = .piAgent
+        ws.primaryController.setChatModelSelection("pi-test-model", for: .piAgent)
+
+        ws.splitActive(axis: .horizontal)
+
+        let newLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        XCTAssertFalse(newLeaf.isPrimary)
+        XCTAssertEqual(newLeaf.controller.chatBackend, .piAgent)
+        XCTAssertEqual(newLeaf.controller.chatModelSelection(for: .piAgent), "pi-test-model")
+    }
+
     // MARK: - Close
 
     func test_closeActive_nonPrimary_reflowsToSurvivingPrimary() throws {
@@ -125,6 +138,39 @@ final class PaneWorkspaceModelTests: XCTestCase {
                            "primary controller is preserved (re-homed), never dropped")
         XCTAssertEqual(ws.activeLeafID, leaf.id)
         XCTAssertIdentical(ws.activeController, ws.primaryController)
+    }
+
+    func test_closeActive_primaryPreservesSurvivorBackendAndModelOnRehome() throws {
+        let ws = try makeWorkspace()
+        let primaryLeafID = ws.activeLeafID
+        ws.splitActive(axis: .horizontal)
+        let survivor = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        survivor.controller.chatBackend = .hermes
+        survivor.controller.setChatModelSelection("claude", for: .hermes)
+
+        ws.setActive(primaryLeafID)
+        ws.closeActive()
+
+        XCTAssertEqual(ws.paneCount, 1)
+        XCTAssertIdentical(ws.activeController, ws.primaryController)
+        XCTAssertEqual(ws.primaryController.chatBackend, .hermes)
+        XCTAssertEqual(ws.primaryController.chatModelSelection(for: .hermes), "claude")
+    }
+
+    func test_closeActive_primaryDoesNotTearDownBusySurvivor() throws {
+        let ws = try makeWorkspace()
+        let primaryLeafID = ws.activeLeafID
+        ws.splitActive(axis: .horizontal)
+        let survivor = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        survivor.controller.sendInFlight = true
+
+        ws.setActive(primaryLeafID)
+        ws.closeActive()
+
+        XCTAssertEqual(ws.paneCount, 2, "closing primary is deferred while the survivor is busy")
+        XCTAssertEqual(ws.activeLeafID, survivor.id, "focus moves to the busy survivor instead")
+        XCTAssertTrue(survivor.controller.sendInFlight, "the survivor stream/send state must remain untouched")
+        survivor.controller.sendInFlight = false
     }
 
     func test_closeActive_lastPane_isIndestructible() throws {
@@ -234,6 +280,33 @@ final class PaneWorkspaceModelTests: XCTestCase {
         ws.splitActive(axis: .horizontal)
         XCTAssertEqual(ws.boundThreadIDs, Set(ws.leaves.map { $0.controller.activeThreadID }))
         XCTAssertEqual(ws.boundThreadIDs.count, 2)
+    }
+
+    // MARK: - Drop binding
+
+    func test_bindExistingThread_rejectsUnknownThreadID() async throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let target = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        let originalThreadID = target.controller.activeThreadID
+
+        let accepted = await ws.bindExistingThread("not-a-real-thread", toLeaf: target.id)
+
+        XCTAssertFalse(accepted)
+        XCTAssertEqual(target.controller.activeThreadID, originalThreadID)
+    }
+
+    func test_bindExistingThread_acceptsRealThreadID() async throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let target = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        let threadID = "existing-thread-\(UUID().uuidString)"
+        _ = try await ws.dataStore.createChatThread(id: threadID)
+
+        let accepted = await ws.bindExistingThread(threadID, toLeaf: target.id)
+
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(target.controller.activeThreadID, threadID)
     }
 
     // MARK: - Codable snapshot (pure)

@@ -123,7 +123,7 @@ struct DashboardChatWorkspaceView: View {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
         .hermesRuntimeGate(
-            controller: controller,
+            controller: activeController,
             settingsManager: settingsManager,
             dataStore: dataStore
         )
@@ -211,7 +211,7 @@ struct DashboardChatWorkspaceView: View {
                                     : DesignSystem.Colors.whimsy,
                                 onSelect: { activeController.openHistoryThread(thread.id) }
                             )
-                            .draggable(thread.id)
+                            .draggable(PaneThreadDropPayload(threadID: thread.id))
                         }
                     }
                 }

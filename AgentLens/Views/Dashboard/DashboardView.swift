@@ -153,7 +153,11 @@ struct DashboardView: View {
         return NavigationSplitView {
             sidebarView
                 .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
-                .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
+                // Keep the column transparent so the themed backdrop reaches the
+                // rail and the Liquid Glass plate can refract it. The rail's own
+                // `SidebarThemeGlass` supplies the surface (glass, or paper in
+                // the editorial skin).
+                .background(Color.clear)
         } detail: {
             detailView
         }

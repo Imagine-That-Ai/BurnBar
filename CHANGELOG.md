@@ -33,6 +33,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ChatSessionControllerPaneModeTests`. Design, adversarial loophole-hunt, and
   review history documented in `docs/CHAT_PANE_TILING_PLAN.md`.
 
+## [1.0.11] - 2026-06-30
+
+### Fixed
+
+- **Newest-main release cut** — supersedes the canceled `v1.0.10` publish run so
+  the public release includes the latest `main` tip, including the mobile
+  Agents/Insights Aurora backdrop top-blend fix from PR #1102.
+- **Release lane duration bounds** — keeps Swift and macOS app tests in the
+  release workflow, but removes release-time coverage collection and adds
+  explicit Swift/app-test step timeouts so emergency publishes do not sit opaque
+  for hours on a cold GitHub macOS runner.
+
+## [1.0.10] - 2026-06-30
+
+### Fixed
+
+- **Release-gate Pixel Clock test hardening** — prevents the no-controller
+  Pixel Clock settings adapter test path from starting a real controller and
+  scanning the LAN in CI, avoiding a full macOS app-test hang during release.
+- **Latest main inclusion** — carries forward the `v1.0.9` menu-bar flame,
+  left-click popover, mobile Pulse seam, and dashboard Liquid Glass sidebar
+  refinements now landed on `main`.
+
+## [1.0.9] - 2026-06-30
+
+### Fixed
+
+- **Menu-bar flame and popover hotfix** — the macOS menu bar now defaults to
+  the flame-only status item while preserving the `OpenBurnBar` accessibility
+  label, and left-click reliably opens the popover instead of being swallowed by
+  the secondary-menu path. Added focused runtime/prewarm regression coverage and
+  verified the installed app live from `/Applications/OpenBurnBar.app`.
+- **Mobile Pulse top seam fix** — removes the scroll-edge suppression that
+  caused a visible hard seam under the iOS/iPadOS status bar after the latest
+  mobile backdrop work.
+
+## [1.0.8] - 2026-06-30
+
+### Fixed
+
+- **Current public macOS release cut** — advances the direct-download release to
+  the current `main` tip after `v1.0.7` was cut before PR #1094 landed. The
+  release includes PR #1086's continuous-field substrates, Atelier spend graph,
+  iOS WebGL kernel parity, substrate picker redesign, and macOS tall-card
+  substrate previews; the popover keyboard retoggle fix; the v1.0.7 publishable
+  scanner repair; the mobile navigation/backdrop/kernel work already merged to
+  main; and a named owner-emergency release lane for the public macOS artifact
+  while the signed counsel packet is collected.
+
 ## [1.0.7] - 2026-06-30
 
 ### Fixed

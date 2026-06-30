@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-30T12:21:18Z",
+  "generatedAt": "2026-06-30T05:33:10Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "release/v1.0.11",
-    "originMain": "f4eff7087545621d2d88c8acc2a912d22908548f",
-    "releaseTag": "v1.0.11"
+    "branch": "hotfix/current-release-v1.0.8",
+    "originMain": "a90d50bdd9499a0d15aa9b4da2ea0c185b5d9aca",
+    "releaseTag": "v1.0.8"
   },
   "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-06-30T12:21:18Z",
+    "attestedAt": "2026-06-30T05:33:10Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper, missing-Firebase-auth, menu-bar, and mobile Pulse launch regressions.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.11 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.11 public release lane.",
+    "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper and missing-Firebase-auth failures.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.8 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.8 public release lane.",
     "followUpRequired": true
   },
   "scope": [
