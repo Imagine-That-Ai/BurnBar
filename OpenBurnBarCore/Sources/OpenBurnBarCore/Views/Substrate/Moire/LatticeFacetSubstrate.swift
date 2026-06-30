@@ -217,8 +217,11 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
         let waveA = TAU / (cell * 6.5)
         let waveB = TAU / (cell * 5.6)
 
-        // continuous lattice baseline so the crust never fully disappears (feathered).
-        let floorDim = dark ? 0.085 : 0.11
+        // continuous lattice baseline so the crust never fully disappears (feathered)
+        // in free-swarm — but gated OUT of shape mode by `shapeTight` so a formed
+        // logo/wallpaper tightens to its silhouette instead of flooding every
+        // full-canvas facet with a faint lattice. `shapeTight` ≈ 0 in free-swarm.
+        let floorDim = (dark ? 0.085 : 0.11) * (1.0 - shapeTight)
         let densExp = lerp(1.0, 2.4, shapeTight)
 
         // ── PASS A: compute every facet's state once (shared by all draw passes) ──

@@ -294,8 +294,18 @@ struct AtelierSpendCurve: View {
         } else {
             let lows = usages.map { min($0.startTime, $0.endTime) }
             let highs = usages.map { max($0.startTime, $0.endTime) }
-            if let lo = lows.min(), let hi = highs.max(), lo < hi {
-                domain = lo...hi
+            if let lo = lows.min(), let hi = highs.max() {
+                if lo < hi {
+                    domain = lo...hi
+                } else {
+                    // All spend collapses to a single instant (one row, or
+                    // zero-duration API/billing rows at the same time). Centre a
+                    // small window on it instead of defaulting to the last 30
+                    // days — which would drop spend older than 30 days and show
+                    // an empty chart while the totals still report it.
+                    let pad: TimeInterval = 12 * 60 * 60
+                    domain = lo.addingTimeInterval(-pad)...hi.addingTimeInterval(pad)
+                }
             } else {
                 let lo = calendar.date(byAdding: .day, value: -30, to: now) ?? now
                 domain = lo...now
@@ -310,8 +320,15 @@ struct AtelierSpendCurve: View {
         for usage in usages {
             let cost = max(0, usage.cost)
             guard cost > 0 else { continue }
-            let eventDate = min(usage.startTime, usage.endTime)
-            guard domain.contains(eventDate) else { continue }
+            let lo = min(usage.startTime, usage.endTime)
+            let hi = max(usage.startTime, usage.endTime)
+            // The window's upstream filter uses intersects(dateRange:), so it
+            // legitimately includes sessions that started before the window and
+            // ended inside it. Skip only rows fully outside the domain; clamp
+            // boundary-crossing rows' attribution into the domain instead of
+            // dropping them, so the curve matches the surrounding Atelier totals.
+            guard hi >= domain.lowerBound, lo <= domain.upperBound else { continue }
+            let eventDate = min(max(lo, domain.lowerBound), domain.upperBound)
             let key = granularity.floor(eventDate, calendar: calendar)
             totals[usage.provider, default: 0] += cost
             bucketCosts[key, default: [:]][usage.provider, default: 0] += cost

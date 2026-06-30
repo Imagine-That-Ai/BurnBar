@@ -74,6 +74,12 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     private var originX: Double = 0      // grid origin x (cloud-bbox left, screen px)
     private var originY: Double = 0      // grid origin y (cloud-bbox top, screen px)
     private var ext: Double = 0          // pane half-extent (screen px, bounded)
+    // The raw cloud bbox this grid was tessellated for. The grid origin/cellW are
+    // derived from it, so when the swarm bounds move (a settled logo dissolving
+    // back into the free swarm keeps the same count + canvas) the grid must be
+    // rebuilt — otherwise `splat` clips dots outside the stale bbox and the field
+    // stays stuck around the previous shape until a resize forces a relayout.
+    private var builtMinX = 0.0, builtMinY = 0.0, builtMaxX = 0.0, builtMaxY = 0.0
 
     // MARK: Per-frame scratch (reused; sized cols*rows)
 
@@ -134,6 +140,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         }
         if !(maxX > minX) { minX = 0; maxX = cw }
         if !(maxY > minY) { minY = 0; maxY = ch }
+        builtMinX = minX; builtMinY = minY; builtMaxX = maxX; builtMaxY = maxY
 
         // Target pane = a small ceramic lozenge, HARD-CAPPED in absolute screen px so
         // it never balloons when the host renders large particles (the wallpaper feeds
@@ -255,10 +262,28 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         let count = frame.dots.count
         if count <= 0 { return false }
 
-        // (Re)layout when count, canvas size, or the forge-assembly settle changes.
+        // (Re)layout when count, canvas size, or the forge-assembly settle changes —
+        // AND when the cloud bounding box drifts past the cached grid. The grid
+        // origin/cellW are derived from the bbox, so a settled logo returning to the
+        // free swarm (same count + canvas) would otherwise keep the old small grid
+        // and `splat` would clip the field to the stale shape.
         let wi = Int(max(frame.size.width, 1).rounded())
         let hi = Int(max(frame.size.height, 1).rounded())
-        if count != builtCount || wi != lastW || hi != lastH
+        var bboxMoved = false
+        if cells > 0 {
+            var minX = Double.greatestFiniteMagnitude, minY = Double.greatestFiniteMagnitude
+            var maxX = -Double.greatestFiniteMagnitude, maxY = -Double.greatestFiniteMagnitude
+            for d in frame.dots {
+                if d.x < minX { minX = d.x }; if d.x > maxX { maxX = d.x }
+                if d.y < minY { minY = d.y }; if d.y > maxY { maxY = d.y }
+            }
+            // Trigger only once drift exceeds ~one cell on any edge, so a slowly
+            // breathing cloud doesn't thrash the allocator every frame.
+            let tol = max(cellW, cellH) * 1.25
+            bboxMoved = abs(minX - builtMinX) > tol || abs(maxX - builtMaxX) > tol
+                     || abs(minY - builtMinY) > tol || abs(maxY - builtMaxY) > tol
+        }
+        if count != builtCount || wi != lastW || hi != lastH || bboxMoved
             || (!built && (frame.settleProgress >= 0.6 || frame.reduced)) {
             layout(frame)
         }
