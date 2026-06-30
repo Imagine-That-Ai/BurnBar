@@ -197,7 +197,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         let invCW = 1.0 / max(cellW, 1e-6)
         let invCH = 1.0 / max(cellH, 1e-6)
         let twoSig2 = 2 * Self.splatSigma * Self.splatSigma
-        let R = Self.splatR
+        let radius = Self.splatR
 
         for d in dots {
             // Fractional cell coordinate of the particle (relative to the bbox origin).
@@ -208,14 +208,14 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             let cr = d.rgba.r, cg = d.rgba.g, cb = d.rgba.b
             // Weight by particle opacity so faint dots contribute proportionally.
             let wgt0 = max(0.15, d.opacity)
-            var dy = -R
-            while dy <= R {
+            var dy = -radius
+            while dy <= radius {
                 let ry = rr + dy
                 if ry >= 0 && ry < rows {
                     let ddy = (Double(ry) + 0.5) - fy
                     let base = ry * cols
-                    var dx = -R
-                    while dx <= R {
+                    var dx = -radius
+                    while dx <= radius {
                         let cx = cc + dx
                         if cx >= 0 && cx < cols {
                             let ddx = (Double(cx) + 0.5) - fx
