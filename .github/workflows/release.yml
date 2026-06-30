@@ -328,12 +328,16 @@ jobs:
         run: ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar release-critical app tests
-        timeout-minutes: 30
+        timeout-minutes: 75
         # The full OpenBurnBarTests app suite is a PR/CI responsibility. Release
         # publication needs a bounded app-host smoke that still proves the
         # surfaces most likely to break a shipped binary: direct-download
         # metadata, Firebase/App Check config, menu-bar click/popover behavior,
-        # and the newest chat pane tiling contracts.
+        # and the newest chat pane tiling contracts. The selected test slice is
+        # intentionally narrow, but cold GitHub macOS runners still compile the
+        # app host and SwiftPM graph before XCTest starts, so this step keeps
+        # enough wall-clock headroom for dependency build time without restoring
+        # the full app-suite release gate.
         run: |
           source scripts/lib/openburnbar-release-app-test-filters.sh
           OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
