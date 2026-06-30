@@ -136,6 +136,11 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
             charactersIgnoringModifiers: "\n",
             isPopoverShown: true
         ))
+        XCTAssertTrue(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .keyDown,
+            charactersIgnoringModifiers: "\u{3}",
+            isPopoverShown: true
+        ))
 
         XCTAssertFalse(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
             eventType: .keyDown,

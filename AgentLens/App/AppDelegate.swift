@@ -280,7 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.title = OpenBurnBarStatusItemBrandMark.fallbackTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
-            button.refusesFirstResponder = true
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)
@@ -373,23 +372,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc nonisolated private func handleStatusItemClick(_ sender: Any?) {
+        let triggeringEvent = NSApp.currentEvent.map(OpenBurnBarStatusItemEventSnapshot.init)
         Task { @MainActor [weak self] in
-            self?.handleStatusItemClickOnMainActor()
+            self?.handleStatusItemClickOnMainActor(triggeringEvent: triggeringEvent)
         }
     }
 
-    private func handleStatusItemClickOnMainActor() {
+    private func handleStatusItemClickOnMainActor(triggeringEvent: OpenBurnBarStatusItemEventSnapshot?) {
         guard let button = statusItem?.button else {
             return
         }
-        let currentEvent = NSApp.currentEvent
         guard !OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
-            currentEvent,
+            triggeringEvent,
             isPopoverShown: popover?.isShown ?? false
         ) else {
             return
         }
-        guard shouldHandleStatusItemEvent(currentEvent) else {
+        guard shouldHandleStatusItemEvent(triggeringEvent) else {
             return
         }
 
@@ -544,8 +543,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func shouldHandleStatusItemEvent(_ event: NSEvent?) -> Bool {
-        guard let event else { return true }
+    private func shouldHandleStatusItemEvent(_ event: OpenBurnBarStatusItemEventSnapshot?) -> Bool {
+        guard let event else {
+            return shouldHandleStatusItemEvent(
+                key: nil,
+                timestamp: ProcessInfo.processInfo.systemUptime
+            )
+        }
         let key = OpenBurnBarStatusItemClick.EventKey(event)
         return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
     }
@@ -1376,6 +1380,12 @@ enum OpenBurnBarStatusItemClick {
             self.timestampBucket = Int(event.timestamp * 1_000)
         }
 
+        init(_ event: OpenBurnBarStatusItemEventSnapshot) {
+            self.eventNumber = event.eventNumber
+            self.eventTypeRawValue = event.eventTypeRawValue
+            self.timestampBucket = Int(event.timestamp * 1_000)
+        }
+
         init(eventNumber: Int, eventTypeRawValue: NSEvent.EventType.RawValue, timestamp: TimeInterval) {
             self.eventNumber = eventNumber
             self.eventTypeRawValue = eventTypeRawValue
@@ -1413,6 +1423,17 @@ enum OpenBurnBarStatusItemClick {
     }
 
     static func shouldIgnoreKeyboardRetoggle(
+        _ event: OpenBurnBarStatusItemEventSnapshot?,
+        isPopoverShown: Bool
+    ) -> Bool {
+        shouldIgnoreKeyboardRetoggle(
+            eventType: event?.eventType,
+            charactersIgnoringModifiers: event?.charactersIgnoringModifiers,
+            isPopoverShown: isPopoverShown
+        )
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(
         eventType: NSEvent.EventType?,
         charactersIgnoringModifiers: String?,
         isPopoverShown: Bool
@@ -1421,11 +1442,29 @@ enum OpenBurnBarStatusItemClick {
             return false
         }
         switch charactersIgnoringModifiers {
-        case " ", "\r", "\n":
+        case " ", "\r", "\n", "\u{3}":
             return true
         default:
             return false
         }
+    }
+}
+
+struct OpenBurnBarStatusItemEventSnapshot: Sendable {
+    let eventNumber: Int
+    let eventTypeRawValue: NSEvent.EventType.RawValue
+    let timestamp: TimeInterval
+    let charactersIgnoringModifiers: String?
+
+    init(_ event: NSEvent) {
+        self.eventNumber = event.eventNumber
+        self.eventTypeRawValue = event.type.rawValue
+        self.timestamp = event.timestamp
+        self.charactersIgnoringModifiers = event.charactersIgnoringModifiers
+    }
+
+    var eventType: NSEvent.EventType? {
+        NSEvent.EventType(rawValue: eventTypeRawValue)
     }
 }
 
