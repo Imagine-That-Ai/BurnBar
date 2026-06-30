@@ -33,8 +33,11 @@ final class ChatSessionControllerPaneModeTests: XCTestCase {
     private func preservingDefault(_ key: String, _ body: () throws -> Void) rethrows {
         let saved = UserDefaults.standard.object(forKey: key)
         defer {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
         try body()
     }

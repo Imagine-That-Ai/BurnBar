@@ -45,10 +45,10 @@ final class PaneWorkspaceModelTests: XCTestCase {
         let ws = try makeWorkspace()
         XCTAssertEqual(ws.paneCount, 1)
         XCTAssertFalse(ws.isTiled)
-        guard case .leaf(let leaf) = ws.root else { return XCTFail("root should be a leaf") }
+        guard case .leaf(let leaf) = ws.root else { XCTFail("root should be a leaf"); return }
         XCTAssertTrue(leaf.isPrimary)
         XCTAssertEqual(ws.activeLeafID, leaf.id)
-        XCTAssertTrue(ws.activeController === ws.primaryController)
+        XCTAssertIdentical(ws.activeController, ws.primaryController)
     }
 
     // MARK: - Split
@@ -60,7 +60,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
         XCTAssertEqual(ws.paneCount, 2)
         XCTAssertTrue(ws.isTiled)
-        guard case .split(let split) = ws.root else { return XCTFail("root should be a split") }
+        guard case .split(let split) = ws.root else { XCTFail("root should be a split"); return }
         XCTAssertEqual(split.axis, .horizontal)
         XCTAssertEqual(split.fraction, 0.5, accuracy: 0.0001)
         XCTAssertEqual(split.first.id, primaryLeafID, "original pane is the first child")
@@ -69,7 +69,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
         let newLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
         XCTAssertFalse(newLeaf.isPrimary)
-        XCTAssertFalse(newLeaf.controller === ws.primaryController, "new pane has its own controller")
+        XCTAssertNotIdentical(newLeaf.controller, ws.primaryController, "new pane has its own controller")
         XCTAssertFalse(newLeaf.controller.persistsViewState, "pane controllers never write global keys")
         XCTAssertNotEqual(newLeaf.controller.activeThreadID, ws.primaryController.activeThreadID,
                           "new pane is bound to its own thread")
@@ -80,7 +80,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
     func test_splitActive_vertical_setsVerticalAxis() throws {
         let ws = try makeWorkspace()
         ws.splitActive(axis: .vertical)
-        guard case .split(let split) = ws.root else { return XCTFail("root should be a split") }
+        guard case .split(let split) = ws.root else { XCTFail("root should be a split"); return }
         XCTAssertEqual(split.axis, .vertical)
     }
 
@@ -104,11 +104,11 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
         ws.closeActive() // closes the non-primary active pane
         XCTAssertEqual(ws.paneCount, 1)
-        guard case .leaf(let leaf) = ws.root else { return XCTFail("root should collapse to a leaf") }
+        guard case .leaf(let leaf) = ws.root else { XCTFail("root should collapse to a leaf"); return }
         XCTAssertEqual(leaf.id, primaryLeafID)
         XCTAssertTrue(leaf.isPrimary)
         XCTAssertEqual(ws.activeLeafID, primaryLeafID)
-        XCTAssertTrue(ws.activeController === ws.primaryController)
+        XCTAssertIdentical(ws.activeController, ws.primaryController)
     }
 
     func test_closeActive_primary_rehomesPrimaryControllerNotDropped() throws {
@@ -119,12 +119,12 @@ final class PaneWorkspaceModelTests: XCTestCase {
         ws.closeActive()                   // close the primary pane → re-home onto survivor
 
         XCTAssertEqual(ws.paneCount, 1)
-        guard case .leaf(let leaf) = ws.root else { return XCTFail("root should collapse to a leaf") }
+        guard case .leaf(let leaf) = ws.root else { XCTFail("root should collapse to a leaf"); return }
         XCTAssertTrue(leaf.isPrimary, "exactly one primary leaf survives")
-        XCTAssertTrue(leaf.controller === ws.primaryController,
-                      "primary controller is preserved (re-homed), never dropped")
+        XCTAssertIdentical(leaf.controller, ws.primaryController,
+                           "primary controller is preserved (re-homed), never dropped")
         XCTAssertEqual(ws.activeLeafID, leaf.id)
-        XCTAssertTrue(ws.activeController === ws.primaryController)
+        XCTAssertIdentical(ws.activeController, ws.primaryController)
     }
 
     func test_closeActive_lastPane_isIndestructible() throws {
@@ -222,7 +222,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
         let primary = try makeController()
         let ws = PaneWorkspaceModel.restore(primaryController: primary, dataStore: primary.dataStore, settingsManager: primary.settingsManager)
-        guard case .split(let split) = ws.root else { return XCTFail("root should be a split") }
+        guard case .split(let split) = ws.root else { XCTFail("root should be a split"); return }
         XCTAssertLessThanOrEqual(split.fraction, PaneWorkspaceModel.maxFraction)
         XCTAssertGreaterThanOrEqual(split.fraction, PaneWorkspaceModel.minFraction)
     }
@@ -249,14 +249,14 @@ final class PaneWorkspaceModelTests: XCTestCase {
         let decoded = try JSONDecoder().decode(PaneWorkspaceSnapshot.self, from: data)
 
         XCTAssertEqual(decoded.activePaneID, active)
-        guard case .split(let axis, let frac, let f, let s) = decoded.root else { return XCTFail("root should be a split") }
+        guard case .split(let axis, let frac, let f, let s) = decoded.root else { XCTFail("root should be a split"); return }
         XCTAssertEqual(axis, .horizontal)
         XCTAssertEqual(frac, 0.42, accuracy: 0.0001)
-        guard case .leaf(let pid, let t1, let primary1) = f else { return XCTFail("first should be a leaf") }
+        guard case .leaf(let pid, let t1, let primary1) = f else { XCTFail("first should be a leaf"); return }
         XCTAssertEqual(pid, p)
         XCTAssertEqual(t1, "t1")
         XCTAssertTrue(primary1)
-        guard case .leaf(_, let t2, let primary2) = s else { return XCTFail("second should be a leaf") }
+        guard case .leaf(_, let t2, let primary2) = s else { XCTFail("second should be a leaf"); return }
         XCTAssertEqual(t2, "t2")
         XCTAssertFalse(primary2)
     }
