@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-06-30
+
+### Fixed
+
+- **Newest-main release cut** — supersedes the canceled `v1.0.10` publish run so
+  the public release includes the latest `main` tip, including the mobile
+  Agents/Insights Aurora backdrop top-blend fix from PR #1102.
+- **Release lane duration bounds** — keeps Swift and macOS app tests in the
+  release workflow, but removes release-time coverage collection and adds
+  explicit Swift/app-test step timeouts so emergency publishes do not sit opaque
+  for hours on a cold GitHub macOS runner.
+
 ## [1.0.10] - 2026-06-30
 
 ### Fixed

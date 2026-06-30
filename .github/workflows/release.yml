@@ -322,10 +322,17 @@ jobs:
           protoc --version
 
       - name: Run Swift tests
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
+        timeout-minutes: 25
+        # Coverage is a PR/CI responsibility. Release publication needs pass/fail
+        # proof and bounded diagnostics, not a cold-runner coverage rebuild.
+        run: ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+        timeout-minutes: 75
+        # Keep the active app XCTest gate, but do not collect coverage in the
+        # release lane. A cold GitHub macOS runner can otherwise spend most of
+        # an emergency publish rebuilding instrumented app/test products.
+        run: ./scripts/test-openburnbar-app.sh
 
       - name: Verify SQLCipher codec in Release configuration
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh

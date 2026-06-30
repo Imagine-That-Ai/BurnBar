@@ -173,7 +173,7 @@ The `tag-release.sh` script:
 The workflow will:
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
 2. Scan the publishable tree with `gitleaks` and verified-secret `trufflehog`
-3. Run Swift, app, and TypeScript tests
+3. Run Swift, app, and TypeScript tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
 4. Build `OpenBurnBar.app` unsigned
 5. Embed daemon/helper artifacts and `OpenBurnBarCore.framework`
 6. Sign app + DMG with Developer ID identity
@@ -192,6 +192,18 @@ The workflow will:
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
+Before approving a promoted release, verify that the tag still points at the
+current `origin/main` tip. If `main` advances after the tag is cut, cancel the
+run before publication and cut a new patch tag from the newest main. Do not ship
+a public direct-download artifact from a stale tag when the release owner asked
+for "everything."
+
+Expected release timing: Swift package tests and macOS app XCTest each have
+explicit workflow timeouts. If either step nears its timeout, treat it as an
+actionable release-lane failure, inspect the completed job logs, fix the root
+cause or split the gate, and rerun on a new tag. Do not let a publish run sit
+opaque until the three-hour job timeout.
 
 ## Release artifacts
 
