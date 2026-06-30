@@ -1,18 +1,24 @@
 import SwiftUI
 
-// Grid resolution for the scalar height field. Coarse on purpose — marching
-// squares at this size is a few-thousand-cell scan, trivial at 60fps.
-private let meshGRID = 52
+// Grid resolution for the scalar height field. Bumped 52→60 so the WIDER empty
+// margin below (more PAD + SPAN) does not coarsen the actual contours: a dot maps
+// back to its exact world position regardless of grid/pad/span, so the silhouette
+// and contour resolution stay put while the surrounding void grows. Marching at
+// this size is a ~3.5k-cell scan, trivial at 60fps.
+private let meshGRID = 60
 private let meshCELLS = meshGRID * meshGRID
-// World-space margin (in cells) so the splat blur fits inside the grid.
-private let meshPAD = 3
+// World-space margin (in cells) — the feather band. Widened 3→6 so the rim mask
+// fades over many cells instead of cutting live density on a hard ~1-cell rect.
+private let meshPAD = 6
 private let meshINNER_LEVELS = 7
 private let meshBOUNDARY_LEVEL = 0.18 // the silhouette threshold (index contour)
-// Cloud-bbox → grid span (× cloudRadius). Wider than the original 2.35 so the real
-// footprint sits comfortably inside the PAD margin and the field can fall to zero
-// BEFORE the grid edge — otherwise the field is clipped by the rectangle and the
-// march draws straight contour runs along the grid border (the offending square).
-private let meshSPAN = 2.9
+// Cloud-bbox → grid span (× cloudRadius). Widened 2.9→3.2 so the cloud occupies a
+// smaller fraction of the grid and its Gaussian field decays all the way to zero a
+// long way BEFORE the rim. Combined with the 6-cell feather this means the rim mask
+// only ever touches cells that already hold ~0 density, so the splat field can never
+// be clipped into a straight contour run along the grid border (the offending
+// rectangle). The on-screen silhouette is unchanged (mapping is span-invariant).
+private let meshSPAN = 3.2
 // Coverage gate (footprint mask): cells whose local point density is below SKIP draw
 // no contour at all (kills everything outside the cloud → no rectangular border);
 // cells below FULL draw a faded/thinner "feather" segment so the silhouette fades
@@ -113,7 +119,7 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
         let spacing = band / Double(meshINNER_LEVELS)
         // Presence: the blind port sat at 0.42 (near-invisible). Drive the filaments
         // hard so the field clearly fills + glows; bloom carries the depth.
-        let aGlow = dark ? 0.78 : 0.82
+        let aGlow = dark ? 0.84 : 0.88
 
         // Tints (the fix asks for iris/brand ink, NOT pure white). The hot core is a
         // near-white pushed back toward the family accent so it reads luminous-jewel
@@ -252,7 +258,10 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
 
         // Splat each point as a small Gaussian → a smooth soft signed-distance-
         // into-the-mark scalar (high interior, low edge, zero outside).
-        let sigmaCells = 1.7
+        // Splat radius in CELLS. Trimmed 1.7→1.6 so that, with the wider SPAN/grid,
+        // the splat keeps the same absolute screen-space size as before (the field's
+        // softness — hence the core contour look — is unchanged).
+        let sigmaCells = 1.6
         let sig2 = 2 * sigmaCells * sigmaCells
         let rad = Int((sigmaCells * 2.4).rounded(.up))
         for p in 0..<count {
@@ -290,8 +299,14 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
                 let i = gy * meshGRID + gx
                 let rn = field[i] * invPeak
                 var cov = smoothstep(0.03, 0.5, rn)
+                // Smooth rim mask: distance (in cells) to the nearest grid edge,
+                // feathered over the full PAD band with an extra squared toe so the
+                // mask eases in with zero slope at the very edge. This dissolves any
+                // residual contour endpoints into a gentle vignette instead of letting
+                // them line up on the rectangular grid border.
                 let m = Double(min(myEdge, min(gx, meshGRID - 1 - gx)))
-                cov *= smoothstep(0.0, Double(meshPAD), m)
+                let rim = smoothstep(0.0, Double(meshPAD), m)
+                cov *= rim * rim
                 coverage[i] = cov
             }
         }

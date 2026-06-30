@@ -82,6 +82,11 @@ extension DashboardView {
             }
             .shadow(color: .black.opacity(0.25), radius: 28, y: 4)
 
+            AtelierSpendCurve(
+                usages: dashboardUsageWindow.usages,
+                range: dashboardDateRange
+            )
+
             HStack(spacing: DesignSystem.Spacing.lg) {
                 ConceptStatTile(
                     label: "Burn · Today",

@@ -77,6 +77,8 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         let cx = frame.cx, cy = frame.cy
         let sizePx = frame.sizePx
         let accent = frame.stage.accent
+        let accent2 = frame.stage.accent2
+        let ink = frame.stage.ink
         let white = RGBA(r: 1, g: 1, b: 1)
 
         // ── ruling geometry ────────────────────────────────────────────────────
@@ -92,9 +94,14 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         // Grating normals (perpendicular to each line direction).
         let nAx = -sinA, nAy = cosA
         let nBx = -sinB, nBy = cosB
-        // Carrier spatial frequency: ~5.5 fringe cycles across the cloud; same pitch
-        // on both rulings so only the angle differs → pure line-on-line moiré.
-        let kA = (TAU * 5.5) / max(40.0, radius * 2.0)
+        // Ruling pitch (line spacing) in ABSOLUTE screen px — never scaled from
+        // cloudRadius (that balloons the carrier on a wide sparse field). Drives both
+        // the full-field gratings and the per-point carrier frequency identically.
+        let pitch = clampD(sizePx * 5.5, 9.0, 15.0)
+        // Carrier spatial frequency in px (one cosine cycle per pitch); same pitch on
+        // both rulings so only the angle differs → pure line-on-line moiré whose beat
+        // wavelength = pitch / sin(drift) spans the whole screen.
+        let kA = TAU / pitch
         let kB = kA
         // Band phase scroll so the bright fringes crawl even at a fixed drift.
         let scroll = reduced ? 0 : t * 0.6
@@ -104,6 +111,20 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         // Legibility / presence floor (matches the sibling moiré substrates) so the
         // engraved mark always reads boldly, scaling up as it forms.
         let form = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1) * 0.5 + 0.5
+
+        // ── sparse-field vs dense-silhouette regime ──────────────────────────────
+        // The Atelier backdrop runs a SPARSE free-swarm (isShapeMode == false): a
+        // per-point ruling alone is just crossed confetti with no visible beat. So we
+        // ALSO lay two continuous ruling families across the WHOLE canvas — their
+        // real line-on-line crossing IS the moiré field — feathered to the swarm and
+        // brightened locally by the per-point engraving below. As the mark forms we
+        // fade the full field out and let the per-point rulings tessellate the
+        // silhouette exactly as before (the dense look is preserved untouched).
+        var inShapeN = 0
+        for d in dots where d.inShape { inShapeN += 1 }
+        let shapeFrac = Double(inShapeN) / Double(count)
+        let fieldW: Double = frame.isShapeMode ? 0.0
+            : 1.0 - clampD((shapeFrac - 0.25) / 0.45, 0, 1)
 
         var ctx = baseCtx
         ctx.blendMode = dark ? .plusLighter : .normal
@@ -156,6 +177,106 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         collect(into: &b, dots: dots, count: count, dark: dark, wantBloom: wantBloom,
                 dirCos: cosB, dirSin: sinB, seg: seg, alpha: beatAlpha)
 
+        // ── FULL-FIELD MOIRÉ ──────────────────────────────────────────────────────
+        // Two continuous ruling families struck edge-to-edge across the canvas. Drawn
+        // additively (dark) / subtractively (light), their crossing produces genuine
+        // line-on-line moiré beat-bands as a real FIELD — not a per-point sample. A
+        // radial `.destinationIn` mask feathers the field into the swarm (intensify
+        // where the cloud sits, fade gently to nothing where empty — never a hard
+        // rectangle). The per-point engraving above then rides on top and lights the
+        // gratings locally, so a denser swarm = a brighter local beat.
+        if fieldW > 0.004 {
+            let w = Double(frame.size.width), h = Double(frame.size.height)
+            if w > 1, h > 1 {
+                let ctr = CGPoint(x: w * 0.5, y: h * 0.5)
+                // Crawl the fringes by sliding each family along its own normal.
+                let shiftA = reduced ? 0 : pitch * frac(scroll / TAU)
+                let shiftB = reduced ? 0 : pitch * frac(-scroll * 0.8 / TAU)
+                var famA = Path(), famB = Path()
+                buildFamily(dirCos: cosA, dirSin: sinA, normalOffset: shiftA,
+                            pitch: pitch, w: w, h: h, center: ctr, into: &famA)
+                buildFamily(dirCos: cosB, dirSin: sinB, normalOffset: shiftB,
+                            pitch: pitch, w: w, h: h, center: ctr, into: &famB)
+
+                // FREE-SWARM = the Atelier full-bleed backdrop. The ruling field is a
+                // continuous MATERIAL that must fill the whole canvas edge to edge, so
+                // its presence is a BRIGHTNESS FLOOR independent of local particle
+                // density. Only the forming/dense transition (shapeFrac climbing) uses
+                // the old cloud-centred falloff so the field retreats into the mark.
+                let freeSwarm = !frame.isShapeMode
+                let halfDiag = hypot(w, h) * 0.5
+                @inline(__always) func feather(_ layer: inout GraphicsContext) {
+                    var m = layer
+                    m.blendMode = .destinationIn
+                    if freeSwarm {
+                        // No cloud-centred gate — full presence across the interior,
+                        // only a soft screen-edge vignette so it never reads as a hard
+                        // rectangle. Canvas-centred, density-independent.
+                        m.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)),
+                               with: .radialGradient(
+                                Gradient(stops: [
+                                    .init(color: white.color, location: 0.0),
+                                    .init(color: white.color, location: 0.80),
+                                    .init(color: Color.clear, location: 1.0)]),
+                                center: ctr,
+                                startRadius: 0, endRadius: halfDiag * 1.12))
+                    } else {
+                        // Forming/dense: falloff rides the cloud extent so the field
+                        // collapses softly into the engraved silhouette.
+                        let mInner = max(24.0, radius * 0.18)
+                        let mOuter = max(mInner + 64.0, radius * 1.32)
+                        m.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)),
+                               with: .radialGradient(
+                                Gradient(colors: [white.color, Color.clear]),
+                                center: CGPoint(x: cx, y: cy),
+                                startRadius: mInner, endRadius: mOuter))
+                    }
+                }
+
+                // Bold px-bounded line width (sizePx-derived, NEVER cloudRadius) and a
+                // GENEROUS alpha floor in free-swarm so the two crossed rulings + their
+                // moiré beat read boldly edge-to-edge like sibling lattice-facet. The
+                // per-point engraving (collected above) then ADDS local brightness on
+                // top of this floor — it never gates the field toward zero.
+                let lwF = baseW * (freeSwarm ? 1.28 : 1.0) * (dark ? 1.0 : 0.95)
+                let floorMul = freeSwarm ? 1.0 : fieldW
+                let aF = clampD((dark ? 0.46 : 0.34) * floorMul * form, 0, 1)
+                let col1 = dark ? accent : ink
+                let col2 = dark ? accent2 : ink
+
+                // GLOW · blurred copy of both families so the bright beat-bands bloom
+                // (dark only; the heaviest pass → dropped under battery throttle).
+                if dark && !throttled {
+                    let bloomR = clampD(pitch * 0.85, 4, 10)
+                    var gctx = baseCtx
+                    gctx.blendMode = .plusLighter
+                    gctx.drawLayer { layer in
+                        layer.addFilter(.blur(radius: bloomR))
+                        layer.blendMode = .plusLighter
+                        let g1 = col1.mix(with: accent, amount: 0.30).toWhite(0.26)
+                        let g2 = col2.mix(with: accent, amount: 0.30).toWhite(0.26)
+                        layer.stroke(famA, with: .color(g1.withOpacity(aF * 0.72).color),
+                                     style: StrokeStyle(lineWidth: lwF * 1.9, lineCap: .round))
+                        layer.stroke(famB, with: .color(g2.withOpacity(aF * 0.72).color),
+                                     style: StrokeStyle(lineWidth: lwF * 1.9, lineCap: .round))
+                        feather(&layer)
+                    }
+                }
+
+                // BODY · the crisp ruling lines themselves — the moiré field proper.
+                var fctx = baseCtx
+                fctx.blendMode = dark ? .plusLighter : .normal
+                fctx.drawLayer { layer in
+                    layer.blendMode = dark ? .plusLighter : .normal
+                    layer.stroke(famA, with: .color(col1.withOpacity(aF).color),
+                                 style: StrokeStyle(lineWidth: lwF, lineCap: .round))
+                    layer.stroke(famB, with: .color(col2.withOpacity(aF).color),
+                                 style: StrokeStyle(lineWidth: lwF, lineCap: .round))
+                    feather(&layer)
+                }
+            }
+        }
+
         // ── render the layered light ─────────────────────────────────────────────
         if dark {
             // PASS 1 · TRUE GAUSSIAN BLOOM — the bright crossing strokes re-laid fat
@@ -204,7 +325,6 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         } else {
             // LIGHT · crisp opaque ink — crossings deepen toward ink for real contrast,
             // a touch bolder than the blind port so the beat-bands read clearly.
-            let ink = frame.stage.ink
             for (key, path) in b.body {
                 let n = b.bodyN[key] ?? 1
                 let aAvg = (b.bodySumA[key] ?? 0) / Double(n)
@@ -218,6 +338,29 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         }
 
         return true
+    }
+
+    // ── build one continuous ruling family spanning the whole canvas ─────────────
+    // Lines run along (dirCos,dirSin); they are stepped by `pitch` along the family
+    // normal and made long enough (the canvas diagonal) to cross edge-to-edge.
+    // `normalOffset` slides the whole family along its normal so the fringes crawl.
+    private func buildFamily(dirCos: Double, dirSin: Double, normalOffset: Double,
+                             pitch: Double, w: Double, h: Double, center: CGPoint,
+                             into path: inout Path) {
+        guard pitch > 0.5 else { return }
+        let nx = -dirSin, ny = dirCos
+        let ox = center.x + nx * normalOffset
+        let oy = center.y + ny * normalOffset
+        // Max |corner · normal| from centre = how far the family must extend.
+        let ext = abs(w * 0.5 * nx) + abs(h * 0.5 * ny) + pitch
+        let half = hypot(w, h) * 0.5 + pitch   // half line length (covers diagonal)
+        var p = -ext
+        while p <= ext {
+            let lcx = ox + nx * p, lcy = oy + ny * p
+            path.move(to: CGPoint(x: lcx - dirCos * half, y: lcy - dirSin * half))
+            path.addLine(to: CGPoint(x: lcx + dirCos * half, y: lcy + dirSin * half))
+            p += pitch
+        }
     }
 
     // ── collect one ruling pass into the shared buckets ──────────────────────────
