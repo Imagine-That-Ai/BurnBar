@@ -104,7 +104,8 @@ final class PixelClockSettingsCardTests: XCTestCase {
 
         let adapter = MacPixelClockOperationsAdapter(
             settingsManager: settingsManager,
-            controller: nil
+            controller: nil,
+            allowsFallbackController: false
         )
         // Without a controller the adapter should fall back to the
         // currently-persisted probe status without crashing.

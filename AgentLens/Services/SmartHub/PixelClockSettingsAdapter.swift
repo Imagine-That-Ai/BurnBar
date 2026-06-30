@@ -17,28 +17,47 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     private let settingsManager: SettingsManager
     private weak var controller: PixelClockController?
     private var fallbackController: PixelClockController?
+    private let allowsFallbackController: Bool
 
-    init(settingsManager: SettingsManager, controller: PixelClockController?) {
+    init(
+        settingsManager: SettingsManager,
+        controller: PixelClockController?,
+        allowsFallbackController: Bool = true
+    ) {
         self.settingsManager = settingsManager
         self.controller = controller
+        self.allowsFallbackController = allowsFallbackController
     }
 
     func probePixelClock(config: PixelClockConfig) async -> PixelClockProbeStatus {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            return settingsManager.pixelClockConfig.lastProbeStatus
+        }
         let result = await controller.probePixelClock()
         return result.status
     }
 
     func preparePixelClock(config: PixelClockConfig) async throws -> PixelClockSetupResult {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            return PixelClockSetupResult(
+                mode: .unreachable,
+                probeStatus: settingsManager.pixelClockConfig.lastProbeStatus,
+                message: "Pixel Clock controller is unavailable.",
+                clockHost: settingsManager.pixelClockConfig.host
+            )
+        }
         return try await controller.preparePixelClock()
     }
 
     func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            throw NSError(domain: "PixelClock", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
+            ])
+        }
         let hasUSBSetupPort = await PixelClockFirmwareFlasher.hasSetupCandidateSerialDevice()
         guard hasUSBSetupPort else {
             let visibleSetupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID()
@@ -56,19 +75,31 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
 
     func testPixelClock(config: PixelClockConfig) async throws {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            throw NSError(domain: "PixelClock", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
+            ])
+        }
         try await controller.testPixelClock()
     }
 
     func pushPixelClockNow(config: PixelClockConfig) async throws {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            throw NSError(domain: "PixelClock", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
+            ])
+        }
         try await controller.pushPixelClockNow()
     }
 
     func removePixelClockApp(config: PixelClockConfig) async throws {
         persist(config)
-        let controller = resolvedController()
+        guard let controller = resolvedController() else {
+            throw NSError(domain: "PixelClock", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
+            ])
+        }
         try await controller.removePixelClockApp()
     }
 
@@ -84,9 +115,10 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
         }
     }
 
-    private func resolvedController() -> PixelClockController {
+    private func resolvedController() -> PixelClockController? {
         if let controller { return controller }
         if let fallbackController { return fallbackController }
+        guard allowsFallbackController else { return nil }
         let fallback = PixelClockController(
             settingsManager: settingsManager,
             quotaService: nil
