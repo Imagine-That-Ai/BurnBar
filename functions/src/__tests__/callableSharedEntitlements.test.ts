@@ -26,6 +26,8 @@ describe("callable shared entitlement predicates", () => {
     expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.pro.annual"))).toBe(true);
     expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.promax.v2.monthly"))).toBe(true);
     expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.proMax.bundle.monthly"))).toBe(true);
+    expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.ultra.monthly"))).toBe(true);
+    expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.ultra.annual.v2"))).toBe(true);
     expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.unknown"))).toBe(false);
   });
 

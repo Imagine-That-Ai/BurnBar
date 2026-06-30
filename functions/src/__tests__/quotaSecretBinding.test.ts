@@ -54,6 +54,14 @@ function seedSecretRef(store: Map<string, Record<string, unknown>>, providerID =
   });
 }
 
+function seedEntitlement(store: Map<string, Record<string, unknown>>, entitlementID = "burnbar_pro", productID = "com.openburnbar.pro.monthly") {
+  seedDoc(store, `users/${UID}/entitlements/${entitlementID}`, {
+    active: true,
+    productID,
+    expiresAt: "2999-01-01T00:00:00.000Z",
+  });
+}
+
 function quotaSnapshot() {
   return {
     provider: "openai",
@@ -112,6 +120,7 @@ describe("provider account quota secret binding", () => {
     const store = new Map<string, Record<string, unknown>>();
     seedProviderAccount(store, "openai");
     seedSecretRef(store, "kimi");
+    seedEntitlement(store);
 
     const db = quotaTestFirestore(store);
 
@@ -126,6 +135,7 @@ describe("provider account quota secret binding", () => {
     const store = new Map<string, Record<string, unknown>>();
     seedProviderAccount(store, "openai");
     seedSecretRef(store, "openai");
+    seedEntitlement(store);
 
     const db = quotaTestFirestore(store);
 
@@ -147,6 +157,44 @@ describe("provider account quota secret binding", () => {
     expect(store.get(`users/${UID}/quota_snapshots/openai_${ACCOUNT_ID}_usage`)).toMatchObject({
       providerID: "openai",
       accountID: ACCOUNT_ID,
+    });
+  });
+
+  it("refreshes quota for an Ultra-only entitlement", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    seedProviderAccount(store, "openai");
+    seedSecretRef(store, "openai");
+    seedEntitlement(store, "burnbar_ultra", "com.openburnbar.ultra.monthly");
+
+    const db = quotaTestFirestore(store);
+
+    const snapshot = await refreshUserProviderAccountQuota(db, UID, ACCOUNT_ID);
+
+    expect(mocks.retrieveCredential).toHaveBeenCalledWith("projects/test/secrets/openai-default/versions/1");
+    expect(mocks.fetchQuota).toHaveBeenCalledOnce();
+    expect(snapshot).toMatchObject({
+      providerID: "openai",
+      accountID: ACCOUNT_ID,
+      accountStorageScope: "cloud_refreshable",
+    });
+  });
+
+  it("refreshes quota for a legacy Cloud Pro bundle entitlement", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    seedProviderAccount(store, "openai");
+    seedSecretRef(store, "openai");
+    seedEntitlement(store, "burnbar_pro_max", "com.openburnbar.proMax.bundle.monthly");
+
+    const db = quotaTestFirestore(store);
+
+    const snapshot = await refreshUserProviderAccountQuota(db, UID, ACCOUNT_ID);
+
+    expect(mocks.retrieveCredential).toHaveBeenCalledWith("projects/test/secrets/openai-default/versions/1");
+    expect(mocks.fetchQuota).toHaveBeenCalledOnce();
+    expect(snapshot).toMatchObject({
+      providerID: "openai",
+      accountID: ACCOUNT_ID,
+      accountStorageScope: "cloud_refreshable",
     });
   });
 

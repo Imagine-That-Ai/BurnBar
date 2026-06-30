@@ -7,6 +7,8 @@
  */
 
 import { Timestamp } from "firebase-admin/firestore";
+import * as entitlementsPackage from "@openburnbar/entitlements";
+import type { EntitlementCatalog } from "@openburnbar/entitlements";
 import type {
   Provider,
   ProviderAccountDoc,
@@ -35,7 +37,6 @@ import { xaiAdapter } from "./providers/xai.js";
 import {
   isProviderAccountStorageScope,
   isTimestampWithToDate,
-  isTimestampWithToMillis,
   jsonObject,
   parseProvider,
   parseProviderAccountDoc,
@@ -45,6 +46,8 @@ import {
   recordOrUndefined,
 } from "./guards.js";
 import { isDemoProviderAccountRecord } from "./providerAccountIsolation.js";
+
+const { isActiveEntitlement } = entitlementsPackage;
 
 /** Schema version for quota snapshot documents. */
 const QUOTA_SCHEMA_VERSION = 2;
@@ -334,12 +337,16 @@ async function refreshHostedQuotaAccount(
 
 async function requireHostedQuotaEntitlement(db: QuotaFirestoreLike, uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
-  const [hostedSnap, proSnap] = await Promise.all([
+  const [hostedSnap, proSnap, proMaxSnap, ultraSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_pro_max`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_ultra`).get(),
   ]);
   if (isActiveHostedQuotaEntitlement(recordOrUndefined(hostedSnap.data()))) return;
   if (isActivePremiumEntitlement(proSnap.data())) return;
+  if (isActivePremiumEntitlement(proMaxSnap.data())) return;
+  if (isActivePremiumEntitlement(ultraSnap.data())) return;
   throw new Error("permission-denied: Hosted Quota Sync or BurnBar Pro subscription required.");
 }
 
@@ -354,24 +361,28 @@ function isActiveHostedQuotaEntitlement(entitlement: Record<string, unknown> | u
   );
 }
 
+function entitlementCatalogFromConfig(): EntitlementCatalog {
+  const cfg = getConfig();
+  return {
+    hostedQuotaProductID: cfg.hostedQuotaProductID,
+    burnBarProProductID: cfg.burnBarProProductID,
+    burnBarProAnnualProductID: cfg.burnBarProAnnualProductID,
+    burnBarProMaxProductID: cfg.burnBarProMaxProductID,
+    burnBarProMaxAnnualProductID: cfg.burnBarProMaxAnnualProductID,
+    burnBarUltraProductID: cfg.burnBarUltraProductID,
+    burnBarUltraAnnualProductID: cfg.burnBarUltraAnnualProductID,
+    googlePlaySubscriptionProductID: cfg.googlePlaySubscriptionProductID,
+    googlePlayCloudMonthlyProductID: cfg.googlePlayCloudMonthlyProductID,
+    googlePlayCloudAnnualProductID: cfg.googlePlayCloudAnnualProductID,
+    googlePlayCloudProMonthlyProductID: cfg.googlePlayCloudProMonthlyProductID,
+    googlePlayCloudProAnnualProductID: cfg.googlePlayCloudProAnnualProductID,
+    googlePlayUltraMonthlyProductID: cfg.googlePlayUltraMonthlyProductID,
+    googlePlayUltraAnnualProductID: cfg.googlePlayUltraAnnualProductID,
+  };
+}
+
 function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID
-  ) {
-    return false;
-  }
-  const expireAt = raw.expireAt;
-  if (expireAt && typeof expireAt === "object") {
-    if (isTimestampWithToMillis(expireAt)) {
-      return expireAt.toMillis() > Date.now();
-    }
-  }
-  const expiresAtMs = raw.expiresAt ? Date.parse(String(raw.expiresAt)) : 0;
-  return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+  return isActiveEntitlement(raw, "premium", { catalog: entitlementCatalogFromConfig() });
 }
 
 async function consumeHostedRefreshBudget(db: QuotaFirestoreLike, uid: string, accountID: string): Promise<void> {
