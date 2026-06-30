@@ -40,6 +40,29 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
     assert "legal release review is not approved: 'pending'" in result.stderr
 
 
+def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
+    evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
+    data = json.loads(evidence.read_text(encoding="utf-8"))
+
+    assert data["repo"]["releaseTag"] == "v1.0.13"
+
+    result = subprocess.run(
+        [
+            "python3",
+            "scripts/ci/check_burnbar_release_preflight.py",
+            "--allow-owner-emergency-approval",
+            "--expected-release-tag",
+            "v1.0.13",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert "owner emergency approval: repo.releaseTag" not in result.stderr
+
+
 def test_release_preflight_strictly_validates_claimed_approval(tmp_path):
     evidence = tmp_path / "forged-approved.json"
     evidence.write_text(
@@ -103,6 +126,67 @@ def test_product_release_workflows_invoke_release_preflight():
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
+
+
+def test_release_workflow_uses_bounded_release_critical_app_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    smoke = (ROOT / "scripts/test-openburnbar-release-smoke.sh").read_text(encoding="utf-8")
+    filters = (ROOT / "scripts/lib/openburnbar-release-app-test-filters.sh").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Run OpenBurnBar release-critical app tests")
+    step_end = body.index("- name: Verify SQLCipher codec in Release configuration")
+    app_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 30" in app_step
+    assert "source scripts/lib/openburnbar-release-app-test-filters.sh" in app_step
+    assert 'OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)"' in app_step
+    assert "./scripts/test-openburnbar-app.sh" in app_step
+    assert "- name: Run OpenBurnBar app tests" not in body
+    assert "timeout-minutes: 75" not in app_step
+    assert "run: ./scripts/test-openburnbar-app.sh" not in body
+
+    assert "source \"$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh\"" in smoke
+    assert 'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"' in smoke
+
+    for required_filter in (
+        "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",
+        "OpenBurnBarTests/OpenBurnBarAppCheckProviderFactoryTests",
+        "OpenBurnBarTests/OpenBurnBarRuntimeTests",
+        "OpenBurnBarTests/PopoverContentPrewarmerTests",
+        "OpenBurnBarTests/PaneWorkspaceModelTests",
+        "OpenBurnBarTests/ChatSessionControllerPaneModeTests",
+    ):
+        assert required_filter in filters
+
+
+def test_app_test_wrapper_supports_multiple_normalized_filters():
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "OPENBURNBAR_APP_TEST_FILTERS=$'AgentLensTests/Foo\\n"
+                "OpenBurnBarTests/Bar,OpenBurnBarTests/Baz;AgentLensTests' "
+                "scripts/test-openburnbar-app.sh --print-xcodebuild-filters"
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    filters = [
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("OpenBurnBarTests")
+    ]
+    assert filters == [
+        "OpenBurnBarTests/Foo",
+        "OpenBurnBarTests/Bar",
+        "OpenBurnBarTests/Baz",
+        "OpenBurnBarTests",
+    ]
 
 
 def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():

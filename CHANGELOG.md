@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-06-30
+
+### Fixed
+
+- **Promoted release cut from newest main** — supersedes the failed `v1.0.12`
+  publish run with the same pane-enabled source plus the release-lane fix
+  itself. The tag includes PR #1095's cmux-style Chat pane tiling, PR #1104's
+  chat send fallback repair, and the `v1.0.12` release metadata.
+- **Bounded release-critical app gate** — the release workflow now runs a
+  shared, focused app-host XCTest slice for direct-download metadata,
+  Firebase/App Check readiness, menu-bar click/popover behavior, and Chat pane
+  tiling instead of the full app suite that timed out while still passing. The
+  full app suite remains a PR/CI gate; `scripts/test-openburnbar-release-smoke.sh`
+  uses the same shared release-critical filter list so the runbook and workflow
+  cannot drift.
+
 ## [1.0.12] - 2026-06-30
 
 ### Added
