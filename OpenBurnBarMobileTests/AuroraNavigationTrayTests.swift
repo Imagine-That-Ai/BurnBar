@@ -241,7 +241,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
         // Simulate the gesture model behavior: scrubbing resolves a preview
         // but does not change the committed selection.
         let committed: AuroraNavDestination = .pulse
-        var preview: AuroraNavDestination? = nil
+        var preview: AuroraNavDestination?
 
         // Finger moves to insights territory
         let count = allDestinations.count
@@ -289,15 +289,13 @@ final class AuroraNavigationTrayTests: XCTestCase {
         // During a scrub, haptics should only fire when the preview
         // destination CHANGES, not on every finger move. We model this
         // with the lastHapticDestination tracking pattern used in the tray.
-        var lastHaptic: AuroraNavDestination? = nil
+        var lastHaptic: AuroraNavDestination?
         var hapticCount = 0
 
         let sequence: [AuroraNavDestination] = [.pulse, .burn, .burn, .insights, .insights, .streams]
-        for dest in sequence {
-            if lastHaptic != dest {
-                lastHaptic = dest
-                hapticCount += 1
-            }
+        for dest in sequence where lastHaptic != dest {
+            lastHaptic = dest
+            hapticCount += 1
         }
 
         // 4 distinct destinations crossed (pulse→burn→insights→streams)

@@ -31,10 +31,10 @@ struct AuroraNavigationTray: View {
     /// Fires continuously during a scrub with the destination currently
     /// under the finger. Pass `nil` to clear the preview (gesture cancelled).
     /// The host uses this to drive live content preview without committing.
-    var onScrubPreview: ((AuroraNavDestination?) -> Void)? = nil
+    var onScrubPreview: ((AuroraNavDestination?) -> Void)?
     /// Fires once when the user releases inside the tray, committing the
     /// previewed destination. The `selection` binding is also updated.
-    var onScrubCommit: ((AuroraNavDestination) -> Void)? = nil
+    var onScrubCommit: ((AuroraNavDestination) -> Void)?
 
     // MARK: - Scrub state
 
