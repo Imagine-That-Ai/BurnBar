@@ -138,7 +138,6 @@ struct PulseView: View {
                 .padding(.top, MobileTheme.Spacing.sm)
                 .padding(.bottom, MobileTheme.Spacing.xxl)
             }
-            .pulseScrollEdgeChrome()
             .scrollDismissesKeyboard(.interactively)
             .trackEasterEggScroll(tag: "pulse")
             .refreshable {
@@ -320,23 +319,4 @@ final class PulseRouter {
     func openProject(_ project: ProjectSummary) { pendingDestination = .project(project) }
     func openProvider(_ provider: AgentProvider) { pendingDestination = .provider(provider) }
     func clear() { pendingDestination = nil }
-}
-
-// MARK: - Pulse Scroll Chrome
-
-private struct PulseScrollEdgeChrome: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectHidden(true, for: .top)
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    func pulseScrollEdgeChrome() -> some View {
-        modifier(PulseScrollEdgeChrome())
-    }
 }
