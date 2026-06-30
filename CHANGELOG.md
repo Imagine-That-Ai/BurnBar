@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-06-30
+
+### Fixed
+
+- **Bounded release-critical mobile gate** — supersedes the failed `v1.0.14`
+  publish run with the same newest-`main` source and pane-enabled macOS app, but
+  keeps the release workflow from running the full iOS simulator suite in the
+  artifact publication path. The release lane now runs a focused mobile XCTest
+  slice for App Store/TestFlight metadata, Firebase/App Check readiness, auth
+  startup safety, iPad navigation, mobile kernel/backdrop parity, Pulse/theme
+  basics, Sentry scrubbing, and provider setup contracts. The full mobile suite
+  remains a PR/CI gate.
+
 ## [1.0.14] - 2026-06-30
 
 ### Fixed

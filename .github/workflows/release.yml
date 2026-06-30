@@ -351,10 +351,22 @@ jobs:
 
       - name: Run OpenBurnBar mobile unit tests
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_mobile_unit_tests }}
-        timeout-minutes: 45
+        timeout-minutes: 75
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
-        # Release gates need pass/fail proof; coverage collection belongs to CI, not notarized artifact publication.
-        run: ./scripts/test-openburnbar-mobile.sh
+        # The full mobile suite is a PR/CI responsibility. Release publication
+        # needs a bounded mobile-host smoke that still proves App Store/TestFlight
+        # metadata, Firebase/App Check readiness, auth startup safety, iPad
+        # navigation, and the newest mobile kernel/backdrop contracts. Cold
+        # GitHub macOS runners still compile the iOS app host and SwiftPM graph,
+        # so this step keeps enough wall-clock headroom for dependency build time
+        # without restoring the full mobile-suite release gate.
+        run: |
+          source scripts/lib/openburnbar-release-mobile-test-filters.sh
+          OPENBURNBAR_MOBILE_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE=240 \
+          OPENBURNBAR_MOBILE_TEST_MAX_ALLOWANCE=480 \
+          OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)" \
+            ./scripts/test-openburnbar-mobile.sh
 
       - name: Record owner-approved mobile unit test bypass
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
