@@ -227,7 +227,7 @@ description = "Website Firebase web config contains public client identifiers re
 condition = "AND"
 regexTarget = "match"
 regexes = [
-  '''AIza[0-9A-Za-z_-]{35}''',
+  '''AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4''',
 ]
 paths = [
   '''website/src/lib/firebaseClient\.ts''',
@@ -299,8 +299,38 @@ regexes = [
 ]
 paths = [
   '''functions/src/callables/signalPrekeyDirectory\.ts''',
-  '''functions/src/callables/signalPrekeyDirectoryValidators\.ts''',
   '''functions/src/__tests__/signalPrekeyDirectory\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Signal prekey validator denylist literals intentionally name forbidden secret fields"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''^\s*"apiKey",''',
+  '''^\s*"token",''',
+  '''^\s*"refreshToken",''',
+  '''^\s*"accessToken",''',
+  '''^\s*"idToken",''',
+  '''^\s*"cookie",''',
+  '''^\s*"password",''',
+  '''^\s*"secret",''',
+  '''^\s*"secretVersionName",''',
+  '''^\s*"authorization",''',
+  '''^\s*"bearer",''',
+  '''^\s*"credential",''',
+  '''^\s*"privateKey",''',
+  '''^\s*"privateKeyData",''',
+  '''^\s*"privateKeyB64",''',
+  '''^\s*"serializedSession",''',
+  '''^\s*"serializedSessionB64",''',
+  '''^\s*"sessionState",''',
+  '''^\s*"sessionStateB64",''',
+  '''^\s*"ratchetState",''',
+  '''^\s*"ratchetStateB64",''',
+]
+paths = [
+  '''functions/src/callables/signalPrekeyDirectoryValidators\.ts''',
 ]
 
 [[allowlists]]
@@ -312,6 +342,17 @@ regexes = [
 ]
 paths = [
   '''scripts/ci/check-env-no-secrets\.test\.sh''',
+]
+
+[[allowlists]]
+description = "libsignal Cargo.lock dependency name `libcrux-secrets` is a package label, not credential material"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''^\s*"libcrux-secrets",''',
+]
+paths = [
+  '''Vendor/libsignal/Cargo\.lock''',
 ]
 
 [[allowlists]]
