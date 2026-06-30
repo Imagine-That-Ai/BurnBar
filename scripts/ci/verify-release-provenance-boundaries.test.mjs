@@ -104,7 +104,7 @@ jobs:
             exit 1
           fi
       - name: BurnBar product release preflight
-        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "\${{ steps.version.outputs.tag_name }}"
       - name: Validate mobile unit test bypass reason
         if: \${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
         env:
@@ -345,8 +345,18 @@ expect(
 expect(
   "release workflow conditional product preflight fails",
   GOOD_RELEASE.replace(
-    "      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
-    "      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == '' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
+    '      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "${{ steps.version.outputs.tag_name }}"',
+    '      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == \'\' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "${{ steps.version.outputs.tag_name }}"',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release workflow owner emergency missing expected tag fails",
+  GOOD_RELEASE.replace(
+    ' --expected-release-tag "${{ steps.version.outputs.tag_name }}"',
+    "",
   ),
   GOOD_SUPPLY_CHAIN,
   1,

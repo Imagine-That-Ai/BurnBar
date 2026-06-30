@@ -187,6 +187,11 @@ function stripShellHeredocBodies(source) {
   return output.join("\n");
 }
 
+function hasShellFlag(source, flag) {
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "u").test(source);
+}
+
 function namedStepBlock(file, source, stepName, message) {
   const stepBlocks = workflowStepBlocks(source, stepName);
   if (stepBlocks.length === 0) {
@@ -291,28 +296,28 @@ function requireProductReleasePreflight(
     return;
   }
 
-  const executableLines = stripShellHeredocBodies(runBlock)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const expectedCommands = [
-    "python3 scripts/ci/check_burnbar_release_preflight.py",
-  ];
-  if (allowOwnerEmergencyApproval) {
-    expectedCommands.push(
-      "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
-    );
-  }
-  if (!expectedCommands.some((command) => executableLines.includes(command))) {
+  const executableRunBlock = stripShellHeredocBodies(runBlock);
+  if (
+    !/(^|\s)python3\s+scripts\/ci\/check_burnbar_release_preflight\.py(\s|$)/u.test(
+      executableRunBlock,
+    )
+  ) {
     fail(file, `${message}: must run the full product release preflight`);
   }
   if (
     !allowOwnerEmergencyApproval &&
-    /\b--allow-owner-emergency-approval\b/u.test(runBlock)
+    hasShellFlag(executableRunBlock, "--allow-owner-emergency-approval")
   ) {
     fail(file, `${message}: owner-emergency approval is not allowed in this workflow`);
   }
-  if (/\b--source-provenance-only\b/u.test(runBlock)) {
+  if (
+    allowOwnerEmergencyApproval &&
+    hasShellFlag(executableRunBlock, "--allow-owner-emergency-approval") &&
+    !/--expected-release-tag\s+["']?\$\{\{\s*steps\.version\.outputs\.tag_name\s*\}\}["']?/u.test(executableRunBlock)
+  ) {
+    fail(file, `${message}: owner-emergency approval must be bound to the resolved release tag`);
+  }
+  if (hasShellFlag(executableRunBlock, "--source-provenance-only")) {
     fail(file, `${message}: product preflight must not be source-only`);
   }
 }
