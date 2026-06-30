@@ -103,7 +103,16 @@ copy_publishable_file() {
 while IFS= read -r -d '' path; do
   if is_gitlink "$path"; then
     while IFS= read -r -d '' subpath; do
-      copy_publishable_file "$path/$subpath" "$path/$subpath"
+      if [[ -z "$subpath" || "$subpath" == "." ]]; then
+        continue
+      fi
+
+      submodule_file="$path/$subpath"
+      if [[ ! -f "$submodule_file" && ! -L "$submodule_file" ]]; then
+        continue
+      fi
+
+      copy_publishable_file "$submodule_file" "$path/$subpath"
     done < <(git -C "$path" ls-files -z --cached)
   elif [[ -d "$path" && ! -L "$path" ]]; then
     while IFS= read -r -d '' child; do
