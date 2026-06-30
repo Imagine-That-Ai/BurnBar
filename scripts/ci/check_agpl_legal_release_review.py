@@ -415,6 +415,7 @@ def validate_owner_attested_soft_approval(
     data: Any,
     *,
     repo_root: Path | None = None,
+    expected_release_tag: str | None = None,
 ) -> list[str]:
     """Validate the explicit owner-emergency release lane.
 
@@ -435,6 +436,18 @@ def validate_owner_attested_soft_approval(
 
     if "explicitNonApproval" in data:
         errors.append("owner emergency approval evidence must not carry explicitNonApproval")
+
+    if not expected_release_tag:
+        errors.append("expected_release_tag is required for owner emergency approval")
+    else:
+        repo = data.get("repo")
+        if not isinstance(repo, dict):
+            errors.append("repo must be an object for owner emergency approval")
+        elif repo.get("releaseTag") != expected_release_tag:
+            errors.append(
+                "repo.releaseTag must match the current release tag "
+                f"{expected_release_tag!r}, found {repo.get('releaseTag')!r}"
+            )
 
     attestation = data.get("ownerAttestation")
     if not isinstance(attestation, dict):

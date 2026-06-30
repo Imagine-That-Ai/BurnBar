@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def legal_review_blockers(
     repo_root: Path,
     *,
     allow_owner_emergency_approval: bool = False,
+    expected_release_tag: str | None = None,
 ) -> list[str]:
     legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
 
@@ -71,7 +73,10 @@ def legal_review_blockers(
         validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
         if validator is None:
             return ["owner emergency approval validator is missing"]
-        return [f"owner emergency approval: {error}" for error in validator(data, repo_root=repo_root)]
+        return [
+            f"owner emergency approval: {error}"
+            for error in validator(data, repo_root=repo_root, expected_release_tag=expected_release_tag)
+        ]
 
     if status != "approved":
         blockers = [f"legal release review is not approved: {status!r}"]
@@ -86,6 +91,33 @@ def legal_review_blockers(
     ]
 
 
+def owner_emergency_approval_is_valid(
+    evidence_path: Path,
+    repo_root: Path,
+    *,
+    expected_release_tag: str | None = None,
+) -> bool:
+    legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
+
+    if not evidence_path.is_file():
+        return False
+
+    try:
+        data = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    owner_status = getattr(legal_review, "OWNER_ATTESTED_SOFT_APPROVAL_STATUS", "owner_attested_soft_approval")
+    status = data.get("reviewStatus") or data.get("status")
+    if status != owner_status:
+        return False
+
+    validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
+    if validator is None:
+        return False
+    return not validator(data, repo_root=repo_root, expected_release_tag=expected_release_tag)
+
+
 def collect_blockers(
     *,
     repo_root: Path,
@@ -93,11 +125,16 @@ def collect_blockers(
     include_runtime_readiness: bool = True,
     include_legal_review: bool = True,
     allow_owner_emergency_approval: bool = False,
+    expected_release_tag: str | None = None,
 ) -> list[str]:
     blockers = []
     runtime_gate_required = include_runtime_readiness
     if allow_owner_emergency_approval and include_legal_review:
-        runtime_gate_required = False
+        runtime_gate_required = not owner_emergency_approval_is_valid(
+            legal_evidence,
+            repo_root,
+            expected_release_tag=expected_release_tag,
+        )
     blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=runtime_gate_required))
     if include_legal_review:
         blockers.extend(
@@ -105,9 +142,22 @@ def collect_blockers(
                 legal_evidence,
                 repo_root,
                 allow_owner_emergency_approval=allow_owner_emergency_approval,
+                expected_release_tag=expected_release_tag,
             )
         )
     return blockers
+
+
+def release_tag_from_environment() -> str | None:
+    for key in ("RELEASE_TAG", "TAG_NAME", "GITHUB_REF_NAME"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+
+    github_ref = os.environ.get("GITHUB_REF", "").strip()
+    if github_ref.startswith("refs/tags/"):
+        return github_ref.removeprefix("refs/tags/")
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -128,6 +178,10 @@ def main(argv: list[str] | None = None) -> int:
             "default path still requires signed external-counsel approval."
         ),
     )
+    parser.add_argument(
+        "--expected-release-tag",
+        help="Expected tag, for example v1.0.8, that owner-emergency evidence must name.",
+    )
     args = parser.parse_args(argv)
 
     repo_root = args.repo_root.resolve()
@@ -141,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         include_runtime_readiness=not args.source_provenance_only,
         include_legal_review=not args.source_provenance_only,
         allow_owner_emergency_approval=args.allow_owner_emergency_approval and not args.source_provenance_only,
+        expected_release_tag=args.expected_release_tag or release_tag_from_environment(),
     )
     if blockers:
         if args.source_provenance_only:
