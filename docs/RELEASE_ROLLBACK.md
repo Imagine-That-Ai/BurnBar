@@ -244,7 +244,10 @@ make build
 # publication path.
 scripts/test-openburnbar-release-smoke.sh
 
-# To inspect or locally run only the release-critical app slice:
+# To inspect or locally run only the release-critical app slice. The GitHub
+# release workflow gives this focused slice a 75-minute envelope because cold
+# macOS runners compile the app host and SwiftPM graph before XCTest starts; the
+# selected tests remain the same bounded release-critical list.
 source scripts/lib/openburnbar-release-app-test-filters.sh
 OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
   ./scripts/test-openburnbar-app.sh

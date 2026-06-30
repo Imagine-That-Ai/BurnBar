@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-06-30
+
+### Fixed
+
+- **Cold-runner release app smoke timeout** — supersedes the failed `v1.0.13`
+  publish run with the same newest-`main` source and pane-enabled macOS app, but
+  gives the bounded release-critical app XCTest slice enough GitHub macOS
+  cold-build headroom to compile the app host and SwiftPM graph before XCTest
+  starts. The release gate still uses the narrow direct-download, Firebase/App
+  Check, menu-bar/popover, and Chat pane tiling filters instead of the full app
+  suite.
+
 ## [1.0.13] - 2026-06-30
 
 ### Fixed

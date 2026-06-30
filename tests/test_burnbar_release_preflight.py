@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.13"
+    assert data["repo"]["releaseTag"] == "v1.0.14"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.13",
+            "v1.0.14",
         ],
         cwd=ROOT,
         text=True,
@@ -137,12 +137,13 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
     step_end = body.index("- name: Verify SQLCipher codec in Release configuration")
     app_step = body[step_start:step_end]
 
-    assert "timeout-minutes: 30" in app_step
+    assert "timeout-minutes: 75" in app_step
+    assert "cold GitHub macOS runners still compile the" in app_step
     assert "source scripts/lib/openburnbar-release-app-test-filters.sh" in app_step
     assert 'OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)"' in app_step
     assert "./scripts/test-openburnbar-app.sh" in app_step
     assert "- name: Run OpenBurnBar app tests" not in body
-    assert "timeout-minutes: 75" not in app_step
+    assert "timeout-minutes: 180" not in app_step
     assert "run: ./scripts/test-openburnbar-app.sh" not in body
 
     assert "source \"$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh\"" in smoke
