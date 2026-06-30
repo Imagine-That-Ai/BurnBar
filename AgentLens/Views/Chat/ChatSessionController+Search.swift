@@ -385,37 +385,36 @@ extension ChatSessionController {
             OpenBurnBarChatContextBudget.chatRetrievalMaxResultLimit
         )
 
-        guard let searchSvc = typedSearchService else {
-            if let routingError = pendingModelRoutingError {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: routingError,
-                    cliUsed: nil
+        let searchSvc = typedSearchService
+        let queryRun: OpenBurnBarQueryRunResult
+        if let searchSvc {
+            queryRun = await searchSvc.runBurnBarQuery(
+                RetrievalQuery(
+                    text: retrievalText,
+                    filters: RetrievalFilters(
+                        artifactTypes: [.conversation, .skillDoc, .agentDoc],
+                        ownership: .personal
+                    ),
+                    lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
+                    semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
+                    rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
+                    resultLimit: retrievalResultLimit
                 )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
-                }
-                refreshHistory()
-            }
-            return
-        }
-
-        let queryRun = await searchSvc.runBurnBarQuery(
-            RetrievalQuery(
+            )
+        } else {
+            AppLogger.chat.info(
+                "chat send continuing without typed search service",
+                metadata: ["backend": chatBackend.rawValue]
+            )
+            queryRun = await runFallbackBurnBarQuery(
                 text: retrievalText,
+                plan: retrievalPlan,
                 filters: RetrievalFilters(
                     artifactTypes: [.conversation, .skillDoc, .agentDoc],
                     ownership: .personal
-                ),
-                lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
-                semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
-                rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
-                resultLimit: retrievalResultLimit
+                )
             )
-        )
+        }
         let retrievalResults = queryRun.retrievalResults
         conversationJumpTargets = await buildConversationJumpTargets(
             queryText: retrievalText,
@@ -890,6 +889,46 @@ extension ChatSessionController {
         }
     }
 
+    private func runFallbackBurnBarQuery(
+        text: String,
+        plan: BurnBarSearchPlan,
+        filters baseFilters: RetrievalFilters
+    ) async -> OpenBurnBarQueryRunResult {
+        var filters = baseFilters
+        var aggregateWindowDescription: String?
+        if filters.dateRange == nil,
+           let inferred = BurnBarSearchTimeWindow.inferredDateRange(from: text, now: Date(), calendar: .current) {
+            filters.dateRange = inferred
+            let fmt = DateFormatter()
+            fmt.dateStyle = .medium
+            fmt.timeStyle = .short
+            aggregateWindowDescription =
+                "Counts and retrieval are limited to local time window: \(fmt.string(from: inferred.lowerBound)) – \(fmt.string(from: inferred.upperBound))."
+        }
+
+        var aggregateCount: Int?
+        if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
+            do {
+                aggregateCount = try await dataStore.countOccurrencesInConversationFullText(
+                    patterns: plan.aggregatePatterns,
+                    provider: filters.provider,
+                    projectName: filters.projectName,
+                    dateRange: filters.dateRange,
+                    conversationSources: filters.conversationSources
+                )
+            } catch {
+                AppLogger.chat.silentFailure("aggregate_count_query_failed (typed search fallback)", error: error)
+            }
+        }
+
+        return OpenBurnBarQueryRunResult(
+            plan: plan,
+            retrievalResults: [],
+            aggregateOccurrenceCount: aggregateCount,
+            aggregateWindowDescription: aggregateWindowDescription
+        )
+    }
+
     private func validateChatBackendAvailability() async -> Bool {
         switch chatBackend {
         case .hermes:
@@ -959,11 +998,17 @@ extension ChatSessionController {
                 "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
                 "Antigravity not found"
             )
-        case .cursorAgent, .openClaude:
+        case .cursorAgent:
             requirement = (
                 "cursor-agent",
                 "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",
                 "Cursor Agent not found"
+            )
+        case .openClaude:
+            requirement = (
+                "openclaude",
+                "OpenClaude CLI was not found. Install OpenClaude and ensure `openclaude` is on your PATH.",
+                "OpenClaude not found"
             )
         case .codex:
             requirement = (
