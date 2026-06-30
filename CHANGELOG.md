@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Swipe-through mobile navigation with live Liquid Glass tray preview** —
+  iPhone users can now navigate between Pulse, Burn, Insights, Streams, Agents,
+  and Store via two complementary gestures. (1) Horizontal swiping on the root
+  content area advances one tab per completed swipe, respecting the
+  `AuroraNavDestination.allCases` order and preserving vertical scrolling inside
+  each tab. (2) Pressing and dragging across the bottom nav tray live-previews
+  the destination under the finger: the visible content follows in real time, a
+  Liquid Glass viewfinder capsule tracks the touch position and snaps to the tab
+  center, the tab item under preview shows its selected visual state, and
+  releasing commits the tab. Haptics fire once per destination boundary crossing
+  during scrubbing with a stronger impact on final commit; analytics fire only on
+  commit. Full-screen overlays (Hermes keyboard, Cloud Store, Chart Studio,
+  Mission Console, Agent Live Stage split/maximize) disable both gestures. Reduce
+  Motion and Reduce Transparency are respected throughout. A pure gesture model
+  (`AuroraNavGestureModel`) holds the testable destination resolution, edge
+  clamping, and commit/cancel logic; 35 focused unit tests cover the math.
+
 - **Mobile backdrop kernels** — iOS/iPadOS and Android now expose the same 30
   app.burnbar.ai backdrop kernel IDs and labels used
   by the website console. The existing Website Background switch remains the
