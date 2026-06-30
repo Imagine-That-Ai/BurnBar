@@ -146,6 +146,12 @@ if (macUpdateBaseUrlRaw) {
 
 assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
 assert.match(downloadPage, /branded\s+direct-download host is being republished/);
+assert.match(downloadPage, /<h1 class="pagehead__h">Get OpenBurnBar<\/h1>/);
+assert.doesNotMatch(
+  downloadPage,
+  /Get OpenBurnBar\.<\/h1>/,
+  "download hero punctuation must not wrap onto its own line on narrow screens"
+);
 assert.match(downloadPage, /Current public button uses the GitHub Release DMG fallback/);
 assert.match(downloadPage, /Branded direct-download releases are Developer ID signed/);
 assert.doesNotMatch(
