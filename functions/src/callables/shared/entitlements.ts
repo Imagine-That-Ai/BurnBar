@@ -31,23 +31,31 @@ export const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 
 export async function assertActiveHostedQuotaEntitlement(uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
-  const [hostedSnap, proSnap] = await Promise.all([
+  const [hostedSnap, proSnap, proMaxSnap, ultraSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
   ]);
   if (isActiveHostedQuotaEntitlement(hostedSnap.data())) return;
   if (isActivePremiumEntitlement(proSnap.data())) return;
+  if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return;
+  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return;
   throw new HttpsError("permission-denied", "Hosted Quota Sync or BurnBar Pro subscription required.");
 }
 
 export async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud");
-  const [proSnap, hostedSnap] = await Promise.all([
+  const [proSnap, hostedSnap, proMaxSnap, ultraSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
   ]);
   if (isActivePremiumEntitlement(proSnap.data())) return;
   if (isActivePremiumEntitlement(hostedSnap.data())) return;
+  if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return;
+  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return;
   throw new HttpsError(
     "permission-denied",
     "BurnBar Pro is required for hosted LLM, encrypted session-log backup, and cloud search.",

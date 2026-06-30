@@ -334,12 +334,16 @@ async function refreshHostedQuotaAccount(
 
 async function requireHostedQuotaEntitlement(db: QuotaFirestoreLike, uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
-  const [hostedSnap, proSnap] = await Promise.all([
+  const [hostedSnap, proSnap, proMaxSnap, ultraSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_pro_max`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_ultra`).get(),
   ]);
   if (isActiveHostedQuotaEntitlement(recordOrUndefined(hostedSnap.data()))) return;
   if (isActivePremiumEntitlement(proSnap.data())) return;
+  if (isActivePremiumEntitlement(proMaxSnap.data())) return;
+  if (isActivePremiumEntitlement(ultraSnap.data())) return;
   throw new Error("permission-denied: Hosted Quota Sync or BurnBar Pro subscription required.");
 }
 
@@ -357,10 +361,22 @@ function isActiveHostedQuotaEntitlement(entitlement: Record<string, unknown> | u
 function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
   if (!raw || raw.active !== true) return false;
   const productID = typeof raw.productID === "string" ? raw.productID : "";
+  const cfg = getConfig();
   if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID
+    productID !== cfg.hostedQuotaProductID &&
+    productID !== cfg.burnBarProProductID &&
+    productID !== cfg.burnBarProAnnualProductID &&
+    productID !== cfg.burnBarProMaxProductID &&
+    productID !== cfg.burnBarProMaxAnnualProductID &&
+    productID !== cfg.burnBarUltraProductID &&
+    productID !== cfg.burnBarUltraAnnualProductID &&
+    productID !== cfg.googlePlaySubscriptionProductID &&
+    productID !== cfg.googlePlayCloudMonthlyProductID &&
+    productID !== cfg.googlePlayCloudAnnualProductID &&
+    productID !== cfg.googlePlayCloudProMonthlyProductID &&
+    productID !== cfg.googlePlayCloudProAnnualProductID &&
+    productID !== cfg.googlePlayUltraMonthlyProductID &&
+    productID !== cfg.googlePlayUltraAnnualProductID
   ) {
     return false;
   }
