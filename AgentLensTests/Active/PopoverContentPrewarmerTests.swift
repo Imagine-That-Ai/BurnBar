@@ -200,6 +200,33 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         window.close()
     }
 
+    func testPopoverWindowConfiguration_allowsTextInputToOwnKeyboardSpace() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 540),
+            styleMask: [.nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        panel.hidesOnDeactivate = true
+        panel.becomesKeyOnlyIfNeeded = true
+
+        var orderedWindow: NSWindow?
+        OpenBurnBarPopoverWindowConfigurator.apply(to: panel) { window in
+            orderedWindow = window
+        }
+
+        XCTAssertIdentical(orderedWindow, panel)
+        XCTAssertEqual(panel.level, .statusBar)
+        XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        XCTAssertFalse(panel.hidesOnDeactivate)
+        XCTAssertFalse(
+            panel.becomesKeyOnlyIfNeeded,
+            "The popover panel must become key normally so Space stays text input instead of re-clicking the status item"
+        )
+        panel.close()
+    }
+
     func testPrimePopoverContent_withoutFactory_leavesPopoverUntouched() {
         let delegate = AppDelegate()
         delegate.primePopoverContent()
