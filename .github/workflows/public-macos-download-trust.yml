@@ -1,0 +1,93 @@
+name: Public macOS Download Trust
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-public-macos-download-change:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      gate_changed: ${{ steps.detect.outputs.gate_changed }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        name: Detect public macOS download config changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          changed=false
+          gate_changed=false
+          changed_paths="$(mktemp)"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            changed=true
+            gate_changed=true
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --name-only "$BASE_SHA"...HEAD > "$changed_paths"
+            if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
+              changed=true
+            fi
+            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+              gate_changed=true
+            fi
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ -z "${BEFORE_SHA:-}" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+              changed=true
+              gate_changed=true
+            else
+              git diff --name-only "$BEFORE_SHA" HEAD > "$changed_paths"
+              if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
+                changed=true
+              fi
+              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+                gate_changed=true
+              fi
+            fi
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "gate_changed=$gate_changed" >> "$GITHUB_OUTPUT"
+          echo "Public macOS download config changed: $changed"
+          echo "Public macOS trust gate code changed: $gate_changed"
+
+  verify-public-macos-download-trust-code:
+    needs: detect-public-macos-download-change
+    if: ${{ needs.detect-public-macos-download-change.outputs.gate_changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify public macOS trust gate scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/ci/verify-public-macos-download-trust.sh
+          bash -n scripts/ci/verify-apple-release-firebase-config.sh
+          bash -n scripts/ci/verify-apple-release-firebase-config.test.sh
+          bash -n scripts/ci/verify-apple-appcheck-release-artifact.sh
+          bash scripts/ci/verify-apple-release-firebase-config.test.sh
+
+  verify-public-macos-download-trust:
+    needs: detect-public-macos-download-change
+    if: ${{ needs.detect-public-macos-download-change.outputs.changed == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify exact public macOS DMG trust chain
+        run: bash scripts/ci/verify-public-macos-download-trust.sh

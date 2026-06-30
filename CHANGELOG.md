@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-06-29
+
 ### Added
 
 - **Mobile backdrop kernels** — iOS/iPadOS and Android now expose the same 30
@@ -63,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **macOS public release copy** — replaces the stale `0.1.2-beta.1` website
+  fallback lane with a current `1.0.6` release path and adds fail-closed gates
+  for the two user-visible regressions it exposed: unsigned/unstapled DMGs that
+  trigger Gatekeeper "move to Trash" warnings, and app bundles missing the
+  sealed `GoogleService-Info.plist` needed for Google, Apple, and email auth.
 - **Swarm substrate renderers** — tightened the bespoke substrate ports with
   frame-scratch reuse, cached glow/sprite work, safer contour/neighbor gating,
   richer dark/light paint passes, and an explicit skipped preview-render test
