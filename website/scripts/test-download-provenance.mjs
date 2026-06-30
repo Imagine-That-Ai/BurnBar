@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -30,16 +31,49 @@ const sourcePage = read("website/src/pages/legal/source.astro");
 const uploadScript = read("scripts/upload-macos-downloads-r2.sh");
 const releaseDocs = read("docs/RELEASE_MACOS.md");
 
+// This is intentionally duplicated from SITE. Changing the public DMG URL must
+// update this audited live URL in the same PR, after the replacement artifact is
+// published and manually verified.
+const AUDITED_LIVE_MAC_DOWNLOAD_URL =
+  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.2-beta.1/OpenBurnBar-0.1.2-beta.1-macOS.dmg";
+
+const TRUSTED_GITHUB_RELEASE_PATH =
+  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/;
+
+function assertHttpsDownloadUrl(url, label) {
+  assert.equal(url.protocol, "https:", `${label} must use HTTPS`);
+  assert.equal(url.username, "", `${label} must not contain a username`);
+  assert.equal(url.password, "", `${label} must not contain a password`);
+  assert.equal(url.search, "", `${label} must not contain query parameters`);
+  assert.equal(url.hash, "", `${label} must not contain a fragment`);
+
+  if (url.hostname === "downloads.burnbar.ai") {
+    assert(
+      /^\/(?:OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/.test(url.pathname),
+      `${label} must stay on the first-party download root or macOS DMG asset`
+    );
+    return;
+  }
+
+  if (url.hostname === "github.com") {
+    assert(
+      TRUSTED_GITHUB_RELEASE_PATH.test(url.pathname),
+      `${label} must stay on the BurnBar GitHub Release asset path`
+    );
+    return;
+  }
+
+  assert.fail(`${label} must use downloads.burnbar.ai or a GitHub Release asset path`);
+}
+
 const macDownloadBaseUrl = new URL(stringValue(siteSource, "macDownloadBaseUrl"));
 const macReleaseFile = stringValue(siteSource, "macReleaseFile");
-const isFirstPartyDownloadHost = macDownloadBaseUrl.hostname === "downloads.burnbar.ai";
-const isGitHubReleaseAsset =
-  macDownloadBaseUrl.hostname === "github.com" &&
-  macDownloadBaseUrl.pathname.startsWith("/Imagine-That-Ai/BurnBar/releases/download/");
-assert(
-  isFirstPartyDownloadHost || isGitHubReleaseAsset,
-  "SITE.macDownloadBaseUrl must use downloads.burnbar.ai or a GitHub Release asset path"
+assert.match(
+  macReleaseFile,
+  /^OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg$/,
+  "SITE.macReleaseFile must be a plain OpenBurnBar macOS DMG filename"
 );
+assertHttpsDownloadUrl(macDownloadBaseUrl, "SITE.macDownloadBaseUrl");
 assert(
   !/(^|\.)r2\.dev$/i.test(macDownloadBaseUrl.hostname),
   "SITE.macDownloadBaseUrl must not expose a raw R2 public bucket"
@@ -48,15 +82,57 @@ assert(
 const macDownloadUrl = new URL(
   `${macDownloadBaseUrl.toString().replace(/\/$/, "")}/${macReleaseFile}`
 );
-const macDownloadResponse = await fetch(macDownloadUrl, {
-  method: "HEAD",
-  redirect: "follow",
-  signal: AbortSignal.timeout(15_000)
-});
-assert(
-  macDownloadResponse.ok,
-  `SITE macOS download URL must be live: ${macDownloadUrl} returned ${macDownloadResponse.status}`
+assertHttpsDownloadUrl(macDownloadUrl, "SITE macOS download URL");
+assert.equal(
+  macDownloadUrl.href,
+  AUDITED_LIVE_MAC_DOWNLOAD_URL,
+  "SITE macOS download URL must match the audited live DMG URL in this smoke test"
 );
+
+async function fetchAuditedMacDownloadWithTimeout(init) {
+  const response = await fetch(AUDITED_LIVE_MAC_DOWNLOAD_URL, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(15_000),
+    ...init
+  });
+  return response;
+}
+
+async function cancelBody(response) {
+  await response.body?.cancel().catch(() => {});
+}
+
+async function assertLiveDownloadUrl() {
+  let lastFailure = "not attempted";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const head = await fetchAuditedMacDownloadWithTimeout({ method: "HEAD" });
+      if (head.ok) return;
+
+      lastFailure = `HEAD returned ${head.status}`;
+      if (head.status === 403 || head.status === 405) {
+        const ranged = await fetchAuditedMacDownloadWithTimeout({
+          method: "GET",
+          headers: { Range: "bytes=0-0" }
+        });
+        const ok = ranged.ok || ranged.status === 206;
+        lastFailure = `GET range returned ${ranged.status}`;
+        await cancelBody(ranged);
+        if (ok) return;
+      }
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+
+    if (attempt < 3) await delay(attempt * 750);
+  }
+
+  assert.fail(
+    `SITE macOS download URL must be live: ${AUDITED_LIVE_MAC_DOWNLOAD_URL} (${lastFailure})`
+  );
+}
+
+await assertLiveDownloadUrl();
 
 const macUpdateBaseUrlRaw = stringValue(siteSource, "macUpdateBaseUrl");
 if (macUpdateBaseUrlRaw) {
@@ -70,6 +146,13 @@ if (macUpdateBaseUrlRaw) {
 
 assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
 assert.match(downloadPage, /branded\s+direct-download host is being republished/);
+assert.match(downloadPage, /Current public button uses the GitHub Release DMG fallback/);
+assert.match(downloadPage, /Branded direct-download releases are Developer ID signed/);
+assert.doesNotMatch(
+  downloadPage,
+  /<li>Signed with Developer ID \+ notarized \+ stapled<\/li>/,
+  "the emergency GitHub fallback must not be presented as the signed direct-download lane"
+);
 assert.match(sourcePage, /corresponding source archive/);
 assert.match(sourcePage, /signed macOS\s+DMG, ZIP, SBOM, checksums, and release\s+metadata/);
 

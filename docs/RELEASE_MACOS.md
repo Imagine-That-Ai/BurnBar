@@ -83,11 +83,15 @@ that the Download button will use:
 npm run test:download-provenance --prefix website
 ```
 
-That guard performs a live `HEAD` request against
-`SITE.macDownloadBaseUrl/SITE.macReleaseFile`. It must fail if DNS is missing,
-the object was not uploaded, or a release asset path is stale. Do not deploy the
-website with a dead direct-download host and do not rely on `burnbar.ai/downloads/*`
-Firebase fallback pages as proof that a DMG exists.
+That guard compares `SITE.macDownloadBaseUrl/SITE.macReleaseFile` to the
+audited live DMG URL embedded in `website/scripts/test-download-provenance.mjs`,
+then performs a live `HEAD` request against that audited URL. Changing the
+public DMG requires updating both `SITE` and the audited URL constant in the
+same PR, after the replacement artifact is published and manually verified. The
+guard must fail if DNS is missing, the object was not uploaded, or a release
+asset path is stale. Do not deploy the website with a dead direct-download host
+and do not rely on `burnbar.ai/downloads/*` Firebase fallback pages as proof
+that a DMG exists.
 
 If the branded `downloads.burnbar.ai` host is down, the emergency recovery path
 is to repoint the website at a known live GitHub Release asset, rerun the
