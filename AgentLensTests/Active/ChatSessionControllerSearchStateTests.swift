@@ -242,6 +242,50 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         XCTAssertTrue(provider.requestedQueries.isEmpty)
     }
 
+    func test_send_withoutTypedSearchService_computesAggregateCounts() async throws {
+        let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-nil-typed-search-aggregate")
+        defer { harness.cleanup() }
+
+        let countedConversation = harness.makeConversationFixture(
+            id: "conv-nil-typed-search-aggregate-counted",
+            fullText: "The user said fuck once, then fuck twice."
+        )
+        let unrelatedConversation = harness.makeConversationFixture(
+            id: "conv-nil-typed-search-aggregate-unrelated",
+            fullText: "Routine planning with no matching term."
+        )
+        try await harness.dataStore.upsertConversation(countedConversation)
+        try await harness.dataStore.upsertConversation(unrelatedConversation)
+
+        let provider = ControlledChatSessionSearchProvider(responses: [:])
+        let suiteName = "chat-nil-typed-search-aggregate-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults)
+        settings.hermesChatModelOverride = ""
+
+        let controller = ChatSessionController(
+            dataStore: harness.dataStore,
+            settingsManager: settings,
+            searchService: provider
+        )
+        await controller.startNewChatThreadAsync()
+        controller.chatBackend = .hermes
+        controller.hermesAvailable = true
+        controller.chatModelHermes = "test-hermes-model"
+        controller.inputText = "how many times have i said fuck"
+
+        await controller.send()
+
+        XCTAssertFalse(controller.isStreaming)
+        XCTAssertEqual(controller.messages.first?.role, .user)
+        XCTAssertEqual(controller.messages.last?.role, .assistant)
+        let response = controller.messages.last?.content ?? ""
+        XCTAssertTrue(response.localizedCaseInsensitiveContains("Indexed answer: 2"))
+        XCTAssertTrue(response.localizedCaseInsensitiveContains("Patterns counted: fuck"))
+        XCTAssertTrue(provider.requestedQueries.isEmpty)
+    }
+
     func test_indexedQueryResponseStrategy_generalPrompt_prefersLLM() {
         let query = "help me write a better landing page headline"
         let plan = BurnBarSearchPlan.plan(userText: query)

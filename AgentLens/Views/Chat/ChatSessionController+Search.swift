@@ -406,11 +406,13 @@ extension ChatSessionController {
                 "chat send continuing without typed search service",
                 metadata: ["backend": chatBackend.rawValue]
             )
-            queryRun = OpenBurnBarQueryRunResult(
+            queryRun = await runFallbackBurnBarQuery(
+                text: retrievalText,
                 plan: retrievalPlan,
-                retrievalResults: [],
-                aggregateOccurrenceCount: nil,
-                aggregateWindowDescription: nil
+                filters: RetrievalFilters(
+                    artifactTypes: [.conversation, .skillDoc, .agentDoc],
+                    ownership: .personal
+                )
             )
         }
         let retrievalResults = queryRun.retrievalResults
@@ -885,6 +887,46 @@ extension ChatSessionController {
                 }.value
             }
         }
+    }
+
+    private func runFallbackBurnBarQuery(
+        text: String,
+        plan: BurnBarSearchPlan,
+        filters baseFilters: RetrievalFilters
+    ) async -> OpenBurnBarQueryRunResult {
+        var filters = baseFilters
+        var aggregateWindowDescription: String?
+        if filters.dateRange == nil,
+           let inferred = BurnBarSearchTimeWindow.inferredDateRange(from: text, now: Date(), calendar: .current) {
+            filters.dateRange = inferred
+            let fmt = DateFormatter()
+            fmt.dateStyle = .medium
+            fmt.timeStyle = .short
+            aggregateWindowDescription =
+                "Counts and retrieval are limited to local time window: \(fmt.string(from: inferred.lowerBound)) – \(fmt.string(from: inferred.upperBound))."
+        }
+
+        var aggregateCount: Int?
+        if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
+            do {
+                aggregateCount = try await dataStore.countOccurrencesInConversationFullText(
+                    patterns: plan.aggregatePatterns,
+                    provider: filters.provider,
+                    projectName: filters.projectName,
+                    dateRange: filters.dateRange,
+                    conversationSources: filters.conversationSources
+                )
+            } catch {
+                AppLogger.chat.silentFailure("aggregate_count_query_failed (typed search fallback)", error: error)
+            }
+        }
+
+        return OpenBurnBarQueryRunResult(
+            plan: plan,
+            retrievalResults: [],
+            aggregateOccurrenceCount: aggregateCount,
+            aggregateWindowDescription: aggregateWindowDescription
+        )
     }
 
     private func validateChatBackendAvailability() async -> Bool {
