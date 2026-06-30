@@ -71,10 +71,7 @@ def legal_review_blockers(
         validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
         if validator is None:
             return ["owner emergency approval validator is missing"]
-        return [
-            f"owner emergency approval: {error}"
-            for error in validator(data, repo_root=repo_root)
-        ]
+        return [f"owner emergency approval: {error}" for error in validator(data, repo_root=repo_root)]
 
     if status != "approved":
         blockers = [f"legal release review is not approved: {status!r}"]
