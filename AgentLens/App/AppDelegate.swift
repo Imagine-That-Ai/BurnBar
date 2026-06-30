@@ -280,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.title = OpenBurnBarStatusItemBrandMark.fallbackTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
+            button.refusesFirstResponder = true
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)
@@ -381,7 +382,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem?.button else {
             return
         }
-        guard shouldHandleStatusItemEventWithoutEvent() else {
+        let currentEvent = NSApp.currentEvent
+        guard !OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            currentEvent,
+            isPopoverShown: popover?.isShown ?? false
+        ) else {
+            return
+        }
+        guard shouldHandleStatusItemEvent(currentEvent) else {
             return
         }
 
@@ -549,10 +557,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             timestamp: event.timestamp
         )
         return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
-    }
-
-    private func shouldHandleStatusItemEventWithoutEvent() -> Bool {
-        shouldHandleStatusItemEvent(key: nil, timestamp: ProcessInfo.processInfo.systemUptime)
     }
 
     private func shouldHandleStatusItemEvent(
@@ -1323,13 +1327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func configureMenuPopoverWindow(_ window: NSWindow) {
-        window.level = .statusBar
-        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-        if let panel = window as? NSPanel {
-            panel.hidesOnDeactivate = false
-            panel.becomesKeyOnlyIfNeeded = true
-        }
-        window.orderFrontRegardless()
+        OpenBurnBarPopoverWindowConfigurator.apply(to: window)
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {
@@ -1403,6 +1401,30 @@ enum OpenBurnBarStatusItemClick {
             return .showSecondaryMenu
         default:
             return .ignore
+        }
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(_ event: NSEvent?, isPopoverShown: Bool) -> Bool {
+        shouldIgnoreKeyboardRetoggle(
+            eventType: event?.type,
+            charactersIgnoringModifiers: event?.charactersIgnoringModifiers,
+            isPopoverShown: isPopoverShown
+        )
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(
+        eventType: NSEvent.EventType?,
+        charactersIgnoringModifiers: String?,
+        isPopoverShown: Bool
+    ) -> Bool {
+        guard isPopoverShown, eventType == .keyDown else {
+            return false
+        }
+        switch charactersIgnoringModifiers {
+        case " ", "\r", "\n":
+            return true
+        default:
+            return false
         }
     }
 }
@@ -1523,6 +1545,30 @@ private extension CGRect {
 enum OpenBurnBarPopoverClickRegion {
     static func isInsideInteractiveRegion(_ point: CGPoint, statusItemFrame: CGRect, popoverFrame: CGRect) -> Bool {
         return statusItemFrame.insetBy(dx: -5, dy: -5).contains(point) || popoverFrame.contains(point)
+    }
+}
+
+enum OpenBurnBarPopoverWindowConfigurator {
+    static func apply(to window: NSWindow) {
+        apply(to: window, orderFront: defaultOrderFront)
+    }
+
+    static func apply(to window: NSWindow, orderFront: (NSWindow) -> Void) {
+        window.level = .statusBar
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        if let panel = window as? NSPanel {
+            panel.hidesOnDeactivate = false
+            // Keep SwiftUI text fields in the popover as normal key-window
+            // editors. If the status-item button keeps keyboard ownership,
+            // Space performs the button again and closes the popover.
+            panel.becomesKeyOnlyIfNeeded = false
+        }
+        orderFront(window)
+    }
+
+    private static func defaultOrderFront(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 }
 

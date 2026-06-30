@@ -120,6 +120,35 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         XCTAssertEqual(OpenBurnBarStatusItemClick.action(for: nil), .togglePopover)
     }
 
+    func test_statusItemClickPolicy_ignoresKeyboardRetoggleWhilePopoverIsShown() {
+        XCTAssertTrue(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .keyDown,
+            charactersIgnoringModifiers: " ",
+            isPopoverShown: true
+        ))
+        XCTAssertTrue(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .keyDown,
+            charactersIgnoringModifiers: "\r",
+            isPopoverShown: true
+        ))
+        XCTAssertTrue(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .keyDown,
+            charactersIgnoringModifiers: "\n",
+            isPopoverShown: true
+        ))
+
+        XCTAssertFalse(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .keyDown,
+            charactersIgnoringModifiers: " ",
+            isPopoverShown: false
+        ))
+        XCTAssertFalse(OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            eventType: .leftMouseUp,
+            charactersIgnoringModifiers: nil,
+            isPopoverShown: true
+        ))
+    }
+
     func test_menuExtraClickFallback_usesSmallHitSlopAroundStatusItemFrame() {
         let frame = CGRect(x: 3044, y: 3, width: 36, height: 24)
 
