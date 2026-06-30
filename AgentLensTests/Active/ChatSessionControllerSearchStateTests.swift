@@ -195,6 +195,53 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         XCTAssertTrue(response.localizedCaseInsensitiveContains("exact spot"))
     }
 
+    func test_send_withoutTypedSearchService_usesLocalOracleInsteadOfSilentReturn() async throws {
+        let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-nil-typed-search")
+        defer { harness.cleanup() }
+
+        let codexConversation = harness.makeConversationFixture(
+            id: "conv-nil-typed-search-codex",
+            provider: .codex,
+            fullText: "Codex transcript: fuck this flaky chat path. Then the user said fuck again."
+        )
+        let claudeConversation = harness.makeConversationFixture(
+            id: "conv-nil-typed-search-claude",
+            provider: .claudeCode,
+            fullText: "Claude transcript: routine planning with no matching strong language."
+        )
+        try await harness.dataStore.upsertConversation(codexConversation)
+        try await harness.dataStore.upsertConversation(claudeConversation)
+
+        let provider = ControlledChatSessionSearchProvider(responses: [:])
+        let suiteName = "chat-nil-typed-search-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults)
+        settings.hermesChatModelOverride = ""
+
+        let controller = ChatSessionController(
+            dataStore: harness.dataStore,
+            settingsManager: settings,
+            searchService: provider
+        )
+        await controller.startNewChatThreadAsync()
+        controller.chatBackend = .hermes
+        controller.hermesAvailable = true
+        controller.chatModelHermes = "test-hermes-model"
+        controller.inputText = "which agent do i curse at the most"
+
+        await controller.send()
+
+        XCTAssertFalse(controller.isStreaming)
+        XCTAssertEqual(controller.messages.first?.role, .user)
+        XCTAssertEqual(controller.messages.last?.role, .assistant)
+        let response = controller.messages.last?.content ?? ""
+        XCTAssertFalse(response.isEmpty)
+        XCTAssertTrue(response.localizedCaseInsensitiveContains("Codex"))
+        XCTAssertTrue(response.localizedCaseInsensitiveContains("matches"))
+        XCTAssertTrue(provider.requestedQueries.isEmpty)
+    }
+
     func test_indexedQueryResponseStrategy_generalPrompt_prefersLLM() {
         let query = "help me write a better landing page headline"
         let plan = BurnBarSearchPlan.plan(userText: query)

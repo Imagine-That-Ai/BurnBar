@@ -490,7 +490,7 @@ struct ChatMessageTextPresentation: Equatable {
 }
 
 enum ChatMessageTextLimiter {
-    static let defaultVisibleCharacterLimit = 12_000
+    static let defaultVisibleCharacterLimit = 4_000
 
     static func presentation(
         for text: String,

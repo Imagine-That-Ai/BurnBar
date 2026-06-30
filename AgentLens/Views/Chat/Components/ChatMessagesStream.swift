@@ -69,32 +69,37 @@ struct ChatMessagesStream: View {
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             }
+            .onAppear {
+                scrollToLatestMessage(using: proxy, animated: false)
+            }
             .onChange(of: controller.messages.count) { _, _ in
                 // A citation jump may open a different thread; its rows land here,
                 // so retry the pending scroll once they exist before tailing.
                 if performPendingMemoryJump(using: proxy) { return }
-                if let last = controller.messages.last {
-                    Task { @MainActor in
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
+                scrollToLatestMessage(using: proxy)
             }
             .onChange(of: controller.messages.last?.content.count ?? 0) { _, _ in
-                if let last = controller.messages.last {
-                    Task { @MainActor in
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
+                scrollToLatestMessage(using: proxy)
             }
             // E1: a citation tap bumps `memoryJumpRequestToken` (even when the id
             // is unchanged), so observing the token re-fires scroll + flash on a
             // repeat tap of the same in-view source.
             .onChange(of: controller.memoryJumpRequestToken) { _, _ in
                 _ = performPendingMemoryJump(using: proxy)
+            }
+        }
+    }
+
+    private func scrollToLatestMessage(using proxy: ScrollViewProxy, animated: Bool = true) {
+        guard let last = controller.messages.last else { return }
+        Task { @MainActor in
+            await Task.yield()
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(last.id, anchor: .bottom)
             }
         }
     }
@@ -131,7 +136,7 @@ struct ChatMessagesStream: View {
 
     @ViewBuilder
     private var streamColumn: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+        LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             if !controller.retrievalHealthSnapshot.degradedModes.isEmpty {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     ForEach(controller.retrievalHealthSnapshot.degradedModes) { state in
