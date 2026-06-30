@@ -100,11 +100,11 @@ download_values="$(
 const fs = require("fs");
 const source = fs.readFileSync("website/src/data/site.ts", "utf8");
 const read = (name, fallback = "") => {
-  const match = source.match(new RegExp(`${name}:\\s*"([^"]+)"`));
+  const match = source.match(new RegExp(`${name}:\\s*"([^"]*)"`));
   return match?.[1] ?? fallback;
 };
 console.log(read("macDownloadBaseUrl"));
-console.log(read("macUpdateBaseUrl", read("macDownloadBaseUrl")));
+console.log(read("macUpdateBaseUrl", ""));
 console.log(read("macUpdateFeedFile", "latest-macos.json"));
 console.log(read("macAppcastFile", "appcast.xml"));
 NODE

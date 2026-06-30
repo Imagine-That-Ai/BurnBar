@@ -18,9 +18,8 @@
   <div class="analytics-consent__body">
     <p class="analytics-consent__text">
       <strong>Privacy-first, opt-in analytics.</strong>
-      We'd like to measure feature usage with privacy-preserving analytics (Amplitude) to improve BurnBar.
-      No personal data, no message content, no tracking until you choose to opt in. See our
-      <a href="/privacy">Privacy Policy</a>.
+      We use privacy-preserving Amplitude only if you accept. No personal data, no message content, no
+      tracking before consent. See our <a href="/privacy">Privacy Policy</a>.
     </p>
     <div class="analytics-consent__actions">
       <button
@@ -44,11 +43,10 @@
 <style>
   .analytics-consent {
     position: fixed;
-    inset-inline: 1rem;
+    inset-inline-end: 1rem;
     inset-block-end: 1rem;
     z-index: 1000;
-    max-width: 44rem;
-    margin-inline: auto;
+    max-width: min(32rem, calc(100vw - 2rem));
     border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
     border-radius: 14px;
     background: color-mix(in srgb, var(--color-surface, #14131a) 92%, transparent);
@@ -112,6 +110,34 @@
   }
   .analytics-consent__btn--primary:hover {
     background: color-mix(in srgb, var(--color-accent, #6d5efc) 88%, #fff);
+  }
+  @media (max-width: 640px) {
+    .analytics-consent {
+      inset-inline: 0.75rem;
+      inset-block-end: max(0.75rem, env(safe-area-inset-bottom));
+      padding: 0.75rem;
+      border-radius: 12px;
+      max-height: min(34vh, 11.5rem);
+      overflow: auto;
+    }
+    .analytics-consent__body {
+      display: grid;
+      gap: 0.65rem;
+    }
+    .analytics-consent__text {
+      flex-basis: auto;
+      font-size: 0.78rem;
+      line-height: 1.42;
+    }
+    .analytics-consent__actions {
+      width: 100%;
+    }
+    .analytics-consent__btn {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 0.55rem 0.5rem;
+      white-space: nowrap;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     .analytics-consent__btn {

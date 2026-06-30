@@ -7,12 +7,9 @@ const macUpdateBaseUrl = (SITE.macUpdateBaseUrl ?? SITE.macDownloadBaseUrl).repl
 const macDownloadHref = macDownloadBaseUrl
   ? `${macDownloadBaseUrl}/${SITE.macReleaseFile}`
   : `/downloads/${SITE.macReleaseFile}`;
-const macLatestHref = macUpdateBaseUrl
-  ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}`
-  : `/downloads/${SITE.macUpdateFeedFile}`;
-const macAppcastHref = macUpdateBaseUrl
-  ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}`
-  : `/downloads/${SITE.macAppcastFile}`;
+const hasMacUpdateFeed = Boolean(macUpdateBaseUrl);
+const macLatestHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}` : "";
+const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}` : "";
 ---
 
 <BaseLayout
@@ -22,7 +19,7 @@ const macAppcastHref = macUpdateBaseUrl
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Download</span>
-      <h1 class="pagehead__h">Get OpenBurnBar.</h1>
+      <h1 class="pagehead__h">Get OpenBurnBar</h1>
       <nav class="jump" aria-label="Jump to platform">
         <a href="#macos">macOS</a>
         <a href="#ios">iOS · iPadOS</a>
@@ -56,16 +53,20 @@ const macAppcastHref = macUpdateBaseUrl
           <div class="step__card">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              The latest direct-download release is served from OpenBurnBar's download host. Each
-              one ships Developer ID signed, notarized, stapled, with SHA-256 and SHA-512 checksums,
-              a latest-release feed, and a Sparkle-compatible appcast next to it.
+              The public macOS DMG is served from GitHub Releases while OpenBurnBar's branded
+              direct-download host is being republished. The newer notarized 1.0.5 channel will
+              return here once its release pipeline has produced live artifacts.
             </p>
-            <p class="muted small">
-              Release feeds:
-              <a href={macLatestHref}>latest metadata</a>
-              ·
-              <a href={macAppcastHref}>appcast</a>
-            </p>
+            {
+              hasMacUpdateFeed && (
+                <p class="muted small">
+                  Release feeds:
+                  <a href={macLatestHref}>latest metadata</a>
+                  {" · "}
+                  <a href={macAppcastHref}>appcast</a>
+                </p>
+              )
+            }
           </div>
         </li>
         <li class="step">
@@ -226,9 +227,11 @@ npm run build</code></pre>
             <li>{SITE.macMin} or later</li>
             <li>Apple Silicon Mac</li>
             <li>~120 MB on disk</li>
-            <li>Signed with Developer ID + notarized + stapled</li>
-            <li>SHA-256 / SHA-512 checksums published per release</li>
-            <li>SPDX SBOM per release</li>
+            <li>Current public button uses the GitHub Release DMG fallback</li>
+            <li>
+              Branded direct-download releases are Developer ID signed, notarized, and stapled
+            </li>
+            <li>Direct-download releases publish checksums, SBOM, and Sparkle metadata</li>
           </ul>
         </article>
         <article class="reqcard">

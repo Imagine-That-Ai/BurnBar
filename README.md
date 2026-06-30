@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — macOS `1.0.5` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; iOS `1.0.2` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
+  **Status:** Commercial launch candidate — macOS `1.0.7` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; iOS `1.0.2` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
 
 </div>
 
