@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-06-30
+
 ### Added
 
 - **cmux-style multi-pane tiling for the Chat workspace** — the right-side
@@ -32,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-trip / exactly-one-primary repair / fraction clamp) and
   `ChatSessionControllerPaneModeTests`. Design, adversarial loophole-hunt, and
   review history documented in `docs/CHAT_PANE_TILING_PLAN.md`.
+
+### Fixed
+
+- **Newest-main release cut** — supersedes the canceled `v1.0.11` publish run so
+  the public release includes the current `main` tip, including PR #1095's
+  cmux-style chat pane tiling and PR #1104's chat send fallback state repair in
+  addition to the v1.0.11 release-lane bounds.
 
 ## [1.0.11] - 2026-06-30
 
