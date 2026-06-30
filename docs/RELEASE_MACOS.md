@@ -205,6 +205,14 @@ actionable release-lane failure, inspect the completed job logs, fix the root
 cause or split the gate, and rerun on a new tag. Do not let a publish run sit
 opaque until the three-hour job timeout.
 
+Release-lane structure: keep signing, notarization, artifact generation,
+artifact-backed smoke, and publish serialized, but do not add unrelated quality
+checks to that critical path. Functions, Firestore rules, extension/TypeScript,
+replay-host, and supply-chain audit gates should run as independent release jobs
+and block `publish` through `needs`. This keeps a bad gate from shipping while
+allowing slow, independent checks to run beside macOS packaging instead of
+waiting in one long queue.
+
 ## Release artifacts
 
 Each release includes:

@@ -188,6 +188,50 @@ def test_release_workflow_uses_bounded_release_critical_mobile_gate():
         assert required_filter in filters
 
 
+def test_release_workflow_parallelizes_independent_publish_gates():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "release-functions-gate:" in body
+    assert "release-extension-gate:" in body
+    assert "release-supply-chain-gate:" in body
+    assert "name: Release Functions Gate" in body
+    assert "name: Release Extension and TS Gate" in body
+    assert "name: Release Supply Chain Gate" in body
+
+    functions_start = body.index("  release-functions-gate:")
+    extension_start = body.index("  release-extension-gate:")
+    supply_chain_start = body.index("  release-supply-chain-gate:")
+    build_start = body.index("  build-and-release:")
+    for gate_job in (
+        body[functions_start:extension_start],
+        body[extension_start:supply_chain_start],
+        body[supply_chain_start:build_start],
+    ):
+        assert "permissions:\n      contents: read" in gate_job
+        assert "id-token: write" not in gate_job
+        assert "attestations: write" not in gate_job
+
+    smoke_start = body.index("  smoke-test:")
+    build_job = body[build_start:smoke_start]
+    assert "npm --prefix functions run lint" not in build_job
+    assert "npm --prefix functions run build" not in build_job
+    assert "npm --prefix functions test" not in build_job
+    assert "./scripts/test-openburnbar-ts.sh" not in build_job
+    assert "./scripts/test-openburnbar-extension-host.sh" not in build_job
+    assert "npm --prefix functions run test:firestore-rules" not in build_job
+    assert "./scripts/supply-chain-audit.sh" not in build_job
+    assert "Inject extension Sentry DSN" in build_job
+    assert "Build extension" in build_job
+
+    publish_start = body.index("  publish:")
+    verify_start = body.index("  verify-live-update-feed:")
+    publish_job = body[publish_start:verify_start]
+    assert (
+        "needs: [build-and-release, smoke-test, release-functions-gate, "
+        "release-extension-gate, release-supply-chain-gate]"
+    ) in publish_job
+
+
 def test_app_test_wrapper_supports_multiple_normalized_filters():
     result = subprocess.run(
         [

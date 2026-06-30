@@ -50,6 +50,103 @@ env:
   DERIVED_DATA: .derived-data
 
 jobs:
+  release-functions-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Functions Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Install OpenBurnBar Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Lint OpenBurnBar Functions
+        run: npm --prefix functions run lint
+
+      - name: Build OpenBurnBar Functions
+        run: npm --prefix functions run build
+
+      - name: Run OpenBurnBar Functions tests
+        run: npm --prefix functions test
+
+      - name: Run Firestore rules emulator tests
+        run: npm --prefix functions run test:firestore-rules
+
+  release-extension-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Extension and TS Gate
+    runs-on: macos-26
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Run TypeScript tests
+        run: ./scripts/test-openburnbar-ts.sh
+
+      - name: Run replay evals
+        run: ./scripts/test-openburnbar-replay-evals.sh
+
+      - name: Run extension-host tests
+        run: ./scripts/test-openburnbar-extension-host.sh
+
+  release-supply-chain-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Supply Chain Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            extensions/openburnbar/package-lock.json
+
+      - name: Install audit dependencies
+        run: |
+          npm ci --prefix functions
+          npm ci --prefix extensions/openburnbar
+
+      - name: Run supply chain audit
+        run: ./scripts/supply-chain-audit.sh
+
   build-and-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     environment: release
@@ -294,21 +391,6 @@ jobs:
           OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-sentry-config-ios.sh
 
-      - name: Install OpenBurnBar Functions dependencies
-        run: npm ci --prefix functions
-
-      - name: Lint OpenBurnBar Functions
-        run: npm --prefix functions run lint
-
-      - name: Build OpenBurnBar Functions
-        run: npm --prefix functions run build
-
-      - name: Run OpenBurnBar Functions tests
-        run: npm --prefix functions test
-
-      - name: Install extension dependencies
-        run: npm ci --prefix extensions/openburnbar
-
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
@@ -387,18 +469,6 @@ jobs:
       - name: Run retrieval replay evals
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
-      - name: Run TypeScript tests
-        run: ./scripts/test-openburnbar-ts.sh
-
-      - name: Run replay evals
-        run: ./scripts/test-openburnbar-replay-evals.sh
-
-      - name: Run extension-host tests
-        run: ./scripts/test-openburnbar-extension-host.sh
-
-      - name: Run Firestore rules emulator tests
-        run: npm --prefix functions run test:firestore-rules
-
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
@@ -458,8 +528,8 @@ jobs:
           name: app-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
 
-      - name: Run supply chain audit
-        run: ./scripts/supply-chain-audit.sh
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
 
       - name: Inject extension Sentry DSN
         env:
@@ -1361,7 +1431,7 @@ jobs:
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
   publish:
-    needs: [build-and-release, smoke-test]
+    needs: [build-and-release, smoke-test, release-functions-gate, release-extension-gate, release-supply-chain-gate]
     runs-on: macos-15
     timeout-minutes: 15
     steps:
