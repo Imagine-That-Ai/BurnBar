@@ -162,22 +162,16 @@ extension DashboardView {
             .padding(DesignSystem.Spacing.lg)
         }
         .background {
-            if settingsManager.useWebsiteBackground {
-                Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
-            } else {
-                ZStack {
-                    DesignSystem.Colors.surface.opacity(0.92)
-
-                    LinearGradient(
-                        colors: [
-                            DesignSystem.Colors.textPrimary.opacity(0.02),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-            }
+            // Liquid Glass rail, tuned to the active theme: the plate refracts
+            // the live backdrop and leans on the layout's signature colour, so
+            // the sidebar reads as part of each world instead of fixed chrome.
+            // (Editorial skin renders a glass-free paper surface — see
+            // `SidebarThemeGlass`.)
+            SidebarThemeGlass(
+                layout: settingsManager.dashboardLayout,
+                skin: settingsManager.appearanceSkin,
+                shape: RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+            )
         }
         .scrollContentBackground(.hidden)
         .onMoveCommand { direction in
