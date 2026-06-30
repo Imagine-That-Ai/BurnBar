@@ -354,22 +354,33 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertEqual(strategy, .debug)
     }
 
-    func testFirestoreNetworkCompatibilityShimOnlyTargetsIOS27Simulator() {
+    func testFirestoreNetworkCompatibilityShimTargetsAllIOS27Runtimes() {
+        // iOS 27 faults inside the bundled gRPC/BoringSSL on the first Firestore
+        // TLS connect — on the Simulator AND on physical devices (confirmed by an
+        // on-device crash report). The shim must fire on BOTH until Firebase ships
+        // an iOS-27-compatible gRPC.
         XCTAssertTrue(
             AppDelegate.shouldDisableFirestoreNetworkForRuntime(
                 isSimulator: true,
                 operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             AppDelegate.shouldDisableFirestoreNetworkForRuntime(
                 isSimulator: false,
                 operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
             )
         )
+        // Pre-27 runtimes are unaffected (Simulator or device).
         XCTAssertFalse(
             AppDelegate.shouldDisableFirestoreNetworkForRuntime(
                 isSimulator: true,
+                operatingSystemVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 5, patchVersion: 0)
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                isSimulator: false,
                 operatingSystemVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 5, patchVersion: 0)
             )
         )
