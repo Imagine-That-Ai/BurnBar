@@ -23,7 +23,7 @@ import CoreGraphics
 ///   • Layered depth: soft bloom UNDER → saturated rounded gradient body → hot white
 ///     specular core ON TOP. Cores push toward white; glows push toward stage accent.
 /// Per-layout work (binning, corner-hue sampling, density) is cached; the hot loop
-/// recomputes live centroids, the height field, the painter sort, and ≤256 panes.
+/// recomputes live centroids, the height field, and the painter sort.
 public final class MeshPatchSubstrate: SwarmSubstrate {
     private let sprites = SpriteCache()
     public init() {}
@@ -34,12 +34,19 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
     /// ADAPTIVE — chosen so each pane stays a small, fixed screen size rather than
     /// scaling with the cloud/screen (a sparse full-screen swarm must never yield
     /// huge tiles). This cap bounds memory/cell count on very large fields.
-    private static let MAXGRID = 80
+    private static let maxGrid = 80
     /// Pane overlap so adjacent (interior) cells leave no seam gaps.
-    private static let overlap = 1.18
+    private static let overlap = 1.06
     /// Rounded-corner fraction of a pane half-extent — soft glossy lozenges, not
     /// hard squares (so the boundary never reads as a rectangle).
-    private static let cornerFrac = 0.24
+    private static let cornerFrac = 0.28
+    /// Keep the Gradient Patch idiom as fine texture, not a foreground tile wall.
+    /// The original port scaled the target pane from `sizePx * 8.5`, which made
+    /// phone-sized kernel wallpapers produce chunky 25-35 px blocks.
+    private static let minTargetCellPx = 7.0
+    private static let maxTargetCellPx = 10.5
+    private static let targetCellSizeMultiplier = 3.6
+    private static let maxHalfExtentFraction = 0.46
     /// The dark-corner sink color (near-black with a cool iris cast) for depth.
     private static let nearBlack = RGBA(r: 18.0 / 255, g: 22.0 / 255, b: 34.0 / 255)
     /// Iridescent thin-film ramp the seam hue creeps through (looped): cyan,
@@ -95,6 +102,24 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         return Self.irisRamp[i0].mix(with: Self.irisRamp[i1], amount: f - Double(i0))
     }
 
+    static func targetCellPx(forBaseSize sizePx: Double) -> Double {
+        min(max(sizePx * targetCellSizeMultiplier, minTargetCellPx), maxTargetCellPx)
+    }
+
+    static func gridSize(forSpan span: Double, baseSize sizePx: Double) -> Int {
+        let targetCellPx = targetCellPx(forBaseSize: sizePx)
+        return max(8, min(maxGrid, Int((span / targetCellPx).rounded())))
+    }
+
+    static func paneHalfExtent(span: Double, grid: Int, baseSize sizePx: Double) -> Double {
+        let safeGrid = max(1, grid)
+        return min(span / Double(safeGrid) / 2, targetCellPx(forBaseSize: sizePx) * maxHalfExtentFraction)
+    }
+
+    static func maximumPaintedPaneWidth(span: Double, grid: Int, baseSize sizePx: Double) -> Double {
+        paneHalfExtent(span: span, grid: grid, baseSize: sizePx) * overlap * 2
+    }
+
     // MARK: Binning (per layout)
 
     /// Quantize the cloud to a coarse quad grid, dedupe occupied cells, sample each
@@ -113,8 +138,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         // far the cloud spreads). Adapt the grid so cells land at this size; on a
         // sparse full-screen swarm that means MORE, still-small cells — never the
         // ~50px slabs a fixed 16×16 grid produced over a wide field.
-        let targetCellPx = max(13.0, frame.sizePx * 8.5)
-        let grid = max(8, min(Self.MAXGRID, Int((span / targetCellPx).rounded())))
+        let grid = Self.gridSize(forSpan: span, baseSize: frame.sizePx)
         let inv = Double(grid) / span
         let half = Double(grid) * 0.5
 
@@ -147,7 +171,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         // Hard-cap the pane half-extent so even at the grid clamp (huge fields)
         // panes never balloon — discrete small lozenges with gaps when sparse,
         // tessellated when the shape is dense.
-        storedExt = min(span / Double(grid) / 2, targetCellPx * 0.62)
+        storedExt = Self.paneHalfExtent(span: span, grid: grid, baseSize: frame.sizePx)
 
         // Recover each cell's logical grid coord (for the height-field phase).
         for key in 0..<keyToCell.count {
@@ -293,7 +317,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                     // toward the stage accent (rich, luminous — never grey mush).
                     let glow = cornerHue[c * 4 + 0].toWhite(0.30).mix(with: accent, amount: 0.18)
                     let rr = baseExt * (1.5 + 0.55 * br)
-                    layer.opacity = clampD(0.62 * br * f, 0, 0.85)
+                    layer.opacity = clampD(0.42 * br * f, 0, 0.58)
                     layer.fill(Path(ellipseIn: CGRect(x: x - rr, y: y - rr, width: rr * 2, height: rr * 2)),
                                with: .color(glow.color))
                 }
@@ -344,7 +368,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                 .init(color: endC.color, location: 1.0)
             ])
 
-            ctx.opacity = clampD(f * d, 0, 1)
+            ctx.opacity = clampD(0.82 * f * d, 0, 0.88)
             ctx.fill(quad, with: .linearGradient(grad, startPoint: pTL, endPoint: pBR))
 
             // Hot glossy specular core toward the upper-left lit corner. Additive on
@@ -356,7 +380,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
                 let hyp = y + (ox * sinT + oy * cosT)
                 let hr = ext * (0.82 + 0.3 * specK)
                 ctx.blendMode = dark ? .plusLighter : .normal
-                ctx.opacity = clampD((dark ? 0.5 : 0.36) * specK * f, 0, dark ? 0.8 : 0.5)
+                ctx.opacity = clampD((dark ? 0.38 : 0.28) * specK * f, 0, dark ? 0.58 : 0.38)
                 ctx.draw(spot, in: CGRect(x: hxp - hr, y: hyp - hr, width: hr * 2, height: hr * 2))
                 ctx.blendMode = .normal
             }
@@ -364,7 +388,7 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
             // Hairline iridescent thin-film seam — gated by density + rounded so it
             // reads as an INTERIOR grid shimmer that fades at the cloud edge, never
             // an outline. (This is the line that used to trace the broken rectangle.)
-            let seamA = clampD((0.22 + 0.4 * litK) * f * d, 0, 0.82)
+            let seamA = clampD((0.12 + 0.26 * litK) * f * d, 0, 0.46)
             if seamA > 0.02 {
                 let iris = irisAt(seamPhase + cgx[c] * 0.18 + cgy[c] * 0.12)
                 ctx.opacity = seamA

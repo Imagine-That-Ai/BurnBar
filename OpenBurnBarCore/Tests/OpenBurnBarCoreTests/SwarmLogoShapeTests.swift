@@ -24,6 +24,36 @@ final class SwarmLogoShapeTests: XCTestCase {
         }))
     }
 
+    func testProviderOnlyCycleStartsWithProviderLogoWhenProvidersAreSelected() {
+        let cycle = SwarmFormationMode.defaultCycle(for: [.codex, .openClaw], excludeBrandShapes: true)
+
+        XCTAssertEqual(cycle.first, .shapeProviderLogo([.codex, .openClaw]))
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+    }
+
+    func testProviderOnlyCycleTreatsEmptyProviderSelectionAsOff() {
+        XCTAssertEqual(
+            SwarmFormationMode.defaultCycle(for: [], excludeBrandShapes: true),
+            [.swarm]
+        )
+    }
+
+    @MainActor
+    func testProviderOnlySimulationInitializesOnFirstProviderLogo() {
+        let simulation = SwarmSimulation(
+            particleCount: 24,
+            pace: .cinematic,
+            enabledProviderGlyphs: [.codex],
+            excludeBrandShapes: true
+        )
+
+        XCTAssertEqual(simulation.mode, .shapeProviderLogo([.codex]))
+    }
+
     func testInspectionCycleExcludesBrandShapesWhenRequested() {
         let cycle = SwarmFormationMode.inspectionCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
         XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))

@@ -240,11 +240,15 @@ export function productIDsForFeature(
         catalog.burnBarProAnnualProductID,
         catalog.burnBarProMaxProductID,
         catalog.burnBarProMaxAnnualProductID,
+        catalog.burnBarUltraProductID,
+        catalog.burnBarUltraAnnualProductID,
         catalog.googlePlaySubscriptionProductID,
         catalog.googlePlayCloudMonthlyProductID,
         catalog.googlePlayCloudAnnualProductID,
         catalog.googlePlayCloudProMonthlyProductID,
         catalog.googlePlayCloudProAnnualProductID,
+        catalog.googlePlayUltraMonthlyProductID,
+        catalog.googlePlayUltraAnnualProductID,
         ...BURNBAR_CLOUD_PRO_PRODUCT_ALIASES,
       ]);
     case "cloudPro":

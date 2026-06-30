@@ -136,6 +136,20 @@ final class SwarmSubstrateContractTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testMeshPatchPaneSizingStaysFineOnPhoneAndDesktopFields() {
+        XCTAssertLessThanOrEqual(MeshPatchSubstrate.targetCellPx(forBaseSize: 4.0), 10.5)
+        XCTAssertGreaterThanOrEqual(MeshPatchSubstrate.targetCellPx(forBaseSize: 0.8), 7.0)
+
+        let phoneGrid = MeshPatchSubstrate.gridSize(forSpan: 880, baseSize: 3.2)
+        let phoneWidth = MeshPatchSubstrate.maximumPaintedPaneWidth(span: 880, grid: phoneGrid, baseSize: 3.2)
+        XCTAssertLessThanOrEqual(phoneWidth, 10.5)
+
+        let desktopGrid = MeshPatchSubstrate.gridSize(forSpan: 2_200, baseSize: 4.4)
+        let desktopWidth = MeshPatchSubstrate.maximumPaintedPaneWidth(span: 2_200, grid: desktopGrid, baseSize: 4.4)
+        XCTAssertLessThanOrEqual(desktopWidth, 10.5)
+    }
+
     // MARK: Persistence round-trip
 
     func testPreferencesDefaultToPlainAndDisabled() {

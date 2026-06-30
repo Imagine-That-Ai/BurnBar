@@ -76,14 +76,14 @@ struct WebsiteBackgroundView: View {
                     colorPalette: themePalette.swarmPalette,
                     motionSpeedMultiplier: 0.7,
                     isAutoCyclingEnabled: true,
-                    // Empty selection (the "None" glyph choice) would yield a cycle
-                    // with no provider logos — fall back to the full roster so the
-                    // dot-crest always has logos to form.
-                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
+                    // Empty selection (the "None" glyph choice) is meaningful:
+                    // provider logos stay hidden while the non-provider cycle can
+                    // still run when brand shapes are enabled.
+                    enabledProviderGlyphs: prefs.selectedGlyphs,
                     isAvatarEnabled: prefs.isAvatarEnabled,
                     isBrandTextEnabled: prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
-                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || !prefs.selectedGlyphs.isEmpty,
                     maxFrameRate: streamingThrottledFrameRate(nil),
                     rendersAsynchronously: true,
                     substrate: substrate
@@ -168,14 +168,40 @@ struct WebsiteBackgroundView: View {
                 enabledProviderGlyphs: prefs.selectedGlyphs
             )
         default:
-            MobileKernelBackdropView(
-                kernel: kernel,
-                accent: accent,
-                visibility: visibility,
-                colorDriver: colorDriver,
-                backdropColors: themePalette.backdropColors,
-                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate)
-            )
+            ZStack {
+                MobileKernelBackdropView(
+                    kernel: kernel,
+                    accent: accent,
+                    visibility: visibility,
+                    colorDriver: colorDriver,
+                    backdropColors: themePalette.backdropColors,
+                    maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate)
+                )
+
+                if substrateEnabled || !prefs.selectedGlyphs.isEmpty {
+                    SwarmCanvasView(
+                        accent: accent,
+                        pace: .cinematic,
+                        particleCount: resolvedParticleCount(scale: min(plan.particleScale, 0.78)),
+                        colorDriver: nil,
+                        isBatteryThrottled: plan.isBatteryThrottled,
+                        isTransparent: true,
+                        colorPalette: themePalette.swarmPalette,
+                        motionSpeedMultiplier: plan.motionSpeedMultiplierScale,
+                        isAutoCyclingEnabled: plan.allowsAutoCycling,
+                        enabledProviderGlyphs: prefs.selectedGlyphs,
+                        isAvatarEnabled: false,
+                        isBrandTextEnabled: false,
+                        enableSwarmSparkles: false,
+                        excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || !prefs.selectedGlyphs.isEmpty,
+                        maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
+                        rendersAsynchronously: true,
+                        substrate: substrateEnabled ? substrate : nil
+                    )
+                    .opacity(prefs.selectedGlyphs.isEmpty ? 0.42 : 0.62)
+                    .allowsHitTesting(false)
+                }
+            }
         }
     }
 
