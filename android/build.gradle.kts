@@ -1,3 +1,5 @@
+import org.gradle.api.artifacts.dsl.LockMode
+
 plugins {
     id("com.android.application") version "9.2.1" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
@@ -17,4 +19,31 @@ plugins {
     // 1.5.0-alpha06 is the first line with AGP 9 new-DSL support.
     id("com.android.test") version "9.2.1" apply false
     id("androidx.baselineprofile") version "1.5.0-alpha06" apply false
+}
+
+// Supply-chain hardening (R-S5): activate Gradle dependency locking for every
+// module (root + :app + :openburnbar-iroh-relay + :burnbar-remote + :macrobenchmark).
+//
+// `LockMode.DEFAULT` keeps this a no-op until lock state exists: with no
+// `gradle.lockfile` present a configuration resolves exactly as it does today,
+// so committing this cannot break the current build. Only `LockMode.STRICT`
+// would fail on a missing lockfile — deliberately not used here.
+//
+// To pin the graph, a maintainer generates the lock state once and commits the
+// resulting `gradle.lockfile`s by running any resolving task with --write-locks,
+// e.g. per module:
+//     ./gradlew :app:dependencies --write-locks
+//     ./gradlew :burnbar-remote:dependencies --write-locks
+// After the lockfiles land, unexpected (transitive) version drift fails
+// resolution instead of silently upgrading — the hole R-S5 targets. Pairs with
+// the `distributionSha256Sum` wrapper pin so both the build tool and the
+// dependency graph are verified. (Full checksum/signature verification via
+// gradle/verification-metadata.xml is intentionally deferred: enabling it
+// requires a fully generated trust file or every build fails — a separate,
+// higher-risk change.)
+allprojects {
+    dependencyLocking {
+        lockMode.set(LockMode.DEFAULT)
+        lockAllConfigurations()
+    }
 }
