@@ -113,7 +113,7 @@ fi
 diff_pathspec=('*.swift' ':(exclude)*Tests*' ':(exclude)scripts/*' ':(exclude)Package.swift' ':(exclude)*/Package.swift')
 
 changed_files=""
-if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- "${diff_pathspec[@]}" 2>/dev/null)"; then
+if ! changed_files="$(git diff --name-only --find-renames "$base_ref" HEAD -- "${diff_pathspec[@]}" 2>/dev/null)"; then
   changed_files=""
 fi
 
@@ -152,6 +152,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
 base_ref = os.environ["BASE_REF"]
@@ -469,7 +470,8 @@ diff_pathspec = [
     ":(exclude)*/Package.swift",
 ]
 changed_file_list = subprocess.check_output(
-    ["git", "diff", "--name-only", base_ref, "HEAD", "--"] + diff_pathspec,
+    ["git", "diff", "--name-only", "--find-renames",
+     base_ref, "HEAD", "--"] + diff_pathspec,
     cwd=repo_root,
     text=True,
 ).splitlines()
@@ -496,7 +498,8 @@ for rel_path in changed_file_list:
 git_output = ""
 if gated_files:
     git_output = subprocess.run(
-        ["git", "diff", "-U0", base_ref, "HEAD", "--"] + gated_files,
+        ["git", "diff", "-U0", "--find-renames",
+         base_ref, "HEAD", "--"] + gated_files,
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -581,6 +584,100 @@ if cov_ignore_violations:
               "use `cov:ignore -- <reason>`.", file=sys.stderr)
     raise SystemExit(1)
 
+# ---------------------------------------------------------------------------
+# Pure-move safe-harbor (R-GH0). Splitting a god-file or relocating a block is
+# not new behavior — byte-identical (or whitespace-normalized-identical) code
+# that merely moved must not be charged as brand-new uncovered lines, which is
+# exactly the pressure that makes a refactor game the coverage gate.
+#
+# The exemption is granted ONLY by this detector, never by a human-editable
+# annotation: an added line is credited `refactor:pure-move` iff its normalized
+# content matches a line REMOVED elsewhere in the same diff. A genuine edit (a
+# changed literal or operator) matches no removed line and stays gated, so a
+# forged "move" that alters logic is still charged.
+#
+# The removed-line pool is drawn from every production Swift file in the diff
+# (the same pathspec the gate measures), so cross-file and cross-partition
+# splits are recognized even when the move source is out of the current lane's
+# scope. A multiset (Counter) matches moves 1:1 — N relocated copies of a line
+# earn exactly N credits, so appending genuinely-new duplicates of an existing
+# line cannot launder them past the gate.
+
+
+def normalize_move_line(text):
+    # Byte-identical OR whitespace-normalized-identical: collapse indentation
+    # and internal runs (re-indentation is the common relocation transform)
+    # while keeping every token intact, so a changed literal/operator never
+    # normalizes onto the line it replaced.
+    return " ".join(text.split())
+
+
+# Removed-line pool. No --find-renames/--find-copies here on purpose: this pool
+# needs the CONTENT of every removed line, and letting git collapse a rename
+# would hide removed content that a split's added lines legitimately match.
+move_pool_output = subprocess.run(
+    ["git", "diff", "-U0", base_ref, "HEAD", "--"] + diff_pathspec,
+    cwd=repo_root,
+    capture_output=True,
+    text=True,
+).stdout
+removed_counter = Counter()
+in_hunk = False
+for line in move_pool_output.splitlines():
+    if line.startswith("diff --git"):
+        in_hunk = False
+        continue
+    if line.startswith("@@"):
+        in_hunk = True
+        continue
+    if in_hunk and line.startswith("-"):
+        norm = normalize_move_line(line[1:])
+        if norm:
+            removed_counter[norm] += 1
+
+_source_cache = {}
+
+
+def source_lines(rel_path):
+    if rel_path not in _source_cache:
+        abs_path = os.path.join(repo_root, rel_path)
+        if os.path.isfile(abs_path):
+            with open(abs_path, encoding="utf-8", errors="replace") as fh:
+                _source_cache[rel_path] = fh.read().splitlines()
+        else:
+            _source_cache[rel_path] = []
+    return _source_cache[rel_path]
+
+
+pure_move_lines = {}
+move_credits = removed_counter.copy()
+gated_line_total = 0
+for rel_path in gated_files:
+    src = source_lines(rel_path)
+    ignore = cov_ignore_lines.get(rel_path, set())
+    for ln in sorted(set(file_blocks.get(rel_path, []))):
+        if ln in ignore:
+            continue
+        idx = ln - 1
+        if not (0 <= idx < len(src)):
+            continue
+        norm = normalize_move_line(src[idx])
+        if not norm:
+            # Blank/whitespace-only changed line: never an executable move and
+            # never gated. Skip it from both tallies.
+            continue
+        if move_credits.get(norm, 0) > 0:
+            move_credits[norm] -= 1
+            pure_move_lines.setdefault(rel_path, set()).add(ln)
+        else:
+            gated_line_total += 1
+
+pure_move_total = sum(len(v) for v in pure_move_lines.values())
+if pure_move_total or gated_line_total:
+    print(f"::notice::diff-coverage pure-move safe-harbor: excluded "
+          f"{pure_move_total} relocated line(s) as refactor:pure-move; "
+          f"{gated_line_total} changed line(s) remain gated.", file=sys.stderr)
+
 total_exc = 0
 total_hit = 0
 details = []
@@ -588,7 +685,8 @@ details = []
 for rel_path in gated_files:
     changed_lines = sorted(set(file_blocks.get(rel_path, [])))
     ignore = cov_ignore_lines.get(rel_path, set())
-    changed_lines = [ln for ln in changed_lines if ln not in ignore]
+    moved = pure_move_lines.get(rel_path, set())
+    changed_lines = [ln for ln in changed_lines if ln not in ignore and ln not in moved]
     if not changed_lines:
         continue
 
@@ -659,6 +757,7 @@ output = {
     "details": details,
     "waived": waived,
     "outOfScope": out_of_scope,
+    "pureMove": {"movedLines": pure_move_total, "gatedLines": gated_line_total},
 }
 rendered = json.dumps(output, indent=2)
 print(rendered)

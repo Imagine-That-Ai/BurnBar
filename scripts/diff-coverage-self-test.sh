@@ -18,6 +18,11 @@
 #      `cov:ignore -- <reason>` and justified ignore blocks exclude exactly
 #      the annotated lines.
 #   5. A lane whose evidence is missing entirely fails closed.
+#   6. Pure-move safe-harbor (R-GH0): a byte-identical / whitespace-normalized
+#      relocation is credited refactor:pure-move and excluded from the
+#      denominator, so a god-file split passes with zero new tests; a move+edit
+#      gates only the genuinely edited line; and a forged "move" that flips a
+#      literal is NOT exempted and still fails.
 #
 # Run directly or via the CI coverage steps (it guards the gate before the
 # gate judges the PR). Exits non-zero on the first failed assertion.
@@ -288,6 +293,186 @@ rc="$(run_gate "$repo_block" "$base_block" packages 80 "$pkg_block" "$verdict" "
 check "justified cov:ignore block excludes the enclosed changed lines" "0" "$rc"
 check "justified block waiver leaves only measured lines in the percent" \
   "100.0" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+
+# --- fixtures 5-7: pure-move safe-harbor (R-GH0) -----------------------------
+#
+# Splitting a god-file or relocating a block is not new behavior, so a
+# byte-identical (or whitespace-normalized) relocation must not be charged as
+# brand-new uncovered lines — the pressure that makes refactors game the gate.
+# Each fixture moves a WidgetMath block OUT of Big.swift and INTO the
+# pre-existing Helpers.swift. git renders a block move into an existing file as
+# delete+add (never a whole-file rename), so the content classifier in
+# diff-coverage.sh — not git's own rename detection — is what grants the
+# exemption. The exemption is earned by the detector, never by an annotation.
+
+make_move_repo() {
+  # $1 = repo dir, $2 = Helpers.swift destination (the relocated block, which
+  # may carry an edit/forgery). Echoes the base sha.
+  local repo="$1" dest="$2"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+
+public enum WidgetMath {
+    public static func add(_ a: Int, _ b: Int) -> Int {
+        let sum = a + b
+        return sum
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+
+  # Big.swift keeps only Widget; the WidgetMath block relocates into Helpers.
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  printf '%s\n' "$dest" > "$repo/OpenBurnBarCore/Sources/DemoKit/Helpers.swift"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm move
+  git -C "$repo" rev-parse HEAD~1
+}
+
+write_swift_lcov() {
+  # $1 = lcov path, $2 = repo, $3 = repo-relative Swift file, $4... = DA records
+  local path="$1" repo="$2" rel="$3"; shift 3
+  {
+    echo "SF:$repo/$rel"
+    printf '%s\n' "$@"
+    echo "end_of_record"
+  } > "$path"
+}
+
+extract_pkg() {
+  # $1 = lcov path, $2 = repo, $3 = out json path
+  OPENBURNBAR_COVERAGE_REPO_ROOT="$2" \
+    "$scripts_dir/extract-package-coverage-lines.sh" "$1" > "$3"
+}
+
+move_pure="$(cat <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum WidgetMath {
+    public static func add(_ a: Int, _ b: Int) -> Int {
+        let sum = a + b
+        return sum
+    }
+}
+EOF
+)"
+move_edit="$(cat <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum WidgetMath {
+    public static func add(_ a: Int, _ b: Int) -> Int {
+        let sum = a + b
+        return sum + 1
+    }
+}
+EOF
+)"
+move_forge="$(cat <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum WidgetMath {
+    public static func add(_ a: Int, _ b: Int) -> Int {
+        let sum = a * b
+        return sum
+    }
+}
+EOF
+)"
+
+# (a) Pure split: every relocated line is byte-identical to a removed line, so
+# the whole block is credited refactor:pure-move. Evidence covers ONLY the
+# retained Widget — the relocated block ships with zero new tests, and the gate
+# still passes because a move is not new code.
+repo_pure="$tmp_root/repo-move-pure"
+base_pure="$(make_move_repo "$repo_pure" "$move_pure")"
+lcov_pure="$tmp_root/fixture-move-pure.lcov"
+write_swift_lcov "$lcov_pure" "$repo_pure" "OpenBurnBarCore/Sources/DemoKit/Big.swift" "DA:2,3" "DA:3,3"
+pkg_pure="$tmp_root/pkg-move-pure.json"
+extract_pkg "$lcov_pure" "$repo_pure" "$pkg_pure"
+verdict="$tmp_root/verdict-move-pure.json"
+rc="$(run_gate "$repo_pure" "$base_pure" packages 80 "$pkg_pure" "$verdict" "$tmp_root/err-move-pure.log")"
+check "pure move passes the 80% gate with zero new tests" "0" "$rc"
+check "pure move leaves nothing in the coverage denominator" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "pure move credits every relocated line as refactor:pure-move" \
+  "6" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "pure move gates zero files" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedFiles"]')"
+
+# (b) Move + edit: the relocated lines are credited, but the one genuinely
+# edited line (`return sum + 1`) matches no removed line and stays gated. With
+# that single line covered, the gate passes on the strength of the edit alone.
+repo_edit="$tmp_root/repo-move-edit"
+base_edit="$(make_move_repo "$repo_edit" "$move_edit")"
+lcov_edit="$tmp_root/fixture-move-edit.lcov"
+write_swift_lcov "$lcov_edit" "$repo_edit" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" "DA:10,1"
+pkg_edit="$tmp_root/pkg-move-edit.json"
+extract_pkg "$lcov_edit" "$repo_edit" "$pkg_edit"
+verdict="$tmp_root/verdict-move-edit.json"
+rc="$(run_gate "$repo_edit" "$base_edit" packages 80 "$pkg_edit" "$verdict" "$tmp_root/err-move-edit.log")"
+check "move+edit passes when only the edited line is covered" "0" "$rc"
+check "move+edit gates exactly the one edited line" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "move+edit still credits the relocated lines" \
+  "5" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "move+edit measures 100% on the single gated line" \
+  "100.0" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+
+# (c) Forged move: the block is relocated but a literal is flipped
+# (`a + b` -> `a * b`). The forged line matches no removed line, so it is NOT
+# exempted; left uncovered it drags the gate below threshold and fails. This is
+# the safe-harbor's teeth: a relocation cannot smuggle a logic change past the
+# gate.
+repo_forge="$tmp_root/repo-move-forge"
+base_forge="$(make_move_repo "$repo_forge" "$move_forge")"
+lcov_forge="$tmp_root/fixture-move-forge.lcov"
+write_swift_lcov "$lcov_forge" "$repo_forge" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" "DA:9,0"
+pkg_forge="$tmp_root/pkg-move-forge.json"
+extract_pkg "$lcov_forge" "$repo_forge" "$pkg_forge"
+verdict="$tmp_root/verdict-move-forge.json"
+rc="$(run_gate "$repo_forge" "$base_forge" packages 80 "$pkg_forge" "$verdict" "$tmp_root/err-move-forge.log")"
+check "forged move (changed literal) is NOT exempted and fails the gate" "1" "$rc"
+check "forged move still gates exactly the tampered line" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "forged move credits only the genuinely relocated lines" \
+  "5" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "forged move leaves the tampered line uncovered" \
+  "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Helpers.swift")][0]["coveredLines"]')"
 
 # -----------------------------------------------------------------------------
 
