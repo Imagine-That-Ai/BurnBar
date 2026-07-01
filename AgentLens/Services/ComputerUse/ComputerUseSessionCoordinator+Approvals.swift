@@ -150,14 +150,24 @@ extension ComputerUseSessionCoordinator {
 
     public func setTrustMode(_ mode: ComputerUseTrustMode) {
         guard var current = state else { return }
-        // R-L5 (Computer Use safety): live trust is downgrade-only. A running
-        // session may only *lower* trust (trusted -> step -> manual) — never
-        // elevate mid-session — because ComputerUseCapabilityGate treats
-        // `.trusted` as auto-allow for scoped actions, so a mid-session
-        // elevation is a silent privilege escalation. Elevation requires
-        // starting a fresh session. Mirrors the phone-path guard in
-        // AgentWatchReceiver.downgradeTrustMode ('guard mode <= liveTrustMode').
-        guard mode <= current.liveTrustMode else { return }
+        // R-L5 (Computer Use safety): while a session is LIVE, trust is
+        // downgrade-only. A running session may only *lower* trust
+        // (trusted -> step -> manual) — never elevate mid-session — because
+        // ComputerUseCapabilityGate treats `.trusted` as auto-allow for scoped
+        // actions, so a mid-session elevation is a silent privilege escalation.
+        // Elevation requires starting a fresh session. Mirrors the phone-path
+        // guard in AgentWatchReceiver.downgradeTrustMode
+        // ('guard mode <= liveTrustMode').
+        //
+        // Once a session ends, `activeSessionId` is cleared but `state` is left
+        // populated (it seeds the *next* session's trust). In that no-active-
+        // session window the Mac UI is the legitimate elevation surface —
+        // trust is chosen per session (Decision 2) — so any selection, raise
+        // included, is allowed. Gate the clamp on the same `activeSessionId`
+        // liveness signal every teardown path in this file guards on.
+        if activeSessionId != nil {
+            guard mode <= current.liveTrustMode else { return }
+        }
         current.liveTrustMode = mode
         state = current
     }

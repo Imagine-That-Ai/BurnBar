@@ -77,6 +77,16 @@ public struct ComputerUseSessionPanel: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(maxWidth: 360, alignment: .leading)
+
+                if model.isSessionActive {
+                    Label(
+                        "Live trust is downgrade-only: during an active session you can only lower it. Raising trust requires ending this session and starting a new one.",
+                        systemImage: "lock.fill"
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -396,6 +406,11 @@ public final class ComputerUseSessionPanelModel: ObservableObject {
     @Published public var auditHeadHashHex: String?
     @Published public var currentSessionStartedAt: Date?
     @Published public var currentScopePreviewContext = ComputerUseScopeContext()
+    /// True while a session is live. The picker still renders every mode, but
+    /// live trust is downgrade-only (R-L5), so this drives an explanatory note
+    /// making a refused mid-session elevation legible instead of a silent
+    /// snap-back.
+    @Published public var isSessionActive: Bool = false
 
     public var setTrustMode: (ComputerUseTrustMode) -> Void = { _ in }
     public var removeRule: (ComputerUseScopeRuleID) -> Void = { _ in }

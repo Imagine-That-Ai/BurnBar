@@ -94,5 +94,25 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
         coordinator.setTrustMode(.trusted)
         XCTAssertEqual(coordinator.state?.liveTrustMode, .manual, "manual -> trusted must stay rejected after downgrade")
     }
+
+    func testSetTrustModeAllowsElevationWhenNoSessionActive() async throws {
+        let coordinator = makeCoordinator()
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(coordinator.state?.liveTrustMode, .manual)
+
+        // Ending the session clears the live guard but leaves `state`
+        // populated so it can seed the next session's trust. With no live
+        // session the downgrade-only clamp must NOT fire: the Mac UI is the
+        // legitimate elevation surface and must be able to raise trust for a
+        // fresh session (Decision 2: trust is chosen per session, never sticky).
+        await coordinator.endSession(reason: .userHalt)
+        XCTAssertNotNil(coordinator.state?.endedAt, "the session must be ended")
+
+        coordinator.setTrustMode(.trusted)
+        XCTAssertEqual(
+            coordinator.state?.liveTrustMode, .trusted,
+            "with no active session, trust selection for the next session may elevate"
+        )
+    }
 }
 #endif
