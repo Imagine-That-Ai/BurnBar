@@ -36,7 +36,9 @@ log_path="$installed_daemon_dir/openburnbar-daemon.log"
 preexisting_app_pids_path="$support_dir/preexisting-openburnbar-pids.txt"
 smoke_app_pids_path="$support_dir/smoke-openburnbar-pids.txt"
 socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
-echo "::add-mask::$socket_auth_token"
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "::add-mask::$socket_auth_token"
+fi
 mounted=0
 
 positive_integer_or_default() {

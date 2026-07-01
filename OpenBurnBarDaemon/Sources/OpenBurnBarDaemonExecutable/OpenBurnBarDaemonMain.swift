@@ -233,9 +233,7 @@ private enum BurnBarDaemonCommandLine {
                 guard index < arguments.count else {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
-                if gatewayAuthToken == nil {
-                    gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)
-                }
+                gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)
             case "--gateway-allow-unauthenticated-loopback":
                 #if DEBUG
                 gatewayAllowUnauthenticatedLoopback = true
@@ -253,9 +251,7 @@ private enum BurnBarDaemonCommandLine {
                 guard index < arguments.count else {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
-                if socketAuthToken == nil {
-                    socketAuthToken = try readTokenFile(arguments[index], argument: argument)
-                }
+                socketAuthToken = try readTokenFile(arguments[index], argument: argument)
             case "--help", "-h":
                 print(Self.helpText)
                 Darwin.exit(EXIT_SUCCESS)
