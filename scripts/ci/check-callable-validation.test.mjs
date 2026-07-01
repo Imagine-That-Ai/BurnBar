@@ -9,7 +9,10 @@ import { test } from "node:test";
 
 import {
   analyzeSource,
+  controllingGuard,
+  destructuredDataAliases,
   diffBaseline,
+  hasPayloadTiedInvalidArg,
   localValidatorNames,
   matchingParenEnd,
 } from "./check-callable-validation.mjs";
@@ -107,4 +110,75 @@ test("diffBaseline is clean when current matches baseline", () => {
   const { added, stale } = diffBaseline(["x::1"], ["x::1"]);
   assert.deepEqual(added, []);
   assert.deepEqual(stale, []);
+});
+
+// R-S1 P2 (check-callable-validation.mjs:144) — an inline invalid-argument for an
+// unrelated precondition must NOT exempt a callable that then reads request.data raw.
+test("analyzeSource flags an inline invalid-argument thrown for an unrelated precondition", () => {
+  const src =
+    'export const badPrecondition = onCall(opts, wrapCallableHandler("badPrecondition", async (request) => {\n' +
+    '  if (!serverReady()) throw new HttpsError("invalid-argument", "server not ready");\n' +
+    "  return request.data.foo;\n" +
+    "}));";
+  const bad = findCallable(analyzeSource("f.ts", src), "badPrecondition");
+  assert.equal(bad.readsInput, true);
+  assert.equal(bad.validated, false);
+});
+
+test("analyzeSource counts an inline invalid-argument tied to a payload-derived local", () => {
+  const src =
+    'export const goodInline = onCall(opts, wrapCallableHandler("goodInline", async (request) => {\n' +
+    "  const scope = request.data.scope;\n" +
+    '  if (typeof scope !== "string") { throw new HttpsError("invalid-argument", "scope must be a string"); }\n' +
+    "  return scope;\n" +
+    "}));";
+  const ok = findCallable(analyzeSource("f.ts", src), "goodInline");
+  assert.equal(ok.readsInput, true);
+  assert.equal(ok.validated, true);
+});
+
+// R-S1 P2 (check-callable-validation.mjs:84) — a handler that destructures `data`
+// off the request reads client input and must face the same validation gate.
+test("analyzeSource detects a destructured payload read and flags it when unvalidated", () => {
+  const src =
+    'export const badDestructure = onCall(opts, wrapCallableHandler("badDestructure", async ({ data, auth }) => {\n' +
+    "  return data.foo;\n" +
+    "}));";
+  const bad = findCallable(analyzeSource("f.ts", src), "badDestructure");
+  assert.equal(bad.readsInput, true);
+  assert.equal(bad.validated, false);
+});
+
+test("analyzeSource recognizes a validated, renamed destructured payload", () => {
+  const src =
+    'export const goodDestructure = onCall(opts, wrapCallableHandler("goodDestructure", async ({ data: payload }) => {\n' +
+    '  if (typeof payload.x !== "string") throw new HttpsError("invalid-argument", "x is required");\n' +
+    "  return payload.x;\n" +
+    "}));";
+  const ok = findCallable(analyzeSource("f.ts", src), "goodDestructure");
+  assert.equal(ok.readsInput, true);
+  assert.equal(ok.validated, true);
+});
+
+test("destructuredDataAliases picks up data (and renames) without matching metadata", () => {
+  assert.deepEqual([...destructuredDataAliases("async ({ data, auth }) => {}")], ["data"]);
+  assert.deepEqual([...destructuredDataAliases("async ({ data: payload }) => {}")], ["payload"]);
+  assert.deepEqual([...destructuredDataAliases("async ({ metadata }) => {}")], []);
+  assert.deepEqual([...destructuredDataAliases("async (request) => {}")], []);
+});
+
+test("hasPayloadTiedInvalidArg ties the inline exemption to a payload reference", () => {
+  const tied =
+    'const scope = request.data.scope;\n if (!scope) throw new HttpsError("invalid-argument", "scope required");';
+  assert.equal(hasPayloadTiedInvalidArg(tied), true);
+  const untied = 'if (!ready()) throw new HttpsError("invalid-argument", "not ready");\n return request.data.foo;';
+  assert.equal(hasPayloadTiedInvalidArg(untied), false);
+  // A destructured-alias reference in the guard counts as a payload tie.
+  const aliasTied = 'if (!payload.x) throw new HttpsError("invalid-argument", "x required");';
+  assert.equal(hasPayloadTiedInvalidArg(aliasTied, new Set(["payload"])), true);
+});
+
+test("controllingGuard captures the enclosing if condition for a braced throw", () => {
+  const body = 'if (!scope) {\n  throw new HttpsError("invalid-argument", "x");\n}';
+  assert.match(controllingGuard(body, body.indexOf("HttpsError")), /!scope/);
 });

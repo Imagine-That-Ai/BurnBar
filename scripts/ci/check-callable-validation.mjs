@@ -17,11 +17,15 @@
  *   - A baseline entry that is now validated (or was deleted) → fail asking you
  *     to remove it, so the accepted set can only get smaller over time.
  *
- * A callable is treated as "validated" when its body (or a same-file helper it
- * delegates the payload to) either calls one of the repo's known input
- * validators ({@link INPUT_VALIDATOR_TOKENS}) or throws an inline
- * `HttpsError("invalid-argument", ...)`. It is intentionally a heuristic — the
- * point is to ratchet the debt down, not to prove correctness.
+ * A callable is treated as "validated" when its body (or a helper it delegates
+ * the payload to) either calls one of the repo's known input validators
+ * ({@link INPUT_VALIDATOR_TOKENS}) or throws an inline
+ * `HttpsError("invalid-argument", ...)` whose guard or message is tied to the
+ * client payload — `request.data`, `req.data`, a destructured `data` alias
+ * (`async ({ data }) => …`), or a local derived from one. An inline throw for an
+ * unrelated server-side precondition does not count, and a handler that reaches
+ * the payload only through destructuring is still flagged. It is intentionally a
+ * heuristic — the point is to ratchet the debt down, not to prove correctness.
  *
  * Usage:
  *   node scripts/ci/check-callable-validation.mjs          # check (CI)
@@ -83,6 +87,8 @@ export const INPUT_VALIDATOR_TOKENS = [
 const CALLABLE_RE = /export const (\w+)\s*=\s*(onCall|onCallProduction)\b/g;
 const READS_INPUT_RE = /\brequest\.data\b|\breq\.data\b/;
 const INLINE_INVALID_ARG_RE = /HttpsError\(\s*["']invalid-argument["']/;
+// Global variant used to walk every inline `invalid-argument` throw in a body.
+const INLINE_INVALID_ARG_GLOBAL = /HttpsError\(\s*["']invalid-argument["']/g;
 // Top-level (column-0) function / const definitions. Nested code is indented, so
 // a definition's body runs from its line up to the next top-level definition.
 const TOP_LEVEL_DEF_RE = /^(?:export\s+)?(?:async\s+)?function\s+(\w+)|^(?:export\s+)?(?:const|let)\s+(\w+)\s*=/gm;
@@ -139,10 +145,20 @@ export function matchingParenEnd(source, openIndex) {
   return matchingDelimiterEnd(source, openIndex, "(", ")");
 }
 
-/** True when `body` text performs recognized input validation. */
-function bodyPerformsValidation(body) {
-  if (INLINE_INVALID_ARG_RE.test(body)) return true;
+/** True when `body` calls one of the repo's recognized input-validation helpers. */
+function usesValidatorToken(body) {
   return INPUT_VALIDATOR_TOKENS.some((token) => new RegExp(`\\b${token}\\s*\\(`).test(body));
+}
+
+/**
+ * True when a top-level helper body performs recognized validation — a known
+ * validator token or an inline `invalid-argument` throw. Used only to mark
+ * *helper* functions as validators so a callable that delegates via
+ * `parseFooInput(request.data)` is recognized. Callable bodies themselves use the
+ * stricter, payload-tied {@link hasPayloadTiedInvalidArg} check.
+ */
+function bodyPerformsValidation(body) {
+  return INLINE_INVALID_ARG_RE.test(body) || usesValidatorToken(body);
 }
 
 /**
@@ -176,6 +192,174 @@ function callsLocalValidator(body, localValidators) {
 }
 
 /**
+ * Alias(es) bound to the client payload by destructuring the callable handler's
+ * request parameter — `async ({ data, auth }) => …` → `"data"`,
+ * `async ({ data: payload }) => …` → `"payload"`. A handler that pulls `data` out
+ * of the request this way reads client input exactly like `request.data`, so it
+ * must face the same validation requirement instead of slipping through as a
+ * no-input callable.
+ */
+export function destructuredDataAliases(body) {
+  const aliases = new Set();
+  const paramRe = /\(\s*(\{[^{}]*\})\s*(?::[^)]*)?\)\s*=>/g;
+  let m;
+  while ((m = paramRe.exec(body)) !== null) {
+    const dm = /(?:^|[{,])\s*data\s*(?::\s*(\w+))?\s*(?=[,}])/.exec(m[1]);
+    if (dm) aliases.add(dm[1] ?? "data");
+  }
+  return aliases;
+}
+
+/** Regex-source matching any payload root: `request.data`, `req.data`, or an alias. */
+function payloadRootPattern(aliases) {
+  const parts = ["\\brequest\\.data\\b", "\\breq\\.data\\b"];
+  for (const alias of aliases) parts.push(`\\b${alias}\\b`);
+  return parts.join("|");
+}
+
+/** Identifiers bound by a `const/let/var` LHS (plain, object, or array pattern). */
+function bindingNames(lhs) {
+  const trimmed = lhs.trim();
+  if (trimmed.startsWith("{")) {
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((part) => {
+        const seg = part.includes(":") ? part.slice(part.indexOf(":") + 1) : part;
+        const name = /(\w+)/.exec(seg);
+        return name ? name[1] : null;
+      })
+      .filter((n) => n !== null);
+  }
+  if (trimmed.startsWith("[")) return [...trimmed.matchAll(/(\w+)/g)].map((x) => x[1]);
+  const name = /(\w+)/.exec(trimmed);
+  return name ? [name[1]] : [];
+}
+
+// RHS is captured up to the statement's end of line (not the next `;`) so the
+// enclosing `const NAME = onCall(… => {` wrapper — which has no `;` until deep
+// inside the handler — does not swallow the first inner payload extraction.
+const ASSIGNMENT_RE = /\b(?:const|let|var)\s+(\{[^{}]*\}|\[[^\]]*\]|\w+)\s*(?::[^=;\n]+)?=\s*([^;\n]+)/g;
+
+/**
+ * Local variables whose value derives (transitively) from a payload root — e.g.
+ * `const scope = request.data.scope` or `const parsed = parseFoo(request.data)`.
+ * Computed to a fixpoint so a value pulled through several intermediate locals
+ * still counts as payload-derived, letting a hand-rolled guard that checks a
+ * local copy of the payload count as validating the payload.
+ */
+function payloadDerivedLocals(body, rootPattern) {
+  const derived = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const refRe = new RegExp([rootPattern, ...[...derived].map((d) => `\\b${d}\\b`)].join("|"));
+    ASSIGNMENT_RE.lastIndex = 0;
+    let m;
+    while ((m = ASSIGNMENT_RE.exec(body)) !== null) {
+      if (!refRe.test(m[2])) continue;
+      for (const name of bindingNames(m[1])) {
+        if (!derived.has(name)) {
+          derived.add(name);
+          changed = true;
+        }
+      }
+    }
+  }
+  return derived;
+}
+
+/** If the `{` at `braceIndex` opens an `if (...)` body, return its condition text. */
+function ifConditionBefore(source, braceIndex) {
+  let i = braceIndex - 1;
+  while (i >= 0 && /\s/.test(source[i])) i -= 1;
+  if (source[i] !== ")") return null;
+  let depth = 0;
+  let open = -1;
+  for (let j = i; j >= 0; j -= 1) {
+    if (source[j] === ")") depth += 1;
+    else if (source[j] === "(") {
+      depth -= 1;
+      if (depth === 0) {
+        open = j;
+        break;
+      }
+    }
+  }
+  if (open === -1) return null;
+  let k = open - 1;
+  while (k >= 0 && /\s/.test(source[k])) k -= 1;
+  // Preceding token must be the keyword `if` (and not an identifier ending in …if).
+  if (k >= 1 && source[k] === "f" && source[k - 1] === "i" && (k - 2 < 0 || !/[A-Za-z0-9_$]/.test(source[k - 2]))) {
+    return source.slice(open + 1, i);
+  }
+  return null;
+}
+
+/** Condition text of the innermost `if (...)` block enclosing `throwIndex`, or "". */
+function enclosingIfCondition(source, throwIndex) {
+  let depth = 0;
+  for (let i = throwIndex - 1; i >= 0; i -= 1) {
+    if (source[i] === "}") depth += 1;
+    else if (source[i] === "{") {
+      if (depth === 0) return ifConditionBefore(source, i) ?? "";
+      depth -= 1;
+    }
+  }
+  return "";
+}
+
+/**
+ * Guard controlling the inline throw at `throwIndex`: the enclosing `if (...)`
+ * condition plus the throw's own statement prefix (which captures a brace-less
+ * `if (cond) throw …`). Used to decide whether an `invalid-argument` throw is
+ * gated on a check of the payload rather than an unrelated precondition.
+ */
+export function controllingGuard(source, throwIndex) {
+  let depth = 0;
+  let start = -1;
+  for (let i = throwIndex - 1; i >= 0; i -= 1) {
+    const ch = source[i];
+    if (ch === ")" || ch === "}" || ch === "]") depth += 1;
+    else if (ch === "(" || ch === "{" || ch === "[") {
+      if (depth === 0) {
+        start = i;
+        break;
+      }
+      depth -= 1;
+    } else if (ch === ";" && depth === 0) {
+      start = i;
+      break;
+    }
+  }
+  const prefix = source.slice(start + 1, throwIndex);
+  return `${enclosingIfCondition(source, throwIndex)} ${prefix}`;
+}
+
+/**
+ * True when a callable `body` contains an inline `HttpsError("invalid-argument")`
+ * throw actually tied to the payload — its controlling guard or its message
+ * references a payload root (`request.data` / `req.data` / a destructured alias)
+ * or a local derived from one. Replaces the old "any inline invalid-argument
+ * counts" shortcut so a throw for an unrelated server-side precondition can no
+ * longer mask an unvalidated `request.data.foo` read.
+ */
+export function hasPayloadTiedInvalidArg(body, aliases = new Set()) {
+  const rootPattern = payloadRootPattern(aliases);
+  const derived = payloadDerivedLocals(body, rootPattern);
+  const refRe = new RegExp([rootPattern, ...[...derived].map((d) => `\\b${d}\\b`)].join("|"));
+  INLINE_INVALID_ARG_GLOBAL.lastIndex = 0;
+  let m;
+  while ((m = INLINE_INVALID_ARG_GLOBAL.exec(body)) !== null) {
+    const open = body.indexOf("(", m.index);
+    const message = open === -1 ? "" : body.slice(open, matchingParenEnd(body, open));
+    const context = `${controllingGuard(body, m.index)} ${message}`;
+    if (refRe.test(context)) return true;
+  }
+  return false;
+}
+
+/**
  * Analyze one source file's callables.
  * @param globalValidators names of validating helpers defined anywhere in the
  *   tree, so a callable that delegates to a cross-file `parseFooInput(...)` (as
@@ -194,12 +378,16 @@ export function analyzeSource(relFile, source, globalValidators = new Set()) {
     const bodyEnd = openParen === -1 ? source.length : matchingParenEnd(source, openParen);
     const body = source.slice(match.index, bodyEnd);
     const line = source.slice(0, match.index).split("\n").length;
+    const aliases = destructuredDataAliases(body);
     results.push({
       name,
       key: `${relFile}::${name}`,
       line,
-      readsInput: READS_INPUT_RE.test(body),
-      validated: bodyPerformsValidation(body) || callsLocalValidator(body, validators),
+      readsInput: READS_INPUT_RE.test(body) || aliases.size > 0,
+      validated:
+        usesValidatorToken(body) ||
+        callsLocalValidator(body, validators) ||
+        hasPayloadTiedInvalidArg(body, aliases),
     });
   }
   return results;
