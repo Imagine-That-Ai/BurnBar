@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-06-30
+
+### Fixed
+
+- **Android release gate entitlement fixture** — supersedes the failed
+  `v1.0.15` publish run with the same newest-`main` source, but fixes the
+  Android `HostedQuotaSubscriptionStoreTest` active-subscription fixtures that
+  expired at noon UTC on release day. The full Android JVM gate now uses a
+  stable future active-entitlement fixture, while the explicit expired-purchase
+  regression remains pinned to `2020-01-01T00:00:00Z`.
+
 ## [1.0.15] - 2026-06-30
 
 ### Fixed

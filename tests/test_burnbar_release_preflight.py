@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.15"
+    assert data["repo"]["releaseTag"] == "v1.0.16"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.15",
+            "v1.0.16",
         ],
         cwd=ROOT,
         text=True,
