@@ -625,6 +625,16 @@ jobs:
           # Stamp Build Provenance phase records channel=release (not "source").
           OPENBURNBAR_BUILD_CHANNEL: release
         run: |
+          set -euo pipefail
+
+          (
+            while sleep 60; do
+              echo "::notice::xcodebuild Release .app still running at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            done
+          ) &
+          heartbeat_pid="$!"
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -638,6 +648,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+          kill "$heartbeat_pid" 2>/dev/null || true
+          wait "$heartbeat_pid" 2>/dev/null || true
 
       - name: Embed daemon binary in app bundle
         run: |
