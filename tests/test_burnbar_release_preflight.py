@@ -17,8 +17,8 @@ def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
 
     assert result.returncode != 0
     assert "HOLD: BurnBar product release preflight is not ready" in result.stderr
-    assert "runtimeReadiness.status must be 'ready'" in result.stderr
-    assert "legal release review is not approved" in result.stderr
+    assert "legal release review is not approved: 'owner_attested_soft_approval'" in result.stderr
+    assert "legal release review pending evidence must explicitly say it is not legal approval" in result.stderr
 
 
 def test_release_preflight_rejects_pending_legal_template_as_release_approval():
@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.19"
+    assert data["repo"]["releaseTag"] == "v1.0.20"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.19",
+            "v1.0.20",
         ],
         cwd=ROOT,
         text=True,
@@ -495,10 +495,16 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'python3 - "$installed_cli_bin"' in script
     assert '[cli, "health"]' in script
     assert "subprocess.TimeoutExpired" in script
-    assert "timeout=2" in script
-    assert "health_deadline_seconds=30" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS" in script
+    assert "timeout=timeout" in script
+    assert "OpenBurnBarCLI health timed out after {timeout}s" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS" in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 15' in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 120' in script
     assert 'while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]' in script
     assert "for attempt in {1..60}" not in script
+    assert "launchctl print" in script
+    assert "stat -f" in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script

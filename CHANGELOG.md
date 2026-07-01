@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-07-01
+
+### Fixed
+
+- **Release DMG smoke resilience** — supersedes the failed `v1.0.19` publish
+  run after the signed app, notarized DMG, Android AAB, and provenance artifacts
+  built successfully but the macOS 15 smoke runner timed out during the
+  installed-layout daemon/CLI health handshake. The gate still requires the
+  mounted DMG to launch the app and authenticate through the signed CLI, but it
+  now gives first-run code-signature validation realistic cold-runner headroom
+  and emits launchd/socket diagnostics if health does not come up.
+
 ## [1.0.19] - 2026-07-01
 
 ### Fixed
