@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-07-01
+
+### Fixed
+
+- **Foreground Xcode release heartbeat** — supersedes the failed `v1.0.18`
+  publish run. That run proved Android packaging, extension build, Functions,
+  daemon release binaries, package resolution, and the initial heartbeat all
+  ran, but the macOS unsigned Release app step still went silent during the
+  long Xcode phase. The release lane now runs `xcodebuild` in the background,
+  keeps the foreground shell printing a one-minute heartbeat plus recent
+  `xcodebuild` log output, and emits the final Xcode tail on failure so the
+  runner cannot silently kill a healthy build without evidence.
+
 ## [1.0.18] - 2026-07-01
 
 ### Fixed

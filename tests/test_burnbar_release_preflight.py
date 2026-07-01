@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.18"
+    assert data["repo"]["releaseTag"] == "v1.0.19"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.18",
+            "v1.0.19",
         ],
         cwd=ROOT,
         text=True,
@@ -180,10 +180,13 @@ def test_release_workflow_keeps_quiet_xcode_build_alive():
     step_end = body.index("- name: Embed daemon binary in app bundle", step_start)
     app_build_step = body[step_start:step_end]
 
+    assert "openburnbar-release-app-xcodebuild.log" in app_build_step
+    assert "xcodebuild_pid" in app_build_step
     assert "xcodebuild Release .app still running" in app_build_step
-    assert "heartbeat_pid" in app_build_step
-    assert "trap 'kill \"$heartbeat_pid\"" in app_build_step
-    assert "xcodebuild \\" in app_build_step
+    assert "xcodebuild Release .app recent output" in app_build_step
+    assert "tail -n 40 \"$xcodebuild_log\"" in app_build_step
+    assert "tail -n 200 \"$xcodebuild_log\"" in app_build_step
+    assert "wait \"$xcodebuild_pid\"" in app_build_step
 
 
 def test_release_workflow_guards_owner_approved_validation_bypass():

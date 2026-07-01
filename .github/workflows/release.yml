@@ -627,13 +627,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          (
-            while sleep 60; do
-              echo "::notice::xcodebuild Release .app still running at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            done
-          ) &
-          heartbeat_pid="$!"
-          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+          xcodebuild_log="${RUNNER_TEMP:-/tmp}/openburnbar-release-app-xcodebuild.log"
+          rm -f "$xcodebuild_log"
 
           xcodebuild \
             -project "$PROJECT" \
@@ -647,10 +642,39 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build >"$xcodebuild_log" 2>&1 &
+          xcodebuild_pid="$!"
 
-          kill "$heartbeat_pid" 2>/dev/null || true
-          wait "$heartbeat_pid" 2>/dev/null || true
+          heartbeat_count=0
+          while kill -0 "$xcodebuild_pid" 2>/dev/null; do
+            sleep 60
+            if kill -0 "$xcodebuild_pid" 2>/dev/null; then
+              heartbeat_count=$((heartbeat_count + 1))
+              echo "::notice::xcodebuild Release .app still running at $(date -u +%Y-%m-%dT%H:%M:%SZ) (${heartbeat_count}m elapsed)"
+              if [[ -s "$xcodebuild_log" ]]; then
+                echo "::group::xcodebuild Release .app recent output"
+                tail -n 40 "$xcodebuild_log" || true
+                echo "::endgroup::"
+              fi
+            fi
+          done
+
+          set +e
+          wait "$xcodebuild_pid"
+          xcodebuild_status="$?"
+          set -e
+
+          if [[ "$xcodebuild_status" -ne 0 ]]; then
+            echo "::error::xcodebuild Release .app failed with exit code ${xcodebuild_status}"
+            echo "::group::xcodebuild Release .app final log"
+            tail -n 200 "$xcodebuild_log" || true
+            echo "::endgroup::"
+            exit "$xcodebuild_status"
+          fi
+
+          echo "::group::xcodebuild Release .app final log"
+          tail -n 80 "$xcodebuild_log" || true
+          echo "::endgroup::"
 
       - name: Embed daemon binary in app bundle
         run: |
