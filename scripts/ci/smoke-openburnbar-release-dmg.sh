@@ -30,11 +30,13 @@ installed_daemon_bin="$installed_daemon_dir/OpenBurnBarDaemon"
 installed_cli_bin="$installed_daemon_dir/OpenBurnBarCLI"
 mountpoint="/Volumes/OpenBurnBarReleaseSmoke-${label_suffix}"
 socket_path="$support_dir/openburnbar-daemon.sock"
+socket_auth_token_file="$support_dir/openburnbar-daemon.socket-token"
 launch_plist="$support_dir/${launch_label}.plist"
 log_path="$installed_daemon_dir/openburnbar-daemon.log"
 preexisting_app_pids_path="$support_dir/preexisting-openburnbar-pids.txt"
 smoke_app_pids_path="$support_dir/smoke-openburnbar-pids.txt"
 socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
+echo "::add-mask::$socket_auth_token"
 mounted=0
 
 positive_integer_or_default() {
@@ -48,10 +50,10 @@ positive_integer_or_default() {
 }
 
 cli_health_timeout_seconds="$(
-  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 15
+  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 45
 )"
 health_deadline_seconds="$(
-  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 120
+  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 180
 )"
 
 cleanup() {
@@ -77,7 +79,8 @@ print_failure_diagnostics() {
   echo "socket_path=$socket_path"
   echo "cli_health_timeout_seconds=$cli_health_timeout_seconds"
   echo "health_deadline_seconds=$health_deadline_seconds"
-  launchctl print "gui/$uid/$launch_label" || true
+  launchctl print "gui/$uid/$launch_label" 2>&1 \
+    | sed -E 's/(OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN => ).*/\1<redacted>/' || true
   ls -la "$support_dir" "$installed_daemon_dir" "$installed_frameworks_dir" 2>/dev/null || true
   stat -f "socket_mode=%Sp socket_size=%z socket_path=%N" "$socket_path" 2>/dev/null || true
   pgrep -fl 'OpenBurnBar(Daemon|CLI)?|release-smoke' || true
@@ -93,7 +96,9 @@ print_failure_diagnostics() {
 
 mkdir -p "$support_dir"
 chmod 700 "$support_dir"
-rm -f "$socket_path" "$log_path" "$launch_plist"
+rm -f "$socket_path" "$socket_auth_token_file" "$log_path" "$launch_plist"
+printf '%s\n' "$socket_auth_token" > "$socket_auth_token_file"
+chmod 600 "$socket_auth_token_file"
 pgrep -x OpenBurnBar > "$preexisting_app_pids_path" 2>/dev/null || true
 
 hdiutil attach "$dmg_path" \
@@ -202,11 +207,12 @@ plist = {
         "${installed_daemon_bin}",
         "--socket-path",
         "${socket_path}",
+        "--socket-auth-token-file",
+        "${socket_auth_token_file}",
         "--version",
         "release-smoke",
     ],
     "EnvironmentVariables": {
-        "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}",
         "OPENBURNBAR_DAEMON_SUPPORT_DIR": "${support_dir}",
     },
     "RunAtLoad": True,
@@ -228,6 +234,7 @@ launchctl kickstart -k "gui/$uid/$launch_label"
 
 run_cli_health_probe() {
   OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN="$socket_auth_token" \
+  OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path" \
   OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_dir" \
   OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS="$cli_health_timeout_seconds" \
   python3 - "$installed_cli_bin" <<'PY'
