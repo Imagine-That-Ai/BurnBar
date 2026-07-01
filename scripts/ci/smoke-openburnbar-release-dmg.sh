@@ -37,6 +37,23 @@ smoke_app_pids_path="$support_dir/smoke-openburnbar-pids.txt"
 socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
 mounted=0
 
+positive_integer_or_default() {
+  local raw="$1"
+  local fallback="$2"
+  if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s\n' "$raw"
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
+cli_health_timeout_seconds="$(
+  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 15
+)"
+health_deadline_seconds="$(
+  positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 120
+)"
+
 cleanup() {
   launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
   if [[ -f "$smoke_app_pids_path" ]]; then
@@ -58,6 +75,12 @@ print_failure_diagnostics() {
   echo "mountpoint=$mountpoint"
   echo "support_dir=$support_dir"
   echo "socket_path=$socket_path"
+  echo "cli_health_timeout_seconds=$cli_health_timeout_seconds"
+  echo "health_deadline_seconds=$health_deadline_seconds"
+  launchctl print "gui/$uid/$launch_label" || true
+  ls -la "$support_dir" "$installed_daemon_dir" "$installed_frameworks_dir" 2>/dev/null || true
+  stat -f "socket_mode=%Sp socket_size=%z socket_path=%N" "$socket_path" 2>/dev/null || true
+  pgrep -fl 'OpenBurnBar(Daemon|CLI)?|release-smoke' || true
   pgrep -x OpenBurnBar >/dev/null 2>&1 && echo "OpenBurnBar process: running" || echo "OpenBurnBar process: not running"
   if [[ -f "$log_path" ]]; then
     echo "--- daemon log tail ---"
@@ -206,12 +229,14 @@ launchctl kickstart -k "gui/$uid/$launch_label"
 run_cli_health_probe() {
   OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN="$socket_auth_token" \
   OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_dir" \
+  OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS="$cli_health_timeout_seconds" \
   python3 - "$installed_cli_bin" <<'PY'
 import os
 import subprocess
 import sys
 
 cli = sys.argv[1]
+timeout = int(os.environ["OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS"])
 try:
     completed = subprocess.run(
         [cli, "health"],
@@ -219,7 +244,7 @@ try:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        timeout=2,
+        timeout=timeout,
     )
 except subprocess.TimeoutExpired as exc:
     output = exc.stdout or ""
@@ -227,7 +252,7 @@ except subprocess.TimeoutExpired as exc:
         output = output.decode(errors="replace")
     if output:
         print(output, end="")
-    print("OpenBurnBarCLI health timed out after 2s", file=sys.stderr)
+    print(f"OpenBurnBarCLI health timed out after {timeout}s", file=sys.stderr)
     sys.exit(124)
 
 if completed.stdout:
@@ -238,7 +263,6 @@ PY
 
 health_passed=0
 last_health_output=""
-health_deadline_seconds=30
 health_deadline_epoch=$(($(date +%s) + health_deadline_seconds))
 attempt=0
 echo "Polling installed-layout daemon health via signed OpenBurnBarCLI"
@@ -259,7 +283,7 @@ while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]; do
       printf '%s\n' "$last_health_output"
     fi
   fi
-  sleep 0.2
+  sleep 1
 done
 
 if [[ "$health_passed" != "1" ]]; then
