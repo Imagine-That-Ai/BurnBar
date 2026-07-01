@@ -108,13 +108,13 @@ export const SITE = {
     ],
     legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
   },
-  // Public fallback until the notarized 1.0.5 direct-download pipeline is republished.
-  // Do not point this at downloads.burnbar.ai unless DNS/R2 and the matching DMG are live.
-  macReleaseLatest: "0.1.2-beta.1",
-  macReleaseFile: "OpenBurnBar-0.1.2-beta.1-macOS.dmg",
+  // Public macOS download. Keep this on a live GitHub Release asset unless the
+  // first-party downloads host is verified live with the matching DMG.
+  macReleaseLatest: "1.0.21",
+  macReleaseFile: "OpenBurnBar-1.0.21-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.2-beta.1",
+  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.21",
   macUpdateBaseUrl: "",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",
