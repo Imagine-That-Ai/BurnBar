@@ -499,8 +499,14 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "timeout=timeout" in script
     assert "OpenBurnBarCLI health timed out after {timeout}s" in script
     assert "OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS" in script
-    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 15' in script
-    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 120' in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 45' in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 180' in script
+    assert '[[ "${GITHUB_ACTIONS:-}" == "true" ]]' in script
+    assert 'echo "::add-mask::$socket_auth_token"' in script
+    assert "--socket-auth-token-file" in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"' in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"' not in script
+    assert "<redacted>" in script
     assert 'while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]' in script
     assert "for attempt in {1..60}" not in script
     assert "launchctl print" in script
@@ -512,3 +518,16 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert '"method": "daemon.health"' not in script
     assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
+
+
+def test_daemon_token_file_arguments_override_inherited_environment():
+    daemon_main = (
+        ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift"
+    ).read_text(encoding="utf-8")
+
+    assert 'var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]' in daemon_main
+    assert 'var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]' in daemon_main
+    assert 'gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert 'socketAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert "if gatewayAuthToken == nil" not in daemon_main
+    assert "if socketAuthToken == nil" not in daemon_main
