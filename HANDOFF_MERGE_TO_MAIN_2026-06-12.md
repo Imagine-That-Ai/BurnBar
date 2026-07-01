@@ -6,7 +6,7 @@
 
 ## Mission (one paragraph)
 
-PR #325 (branch `remediation/tech-debt-fable-2026-06-12` → `main`) is the complete 7-wave tech-debt remediation. It is **committed, pushed, locally build-verified green on iOS + macOS + daemon + backend, and already has `origin/main` merged into it** (conflicts resolved, re-verified green). It is **blocked from merging only by branch protection**: `main` requires **1 review + 8 status checks** with `enforce_admins: true`. The repo owner (Alberto) is the **sole developer right now**, so the 1-review requirement is unsatisfiable normally and he has **authorized an admin bypass for the review gate**. Your job: **(1) fix the CI failures that THIS branch actually caused (one known, diagnosed below), (2) let CI re-run, (3) admin-merge to main once the real failures are green** — bypassing only the unavoidable solo-dev review gate and the documented pre-existing flakes, NOT real regressions.
+PR #325 (branch `remediation/tech-debt-fable-2026-06-12` → `main`) is the complete 7-wave tech-debt remediation. It is **committed, pushed, locally build-verified green on iOS + macOS + daemon + backend, and already has `origin/main` merged into it** (conflicts resolved, re-verified green). It is **blocked from merging only by branch protection**: `main` requires **1 review + 8 status checks** with `enforce_admins: true`. The repo owner (Alberto) is the **sole developer right now**, so the 1-review requirement is unsatisfiable normally and he has **authorized the audit-logged break-glass merge for the review gate** (see [`docs/SOLO_OPERATOR_POLICY.md`](docs/SOLO_OPERATOR_POLICY.md) and the Final step below) — the review gate only, never admin enforcement. Your job: **(1) fix the CI failures that THIS branch actually caused (one known, diagnosed below), (2) let CI re-run, (3) admin-merge to main once the real failures are green** — bypassing only the unavoidable solo-dev review gate and the documented pre-existing flakes, NOT real regressions.
 
 ## Current state (verify first)
 
@@ -95,20 +95,42 @@ node scripts/privacy/scan-chat-cloud-plaintext.mjs
 4. **Never weaken the privacy scanner**: `scripts/privacy/scan-chat-cloud-plaintext.mjs` has positive pins (code must exist) AND negative pins (plaintext must NOT be constructed). If you move gateway/sealing code, retarget positive pins AND carry the negative pins to the new file. The scanner must stay green — mutation-test it (add a forbidden line, confirm it fires, revert).
 5. The merge resolved 2 conflicts as **unions** (pbxproj regenerated via `xcodegen generate`; privacy scanner kept both sides). Don't undo that.
 
-## Final step: admin-merge (authorized for the solo-dev review gate)
+## Final step: break-glass admin-merge (solo-dev review gate only)
 
-Once the real failure (entitlements) is fixed + pushed and CI re-runs with only pre-existing/solo-review reds remaining:
-```bash
-# Option A — admin merge (preferred; one command, GitHub records it):
-gh pr merge 325 --merge --admin --delete-branch=false
-# (--admin bypasses the unsatisfiable 1-review + remaining checks; requires admin, which Alberto has)
+The only gate a solo developer cannot satisfy is the **1 code-owner review** — no
+second human exists to approve. That gate is cleared through the **audit-logged
+break-glass path in [`docs/SOLO_OPERATOR_POLICY.md`](docs/SOLO_OPERATOR_POLICY.md)**,
+not by relaxing branch protection. Admin enforcement stays **on**: there is no
+recipe here that disables it, because that toggle — not the review gate — was the
+exact control the diligence reviews flagged.
 
-# Option B — if --admin is refused because enforce_admins blocks even that:
-gh api -X PUT repos/Imagine-That-Ai/BurnBar/branches/main/protection/enforce_admins   # disable
-gh pr merge 325 --merge --admin --delete-branch=false
-gh api -X POST repos/Imagine-That-Ai/BurnBar/branches/main/protection/enforce_admins  # RE-ENABLE (do not skip)
-```
-**After merging:** confirm `git fetch origin && git merge-base --is-ancestor 80f622df6 origin/main && echo "MERGED"`. If you toggled `enforce_admins`, VERIFY it's back on: `gh api repos/Imagine-That-Ai/BurnBar/branches/main/protection --jq .enforce_admins.enabled` must print `true`. Leaving it off is a security regression (it's the exact gate the audit flagged).
+Run it in this order, once the real failure (entitlements) is fixed + pushed and
+CI shows only the documented pre-existing/solo-review reds:
+
+1. **Who / when.** Only the repo admin (Alberto) authorizes the merge, and only
+   after the real CI failures are green. Never to land routine red work.
+2. **Compensating review, before the merge.** Attach the credentialed AI
+   reviewer's verdict artifact (see the policy) to the PR and address or
+   disposition its findings. If the change touches a **sensitive lane**
+   (crypto/E2EE, privileged input, billing/entitlements, Firestore/storage
+   rules, release/deploy), the required external code-owner reviews **before the
+   merge** — or the change lands under a **documented release hold** and ships
+   only after that review clears.
+3. **Log it, then merge.** Open a P0 issue *before* merging that names the
+   bypassed review gate and links the compensating review, then use the
+   GitHub-recorded admin merge:
+   ```bash
+   gh pr merge 325 --merge --admin --delete-branch=false
+   ```
+   `--admin` clears only the unsatisfiable review gate; it does **not** touch
+   admin enforcement. Write the postmortem within 72h.
+4. **Confirm it landed:**
+   ```bash
+   git fetch origin && git merge-base --is-ancestor 80f622df6 origin/main && echo "MERGED"
+   ```
+
+`scripts/ci/check-no-bypass-recipe.sh` fails CI if a recipe that disables admin
+enforcement is ever committed again.
 
 ## Context / what this PR contains (for reviewers)
 - Full diagnosis + plan: `TECH_DEBT_AUDIT_2026-06-11.md` (repo root, untracked).
