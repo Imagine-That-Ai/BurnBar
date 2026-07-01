@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.22] - 2026-07-01
+
+### Fixed
+
+- **Release notarization watchdog** — supersedes the wedged `v1.0.21` macOS
+  publish run after the signed DMG entered the Apple notarize/staple step and
+  never returned from the old unbounded shell command. Release CI now wraps
+  `notarytool` and `stapler` in a process-group watchdog so Apple-tool hangs
+  retry or fail with clear logs instead of consuming the protected release job.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 32 / `versionName` `1.0.22` for the fixed release cut.
+
 ## [1.0.21] - 2026-07-01
 
 ### Fixed
