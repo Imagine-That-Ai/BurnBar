@@ -412,6 +412,21 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
     }
 }
 
+// MARK: - Cached node metadata
+
+/// Parsed, per-node metadata for the serialized HNSW graph.
+///
+/// Every offset is absolute within the index `Data`, so the array can be parsed a single
+/// time at load and reused by every subsequent query instead of re-walking all N nodes on
+/// each search. `layerNeighborInfo[layer]` gives the byte offset and element count of that
+/// layer's neighbor list, which is read straight from the mapped bytes during traversal.
+private struct BurnBarHNSWNodeMeta {
+    let key: UInt64
+    let vectorOffset: Int
+    let level: Int
+    let layerNeighborInfo: [(offset: Int, count: Int)]
+}
+
 // MARK: - Readable Index
 
 /// The mapped index bytes and quantizer are loaded once via `load()`/`view()`
@@ -421,6 +436,10 @@ private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorI
     private struct Loaded {
         var data: Data?
         var quantizer: BurnBarScalarQuantizer?
+        /// Per-node graph metadata parsed once at load and reused by every `search`.
+        /// `nil` when no index is loaded, or when the loaded index's stored dimensions
+        /// do not match this reader (in which case `search` throws before using it).
+        var nodeMetas: [BurnBarHNSWNodeMeta]?
     }
 
     private let dimensions: Int
@@ -443,15 +462,31 @@ private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorI
     }
 
     private func ingest(_ data: Data) throws {
-        let quantizer = try Self.parseQuantizer(from: data, dimensions: dimensions)
+        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+        let quantizer = try Self.parseQuantizer(from: data, header: header, dimensions: dimensions)
+        // Parse the per-node graph metadata a single time here so repeated queries reuse
+        // it instead of re-walking all N nodes on every search. Only parse when the stored
+        // dimensions match this reader; a mismatch (or an empty index) is left `nil` and
+        // surfaced by `search`, which throws before it would touch the cache.
+        let nodeMetas: [BurnBarHNSWNodeMeta]?
+        if Int(header.dimensions) == dimensions, header.count > 0 {
+            nodeMetas = Self.parseNodeMetas(
+                from: data,
+                header: header,
+                dimensions: dimensions,
+                hasQuantizer: quantizer != nil
+            )
+        } else {
+            nodeMetas = nil
+        }
         loaded.withLock {
             $0.data = data
             $0.quantizer = quantizer
+            $0.nodeMetas = nodeMetas
         }
     }
 
-    private static func parseQuantizer(from data: Data, dimensions: Int) throws -> BurnBarScalarQuantizer? {
-        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+    private static func parseQuantizer(from data: Data, header: BurnBarHNSWIndexFormat.Header, dimensions: Int) throws -> BurnBarScalarQuantizer? {
         guard header.version >= 2, header.quantizationType == 1 else {
             return nil
         }
@@ -461,47 +496,25 @@ private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorI
         return q
     }
 
-    func search(vector: [Float], limit: Int) throws -> ([UInt64], [Float]) {
-        let snapshot = loaded.read()
-        guard let data = snapshot.data else { return ([], []) }
-        let quantizer = snapshot.quantizer
-        guard limit > 0 else { return ([], []) }
-
-        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
-        guard Int(header.dimensions) == dimensions else {
-            throw BurnBarPersistentVectorIndexError.invalidVectorDimensions(
-                expected: dimensions,
-                actual: Int(header.dimensions)
-            )
-        }
-        let nodeCount = Int(header.count)
-        guard nodeCount > 0 else { return ([], []) }
-
-        let query = hnswPreparedVector(vector, metric: metric)
-
-        // Determine data layout based on version and quantization
+    /// Walks the serialized graph once to record each node's key, vector offset, level, and
+    /// per-layer neighbor slices. All offsets are absolute within `data`, so the result stays
+    /// valid for every subsequent `search` on the same snapshot. The caller must ensure the
+    /// header's stored dimensions match `dimensions`, otherwise the computed offsets are wrong.
+    private static func parseNodeMetas(
+        from data: Data,
+        header: BurnBarHNSWIndexFormat.Header,
+        dimensions: Int,
+        hasQuantizer: Bool
+    ) -> [BurnBarHNSWNodeMeta] {
         let baseHeaderSize = header.version >= 2 ? BurnBarHNSWIndexFormat.v2HeaderSize : BurnBarHNSWIndexFormat.headerSize
-        let quantizerDataSize = quantizer != nil ? 2 * dimensions * MemoryLayout<Float>.size : 0
-        let vectorByteSize = quantizer != nil ? dimensions * MemoryLayout<UInt8>.size : dimensions * MemoryLayout<Float>.size
+        let quantizerDataSize = hasQuantizer ? 2 * dimensions * MemoryLayout<Float>.size : 0
+        let vectorByteSize = hasQuantizer ? dimensions * MemoryLayout<UInt8>.size : dimensions * MemoryLayout<Float>.size
+        let totalCount = Int(header.count)
 
-        // Parse the graph from the serialized data
-        return data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return ([], []) }
-            let totalCount = Int(header.count)
-            _ = Int(header.m)  // M parameter preserved in header for future use
-            let maxLevel = Int(header.maxLevel)
-            let entryPointIndex = Int(header.entryPointIndex)
-
-            // Pre-parse: build an array of (key, vectorOffset, level, neighborsPerLayer) for each node
-            struct NodeMeta {
-                let key: UInt64
-                let vectorOffset: Int
-                let level: Int
-                var layerNeighborInfo: [(offset: Int, count: Int)]
-            }
-
-            var nodeMetas: [NodeMeta] = []
-            nodeMetas.reserveCapacity(totalCount)
+        return data.withUnsafeBytes { raw -> [BurnBarHNSWNodeMeta] in
+            guard let base = raw.baseAddress else { return [] }
+            var metas: [BurnBarHNSWNodeMeta] = []
+            metas.reserveCapacity(totalCount)
 
             var offset = baseHeaderSize + quantizerDataSize
             for _ in 0 ..< totalCount {
@@ -523,8 +536,45 @@ private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorI
                     layerInfo.append((neighborsOffset, neighborCount))
                 }
 
-                nodeMetas.append(NodeMeta(key: key, vectorOffset: vectorOffset, level: level, layerNeighborInfo: layerInfo))
+                metas.append(BurnBarHNSWNodeMeta(key: key, vectorOffset: vectorOffset, level: level, layerNeighborInfo: layerInfo))
             }
+            return metas
+        }
+    }
+
+    func search(vector: [Float], limit: Int) throws -> ([UInt64], [Float]) {
+        let snapshot = loaded.read()
+        guard let data = snapshot.data else { return ([], []) }
+        let quantizer = snapshot.quantizer
+        guard limit > 0 else { return ([], []) }
+
+        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+        guard Int(header.dimensions) == dimensions else {
+            throw BurnBarPersistentVectorIndexError.invalidVectorDimensions(
+                expected: dimensions,
+                actual: Int(header.dimensions)
+            )
+        }
+        let nodeCount = Int(header.count)
+        guard nodeCount > 0 else { return ([], []) }
+
+        let query = hnswPreparedVector(vector, metric: metric)
+
+        // Reuse the node metadata parsed once at load instead of re-walking all N nodes on
+        // every query. The fallback parse is defensive: after `ingest` the cache is populated
+        // whenever the dimensions match, which the guard above has already established.
+        let nodeMetas = snapshot.nodeMetas ?? Self.parseNodeMetas(
+            from: data,
+            header: header,
+            dimensions: dimensions,
+            hasQuantizer: quantizer != nil
+        )
+
+        // Walk the graph over the (memory-mapped) bytes using the cached metadata.
+        return data.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return ([], []) }
+            let maxLevel = Int(header.maxLevel)
+            let entryPointIndex = Int(header.entryPointIndex)
 
             // Helper: compute distance from query to a node
             func distanceToNode(_ nodeIdx: Int) -> Float {
