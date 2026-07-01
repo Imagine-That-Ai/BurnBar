@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.16"
+    assert data["repo"]["releaseTag"] == "v1.0.17"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.16",
+            "v1.0.17",
         ],
         cwd=ROOT,
         text=True,
@@ -158,6 +158,54 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
         "OpenBurnBarTests/ChatSessionControllerPaneModeTests",
     ):
         assert required_filter in filters
+
+
+def test_release_build_and_release_job_has_packaging_headroom():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_start = body.index("  build-and-release:")
+    build_end = body.index("  smoke-test:")
+    build_job = body[build_start:build_end]
+
+    assert "timeout-minutes: 360" in build_job
+    assert "v1.0.16 proved those gates can legitimately run past 180 minutes" in build_job
+    assert "Build signed Android release bundle" in build_job
+    assert "Notarize and staple DMG" in build_job
+
+
+def test_release_workflow_guards_owner_approved_validation_bypass():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "run_release_validation_gates:" in body
+    assert "release_validation_bypass_reason:" in body
+    assert "Validate release validation bypass reason" in body
+    assert "run_release_validation_gates=false requires release_validation_bypass_reason" in body
+    assert "release_validation_bypass_reason must name owner approval" in body
+    assert "release_validation_bypass_reason must include the prior GitHub Actions run URL" in body
+    assert "Record owner-approved release validation bypass" in body
+
+    build_start = body.index("  build-and-release:")
+    build_end = body.index("  smoke-test:")
+    build_job = body[build_start:build_end]
+
+    for step_name in (
+        "- name: Run Swift tests",
+        "- name: Run OpenBurnBar release-critical app tests",
+        "- name: Verify SQLCipher codec in Release configuration",
+        "- name: Run retrieval replay evals",
+        "- name: Run Android unit tests",
+    ):
+        step_start = build_job.index(step_name)
+        step_end = build_job.find("\n      - name:", step_start + 1)
+        if step_end == -1:
+            step_end = len(build_job)
+        step = build_job[step_start:step_end]
+        assert "inputs.run_release_validation_gates" in step
+
+    packaging_start = build_job.index("- name: Build signed Android release bundle")
+    packaging_step_end = build_job.find("\n      - name:", packaging_start + 1)
+    packaging_step = build_job[packaging_start:packaging_step_end]
+    assert "inputs.run_release_validation_gates" not in packaging_step
 
 
 def test_release_workflow_uses_bounded_release_critical_mobile_gate():

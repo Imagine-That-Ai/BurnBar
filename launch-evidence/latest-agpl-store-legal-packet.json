@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-30T23:24:28Z",
+  "generatedAt": "2026-07-01T03:09:25Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "hotfix/release-v1.0.16-android-entitlement-date",
-    "originMain": "f7dc4e3c29df54296f9e63b02453ecbf01a5af9b",
-    "releaseTag": "v1.0.16"
+    "branch": "hotfix/release-v1.0.17-build-timeout",
+    "originMain": "d3f17761d6aac5ccaebc9534b8cb703f3a1f5195",
+    "releaseTag": "v1.0.17"
   },
   "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-06-30T23:24:28Z",
+    "attestedAt": "2026-07-01T03:09:25Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
     "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper, missing-Firebase-auth, menu-bar, and mobile Pulse launch regressions.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.16 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.16 public release lane.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.17 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.17 public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.16",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.17",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {

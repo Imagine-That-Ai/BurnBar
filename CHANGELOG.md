@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-07-01
+
+### Fixed
+
+- **Release lane wall-clock cap** — supersedes the cancelled `v1.0.16`
+  publish run with the same newest-`main` source after the Android entitlement
+  fixture fix was proven in CI. The prior run passed Swift tests, release app
+  smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests, then
+  hit the protected `build-and-release` job's 180-minute cap while the signed
+  Android AAB was still building. The release packaging lane now has enough
+  bounded headroom for Android signing, macOS signing, notarization, provenance,
+  and artifact upload to finish instead of cancelling before publish.
+- **Owner-approved release retry path** — manual release reruns can now skip
+  already-proven slow validation gates only when the operator supplies owner
+  approval and a prior GitHub Actions run URL. The retry still rebuilds the
+  signed Android bundle, signs/notarizes macOS artifacts, runs artifact smoke,
+  publishes, and verifies the live feed.
+
 ## [1.0.16] - 2026-06-30
 
 ### Fixed
