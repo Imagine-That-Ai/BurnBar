@@ -85,9 +85,53 @@ assert_exit() {
 echo "check-privacy-manifest-collected-data self-test"
 
 # ── Negative control: the real shipped manifests must pass ───────────────────
-assert_exit 0 "shipped app manifests declare well-formed collected data" -- \
+# Includes the widget extension: it links Amplitude, so it ships its own
+# collected-data declaration and must satisfy the same gate as the two apps.
+assert_exit 0 "shipped app + extension manifests declare well-formed collected data" -- \
   "${here}/../../AgentLens/Resources/PrivacyInfo.xcprivacy" \
-  "${here}/../../OpenBurnBarMobile/Resources/PrivacyInfo.xcprivacy"
+  "${here}/../../OpenBurnBarMobile/Resources/PrivacyInfo.xcprivacy" \
+  "${here}/../../OpenBurnBarWidget/Resources/PrivacyInfo.xcprivacy"
+
+# ── Regression (R-P1): the widget extension manifest is in the DEFAULT set ────
+# WidgetAnalytics forwards a device id + render/tap events to Amplitude, so a
+# no-arg (default) run must actually check the widget — otherwise a bundled App
+# Store extension can ship "collects nothing" while this gate stays green.
+set +e
+default_out="$(bash "${gate}" 2>&1)"
+set -e
+if grep -q "OpenBurnBarWidget/Resources/PrivacyInfo.xcprivacy" <<<"${default_out}"; then
+  pass=$((pass + 1))
+  printf '  ok   (default set) no-arg run checks the widget extension manifest\n'
+else
+  fail=$((fail + 1))
+  printf '  FAIL default (no-arg) run does not check the widget extension manifest\n'
+fi
+
+# ── Regression (R-P2): the mobile UserID entry is also used for analytics ─────
+# AuthStore forwards the account id to Amplitude via setUserId, so the mobile
+# UserID entry must list the Analytics purpose (not App Functionality alone).
+# The gate deliberately does not assert a taxonomy, so lock this specific
+# disclosure here so it cannot silently regress to under-declaring.
+mobile_manifest="${here}/../../OpenBurnBarMobile/Resources/PrivacyInfo.xcprivacy"
+userid_analytics=0
+mcount="$(plutil -extract NSPrivacyCollectedDataTypes raw -o - "${mobile_manifest}" 2>/dev/null || echo x)"
+if [[ "${mcount}" =~ ^[0-9]+$ ]]; then
+  for ((mi = 0; mi < mcount; mi++)); do
+    mtype="$(plutil -extract "NSPrivacyCollectedDataTypes.${mi}.NSPrivacyCollectedDataType" raw -o - "${mobile_manifest}" 2>/dev/null || true)"
+    [[ "${mtype}" == "NSPrivacyCollectedDataTypeUserID" ]] || continue
+    if plutil -extract "NSPrivacyCollectedDataTypes.${mi}.NSPrivacyCollectedDataTypePurposes" xml1 -o - "${mobile_manifest}" 2>/dev/null \
+        | grep -q "NSPrivacyCollectedDataTypePurposeAnalytics"; then
+      userid_analytics=1
+    fi
+  done
+fi
+if [[ "${userid_analytics}" -eq 1 ]]; then
+  pass=$((pass + 1))
+  printf '  ok   (accuracy) mobile UserID entry declares the Analytics purpose\n'
+else
+  fail=$((fail + 1))
+  printf '  FAIL mobile UserID entry is missing NSPrivacyCollectedDataTypePurposeAnalytics\n'
+fi
 
 # ── Positive control: a well-formed fixture passes ───────────────────────────
 d="$(new_dir)"

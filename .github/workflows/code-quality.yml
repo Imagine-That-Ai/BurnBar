@@ -127,6 +127,7 @@ jobs:
           set -euo pipefail
           bash scripts/debt/check-datastore-isolation-budget.sh
           bash scripts/debt/check-singleton-budget.sh
+          bash scripts/debt/check-raw-firestore-budget.sh
 
   dependency-boundaries:
     name: Dependency Boundaries (dependency-cruiser)

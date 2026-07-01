@@ -164,6 +164,19 @@ r="$(new_repo)"
 printf 'let db = Firestore.firestore()\n' >"${r}/AgentLens/Services/Foo.swift"
 assert_stdout_contains "${r}" '"total": 1' "--print-live emits the live total" "--print-live"
 
+# ── Regression (P2): the ratchet is WIRED into the debt CI job ────────────────
+# A shrink-only ratchet that no workflow runs cannot fail a pipeline, so a new
+# raw Firestore handle could still land green. Assert the structural-debt job
+# actually invokes this script.
+workflow="${here}/../../.github/workflows/code-quality.yml"
+if [[ -f "${workflow}" ]] && grep -q "check-raw-firestore-budget.sh" "${workflow}"; then
+  pass=$((pass + 1))
+  printf '  ok   (ci-wired) .github/workflows/code-quality.yml invokes the ratchet\n'
+else
+  fail=$((fail + 1))
+  printf '  FAIL raw Firestore ratchet is not wired into .github/workflows/code-quality.yml\n'
+fi
+
 echo
 printf 'passed=%s failed=%s\n' "${pass}" "${fail}"
 [[ "${fail}" -eq 0 ]] || exit 1

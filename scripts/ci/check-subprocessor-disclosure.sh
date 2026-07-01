@@ -45,6 +45,8 @@ SUBPROCESSORS=(
   'Amplitude|secret:AMPLITUDE_API_KEY|opt-in product-analytics events'
   'Sentry|code:sentry|opt-in anonymized crash reports'
   'Stripe|code:from "stripe"|subscription billing + webhook processing'
+  'Apple App Store|code:@apple/app-store-server-library|iOS subscription purchase tokens + entitlement/transaction status verification'
+  'Google Play|code:androidpublisher|Android subscription purchase tokens + entitlement status verification'
   'Firebase|code:firebase-admin|auth, Firestore, Functions, Secret Manager'
   'OpenTimestamps|code:OpenTimestamps|32-byte audit-chain hash'
 )

@@ -84,4 +84,60 @@ if ! grep -q "COHERE_API_KEY" "$tmpdir/drift.out"; then
 fi
 controls=$((controls + 1))
 
+# 5) Billing egress guard: Apple App Store + Google Play are live billing
+#    subprocessors (App Store Server API + google.androidpublisher). Deleting
+#    their PRIVACY.md rows must FAIL — otherwise the guard does not lock those
+#    production egress paths.
+billing="$tmpdir/functions-billing"
+mkdir -p "$billing/appstore" "$billing/callables"
+cat >"$billing/appstore/client.ts" <<'EOF'
+import { AppStoreServerAPIClient } from "@apple/app-store-server-library";
+export const client = AppStoreServerAPIClient;
+EOF
+cat >"$billing/callables/stripe.ts" <<'EOF'
+export async function verify() {
+  const { google } = await import("googleapis");
+  return google.androidpublisher({ version: "v3" });
+}
+EOF
+
+billing_missing="$tmpdir/PRIVACY-billing-missing.md"
+cat >"$billing_missing" <<'EOF'
+# Privacy
+| Service | Purpose | Data shared | Privacy Policy |
+|---------|---------|-------------|----------------|
+| Firebase / Google Cloud | infra | metadata | link |
+EOF
+if SUBPROC_EGRESS_DIR="$billing" SUBPROC_PRIVACY_DOC="$billing_missing" \
+    bash "$CHECK" >"$tmpdir/billing-missing.out" 2>&1; then
+  echo "FAIL: undisclosed App Store / Google Play billing egress unexpectedly passed" >&2
+  cat "$tmpdir/billing-missing.out" >&2
+  exit 1
+fi
+for name in "Apple App Store" "Google Play"; do
+  if ! grep -qi "$name" "$tmpdir/billing-missing.out"; then
+    echo "FAIL: failure output did not name the undisclosed billing subprocessor: $name" >&2
+    cat "$tmpdir/billing-missing.out" >&2
+    exit 1
+  fi
+done
+controls=$((controls + 1))
+
+# 6) Same billing egress, both rows disclosed -> pass.
+billing_ok="$tmpdir/PRIVACY-billing-ok.md"
+cat >"$billing_ok" <<'EOF'
+# Privacy
+| Service | Purpose | Data shared | Privacy Policy |
+|---------|---------|-------------|----------------|
+| Apple App Store / StoreKit | billing | receipts | link |
+| Google Play Billing | billing | purchase tokens | link |
+EOF
+if ! SUBPROC_EGRESS_DIR="$billing" SUBPROC_PRIVACY_DOC="$billing_ok" \
+    bash "$CHECK" >"$tmpdir/billing-ok.out" 2>&1; then
+  echo "FAIL: disclosed App Store / Google Play billing egress unexpectedly failed" >&2
+  cat "$tmpdir/billing-ok.out" >&2
+  exit 1
+fi
+controls=$((controls + 1))
+
 echo "PASS: check-subprocessor-disclosure.test.sh (${controls} controls)."

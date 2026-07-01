@@ -36,11 +36,17 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${here}/../.." && pwd)"
 
-# Shipping app targets whose PrivacyInfo.xcprivacy feed the App Store privacy
-# report. Extending coverage is a one-line edit here.
+# Shipping App Store targets whose PrivacyInfo.xcprivacy feed the App Store
+# privacy report — the two apps AND every bundled app extension, since each
+# ships its own manifest and links its own SDKs. The widget extension links
+# Amplitude (WidgetAnalytics forwards a device id + render/tap events), so it
+# must declare collected data too or the bundle ships an extension that claims
+# "collects nothing" while a green gate reports the apps are fine.
+# Extending coverage is a one-line edit here.
 DEFAULT_MANIFESTS=(
   "${repo_root}/AgentLens/Resources/PrivacyInfo.xcprivacy"
   "${repo_root}/OpenBurnBarMobile/Resources/PrivacyInfo.xcprivacy"
+  "${repo_root}/OpenBurnBarWidget/Resources/PrivacyInfo.xcprivacy"
 )
 
 # Keys Apple requires on every NSPrivacyCollectedDataTypes entry.

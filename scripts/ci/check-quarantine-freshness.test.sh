@@ -112,6 +112,22 @@ else
   echo "ok: malformed AS_OF is rejected (exit $rc)"
 fi
 
+# Regression (R-GH8): the REAL shipped manifest must be fresh as of the day the
+# freshness gate went live (2026-07-01). This proves the two rows that were
+# already overdue on introduction —
+# `test_circuitBreaker_halfOpenToClosed_recovery` (was 2026-05-24) and
+# `testMakeConfigurationWithKey_reportsCipherVersion` (was 2026-05-17) — were
+# re-dated, and guards against reintroducing a non-exempt past-due Target Date.
+real_manifest="AgentLensTests/Quarantine/QUARANTINE_MANIFEST.md"
+if out="$(AS_OF="2026-07-01" bash "$script" "$real_manifest" 2>&1)"; then rc=0; else rc=$?; fi
+if [[ "$rc" -ne 0 ]]; then
+  echo "FAIL: real shipped quarantine manifest is past-due as of 2026-07-01" >&2
+  echo "$out" >&2
+  fail=1
+else
+  echo "ok: real shipped manifest is fresh as of 2026-07-01 (exit $rc)"
+fi
+
 if [[ "$fail" -ne 0 ]]; then
   echo "FAIL: check-quarantine-freshness self-test had failures" >&2
   exit 1
