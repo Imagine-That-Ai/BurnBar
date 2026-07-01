@@ -1,9 +1,17 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def current_release_tag() -> str:
+    project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
+    match = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?', project_yml)
+    assert match is not None, "project.yml must declare MARKETING_VERSION"
+    return f"v{match.group(1)}"
 
 
 def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
@@ -43,8 +51,9 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
 def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
+    expected_release_tag = current_release_tag()
 
-    assert data["repo"]["releaseTag"] == "v1.0.21"
+    assert data["repo"]["releaseTag"] == expected_release_tag
 
     result = subprocess.run(
         [
@@ -52,7 +61,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.21",
+            expected_release_tag,
         ],
         cwd=ROOT,
         text=True,
