@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.21] - 2026-07-01
+
+### Fixed
+
+- **Release smoke auth hardening** — pulls the public release forward from the
+  failed `v1.0.20` tag to the newest `main` commit and closes the release-smoke
+  token leak: the smoke daemon now receives its socket auth token from a chmod
+  600 token file instead of LaunchAgent environment, diagnostics redact token
+  fields, local smoke runs no longer print the raw GitHub mask command, and
+  explicit token-file arguments override stale inherited launchd auth.
+- **Fresh mobile release build** — bumps the iOS, iPadOS, widget, and keyboard
+  build number to `81` so the TestFlight upload for this release is unique and
+  tied to the same source cut as the macOS and Android artifacts.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 31 / `versionName` `1.0.21` so Google Play receives the same
+  release cut as the website and Apple lanes.
+
 ## [1.0.20] - 2026-07-01
 
 ### Fixed
