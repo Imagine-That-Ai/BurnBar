@@ -469,7 +469,8 @@ private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorI
         // dimensions match this reader; a mismatch (or an empty index) is left `nil` and
         // surfaced by `search`, which throws before it would touch the cache.
         let nodeMetas: [BurnBarHNSWNodeMeta]?
-        if Int(header.dimensions) == dimensions, header.count > 0 {
+        let headerNodeTotal = header.count
+        if Int(header.dimensions) == dimensions, headerNodeTotal > 0 {
             nodeMetas = Self.parseNodeMetas(
                 from: data,
                 header: header,
