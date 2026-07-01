@@ -7,18 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.19] - 2026-07-01
+<<<<<<< ours
+=======
+### Added
 
-### Fixed
-
-- **Foreground Xcode release heartbeat** — supersedes the failed `v1.0.18`
-  publish run. That run proved Android packaging, extension build, Functions,
-  daemon release binaries, package resolution, and the initial heartbeat all
-  ran, but the macOS unsigned Release app step still went silent during the
-  long Xcode phase. The release lane now runs `xcodebuild` in the background,
-  keeps the foreground shell printing a one-minute heartbeat plus recent
-  `xcodebuild` log output, and emits the final Xcode tail on failure so the
-  runner cannot silently kill a healthy build without evidence.
+- **Firestore TTL/retention manifest + fail-closed gate (R-O5)** — declared
+  retention intent for the forever-growing usage time-series collections
+  (`usage_counter_days` and its per-day `providers`/`accounts`/`models`/`devices`
+  sub-counters, plus the `usage_counter_totals` aggregate map) alongside the
+  already-TTL'd delivery/security collections in
+  `ops/firestore-ttl-policies.json`. `scripts/ci/check-firestore-ttl-declared.sh`
+  fails closed when `firestore.indexes.json` grows a `ttl:true` field the manifest
+  does not register, or when a policy's `indexDeclared` claim disagrees with the
+  index. Added a per-active-user Firestore unit-economics cost-model stub at
+  `docs/ops/UNIT_ECONOMICS_COST_MODEL.md` (starting estimate; operator fills the
+  rates). Enabling the pending live GCP TTL policies remains an operator action.
 
 ## [1.0.18] - 2026-07-01
 
@@ -173,6 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caused a visible hard seam under the iOS/iPadOS status bar after the latest
   mobile backdrop work.
 
+>>>>>>> theirs
 ## [1.0.8] - 2026-06-30
 
 ### Fixed
