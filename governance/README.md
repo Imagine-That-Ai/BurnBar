@@ -30,11 +30,25 @@ Author the desired protection here; **apply it as a GitHub organization-level ru
   owned by a different owner removes that self-serve toggle: the daily account can neither edit the
   rule nor add itself to the bypass list.
 
-The classic branch-protection field names are used here (rather than the ruleset JSON shape) so the
-file stays directly diffable against the live `GET .../branches/main/protection` response consumed by
-the drift check. When the operator translates it into a ruleset, the mapping is 1:1
+The classic branch-protection field names are used here (rather than the ruleset JSON shape) for
+readability and because the field-by-field mapping to a ruleset is 1:1
 (`required_approving_review_count` → pull-request rule, `contexts` → required-status-checks rule,
 `allow_force_pushes: false` → `non_fast_forward`, `allow_deletions: false` → `deletion`, etc.).
+
+**These field names do NOT mean the drift check should read the classic branch-protection endpoint.**
+Because the protection above is applied as an **org-level ruleset** (see the section above), the
+authoritative live surface is the **rulesets** REST API, not classic branch protection — GitHub exposes
+the two through separate endpoints
+([branch protection](https://docs.github.com/rest/branches/branch-protection) vs
+[repo rules](https://docs.github.com/rest/repos/rules) /
+[org rulesets](https://docs.github.com/rest/orgs/rules)). `GET .../branches/main/protection` reflects
+only *classic repo-level* protection and can return empty or stale while an org ruleset is actively
+enforcing `main`, so the drift check MUST read the ruleset endpoints
+(`GET /repos/{owner}/{repo}/rules/branches/main` for the effective rules, and the org ruleset via
+`GET /orgs/{org}/rulesets/{id}` for `bypass_actors` / `enforcement`), normalize the ruleset shape back
+onto these field names, and only *additionally* consult the branch-protection endpoint where classic
+repo-level protection is also configured. Diffing these mapped fields against the branch-protection
+endpoint alone would miss ruleset-only bypass drift.
 
 ## Required status checks — how the list was derived
 
@@ -45,6 +59,8 @@ These were read from `.github/workflows/*` on 2026-06-30:
 | Context (check-run name) | Workflow file | Job id | Notes |
 | --- | --- | --- | --- |
 | `Fast Feedback Gate` | `fast-feedback.yml` | `fast-feedback-gate` | Aggregate gate (`if: always()`, `needs:` all fast jobs) — the single stable context for that workflow. |
+| `guard` | `confidentiality-guard.yml` | `guard` | Confidentiality + public-evidence-redaction + branch-protection bypass-recipe guards (each self-tested). |
+| `BurnBar AGPL product posture` | `license-posture.yml` | `burnbar-product-license` | AGPL/product-license posture + crypto-architecture policy. |
 | `Secret Detection (gitleaks)` | `security-pr.yml` | `secret-detection` | |
 | `Dependency Review (CVE check)` | `security-pr.yml` | `dependency-review` | `if: github.event_name == 'pull_request'` — runs on PRs only (skipped on `merge_group`). |
 | `npm Audit (Node package locks)` | `security-pr.yml` | `npm-audit` | |
@@ -97,7 +113,12 @@ so re-arming it is future-required work, not something to fake-require today.
 ## Drift check (future, fail-closed)
 
 A scheduled job (not wired here — the CI surface is mid-reconciliation) MUST diff the live protection
-against this file and **fail closed** on any divergence, in particular:
+against this file and **fail closed** on any divergence. Read the live state from the **ruleset**
+endpoints first (the org ruleset enforcing `main`, plus `GET /repos/{owner}/{repo}/rules/branches/main`
+for the effective rules), normalize that shape onto the field names in this file, and fall back to
+`GET .../branches/main/protection` only where classic repo-level protection is also present (see the
+mapping note above — reading the branch-protection endpoint alone misses ruleset-only bypass drift).
+Fail closed on any divergence, in particular:
 
 - `required_pull_request_reviews == null` (**`reviews: null`**) — protection wiped or downgraded so no
   review is required. This is the single most dangerous drift and MUST be a hard failure.
@@ -109,17 +130,27 @@ against this file and **fail closed** on any divergence, in particular:
 - Required `contexts` present live but **missing** from this file, or vice versa (set difference in
   either direction), normalizing GitHub's `contexts` vs `checks[].context` representations.
 
-## Reworking `verify-github-governance.sh`
+## Consumers of this file
+
+**`scripts/commercial-launch-gate.mjs` reads its required-status-check set from this file** (as of this
+change). Its `loadRequiredBranchChecks()` helper parses `required_status_checks.contexts` here instead
+of the hand-maintained `REQUIRED_BRANCH_CHECKS` constant it previously carried — a constant that had
+already drifted *below* this policy (it omitted `PR Native Gate`, the daemon/app gates,
+`Production Deploy Auth Policy`, and `CODEOWNERS Security Trees`). The launch gate now fails closed if
+live protection is missing any check this file requires, so it can never pass against a stale, shorter
+list. It consumes **only** `required_status_checks.contexts` — never the
+`_pending_required_status_checks` placeholders (which no workflow emits yet).
 
 [`scripts/ops/verify-github-governance.sh`](../scripts/ops/verify-github-governance.sh) currently
 hardcodes the required set in a `DEFAULT_REQUIRED_CHECKS` constant, which has already drifted (it
 omits the native, app, and daemon gates entirely). It SHOULD be reworked to **read the required-check
-set and the review/admin invariants from this file** and diff the live `GET .../protection` against
-it, rather than carrying a hand-maintained constant. Preserve the invariants that script already
-enforces (`enforce_admins`, no force-push/deletions, exactly-one approving review, code-owner
-reviews, dismiss-stale, last-push approval, conversation resolution, zero bypass) — this file encodes
-all of them, plus `require_last_push_approval: true`, so sourcing from here strengthens the bar rather
-than weakening it.
+set and the review/admin invariants from this file** and diff the live protection (read via the
+ruleset endpoints per the drift-check section above) against it, rather than carrying a hand-maintained
+constant. Preserve the invariants that script already enforces (`enforce_admins`, no
+force-push/deletions, exactly-one approving review, code-owner reviews, dismiss-stale, last-push
+approval, conversation resolution, zero bypass) — this file encodes all of them, plus
+`require_last_push_approval: true`, so sourcing from here strengthens the bar rather than weakening it.
 
-That rework is intentionally **out of scope for this change** (the workflow/CI surface is being
-edited concurrently); this file is the prerequisite artifact the rework will consume.
+That `verify-github-governance.sh` rework is intentionally **out of scope for this change** (the
+workflow/CI surface is being edited concurrently); this file is the prerequisite artifact the rework
+will consume.

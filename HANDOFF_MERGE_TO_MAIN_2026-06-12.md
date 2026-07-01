@@ -122,15 +122,26 @@ CI shows only the documented pre-existing/solo-review reds:
    ```bash
    gh pr merge 325 --merge --admin --delete-branch=false
    ```
-   `--admin` clears only the unsatisfiable review gate; it does **not** touch
-   admin enforcement. Write the postmortem within 72h.
+   `--admin` is **not review-scoped** — GitHub documents it as merging a PR "that
+   does not meet requirements"
+   ([`gh pr merge`](https://cli.github.com/manual/gh_pr_merge)), so it bypasses
+   *any* unmet gate, not just review. Here that means it clears the unsatisfiable
+   code-owner review **and** any required check still red from the documented
+   pre-existing failures above. Preflight before invoking it: run
+   `gh pr checks 325 --required` and confirm the only non-green required checks are
+   the ones explicitly triaged as pre-existing/solo-review in this handoff —
+   anything else is a real regression and blocks the merge. It does **not** touch
+   admin enforcement (that toggle, not the review gate, was the control the
+   diligence reviews flagged). Write the postmortem within 72h.
 4. **Confirm it landed:**
    ```bash
    git fetch origin && git merge-base --is-ancestor 80f622df6 origin/main && echo "MERGED"
    ```
 
 `scripts/ci/check-no-bypass-recipe.sh` fails CI if a recipe that disables admin
-enforcement is ever committed again.
+enforcement is ever committed again — it runs (and self-tests) on the **required**
+`guard` lane in `.github/workflows/confidentiality-guard.yml`, so a future PR that
+re-adds the recipe cannot merge undetected.
 
 ## Context / what this PR contains (for reviewers)
 - Full diagnosis + plan: `TECH_DEBT_AUDIT_2026-06-11.md` (repo root, untracked).

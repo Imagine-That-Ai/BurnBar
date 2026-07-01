@@ -31,6 +31,8 @@ gh api -X PUT repos/o/r/branches/main/protection/enforce_admins   # disable
 gh api -X DELETE repos/o/r/branches/main/protection/enforce_admins
 curl -X DELETE https://api.github.com/repos/o/r/branches/main/protection/enforce_admins
 gh api --method DELETE repos/o/r/branches/main/protection/enforce_admins
+gh api --request DELETE repos/o/r/branches/main/protection/enforce_admins
+curl --request PUT https://api.github.com/repos/o/r/branches/main/protection -d '{"enforce_admins": false, "required_status_checks": null}'
 the branch response shows "enforce_admins": {"enabled": false} after the toggle
 FORMS
 

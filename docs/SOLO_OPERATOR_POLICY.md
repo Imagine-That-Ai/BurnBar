@@ -11,9 +11,11 @@ This repository is run by **one operator**. Pretending otherwise — a second
 account that rubber-stamps its own team's changes — is the failure mode those
 reviews caught, not a control. This document states the honest model instead: a
 **hybrid control** in which a solo operator is backed by a credentialed AI
-reviewer on every change and a paid external code-owner on the sensitive lanes.
-It records what compensates for the missing second engineer, when a bounded
-break-glass merge is acceptable, and what is never acceptable.
+reviewer on every change and — on the sensitive lanes — a paid external
+code-owner (the compensating control this policy is standing up; see § The hybrid
+control for its current, not-yet-wired status in `CODEOWNERS`). It records what
+compensates for the missing second engineer, when a bounded break-glass merge is
+acceptable, and what is never acceptable.
 
 ## The hybrid control (what actually governs)
 
@@ -30,23 +32,37 @@ break-glass merge is acceptable, and what is never acceptable.
    its verdict never counts as the required code-owner review and never merges a
    PR by itself. Its findings are addressed or explicitly dispositioned in the PR
    before merge.
-3. **A paid external reviewer is a required code-owner on the sensitive lanes.**
-   For crypto/E2EE, privileged input (daemon/HID/XPC/socket), billing/
-   entitlements, Firestore/storage security rules, and release/deploy, a paid
-   external or fractional security-literate reviewer is listed in `CODEOWNERS` and
-   **must approve** — either **before merge**, or **before the release that ships
-   the change** under a documented hold (see below). This is a real second set of
-   human eyes on the surfaces where a solo mistake is most costly, bought rather
-   than pretended.
+3. **A paid external reviewer is the designated code-owner on the sensitive
+   lanes — a control being stood up, stated honestly.** For crypto/E2EE,
+   privileged input (daemon/HID/XPC/socket), billing/entitlements,
+   Firestore/storage security rules, and release/deploy, the governing intent is
+   that a paid external or fractional security-literate reviewer is the required
+   `CODEOWNERS` reviewer who **must approve** — either **before merge**, or
+   **before the release that ships the change** under a documented hold (see
+   below). This is the real second set of human eyes on the surfaces where a solo
+   mistake is most costly, bought rather than pretended.
+
+   **Current state, stated plainly (the gap this policy refuses to hide).**
+   `.github/CODEOWNERS` today routes every sensitive-lane path to the operator's
+   own owner accounts (`@Ajnunezg @emilio3435`), not to an external reviewer.
+   Until that reviewer is wired into `CODEOWNERS`, this point is **target intent,
+   not yet an operating control**: the sensitive lanes are governed by branch
+   protection's code-owner gate plus the AI verdict artifact, and the compensating
+   "second human on the risky surfaces" is not yet live. Adding the external
+   reviewer to `CODEOWNERS` for the paths in "Sensitive lanes" below is the tracked
+   step that makes this control real; it MUST land before this point is described
+   as already governing. Writing it as configured fact before then would be exactly
+   the "gap between configured and operating controls" this document exists to close.
 
 ## The default (branch protection)
 
 - `enforce_admins` stays **on**. It is not toggled to merge — that toggle, not
   the review gate, was the control the diligence reviews flagged.
 - Branch protection requires one code-owner approval with **zero** standing PR
-  bypass allowances. On the sensitive lanes the required code-owner is the paid
-  external reviewer above; routine lanes are additionally covered by the AI
-  verdict artifact as compensating analysis.
+  bypass allowances. On the sensitive lanes the required code-owner **will be** the
+  paid external reviewer above once that reviewer is wired into `CODEOWNERS` (today
+  those paths route to the operator's owner accounts — see point 3); routine lanes
+  are additionally covered by the AI verdict artifact as compensating analysis.
 - Every PR runs the required fast merge suite: `Fast Feedback Gate`,
   confidentiality guard, product-license posture, and PR security gates. A red
   required check is fixed, not redefined. **Changing a gate's definition in the
@@ -79,33 +95,54 @@ break-glass merge is acceptable, and what is never acceptable.
 - Release / deploy workflows and the provenance manifest
   (`third_party/hermes-agent/`).
 
-A change on any of these merges only after the paid external code-owner has
-approved it, or ships only after that approval under the documented release hold.
-The AI verdict artifact is attached as well, but it does not substitute for that
-approval.
+A change on any of these is intended to merge only after the paid external
+code-owner has approved it, or to ship only after that approval under the
+documented release hold — **once that reviewer is wired into `CODEOWNERS`**. Until
+then these paths carry the operator's owner code-owners plus the AI verdict
+artifact, and adding the external code-owner here is the tracked step that makes
+the control real (see point 3). The AI verdict artifact is attached as well, but it
+does not substitute for that external approval.
 
 ## Break-glass (review gate only — never admin enforcement)
 
 A break-glass merge exists for exactly one problem: the **1 code-owner review is
-temporarily unreachable** (e.g. the external reviewer is unavailable during an
+temporarily unreachable** (e.g. the required code-owner is unavailable during an
 active incident). It **never** disables `enforce_admins` and never relaxes branch
 protection. It is acceptable only when **all** hold:
 
 1. The change is not on a sensitive lane, **or** the sensitive-lane review is
    deferred to a **documented release hold** — the change may land, but the
    release that ships it is blocked until the external code-owner approves.
-2. All required fast merge checks are green **without any gate definition having
-   changed in the same PR**.
+2. **All** required status checks (not only the fast suite) report green and
+   **none is still pending** — this is the `--admin` preflight below — **without
+   any gate definition having changed in the same PR**.
 3. The credentialed AI reviewer's verdict artifact ran on the final diff and its
    findings were addressed or dispositioned in the PR.
 4. A P0 issue is opened **before** the merge naming the bypassed review gate and
    the compensating review, the bypass window is bounded to the incident, and a
    postmortem is written within 72 hours.
 
-The merge itself is the GitHub-recorded admin path (`gh pr merge --admin`), which
-clears only the review requirement. There is **no** step that disables admin
-enforcement; a recipe that did so is banned from the tree by
-`scripts/ci/check-no-bypass-recipe.sh`.
+The merge itself is the GitHub-recorded admin path (`gh pr merge --admin`).
+`--admin` is **not review-scoped**: GitHub documents it as merging "a pull request
+that does not meet requirements"
+([`gh pr merge`](https://cli.github.com/manual/gh_pr_merge)), so it bypasses *any*
+unmet gate — a red or still-pending required check, a merge-queue requirement, or
+unresolved conversations — not only the review requirement. It is bounded to
+clearing the **unsatisfiable review gate only** by a mandatory preflight that MUST
+pass immediately before it is invoked:
+
+- **Every required status check reports green** on the exact commit being merged —
+  none red and **none still pending**. Verify with `gh pr checks <n> --required`
+  (which lists only merge-required checks); an empty or non-green result blocks the
+  break-glass merge.
+- **No other mergeability requirement is outstanding** — conversation resolution is
+  satisfied and there is no active merge-queue entry — so the code-owner review is
+  the *only* requirement left for `--admin` to clear.
+
+Only when that preflight holds does `--admin` clear the review gate and nothing
+else. There is **no** step that disables admin enforcement; a recipe that did so is
+banned from the tree by `scripts/ci/check-no-bypass-recipe.sh`, enforced on the
+required `guard` lane (`.github/workflows/confidentiality-guard.yml`).
 
 ## Never acceptable
 
@@ -156,6 +193,7 @@ enforcement; a recipe that did so is banned from the tree by
 Diligence reads the gap between configured and operating controls as the single
 most predictive signal about a team. The controls in this repo are real; this
 policy makes their operation legible — a solo operator with named compensating
-controls (an AI verdict on every PR, a paid external code-owner on the sensitive
-lanes), including the documented, bounded break-glass exception — so an external
-reviewer can audit _adherence_ instead of inferring intent from toggle history.
+controls (an AI verdict on every PR today, and a paid external code-owner on the
+sensitive lanes being stood up), including the documented, bounded break-glass
+exception — so an external reviewer can audit _adherence_ instead of inferring
+intent from toggle history.

@@ -11,8 +11,8 @@
 # It matches the RUNNABLE disable/toggle forms only:
 #   * the REST endpoint path `.../protection/enforce_admins` (GitHub's admin-
 #     enforcement endpoint — it only ever appears inside a command);
-#   * a mutating verb (`-X DELETE|PUT`, `--method DELETE|PUT`) next to
-#     `enforce_admins`;
+#   * a mutating verb (`-X DELETE|PUT`, `--method DELETE|PUT`, or curl's
+#     long-form `--request DELETE|PUT`) next to `enforce_admins`;
 #   * a disabled-state body (`enforce_admins ... "enabled": false`).
 # It deliberately does NOT match the `enforce_admins=false` field-assignment form
 # — that shape is owned by scripts/security/check-public-evidence-redaction.mjs,
@@ -37,8 +37,8 @@ TEST="scripts/ci/check-no-bypass-recipe.test.sh"
 # `.*` is same-line proximity. Every branch anchors on the `enforce_admins`
 # literal, which is why the literal prefilter below loses nothing.
 PATTERN='protection/enforce_admins'
-PATTERN+='|(-x|--method)[[:space:]]*(delete|put).*enforce_admins'
-PATTERN+='|enforce_admins.*(-x|--method)[[:space:]]*(delete|put)'
+PATTERN+='|(-x|--method|--request)[[:space:]]*(delete|put).*enforce_admins'
+PATTERN+='|enforce_admins.*(-x|--method|--request)[[:space:]]*(delete|put)'
 PATTERN+='|enforce_admins.*enabled"?[[:space:]]*:[[:space:]]*false'
 PATTERN+='|enabled"?[[:space:]]*:[[:space:]]*false.*enforce_admins'
 
