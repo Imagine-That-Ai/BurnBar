@@ -150,6 +150,14 @@ extension ComputerUseSessionCoordinator {
 
     public func setTrustMode(_ mode: ComputerUseTrustMode) {
         guard var current = state else { return }
+        // R-L5 (Computer Use safety): live trust is downgrade-only. A running
+        // session may only *lower* trust (trusted -> step -> manual) — never
+        // elevate mid-session — because ComputerUseCapabilityGate treats
+        // `.trusted` as auto-allow for scoped actions, so a mid-session
+        // elevation is a silent privilege escalation. Elevation requires
+        // starting a fresh session. Mirrors the phone-path guard in
+        // AgentWatchReceiver.downgradeTrustMode ('guard mode <= liveTrustMode').
+        guard mode <= current.liveTrustMode else { return }
         current.liveTrustMode = mode
         state = current
     }
