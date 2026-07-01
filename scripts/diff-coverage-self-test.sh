@@ -18,11 +18,15 @@
 #      `cov:ignore -- <reason>` and justified ignore blocks exclude exactly
 #      the annotated lines.
 #   5. A lane whose evidence is missing entirely fails closed.
-#   6. Pure-move safe-harbor (R-GH0): a byte-identical / whitespace-normalized
-#      relocation is credited refactor:pure-move and excluded from the
-#      denominator, so a god-file split passes with zero new tests; a move+edit
-#      gates only the genuinely edited line; and a forged "move" that flips a
-#      literal is NOT exempted and still fails.
+#   6. Pure-move safe-harbor (R-GH0): a byte-identical / reindented relocation is
+#      credited refactor:pure-move and excluded from the denominator, so a
+#      god-file split passes with zero new tests; a move+edit gates only the
+#      genuinely edited line; and a forged "move" that flips a literal is NOT
+#      exempted and still fails. Block matching (not global line text) makes an
+#      in-place edit whose new text coincidentally equals one line of an
+#      unrelated deleted block stay GATED; strip-only normalization keeps an
+#      internal-whitespace literal edit gated; and pureMove.gatedLines always
+#      equals diffCoverage.changedLines (never inflated by structural lines).
 #
 # Run directly or via the CI coverage steps (it guards the gate before the
 # gate judges the PR). Exits non-zero on the first failed assertion.
@@ -473,6 +477,239 @@ check "forged move credits only the genuinely relocated lines" \
   "5" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
 check "forged move leaves the tampered line uncovered" \
   "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Helpers.swift")][0]["coveredLines"]')"
+
+# --- fixture 8: coincidence attack — an in-place edit whose new text equals one
+# line of an UNRELATED deleted block must NOT be exempted as a move (R-GH0, P1).
+# Calc.swift changes `return 1` -> `return 0` (a real edit) while an unrelated
+# Helper.swift that also contains `return 0` is deleted. Global line-text
+# matching credited the edited `return 0` as a "move" because that text appeared
+# somewhere in the removed set; block matching gates it because a length-1 added
+# run matches no contiguous removed run of >= 2 lines. (Separate files so git
+# cannot align the edit against the deleted line as unchanged context.)
+repo_coin="$tmp_root/repo-coincidence"
+mkdir -p "$repo_coin/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_coin" init -q -b main
+git -C "$repo_coin" config user.email selftest@openburnbar.invalid
+git -C "$repo_coin" config user.name "Diff Coverage Self-Test"
+cat > "$repo_coin/OpenBurnBarCore/Sources/DemoKit/Calc.swift" <<'EOF'
+public enum Calc {
+    public static func value() -> Int {
+        return 1
+    }
+}
+EOF
+cat > "$repo_coin/OpenBurnBarCore/Sources/DemoKit/Helper.swift" <<'EOF'
+public enum Helper {
+    public static func fallback() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_coin" add -A
+git -C "$repo_coin" commit -qm base
+base_coin="$(git -C "$repo_coin" rev-parse HEAD)"
+cat > "$repo_coin/OpenBurnBarCore/Sources/DemoKit/Calc.swift" <<'EOF'
+public enum Calc {
+    public static func value() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_coin" rm -q OpenBurnBarCore/Sources/DemoKit/Helper.swift
+git -C "$repo_coin" add -A
+git -C "$repo_coin" commit -qm coincidence-attack
+lcov_coin="$tmp_root/fixture-coincidence.lcov"
+write_swift_lcov "$lcov_coin" "$repo_coin" "OpenBurnBarCore/Sources/DemoKit/Calc.swift" "DA:2,3" "DA:3,0"
+pkg_coin="$tmp_root/pkg-coincidence.json"
+extract_pkg "$lcov_coin" "$repo_coin" "$pkg_coin"
+verdict="$tmp_root/verdict-coincidence.json"
+rc="$(run_gate "$repo_coin" "$base_coin" packages 80 "$pkg_coin" "$verdict" "$tmp_root/err-coincidence.log")"
+check "coincidence edit (return 1 -> return 0) is NOT exempted and fails the gate" "1" "$rc"
+check "coincidence edit is gated, never credited as a pure move" \
+  "0" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "coincidence edit stays in the coverage denominator" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+
+# --- fixture 9: an internal-whitespace edit inside a moved block stays gated
+# (R-GH0, P1/P3). The Labeler block relocates Big.swift -> Helpers.swift, but the
+# string literal's INTERNAL spacing changes (`"a b"` -> `"a  b"`). Normalizing
+# only leading/trailing indentation (text.strip) preserves that internal byte, so
+# the edited line matches no removed line and is gated, while the 4 untouched
+# block lines are still credited as the move.
+repo_ws="$tmp_root/repo-whitespace"
+mkdir -p "$repo_ws/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_ws" init -q -b main
+git -C "$repo_ws" config user.email selftest@openburnbar.invalid
+git -C "$repo_ws" config user.name "Diff Coverage Self-Test"
+cat > "$repo_ws/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+
+public enum Labeler {
+    public static func text() -> String {
+        return "a b"
+    }
+}
+EOF
+cat > "$repo_ws/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_ws" add -A
+git -C "$repo_ws" commit -qm base
+base_ws="$(git -C "$repo_ws" rev-parse HEAD)"
+cat > "$repo_ws/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+cat > "$repo_ws/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum Labeler {
+    public static func text() -> String {
+        return "a  b"
+    }
+}
+EOF
+git -C "$repo_ws" add -A
+git -C "$repo_ws" commit -qm move-with-internal-whitespace-edit
+lcov_ws="$tmp_root/fixture-whitespace.lcov"
+write_swift_lcov "$lcov_ws" "$repo_ws" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" "DA:9,0"
+pkg_ws="$tmp_root/pkg-whitespace.json"
+extract_pkg "$lcov_ws" "$repo_ws" "$pkg_ws"
+verdict="$tmp_root/verdict-whitespace.json"
+rc="$(run_gate "$repo_ws" "$base_ws" packages 80 "$pkg_ws" "$verdict" "$tmp_root/err-whitespace.log")"
+check "internal-whitespace literal edit inside a move is NOT exempted and fails" "1" "$rc"
+check "internal-whitespace edit stays gated (only the 4 untouched lines move)" \
+  "4" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "internal-whitespace edit stays in the coverage denominator" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+
+# --- fixture 10: pureMove.gatedLines matches the coverage denominator (R-GH0,
+# P3). A no-evidence file adds two STRUCTURAL lines (a stored property and a
+# closing brace) plus two executable lines. total_exc drops the structural
+# lines, so the reported gated count must equal diffCoverage.changedLines and
+# never inflate by counting structural lines the percentage already excludes.
+repo_gm="$tmp_root/repo-gated-match"
+mkdir -p "$repo_gm/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_gm" init -q -b main
+git -C "$repo_gm" config user.email selftest@openburnbar.invalid
+git -C "$repo_gm" config user.name "Diff Coverage Self-Test"
+cat > "$repo_gm/OpenBurnBarCore/Sources/DemoKit/Model.swift" <<'EOF'
+public struct Model {
+    public var id: Int
+}
+EOF
+cat > "$repo_gm/OpenBurnBarCore/Sources/DemoKit/Keep.swift" <<'EOF'
+public enum Keep {
+    public static func run() -> Int {
+        return 7
+    }
+}
+EOF
+git -C "$repo_gm" add -A
+git -C "$repo_gm" commit -qm base
+base_gm="$(git -C "$repo_gm" rev-parse HEAD)"
+cat > "$repo_gm/OpenBurnBarCore/Sources/DemoKit/Model.swift" <<'EOF'
+public struct Model {
+    public var id: Int
+    public var name: String
+    public func compute() -> Int {
+        return id + 2
+    }
+}
+EOF
+git -C "$repo_gm" add -A
+git -C "$repo_gm" commit -qm add-structural-and-executable
+# Evidence names only the untouched Keep.swift, so Model.swift is no_evidence
+# (the packages lane still has evidence and does not fail closed).
+lcov_gm="$tmp_root/fixture-gated-match.lcov"
+write_swift_lcov "$lcov_gm" "$repo_gm" "OpenBurnBarCore/Sources/DemoKit/Keep.swift" "DA:2,1" "DA:3,1"
+pkg_gm="$tmp_root/pkg-gated-match.json"
+extract_pkg "$lcov_gm" "$repo_gm" "$pkg_gm"
+verdict="$tmp_root/verdict-gated-match.json"
+rc="$(run_gate "$repo_gm" "$base_gm" packages 80 "$pkg_gm" "$verdict" "$tmp_root/err-gated-match.log")"
+check "gated tally equals the coverage denominator (no structural overcount)" \
+  "True" "$(json_get "$verdict" 'v["pureMove"]["gatedLines"] == v["diffCoverage"]["changedLines"]')"
+check "gated tally counts only the two executable lines (structural excluded)" \
+  "2" "$(json_get "$verdict" 'v["pureMove"]["gatedLines"]')"
+
+# --- fixture 11: re-indentation invariant — strip-only normalization must keep
+# a REINDENTED relocation matching (R-GH0, P1 non-regression). A helper body
+# relocates Big.swift -> Helpers.swift and its lines shift from 4-space to
+# 8-space leading indent. The stripped body still matches the removed lines, so
+# the reindented block is credited; only the genuinely-new function signature is
+# gated (and it is covered), so the gate passes.
+repo_reindent="$tmp_root/repo-reindent"
+mkdir -p "$repo_reindent/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_reindent" init -q -b main
+git -C "$repo_reindent" config user.email selftest@openburnbar.invalid
+git -C "$repo_reindent" config user.name "Diff Coverage Self-Test"
+cat > "$repo_reindent/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+
+public func freeHelper() -> Int {
+    let seed = 5
+    return seed
+}
+EOF
+cat > "$repo_reindent/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_reindent" add -A
+git -C "$repo_reindent" commit -qm base
+base_reindent="$(git -C "$repo_reindent" rev-parse HEAD)"
+cat > "$repo_reindent/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+cat > "$repo_reindent/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+
+    public static func relocated() -> Int {
+        let seed = 5
+        return seed
+    }
+}
+EOF
+git -C "$repo_reindent" add -A
+git -C "$repo_reindent" commit -qm reindented-move
+lcov_reindent="$tmp_root/fixture-reindent.lcov"
+write_swift_lcov "$lcov_reindent" "$repo_reindent" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" "DA:6,1"
+pkg_reindent="$tmp_root/pkg-reindent.json"
+extract_pkg "$lcov_reindent" "$repo_reindent" "$pkg_reindent"
+verdict="$tmp_root/verdict-reindent.json"
+rc="$(run_gate "$repo_reindent" "$base_reindent" packages 80 "$pkg_reindent" "$verdict" "$tmp_root/err-reindent.log")"
+check "re-indented block move still credits the 4-space->8-space body lines" \
+  "3" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "re-indented move passes (only the genuinely-new signature is gated)" "0" "$rc"
 
 # -----------------------------------------------------------------------------
 

@@ -5,9 +5,13 @@
 # Builds throwaway git repos and asserts the gate's exit codes for baseline
 # raises vs. shrinks — positive controls that prove the meta-gate actually closes
 # the "797 -> 800" bypass (raising a debt baseline in the same PR) and does not
-# fire on the legitimate ratchet-down flow. Each repo commits a seed baseline on
-# `main`, then mutates the WORKING TREE (exactly how the ratchets read budgets),
-# and the gate compares against `main`. No network; self-cleaning.
+# fire on the legitimate ratchet-down flow. Cases (j)-(l) cover the subtler
+# evasions the numeric compare used to miss: seeding a NEW grandfathered entry
+# into an existing baseline, stringifying a number so it drops out of the
+# comparison, and a non-finite (NaN) budget that slips past every `>`/`<` check.
+# Each repo commits a seed baseline on `main`, then mutates the WORKING TREE
+# (exactly how the ratchets read budgets), and the gate compares against `main`.
+# No network; self-cleaning.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,6 +133,32 @@ r="$(new_repo)"
 write_singleton "${r}" 1 56 57 "reworded rationale"
 printf 'let x = 2\n' >"${r}/src/app.swift"
 assert_exit 0 "${r}" "note-only baseline edit + source edit passes"
+
+# ── (j) NEW entry inserted into an EXISTING baseline file → fail ──────────────
+# Grandfathered debt: adding AgentLens/C.swift=5000 to the existing swift-file
+# baseline (aggregate total untouched) launders a new 5000-line budget in. Only
+# a brand-new baseline FILE may introduce entries; seeding one into an existing
+# baseline must be rejected.
+r="$(new_repo)"
+printf '{ "target": 2000, "total": 2, "files": [ { "path": "AgentLens/A.swift", "lines": 2100 }, { "path": "AgentLens/B.swift", "lines": 2050 }, { "path": "AgentLens/C.swift", "lines": 5000 } ] }\n' \
+  >"${r}/budgets/swift-file-size-baseline.json"
+assert_exit 1 "${r}" "new grandfathered entry in an existing baseline is rejected"
+
+# ── (k) a numeric field replaced by a non-number (stringified "57") → fail ────
+# `total` was the number 57 on base; turning it into the string "57" would drop
+# it from the numeric comparison and hide the raise from downstream ratchets.
+r="$(new_repo)"
+printf '{ "settingsAccountSharedReferences": 1, "staticSharedSingletons": 56, "total": "57", "note": "seed" }\n' \
+  >"${r}/budgets/singleton-baseline.json"
+assert_exit 1 "${r}" "numeric baseline field turned into a string is rejected"
+
+# ── (l) a non-finite baseline number (NaN) → fail ────────────────────────────
+# json.loads accepts NaN, and `NaN > 57` / `NaN < 57` are both false, so a NaN
+# budget slips past every monotonicity check unless rejected explicitly.
+r="$(new_repo)"
+printf '{ "settingsAccountSharedReferences": 1, "staticSharedSingletons": 56, "total": NaN, "note": "seed" }\n' \
+  >"${r}/budgets/singleton-baseline.json"
+assert_exit 1 "${r}" "non-finite (NaN) baseline number is rejected"
 
 echo
 printf 'passed=%s failed=%s\n' "${pass}" "${fail}"
