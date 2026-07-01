@@ -12,7 +12,13 @@
 #   • loads every budgets/*.json and any *baseline*.json (debt baselines only;
 #     test-fixture goldens are excluded) as it stood on the base,
 #   • compares every numeric field (target / total / count / per-file lines …),
-#   • FAILS if any number increased vs base — a baseline may only shrink, and
+#   • FAILS if any number increased vs base — a baseline may only shrink,
+#   • FAILS if a NEW numeric entry appears in an EXISTING baseline file (a
+#     grandfathered entry is new debt; only a brand-new baseline FILE may add
+#     entries),
+#   • FAILS if a baseline number is replaced by a non-number (a stringified "20"
+#     would otherwise vanish from the comparison) or is non-finite (NaN/Infinity
+#     slip past every `>`/`<` check), and
 #   • FAILS if a raise is coupled with non-baseline source edits, because a
 #     baseline change must land standalone so a reviewer can judge the debt bump
 #     in isolation.
@@ -51,6 +57,7 @@ fi
 exec python3 - "${base_ref}" <<'PY'
 import fnmatch
 import json
+import math
 import os
 import subprocess
 import sys
@@ -103,22 +110,20 @@ changed = set(diff.stdout.splitlines()) if diff.returncode == 0 else set()
 changed |= set(untracked)
 
 
-# ── 2. Numeric-field walker ──────────────────────────────────────────────────
-# Flatten every numeric leaf to a stable path so the same field can be compared
-# across revisions. Arrays of objects are keyed by a stable id field (path/file/
-# name/id/key) when one is present so reordering never masks a per-entry bump;
-# otherwise they fall back to positional indexing.
-def numeric_leaves(node, prefix="", out=None):
+# ── 2. Scalar-field walker ───────────────────────────────────────────────────
+# Flatten EVERY scalar leaf (numbers, strings, bools, null) to a stable path so
+# the same field can be compared across revisions — recording non-numbers too is
+# what lets us catch a number that was replaced by a string (a "20" that this
+# gate would otherwise drop silently) or by any other non-number. Arrays of
+# objects are keyed by a stable id field (path/file/name/id/key) when one is
+# present so reordering never masks a per-entry bump; otherwise they fall back to
+# positional indexing.
+def scalar_leaves(node, prefix="", out=None):
     if out is None:
         out = {}
-    if isinstance(node, bool):
-        return out  # bool is an int subclass; never a budget number
-    if isinstance(node, (int, float)):
-        out[prefix or "<root>"] = node
-        return out
     if isinstance(node, dict):
         for key in sorted(node.keys()):
-            numeric_leaves(node[key], f"{prefix}.{key}" if prefix else str(key), out)
+            scalar_leaves(node[key], f"{prefix}.{key}" if prefix else str(key), out)
         return out
     if isinstance(node, list):
         id_field = None
@@ -130,8 +135,17 @@ def numeric_leaves(node, prefix="", out=None):
                     break
         for i, elem in enumerate(node):
             seg = f"[{id_field}={elem[id_field]}]" if id_field is not None else f"[{i}]"
-            numeric_leaves(elem, f"{prefix}{seg}", out)
+            scalar_leaves(elem, f"{prefix}{seg}", out)
+        return out
+    out[prefix or "<root>"] = node  # scalar leaf: number, str, bool, or None
     return out
+
+
+def is_budget_number(value):
+    # A ratchetable budget number: a real int/float, never a bool (bool is an int
+    # subclass). Finiteness is checked separately so NaN/Infinity are REJECTED
+    # (a loud failure) rather than silently treated as "not a number".
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def load_json(text, where):
@@ -143,10 +157,12 @@ def load_json(text, where):
 
 
 # ── 3. Compare each baseline's numbers against the base branch ───────────────
-increases = []   # (file, field, base_val, cur_val)
-decreases = []   # (file, field, base_val, cur_val)
-new_fields = []  # (file, field, cur_val) — present now, absent on base
-new_files = []   # baseline files absent on base entirely
+increases = []    # (file, field, base_val, cur_val) — a raise; a baseline may only shrink
+decreases = []    # (file, field, base_val, cur_val) — a ratchet-down; allowed
+new_fields = []   # (file, field, cur_val) — new numeric leaf in an EXISTING file; REJECTED
+type_changes = []  # (file, field, base_val, cur_val) — was a number, now a non-number; REJECTED
+nonfinite = []    # (file, field, base_val, cur_val) — NaN/Infinity on either side; REJECTED
+new_files = []    # baseline files absent on base entirely — allowed, logged
 
 for bf in baseline_files:
     try:
@@ -163,31 +179,53 @@ for bf in baseline_files:
     old = load_json(shown.stdout, f"{base}:{bf}")
     if old is None:
         continue
-    cur_leaves = numeric_leaves(cur)
-    old_leaves = numeric_leaves(old)
-    for field, cur_val in cur_leaves.items():
-        if field not in old_leaves:
+    cur_leaves = scalar_leaves(cur)
+    old_leaves = scalar_leaves(old)
+    for field in sorted(set(old_leaves) | set(cur_leaves)):
+        has_old = field in old_leaves
+        has_cur = field in cur_leaves
+        old_val = old_leaves.get(field)
+        cur_val = cur_leaves.get(field)
+        old_num = is_budget_number(old_val)
+        cur_num = is_budget_number(cur_val)
+        # (f) A NaN/Infinity on either side is malformed debt: NaN slips past
+        # every `>`/`<` comparison, so reject it outright before comparing.
+        if (old_num and not math.isfinite(old_val)) or (cur_num and not math.isfinite(cur_val)):
+            nonfinite.append((bf, field, old_val, cur_val))
+            continue
+        if has_old and old_num:
+            if not has_cur:
+                continue  # numeric field removed entirely — debt paid off, allowed
+            if not cur_num:
+                # (e) Was a number on base, now a non-number (e.g. the string
+                # "20"): the ratchet tools may still parse it, so a stringified
+                # raise must not vanish. REJECT.
+                type_changes.append((bf, field, old_val, cur_val))
+            elif cur_val > old_val:
+                increases.append((bf, field, old_val, cur_val))
+            elif cur_val < old_val:
+                decreases.append((bf, field, old_val, cur_val))
+        elif cur_num:
+            # (d) A numeric leaf ABSENT on base but present now in an EXISTING
+            # baseline file is new grandfathered debt. Only a brand-new baseline
+            # FILE (handled above via new_files) may introduce entries. REJECT.
             new_fields.append((bf, field, cur_val))
-        elif cur_val > old_leaves[field]:
-            increases.append((bf, field, old_leaves[field], cur_val))
-        elif cur_val < old_leaves[field]:
-            decreases.append((bf, field, old_leaves[field], cur_val))
 
-raised = bool(increases)
-raised_files = sorted({f for f, *_ in increases})
+# A new numeric entry in an existing baseline is a debt raise for the purpose of
+# the standalone rule, exactly like a bumped number.
+raised = bool(increases) or bool(new_fields)
+raised_files = sorted({f for f, *_ in increases} | {f for f, *_ in new_fields})
 non_baseline_changed = sorted(f for f in changed if f not in baseline_set)
 
 # ── 4. Report ────────────────────────────────────────────────────────────────
 for bf in new_files:
     print(f"::notice::check-baseline-monotonic: {bf} is new (absent on {base}); allowed.")
-for bf, field, cur_val in new_fields:
-    print(f"::notice::check-baseline-monotonic: {bf} adds {field}={cur_val} (absent on base); allowed.")
 for bf, field, old_val, cur_val in decreases:
     print(f"::notice::check-baseline-monotonic: {bf} {field} dropped {old_val} -> {cur_val} — ratchet locked in.")
 
 failed = False
 
-if raised:
+if increases:
     failed = True
     print("", file=sys.stderr)
     print("::error::check-baseline-monotonic: debt-ratchet baseline(s) were RAISED (they may only shrink):", file=sys.stderr)
@@ -195,6 +233,31 @@ if raised:
         print(f"  {bf}: {field} {old_val} -> {cur_val}", file=sys.stderr)
     print("  Raising a baseline in the same PR launders new debt past the ratchet (the 797->800 bypass).", file=sys.stderr)
     print("  Pay the debt down and LOWER the baseline instead; a baseline may only decrease.", file=sys.stderr)
+
+if new_fields:
+    failed = True
+    print("", file=sys.stderr)
+    print("::error::check-baseline-monotonic: NEW entries were added to an EXISTING debt baseline (only a brand-new baseline file may introduce entries):", file=sys.stderr)
+    for bf, field, cur_val in new_fields:
+        print(f"  {bf}: {field} = {cur_val} (absent on base)", file=sys.stderr)
+    print("  Seeding a grandfathered entry into an existing baseline launders new debt past the ratchet.", file=sys.stderr)
+    print("  Remove the entry and pay the debt; do not pre-fund it in the baseline.", file=sys.stderr)
+
+if type_changes:
+    failed = True
+    print("", file=sys.stderr)
+    print("::error::check-baseline-monotonic: baseline number(s) were replaced by a non-number (a stringified value hides the raise):", file=sys.stderr)
+    for bf, field, old_val, cur_val in type_changes:
+        print(f"  {bf}: {field} {old_val!r} -> {cur_val!r}", file=sys.stderr)
+    print("  Keep budget fields as JSON numbers so the ratchet can compare them; a string like \"20\" is not a budget.", file=sys.stderr)
+
+if nonfinite:
+    failed = True
+    print("", file=sys.stderr)
+    print("::error::check-baseline-monotonic: non-finite baseline number(s) (NaN/Infinity) are not valid budgets:", file=sys.stderr)
+    for bf, field, old_val, cur_val in nonfinite:
+        print(f"  {bf}: {field} {old_val!r} -> {cur_val!r}", file=sys.stderr)
+    print("  NaN slips past every monotonicity comparison; use a finite integer budget.", file=sys.stderr)
 
 if raised and non_baseline_changed:
     failed = True
@@ -210,7 +273,7 @@ if failed:
 
 if not baseline_files:
     print("✓ check-baseline-monotonic: no debt baselines present.")
-elif decreases or new_files or new_fields:
+elif decreases or new_files:
     print(f"✓ check-baseline-monotonic: baselines only shrank or were added vs {base}.")
 else:
     print(f"✓ check-baseline-monotonic: {len(baseline_files)} baseline(s) unchanged vs {base} (or note-only edits).")
