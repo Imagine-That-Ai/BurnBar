@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-07-01
+
+### Fixed
+
+- **Release Xcode heartbeat** — supersedes the failed `v1.0.17` publish run
+  with the same newest-`main` source after Android AAB packaging succeeded.
+  The macOS unsigned Release app build entered a long quiet whole-module Xcode
+  phase and GitHub terminated the step without a compiler error. The release
+  lane now emits a one-minute heartbeat while `xcodebuild` is still running, so
+  quiet-but-active macOS packaging can reach signing, notarization, upload, and
+  live feed verification.
+
 ## [1.0.17] - 2026-07-01
 
 ### Fixed

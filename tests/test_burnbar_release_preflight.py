@@ -44,7 +44,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
 
-    assert data["repo"]["releaseTag"] == "v1.0.17"
+    assert data["repo"]["releaseTag"] == "v1.0.18"
 
     result = subprocess.run(
         [
@@ -52,7 +52,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.17",
+            "v1.0.18",
         ],
         cwd=ROOT,
         text=True,
@@ -171,6 +171,19 @@ def test_release_build_and_release_job_has_packaging_headroom():
     assert "v1.0.16 proved those gates can legitimately run past 180 minutes" in build_job
     assert "Build signed Android release bundle" in build_job
     assert "Notarize and staple DMG" in build_job
+
+
+def test_release_workflow_keeps_quiet_xcode_build_alive():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Build Release .app (unsigned)")
+    step_end = body.index("- name: Embed daemon binary in app bundle", step_start)
+    app_build_step = body[step_start:step_end]
+
+    assert "xcodebuild Release .app still running" in app_build_step
+    assert "heartbeat_pid" in app_build_step
+    assert "trap 'kill \"$heartbeat_pid\"" in app_build_step
+    assert "xcodebuild \\" in app_build_step
 
 
 def test_release_workflow_guards_owner_approved_validation_bypass():
