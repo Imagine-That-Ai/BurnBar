@@ -35,6 +35,16 @@ on:
         required: false
         type: string
         default: ""
+      run_release_validation_gates:
+        description: "Run slow release validation gates before packaging. Disable only for an owner-approved retry with equivalent prior-run evidence."
+        required: false
+        type: boolean
+        default: true
+      release_validation_bypass_reason:
+        description: "Required when run_release_validation_gates=false; include prior successful gate evidence, owner approval, and retry scope."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: release-${{ github.ref }}
@@ -153,7 +163,12 @@ jobs:
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
-    timeout-minutes: 180
+    # The approved release lane still serializes the secret-backed app/mobile,
+    # SQLCipher, Android signing, notarization, and artifact generation steps.
+    # v1.0.16 proved those gates can legitimately run past 180 minutes on cold
+    # macOS runners, so keep the independent gates parallel but give this
+    # protected packaging lane enough headroom to reach publish.
+    timeout-minutes: 360
     outputs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
@@ -291,14 +306,44 @@ jobs:
             exit 1
           fi
 
+      - name: Validate release validation bypass reason
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
+        env:
+          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
+        run: |
+          set -euo pipefail
+          compact="${RELEASE_VALIDATION_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::run_release_validation_gates=false requires release_validation_bypass_reason with prior-run evidence."
+            exit 1
+          fi
+          if ((${#RELEASE_VALIDATION_BYPASS_REASON} < 140)); then
+            echo "::error::release_validation_bypass_reason must include owner approval, prior run evidence, and retry scope."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(Swift|app smoke|SQLCipher|mobile|Android|retrieval|validation)\b' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must describe the release validation gates being reused."
+            exit 1
+          fi
+          if ! grep -Eiq 'https://github\.com/Imagine-That-Ai/BurnBar/actions/runs/[0-9]+' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must include the prior GitHub Actions run URL."
+            exit 1
+          fi
+
       - name: Release preflight summary
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
           VERSION: ${{ steps.version.outputs.version }}
+          RUN_RELEASE_VALIDATION_GATES: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: |
           echo "Release tag: $TAG_NAME"
           echo "Version: $VERSION"
           echo "Strict notarized release mode: true"
+          echo "Run release validation gates: ${RUN_RELEASE_VALIDATION_GATES}"
           echo "Firebase secrets available: ${HAS_FIREBASE_SECRETS}"
           echo "Signing secrets available: ${HAS_SIGNING_SECRETS}"
           echo "Notary API secrets available: ${HAS_NOTARY_SECRETS}"
@@ -404,12 +449,14 @@ jobs:
           protoc --version
 
       - name: Run Swift tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         timeout-minutes: 25
         # Coverage is a PR/CI responsibility. Release publication needs pass/fail
         # proof and bounded diagnostics, not a cold-runner coverage rebuild.
         run: ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar release-critical app tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         timeout-minutes: 75
         # The full OpenBurnBarTests app suite is a PR/CI responsibility. Release
         # publication needs a bounded app-host smoke that still proves the
@@ -429,11 +476,12 @@ jobs:
             ./scripts/test-openburnbar-app.sh
 
       - name: Verify SQLCipher codec in Release configuration
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         timeout-minutes: 60
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
 
       - name: Run OpenBurnBar mobile unit tests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_mobile_unit_tests }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
         timeout-minutes: 75
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         # The full mobile suite is a PR/CI responsibility. Release publication
@@ -467,7 +515,24 @@ jobs:
             echo "- Scope: iOS simulator mobile unit-test gate only; Swift tests, app tests, SQLCipher codec checks, TypeScript tests, Firestore rules, Android tests, supply-chain checks, signing, notarization, and artifact verification still run."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record owner-approved release validation bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing slow release validation gates for manual release ${TAG_NAME}: ${RELEASE_VALIDATION_BYPASS_REASON}"
+          {
+            echo "## Owner-approved release validation bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Version: ${VERSION}"
+            echo "- Reason/evidence: ${RELEASE_VALIDATION_BYPASS_REASON}"
+            echo "- Scope: Swift tests, release app smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests only; preflight, secret validation, Firebase/App Check config injection, Android release bundle build, macOS signing, notarization, artifact smoke, provenance, publish, and live feed verification still run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run retrieval replay evals
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
@@ -507,6 +572,7 @@ jobs:
         run: bash ./scripts/ci/inject-android-keystore.sh
 
       - name: Run Android unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-android.sh
 
       - name: Build signed Android release bundle

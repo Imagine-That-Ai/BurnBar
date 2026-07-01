@@ -213,6 +213,23 @@ and block `publish` through `needs`. This keeps a bad gate from shipping while
 allowing slow, independent checks to run beside macOS packaging instead of
 waiting in one long queue.
 
+The protected `build-and-release` job intentionally has a larger wall-clock cap
+than the individual steps. It still contains secret-backed app/mobile,
+SQLCipher, Android signing, macOS signing, notarization, provenance, and
+artifact upload work; a cold runner can approach three hours even when every
+individual gate is healthy. Keep step-level timeouts tight for diagnostics, but
+do not let the aggregate job cap cancel a valid release after the expensive
+validation gates have already passed.
+
+Emergency retry lane: if a tag run already passed Swift tests, release app
+smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests for the
+same product source, but later died in packaging/notarization/publish, an owner
+may rerun `workflow_dispatch` with `run_release_validation_gates=false`. The
+reason must name owner approval and link the prior GitHub Actions run. This
+skips only the slow validation gates; preflight, secret checks, config
+injection, Android AAB build, macOS signing, notarization, artifact smoke,
+provenance, publish, and live feed verification still run.
+
 ## Release artifacts
 
 Each release includes:
