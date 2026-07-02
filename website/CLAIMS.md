@@ -200,8 +200,8 @@ treats Kimi as exact, which matches the running code.
 
 | Claim                                        | Source                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current public macOS DMG fallback            | `website/src/data/site.ts`; `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.2-beta.1/OpenBurnBar-0.1.2-beta.1-macOS.dmg`                                                                                                                                                                                      |
-| `1.0.5` branded direct-download lane pending | `website/src/data/site.ts`, `docs/RELEASE_MACOS.md`; restore only after signed/notarized artifacts are uploaded and the live provenance guard passes                                                                                                                                                                             |
+| Current public macOS DMG                     | `website/src/data/site.ts`; `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.24/OpenBurnBar-1.0.24-macOS.dmg`                                                                                                                                                                                                  |
+| Branded direct-download lane pending         | `website/src/data/site.ts`, `docs/RELEASE_MACOS.md`; restore `downloads.burnbar.ai` only after DNS/R2, signed/notarized artifacts, and the live provenance guard pass                                                                                                                                                             |
 | macOS Sonoma min                             | `README.md:272`, `homebrew/burnbar.rb:22`                                                                                                                                                                                                                                                                                        |
 | iOS in App Store review                      | `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md:9-17`                                                                                                                                                                                                                                                                                     |
 | Editor extension source-only                 | `extensions/openburnbar/README.md:7-10`                                                                                                                                                                                                                                                                                          |
@@ -209,8 +209,9 @@ treats Kimi as exact, which matches the running code.
 | Homebrew tap not yet published               | `QUICKSTART.md:46`. Site doesn't list a brew command — intentional                                                                                                                                                                                                                                                               |
 
 Before website deployment, `npm run test:download-provenance --prefix website` must prove the
-exact customer-facing DMG URL is live. Do not replace the fallback with `1.0.5` until
-the notarized direct-download artifacts and branded host are actually published.
+exact customer-facing DMG URL is live. Do not replace the GitHub Release URL with
+`downloads.burnbar.ai` until the notarized direct-download artifacts and branded host are
+actually published.
 
 ---
 
@@ -230,8 +231,9 @@ These are the recurring **[verify]** flags above, collected:
 2. **iOS launch status.** Until Apple approves, the site copy says "in App Store review." When approved, set `SITE.iosStatus = "available on iPhone & iPad"` in `src/data/site.ts`.
 3. **Store price tiers.** Site advertises Cloud at $7.99/month or $79/year, Cloud Pro at $24.99/month or $249/year, and both top-ups at $4.99. Confirm Apple, Play, and Stripe live products match; if stores set different local prices, decide whether to footnote.
 4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` currently target the
-   published `v0.1.2-beta.1` GitHub DMG as a public fallback. Restore `1.0.5` only after the
-   notarized direct-download pipeline publishes matching live assets.
+   published `v1.0.24` GitHub DMG as the public macOS download. Restore the branded
+   `downloads.burnbar.ai` host only after the notarized direct-download pipeline publishes
+   matching live assets.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `docs/reviews/SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
 7. **Team plan copy** — kept off the page until built.
