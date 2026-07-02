@@ -363,6 +363,12 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     }
 }
 
+public enum BurnBarCLIHealthFormatter {
+    public static func format(_ response: BurnBarHealthResponse) -> String {
+        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+    }
+}
+
 public enum BurnBarCLIError: LocalizedError {
     case invalidCommand(String)
     case missingArgument(String)
@@ -885,6 +891,20 @@ public struct BurnBarCLIRunner {
 
     public static let shellShimExecutableNames = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
 
+    public static func shouldUseHealthFastPath(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> Bool {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        guard effectiveArguments == ["health"],
+              let invokedExecutablePath else {
+            return false
+        }
+
+        let executableName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        return canonicalExecutableNames.contains(executableName)
+    }
+
     public static func startupPreflightResult(
         arguments: [String],
         invokedExecutablePath: String?
@@ -929,7 +949,7 @@ public struct BurnBarCLIRunner {
     }
 
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
-        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+        BurnBarCLIHealthFormatter.format(response)
     }
 
     private func formatControllerSummary(_ summary: BurnBarControllerSummary) -> String {
