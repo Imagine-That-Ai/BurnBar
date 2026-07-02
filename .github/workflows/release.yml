@@ -1608,7 +1608,10 @@ jobs:
           SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
-          mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          PROVENANCE_PATHS=()
+          while IFS= read -r provenance_path; do
+            [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
+          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"

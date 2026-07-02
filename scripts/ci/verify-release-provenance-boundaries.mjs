@@ -863,6 +863,12 @@ function verifyReleaseWorkflow() {
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     "publish job must fail closed when provenance bundles are missing",
   );
+  requireNoPattern(
+    file,
+    releasePublishRun,
+    /\b(?:mapfile|readarray)\b/u,
+    "publish job must stay compatible with the macOS runner's Bash 3.2 shell",
+  );
   requireShellIfExits(
     file,
     releasePublishRun,
