@@ -827,6 +827,52 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(resolved, "hermes-agent")
     }
 
+    func test_chatSessionController_resolvedHermesModelSelection_fallsBackToCanonicalAliasWhenNothingResolvable() {
+        // The build #1020 dead-end: no panel selection, no override, no family,
+        // and /v1/models unreadable (unset API key), so there is no gateway
+        // default either. The resolution must yield the canonical "hermes"
+        // alias so the send reaches the gateway and surfaces its real error
+        // instead of the local "No eligible route for Hermes" gate.
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "",
+            selectedFamily: nil,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, ChatSessionController.hermesCanonicalModelAlias)
+        XCTAssertEqual(resolved, "hermes")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_preservesSelectedFamilyWhenCatalogUnreadable() {
+        // Codex review (PR #1133): a user who picked a family from the strip
+        // must keep their provider when /v1/models is unreadable — the gateway
+        // routes canonical family names directly, so falling to the "hermes"
+        // alias would silently reroute them to the gateway's default agent.
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "",
+            selectedFamily: .claude,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "claude")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_preservesOverrideFamilyWhenCatalogUnreadable() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: nil,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "zai")
+    }
+
     func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
         let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
             baseURL: URL(string: "http://127.0.0.1:8317/")!,
@@ -900,10 +946,116 @@ final class CLIBridgeTests: XCTestCase {
     }
 
     func test_selectedModelRoutingError_hermesEmptySelectionStillBlocks() {
+        // Defense-in-depth for direct callers only: `resolvedHermesModelSelection`
+        // can no longer produce "" for Hermes (it falls back to the canonical
+        // alias), so the shipped send path never hits this branch.
         XCTAssertEqual(
             ChatSessionController.selectedModelRoutingError(backend: .hermes, selectedModel: "", liveModels: []),
             "No eligible route for Hermes. Add or enable an account/provider that serves this model."
         )
+    }
+
+    func test_openAICompatibleModelProbe_isAuthRejectedStatus() {
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(401))
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(403))
+        for status in [200, 204, 404, 429, 500, 503] {
+            XCTAssertFalse(OpenAICompatibleModelProbe.isAuthRejectedStatus(status), "HTTP \(status) is not an auth rejection")
+        }
+    }
+
+    func test_gatewayClient_appendsAuthGuidanceOnlyForAuthStatuses() {
+        let guided = OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded(
+            "HTTP 401: Invalid API key", statusCode: 401
+        )
+        XCTAssertTrue(guided.contains("Settings → Chat Gateway"), "401 must point at the settings fix")
+        XCTAssertTrue(guided.hasPrefix("HTTP 401: Invalid API key"), "the gateway's own message stays first")
+        XCTAssertEqual(
+            OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded("HTTP 500: boom", statusCode: 500),
+            "HTTP 500: boom"
+        )
+    }
+
+    func test_hermesAuthRejectedMessage_tailoredToPresentedKey() {
+        let settingsCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: true, envKeyPresent: true)
+        XCTAssertTrue(settingsCase.contains("Bearer Token"), "explicit settings token: fix it in Settings")
+
+        let envCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: true)
+        XCTAssertTrue(envCase.contains("older key"), "env fallback rejected: the gateway needs a restart with the current key")
+        XCTAssertTrue(envCase.contains("Open Hermes + Gateway"))
+
+        let nothingCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: false)
+        XCTAssertTrue(nothingCase.contains("Paste API_SERVER_KEY"), "no key anywhere: tell the user exactly what to paste where")
+    }
+
+    func test_resolvedHermesBearerToken_settingsTokenAlwaysWins() {
+        XCTAssertEqual(
+            ChatSessionController.resolvedHermesBearerToken(
+                settingsToken: "  explicit-token  ",
+                envFallbackKey: "env-key",
+                baseURL: URL(string: "http://127.0.0.1:8642")!
+            ),
+            "explicit-token"
+        )
+    }
+
+    func test_resolvedHermesBearerToken_reusesEnvKeyForLoopbackGateway() {
+        // Build #1020 regression: Settings has no bearer token while the local
+        // hermes-agent requires API_SERVER_KEY. The chat path must reuse the
+        // .env key exactly like HermesRuntimeLauncher does for status checks.
+        for host in ["127.0.0.1", "localhost"] {
+            XCTAssertEqual(
+                ChatSessionController.resolvedHermesBearerToken(
+                    settingsToken: "",
+                    envFallbackKey: "env-key",
+                    baseURL: URL(string: "http://\(host):8642")!
+                ),
+                "env-key",
+                "loopback host \(host) must reuse the local API_SERVER_KEY"
+            )
+        }
+    }
+
+    func test_resolvedHermesBearerToken_neverSendsEnvKeyOffMachine() {
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "",
+            envFallbackKey: "env-key",
+            baseURL: URL(string: "https://hermes.example.com:8642")!
+        ))
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "",
+            envFallbackKey: "env-key",
+            baseURL: URL(string: "http://user:pass@127.0.0.1:8642")!
+        ))
+    }
+
+    func test_resolvedHermesBearerToken_nilWhenNothingConfigured() {
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "   ",
+            envFallbackKey: nil,
+            baseURL: URL(string: "http://127.0.0.1:8642")!
+        ))
+    }
+
+    func test_selectedModelRoutingError_hermesCanonicalAliasAlwaysEligible() {
+        // The gateway routes its self alias to its default agent but never
+        // advertises it in /v1/models, so the alias must bypass catalog
+        // verification for both the unread and the populated catalog.
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes,
+            selectedModel: ChatSessionController.hermesCanonicalModelAlias,
+            liveModels: []
+        ))
+        let populated = [
+            OpenAICompatibleAdvertisedModel(
+                id: "hermes-agent", displayName: "Hermes Agent",
+                providerID: "hermes", providerName: "Hermes", routeEligible: true
+            )
+        ]
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes,
+            selectedModel: ChatSessionController.hermesCanonicalModelAlias,
+            liveModels: populated
+        ))
     }
 
     func test_selectedModelRoutingError_openClawEmptyCatalogStillVerifies() {
