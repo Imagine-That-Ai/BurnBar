@@ -143,6 +143,15 @@ final class ChatSessionController {
     /// catalog after a cold start (see `scheduleHermesCatalogWarmIfNeeded`).
     @ObservationIgnored private var hermesCatalogWarmTask: Task<Void, Never>?
 
+    /// `API_SERVER_KEY` cached from `~/.hermes/.env`, refreshed on every
+    /// `probeHermesAvailability()` pass. When Settings has no explicit Hermes
+    /// bearer token, chat requests fall back to this key — keeping the
+    /// `hermesUnavailableMessage()` promise ("OpenBurnBar will reuse it
+    /// locally") true for actual sends, not just for
+    /// `HermesRuntimeLauncher`'s status checks. Only ever attached to loopback
+    /// gateway URLs (see `resolvedHermesBearerToken`).
+    @ObservationIgnored private var hermesEnvFallbackBearerToken: String?
+
     var openClawAvailable: Bool = false
 
     var piAgentAvailable: Bool = false
@@ -824,8 +833,22 @@ final class ChatSessionController {
             return advertised.id
         }
 
-        return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let liveDefault = gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !liveDefault.isEmpty { return liveDefault }
+        // Nothing selected anywhere and no readable catalog default (cold start,
+        // or /v1/models behind an unset API key while /health stays open). Fall
+        // back to the gateway's canonical self alias instead of "": the gateway
+        // routes "hermes" to its default agent and remains the routing
+        // authority, so the send surfaces the gateway's real error (e.g.
+        // "Invalid API key") instead of dead-ending locally on the
+        // "No eligible route" gate. `chatHermes` always allowlists this alias.
+        return hermesCanonicalModelAlias
     }
+
+    /// The Hermes gateway's self alias: routed server-side to the gateway's
+    /// default agent, and permanently present in `CLIBridge.chatHermes`'s model
+    /// allowlist even when the `/v1/models` catalog is unreadable.
+    nonisolated static let hermesCanonicalModelAlias = "hermes"
 
     nonisolated static func hermesFamilyHint(for model: String) -> HermesModelID? {
         let normalized = model
@@ -866,15 +889,19 @@ final class ChatSessionController {
     /// For **Hermes** an unread catalog must NOT block the send: the gateway
     /// routes the canonical family names ("claude", "codex", "ollama", …)
     /// directly and is itself the routing authority — it returns a real error if
-    /// the model is genuinely unroutable. OpenClaw/Pi are generic OpenAI-
-    /// compatible gateways whose model id must match the advertised catalog, so
-    /// they keep verifying against it.
+    /// the model is genuinely unroutable. The gateway's own
+    /// `hermesCanonicalModelAlias` is likewise always eligible — it is never
+    /// advertised in `/v1/models`, yet the gateway routes it to its default
+    /// agent (verified against hermes-agent 0.17.0). OpenClaw/Pi are generic
+    /// OpenAI-compatible gateways whose model id must match the advertised
+    /// catalog, so they keep verifying against it.
     nonisolated static func selectedModelRoutingError(
         backend: ChatBackendID,
         selectedModel: String,
         liveModels: [OpenAICompatibleAdvertisedModel]
     ) -> String? {
         guard backend == .hermes || backend == .openclaw || backend == .piAgent else { return nil }
+        if backend == .hermes, selectedModel == hermesCanonicalModelAlias { return nil }
         guard !selectedModel.isEmpty else {
             return "No eligible route for \(backend.displayName). Add or enable an account/provider that serves this model."
         }
@@ -908,12 +935,26 @@ final class ChatSessionController {
     }
 
     func probeHermesAvailability() async {
+        await refreshHermesEnvFallbackBearerToken()
         await cliBridge.probeHermesAvailability(
             baseURL: hermesGatewayBaseURL,
             bearerToken: hermesBearerToken
         )
         hermesAvailable = cliBridge.hermesAvailable
         scheduleHermesCatalogWarmIfNeeded()
+    }
+
+    /// Refreshes the cached `~/.hermes/.env` `API_SERVER_KEY` fallback. Skips
+    /// the file read entirely when Settings already carries an explicit token
+    /// (it always wins) or when the configured gateway is not loopback (the
+    /// local key must never leave the machine).
+    private func refreshHermesEnvFallbackBearerToken() async {
+        let settingsToken = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard settingsToken.isEmpty, Self.allowsHermesEnvKeyReuse(hermesGatewayBaseURL) else {
+            hermesEnvFallbackBearerToken = nil
+            return
+        }
+        hermesEnvFallbackBearerToken = await HermesEnvironmentFile.readAPIServerKey()
     }
 
     /// When the gateway is reachable but its `/v1/models` catalog has not loaded
@@ -974,8 +1015,43 @@ final class ChatSessionController {
     }
 
     var hermesBearerToken: String? {
-        let t = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
+        Self.resolvedHermesBearerToken(
+            settingsToken: settingsManager.hermesBearerToken,
+            envFallbackKey: hermesEnvFallbackBearerToken,
+            baseURL: hermesGatewayBaseURL
+        )
+    }
+
+    /// Pure bearer-token resolution for the Hermes chat path (unit-testable).
+    /// An explicit Settings token always wins. Otherwise the cached
+    /// `API_SERVER_KEY` from `~/.hermes/.env` is reused — but only toward a
+    /// loopback gateway, so the local gateway's key is never attached to a
+    /// request leaving this machine.
+    nonisolated static func resolvedHermesBearerToken(
+        settingsToken: String,
+        envFallbackKey: String?,
+        baseURL: URL
+    ) -> String? {
+        let explicit = settingsToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+        guard let envFallbackKey,
+              !envFallbackKey.isEmpty,
+              allowsHermesEnvKeyReuse(baseURL) else {
+            return nil
+        }
+        return envFallbackKey
+    }
+
+    /// The `~/.hermes/.env` `API_SERVER_KEY` authenticates the *local* Hermes
+    /// gateway; reuse is restricted to loopback hosts.
+    nonisolated static func allowsHermesEnvKeyReuse(_ baseURL: URL) -> Bool {
+        guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              let host = components.host,
+              components.user == nil,
+              components.password == nil else {
+            return false
+        }
+        return LocalLLMEndpointPolicy.isLoopbackHost(host)
     }
 
     var hermesGatewayBaseURL: URL {
