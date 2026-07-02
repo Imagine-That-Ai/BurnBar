@@ -71,6 +71,8 @@ struct AssistantTileBridgeView: View {
             return "Grok Build runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .cursorAgent, .openClaude:
             return "Cursor Agent runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .junie:
+            return "Junie runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .hermes, .pi:
             return ""
         }

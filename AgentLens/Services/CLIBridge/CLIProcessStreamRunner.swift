@@ -89,6 +89,36 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runJunie(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.junieArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .junie
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     func runForge(
         executable: String,
         prompt: String,
@@ -364,6 +394,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .kimi
         case .pi:
             return .piAgent
+        case .junie:
+            return .junie
         }
     }
 

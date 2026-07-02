@@ -376,7 +376,7 @@ struct AgentBrandZoneView: View {
                 dispatchPreset = .newThread
                 showDispatchSheet = true
             }
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .junie:
             dispatchPreset = .newThread
             showDispatchSheet = true
         }
@@ -432,7 +432,7 @@ struct AgentBrandZoneView: View {
                 sourceLabel: "mobile thread",
                 updatedAt: thread.updatedAt
             )
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .junie:
             guard let cliRuntime = CLIAgentRuntime(assistant: runtime) else { return nil }
             await cliReader.refresh()
             guard let session = cliReader.sessions(for: cliRuntime).first else { return nil }

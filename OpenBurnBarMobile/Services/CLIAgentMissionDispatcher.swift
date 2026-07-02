@@ -625,7 +625,7 @@ final class CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .junie:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }
@@ -687,6 +687,8 @@ final class CLIAgentMissionDispatcher {
             return .grok
         case "cursor", "cursor-agent", "cursoragent":
             return .cursorAgent
+        case "junie", "junie-agent", "jetbrains-junie":
+            return .junie
         default:
             return nil
         }

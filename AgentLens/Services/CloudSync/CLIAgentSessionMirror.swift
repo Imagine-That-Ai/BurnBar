@@ -235,6 +235,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
+        case .junie:    return .junie
         case .hermes, .piAgent: return nil
         }
     }
@@ -337,6 +338,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
         case .xAI: return .grok
+        case .junie: return .junie
         default: return nil
         }
     }
@@ -345,7 +347,7 @@ final class CLIAgentSessionMirror: Sendable {
         switch agent {
         case .codex, .claude:
             return true
-        case .openClaw, .openClaude, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .openClaw, .openClaude, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie:
             return false
         }
     }
@@ -391,6 +393,8 @@ final class CLIAgentSessionMirror: Sendable {
         case .grok:
             return nil
         case .cursorAgent, .openClaude:
+            return nil
+        case .junie:
             return nil
         }
     }

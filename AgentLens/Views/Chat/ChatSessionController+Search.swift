@@ -787,6 +787,14 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .junie:
+                        return self.cliBridge.chatJunieStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -1007,7 +1015,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .junie:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -1064,6 +1072,12 @@ extension ChatSessionController {
                 "claude",
                 "Claude Code CLI was not found. Install the native installer or Homebrew package and ensure `claude` is on your PATH.",
                 "Claude not found"
+            )
+        case .junie:
+            requirement = (
+                "junie",
+                "Junie CLI was not found. Install JetBrains Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) and ensure `junie` is on your PATH.",
+                "Junie not found"
             )
         case .hermes, .openclaw, .piAgent:
             requirement = nil

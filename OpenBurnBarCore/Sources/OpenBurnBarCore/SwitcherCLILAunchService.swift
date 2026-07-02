@@ -817,6 +817,8 @@ public enum CLILaunchAdapter {
             return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
         case .pi:
             return ["PI_HOME", "PI_CONFIG_HOME"]
+        case .junie:
+            return ["JUNIE_HOME"]
         }
     }
 }

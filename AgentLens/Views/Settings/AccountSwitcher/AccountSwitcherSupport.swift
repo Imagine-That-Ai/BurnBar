@@ -213,6 +213,8 @@ extension SwitcherCLIProfileType {
             return .kimi
         case .pi:
             return .piAgent
+        case .junie:
+            return .junie
         }
     }
 }

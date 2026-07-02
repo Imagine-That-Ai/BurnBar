@@ -173,6 +173,7 @@ The external launch settings that cannot be inferred from the working tree alone
 |---|---|---|---|---|
 | Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact | Supported via Claude statusline bridge (5-hour / 7-day %) |
 | Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact | Estimated via plan tier + OpenBurnBar-tracked monthly Factory tokens |
+| Junie (JetBrains) | Supported | `~/.junie/sessions/<id>/events.jsonl` + `index.jsonl` | Exact (explicit usage) / Estimated (fallback) | Unavailable (no public quota API) |
 | Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via the latest local Codex rollout/session rate-limit snapshot |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
 | Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |

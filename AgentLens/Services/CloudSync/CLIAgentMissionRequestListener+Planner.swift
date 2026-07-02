@@ -52,11 +52,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -138,7 +138,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .junie:
                 return true
             }
         }
@@ -465,6 +465,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .cursorAgent: return .cursorAgent
             case .hermes: return .hermes
             case .piAgent: return .pi
+            case .junie: return .junie
             }
         }
         switch backend.rawValue {
@@ -476,6 +477,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "cursor-agent", "cursoragent": return .cursorAgent
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
+        case "junie", "jetbrains-junie": return .junie
         default: return .codex
         }
     }

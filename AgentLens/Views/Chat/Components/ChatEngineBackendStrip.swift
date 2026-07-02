@@ -105,7 +105,7 @@ struct ChatEngineBackendStrip: View {
             return controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
         case .piAgent:
             return controller.piAgentAvailable == false
-        case .codex, .claude, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .junie:
             return false
         }
     }
@@ -152,7 +152,7 @@ struct ChatEngineBackendStrip: View {
             false
         case .openclaw:
             controller.openClawAvailable == false
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .junie:
             false
         case .piAgent:
             false

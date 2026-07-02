@@ -84,6 +84,16 @@ class CliResumeTargetsTest {
         assertEquals(CliResumeTarget.GROK, CliResumeTarget.forSessionAgent("xAI"))
         assertEquals(CliResumeTarget.GEMINI, CliResumeTarget.forSessionAgent("gemini-cli"))
         assertEquals(CliResumeTarget.ANTIGRAVITY, CliResumeTarget.forSessionAgent("AGY"))
+        assertEquals(CliResumeTarget.JUNIE, CliResumeTarget.forSessionAgent("junie"))
+        assertEquals(CliResumeTarget.JUNIE, CliResumeTarget.forSessionAgent("JetBrains Junie"))
+    }
+
+    @Test
+    fun `junie is handoff only with the daemon canonical wire id`() {
+        assertEquals("junie", CliResumeTarget.JUNIE.wireId)
+        assertEquals("Junie", CliResumeTarget.JUNIE.displayName)
+        assertFalse(CliResumeTarget.JUNIE.supportsNativeResume)
+        assertEquals(CliResumeCapability.HANDOFF, CliResumeTarget.JUNIE.capability)
     }
 
     @Test

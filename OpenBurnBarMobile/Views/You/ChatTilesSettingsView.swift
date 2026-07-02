@@ -111,6 +111,7 @@ struct ChatTilesSettingsView: View {
         case .grok: return "Grok Build chat bridged from your Mac."
         case .cursorAgent: return "Cursor Agent chat bridged from your Mac."
         case .openClaude: return "OpenClaude chat bridged from your Mac."
+        case .junie: return "Junie chat bridged from your Mac."
         }
     }
 }

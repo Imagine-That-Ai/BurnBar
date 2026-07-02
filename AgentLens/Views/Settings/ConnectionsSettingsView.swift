@@ -1201,6 +1201,8 @@ struct ConnectionsSettingsView: View {
             return .kimi
         case .pi:
             return AgentProvider.piAgent.providerID
+        case .junie:
+            return AgentProvider.junie.providerID
         }
     }
 
@@ -1568,6 +1570,8 @@ struct ConnectionsSettingsView: View {
             return .kimi
         case .pi:
             return AgentProvider.piAgent.providerID
+        case .junie:
+            return AgentProvider.junie.providerID
         }
     }
 

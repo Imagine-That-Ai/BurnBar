@@ -38,7 +38,7 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
                 agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
                 source = ThreadInboxItem.Source.PI
             }
-            "codex", "claude", "openclaw", "droid", "forge", "antigravity", "grok", "cursoragent", "cursor_agent", "cursor-agent" -> {
+            "codex", "claude", "openclaw", "droid", "forge", "antigravity", "grok", "cursoragent", "cursor_agent", "cursor-agent", "junie" -> {
                 val runtime =
                     when (runtimeLower) {
                         "codex" -> AssistantRuntimeID.CODEX
@@ -49,6 +49,7 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
                         "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
                         "grok" -> AssistantRuntimeID.GROK
                         "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
+                        "junie" -> AssistantRuntimeID.JUNIE
                         else -> return@mapNotNull null
                     }
                 agentURI = AgentIdentity.builtInURI(runtime)

@@ -132,6 +132,7 @@ final class ThreadInboxStore {
             case .grok: runtime = .grok
             case .cursorAgent: runtime = .cursorAgent
             case .openClaude: runtime = .openClaude
+            case .junie:    runtime = .junie
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",
@@ -177,6 +178,7 @@ final class ThreadInboxStore {
         case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "cursor", "cursor-agent", "cursoragent": return .cursorAgent
+        case "junie", "junie-agent", "jetbrains-junie": return .junie
         default: return nil
         }
     }

@@ -308,6 +308,32 @@ public enum CLIAuthDiscovery {
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasSessions ? "Grok Build local sessions" : nil
             )
+        case .junie:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.junie"
+            )
+            let sessionsDir = "\(configDir)/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasSessions = FileManager.default.fileExists(atPath: sessionsDir)
+            let hasAPIKey = !(ProcessInfo.processInfo.environment["JUNIE_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            // `~/.junie` is created on first launch even before sign-in and
+            // credentials live in the macOS Keychain, so only treat recorded
+            // sessions (or an explicit API key) as evidence of a usable login.
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasAPIKey { return .apiKeyPresent }
+                if hasSessions { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasSessions ? "Junie local sessions" : nil
+            )
         }
         #endif
     }

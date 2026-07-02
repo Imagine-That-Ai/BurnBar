@@ -125,6 +125,10 @@ struct OpenBurnBarAppPaths {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
     }
 
+    var junieParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("junie_parser_cache.json")
+    }
+
     var claudeStatuslineBridgeScriptURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge.sh")
     }

@@ -171,6 +171,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: true
             )
 
+        case .junie:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.session],
+                defaultKind: .session,
+                labelSuggestion: "Junie",
+                dashboardURL: URL(string: "https://www.jetbrains.com/junie/"),
+                dashboardCTA: "Open JetBrains Junie",
+                oneLineHint: "Junie chat bridged from your Mac.",
+                instructions: [
+                    GuideStep(1, "Sign in to Junie on your Mac", detail: "Use the JetBrains account you run the junie CLI with."),
+                    GuideStep(2, "Run the Mac bridge where Junie is signed in", detail: "The bridge reads local Junie auth from ~/.junie and streams chat back to this device.", codeSnippet: "~/.junie"),
+                    GuideStep(3, "Start a Junie chat from this device", detail: "OpenBurnBar does not collect Junie auth — sessions run on your Mac and mirror here.")
+                ],
+                credentialPlaceholder: "Managed by your paired Mac",
+                credentialFooterMarkdown: "Junie runs through OpenBurnBar on your Mac. Auth stays in `~/.junie` on the machine running the bridge.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .openAI:
             return ProviderSetupGuide(
                 provider: provider,

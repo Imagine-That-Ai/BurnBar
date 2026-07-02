@@ -160,6 +160,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "pi limit",
                 "provider quota"
             ]
+        case .junie:
+            cliSpecificPatterns = [
+                "junie quota",
+                "junie limit",
+                "jetbrains ai quota",
+                "remaining balance"
+            ]
         }
 
         let candidates = trimmed

@@ -202,6 +202,23 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func junieArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        // Junie's project association is its working directory — the stream
+        // runner spawns the process with `workspaceDirectory` as cwd, so no
+        // path flag is needed. Model selection has no documented headless
+        // flag (it follows the user's Junie `/model` default), and approvals
+        // stay on Junie's own brave-mode setting.
+        _ = model
+        _ = workspaceDirectory
+        _ = capabilityGrant
+        return ["--prompt", sanitizedPrompt(prompt)]
+    }
+
     private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
         grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
     }
@@ -362,6 +379,20 @@ extension CLIBridge {
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant,
             hasFreshLocalAuthProof: hasFreshLocalAuthProof
+        )
+    }
+
+    nonisolated static func junieArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.junieArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
         )
     }
 }

@@ -21,6 +21,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     FORGE_DEV("forge-dev", "Forge Dev", 0xFFF97316, 0xFFFB923C),
     AUGMENT("augment", "Augment", 0xFF3B82F6, 0xFF60A5FA),
     HERMES("hermes", "Hermes", 0xFFA855F7, 0xFFC084FC),
+    JUNIE("junie", "Junie", 0xFF48E054, 0xFF6FE87F),
     PI_AGENT("pi-agent", "Pi Agent", 0xFFA855F7, 0xFF7C3AED),
     GEMINI_CLI("gemini-cli", "Gemini CLI", 0xFF4285F4, 0xFF8AB4F8),
     GOOSE("goose", "Goose", 0xFF0D9488, 0xFF2DD4BF),
@@ -42,6 +43,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 OPENCODE,
                 OPEN_CLAW,
                 HERMES,
+                JUNIE,
                 GEMINI_CLI,
                 ANTIGRAVITY,
                 OPEN_AI,
@@ -135,6 +137,9 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 "mimo" to MIMO,
                 "xiaomi" to MIMO,
                 "xiaomimimo" to MIMO,
+                "jetbrainsjunie" to JUNIE,
+                "jetbrains-junie" to JUNIE,
+                "juniecli" to JUNIE,
             )
 
         fun chartPalette(provider: AgentProvider): List<Color> {

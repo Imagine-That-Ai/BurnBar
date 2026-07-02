@@ -147,6 +147,7 @@ enum DesignSystem {
             case .mimo:       return Color(hex: "FF6900")
             case .cursorAgent: return Color(hex: "00E5FF")
             case .openBurnBar: return Colors.ember
+            case .junie:      return Color(hex: "48E054")
             }
         }
 
@@ -183,6 +184,7 @@ enum DesignSystem {
             case .mimo:       return Color(hex: "FF8533")
             case .cursorAgent: return Color(hex: "33ECFF")
             case .openBurnBar: return Color(hex: "FF7578")
+            case .junie:      return Color(hex: "6FE87F")
             }
         }
 

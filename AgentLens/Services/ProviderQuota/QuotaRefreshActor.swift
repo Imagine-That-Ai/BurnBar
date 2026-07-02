@@ -685,6 +685,8 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".kimi", isDirectory: true).path
     case .pi:
         return homeDirectoryURL.appendingPathComponent(".pi", isDirectory: true).path
+    case .junie:
+        return homeDirectoryURL.appendingPathComponent(".junie", isDirectory: true).path
     }
 }
 
@@ -735,6 +737,8 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .kimi
     case .pi:
         return .piAgent
+    case .junie:
+        return .junie
     }
 }
 

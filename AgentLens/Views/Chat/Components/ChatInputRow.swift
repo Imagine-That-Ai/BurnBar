@@ -24,6 +24,7 @@ struct ChatInputRow: View {
         case .forge: return "Ask Forge\u{2026}"
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
+        case .junie: return "Ask Junie\u{2026}"
         }
     }
 

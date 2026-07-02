@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Junie (JetBrains) integration
+
+- **First-class Junie CLI agent and provider**: Fully added JetBrains `junie`
+  as a first-class local agent provider at parity with Droid/Codex/Claude.
+  Implemented `JunieParser` to read `~/.junie/sessions/index.jsonl` and
+  per-session `events.jsonl`/`state.json` (explicit usage buckets when present,
+  character-estimate fallback otherwise, per-row provenance confidence), with
+  disk-cache signatures, project mapping via the session index, and pricing via
+  the shared model catalog. Included official Junie branding (JetBrains green
+  `#48E054`, `JunieLogo` vector mark in the macOS and iOS asset catalogs), the
+  `junie` CLI switcher/launch profile (`~/.local/bin/junie`, `JUNIE_HOME`,
+  `JUNIE_API_KEY`), conservative auth discovery off `~/.junie` (sessions or API
+  key — the config dir alone is created before sign-in), chat backend + stream
+  runner routing (`junie --prompt`), onboarding scan/add support, daemon
+  resume-handoff target, mission-planner fallback membership, and mobile
+  runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
+  archived to mobile, handoff-only (not native-resume eligible).
+
 ## [1.0.23] - 2026-07-01
 
 ### Fixed

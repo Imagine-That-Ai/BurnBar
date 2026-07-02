@@ -33,6 +33,7 @@ enum ParserRegistry {
         parsers[.windsurf] = WindsurfParser()
         parsers[.warp] = WarpParser()
         parsers[.ollama] = ModelFilterParser(modelPattern: "ollama", provider: .ollama)
+        parsers[.junie] = JunieParser()
         // MiMo quota is API-backed via Token Plan credentials. Do not attach it
         // to the shared Factory sessions tree, or Factory sessions can be counted
         // twice: once as Factory usage and again as MiMo local usage.
