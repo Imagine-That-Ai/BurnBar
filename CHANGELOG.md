@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Android release metadata** — bumps the Android release bundle to
   `versionCode` 35 / `versionName` `1.0.25` so Google Play receives the same
   release cut as the macOS publish retry.
+- **Public website download** — keeps `burnbar.ai/download` pointed at the live,
+  notarized `v1.0.24` GitHub Release DMG while the branded `downloads.burnbar.ai`
+  lane remains offline.
 
 ## [1.0.24] - 2026-07-02
 
