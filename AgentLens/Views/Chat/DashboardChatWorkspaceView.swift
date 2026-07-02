@@ -46,6 +46,7 @@ struct DashboardChatWorkspaceView: View {
     /// The pane-tiling workspace for the right-side viewer. Built lazily on first appear
     /// from the persisted layout (or a single primary pane bound to `controller`).
     @State private var workspace: PaneWorkspaceModel?
+    @State private var alertCenter = ChatPaneAlertCenter()
 
     private let railWidth: CGFloat = 260
 
@@ -101,7 +102,8 @@ struct DashboardChatWorkspaceView: View {
             let paneWorkspace = workspace ?? PaneWorkspaceModel.shared(
                 primaryController: controller,
                 dataStore: dataStore,
-                settingsManager: settingsManager
+                settingsManager: settingsManager,
+                alertCenter: alertCenter
             )
             workspace = paneWorkspace
             ChatPaneAlertCenter.paneCompletionTapHandler = { paneID, tabID in

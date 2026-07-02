@@ -254,7 +254,7 @@ final class PaneWorkspaceModel {
         settingsManager: SettingsManager,
         primaryController: ChatSessionController,
         defaults: UserDefaults = .standard,
-        alertCenter: ChatPaneAlertCenter = .shared
+        alertCenter: ChatPaneAlertCenter = ChatPaneAlertCenter()
     ) {
         self.tabs = tabs
         self.selectedTabID = tabs.contains { $0.id == selectedTabID } ? selectedTabID : (tabs.first?.id ?? selectedTabID)
@@ -273,7 +273,7 @@ final class PaneWorkspaceModel {
         settingsManager: SettingsManager,
         primaryController: ChatSessionController,
         defaults: UserDefaults = .standard,
-        alertCenter: ChatPaneAlertCenter = .shared
+        alertCenter: ChatPaneAlertCenter = ChatPaneAlertCenter()
     ) {
         let tab = ChatWorkspaceTab(root: root, activeLeafID: activeLeafID)
         self.init(
@@ -292,7 +292,8 @@ final class PaneWorkspaceModel {
     static func shared(
         primaryController: ChatSessionController,
         dataStore: DataStore,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        alertCenter: ChatPaneAlertCenter = ChatPaneAlertCenter()
     ) -> PaneWorkspaceModel {
         if let sharedInstance, sharedInstance.primaryController === primaryController {
             return sharedInstance
@@ -300,7 +301,8 @@ final class PaneWorkspaceModel {
         let restored = restore(
             primaryController: primaryController,
             dataStore: dataStore,
-            settingsManager: settingsManager
+            settingsManager: settingsManager,
+            alertCenter: alertCenter
         )
         sharedInstance = restored
         return restored
@@ -855,7 +857,7 @@ final class PaneWorkspaceModel {
         dataStore: DataStore,
         settingsManager: SettingsManager,
         defaults: UserDefaults = .standard,
-        alertCenter: ChatPaneAlertCenter = .shared
+        alertCenter: ChatPaneAlertCenter = ChatPaneAlertCenter()
     ) -> PaneWorkspaceModel {
         func singlePrimary() -> PaneWorkspaceModel {
             let leaf = PaneLeaf(controller: primaryController, isPrimary: true)

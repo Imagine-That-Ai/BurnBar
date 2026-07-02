@@ -13,7 +13,6 @@ final class ChatPaneAlertCenter {
         let isFailure: Bool
     }
 
-    static let shared = ChatPaneAlertCenter()
     static let completionNotificationsKey = "paneWorkspace.completionNotificationsEnabled"
     static var paneCompletionTapHandler: ((UUID, UUID) -> Void)?
 
