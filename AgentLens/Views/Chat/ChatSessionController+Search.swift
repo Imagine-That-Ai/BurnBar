@@ -82,6 +82,7 @@ extension ChatSessionController {
     /// own. (Thread-switch paths still revoke, because there the live controller is
     /// leaving the thread rather than being destroyed.)
     func teardownForPaneClose() {
+        onStreamSettled = nil
         streamTask?.cancel()
         cliBridge.cancel()
         streamTask = nil
@@ -903,6 +904,7 @@ extension ChatSessionController {
                         self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
                     }
                     self.selectedContext = nil
+                    self.onStreamSettled?(.completed)
                 }.value
             } catch {
                 await Task { @MainActor in
@@ -927,6 +929,7 @@ extension ChatSessionController {
                         }
                     }
                     self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
+                    self.onStreamSettled?(.failed(cancelled: error is CancellationError))
                 }.value
             }
         }

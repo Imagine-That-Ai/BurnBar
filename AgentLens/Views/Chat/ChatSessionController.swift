@@ -59,6 +59,8 @@ final class ChatSessionController {
 
     var chatBackend: ChatBackendID = .codex
 
+    @ObservationIgnored var onStreamSettled: ((ChatStreamSettleOutcome) -> Void)?
+
     /// Optional persona text for the next send. The desktop pet bubble sets this
     /// to the active ``PetDefinition``'s `agent.persona`; the prompt assembler
     /// wraps it as untrusted style context so the trusted `.core` section remains
@@ -401,7 +403,8 @@ final class ChatSessionController {
         memoryService: (any MemoryServing)? = nil,
         memoryExtractionEngine: MemoryExtractionEngine? = nil,
         initialThreadID: String? = nil,
-        persistsViewState: Bool = true
+        persistsViewState: Bool = true,
+        initialBackend: ChatBackendID? = nil
     ) {
         self.persistsViewState = persistsViewState
         self.dataStore = dataStore
@@ -426,7 +429,9 @@ final class ChatSessionController {
         Self.migrateLegacyChatModeIfNeeded()
         Self.migrateThreadIDSlotsIfNeeded()
 
-        if let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
+        if let initialBackend {
+            chatBackend = initialBackend
+        } else if let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
            let backend = ChatBackendID(rawValue: raw) {
             chatBackend = backend
         }
