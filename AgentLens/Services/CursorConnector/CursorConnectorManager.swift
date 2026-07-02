@@ -1685,10 +1685,8 @@ final class CursorConnectorManager {
             if not isinstance(value, str):
                 return None
             token = value.split(",", 1)[0].strip()
-            if not token:
-                return None
             try:
-                return ipaddress.ip_address(token).compressed
+                return ipaddress.ip_address(token).compressed if token else None
             except ValueError:
                 return None
 
@@ -1699,9 +1697,7 @@ final class CursorConnectorManager {
                 connecting_ip = _normalize_client_ip(handler.headers.get("Cf-Connecting-IP"))
                 if connecting_ip:
                     return f"cf:{connecting_ip}"
-            if normalized_peer:
-                return f"peer:{normalized_peer}"
-            return "peer:unknown"
+            return f"peer:{normalized_peer or 'unknown'}"
 
         def _rate_limit_check(client_ip):
             # Returns (allowed, current_count). thread-safe.
@@ -1709,7 +1705,6 @@ final class CursorConnectorManager {
             window_start = now - RATE_LIMIT_WINDOW
             with _rate_limit_lock:
                 entries = _rate_limit_state.get(client_ip, [])
-                # Prune old entries
                 entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
                 total = sum(cnt for _, cnt in entries)
                 if total >= RATE_LIMIT_REQUESTS:
@@ -1718,7 +1713,6 @@ final class CursorConnectorManager {
                 return True, total
 
         def _rate_limit_record(client_ip, request_size=1):
-            # Record a request for rate limiting. thread-safe.
             now = time.time()
             window_start = now - RATE_LIMIT_WINDOW
             with _rate_limit_lock:
@@ -1738,9 +1732,8 @@ final class CursorConnectorManager {
                 return sum(cnt for _, cnt in entries)
 
         def _send_rate_limited(handler, limit):
-            retry_after = str(RATE_LIMIT_WINDOW)
             handler.send_response(HTTPStatus.TOO_MANY_REQUESTS)
-            handler.send_header("Retry-After", retry_after)
+            handler.send_header("Retry-After", str(RATE_LIMIT_WINDOW))
             handler.send_header("X-RateLimit-Limit", str(limit))
             handler.send_header("X-RateLimit-Remaining", "0")
             handler.send_header("Content-Type", "application/json")
