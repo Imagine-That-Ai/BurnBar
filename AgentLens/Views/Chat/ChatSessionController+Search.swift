@@ -430,15 +430,26 @@ extension ChatSessionController {
         )
 
         let searchSvc = typedSearchService
+        let retrievalFilters = RetrievalFilters(
+            artifactTypes: [.conversation, .skillDoc, .agentDoc],
+            ownership: .personal
+        )
+        let activeProjectionJobs: Int
+        do {
+            activeProjectionJobs = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        } catch {
+            activeProjectionJobs = retrievalHealthSnapshot.projectionQueue.queueDepth
+            AppLogger.chat.silentFailure("countProjectionJobs (chat retrieval gate)", error: error)
+        }
+        let typedRetrievalAvailable = searchSvc != nil
+            && activeProjectionJobs == 0
+            && !retrievalHealthSnapshot.rebuild.inProgress
         let queryRun: OpenBurnBarQueryRunResult
-        if let searchSvc {
+        if let searchSvc, typedRetrievalAvailable {
             queryRun = await searchSvc.runBurnBarQuery(
                 RetrievalQuery(
                     text: retrievalText,
-                    filters: RetrievalFilters(
-                        artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                        ownership: .personal
-                    ),
+                    filters: retrievalFilters,
                     lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
                     semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
                     rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
@@ -446,17 +457,25 @@ extension ChatSessionController {
                 )
             )
         } else {
-            AppLogger.chat.info(
-                "chat send continuing without typed search service",
-                metadata: ["backend": chatBackend.rawValue]
-            )
+            if searchSvc == nil {
+                AppLogger.chat.info(
+                    "chat send continuing without typed search service",
+                    metadata: ["backend": chatBackend.rawValue]
+                )
+            } else {
+                AppLogger.chat.info(
+                    "chat send using fallback retrieval while search index catches up",
+                    metadata: [
+                        "backend": chatBackend.rawValue,
+                        "activeProjectionJobs": String(activeProjectionJobs),
+                        "rebuildInProgress": retrievalHealthSnapshot.rebuild.inProgress ? "true" : "false"
+                    ]
+                )
+            }
             queryRun = await runFallbackBurnBarQuery(
                 text: retrievalText,
                 plan: retrievalPlan,
-                filters: RetrievalFilters(
-                    artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                    ownership: .personal
-                )
+                filters: retrievalFilters
             )
         }
         let retrievalResults = queryRun.retrievalResults
@@ -910,8 +929,9 @@ extension ChatSessionController {
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
+                    let shouldPersistFailure = !(error is CancellationError)
                     // Don't surface cancellation as an error — cancelGeneration() already cleaned up
-                    if !(error is CancellationError) {
+                    if shouldPersistFailure {
                         let nsError = error as NSError
                         Analytics.shared.track(.chatGenerationFailed, [
                             "backend": .string(self.chatBackend.rawValue),
@@ -926,6 +946,17 @@ extension ChatSessionController {
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         if self.messages[idx].content.isEmpty {
                             self.messages[idx].content = self.streamError ?? "Error"
+                        }
+                        if shouldPersistFailure {
+                            do {
+                                try await self.dataStore.saveChatMessage(
+                                    self.messages[idx],
+                                    threadID: self.activeThreadID
+                                )
+                                self.refreshHistory()
+                            } catch {
+                                AppLogger.chat.silentFailure("saveChatMessage (streaming failure)", error: error)
+                            }
                         }
                     }
                     self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
