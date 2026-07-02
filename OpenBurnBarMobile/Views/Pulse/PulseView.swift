@@ -236,15 +236,21 @@ struct PulseView: View {
         async let d: Void = dashboard.loadIfNeeded()
         async let q: Void = quotaStore.loadIfNeeded()
         async let s: Void = sessionsStore.loadInitialIfNeeded()
-        async let live: Void = sessionsStore.loadLiveUsageIfNeeded(since: liveUsageStart)
         // Full runtime refresh so the saved Remote Relay / LAN connection is
         // attached before the user opens Chart Studio. `checkReachability`
         // alone leaves `selectedConnection == .localDefault`, which is fatal
         // on iPhone (no `localhost:8642` Hermes process). The catalog is
         // shared + coalesced across surfaces and skipped while fresh.
         async let h: Void = hermesService.refreshRuntimeIfStale()
-        _ = await (d, q, s, live, h)
+        _ = await (d, q, s, h)
         quotaStore.startListening()
+        // Live usage is seeded by the listener's own initial snapshot rather
+        // than a separate one-shot fetch: `listenToUsageSince` issues the same
+        // `endTime`-ordered, `liveUsageDocumentLimit`-capped query a seed GET
+        // would, so pairing the two doubled the read of up to 2,000 usage docs
+        // on every cold open. Until the first delivery lands the cards fall
+        // back to `rawUsages` (see `liveUsagesForPulse`) — the same path a warm
+        // tab return already uses.
         sessionsStore.startLiveUsageListening(since: liveUsageStart)
     }
 
