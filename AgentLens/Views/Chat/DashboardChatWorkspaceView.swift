@@ -60,7 +60,7 @@ struct DashboardChatWorkspaceView: View {
                 controller: activeController,
                 settingsManager: settingsManager,
                 mode: mode,
-                showsEnginePickers: !((workspace?.isTiled ?? false) || ((workspace?.tabs.count ?? 1) > 1)),
+                showsEnginePickers: !(workspace?.isTiled ?? false),
                 onNewChat: { activeController.clearChat() },
                 onShowClearChatPrompt: { showClearChatPrompt = true },
                 onPopOut: onPopOut,

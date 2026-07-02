@@ -17,7 +17,6 @@ final class ChatPaneAlertCenter {
     static var paneCompletionTapHandler: ((UUID, UUID) -> Void)?
 
     private let center: UNUserNotificationCenter
-    private var authorizationRequested = false
 
     init(center: UNUserNotificationCenter = .current()) {
         self.center = center
@@ -29,9 +28,9 @@ final class ChatPaneAlertCenter {
         return defaults.bool(forKey: Self.completionNotificationsKey)
     }
 
-    func postCompletion(_ event: Event) {
+    func postCompletion(_ event: Event) async {
         guard completionNotificationsEnabled else { return }
-        requestAuthorizationIfNeeded()
+        guard await notificationAuthorizationAllowsScheduling() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = event.isFailure ? "\(event.backendLabel) needs attention" : "\(event.backendLabel) finished"
@@ -69,11 +68,33 @@ final class ChatPaneAlertCenter {
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
-    private func requestAuthorizationIfNeeded() {
-        guard !authorizationRequested else { return }
-        authorizationRequested = true
-        Task {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+    private func notificationAuthorizationAllowsScheduling() async -> Bool {
+        switch await notificationAuthorizationStatus() {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .notDetermined:
+            return await requestAuthorization()
+        case .denied:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    private func notificationAuthorizationStatus() async -> UNAuthorizationStatus {
+        let rawValue = await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus.rawValue)
+            }
+        }
+        return UNAuthorizationStatus(rawValue: rawValue) ?? .denied
+    }
+
+    private func requestAuthorization() async -> Bool {
+        await withCheckedContinuation { continuation in
+            center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                continuation.resume(returning: granted)
+            }
         }
     }
 }

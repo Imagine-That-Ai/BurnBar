@@ -734,6 +734,7 @@ final class PaneWorkspaceModel {
 
     func handleStreamSettled(leafID: UUID, outcome: ChatStreamSettleOutcome) {
         guard !outcome.isCancelled, let leaf = leafAnywhere(leafID), let tab = tab(containing: leafID) else { return }
+        if mountedViewCount == 0, leaf.isPrimary { return }
         if isPaneVisible(leafID), selectedTab.activeLeafID == leafID, isAppFrontmost() {
             markSeen(leafID)
             return
@@ -741,17 +742,16 @@ final class PaneWorkspaceModel {
         leaf.unseenCompletionAt = Date()
         persist()
         guard leaf.alertsEnabled else { return }
-        alertCenter.postCompletion(
-            .init(
-                paneID: leafID,
-                tabID: tab.id,
-                threadID: leaf.controller.activeThreadID,
-                backendLabel: leaf.controller.chatBackend.displayName,
-                title: leaf.customTitle ?? tab.title ?? threadTitle(for: leaf.controller.activeThreadID),
-                preview: leaf.controller.messages.last?.content ?? "",
-                isFailure: outcome.isFailure
-            )
+        let event = ChatPaneAlertCenter.Event(
+            paneID: leafID,
+            tabID: tab.id,
+            threadID: leaf.controller.activeThreadID,
+            backendLabel: leaf.controller.chatBackend.displayName,
+            title: leaf.customTitle ?? tab.title ?? threadTitle(for: leaf.controller.activeThreadID),
+            preview: leaf.controller.messages.last?.content ?? "",
+            isFailure: outcome.isFailure
         )
+        Task { await alertCenter.postCompletion(event) }
     }
 
     func markSeen(_ leafID: UUID) {
@@ -802,7 +802,8 @@ final class PaneWorkspaceModel {
         source: ChatSessionController? = nil,
         backend: ChatBackendID? = nil,
         model: String? = nil,
-        viewMode: ChatViewMode? = nil
+        viewMode: ChatViewMode? = nil,
+        usesSavedModel: Bool = false
     ) -> ChatSessionController {
         let sourceController = source ?? primaryController
         let selectedBackend = backend ?? sourceController.chatBackend
@@ -817,8 +818,33 @@ final class PaneWorkspaceModel {
         )
         controller.copyPaneRuntimeBindings(from: sourceController)
         controller.copyPaneConversationControls(from: sourceController)
+        applyPaneConversationControls(
+            to: controller,
+            backend: selectedBackend,
+            model: model,
+            viewMode: viewMode,
+            usesSavedModel: usesSavedModel
+        )
+        return controller
+    }
+
+    func persistPaneControlChange(_ leafID: UUID) {
+        guard leafAnywhere(leafID) != nil else { return }
+        persist()
+    }
+
+    private func applyPaneConversationControls(
+        to controller: ChatSessionController,
+        backend: ChatBackendID?,
+        model: String?,
+        viewMode: ChatViewMode?,
+        usesSavedModel: Bool
+    ) {
+        let selectedBackend = backend ?? controller.chatBackend
         controller.chatBackend = selectedBackend
-        if let model, !model.isEmpty {
+        if usesSavedModel {
+            controller.setChatModelSelection(model ?? "", for: selectedBackend)
+        } else if let model, !model.isEmpty {
             controller.setChatModelSelection(model, for: selectedBackend)
         }
         if let viewMode {
@@ -826,7 +852,6 @@ final class PaneWorkspaceModel {
         } else {
             controller.chatViewMode = selectedBackend.requiresCLIAssistantConsent ? .cli : .agent
         }
-        return controller
     }
 
     private func installSettleHooks() {
@@ -979,6 +1004,13 @@ final class PaneWorkspaceModel {
             let viewMode = snapshot.viewMode.flatMap { ChatViewMode(rawValue: $0) }
             if snapshot.isPrimary && !primaryAssigned {
                 primaryAssigned = true
+                applyPaneConversationControls(
+                    to: primaryController,
+                    backend: backend,
+                    model: snapshot.model,
+                    viewMode: viewMode,
+                    usesSavedModel: true
+                )
                 return .leaf(PaneLeaf(
                     id: snapshot.paneID,
                     controller: primaryController,
@@ -994,7 +1026,8 @@ final class PaneWorkspaceModel {
                 source: primaryController,
                 backend: backend,
                 model: snapshot.model,
-                viewMode: viewMode
+                viewMode: viewMode,
+                usesSavedModel: true
             )
             return .leaf(PaneLeaf(
                 id: snapshot.paneID,

@@ -61,6 +61,14 @@ struct PaneConversationView: View {
     private var accent: Color {
         leaf?.colorToken?.color ?? (controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
     }
+    private var controlPersistenceSignature: String {
+        let backend = controller.chatBackend
+        return [
+            backend.rawValue,
+            controller.chatModelSelection(for: backend),
+            controller.chatViewMode.rawValue
+        ].joined(separator: "|")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -147,6 +155,9 @@ struct PaneConversationView: View {
             if !controller.persistsViewState {
                 workspace.primaryController.refreshHistory()
             }
+        }
+        .onChange(of: controlPersistenceSignature) { _, _ in
+            workspace.persistPaneControlChange(leafID)
         }
         .onChange(of: controller.dataStore.usagesVersion) { _, _ in
             Task { @MainActor in

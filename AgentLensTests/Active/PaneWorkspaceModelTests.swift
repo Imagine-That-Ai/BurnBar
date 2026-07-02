@@ -218,6 +218,126 @@ final class PaneWorkspaceModelTests: XCTestCase {
                        "non-primary panes restore their exact bound threads")
     }
 
+    func test_restoreV2_appliesSavedControlsToPrimaryPane() throws {
+        let primaryPaneID = UUID()
+        let tabID = UUID()
+        let snap = PaneWorkspaceSnapshotV2(
+            version: 2,
+            tabs: [
+                WorkspaceTabSnapshotV2(
+                    tabID: tabID,
+                    title: nil,
+                    colorToken: nil,
+                    root: .leaf(PaneLeafSnapshotV2(
+                        paneID: primaryPaneID,
+                        threadID: "primary-thread",
+                        isPrimary: true,
+                        title: nil,
+                        colorToken: nil,
+                        backend: ChatBackendID.hermes.rawValue,
+                        model: "hermes-saved-model",
+                        viewMode: ChatViewMode.cli.rawValue,
+                        unseenAt: nil,
+                        alertsEnabled: true
+                    )),
+                    activePaneID: primaryPaneID,
+                    zoomedPaneID: nil
+                )
+            ],
+            selectedTabID: tabID
+        )
+        UserDefaults.standard.set(try JSONEncoder().encode(snap), forKey: layoutKey)
+
+        let primary = try makeController()
+        primary.chatBackend = .codex
+        primary.setChatModelSelection("codex-old-model", for: .codex)
+        let ws = PaneWorkspaceModel.restore(primaryController: primary, dataStore: primary.dataStore, settingsManager: primary.settingsManager)
+
+        XCTAssertIdentical(ws.primaryController, primary)
+        XCTAssertEqual(primary.chatBackend, .hermes)
+        XCTAssertEqual(primary.chatModelSelection(for: .hermes), "hermes-saved-model")
+        XCTAssertEqual(primary.chatViewMode, .cli)
+    }
+
+    func test_restoreV2_emptySavedModelClearsCopiedPrimarySelection() throws {
+        let primaryPaneID = UUID()
+        let secondaryPaneID = UUID()
+        let tabID = UUID()
+        let snap = PaneWorkspaceSnapshotV2(
+            version: 2,
+            tabs: [
+                WorkspaceTabSnapshotV2(
+                    tabID: tabID,
+                    title: nil,
+                    colorToken: nil,
+                    root: .split(
+                        axis: .horizontal,
+                        fraction: 0.5,
+                        first: .leaf(PaneLeafSnapshotV2(
+                            paneID: primaryPaneID,
+                            threadID: "primary-thread",
+                            isPrimary: true,
+                            title: nil,
+                            colorToken: nil,
+                            backend: ChatBackendID.codex.rawValue,
+                            model: nil,
+                            viewMode: ChatViewMode.agent.rawValue,
+                            unseenAt: nil,
+                            alertsEnabled: true
+                        )),
+                        second: .leaf(PaneLeafSnapshotV2(
+                            paneID: secondaryPaneID,
+                            threadID: "secondary-thread",
+                            isPrimary: false,
+                            title: nil,
+                            colorToken: nil,
+                            backend: ChatBackendID.hermes.rawValue,
+                            model: nil,
+                            viewMode: ChatViewMode.agent.rawValue,
+                            unseenAt: nil,
+                            alertsEnabled: true
+                        ))
+                    ),
+                    activePaneID: secondaryPaneID,
+                    zoomedPaneID: nil
+                )
+            ],
+            selectedTabID: tabID
+        )
+        UserDefaults.standard.set(try JSONEncoder().encode(snap), forKey: layoutKey)
+
+        let primary = try makeController()
+        primary.setChatModelSelection("primary-hermes-model", for: .hermes)
+        let ws = PaneWorkspaceModel.restore(primaryController: primary, dataStore: primary.dataStore, settingsManager: primary.settingsManager)
+        let restoredSecondary = try XCTUnwrap(ws.leaf(secondaryPaneID))
+
+        XCTAssertEqual(restoredSecondary.controller.chatBackend, .hermes)
+        XCTAssertEqual(restoredSecondary.controller.chatModelSelection(for: .hermes), "")
+    }
+
+    func test_persistPaneControlChange_writesUpdatedPaneControls() throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let paneID = ws.activeLeafID
+        let leaf = try XCTUnwrap(ws.leaf(paneID))
+
+        leaf.controller.chatBackend = .piAgent
+        leaf.controller.setChatModelSelection("pi-saved-model", for: .piAgent)
+        leaf.controller.chatViewMode = .agent
+        ws.persistPaneControlChange(paneID)
+
+        let primary2 = try makeController()
+        let restored = PaneWorkspaceModel.restore(
+            primaryController: primary2,
+            dataStore: primary2.dataStore,
+            settingsManager: primary2.settingsManager
+        )
+        let restoredLeaf = try XCTUnwrap(restored.leaf(paneID))
+        XCTAssertEqual(restoredLeaf.controller.chatBackend, .piAgent)
+        XCTAssertEqual(restoredLeaf.controller.chatModelSelection(for: .piAgent), "pi-saved-model")
+        XCTAssertEqual(restoredLeaf.controller.chatViewMode, .agent)
+    }
+
     // MARK: - Exactly-one-primary enforcement on a corrupt blob
 
     func test_restore_zeroPrimaryBlob_promotesFirstLeafToPrimary() throws {
@@ -391,6 +511,19 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
         XCTAssertEqual(ws.activeLeafID, hiddenPaneID)
         XCTAssertNil(hiddenLeaf.unseenCompletionAt)
+    }
+
+    func test_unmountedPrimarySettleDoesNotMarkFloatingChatAsHiddenPane() throws {
+        let ws = try makeWorkspace()
+        let primaryPaneID = ws.activeLeafID
+        let primaryLeaf = try XCTUnwrap(ws.leaf(primaryPaneID))
+        primaryLeaf.alertsEnabled = false
+        ws.mountedViewCount = 0
+
+        ws.handleStreamSettled(leafID: primaryPaneID, outcome: .completed)
+
+        XCTAssertNil(primaryLeaf.unseenCompletionAt)
+        XCTAssertFalse(ws.unseenThreadIDs.contains(primaryLeaf.controller.activeThreadID))
     }
 
     func test_boundThreadIDs_spansAllTabs() throws {
