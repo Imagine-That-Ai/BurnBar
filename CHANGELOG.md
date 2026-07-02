@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-07-01
+
+### Fixed
+
+- **macOS release libsignal link** — prepares the ignored
+  `OpenBurnBarSignalFfiMac.xcframework` from the vendored libsignal submodule
+  inside the protected release workflow before Xcode resolves packages or links
+  the Developer ID app, so the public DMG no longer depends on a developer's
+  local FFI build output.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 33 / `versionName` `1.0.23` so Google Play receives the same
+  release cut as the website retry.
+
 ## [1.0.22] - 2026-07-01
 
 ### Fixed

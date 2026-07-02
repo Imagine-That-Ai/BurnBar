@@ -198,6 +198,22 @@ def test_release_workflow_keeps_quiet_xcode_build_alive():
     assert "wait \"$xcodebuild_pid\"" in app_build_step
 
 
+def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    prepare_start = body.index("- name: Prepare Signal FFI XCFramework for release app")
+    lockfile_index = body.index("- name: Verify OpenBurnBar app SwiftPM lockfile")
+    resolve_index = body.index("- name: Resolve Xcode packages")
+    app_build_index = body.index("- name: Build Release .app (unsigned)")
+    prepare_step = body[prepare_start:lockfile_index]
+
+    assert prepare_start < lockfile_index < resolve_index < app_build_index
+    assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
+    assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
+    assert "CARGO_BUILD_JOBS: \"2\"" in prepare_step
+    assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
+
+
 def test_release_workflow_guards_owner_approved_validation_bypass():
     body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 

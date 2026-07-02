@@ -535,6 +535,16 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
+      - name: Prepare Signal FFI XCFramework for release app
+        env:
+          SIGNAL_FFI_BUILD_PROFILE: release
+          # The direct-download macOS release packages only the Mac app here.
+          # iOS/TestFlight artifacts are cut through the mobile lane, and the
+          # mobile test script prepares iOS slices when that gate is enabled.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+          CARGO_BUILD_JOBS: "2"
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
