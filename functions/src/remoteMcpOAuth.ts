@@ -73,6 +73,10 @@ export async function issueRemoteMcpGrantForSignedInUser(
     audience: string;
   },
 ) {
+  assertRemoteMcpIssuerTokenPosture({
+    tokenSecret: input.tokenSecret,
+    tokenEd25519PrivateKeyBase64PEM: input.tokenEd25519PrivateKeyBase64PEM,
+  });
   const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
   const scopes: RemoteMcpScope[] = input.scopes?.length ? input.scopes : [...REMOTE_MCP_DEFAULT_GRANT_SCOPES];
   const grantMode = input.grantMode ?? "local_decrypt_shim";

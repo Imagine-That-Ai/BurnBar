@@ -15,6 +15,20 @@ function decodeHmacAccessToken(token: string): { scopes?: unknown } {
   return decoded;
 }
 
+async function withProductionRemoteMcpRuntime<T>(fn: () => T | Promise<T>): Promise<T> {
+  const previousRuntimeEnvironment = process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT;
+  process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT = "production";
+  try {
+    return await fn();
+  } finally {
+    if (previousRuntimeEnvironment === undefined) {
+      delete process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT;
+    } else {
+      process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT = previousRuntimeEnvironment;
+    }
+  }
+}
+
 describe("Remote MCP Functions issuer token posture", () => {
   it("allows local/test HMAC fallback for emulator compatibility", () => {
     expect(() =>
@@ -83,5 +97,38 @@ describe("Remote MCP Functions issuer token posture", () => {
     expect(grant.scopes).toEqual([...explicitScopes]);
     expect(decodeHmacAccessToken(grant.accessToken).scopes).toEqual([...explicitScopes]);
     expect(store.get("users/alice-uid/remote_mcp_clients/obbc_knowledge")?.allowedScopes).toEqual([...explicitScopes]);
+  });
+
+  it("throws in production when only the HMAC secret is configured", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const db = pathKeyedFirestore(store);
+
+    await expect(
+      withProductionRemoteMcpRuntime(() =>
+        issueRemoteMcpGrantForSignedInUser(db, "alice-uid", {
+          clientId: "obbc_prod_hmac_only",
+          entitlementFamily: "burnbar_pro",
+          tokenSecret: "shared-prod-secret",
+          audience: "https://mcp.burnbar.ai/mcp",
+        }),
+      ),
+    ).rejects.toThrow(/REMOTE_MCP_TOKEN_HMAC_SECRET must not be used/u);
+  });
+
+  it("throws in production when HMAC secret is present alongside Ed25519", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const db = pathKeyedFirestore(store);
+
+    await expect(
+      withProductionRemoteMcpRuntime(() =>
+        issueRemoteMcpGrantForSignedInUser(db, "alice-uid", {
+          clientId: "obbc_prod_dual_signer",
+          entitlementFamily: "burnbar_pro",
+          tokenSecret: "shared-prod-secret",
+          tokenEd25519PrivateKeyBase64PEM: "base64-pem",
+          audience: "https://mcp.burnbar.ai/mcp",
+        }),
+      ),
+    ).rejects.toThrow(/REMOTE_MCP_TOKEN_HMAC_SECRET must not be used/u);
   });
 });
