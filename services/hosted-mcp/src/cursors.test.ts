@@ -65,6 +65,15 @@ test("cursors: production with the dev-cursor-secret default fails closed on ver
   });
 });
 
+test("cursors: production with the token dev-secret default fails closed on sign", () => {
+  withEnv({ MCP_RUNTIME_ENVIRONMENT: "production", MCP_CURSOR_HMAC_SECRET: "dev-secret" }, () => {
+    assert.throws(
+      () => signCursor(payload()),
+      (err: unknown) => err instanceof HttpError && err.code === "cursor_secret_unconfigured",
+    );
+  });
+});
+
 test("cursors: production with a real secret signs and verifies", () => {
   withEnv({ MCP_RUNTIME_ENVIRONMENT: "production", MCP_CURSOR_HMAC_SECRET: "real-cursor-secret" }, () => {
     const cursor = signCursor(payload());

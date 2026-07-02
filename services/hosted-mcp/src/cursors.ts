@@ -3,6 +3,7 @@ import { isProductionRuntime } from "./config.js";
 import { HttpError } from "./errors.js";
 
 export const DEV_CURSOR_SECRET = "dev-cursor-secret";
+const INSECURE_PRODUCTION_CURSOR_SECRETS = new Set([DEV_CURSOR_SECRET, "dev-secret"]);
 
 /**
  * Resolve the HMAC key used to sign AND verify pagination cursors. In production
@@ -18,7 +19,7 @@ export const DEV_CURSOR_SECRET = "dev-cursor-secret";
 const CURSOR_SECRET = (): string => {
   const secret = process.env.MCP_CURSOR_HMAC_SECRET ?? process.env.MCP_TOKEN_HMAC_SECRET;
   if (isProductionRuntime()) {
-    if (!secret || secret === DEV_CURSOR_SECRET) {
+    if (!secret || INSECURE_PRODUCTION_CURSOR_SECRETS.has(secret)) {
       throw new HttpError(503, "MCP cursor signing secret is not configured.", "cursor_secret_unconfigured");
     }
     return secret;

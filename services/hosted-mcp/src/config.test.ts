@@ -66,7 +66,18 @@ test("assertProductionTokenPosture: prod with the dev-cursor-secret default refu
       MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
       MCP_CURSOR_HMAC_SECRET: "dev-cursor-secret",
     }),
-    /insecure development default 'dev-cursor-secret'/,
+    /known insecure development default/,
+  );
+});
+
+test("assertProductionTokenPosture: prod with the token dev-secret as cursor secret refuses to boot", () => {
+  assert.throws(
+    () => assertProductionTokenPosture({
+      ...BASE_PROD,
+      MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
+      MCP_CURSOR_HMAC_SECRET: "dev-secret",
+    }),
+    /known insecure development default/,
   );
 });
 
