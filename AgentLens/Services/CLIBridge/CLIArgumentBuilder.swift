@@ -210,13 +210,17 @@ enum CLIArgumentBuilder {
     ) -> [String] {
         // Junie's project association is its working directory — the stream
         // runner spawns the process with `workspaceDirectory` as cwd, so no
-        // path flag is needed. Model selection has no documented headless
-        // flag (it follows the user's Junie `/model` default), and approvals
-        // stay on Junie's own brave-mode setting.
-        _ = model
+        // path flag is needed. `--task` is the documented one-shot form;
+        // `--prompt` opens the interactive TUI and is wrong for relay sends.
+        var arguments: [String] = []
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedModel.isEmpty == false {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
         _ = workspaceDirectory
         _ = capabilityGrant
-        return ["--prompt", sanitizedPrompt(prompt)]
+        arguments.append(contentsOf: ["--task", sanitizedPrompt(prompt)])
+        return arguments
     }
 
     private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {

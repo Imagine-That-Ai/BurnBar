@@ -315,7 +315,7 @@ public enum CLIAuthDiscovery {
             )
             let sessionsDir = "\(configDir)/sessions"
             let hasConfig = FileManager.default.fileExists(atPath: configDir)
-            let hasSessions = FileManager.default.fileExists(atPath: sessionsDir)
+            let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
             let hasAPIKey = !(ProcessInfo.processInfo.environment["JUNIE_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
             // `~/.junie` is created on first launch even before sign-in and
             // credentials live in the macOS Keychain, so only treat recorded
@@ -323,7 +323,7 @@ public enum CLIAuthDiscovery {
             let authState: CLIAuthState = {
                 if executablePath == nil { return .notInstalled }
                 if hasAPIKey { return .apiKeyPresent }
-                if hasSessions { return .authenticated(lastRefresh: nil) }
+                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
                 return .notAuthenticated
             }()
             return CLIAuthInfo(
@@ -332,7 +332,7 @@ public enum CLIAuthDiscovery {
                 executablePath: executablePath,
                 authState: authState,
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
-                accountDescription: hasSessions ? "Junie local sessions" : nil
+                accountDescription: hasRecordedSessions ? "Junie local sessions" : nil
             )
         }
         #endif
@@ -631,6 +631,25 @@ public enum CLIAuthDiscovery {
 
     private static func normalizedConfigDirectory(_ override: String?, fallback: String) -> String {
         normalizedNonEmpty(override) ?? fallback
+    }
+
+    private static func directoryContainsAnyEntry(atPath path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              let enumerator = FileManager.default.enumerator(
+                at: URL(fileURLWithPath: path, isDirectory: true),
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return false
+        }
+
+        for case let url as URL in enumerator
+            where (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+            return true
+        }
+        return false
     }
 
     static func parseJWTClaims(from token: String) -> [String: Any]? {

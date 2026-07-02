@@ -400,12 +400,12 @@ struct SwitcherOnboardingScanAddStep: View {
             case .junieCLI:
                 differentAccountButton(
                     title: "Connect Junie",
-                    subtitle: "Verify the local Junie CLI profile on this Mac",
-                    icon: "link.badge.plus",
+                    subtitle: "Verify an existing Junie profile or add a Junie API key",
+                    icon: "key.fill",
                     color: Color(hex: "48E054"),
                     isLoading: connectingCLIType == .junie
                 ) {
-                    await connectDifferentCLI(.junie)
+                    await connectJunieProfile()
                 }
             }
         }
@@ -676,6 +676,21 @@ struct SwitcherOnboardingScanAddStep: View {
                 capMessage = "Connected \(profile.displayName) as \(profile.cliMetadata?.accountDescription ?? "a verified account"). Add another if you want a deeper reserve."
             }
         }
+    }
+
+    private func connectJunieProfile() async {
+        if let identity = discoveryService.discoveredIdentities.first(where: { identity in
+            if case .junie = identity.source {
+                return identity.authState == .authenticated || identity.authState == .apiKeyPresent
+            }
+            return false
+        }) {
+            addIdentity(identity)
+            return
+        }
+
+        selectedCLIType = .junie
+        showAPIKeySheet = true
     }
 }
 

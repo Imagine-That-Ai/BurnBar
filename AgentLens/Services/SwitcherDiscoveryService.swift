@@ -430,6 +430,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 cliType: .junie,
                 cliMetadata: SwitcherCLIProfileMetadata(
                     workingDirectory: nil,
+                    envKeysToPass: identity.authState == .apiKeyPresent ? ["JUNIE_API_KEY"] : [],
                     displayLabel: "Junie",
                     configDirectory: configDirectory,
                     accountDescription: "Junie local profile"
@@ -899,6 +900,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             cliType: cliType,
             cliMetadata: SwitcherCLIProfileMetadata(
                 workingDirectory: nil,
+                envKeysToPass: apiKeyEnvironmentKeys(for: cliType),
                 displayLabel: displayLabel,
                 accountDescription: label
             ),
@@ -976,6 +978,15 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .pi(executablePath: CLILaunchAdapter.executablePath(for: .pi), configDirectory: nil)
         case .junie:
             return .junie(executablePath: CLILaunchAdapter.executablePath(for: .junie), configDirectory: nil)
+        }
+    }
+
+    private func apiKeyEnvironmentKeys(for cliType: SwitcherCLIProfileType) -> [String] {
+        switch cliType {
+        case .junie:
+            return ["JUNIE_API_KEY"]
+        default:
+            return []
         }
     }
 

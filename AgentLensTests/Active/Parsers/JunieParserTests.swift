@@ -144,6 +144,59 @@ final class JunieParserTests: XCTestCase {
         XCTAssertTrue(usage.projectName.contains("Projects/other"), "got \(usage.projectName)")
     }
 
+    func testStateJSONTotalsSkipEventUsageBuckets() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let sessionId = "session-260701-201500-ab13"
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: sessionId,
+            events: """
+            {"type":"message","message":{"role":"assistant","content":"reply","usage":{"input_tokens":25,"output_tokens":75}}}
+            """,
+            state: """
+            {"model":"gpt-5.5","usage":{"inputTokens":500,"outputTokens":250}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 500)
+        XCTAssertEqual(usage.outputTokens, 250)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
+
+    func testInlinePricedModelBeatsUnpricedStatePlaceholder() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let sessionId = "session-260701-202000-ab14"
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: sessionId,
+            events: """
+            {"type":"message","message":{"role":"assistant","content":"reply","usage":{"input_tokens":1000,"output_tokens":100}},"model":"claude-sonnet-4-5"}
+            """,
+            state: """
+            {"model":"default"}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "claude-sonnet-4-5")
+        XCTAssertGreaterThan(usage.costUSD, 0)
+    }
+
     func testEnvelopeWrappedEventsAreUnwrapped() async throws {
         let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
         defer { try? FileManager.default.removeItem(at: tempRoot) }

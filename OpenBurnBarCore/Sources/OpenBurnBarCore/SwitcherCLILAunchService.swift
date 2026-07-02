@@ -95,7 +95,8 @@ public enum CLILaunchAdapter {
         "ANTIGRAVITY_HOME",
         "GEMINI_HOME",
         "CURSOR_AGENT_HOME",
-        "CURSOR_AGENT_CONFIG_PATH"
+        "CURSOR_AGENT_CONFIG_PATH",
+        "JUNIE_API_KEY"
     ]
 
     // MARK: - Additional Arguments Allowlist

@@ -34,6 +34,19 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.threads(for: .claude).map(\.id), ["claude-1"])
     }
 
+    func testThreadInboxIncludesJunieHistoryThreads() async {
+        let local = InMemoryLocalStore()
+        let historyStore = MobileChatHistoryStore(local: local, cloud: nil)
+        historyStore.upsert(Self.makeThread(id: "junie-1", runtime: .junie, title: "Junie chat"))
+
+        let inbox = ThreadInboxStore(historyStore: historyStore, cliReader: nil, missionHost: nil)
+        await inbox.refresh()
+
+        XCTAssertEqual(inbox.items.map(\.id), ["cli_mirror:junie-1"])
+        XCTAssertEqual(inbox.items.first?.agentURI, AgentIdentity.builtInURI(.junie))
+        XCTAssertEqual(inbox.items.first?.source, .cliMirror)
+    }
+
     func testLoadFromDiskRestoresThreads() throws {
         let local = InMemoryLocalStore()
         let seed = Self.makeThread(id: "seed", runtime: .hermes, title: "Restored")

@@ -193,6 +193,7 @@ final class JunieParser: LogParser, Sendable {
         var assistantMessageCount = 0
         var inlineModel: String?
         var projectPath = indexProjectPath
+        var stateJSONProvidedTotals = false
 
         // state.json carries the latest agent state; harvest the model and
         // project path defensively. Some env values inside are encrypted
@@ -213,6 +214,7 @@ final class JunieParser: LogParser, Sendable {
                     tokenData.cacheCreation = extracted.cacheCreation
                     tokenData.cacheRead = extracted.cacheRead
                     usedExplicitUsage = true
+                    stateJSONProvidedTotals = true
                 }
             }
         }
@@ -275,10 +277,12 @@ final class JunieParser: LogParser, Sendable {
                             // First explicit usage supersedes any state.json totals of zero.
                             usedExplicitUsage = true
                         }
-                        tokenData.input += extracted.input
-                        tokenData.output += extracted.output
-                        tokenData.cacheCreation += extracted.cacheCreation
-                        tokenData.cacheRead += extracted.cacheRead
+                        if stateJSONProvidedTotals == false {
+                            tokenData.input += extracted.input
+                            tokenData.output += extracted.output
+                            tokenData.cacheCreation += extracted.cacheCreation
+                            tokenData.cacheRead += extracted.cacheRead
+                        }
                     }
                 }
 
@@ -438,11 +442,13 @@ final class JunieParser: LogParser, Sendable {
             return inline
         }
 
-        if ModelPricing.hasCatalogPricing(model: structured, providerID: "junie") {
+        if ModelPricing.hasCatalogPricing(model: structured, providerID: "junie")
+            || ModelPricing.hasCatalogPricing(model: structured, providerID: nil) {
             return structured
         }
 
-        if ModelPricing.hasCatalogPricing(model: inline, providerID: "junie") {
+        if ModelPricing.hasCatalogPricing(model: inline, providerID: "junie")
+            || ModelPricing.hasCatalogPricing(model: inline, providerID: nil) {
             return inline
         }
 

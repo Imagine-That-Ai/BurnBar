@@ -187,6 +187,17 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
     }
 
+    func test_junieArguments_useHeadlessTaskAndPreserveModelSelection() {
+        let args = CLIArgumentBuilder.junieArguments(
+            prompt: "Ship it",
+            model: "sonnet"
+        )
+
+        XCTAssertFalse(args.contains("--prompt"))
+        XCTAssertEqual(value(after: "--model", in: args), "sonnet")
+        XCTAssertEqual(value(after: "--task", in: args), "Ship it")
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {

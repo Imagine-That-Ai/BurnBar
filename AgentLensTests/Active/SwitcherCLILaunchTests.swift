@@ -1007,6 +1007,40 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertNil(result["SHELL"])
     }
 
+    func test_buildCLILaunch_passesJunieAPIKeyOnlyWhenProfileRequestsIt() {
+        let junieURL = URL(fileURLWithPath: "/tmp/test-junie-launch")
+        let cleanup = makeTempExecutable(at: junieURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .junie ? junieURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = {
+            [
+                "JUNIE_API_KEY": "perm-test",
+                "OPENAI_API_KEY": "must-not-leak"
+            ]
+        }
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .junie,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                envKeysToPass: ["JUNIE_API_KEY"],
+                displayLabel: "Junie"
+            ),
+            sortKey: 1
+        )
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+        guard case .success(let config) = result else {
+            XCTFail("Expected launch config")
+            return
+        }
+
+        XCTAssertEqual(config.env["JUNIE_API_KEY"], "perm-test")
+        XCTAssertNil(config.env["OPENAI_API_KEY"])
+    }
+
     func test_buildCLILaunch_usesAllowlistedBaselineNotFullAmbient() {
         // This test verifies that when building a CLI launch config,
         // the environment is built from the allowlisted baseline only,
