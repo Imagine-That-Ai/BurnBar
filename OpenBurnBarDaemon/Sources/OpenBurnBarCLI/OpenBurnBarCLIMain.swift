@@ -20,7 +20,10 @@ struct BurnBarCLIExecutable {
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
         let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
 
-        if arguments == ["health"] {
+        if BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: arguments,
+            invokedExecutablePath: CommandLine.arguments.first
+        ) {
             do {
                 fputs(BurnBarCLIHealthFormatter.format(try client.health()) + "\n", stdout)
                 exit(EXIT_SUCCESS)

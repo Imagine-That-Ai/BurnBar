@@ -891,6 +891,20 @@ public struct BurnBarCLIRunner {
 
     public static let shellShimExecutableNames = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
 
+    public static func shouldUseHealthFastPath(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> Bool {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        guard effectiveArguments == ["health"],
+              let invokedExecutablePath else {
+            return false
+        }
+
+        let executableName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        return canonicalExecutableNames.contains(executableName)
+    }
+
     public static func startupPreflightResult(
         arguments: [String],
         invokedExecutablePath: String?

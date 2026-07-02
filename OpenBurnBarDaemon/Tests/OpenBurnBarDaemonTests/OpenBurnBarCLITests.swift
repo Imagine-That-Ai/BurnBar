@@ -53,6 +53,29 @@ final class BurnBarCLITests: XCTestCase {
         ))
     }
 
+    func testHealthFastPathIsLimitedToCanonicalOpenBurnBarExecutable() {
+        XCTAssertTrue(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertTrue(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["--", "health"],
+            invokedExecutablePath: "/tmp/openburnbar-cli"
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: "/tmp/codex"
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: nil
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["exec", "codex", "health"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+    }
+
     func testHealthCommandFormatsDaemonStatus() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.run(arguments: ["health"])
