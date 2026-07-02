@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-07-02
+
 ### Added
 
 - **Tabbed Chat pane workspaces** — extends the cmux-style Chat tiling surface
@@ -16,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background replies. Completion alerts now route through local notifications
   and focus the relevant pane when tapped. The workspace persists via a v2
   snapshot while still migrating the original v1 tiling layout.
+
+### Fixed
+
+- **Dashboard chat launch stability** — hardens the shared CLI launch path used
+  by the dashboard and popover so Claude, Hermes, and Codex chat replies keep
+  working when the search-index projection backlog is unavailable or the pinned
+  executable needs localized recovery messaging.
+- **Hermes fallback chat** — lets Hermes chat recover without a configured
+  bearer token and turns key rejection into a self-healing, actionable prompt
+  instead of a dead chat pane.
+- **Release download link** — keeps the public website's macOS fallback download
+  pinned to the smoke-proven GitHub Release asset while the updater feed remains
+  owned by the promoted release.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 36 / `versionName` `1.0.26` so Google Play receives the same
+  source cut as the macOS release.
 
 ## [1.0.25] - 2026-07-02
 
