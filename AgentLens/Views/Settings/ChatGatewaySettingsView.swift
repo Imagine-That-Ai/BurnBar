@@ -404,18 +404,14 @@ struct HermesGatewayDetailView: View {
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                         ZStack {
                             Circle()
-                                .fill(hermesRuntimeLauncher.status.gatewayRunning
-                                    ? DesignSystem.Colors.success.opacity(0.16)
-                                    : DesignSystem.Colors.surface)
+                                .fill(hermesStatusIndicatorFill)
                                 .frame(width: 34, height: 34)
                             if hermesRuntimeLauncher.isBusy {
                                 ProgressView().controlSize(.small)
                             } else {
-                                Image(systemName: hermesRuntimeLauncher.status.gatewayRunning ? "checkmark" : "power")
+                                Image(systemName: hermesStatusIndicatorSymbol)
                                     .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(hermesRuntimeLauncher.status.gatewayRunning
-                                        ? DesignSystem.Colors.success
-                                        : DesignSystem.Colors.hermesAureate)
+                                    .foregroundStyle(hermesStatusIndicatorColor)
                             }
                         }
 
@@ -479,7 +475,7 @@ struct HermesGatewayDetailView: View {
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         fieldLabel("Bearer Token")
-                        SecureField("Same as API_SERVER_KEY (leave empty if unset)",
+                        SecureField("Same as API_SERVER_KEY (empty = reuse the local ~/.hermes/.env key)",
                                     text: $settingsManager.hermesBearerToken)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -520,6 +516,28 @@ struct HermesGatewayDetailView: View {
     private var resolvedBearer: String? {
         let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
+    }
+
+    /// Three-state indicator: running (green check), running-but-key-rejected
+    /// (warning key), stopped (aureate power). Auth rejection must not render
+    /// as the healthy green state the user has no reason to click into.
+    private var hermesStatusIndicatorFill: Color {
+        if hermesRuntimeLauncher.status.authRejected { return DesignSystem.Colors.warning.opacity(0.16) }
+        return hermesRuntimeLauncher.status.gatewayRunning
+            ? DesignSystem.Colors.success.opacity(0.16)
+            : DesignSystem.Colors.surface
+    }
+
+    private var hermesStatusIndicatorColor: Color {
+        if hermesRuntimeLauncher.status.authRejected { return DesignSystem.Colors.warning }
+        return hermesRuntimeLauncher.status.gatewayRunning
+            ? DesignSystem.Colors.success
+            : DesignSystem.Colors.hermesAureate
+    }
+
+    private var hermesStatusIndicatorSymbol: String {
+        if hermesRuntimeLauncher.status.authRejected { return "key.slash" }
+        return hermesRuntimeLauncher.status.gatewayRunning ? "checkmark" : "power"
     }
 }
 

@@ -6,6 +6,7 @@ export const MAX_OUTPUT_BYTES = Number(process.env.MCP_MAX_OUTPUT_BYTES ?? 64 * 
 export const POSITIVE_ENTITLEMENT_CACHE_MS = Number(process.env.MCP_POSITIVE_ENTITLEMENT_CACHE_MS ?? 60_000);
 export const NEGATIVE_ENTITLEMENT_CACHE_MS = Number(process.env.MCP_NEGATIVE_ENTITLEMENT_CACHE_MS ?? 15_000);
 export const REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS = Number(process.env.MCP_LAST_USED_WRITE_INTERVAL_MS ?? 60_000);
+const INSECURE_CURSOR_HMAC_SECRETS = new Set(["dev-cursor-secret", "dev-secret"]);
 
 export function allowedOrigins(): Set<string> {
   const raw = process.env.MCP_ALLOWED_ORIGINS ?? "https://mcp.burnbar.ai,https://burnbar.ai,https://openburnbar.com";
@@ -45,6 +46,15 @@ export function assertProductionTokenPosture(env: NodeJS.ProcessEnv = process.en
   }
   if (env.MCP_TOKEN_HMAC_SECRET === "dev-secret") {
     errors.push("MCP_TOKEN_HMAC_SECRET is the insecure development default 'dev-secret'");
+  }
+  // Pagination cursors are signed/verified with their own HMAC key
+  // (`MCP_CURSOR_HMAC_SECRET`, falling back to `MCP_TOKEN_HMAC_SECRET`). The
+  // Ed25519-only posture above does not require `MCP_TOKEN_HMAC_SECRET`, so
+  // without this check a prod deploy could sign cursors with the source-visible
+  // 'dev-cursor-secret' / 'dev-secret' defaults, letting an authenticated caller forge cursors.
+  const cursorSecret = env.MCP_CURSOR_HMAC_SECRET ?? env.MCP_TOKEN_HMAC_SECRET;
+  if (!cursorSecret || INSECURE_CURSOR_HMAC_SECRETS.has(cursorSecret)) {
+    errors.push("MCP_CURSOR_HMAC_SECRET (or MCP_TOKEN_HMAC_SECRET) must be set to a real cursor signing key — it must not be empty or a known insecure development default");
   }
   if (errors.length > 0) {
     throw new Error(`[hosted-mcp] refusing to start: insecure production token posture:\n  - ${errors.join("\n  - ")}`);

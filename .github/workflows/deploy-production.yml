@@ -122,6 +122,7 @@ jobs:
           npm run build --prefix functions
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
+          node scripts/ci/check-callable-validation.mjs
           bash scripts/ci/verify-production-deploy-auth.sh
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode functions \

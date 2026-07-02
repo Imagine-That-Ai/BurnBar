@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and focus the relevant pane when tapped. The workspace persists via a v2
   snapshot while still migrating the original v1 tiling layout.
 
+## [1.0.25] - 2026-07-02
+
+### Fixed
+
+- **Release publish job** — replaces the macOS publish step's Bash 4-only
+  `mapfile` usage with Bash 3.2-compatible provenance collection, so the
+  already-built, signed, notarized, and smoke-tested artifacts can be uploaded
+  from GitHub's hosted macOS runners.
+- **Current-main release cut** — moves the public release forward from the
+  smoke-proven `v1.0.24` tag to the newest `main` state, including the Computer
+  Use downgrade-only trust clamp and the committed remediation tracker.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 35 / `versionName` `1.0.25` so Google Play receives the same
+  release cut as the macOS publish retry.
+
 ## [1.0.24] - 2026-07-02
 
 ### Fixed

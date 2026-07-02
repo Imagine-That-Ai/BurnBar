@@ -35,6 +35,7 @@ Use this local path only for operator break-glass deploys or manual rehearsal:
 ```bash
 export GOOGLE_CLOUD_PROJECT=burnbar
 firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition only
+gcloud secrets create MCP_CURSOR_HMAC_SECRET --replication-policy=automatic --project burnbar # once
 
 # Production token signing should use Ed25519:
 # - Functions grant issuer / hosted refresh signer: REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64
@@ -44,6 +45,7 @@ firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition 
 export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 export REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=...
 export MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=...
+export MCP_CURSOR_HMAC_SECRET=... # real pagination-cursor HMAC key; not dev-secret/dev-cursor-secret
 export OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true # only for intentional key rotation
 ./scripts/deploy-hosted-mcp.sh
 ```

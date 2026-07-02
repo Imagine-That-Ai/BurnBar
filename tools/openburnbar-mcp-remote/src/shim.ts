@@ -11,7 +11,7 @@ export const DEFAULT_ENDPOINT = "https://mcp.burnbar.ai/mcp";
 const PROTOCOL_VERSION = "2025-11-25";
 const TRUSTED_HTTPS_HOSTS = new Set(["mcp.burnbar.ai"]);
 
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
 }
