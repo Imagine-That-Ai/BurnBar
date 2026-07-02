@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -518,26 +518,13 @@ function isSafeSpawnValue(value: unknown, pattern: RegExp): value is string {
   return typeof value === "string" && value.length > 0 && !value.startsWith("-") && pattern.test(value);
 }
 
-// SECURITY (F4): the hosted MCP server is only semi-trusted. argv[0] stays on
-// this fixed allowlist of local agent binaries, native argv are structurally
-// validated to allow only `--model` + validated model, then `--resume` or `resume`
-// + validated handle, and extra args are rejected. `working_directory` is confined
-// to an existing local directory by canonical path and is never passed to `open`.
-function resolveTrustedWorkingDirectory(value: string | undefined): string | undefined {
-  if (typeof value !== "string" || value.length === 0) {
-    return undefined;
-  }
-  if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)) {
-    return undefined;
-  }
-  try {
-    const resolved = realpathSync(value);
-    return statSync(resolved).isDirectory() ? resolved : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
+// SECURITY (F4): the hosted MCP server is only semi-trusted. `working_directory`
+// is untrusted and is never used as a launch cwd or `-C` argument; it only
+// appears in `--print` output (`# Run from: <dir>`) for the user to act on
+// manually. argv[0] stays on this fixed allowlist of local agent binaries and
+// native argv are structurally validated to allow only `--model` + validated
+// model, then `--resume` or `resume` + validated handle, and extra args are
+// rejected.
 const ALLOWED_RESUME_SPAWN_COMMANDS = new Set(["claude", "codex", "cursor", "windsurf"]);
 
 function resumeSpawnNativeArgsNotAllowedError(): ResumeCliError {
@@ -609,31 +596,28 @@ export function buildResumeSpawnCommand(rendered: RenderedResume): ResumeSpawnCo
       throw resumeSpawnNativeArgsNotAllowedError();
     }
     args.push(resumeToken, handle);
-    return { command, args, cwd: resolveTrustedWorkingDirectory(rendered.workingDirectory) };
+    return { command, args, cwd: undefined };
   }
 
   const targetHarness = normalizeHarness(rendered.targetHarness) || "claude_code";
-  const cwd = resolveTrustedWorkingDirectory(rendered.workingDirectory);
   const model = isSafeSpawnValue(rendered.targetModel, SAFE_MODEL_PATTERN) ? modelArgs(targetHarness, rendered.targetModel) : [];
   if (targetHarness === "claude_code") {
     return {
       command: "claude",
       args: [...model, "--append-system-prompt", "Use the OpenBurnBar Resume briefing as canonical handoff context.", rendered.text],
-      cwd
+      cwd: undefined
     };
   }
   if (targetHarness === "codex") {
-    const args = [...model];
-    if (cwd) {args.push("-C", cwd);}
-    args.push(rendered.text);
-    return { command: "codex", args, cwd };
+    const args = [...model, rendered.text];
+    return { command: "codex", args, cwd: undefined };
   }
   if (targetHarness === "cursor" || targetHarness === "windsurf") {
     const briefingPath = writeTempMarkdownSync(rendered.pathPayload ?? rendered.text);
     return {
       command: "open",
       args: ["-a", targetHarness === "cursor" ? "Cursor" : "Windsurf", briefingPath],
-      cwd,
+      cwd: undefined,
       briefingPath
     };
   }
@@ -641,7 +625,7 @@ export function buildResumeSpawnCommand(rendered: RenderedResume): ResumeSpawnCo
   return {
     command: "open",
     args: [briefingPath],
-    cwd,
+    cwd: undefined,
     briefingPath
   };
 }

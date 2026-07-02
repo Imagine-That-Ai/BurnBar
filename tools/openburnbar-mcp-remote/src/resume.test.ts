@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -225,7 +225,6 @@ function makeTempResumeDir(): string {
 
 test("spawn command uses detached target mapping without hosted plaintext persistence", () => {
   const tempDir = makeTempResumeDir();
-  const resolvedDir = realpathSync(tempDir);
   const command = buildResumeSpawnCommand({
     kind: "ported_sealed",
     text: "# BurnBar Resume\n\nContinue this work.",
@@ -235,14 +234,13 @@ test("spawn command uses detached target mapping without hosted plaintext persis
   });
 
   assert.equal(command.command, "codex");
-  assert.deepEqual(command.args.slice(0, 4), ["--model", "gpt-5.1", "-C", resolvedDir]);
+  assert.deepEqual(command.args.slice(0, 2), ["--model", "gpt-5.1"]);
   assert.match(command.args.at(-1) ?? "", /# BurnBar Resume/);
-  assert.equal(command.cwd, resolvedDir);
+  assert.equal(command.cwd, undefined);
 });
 
 test("native claude resume spawn validates argv and working directory", () => {
   const tempDir = makeTempResumeDir();
-  const resolvedDir = realpathSync(tempDir);
   const handle = "11111111-2222-3333-4444-555555555555";
   const command = buildResumeSpawnCommand({
     kind: "native",
@@ -253,12 +251,11 @@ test("native claude resume spawn validates argv and working directory", () => {
 
   assert.equal(command.command, "claude");
   assert.deepEqual(command.args, ["--resume", handle]);
-  assert.equal(command.cwd, resolvedDir);
+  assert.equal(command.cwd, undefined);
 });
 
 test("native codex resume spawn validates optional model and handle", () => {
   const tempDir = makeTempResumeDir();
-  const resolvedDir = realpathSync(tempDir);
   const handle = "abc-123";
   const command = buildResumeSpawnCommand({
     kind: "native",
@@ -269,7 +266,7 @@ test("native codex resume spawn validates optional model and handle", () => {
 
   assert.equal(command.command, "codex");
   assert.deepEqual(command.args, ["--model", "gpt-5.1", "resume", handle]);
-  assert.equal(command.cwd, resolvedDir);
+  assert.equal(command.cwd, undefined);
 });
 
 test("native resume spawn rejects injected flags and open targets", () => {
@@ -321,26 +318,17 @@ test("cursor and open resume spawn never use server working directories", () => 
   assert.ok(!fallbackCommand.args.includes("/some/server/dir"));
 });
 
-test("trusted working directories are dropped for URIs and missing paths", () => {
-  const uriCommand = buildResumeSpawnCommand({
+test("server working directory never becomes a launch cwd even when it exists", () => {
+  const tempDir = makeTempResumeDir();
+  const command = buildResumeSpawnCommand({
     kind: "ported",
     text: "Continue",
     targetHarness: "codex",
     targetModel: "gpt-5.1",
-    workingDirectory: "vnc://evil"
+    workingDirectory: tempDir
   });
 
-  assert.equal(uriCommand.cwd, undefined);
-  assert.ok(!uriCommand.args.includes("-C"));
-
-  const missingCommand = buildResumeSpawnCommand({
-    kind: "ported",
-    text: "Continue",
-    targetHarness: "codex",
-    targetModel: "gpt-5.1",
-    workingDirectory: "/definitely/not/a/real/burnbar/path"
-  });
-
-  assert.equal(missingCommand.cwd, undefined);
-  assert.ok(!missingCommand.args.includes("-C"));
+  assert.equal(command.cwd, undefined);
+  assert.ok(!command.args.includes("-C"));
+  assert.deepEqual(command.args, ["--model", "gpt-5.1", "Continue"]);
 });
