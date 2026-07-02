@@ -18,7 +18,19 @@ struct BurnBarCLIExecutable {
         let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
-        let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken))
+        let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
+
+        if arguments == ["health"] {
+            do {
+                fputs(BurnBarCLIHealthFormatter.format(try client.health()) + "\n", stdout)
+                exit(EXIT_SUCCESS)
+            } catch {
+                fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        let runner = BurnBarCLIRunner(client: client)
         let exitCode: Int32
 
         do {

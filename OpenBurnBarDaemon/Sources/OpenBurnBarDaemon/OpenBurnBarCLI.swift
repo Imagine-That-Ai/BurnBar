@@ -363,6 +363,12 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     }
 }
 
+public enum BurnBarCLIHealthFormatter {
+    public static func format(_ response: BurnBarHealthResponse) -> String {
+        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+    }
+}
+
 public enum BurnBarCLIError: LocalizedError {
     case invalidCommand(String)
     case missingArgument(String)
@@ -929,7 +935,7 @@ public struct BurnBarCLIRunner {
     }
 
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
-        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+        BurnBarCLIHealthFormatter.format(response)
     }
 
     private func formatControllerSummary(_ summary: BurnBarControllerSummary) -> String {

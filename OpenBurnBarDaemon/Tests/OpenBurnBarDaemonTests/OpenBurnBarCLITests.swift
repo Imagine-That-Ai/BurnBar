@@ -61,6 +61,15 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("ok=true"))
     }
 
+    func testSharedHealthFormatterMatchesCLIOutput() throws {
+        let response = try FakeCLIClient().health()
+
+        XCTAssertEqual(
+            BurnBarCLIHealthFormatter.format(response),
+            "Daemon 0.1.0 | protocol 1 | socket /tmp/openburnbar.sock | ok=true"
+        )
+    }
+
     func testSocketClientResolvesExplicitSocketPathFromEnvironment() {
         let url = BurnBarCLISocketClient.resolvedSocketURL(environment: [
             "OPENBURNBAR_DAEMON_SOCKET_PATH": " /tmp/openburnbar-release-smoke.sock ",
