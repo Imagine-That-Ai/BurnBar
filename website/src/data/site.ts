@@ -110,11 +110,11 @@ export const SITE = {
   },
   // Public macOS download. Use GitHub Releases while downloads.burnbar.ai DNS/R2 is offline.
   // Do not point this at downloads.burnbar.ai unless DNS/R2 and the matching DMG are live.
-  macReleaseLatest: "1.0.25",
-  macReleaseFile: "OpenBurnBar-1.0.25-macOS.dmg",
+  macReleaseLatest: "1.0.26",
+  macReleaseFile: "OpenBurnBar-1.0.26-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.25",
+  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26",
   macUpdateBaseUrl: "",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",
