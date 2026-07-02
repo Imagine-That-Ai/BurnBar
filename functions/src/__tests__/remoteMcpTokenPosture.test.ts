@@ -5,6 +5,7 @@ import {
   issueRemoteMcpGrantForSignedInUser,
   isRemoteMcpProductionIssuerRuntime,
   REMOTE_MCP_DEFAULT_GRANT_SCOPES,
+  shouldBindRemoteMcpHmacSecretForRuntime,
 } from "../remoteMcpOAuth.js";
 import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 
@@ -57,6 +58,17 @@ describe("Remote MCP Functions issuer token posture", () => {
   it("detects production Cloud Run/Functions runtime", () => {
     expect(isRemoteMcpProductionIssuerRuntime({ K_SERVICE: "issue-remote-mcp-grant" })).toBe(true);
     expect(isRemoteMcpProductionIssuerRuntime({ NODE_ENV: "test", K_SERVICE: "ignored-in-tests" })).toBe(false);
+    expect(isRemoteMcpProductionIssuerRuntime({ NODE_ENV: "test", REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" })).toBe(
+      true,
+    );
+  });
+
+  it("does not bind the legacy HMAC secret for production callables", () => {
+    expect(shouldBindRemoteMcpHmacSecretForRuntime({ REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" })).toBe(false);
+  });
+
+  it("keeps the HMAC fallback bound outside production for emulator compatibility", () => {
+    expect(shouldBindRemoteMcpHmacSecretForRuntime({ NODE_ENV: "test" })).toBe(true);
   });
 
   it("keeps hosted knowledge access out of default grants", async () => {

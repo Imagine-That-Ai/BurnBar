@@ -12,7 +12,6 @@ import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64,
-  REMOTE_MCP_TOKEN_HMAC_SECRET,
   boundedTrimmedString,
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
@@ -20,6 +19,7 @@ import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc, type RemoteMcpScope } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
+import { remoteMcpTokenHmacSecretValueForRuntime, remoteMcpTokenSigningSecrets } from "./remoteMcpSigningSecrets.js";
 
 const remoteMcpScopeValues = new Set<string>([
   "search:read",
@@ -39,7 +39,7 @@ export const issueRemoteMcpGrant = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET, REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64],
+    secrets: remoteMcpTokenSigningSecrets(),
   },
   wrapCallableHandler(
     "issueRemoteMcpGrant",
@@ -59,7 +59,7 @@ export const issueRemoteMcpGrant = onCall(
       await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
       await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
       await assertActiveBurnBarProEntitlement(uid);
-      const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
+      const tokenSecret = remoteMcpTokenHmacSecretValueForRuntime();
       const tokenEd25519PrivateKeyBase64PEM = REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64.value();
       if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
         throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
