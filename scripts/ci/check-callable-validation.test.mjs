@@ -70,6 +70,41 @@ test("analyzeSource recognizes schema, helper, and inline validation", () => {
   assert.equal(findCallable(results, "inlineValidated").validated, true);
 });
 
+test("analyzeSource does not count validator calls on unrelated non-payload values", () => {
+  const src =
+    'export const badToken = onCall(opts, wrapCallableHandler("badToken", async (request) => {\n' +
+    '  const receiptID = requiredIdentifier("server-side-id", "receiptID");\n' +
+    "  return { receiptID, raw: request.data.foo };\n" +
+    "}));";
+  const bad = findCallable(analyzeSource("f.ts", src), "badToken");
+  assert.equal(bad.readsInput, true);
+  assert.equal(bad.validated, false);
+});
+
+test("analyzeSource does not count local validators called with non-payload values", () => {
+  const src =
+    "function parseReceipt(raw) { return requiredIdentifier(raw, 'receiptID'); }\n" +
+    'export const badHelper = onCall(opts, wrapCallableHandler("badHelper", async (request) => {\n' +
+    '  const receiptID = parseReceipt("server-side-id");\n' +
+    "  return { receiptID, raw: request.data.foo };\n" +
+    "}));";
+  const bad = findCallable(analyzeSource("f.ts", src), "badHelper");
+  assert.equal(bad.readsInput, true);
+  assert.equal(bad.validated, false);
+});
+
+test("analyzeSource recognizes lowercase httpsError wrappers for payload validation", () => {
+  const src =
+    'export const lowerWrapper = onCall(opts, wrapCallableHandler("lowerWrapper", async (request) => {\n' +
+    "  const token = String(request.data.token ?? '').trim();\n" +
+    '  if (!token) throw httpsError("invalid-argument", "token is required");\n' +
+    "  return token;\n" +
+    "}));";
+  const ok = findCallable(analyzeSource("f.ts", src), "lowerWrapper");
+  assert.equal(ok.readsInput, true);
+  assert.equal(ok.validated, true);
+});
+
 test("analyzeSource flags an unvalidated payload reader", () => {
   const results = analyzeSource("sample.ts", SAMPLE);
   const bad = findCallable(results, "unvalidated");

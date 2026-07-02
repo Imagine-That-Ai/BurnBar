@@ -142,6 +142,9 @@ export function boundedInt(options: { min: number; max: number }): CallableField
   return {
     optional: false,
     parse(raw, fieldName) {
+      if (typeof raw !== "number") {
+        throw new HttpsError("invalid-argument", `${fieldName} must be a number.`);
+      }
       return requireBoundedNumber(raw, fieldName, options.min, options.max);
     },
   };

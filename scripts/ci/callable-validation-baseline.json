@@ -2,8 +2,6 @@
   "_comment": "SHRINK-ONLY baseline for scripts/ci/check-callable-validation.mjs. Each entry is a pre-existing callable that reads request.data without a recognized input validator. Do not add entries; add validation (parseCallableInput from functions/src/validation/callableSchema.ts) and remove the entry instead. Regenerate with: node scripts/ci/check-callable-validation.mjs --write",
   "unvalidatedCallables": [
     "functions/src/appstore/callable.ts::beginEntitlementBinding",
-    "functions/src/appstore/callable.ts::restoreHostedQuotaEntitlement",
-    "functions/src/appstore/callable.ts::verifyHostedQuotaEntitlement",
     "functions/src/callables/deviceLinks.ts::backfillProviderAccountDeviceLinks",
     "functions/src/callables/hermes.ts::listHermesConnections",
     "functions/src/callables/hermesGatewayCallables.ts::listHermesGatewayClients",

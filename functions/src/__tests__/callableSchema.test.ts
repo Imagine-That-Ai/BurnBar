@@ -29,7 +29,6 @@ function caughtHttpsError(action: () => unknown): HttpsError {
 function expectInvalidArgument(action: () => unknown, messagePattern?: RegExp): void {
   const error = caughtHttpsError(action);
   expect(error.code).toBe("invalid-argument");
-  expect(error).not.toBeInstanceOf(TypeError);
   if (messagePattern) expect(error.message).toMatch(messagePattern);
 }
 
@@ -109,6 +108,9 @@ describe("boundedInt", () => {
 
   it("rejects a non-number and an out-of-range value", () => {
     expectInvalidArgument(() => boundedInt({ min: 0, max: 10 }).parse("nope", "count"), /must be a number/);
+    for (const coercible of [null, false, true, "", []]) {
+      expectInvalidArgument(() => boundedInt({ min: 0, max: 10 }).parse(coercible, "count"), /must be a number/);
+    }
     expectInvalidArgument(() => boundedInt({ min: 0, max: 10 }).parse(99, "count"), /between 0 and 10/);
   });
 });

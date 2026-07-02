@@ -86,9 +86,9 @@ export const INPUT_VALIDATOR_TOKENS = [
 
 const CALLABLE_RE = /export const (\w+)\s*=\s*(onCall|onCallProduction)\b/g;
 const READS_INPUT_RE = /\brequest\.data\b|\breq\.data\b/;
-const INLINE_INVALID_ARG_RE = /HttpsError\(\s*["']invalid-argument["']/;
+const INLINE_INVALID_ARG_RE = /[Hh]ttpsError\(\s*["']invalid-argument["']/;
 // Global variant used to walk every inline `invalid-argument` throw in a body.
-const INLINE_INVALID_ARG_GLOBAL = /HttpsError\(\s*["']invalid-argument["']/g;
+const INLINE_INVALID_ARG_GLOBAL = /[Hh]ttpsError\(\s*["']invalid-argument["']/g;
 // Top-level (column-0) function / const definitions. Nested code is indented, so
 // a definition's body runs from its line up to the next top-level definition.
 const TOP_LEVEL_DEF_RE = /^(?:export\s+)?(?:async\s+)?function\s+(\w+)|^(?:export\s+)?(?:const|let)\s+(\w+)\s*=/gm;
@@ -145,20 +145,69 @@ export function matchingParenEnd(source, openIndex) {
   return matchingDelimiterEnd(source, openIndex, "(", ")");
 }
 
-/** True when `body` calls one of the repo's recognized input-validation helpers. */
-function usesValidatorToken(body) {
-  return INPUT_VALIDATOR_TOKENS.some((token) => new RegExp(`\\b${token}\\s*\\(`).test(body));
+/**
+ * Parameter aliases for a top-level helper definition. Plain parameters are
+ * tracked; object-destructured helper params are intentionally ignored until the
+ * scanner has a real parser, because treating every property name as a payload
+ * root would create the same broad false positives this guard is meant to avoid.
+ */
+function helperParameterAliases(region, name) {
+  const aliases = new Set();
+  const functionMatch = new RegExp(`\\bfunction\\s+${name}\\s*\\(([^)]*)\\)`).exec(region);
+  const arrowMatch = new RegExp(`\\b(?:const|let)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:\\(([^)]*)\\)|(\\w+))\\s*=>`).exec(
+    region,
+  );
+  const params = functionMatch?.[1] ?? arrowMatch?.[1] ?? arrowMatch?.[2] ?? "";
+  for (const raw of params.split(",")) {
+    const part = raw.trim();
+    if (!part || part.startsWith("{") || part.startsWith("[")) continue;
+    const match = /^(\w+)/.exec(part);
+    if (match) aliases.add(match[1]);
+  }
+  return aliases;
+}
+
+/** True when `args` mention a payload root or a payload-derived local. */
+function expressionReferencesPayload(args, rootPattern, derived) {
+  const refRe = new RegExp([rootPattern, ...[...derived].map((d) => `\\b${d}\\b`)].join("|"));
+  return refRe.test(args);
 }
 
 /**
- * True when a top-level helper body performs recognized validation — a known
- * validator token or an inline `invalid-argument` throw. Used only to mark
- * *helper* functions as validators so a callable that delegates via
- * `parseFooInput(request.data)` is recognized. Callable bodies themselves use the
- * stricter, payload-tied {@link hasPayloadTiedInvalidArg} check.
+ * True when `body` calls one of `validatorNames` with a payload root or
+ * payload-derived local in the call arguments. This replaces the old broad
+ * "token appears anywhere" shortcut so validation of unrelated server values
+ * cannot mask raw `request.data` reads.
  */
-function bodyPerformsValidation(body) {
-  return INLINE_INVALID_ARG_RE.test(body) || usesValidatorToken(body);
+function hasPayloadTiedValidatorCall(body, aliases = new Set(), validatorNames = INPUT_VALIDATOR_TOKENS) {
+  if (validatorNames.size === 0 || validatorNames.length === 0) return false;
+  const rootPattern = payloadRootPattern(aliases);
+  const derived = payloadDerivedLocals(body, rootPattern);
+  for (const token of validatorNames) {
+    const callRe = new RegExp(`\\b${token}\\s*\\(`, "g");
+    let match;
+    while ((match = callRe.exec(body)) !== null) {
+      const open = body.indexOf("(", match.index);
+      if (open === -1) continue;
+      const end = matchingParenEnd(body, open);
+      const args = body.slice(open + 1, end - 1);
+      if (expressionReferencesPayload(args, rootPattern, derived)) return true;
+      callRe.lastIndex = end;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when a top-level helper body performs recognized validation on one of
+ * its own parameters. Used only to mark *helper* functions as validators so a
+ * callable that delegates via `parseFooInput(request.data)` is recognized.
+ * Helpers that validate unrelated non-payload values no longer become global
+ * validators for callable payloads.
+ */
+function bodyPerformsValidation(body, aliases) {
+  if (aliases.size === 0) return false;
+  return hasPayloadTiedValidatorCall(body, aliases) || hasPayloadTiedInvalidArg(body, aliases);
 }
 
 /**
@@ -178,15 +227,31 @@ export function localValidatorNames(source) {
   const names = new Set();
   for (let i = 0; i < defs.length; i += 1) {
     const region = source.slice(defs[i].index, i + 1 < defs.length ? defs[i + 1].index : source.length);
-    if (bodyPerformsValidation(region)) names.add(defs[i].name);
+    if (CALLABLE_RE.test(region)) {
+      CALLABLE_RE.lastIndex = 0;
+      continue;
+    }
+    CALLABLE_RE.lastIndex = 0;
+    if (bodyPerformsValidation(region, helperParameterAliases(region, defs[i].name))) names.add(defs[i].name);
   }
   return names;
 }
 
-/** True when `body` calls any of the named local validator helpers. */
-function callsLocalValidator(body, localValidators) {
+/** True when `body` calls any named helper with payload-derived arguments. */
+function callsLocalValidator(body, localValidators, aliases) {
+  const rootPattern = payloadRootPattern(aliases);
+  const derived = payloadDerivedLocals(body, rootPattern);
   for (const name of localValidators) {
-    if (new RegExp(`\\b${name}\\s*\\(`).test(body)) return true;
+    const callRe = new RegExp(`\\b${name}\\s*\\(`, "g");
+    let match;
+    while ((match = callRe.exec(body)) !== null) {
+      const open = body.indexOf("(", match.index);
+      if (open === -1) continue;
+      const end = matchingParenEnd(body, open);
+      const args = body.slice(open + 1, end - 1);
+      if (expressionReferencesPayload(args, rootPattern, derived)) return true;
+      callRe.lastIndex = end;
+    }
   }
   return false;
 }
@@ -385,8 +450,8 @@ export function analyzeSource(relFile, source, globalValidators = new Set()) {
       line,
       readsInput: READS_INPUT_RE.test(body) || aliases.size > 0,
       validated:
-        usesValidatorToken(body) ||
-        callsLocalValidator(body, validators) ||
+        hasPayloadTiedValidatorCall(body, aliases) ||
+        callsLocalValidator(body, validators, aliases) ||
         hasPayloadTiedInvalidArg(body, aliases),
     });
   }

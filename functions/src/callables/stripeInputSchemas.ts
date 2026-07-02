@@ -10,16 +10,18 @@
  * `invalid-argument` error contract does not drift.
  */
 
+import { HttpsError } from "firebase-functions/v2/https";
+
 import { optionalString, parseCallableInput, requiredString } from "../validation/callableSchema.js";
 
 function requiredParsedString(value: unknown, fieldName: string): string {
   if (typeof value === "string") return value;
-  throw new Error(`Validated callable field ${fieldName} did not parse to a string.`);
+  throw new HttpsError("internal", `Validated callable field ${fieldName} did not parse to a string.`);
 }
 
 function optionalParsedString(value: unknown, fieldName: string): string | undefined {
   if (value === undefined || typeof value === "string") return value;
-  throw new Error(`Validated callable field ${fieldName} did not parse to a string.`);
+  throw new HttpsError("internal", `Validated callable field ${fieldName} did not parse to a string.`);
 }
 
 /** Cloud Pro top-up verifier payload — both fields required. */
