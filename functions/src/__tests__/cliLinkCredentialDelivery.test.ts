@@ -80,6 +80,7 @@ vi.mock("../callables/publicRateLimit.js", async () => {
 });
 vi.mock("../remoteMcpOAuth.js", () => ({
   issueRemoteMcpGrantForSignedInUser: issueGrantMock,
+  shouldBindRemoteMcpHmacSecretForRuntime: () => true,
 }));
 
 const DELIVERY_ALGORITHM = "p256-ecdh-aes-256-gcm-v1";
