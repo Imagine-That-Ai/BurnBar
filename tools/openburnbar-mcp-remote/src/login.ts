@@ -9,9 +9,31 @@ import { promisify } from "node:util";
 import { userInfo, hostname } from "node:os";
 import { writeAccessToken, writeRefreshToken } from "./oauth.js";
 import { readVaultKey } from "./vaultStore.js";
-import { DEFAULT_ENDPOINT } from "./shim.js";
+import { DEFAULT_ENDPOINT, isLoopbackHost, validatedMcpEndpoint } from "./shim.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Only permit auto-launching URLs the OS should treat as ordinary browser
+ * navigation: https anywhere, or http on loopback for local development. This
+ * blocks a semi-trusted server from steering `open`/`xdg-open` at arbitrary
+ * registered URI-scheme or file:// handlers on the victim host.
+ */
+export function isSafeBrowserUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") {
+    return true;
+  }
+  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) {
+    return true;
+  }
+  return false;
+}
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -94,7 +116,11 @@ async function openUrl(url: string): Promise<void> {
 }
 
 export async function runLoginFlow(): Promise<void> {
-  const mcpEndpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
+  const rawEndpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
+  // Route the device-link endpoint through the same trust gate as shim.ts /
+  // resume.ts so the flow only talks to mcp.burnbar.ai (or an explicitly
+  // allowed custom/loopback host), never an attacker-supplied server.
+  const mcpEndpoint = validatedMcpEndpoint(rawEndpoint).href;
 
   let startUrl = "";
   let pollUrl = "";
@@ -157,7 +183,16 @@ export async function runLoginFlow(): Promise<void> {
   console.log(`  ${startData.verificationUriComplete}\n`);
   console.log(`Confirm that the code matches: ${startData.userCode}\n`);
 
-  await openUrl(startData.verificationUriComplete);
+  // The verification URL is unauthenticated JSON from the (only semi-trusted)
+  // server; only auto-launch it when it is a normal browser URL. Anything else
+  // (custom scheme, file://, etc.) is left for the user to open deliberately.
+  if (isSafeBrowserUrl(startData.verificationUriComplete)) {
+    await openUrl(startData.verificationUriComplete);
+  } else {
+    console.log(
+      "Not auto-opening the verification URL because it is not an http(s) address. Open it manually only if you trust it.\n",
+    );
+  }
 
   const intervalMs = (startData.interval || 5) * 1000;
   const expiresAt = Date.now() + (startData.expiresIn || 600) * 1000;
