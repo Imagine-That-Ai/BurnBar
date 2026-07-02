@@ -73,21 +73,22 @@ extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
     /// Settings UI and `HermesRuntimeGate` can render Hermes through the same
     /// `ManagedAgentRuntimeAdapter` surface used by Pi.
     var managedStatus: ManagedAgentRuntimeStatus {
+        let usableGatewayRunning = status.gatewayRunning && !status.authRejected
         var snapshot = ManagedAgentRuntimeStatus(
             executablePath: status.hermesCLIPath,
-            gatewayRunning: status.gatewayRunning,
+            gatewayRunning: usableGatewayRunning,
             appRunning: status.dashboardRunning,
             modelName: status.modelName,
             redisStatus: nil,
-            selectedInstanceID: status.gatewayRunning ? "default" : nil,
+            selectedInstanceID: usableGatewayRunning ? "default" : nil,
             message: status.message
         )
-        if status.gatewayRunning {
+        if usableGatewayRunning {
             snapshot.instances = [
                 ManagedAgentInstance(
                     id: "default",
                     displayName: "Default",
-                    isOnline: status.gatewayRunning,
+                    isOnline: true,
                     activeSessionID: nil,
                     gatewayBaseURL: nil
                 )

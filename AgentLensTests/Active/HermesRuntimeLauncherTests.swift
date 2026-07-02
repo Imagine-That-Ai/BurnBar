@@ -79,6 +79,26 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertEqual(status.message, HermesRuntimeLauncher.authRejectedStatusMessage)
     }
 
+    func test_managedStatus_authRejectedDoesNotReportOnlineGateway() async {
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            gatewayAuthRejected: true,
+            dashboardStatusOutput: "Hermes dashboard running PID 123"
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        let status = await launcher.refreshStatus()
+        let managed = launcher.managedStatus
+
+        XCTAssertTrue(status.gatewayRunning, "Hermes status should still expose that a gateway process answered")
+        XCTAssertTrue(status.authRejected)
+        XCTAssertFalse(managed.gatewayRunning, "Managed runtime consumers need a usable gateway, not a 401ing one")
+        XCTAssertFalse(managed.isReady)
+        XCTAssertNil(managed.selectedInstanceID)
+        XCTAssertTrue(managed.instances.isEmpty)
+        XCTAssertEqual(managed.message, HermesRuntimeLauncher.authRejectedStatusMessage)
+    }
+
     func test_openHermesAndGateway_replacesGatewayInsteadOfDuplicatingWhenAuthRejected() async {
         // The wrong-key state used to look like "gateway down", so Open Hermes
         // + Gateway would fork a second `gateway run` next to the live one.
