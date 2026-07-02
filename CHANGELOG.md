@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
   archived to mobile, handoff-only (not native-resume eligible).
 
+## [1.0.24] - 2026-07-02
+
+### Fixed
+
+- **Release smoke health check** — retries the public release from the newest
+  `main` cut after `v1.0.23` built and notarized successfully but failed the
+  packaged DMG smoke test. The signed `OpenBurnBarCLI health` command now uses
+  the daemon socket client directly for the exact health probe instead of
+  constructing the full CLI runner and opening the default profile store first,
+  preventing the smoke harness from hanging before it can verify the packaged
+  daemon.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 34 / `versionName` `1.0.24` so Google Play receives the same
+  release cut as the macOS retry.
+
 ## [1.0.23] - 2026-07-01
 
 ### Fixed
