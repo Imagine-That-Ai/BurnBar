@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { buildResumeSpawnCommand, renderHostedResumeResponse, runResumeCli } from "./resume.js";
 import { forwardMcpMessage, validatedMcpEndpoint } from "./shim.js";
@@ -216,17 +219,116 @@ test("MCP refresh refuses custom endpoints even when custom HTTPS is allowed", a
   }
 });
 
+function makeTempResumeDir(): string {
+  return mkdtempSync(join(tmpdir(), "burnbar-resume-"));
+}
+
 test("spawn command uses detached target mapping without hosted plaintext persistence", () => {
+  const tempDir = makeTempResumeDir();
   const command = buildResumeSpawnCommand({
     kind: "ported_sealed",
     text: "# BurnBar Resume\n\nContinue this work.",
     targetHarness: "codex",
     targetModel: "gpt-5.1",
-    workingDirectory: "/tmp/project"
+    workingDirectory: tempDir
   });
 
   assert.equal(command.command, "codex");
-  assert.deepEqual(command.args.slice(0, 4), ["--model", "gpt-5.1", "-C", "/tmp/project"]);
+  assert.deepEqual(command.args.slice(0, 2), ["--model", "gpt-5.1"]);
   assert.match(command.args.at(-1) ?? "", /# BurnBar Resume/);
-  assert.equal(command.cwd, "/tmp/project");
+  assert.equal(command.cwd, undefined);
+});
+
+test("native claude resume spawn validates argv and working directory", () => {
+  const tempDir = makeTempResumeDir();
+  const handle = "11111111-2222-3333-4444-555555555555";
+  const command = buildResumeSpawnCommand({
+    kind: "native",
+    text: "native claude",
+    targetArgv: ["claude", "--resume", handle],
+    workingDirectory: tempDir
+  });
+
+  assert.equal(command.command, "claude");
+  assert.deepEqual(command.args, ["--resume", handle]);
+  assert.equal(command.cwd, undefined);
+});
+
+test("native codex resume spawn validates optional model and handle", () => {
+  const tempDir = makeTempResumeDir();
+  const handle = "abc-123";
+  const command = buildResumeSpawnCommand({
+    kind: "native",
+    text: "native codex",
+    targetArgv: ["codex", "--model", "gpt-5.1", "resume", handle],
+    workingDirectory: tempDir
+  });
+
+  assert.equal(command.command, "codex");
+  assert.deepEqual(command.args, ["--model", "gpt-5.1", "resume", handle]);
+  assert.equal(command.cwd, undefined);
+});
+
+test("native resume spawn rejects injected flags and open targets", () => {
+  assert.throws(() => buildResumeSpawnCommand({
+    kind: "native",
+    text: "native invalid",
+    targetArgv: ["claude", "--dangerously-skip-permissions"]
+  }), /not_allowed|not run it/);
+  assert.throws(() => buildResumeSpawnCommand({
+    kind: "native",
+    text: "native invalid",
+    targetArgv: ["codex", "resume", "x", "--extra"]
+  }), /not_allowed|not run it/);
+  assert.throws(() => buildResumeSpawnCommand({
+    kind: "native",
+    text: "native invalid",
+    targetArgv: ["open", "evil://payload"]
+  }), /not_allowed|not run it/);
+});
+
+test("cursor and open resume spawn never use server working directories", () => {
+  const cursorCommand = buildResumeSpawnCommand({
+    kind: "ported",
+    text: "Launch Cursor",
+    pathPayload: "Launch Cursor",
+    targetHarness: "cursor",
+    workingDirectory: "/some/server/dir"
+  });
+
+  assert.equal(cursorCommand.command, "open");
+  assert.equal(cursorCommand.cwd, undefined);
+  assert.ok(cursorCommand.briefingPath);
+  assert.equal(cursorCommand.args.at(-1), cursorCommand.briefingPath);
+  assert.ok(!cursorCommand.args.includes("/some/server/dir"));
+  assert.deepEqual(cursorCommand.args.slice(0, 2), ["-a", "Cursor"]);
+
+  const fallbackCommand = buildResumeSpawnCommand({
+    kind: "ported",
+    text: "Open fallback",
+    pathPayload: "Open fallback",
+    targetHarness: "goose",
+    workingDirectory: "/some/server/dir"
+  });
+
+  assert.equal(fallbackCommand.command, "open");
+  assert.equal(fallbackCommand.cwd, undefined);
+  assert.ok(fallbackCommand.briefingPath);
+  assert.deepEqual(fallbackCommand.args, [fallbackCommand.briefingPath]);
+  assert.ok(!fallbackCommand.args.includes("/some/server/dir"));
+});
+
+test("server working directory never becomes a launch cwd even when it exists", () => {
+  const tempDir = makeTempResumeDir();
+  const command = buildResumeSpawnCommand({
+    kind: "ported",
+    text: "Continue",
+    targetHarness: "codex",
+    targetModel: "gpt-5.1",
+    workingDirectory: tempDir
+  });
+
+  assert.equal(command.cwd, undefined);
+  assert.ok(!command.args.includes("-C"));
+  assert.deepEqual(command.args, ["--model", "gpt-5.1", "Continue"]);
 });
