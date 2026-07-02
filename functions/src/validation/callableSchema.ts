@@ -42,7 +42,9 @@ const DEFAULT_ENUM_MAX_LENGTH = 64;
  * One field in a callable schema: validates a single raw value pulled from the
  * request payload and throws `HttpsError("invalid-argument")` on failure.
  */
-export interface CallableField<T> {
+type CallableInputValue = string | number | boolean | string[] | undefined;
+
+interface CallableField<T extends CallableInputValue = CallableInputValue> {
   /** True when the field may be omitted (absent / null / empty) without error. */
   readonly optional: boolean;
   /** Validate one field value; throws `HttpsError("invalid-argument")` on failure. */
@@ -50,12 +52,7 @@ export interface CallableField<T> {
 }
 
 /** A callable input schema: field name → field validator. */
-export type CallableSchema = Record<string, CallableField<unknown>>;
-
-/** The parsed, typed payload a {@link CallableSchema} yields. */
-export type InferCallableInput<S extends CallableSchema> = {
-  [K in keyof S]: S[K] extends CallableField<infer T> ? T : never;
-};
+type CallableSchema = Record<string, CallableField>;
 
 interface StringFieldOptions {
   readonly maxLength?: number;
@@ -101,15 +98,15 @@ interface EnumFieldOptions {
   readonly message?: string;
 }
 
-function enumRejection<T extends string>(values: readonly T[], fieldName: string, options: EnumFieldOptions): never {
+function enumRejection(values: readonly string[], fieldName: string, options: EnumFieldOptions): never {
   throw new HttpsError("invalid-argument", options.message ?? `${fieldName} must be one of: ${values.join(", ")}.`);
 }
 
 /** Required string constrained to one of `values` (trimmed before matching). */
-export function enumField<const T extends string>(
-  values: readonly T[],
+export function enumField(
+  values: readonly string[],
   options: EnumFieldOptions = {},
-): CallableField<T> {
+): CallableField<string> {
   const maxLength = options.maxLength ?? DEFAULT_ENUM_MAX_LENGTH;
   const allowed = new Set<string>(values);
   return {
@@ -117,16 +114,16 @@ export function enumField<const T extends string>(
     parse(raw, fieldName) {
       const value = boundedTrimmedString(raw, fieldName, maxLength, true);
       if (!allowed.has(value)) enumRejection(values, fieldName, options);
-      return value as T;
+      return value;
     },
   };
 }
 
 /** Optional enum; absent / empty ⇒ `undefined`, else must be one of `values`. */
-export function optionalEnumField<const T extends string>(
-  values: readonly T[],
+export function optionalEnumField(
+  values: readonly string[],
   options: EnumFieldOptions = {},
-): CallableField<T | undefined> {
+): CallableField<string | undefined> {
   const maxLength = options.maxLength ?? DEFAULT_ENUM_MAX_LENGTH;
   const allowed = new Set<string>(values);
   return {
@@ -135,7 +132,7 @@ export function optionalEnumField<const T extends string>(
       const value = boundedTrimmedString(raw, fieldName, maxLength, false);
       if (value === undefined) return undefined;
       if (!allowed.has(value)) enumRejection(values, fieldName, options);
-      return value as T;
+      return value;
     },
   };
 }
@@ -196,7 +193,7 @@ export function boundedStringArrayField(options: {
   };
 }
 
-export interface ParseCallableInputOptions {
+interface ParseCallableInputOptions {
   /**
    * Reject payloads that carry keys the schema does not declare. Defaults to
    * `false` (unknown keys are ignored and never forwarded) so hardening an
@@ -205,12 +202,16 @@ export interface ParseCallableInputOptions {
   readonly rejectUnknownKeys?: boolean;
 }
 
-function coerceRecord(data: unknown): Record<string, unknown> {
+function coercePayloadObject(data: unknown): object {
   if (data === undefined || data === null) return {};
   if (typeof data !== "object" || Array.isArray(data)) {
     throw new HttpsError("invalid-argument", "Request payload must be a JSON object.");
   }
-  return data as Record<string, unknown>;
+  return data;
+}
+
+function readPayloadField(data: object, fieldName: string): unknown {
+  return Reflect.get(data, fieldName);
 }
 
 /**
@@ -221,23 +222,23 @@ function coerceRecord(data: unknown): Record<string, unknown> {
  * @throws HttpsError `invalid-argument` for a non-object payload, an unknown key
  *   (when `rejectUnknownKeys` is set), or any field that fails its validator.
  */
-export function parseCallableInput<S extends CallableSchema>(
+export function parseCallableInput(
   callableName: string,
-  schema: S,
+  schema: CallableSchema,
   data: unknown,
   options: ParseCallableInputOptions = {},
-): InferCallableInput<S> {
-  const record = coerceRecord(data);
+): Record<string, CallableInputValue> {
+  const payload = coercePayloadObject(data);
   if (options.rejectUnknownKeys) {
-    for (const key of Object.keys(record)) {
+    for (const key of Object.keys(payload)) {
       if (!Object.prototype.hasOwnProperty.call(schema, key)) {
         throw new HttpsError("invalid-argument", `${callableName}: unexpected field "${key}".`);
       }
     }
   }
-  const parsed: Record<string, unknown> = {};
+  const parsed: Record<string, CallableInputValue> = {};
   for (const [field, spec] of Object.entries(schema)) {
-    parsed[field] = spec.parse(record[field], field);
+    parsed[field] = spec.parse(readPayloadField(payload, field), field);
   }
-  return parsed as InferCallableInput<S>;
+  return parsed;
 }

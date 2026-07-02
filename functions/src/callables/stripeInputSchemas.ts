@@ -12,9 +12,19 @@
 
 import { optionalString, parseCallableInput, requiredString } from "../validation/callableSchema.js";
 
+function requiredParsedString(value: unknown, fieldName: string): string {
+  if (typeof value === "string") return value;
+  throw new Error(`Validated callable field ${fieldName} did not parse to a string.`);
+}
+
+function optionalParsedString(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined || typeof value === "string") return value;
+  throw new Error(`Validated callable field ${fieldName} did not parse to a string.`);
+}
+
 /** Cloud Pro top-up verifier payload — both fields required. */
 export function parseGooglePlayTopUpInput(data: unknown): { purchaseToken: string; productID: string } {
-  return parseCallableInput(
+  const parsed = parseCallableInput(
     "verifyGooglePlayCloudProTopUp",
     {
       purchaseToken: requiredString({ maxLength: 4096 }),
@@ -22,6 +32,10 @@ export function parseGooglePlayTopUpInput(data: unknown): { purchaseToken: strin
     },
     data,
   );
+  return {
+    purchaseToken: requiredParsedString(parsed.purchaseToken, "purchaseToken"),
+    productID: requiredParsedString(parsed.productID, "productID"),
+  };
 }
 
 /**
@@ -35,7 +49,7 @@ export function parseGooglePlayProSubscriptionInput(data: unknown): {
   purchaseToken: string;
   productID: string | undefined;
 } {
-  return parseCallableInput(
+  const parsed = parseCallableInput(
     "verifyGooglePlayBurnBarProSubscription",
     {
       purchaseToken: requiredString({ maxLength: 4096 }),
@@ -43,4 +57,8 @@ export function parseGooglePlayProSubscriptionInput(data: unknown): {
     },
     data,
   );
+  return {
+    purchaseToken: requiredParsedString(parsed.purchaseToken, "purchaseToken"),
+    productID: optionalParsedString(parsed.productID, "productID"),
+  };
 }

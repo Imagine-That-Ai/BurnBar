@@ -12,7 +12,6 @@ import {
   optionalString,
   parseCallableInput,
   requiredString,
-  type CallableSchema,
 } from "../validation/callableSchema.js";
 
 /** Capture the HttpsError a validator throws, or fail if it does not throw. */
@@ -161,7 +160,7 @@ describe("parseCallableInput", () => {
   const schema = {
     purchaseToken: requiredString({ maxLength: 4096 }),
     productID: requiredString({ maxLength: 256 }),
-  } satisfies CallableSchema;
+  };
 
   it("returns a typed, trimmed payload", () => {
     const parsed = parseCallableInput("verifyGooglePlayCloudProTopUp", schema, {
@@ -187,7 +186,7 @@ describe("parseCallableInput", () => {
   });
 
   it("ignores unknown keys by default (backward compatible)", () => {
-    const parsed = parseCallableInput("c", { scope: optionalEnumField(["sync", "all"]) } satisfies CallableSchema, {
+    const parsed = parseCallableInput("c", { scope: optionalEnumField(["sync", "all"]) }, {
       scope: "all",
       analyticsConsent: "granted",
     });
@@ -199,7 +198,7 @@ describe("parseCallableInput", () => {
       () =>
         parseCallableInput(
           "c",
-          { scope: optionalEnumField(["sync", "all"]) } satisfies CallableSchema,
+          { scope: optionalEnumField(["sync", "all"]) },
           {
             scope: "all",
             rogue: "x",
@@ -213,7 +212,7 @@ describe("parseCallableInput", () => {
   it("defaults an omitted optional field to undefined", () => {
     const parsed = parseCallableInput(
       "revokeAllAccess",
-      { scope: optionalEnumField(["sync", "all"]) } satisfies CallableSchema,
+      { scope: optionalEnumField(["sync", "all"]) },
       {},
     );
     expect(parsed).toEqual({ scope: undefined });

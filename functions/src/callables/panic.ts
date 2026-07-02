@@ -24,7 +24,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { optionalEnumField, parseCallableInput, type CallableSchema } from "../validation/callableSchema.js";
+import { optionalEnumField, parseCallableInput } from "../validation/callableSchema.js";
 import { revokeAllSignalSessions } from "../signalDirectoryRuntime.js";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 import { providerAccountSecretRefPath } from "../quota.js";
@@ -41,7 +41,7 @@ type PanicScope = "sync" | "all";
 // enforcement below (nonce + trusted-device action proof) would reject it anyway.
 const REVOKE_ALL_ACCESS_INPUT = {
   scope: optionalEnumField(["sync", "all"], { maxLength: 16, message: "scope must be sync or all." }),
-} satisfies CallableSchema;
+};
 
 const REVOKE_REASON = "panic_revoke_all";
 // Keep each WriteBatch comfortably under Firestore's 500-op commit limit.
@@ -171,8 +171,8 @@ export const revokeAllAccess = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking access.");
     enforceAuthAndAppCheck(request, uid);
 
-    const { scope: requestedScope } = parseCallableInput("revokeAllAccess", REVOKE_ALL_ACCESS_INPUT, request.data);
-    const scope: PanicScope = requestedScope ?? "sync";
+    const parsedInput = parseCallableInput("revokeAllAccess", REVOKE_ALL_ACCESS_INPUT, request.data);
+    const scope: PanicScope = parsedInput.scope === "all" ? "all" : "sync";
     await enforceHighRiskOwnerAction(request, uid, {
       actionKind: "revoke_all_access",
       subjectId: scope,
