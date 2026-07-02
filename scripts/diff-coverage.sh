@@ -147,12 +147,12 @@ export DIFF_SCOPE="$scope"
 export DIFF_OUTPUT="${DIFF_COVERAGE_OUTPUT:-}"
 
 python3 - <<'PY'
+import difflib
 import json
 import os
 import re
 import subprocess
 import sys
-from collections import Counter
 
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
 base_ref = os.environ["BASE_REF"]
@@ -586,54 +586,101 @@ if cov_ignore_violations:
 
 # ---------------------------------------------------------------------------
 # Pure-move safe-harbor (R-GH0). Splitting a god-file or relocating a block is
-# not new behavior — byte-identical (or whitespace-normalized-identical) code
-# that merely moved must not be charged as brand-new uncovered lines, which is
-# exactly the pressure that makes a refactor game the coverage gate.
+# not new behavior — byte-identical (or reindented-identical) code that merely
+# moved must not be charged as brand-new uncovered lines, which is exactly the
+# pressure that makes a refactor game the coverage gate.
 #
 # The exemption is granted ONLY by this detector, never by a human-editable
-# annotation: an added line is credited `refactor:pure-move` iff its normalized
-# content matches a line REMOVED elsewhere in the same diff. A genuine edit (a
-# changed literal or operator) matches no removed line and stays gated, so a
-# forged "move" that alters logic is still charged.
+# annotation, and ONLY by CONTIGUOUS BLOCK: an added line is credited
+# `refactor:pure-move` iff it belongs to a run of >= MIN_MOVE_BLOCK consecutive
+# added lines whose normalized content matches a contiguous run of REMOVED lines
+# elsewhere in the same diff, and each matched removed line is consumed so it can
+# back at most one move. Block matching is what stops the coincidence attack: an
+# in-place edit (`return 1` -> `return 0`) whose new text happens to equal one
+# line of an unrelated deleted helper is a length-1 run that matches no >=2
+# block, so it stays gated. A genuine edit inside a moved block (a changed
+# literal/operator) breaks the run at that line — the surrounding lines are still
+# credited, the edited line alone stays gated.
+#
+# Normalization strips ONLY leading/trailing indentation (text.strip()) so a
+# reindented relocation still matches while every internal byte — including
+# whitespace inside a string literal — is preserved: `return "a  b"` never
+# normalizes onto the `return "a b"` it replaced.
 #
 # The removed-line pool is drawn from every production Swift file in the diff
 # (the same pathspec the gate measures), so cross-file and cross-partition
 # splits are recognized even when the move source is out of the current lane's
-# scope. A multiset (Counter) matches moves 1:1 — N relocated copies of a line
-# earn exactly N credits, so appending genuinely-new duplicates of an existing
-# line cannot launder them past the gate.
+# scope. Consuming matched removed lines makes moves 1:1 — N relocated copies of
+# a line earn exactly N credits, so appending genuinely-new duplicates of an
+# existing line cannot launder them past the gate.
+
+
+# A single coincidentally-matching line is never a "move": a credited run must
+# span at least this many consecutive lines matching a contiguous removed run.
+MIN_MOVE_BLOCK = 2
 
 
 def normalize_move_line(text):
-    # Byte-identical OR whitespace-normalized-identical: collapse indentation
-    # and internal runs (re-indentation is the common relocation transform)
-    # while keeping every token intact, so a changed literal/operator never
-    # normalizes onto the line it replaced.
-    return " ".join(text.split())
+    # Strip ONLY leading/trailing indentation; preserve ALL internal whitespace.
+    # Reindentation (the common relocation transform) still matches, but a
+    # changed string literal such as `return "a  b"` never normalizes onto the
+    # `return "a b"` it replaced, so an edited line is never treated as a move.
+    return text.strip()
 
 
-# Removed-line pool. No --find-renames/--find-copies here on purpose: this pool
-# needs the CONTENT of every removed line, and letting git collapse a rename
-# would hide removed content that a split's added lines legitimately match.
+# Removed-line pool, grouped into CONTIGUOUS runs (a run breaks at a hunk
+# header, a file boundary, or the first non-removed line — with -U0 there is no
+# surrounding context to blur the boundary). No --find-renames/--find-copies
+# here on purpose: this pool needs the CONTENT of every removed line, and
+# letting git collapse a rename would hide removed content that a split's added
+# lines legitimately match.
 move_pool_output = subprocess.run(
     ["git", "diff", "-U0", base_ref, "HEAD", "--"] + diff_pathspec,
     cwd=repo_root,
     capture_output=True,
     text=True,
 ).stdout
-removed_counter = Counter()
+removed_runs = []
+_pending_removed = []
+
+
+def _flush_removed_run():
+    # Drop blank/whitespace-only lines (never executable, never a move) without
+    # letting them split the surrounding block, then keep the run if anything
+    # substantive remains.
+    cleaned = [norm for norm in _pending_removed if norm]
+    if cleaned:
+        removed_runs.append(cleaned)
+    _pending_removed.clear()
+
+
 in_hunk = False
 for line in move_pool_output.splitlines():
     if line.startswith("diff --git"):
         in_hunk = False
+        _flush_removed_run()
         continue
     if line.startswith("@@"):
         in_hunk = True
+        _flush_removed_run()
         continue
     if in_hunk and line.startswith("-"):
-        norm = normalize_move_line(line[1:])
-        if norm:
-            removed_counter[norm] += 1
+        _pending_removed.append(normalize_move_line(line[1:]))
+        continue
+    # A context line, an added line, or anything else ends the current run.
+    _flush_removed_run()
+_flush_removed_run()
+
+# Flatten the runs into one consumable sequence with a unique sentinel between
+# (and around) every run so no match can span a run boundary. A matched removed
+# position is overwritten with the sentinel so a removed line backs at most one
+# move — appended duplicates find no unconsumed source and stay gated.
+_MOVE_SENTINEL = object()
+removed_pool = []
+for run in removed_runs:
+    removed_pool.append(_MOVE_SENTINEL)
+    removed_pool.extend(run)
+removed_pool.append(_MOVE_SENTINEL)
 
 _source_cache = {}
 
@@ -649,34 +696,51 @@ def source_lines(rel_path):
     return _source_cache[rel_path]
 
 
-pure_move_lines = {}
-move_credits = removed_counter.copy()
-gated_line_total = 0
+# Added-line runs: maximal groups of consecutive changed line numbers per file.
+# Blank and already-excluded (cov:ignore'd) lines are dropped from a run's
+# signature without splitting the block, mirroring the removed-run cleaning so
+# the two sides align.
+added_runs = []  # (rel_path, [(line_number, normalized_text), ...])
 for rel_path in gated_files:
     src = source_lines(rel_path)
     ignore = cov_ignore_lines.get(rel_path, set())
-    for ln in sorted(set(file_blocks.get(rel_path, []))):
-        if ln in ignore:
+    group = []
+    prev = None
+    for ln in sorted(set(file_blocks.get(rel_path, []))) + [None]:
+        if ln is None or (prev is not None and ln != prev + 1):
+            seq = []
+            for gln in group:
+                gidx = gln - 1
+                if gln in ignore or not (0 <= gidx < len(src)):
+                    continue
+                gnorm = normalize_move_line(src[gidx])
+                if gnorm:
+                    seq.append((gln, gnorm))
+            if seq:
+                added_runs.append((rel_path, seq))
+            group = []
+        if ln is not None:
+            group.append(ln)
+            prev = ln
+
+# Credit longest added runs first so a short run cannot consume a removed block a
+# longer genuine move needs. For each run, difflib finds the contiguous matching
+# blocks against the (sentinel-separated) removed pool; only blocks of at least
+# MIN_MOVE_BLOCK lines are credited, and their removed positions are consumed.
+pure_move_lines = {}
+added_runs.sort(key=lambda item: len(item[1]), reverse=True)
+for rel_path, seq in added_runs:
+    a_norms = [norm for _, norm in seq]
+    matcher = difflib.SequenceMatcher(a=a_norms, b=removed_pool, autojunk=False)
+    for block in matcher.get_matching_blocks():
+        if block.size < MIN_MOVE_BLOCK:
             continue
-        idx = ln - 1
-        if not (0 <= idx < len(src)):
-            continue
-        norm = normalize_move_line(src[idx])
-        if not norm:
-            # Blank/whitespace-only changed line: never an executable move and
-            # never gated. Skip it from both tallies.
-            continue
-        if move_credits.get(norm, 0) > 0:
-            move_credits[norm] -= 1
-            pure_move_lines.setdefault(rel_path, set()).add(ln)
-        else:
-            gated_line_total += 1
+        for offset in range(block.size):
+            moved_line = seq[block.a + offset][0]
+            pure_move_lines.setdefault(rel_path, set()).add(moved_line)
+            removed_pool[block.b + offset] = _MOVE_SENTINEL
 
 pure_move_total = sum(len(v) for v in pure_move_lines.values())
-if pure_move_total or gated_line_total:
-    print(f"::notice::diff-coverage pure-move safe-harbor: excluded "
-          f"{pure_move_total} relocated line(s) as refactor:pure-move; "
-          f"{gated_line_total} changed line(s) remain gated.", file=sys.stderr)
 
 total_exc = 0
 total_hit = 0
@@ -744,6 +808,14 @@ for rel_path in gated_files:
 total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
 passed = total_exc <= 0 or total_pct >= threshold
 
+# The gated tally is the coverage denominator itself (total_exc), so it can never
+# overcount by including structural/unmeasured lines that the percentage excludes
+# — `pureMove.gatedLines` and `diffCoverage.changedLines` are the same number.
+if pure_move_total or total_exc:
+    print(f"::notice::diff-coverage pure-move safe-harbor: excluded "
+          f"{pure_move_total} relocated line(s) as refactor:pure-move; "
+          f"{total_exc} changed line(s) remain gated.", file=sys.stderr)
+
 output = {
     "diffCoverage": {
         "percent": total_pct,
@@ -757,7 +829,7 @@ output = {
     "details": details,
     "waived": waived,
     "outOfScope": out_of_scope,
-    "pureMove": {"movedLines": pure_move_total, "gatedLines": gated_line_total},
+    "pureMove": {"movedLines": pure_move_total, "gatedLines": total_exc},
 }
 rendered = json.dumps(output, indent=2)
 print(rendered)
