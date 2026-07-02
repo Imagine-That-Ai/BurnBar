@@ -270,7 +270,7 @@ struct PartialFrame {
 /// frame to roughly 256 MiB. With smaller packets it still allows multi-MiB
 /// frames, which is far above any real video frame while keeping reassembly
 /// work bounded.
-const MAX_PACKETS_PER_FRAME: usize = 4096;
+const MAX_PACKETS_PER_FRAME: u16 = 4096;
 
 /// Upper bound applied to `max_incomplete_frames` when constructing the
 /// depacketizer.
@@ -316,7 +316,7 @@ impl DatagramDepacketizer {
                 header.packet_index, header.packet_count
             )));
         }
-        if header.packet_count as usize > MAX_PACKETS_PER_FRAME {
+        if header.packet_count > MAX_PACKETS_PER_FRAME {
             return Err(MediaError::Depacketize(format!(
                 "packet count {} exceeds maximum {}",
                 header.packet_count, MAX_PACKETS_PER_FRAME
@@ -916,14 +916,14 @@ mod tests {
     fn depacketizer_allows_boundary_packet_count_and_rejects_one_above() {
         let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(100));
 
-        let accepted = media_datagram(12, 0, MAX_PACKETS_PER_FRAME as u16, b"a");
+        let accepted = media_datagram(12, 0, MAX_PACKETS_PER_FRAME, b"a");
         assert!(must(
             depacketizer.push(accepted, TimestampMicros(50)),
             "boundary packet count should be accepted",
         )
         .is_none());
 
-        let rejected = media_datagram(13, 0, (MAX_PACKETS_PER_FRAME as u16) + 1, b"b");
+        let rejected = media_datagram(13, 0, MAX_PACKETS_PER_FRAME + 1, b"b");
         match depacketizer.push(rejected, TimestampMicros(51)) {
             Err(MediaError::Depacketize(_)) => {}
             other => panic!("expected depacketize error, got {other:?}"),
