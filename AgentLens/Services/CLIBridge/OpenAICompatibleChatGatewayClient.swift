@@ -1115,6 +1115,18 @@ final class AgentToolBroker: Sendable {
     }
 }
 
+/// Result of an OpenAI-compatible `/v1/models` probe. `available` and
+/// `authRejected` are mutually exclusive: `available` means the catalog was
+/// readable, while `authRejected` means a 401/403 answer proved a gateway is
+/// up but rejected the presented key.
+struct OpenAICompatibleModelProbeResult: Sendable {
+    var available: Bool
+    var authRejected: Bool = false
+    var modelName: String?
+    var hermesModels: [HermesAdvertisedModel] = []
+    var models: [OpenAICompatibleAdvertisedModel] = []
+}
+
 enum OpenAICompatibleModelProbe {
     static func modelsURL(baseURL: URL) -> URL? {
         URL(string: "v1/models", relativeTo: baseURL)?.absoluteURL
@@ -1204,25 +1216,29 @@ enum OpenAICompatibleModelProbe {
         bearerToken: String?,
         timeout: TimeInterval = 2,
         session: URLSession = .shared
-    ) async -> (available: Bool, authRejected: Bool, modelName: String?, hermesModels: [HermesAdvertisedModel], models: [OpenAICompatibleAdvertisedModel]) {
+    ) async -> OpenAICompatibleModelProbeResult {
         guard let request = modelsRequest(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout) else {
-            return (false, false, nil, [], [])
+            return OpenAICompatibleModelProbeResult(available: false)
         }
         do {
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { return (false, false, nil, [], []) }
-            guard (200...299).contains(http.statusCode) else {
-                return (false, isAuthRejectedStatus(http.statusCode), nil, [], [])
+            guard let http = response as? HTTPURLResponse else {
+                return OpenAICompatibleModelProbeResult(available: false)
             }
-            return (
-                true,
-                false,
-                OpenAICompatibleModelListParser.modelName(from: data),
-                OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
-                OpenAICompatibleModelListParser.advertisedModels(from: data)
+            guard (200...299).contains(http.statusCode) else {
+                return OpenAICompatibleModelProbeResult(
+                    available: false,
+                    authRejected: isAuthRejectedStatus(http.statusCode)
+                )
+            }
+            return OpenAICompatibleModelProbeResult(
+                available: true,
+                modelName: OpenAICompatibleModelListParser.modelName(from: data),
+                hermesModels: OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
+                models: OpenAICompatibleModelListParser.advertisedModels(from: data)
             )
         } catch {
-            return (false, false, nil, [], [])
+            return OpenAICompatibleModelProbeResult(available: false)
         }
     }
 }

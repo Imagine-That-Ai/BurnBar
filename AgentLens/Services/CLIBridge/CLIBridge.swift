@@ -736,13 +736,7 @@ final class CLIBridge: ObservableObject {
     nonisolated private static func probeHermes(
         baseURL: URL,
         bearerToken: String?
-    ) async -> (
-        available: Bool,
-        authRejected: Bool,
-        modelName: String?,
-        hermesModels: [HermesAdvertisedModel],
-        models: [OpenAICompatibleAdvertisedModel]
-    ) {
+    ) async -> OpenAICompatibleModelProbeResult {
         // Read the live /v1/models catalog (the picker's source of truth) and
         // probe /health concurrently. The catalog can lag a cold-started gateway
         // by a few seconds while it aggregates upstream providers, but /health
@@ -767,7 +761,13 @@ final class CLIBridge: ObservableObject {
         // Auth rejection rides alongside the availability verdict: a 401/403
         // catalog answer proves the gateway is up (hence still "available" via
         // /health) while pinpointing the key as the thing to fix.
-        return (resolved.available, catalog.authRejected, resolved.modelName, resolved.hermesModels, resolved.models)
+        return OpenAICompatibleModelProbeResult(
+            available: resolved.available,
+            authRejected: catalog.authRejected,
+            modelName: resolved.modelName,
+            hermesModels: resolved.hermesModels,
+            models: resolved.models
+        )
     }
 
     /// Pure availability decision for the Hermes probe (extracted so the
