@@ -79,9 +79,12 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertEqual(status.message, HermesRuntimeLauncher.authRejectedStatusMessage)
     }
 
-    func test_openHermesAndGateway_doesNotRelaunchGatewayWhenAuthRejected() async {
+    func test_openHermesAndGateway_replacesGatewayInsteadOfDuplicatingWhenAuthRejected() async {
         // The wrong-key state used to look like "gateway down", so Open Hermes
         // + Gateway would fork a second `gateway run` next to the live one.
+        // Now it must restart the existing gateway in place (`--replace`), so
+        // the replacement re-reads ~/.hermes/.env and the key matches again —
+        // making the "restart it with the current key" guidance actually work.
         let fake = FakeHermesRuntime(
             gatewayAvailable: false,
             gatewayAuthRejected: true,
@@ -92,11 +95,13 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         let status = await launcher.openHermesAndGateway()
 
         XCTAssertTrue(status.gatewayRunning)
-        XCTAssertTrue(status.authRejected)
+        XCTAssertFalse(status.authRejected, "the replaced gateway accepts the current key")
+        XCTAssertTrue(status.isReady)
         let detachedCommands = await fake.detachedCommands
+        XCTAssertTrue(detachedCommands.contains(["gateway", "run", "--replace"]))
         XCTAssertFalse(
             detachedCommands.contains(["gateway", "run"]),
-            "an auth-rejected gateway is already running; relaunching would fork a duplicate"
+            "a plain gateway run would fork a duplicate beside the live gateway"
         )
     }
 
@@ -384,6 +389,13 @@ private actor FakeHermesRuntime {
                 throw HermesRuntimeLauncherError.commandFailed(command: "hermes gateway run", detail: "not installed")
             }
             gatewayAvailable = true
+        }
+        if arguments == ["gateway", "run", "--replace"] {
+            // In-place restart: the replacement re-reads ~/.hermes/.env, so the
+            // key the app presents matches again.
+            gatewayStartAttempts += 1
+            gatewayAvailable = true
+            gatewayAuthRejected = false
         }
         if arguments == ["dashboard", "--tui"] {
             dashboardStatusOutput = "Hermes dashboard running PID 456"

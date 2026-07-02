@@ -975,6 +975,10 @@ extension ChatSessionController {
     private func validateChatBackendAvailability() async -> Bool {
         switch chatBackend {
         case .hermes:
+            // Re-resolve the bearer fallback every send: a Settings token
+            // cleared mid-session must not leave the cached ~/.hermes/.env key
+            // nil'd out from the last explicit-token probe.
+            await refreshHermesEnvFallbackBearerToken()
             // Re-probe when unavailable, but ALSO when the last probe saw the
             // key rejected — the user may have just fixed the token in
             // Settings, and this send should self-heal without a restart.

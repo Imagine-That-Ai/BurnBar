@@ -196,10 +196,14 @@ final class HermesRuntimeLauncher {
             try await dependencies.ensureAPIServerEnabled()
             let effectiveBearerToken = await resolvedBearerToken(bearerToken)
             let gatewayProbe = await dependencies.probeGateway(baseURL, effectiveBearerToken)
-            // authRejected means a gateway is already answering on this port —
-            // launching another `gateway run` would fork a duplicate instead of
-            // fixing the key, so only launch when nothing answered at all.
-            if !gatewayProbe.available && !gatewayProbe.authRejected {
+            if gatewayProbe.authRejected {
+                // A gateway is already answering on this port but rejected the
+                // key — it is running with a stale API_SERVER_KEY (e.g. the
+                // .env was regenerated after it started). `gateway run
+                // --replace` restarts it in place with the current .env; a
+                // plain `gateway run` would fork a duplicate beside it.
+                try await dependencies.launchDetached(executable, ["gateway", "run", "--replace"])
+            } else if !gatewayProbe.available {
                 do {
                     try await dependencies.launchDetached(executable, ["gateway", "run"])
                 } catch {

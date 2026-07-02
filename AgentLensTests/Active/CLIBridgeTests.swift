@@ -845,6 +845,34 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(resolved, "hermes")
     }
 
+    func test_chatSessionController_resolvedHermesModelSelection_preservesSelectedFamilyWhenCatalogUnreadable() {
+        // Codex review (PR #1133): a user who picked a family from the strip
+        // must keep their provider when /v1/models is unreadable — the gateway
+        // routes canonical family names directly, so falling to the "hermes"
+        // alias would silently reroute them to the gateway's default agent.
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "",
+            selectedFamily: .claude,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "claude")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_preservesOverrideFamilyWhenCatalogUnreadable() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: nil,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "zai")
+    }
+
     func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
         let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
             baseURL: URL(string: "http://127.0.0.1:8317/")!,

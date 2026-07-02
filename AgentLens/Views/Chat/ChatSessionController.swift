@@ -841,13 +841,19 @@ final class ChatSessionController {
 
         let liveDefault = gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !liveDefault.isEmpty { return liveDefault }
-        // Nothing selected anywhere and no readable catalog default (cold start,
-        // or /v1/models behind an unset API key while /health stays open). Fall
-        // back to the gateway's canonical self alias instead of "": the gateway
-        // routes "hermes" to its default agent and remains the routing
-        // authority, so the send surfaces the gateway's real error (e.g.
-        // "Invalid API key") instead of dead-ending locally on the
-        // "No eligible route" gate. `chatHermes` always allowlists this alias.
+        // Catalog unreadable (cold start, or /v1/models behind an unset API key
+        // while /health stays open) so there is no gateway default. Preserve any
+        // explicit family intent first: the gateway routes canonical family
+        // names ("claude", "codex", …) directly, so a user who picked a family
+        // keeps their provider instead of being silently rerouted to the
+        // gateway's default agent.
+        if let family = hermesFamilyHint(for: override) { return family.rawValue }
+        if let selectedFamily { return selectedFamily.rawValue }
+        // Nothing selected anywhere: fall back to the gateway's canonical self
+        // alias instead of "". The gateway routes "hermes" to its default agent
+        // and remains the routing authority, so the send surfaces the gateway's
+        // real error (e.g. "Invalid API key") instead of dead-ending locally on
+        // the "No eligible route" gate. `chatHermes` always allowlists this alias.
         return hermesCanonicalModelAlias
     }
 
@@ -980,8 +986,11 @@ final class ChatSessionController {
     /// Refreshes the cached `~/.hermes/.env` `API_SERVER_KEY` fallback. Skips
     /// the file read entirely when Settings already carries an explicit token
     /// (it always wins) or when the configured gateway is not loopback (the
-    /// local key must never leave the machine).
-    private func refreshHermesEnvFallbackBearerToken() async {
+    /// local key must never leave the machine). Not `private`: the send path
+    /// (`validateChatBackendAvailability`, in the Search extension) re-runs it
+    /// per send so clearing the Settings token mid-session picks the env key
+    /// back up without waiting for the next availability probe.
+    func refreshHermesEnvFallbackBearerToken() async {
         let settingsToken = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard settingsToken.isEmpty, Self.allowsHermesEnvKeyReuse(hermesGatewayBaseURL) else {
             hermesEnvFallbackBearerToken = nil

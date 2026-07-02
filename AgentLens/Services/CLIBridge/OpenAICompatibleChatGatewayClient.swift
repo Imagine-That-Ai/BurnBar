@@ -1729,10 +1729,13 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
 
     /// A 401/403 from any OpenAI-compatible gateway is a configuration problem
     /// the user can fix — say where, instead of leaving the raw gateway JSON as
-    /// a dead end.
+    /// a dead end. This client serves Hermes, OpenClaw, and Pi alike, so the
+    /// guidance stays backend-neutral; the Hermes pre-send gate delivers the
+    /// Hermes-specific remedies (`hermesAuthRejectedMessage`).
     static func appendingAuthGuidanceIfNeeded(_ detail: String, statusCode: Int) -> String {
         guard OpenAICompatibleModelProbe.isAuthRejectedStatus(statusCode) else { return detail }
-        return detail + " — the gateway rejected this app's API key. Update the gateway's Bearer Token in Settings → Chat Gateway (for a local Hermes gateway it must match API_SERVER_KEY in ~/.hermes/.env, or leave the token empty so OpenBurnBar reuses that key automatically)."
+        return detail + " — the gateway rejected this app's API key. "
+            + "Update this backend's Bearer Token under Settings → Chat Gateway, then send again."
     }
 
     private static func parsedErrorMessage(from data: Data) -> String? {
