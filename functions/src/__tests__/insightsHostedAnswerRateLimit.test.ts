@@ -1,0 +1,118 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+
+import { ALICE_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc } from "./bola/callableBolaHarness.js";
+
+const PROMPT_CAP_ENV = "INSIGHTS_HOSTED_FALLBACK_MAX_PROMPT_CHARS";
+const NOW = "2026-06-25T09:30:00.000Z";
+
+const mocks = vi.hoisted(() => ({
+  config: {
+    enforceAppCheck: true,
+    burnBarProProductID: "burnbar_pro",
+    hostedQuotaProductID: "hosted_quota_sync",
+    googlePlaySubscriptionProductID: "google_play_subscription",
+  },
+  fetch: vi.fn(),
+  secretValues: new Map<string, string>(),
+  store: new Map<string, Record<string, unknown>>(),
+}));
+
+vi.mock("firebase-functions/params", () => ({
+  defineSecret: (name: string) => ({
+    name,
+    value: () => mocks.secretValues.get(name) ?? "",
+  }),
+}));
+
+vi.mock("firebase-admin/firestore", async () => {
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
+  return {
+    ...actual,
+    getFirestore: () => pathKeyedFirestore(mocks.store),
+  };
+});
+
+vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../auth.js", () => ({
+  assertAppCheck: vi.fn(),
+  assertAuth: vi.fn(),
+}));
+vi.mock("../cloudFeatureSuspensions.js", () => ({
+  assertCloudFeatureNotSuspended: vi.fn(async () => undefined),
+}));
+vi.mock("../config.js", () => ({
+  getConfig: () => mocks.config,
+}));
+vi.mock("../resilienceHelpers.js", () => ({
+  resilientFetch: mocks.fetch,
+}));
+
+import { insightsHostedAnswer } from "../insightsHostedAnswer.js";
+import { checkHostedInsightsAnswerRateLimit, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
+
+function seedActiveEntitlement(uid: string): void {
+  seedDoc(mocks.store, `users/${uid}/entitlements/burnbar_pro`, {
+    active: true,
+    productID: mocks.config.burnBarProProductID,
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    schemaVersion: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+}
+
+describe("checkHostedInsightsAnswerRateLimit", () => {
+  beforeEach(() => {
+    mocks.store.clear();
+  });
+
+  it("allows a short burst and rejects the 11th request for a uid", async () => {
+    for (let i = 0; i < 10; i += 1) {
+      await expect(checkHostedInsightsAnswerRateLimit(ALICE_UID)).resolves.toBeUndefined();
+    }
+
+    try {
+      await checkHostedInsightsAnswerRateLimit(ALICE_UID);
+      expect.fail("expected hosted insights rate limit to reject");
+    } catch (error) {
+      expect(isPublicRateLimitExceeded(error)).toBe(true);
+      expect(error).toMatchObject({ code: "resource-exhausted" });
+    }
+  });
+});
+
+describe("insightsHostedAnswer prompt cap", () => {
+  beforeEach(() => {
+    mocks.store.clear();
+    mocks.fetch.mockReset();
+    mocks.fetch.mockImplementation(async () => {
+      throw new Error("unexpected OpenRouter fetch");
+    });
+    mocks.secretValues.clear();
+    mocks.secretValues.set("OPENROUTER_API_KEY", "test-openrouter-key");
+    seedActiveEntitlement(ALICE_UID);
+    process.env[PROMPT_CAP_ENV] = "5";
+  });
+
+  afterEach(() => {
+    delete process.env[PROMPT_CAP_ENV];
+  });
+
+  it("rejects oversized prompts before it reaches OpenRouter", async () => {
+    const run = callableRunner(insightsHostedAnswer);
+    const prompt = "123456";
+
+    await expect(
+      run(
+        callableRequest(ALICE_UID, {
+          instruction: "answerFollowUp",
+          request: { prompt },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid-argument",
+      message: expect.stringContaining("max 5 characters, got 6"),
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+});

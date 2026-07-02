@@ -72,6 +72,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
+import { checkHostedInsightsAnswerRateLimit } from "./callables/publicRateLimit.js";
 import { wrapCallableHandler } from "./logging.js";
 import {
   INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
@@ -101,6 +102,7 @@ const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const DEFAULT_MODEL_SLUG = "minimax/minimax-m2";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
+const DEFAULT_MAX_PROMPT_CHARS = 8000;
 // Default-model pricing lives in pricing.ts (single source of truth for
 // hardcoded USD rates in functions).
 
@@ -480,6 +482,18 @@ export const insightsHostedAnswer = onCall(
           "Hosted fallback requires a non-empty prompt in request.prompt or promptPreview.",
         );
       }
+      // Keep the fallback prompt to a few KB so one caller cannot smuggle a
+      // large blob through the owner's OpenRouter budget.
+      const maxPromptChars = Math.max(
+        1,
+        Math.floor(parseNumericEnv("INSIGHTS_HOSTED_FALLBACK_MAX_PROMPT_CHARS", DEFAULT_MAX_PROMPT_CHARS)),
+      );
+      if (prompt.length > maxPromptChars) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Hosted fallback prompt is too long: max ${maxPromptChars} characters, got ${prompt.length}.`,
+        );
+      }
       if (instruction !== "answerFollowUp" && instruction !== "generateReport") {
         // We don't gate the request, but we *do* limit hosted-budget
         // burn to actual Q&A turns. The Swift/Kotlin orchestrator
@@ -491,6 +505,9 @@ export const insightsHostedAnswer = onCall(
           `Hosted fallback only handles answerFollowUp / generateReport (got "${instruction}").`,
         );
       }
+      // Bound owner OpenRouter spend per uid after the request has passed
+      // validation and qualifies as a billable hosted answer.
+      await checkHostedInsightsAnswerRateLimit(uid);
 
       const apiKey = OPENROUTER_API_KEY.value().trim();
       if (!apiKey) {
