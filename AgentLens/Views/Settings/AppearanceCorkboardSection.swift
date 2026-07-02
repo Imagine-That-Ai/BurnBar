@@ -1062,7 +1062,7 @@ private struct LiquidGlassTransparencyRow: View {
 /// exclusively. System chrome (sheet material, window backdrop) always uses
 /// glass when available. Gated to macOS 26+; hidden on earlier systems.
 private struct LiquidGlassContentSurfacesToggleRow: View {
-    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
 
     var body: some View {
         if #available(macOS 26, *) {
