@@ -46,6 +46,15 @@ export function assertProductionTokenPosture(env: NodeJS.ProcessEnv = process.en
   if (env.MCP_TOKEN_HMAC_SECRET === "dev-secret") {
     errors.push("MCP_TOKEN_HMAC_SECRET is the insecure development default 'dev-secret'");
   }
+  // Pagination cursors are signed/verified with their own HMAC key
+  // (`MCP_CURSOR_HMAC_SECRET`, falling back to `MCP_TOKEN_HMAC_SECRET`). The
+  // Ed25519-only posture above does not require `MCP_TOKEN_HMAC_SECRET`, so
+  // without this check a prod deploy could sign cursors with the source-visible
+  // 'dev-cursor-secret' default, letting an authenticated caller forge cursors.
+  const cursorSecret = env.MCP_CURSOR_HMAC_SECRET ?? env.MCP_TOKEN_HMAC_SECRET;
+  if (!cursorSecret || cursorSecret === "dev-cursor-secret") {
+    errors.push("MCP_CURSOR_HMAC_SECRET (or MCP_TOKEN_HMAC_SECRET) must be set to a real cursor signing key — it must not be empty or the insecure development default 'dev-cursor-secret'");
+  }
   if (errors.length > 0) {
     throw new Error(`[hosted-mcp] refusing to start: insecure production token posture:\n  - ${errors.join("\n  - ")}`);
   }

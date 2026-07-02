@@ -49,9 +49,39 @@ test("assertProductionTokenPosture: prod with dev-secret HMAC refuses to boot", 
   );
 });
 
-test("assertProductionTokenPosture: prod with Ed25519 key and no legacy HMAC boots", () => {
+test("assertProductionTokenPosture: prod without a cursor secret refuses to boot", () => {
+  assert.throws(
+    () => assertProductionTokenPosture({
+      ...BASE_PROD,
+      MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
+    }),
+    /MCP_CURSOR_HMAC_SECRET .* must be set to a real cursor signing key/,
+  );
+});
+
+test("assertProductionTokenPosture: prod with the dev-cursor-secret default refuses to boot", () => {
+  assert.throws(
+    () => assertProductionTokenPosture({
+      ...BASE_PROD,
+      MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
+      MCP_CURSOR_HMAC_SECRET: "dev-cursor-secret",
+    }),
+    /insecure development default 'dev-cursor-secret'/,
+  );
+});
+
+test("assertProductionTokenPosture: prod with Ed25519 key, no legacy HMAC, and a real cursor secret boots", () => {
   assert.doesNotThrow(() => assertProductionTokenPosture({
     ...BASE_PROD,
     MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
+    MCP_CURSOR_HMAC_SECRET: "real-cursor-secret",
+  }));
+});
+
+test("assertProductionTokenPosture: prod cursor secret can fall back to MCP_TOKEN_HMAC_SECRET", () => {
+  assert.doesNotThrow(() => assertProductionTokenPosture({
+    ...BASE_PROD,
+    MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64: "pk",
+    MCP_TOKEN_HMAC_SECRET: "real-token-secret",
   }));
 });
