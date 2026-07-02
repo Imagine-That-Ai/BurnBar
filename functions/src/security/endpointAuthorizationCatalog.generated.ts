@@ -827,8 +827,15 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
       },
+      {
+        file: "functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts",
+        test: "deleteDomainData calls enforceHighRiskOwnerAction with actionKind",
+        kind: "static-high-risk-wiring",
+        covers: ["deleteDomainData"],
+      },
     ],
-    highRiskComputerUse: false,
+    highRiskComputerUse: true,
+    actionKind: "data_domain_delete",
   },
   {
     exportedName: "deleteEncryptedProjectMemorySnapshot",

@@ -212,6 +212,26 @@ const CATALOG_OVERRIDES = {
     highRiskComputerUse: true,
     actionKind: "remote_mcp_grant_revoke",
   },
+  deleteDomainData: {
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["deleteDomainData"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+      {
+        file: "functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts",
+        test: "deleteDomainData calls enforceHighRiskOwnerAction with actionKind",
+        kind: "static-high-risk-wiring",
+        covers: ["deleteDomainData"],
+      },
+    ],
+    highRiskComputerUse: true,
+    actionKind: "data_domain_delete",
+  },
   startCliLink: {
     trigger: "http",
     authMethod: "public rate-limited device enrollment with credential-delivery key (no tenant objects)",

@@ -43,7 +43,14 @@ internal class ControlCenterFunctions(
     }
 
     // ── Scoped per-domain delete ──
-    suspend fun deleteDomainData(domainId: String): Map<String, Any> = callMap("deleteDomainData", mapOf("domainId" to domainId, "confirm" to true))
+    suspend fun deleteDomainData(domainId: String): Map<String, Any> =
+        securityClient.callHighRiskOwnerAction(
+            callableName = "deleteDomainData",
+            deviceId = localDeviceId(),
+            actionKind = "data_domain_delete",
+            subjectId = domainId,
+            payload = mapOf("domainId" to domainId, "confirm" to true),
+        ).asStringAnyMap() ?: emptyMap()
 
     // ── Recovery (forced before zero-knowledge mode) ──
     suspend fun setupRecovery(method: String, payload: Map<String, Any>): Map<String, Any> =

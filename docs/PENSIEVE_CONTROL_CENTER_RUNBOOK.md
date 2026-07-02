@@ -572,7 +572,7 @@ makes `findNearest` ranking meaningless. Port from `embed.ts`; don't reimplement
 2. **Recall:** with vector indexes `READY`, run a `searchKnowledge` query (iOS
    `PensieveMemorySearchView`, and web if E3 is done) → decrypted hits return.
 3. **Governance dry-run:** `getDataDomainUsage` populates per-domain counts;
-   `exportUserData` → decrypts to source; `deleteDomainData` on a throwaway domain →
+   `exportUserData` → decrypts to source; `deleteDomainData` on a throwaway domain (trusted-device step-up + `confirm: true`) →
    count drops to 0 (incl. Storage); `revokeAllAccess` (panic) returns
    `{ok:true}`; `getAuditLog`/`verifyAuditLog` → chain verifies.
 4. **Reachability:** the Data & Privacy surface is reachable in shipped builds on

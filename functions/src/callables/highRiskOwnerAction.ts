@@ -8,6 +8,7 @@ const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "And
 
 type HighRiskOwnerActionKind =
   | "data_export"
+  | "data_domain_delete"
   | "revoke_all_access"
   | "provider_account_connect"
   | "provider_account_delete"

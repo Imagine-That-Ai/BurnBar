@@ -17,6 +17,10 @@ vi.mock("firebase-functions/logger", () => ({
 // App Check / ownership are enforced via env; disable for the in-process call.
 process.env.ENFORCE_APP_CHECK = "false";
 
+vi.mock("../callables/highRiskOwnerAction.js", () => ({
+  enforceHighRiskOwnerAction: vi.fn(async () => undefined),
+}));
+
 // Empty Firestore: recursiveDelete is a no-op and collection count returns zero.
 const emptyCollection = {
   count: () => ({ get: async () => ({ data: () => ({ count: 0 }) }) }),
