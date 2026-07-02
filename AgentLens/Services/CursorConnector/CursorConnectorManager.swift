@@ -1248,6 +1248,7 @@ final class CursorConnectorManager {
     private static func proxyRateLimitHelpers() -> String {
         """
         # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
+        MAX_TRACKED_CLIENTS = 4096
         _rate_limit_lock = threading.Lock()
         _rate_limit_state = {}
         _auth_fail_lock = threading.Lock()
@@ -1271,6 +1272,22 @@ final class CursorConnectorManager {
                     return f"cf:{connecting_ip}"
             return f"peer:{normalized_peer or 'unknown'}"
 
+        def _remember_client_entries(state, client_ip, entries, window_start):
+            if entries:
+                state[client_ip] = entries
+            else:
+                state.pop(client_ip, None)
+            if len(state) <= MAX_TRACKED_CLIENTS:
+                return
+            for key, existing in list(state.items()):
+                fresh = [(ts, cnt) for ts, cnt in existing if ts > window_start]
+                if fresh:
+                    state[key] = fresh
+                else:
+                    state.pop(key, None)
+            while len(state) > MAX_TRACKED_CLIENTS:
+                state.pop(next(iter(state)))
+
         def _rate_limit_check(client_ip):
             # Returns (allowed, current_count). thread-safe.
             now = time.time()
@@ -1280,8 +1297,9 @@ final class CursorConnectorManager {
                 entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
                 total = sum(cnt for _, cnt in entries)
                 if total >= RATE_LIMIT_REQUESTS:
-                    _rate_limit_state[client_ip] = entries
+                    _remember_client_entries(_rate_limit_state, client_ip, entries, window_start)
                     return False, total
+                _remember_client_entries(_rate_limit_state, client_ip, entries, window_start)
                 return True, total
 
         def _rate_limit_record(client_ip, request_size=1):
@@ -1291,7 +1309,7 @@ final class CursorConnectorManager {
                 entries = _rate_limit_state.get(client_ip, [])
                 entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
                 entries.append((now, request_size))
-                _rate_limit_state[client_ip] = entries
+                _remember_client_entries(_rate_limit_state, client_ip, entries, window_start)
 
         def _auth_fail_record(client_ip, request_size=1):
             now = time.time()
@@ -1300,7 +1318,7 @@ final class CursorConnectorManager {
                 window_start = now - RATE_LIMIT_WINDOW
                 entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
                 entries.append((now, request_size))
-                _auth_fail_state[client_ip] = entries
+                _remember_client_entries(_auth_fail_state, client_ip, entries, window_start)
                 return sum(cnt for _, cnt in entries)
 
         def _send_rate_limited(handler, limit):
@@ -1750,11 +1768,21 @@ final class CursorConnectorManager {
             with open(config["usage_log"], "a", encoding="utf-8") as f:
                 f.write(json.dumps(event) + "\\n")
 
-        SESSION_TOKEN = load_config().get("session_token", "")
-        TUNNEL_ROTATION_TOKEN = load_config().get("tunnel_rotation_token", "")
-        RATE_LIMIT_REQUESTS = int(load_config().get("rate_limit_requests", 100) or 100)
-        RATE_LIMIT_WINDOW = int(load_config().get("rate_limit_window", 60) or 60)
-        AUTH_FAIL_LIMIT = int(load_config().get("auth_fail_limit", 20) or 20)
+        def _int_config(config, name, default):
+            raw_value = config.get(name)
+            if raw_value is None:
+                return default
+            try:
+                return int(raw_value)
+            except (TypeError, ValueError):
+                return default
+
+        CONFIG = load_config()
+        SESSION_TOKEN = CONFIG.get("session_token", "")
+        TUNNEL_ROTATION_TOKEN = CONFIG.get("tunnel_rotation_token", "")
+        RATE_LIMIT_REQUESTS = _int_config(CONFIG, "rate_limit_requests", 100)
+        RATE_LIMIT_WINDOW = _int_config(CONFIG, "rate_limit_window", 60)
+        AUTH_FAIL_LIMIT = _int_config(CONFIG, "auth_fail_limit", 20)
 
         \(Self.proxyRateLimitHelpers())
 

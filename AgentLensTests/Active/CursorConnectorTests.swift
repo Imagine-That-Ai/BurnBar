@@ -258,6 +258,24 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/security"))
     }
 
+    func test_proxyScriptPrunesStalePerClientRateLimitState() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("MAX_TRACKED_CLIENTS = 4096"))
+        XCTAssertTrue(script.contains("def _remember_client_entries(state, client_ip, entries, window_start):"))
+        XCTAssertTrue(script.contains("state.pop(client_ip, None)"))
+        XCTAssertTrue(script.contains("while len(state) > MAX_TRACKED_CLIENTS:"))
+    }
+
+    func test_proxyScriptPreservesExplicitZeroAuthFailureLimit() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("def _int_config(config, name, default):"))
+        XCTAssertTrue(script.contains("if raw_value is None:"))
+        XCTAssertTrue(script.contains("AUTH_FAIL_LIMIT = _int_config(CONFIG, \"auth_fail_limit\", 20)"))
+        XCTAssertFalse(script.contains("auth_fail_limit\", 20) or 20"))
+    }
+
     func test_keychainStoreDisablesSystemPromptsForBackgroundReads() throws {
         let security = RecordingSecurityKeychainOperations()
         let backend = SecurityKeychainStoreBackend(security: security)
