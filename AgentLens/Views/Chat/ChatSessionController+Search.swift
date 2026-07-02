@@ -975,13 +975,30 @@ extension ChatSessionController {
     private func validateChatBackendAvailability() async -> Bool {
         switch chatBackend {
         case .hermes:
-            if !hermesAvailable {
+            // Re-probe when unavailable, but ALSO when the last probe saw the
+            // key rejected — the user may have just fixed the token in
+            // Settings, and this send should self-heal without a restart.
+            if !hermesAvailable || hermesCatalogAuthRejected {
                 await probeHermesAvailability()
             }
             if !hermesAvailable {
                 await appendAndPersistAssistantError(
                     await hermesUnavailableMessage(),
                     logContext: "Hermes unavailable"
+                )
+                return false
+            }
+            if hermesCatalogAuthRejected {
+                // Fail fast with the exact fix, instead of letting the send
+                // reach the gateway just to be bounced on auth (and instead of
+                // paying the retrieval pass first).
+                await appendAndPersistAssistantError(
+                    Self.hermesAuthRejectedMessage(
+                        settingsTokenPresent: !settingsManager.hermesBearerToken
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        envKeyPresent: hermesEnvFallbackKeyPresent
+                    ),
+                    logContext: "Hermes auth rejected"
                 )
                 return false
             }

@@ -927,6 +927,38 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
+    func test_openAICompatibleModelProbe_isAuthRejectedStatus() {
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(401))
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(403))
+        for status in [200, 204, 404, 429, 500, 503] {
+            XCTAssertFalse(OpenAICompatibleModelProbe.isAuthRejectedStatus(status), "HTTP \(status) is not an auth rejection")
+        }
+    }
+
+    func test_gatewayClient_appendsAuthGuidanceOnlyForAuthStatuses() {
+        let guided = OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded(
+            "HTTP 401: Invalid API key", statusCode: 401
+        )
+        XCTAssertTrue(guided.contains("Settings → Chat Gateway"), "401 must point at the settings fix")
+        XCTAssertTrue(guided.hasPrefix("HTTP 401: Invalid API key"), "the gateway's own message stays first")
+        XCTAssertEqual(
+            OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded("HTTP 500: boom", statusCode: 500),
+            "HTTP 500: boom"
+        )
+    }
+
+    func test_hermesAuthRejectedMessage_tailoredToPresentedKey() {
+        let settingsCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: true, envKeyPresent: true)
+        XCTAssertTrue(settingsCase.contains("Bearer Token"), "explicit settings token: fix it in Settings")
+
+        let envCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: true)
+        XCTAssertTrue(envCase.contains("older key"), "env fallback rejected: the gateway needs a restart with the current key")
+        XCTAssertTrue(envCase.contains("Open Hermes + Gateway"))
+
+        let nothingCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: false)
+        XCTAssertTrue(nothingCase.contains("Paste API_SERVER_KEY"), "no key anywhere: tell the user exactly what to paste where")
+    }
+
     func test_resolvedHermesBearerToken_settingsTokenAlwaysWins() {
         XCTAssertEqual(
             ChatSessionController.resolvedHermesBearerToken(

@@ -139,6 +139,12 @@ final class ChatSessionController {
 
     var hermesAvailable: Bool = false
 
+    /// Mirror of `CLIBridge.hermesCatalogAuthRejected`: the gateway is up but
+    /// answered the last catalog probe with 401/403, so chat sends would fail
+    /// on auth. The pre-send gate turns this into an actionable message
+    /// instead of letting the send dead-end.
+    var hermesCatalogAuthRejected: Bool = false
+
     /// In-flight background re-probe that backfills the Hermes `/v1/models`
     /// catalog after a cold start (see `scheduleHermesCatalogWarmIfNeeded`).
     @ObservationIgnored private var hermesCatalogWarmTask: Task<Void, Never>?
@@ -941,7 +947,30 @@ final class ChatSessionController {
             bearerToken: hermesBearerToken
         )
         hermesAvailable = cliBridge.hermesAvailable
+        hermesCatalogAuthRejected = cliBridge.hermesCatalogAuthRejected
         scheduleHermesCatalogWarmIfNeeded()
+    }
+
+    /// True while `hermesEnvFallbackBearerToken` holds a key read from
+    /// `~/.hermes/.env` (exposed so extensions in other files can tailor the
+    /// auth-rejection guidance without widening access to the key itself).
+    var hermesEnvFallbackKeyPresent: Bool {
+        hermesEnvFallbackBearerToken?.isEmpty == false
+    }
+
+    /// Actionable transcript reply for the "gateway up, key rejected" state,
+    /// tailored to which key was actually presented. Pure for unit tests.
+    nonisolated static func hermesAuthRejectedMessage(
+        settingsTokenPresent: Bool,
+        envKeyPresent: Bool
+    ) -> String {
+        if settingsTokenPresent {
+            return "The Hermes gateway is running but rejected the Bearer Token from Settings → Chat Gateway → Hermes Gateway. For a local gateway it must match API_SERVER_KEY in ~/.hermes/.env — update it there (or clear the field to let OpenBurnBar reuse the local key automatically) and send again."
+        }
+        if envKeyPresent {
+            return "The Hermes gateway rejected the local API_SERVER_KEY from ~/.hermes/.env — it is likely running with an older key. Use Settings → Chat Gateway → Hermes Gateway → Open Hermes + Gateway to restart it with the current key, then send again."
+        }
+        return "The Hermes gateway requires an API key. Paste API_SERVER_KEY (from ~/.hermes/.env on the gateway machine) into Settings → Chat Gateway → Hermes Gateway → Bearer Token, then send again."
     }
 
     /// Refreshes the cached `~/.hermes/.env` `API_SERVER_KEY` fallback. Skips
@@ -975,6 +1004,7 @@ final class ChatSessionController {
                     bearerToken: self.hermesBearerToken
                 )
                 self.hermesAvailable = self.cliBridge.hermesAvailable
+                self.hermesCatalogAuthRejected = self.cliBridge.hermesCatalogAuthRejected
                 if !self.cliBridge.hermesGatewayModels.isEmpty { break }
             }
             self?.hermesCatalogWarmTask = nil
