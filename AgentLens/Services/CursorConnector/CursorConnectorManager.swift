@@ -1241,6 +1241,79 @@ final class CursorConnectorManager {
         return formatter
     }
 
+    /// Python source for the proxy's per-client sliding-window rate limiter,
+    /// failed-auth cap, and client-identity derivation. Emitted verbatim into
+    /// `proxyScript()` at module scope; split out to keep that function within
+    /// the repo's body-length ratchet.
+    private static func proxyRateLimitHelpers() -> String {
+        """
+        # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
+        _rate_limit_lock = threading.Lock()
+        _rate_limit_state = {}
+        _auth_fail_lock = threading.Lock()
+        _auth_fail_state = {}
+
+        def _normalize_client_ip(value):
+            if not isinstance(value, str):
+                return None
+            token = value.split(",", 1)[0].strip()
+            try:
+                return ipaddress.ip_address(token).compressed if token else None
+            except ValueError:
+                return None
+
+        def _client_identity(handler):
+            peer = handler.client_address[0] if handler.client_address else None
+            normalized_peer = _normalize_client_ip(peer)
+            if normalized_peer in ("127.0.0.1", "::1"):
+                connecting_ip = _normalize_client_ip(handler.headers.get("Cf-Connecting-IP"))
+                if connecting_ip:
+                    return f"cf:{connecting_ip}"
+            return f"peer:{normalized_peer or 'unknown'}"
+
+        def _rate_limit_check(client_ip):
+            # Returns (allowed, current_count). thread-safe.
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                total = sum(cnt for _, cnt in entries)
+                if total >= RATE_LIMIT_REQUESTS:
+                    _rate_limit_state[client_ip] = entries
+                    return False, total
+                return True, total
+
+        def _rate_limit_record(client_ip, request_size=1):
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                entries.append((now, request_size))
+                _rate_limit_state[client_ip] = entries
+
+        def _auth_fail_record(client_ip, request_size=1):
+            now = time.time()
+            with _auth_fail_lock:
+                entries = _auth_fail_state.get(client_ip, [])
+                window_start = now - RATE_LIMIT_WINDOW
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                entries.append((now, request_size))
+                _auth_fail_state[client_ip] = entries
+                return sum(cnt for _, cnt in entries)
+
+        def _send_rate_limited(handler, limit):
+            handler.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+            handler.send_header("Retry-After", str(RATE_LIMIT_WINDOW))
+            handler.send_header("X-RateLimit-Limit", str(limit))
+            handler.send_header("X-RateLimit-Remaining", "0")
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", "0")
+            handler.end_headers()
+        """
+    }
+
     static func proxyScript() -> String {
         """
         #!/usr/bin/env python3
@@ -1675,70 +1748,7 @@ final class CursorConnectorManager {
         RATE_LIMIT_WINDOW = int(load_config().get("rate_limit_window", 60) or 60)
         AUTH_FAIL_LIMIT = int(load_config().get("auth_fail_limit", 20) or 20)
 
-        # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
-        _rate_limit_lock = threading.Lock()
-        _rate_limit_state = {}
-        _auth_fail_lock = threading.Lock()
-        _auth_fail_state = {}
-
-        def _normalize_client_ip(value):
-            if not isinstance(value, str):
-                return None
-            token = value.split(",", 1)[0].strip()
-            try:
-                return ipaddress.ip_address(token).compressed if token else None
-            except ValueError:
-                return None
-
-        def _client_identity(handler):
-            peer = handler.client_address[0] if handler.client_address else None
-            normalized_peer = _normalize_client_ip(peer)
-            if normalized_peer in ("127.0.0.1", "::1"):
-                connecting_ip = _normalize_client_ip(handler.headers.get("Cf-Connecting-IP"))
-                if connecting_ip:
-                    return f"cf:{connecting_ip}"
-            return f"peer:{normalized_peer or 'unknown'}"
-
-        def _rate_limit_check(client_ip):
-            # Returns (allowed, current_count). thread-safe.
-            now = time.time()
-            window_start = now - RATE_LIMIT_WINDOW
-            with _rate_limit_lock:
-                entries = _rate_limit_state.get(client_ip, [])
-                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
-                total = sum(cnt for _, cnt in entries)
-                if total >= RATE_LIMIT_REQUESTS:
-                    _rate_limit_state[client_ip] = entries
-                    return False, total
-                return True, total
-
-        def _rate_limit_record(client_ip, request_size=1):
-            now = time.time()
-            window_start = now - RATE_LIMIT_WINDOW
-            with _rate_limit_lock:
-                entries = _rate_limit_state.get(client_ip, [])
-                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
-                entries.append((now, request_size))
-                _rate_limit_state[client_ip] = entries
-
-        def _auth_fail_record(client_ip, request_size=1):
-            now = time.time()
-            with _auth_fail_lock:
-                entries = _auth_fail_state.get(client_ip, [])
-                window_start = now - RATE_LIMIT_WINDOW
-                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
-                entries.append((now, request_size))
-                _auth_fail_state[client_ip] = entries
-                return sum(cnt for _, cnt in entries)
-
-        def _send_rate_limited(handler, limit):
-            handler.send_response(HTTPStatus.TOO_MANY_REQUESTS)
-            handler.send_header("Retry-After", str(RATE_LIMIT_WINDOW))
-            handler.send_header("X-RateLimit-Limit", str(limit))
-            handler.send_header("X-RateLimit-Remaining", "0")
-            handler.send_header("Content-Type", "application/json")
-            handler.send_header("Content-Length", "0")
-            handler.end_headers()
+        \(Self.proxyRateLimitHelpers())
 
         def _is_health_path(path):
             return path.split("?", 1)[0] in ("/health", "/healthz")
