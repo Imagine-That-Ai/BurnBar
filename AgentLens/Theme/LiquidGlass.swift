@@ -84,12 +84,15 @@ enum LiquidGlassTransparency {
     /// Whether content-surface glass is enabled. Defaults to true on macOS 26+,
     /// false on earlier systems. When false, `liquidGlassSurface` and
     /// `liquidGlassInteractive` render their fallback material exclusively.
+    static var defaultContentSurfacesEnabled: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
+
     static func contentSurfacesEnabled() -> Bool {
         let raw = UserDefaults.standard.object(forKey: contentSurfacesEnabledKey) as? Bool
         if let raw { return raw }
-        // Default: on for macOS 26+, off for earlier.
-        if #available(macOS 26, *) { return true }
-        return false
+        return defaultContentSurfacesEnabled
     }
 }
 
@@ -113,7 +116,7 @@ private struct LiquidGlassSurfaceModifier<S: Shape>: ViewModifier {
     let fallback: Material
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
-    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
@@ -139,7 +142,7 @@ private struct LiquidGlassInteractiveModifier<S: Shape>: ViewModifier {
     let fallback: Material
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
-    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
@@ -202,8 +205,10 @@ extension View {
 struct LiquidGlassStyle {
     var tintColor: Color?
     var isInteractive: Bool
+    var clearAtNeutral: Bool
 
-    static var regular: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false) }
+    static var regular: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false, clearAtNeutral: false) }
+    static var clear: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false, clearAtNeutral: true) }
 
     func tint(_ color: Color?) -> LiquidGlassStyle {
         var style = self
@@ -219,7 +224,8 @@ struct LiquidGlassStyle {
 
     /// The system glass this style resolves to at transparency `t`.
     func resolvedGlass(at t: Double) -> Glass {
-        var glass: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
+        let shouldUseClear = clearAtNeutral ? t >= 0 : LiquidGlassTransparency.usesClearGlass(t)
+        var glass: Glass = shouldUseClear ? .clear : .regular
         if let tintColor { glass = glass.tint(tintColor) }
         if isInteractive { glass = glass.interactive() }
         return glass
@@ -232,7 +238,7 @@ private struct LiquidGlassEffectModifier<S: Shape>: ViewModifier {
     let shape: S
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
-    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {

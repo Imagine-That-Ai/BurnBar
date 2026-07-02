@@ -25,6 +25,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
   archived to mobile, handoff-only (not native-resume eligible).
 
+## [1.0.26] - 2026-07-02
+
+### Added
+
+- **Tabbed Chat pane workspaces** — extends the cmux-style Chat tiling surface
+  with multiple conversation tabs, tab restore/reopen, per-tab names/colors,
+  per-pane names/colors, pane zoom, pane-to-tab moves, drag-to-swap panes, and
+  rail indicators that distinguish open panes from hidden panes with completed
+  background replies. Completion alerts now route through local notifications
+  and focus the relevant pane when tapped. The workspace persists via a v2
+  snapshot while still migrating the original v1 tiling layout.
+
+### Fixed
+
+- **Dashboard chat launch stability** — hardens the shared CLI launch path used
+  by the dashboard and popover so Claude, Hermes, and Codex chat replies keep
+  working when the search-index projection backlog is unavailable or the pinned
+  executable needs localized recovery messaging.
+- **Hermes fallback chat** — lets Hermes chat recover without a configured
+  bearer token and turns key rejection into a self-healing, actionable prompt
+  instead of a dead chat pane.
+- **Release download link** — keeps the public website's macOS fallback download
+  pinned to the smoke-proven GitHub Release asset while the updater feed remains
+  owned by the promoted release.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 36 / `versionName` `1.0.26` so Google Play receives the same
+  source cut as the macOS release.
+
+## [1.0.25] - 2026-07-02
+
+### Fixed
+
+- **Release publish job** — replaces the macOS publish step's Bash 4-only
+  `mapfile` usage with Bash 3.2-compatible provenance collection, so the
+  already-built, signed, notarized, and smoke-tested artifacts can be uploaded
+  from GitHub's hosted macOS runners.
+- **Current-main release cut** — moves the public release forward from the
+  smoke-proven `v1.0.24` tag to the newest `main` state, including the Computer
+  Use downgrade-only trust clamp and the committed remediation tracker.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 35 / `versionName` `1.0.25` so Google Play receives the same
+  release cut as the macOS publish retry.
+
 ## [1.0.24] - 2026-07-02
 
 ### Fixed

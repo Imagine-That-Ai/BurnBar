@@ -16,6 +16,14 @@ ignore = [
   "RUSTSEC-2024-0436", # paste is unmaintained
   # Transitive Iroh dependency with no safe upgrade available.
   "RUSTSEC-2024-0370", # proc-macro-error is unmaintained
+  # Transitive Iroh 1.0.0-rc.0 dependency chain:
+  # iroh -> netwatch -> netdev -> plist -> quick-xml 0.39.x.
+  # plist 1.9.0 is currently the latest plist release and still pins
+  # quick-xml ^0.39.2, so the patched quick-xml >=0.41.0 line is not reachable
+  # without a coordinated iroh-stack upgrade.
+  "RUSTSEC-2026-0194", # quick-xml duplicate-attribute check can be quadratic
+  # Same transitive plist/quick-xml blocker as RUSTSEC-2026-0194.
+  "RUSTSEC-2026-0195", # quick-xml NsReader namespace allocation DoS
 ]
 
 [licenses]

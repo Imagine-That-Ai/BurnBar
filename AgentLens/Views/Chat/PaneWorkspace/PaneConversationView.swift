@@ -11,8 +11,17 @@ struct PaneThreadDropPayload: Codable, Transferable {
     }
 }
 
+struct PaneDragPayload: Codable, Transferable {
+    let paneID: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .openBurnBarChatPane)
+    }
+}
+
 extension UTType {
     static let openBurnBarChatThread = UTType(exportedAs: "ai.burnbar.chat-thread")
+    static let openBurnBarChatPane = UTType(exportedAs: "ai.burnbar.chat-pane")
 }
 
 /// One full conversation rendered as a tiling pane: a per-pane header (engine + model
@@ -31,13 +40,34 @@ struct PaneConversationView: View {
     @State private var showCLIAssistantConsent = false
     @State private var atomRouter = HermesAtomRouter()
     @State private var isDropTargeted = false
+    @State private var isRenamingPane = false
+    @State private var renameDraft = ""
 
     private let canvasMaxWidth: CGFloat = 760
 
     private var isActive: Bool { workspace.activeLeafID == leafID }
     private var showsChrome: Bool { workspace.isTiled }
+    private var leaf: PaneLeaf? { workspace.leafAnywhere(leafID) }
+    private var paneTitle: String {
+        if let title = leaf?.customTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            return title
+        }
+        if let threadTitle = leaf.map({ workspace.threadTitle(for: $0.controller.activeThreadID) }),
+           !threadTitle.isEmpty {
+            return threadTitle
+        }
+        return controller.chatBackend.displayName
+    }
     private var accent: Color {
-        controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy
+        leaf?.colorToken?.color ?? (controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+    }
+    private var controlPersistenceSignature: String {
+        let backend = controller.chatBackend
+        return [
+            backend.rawValue,
+            controller.chatModelSelection(for: backend),
+            controller.chatViewMode.rawValue
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -69,6 +99,27 @@ struct PaneConversationView: View {
                 showCLIAssistantConsent = false
             }
         }
+        .popover(isPresented: $isRenamingPane, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                TextField("Pane title", text: $renameDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                    .onSubmit {
+                        workspace.renamePane(leafID, title: renameDraft)
+                        isRenamingPane = false
+                    }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { isRenamingPane = false }
+                    Button("Save") {
+                        workspace.renamePane(leafID, title: renameDraft)
+                        isRenamingPane = false
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded {
             if showsChrome { workspace.setActive(leafID) }
@@ -76,6 +127,13 @@ struct PaneConversationView: View {
         .dropDestination(for: PaneThreadDropPayload.self) { items, _ in
             guard let threadID = items.first?.threadID else { return false }
             Task { await workspace.bindExistingThread(threadID, toLeaf: leafID) }
+            return true
+        } isTargeted: { hovering in
+            isDropTargeted = hovering
+        }
+        .dropDestination(for: PaneDragPayload.self) { items, _ in
+            guard let sourceID = items.first?.paneID, sourceID != leafID else { return false }
+            workspace.swapPanes(sourceID, leafID)
             return true
         } isTargeted: { hovering in
             isDropTargeted = hovering
@@ -89,11 +147,17 @@ struct PaneConversationView: View {
                 workspace.primaryController.refreshHistory()
             }
         }
+        .onChange(of: isActive) { _, active in
+            if active { workspace.markSeenIfVisible(leafID) }
+        }
         .onChange(of: controller.messages.count) { _, _ in
             // Keep the rail's preview / message-count fresh after a non-primary pane sends.
             if !controller.persistsViewState {
                 workspace.primaryController.refreshHistory()
             }
+        }
+        .onChange(of: controlPersistenceSignature) { _, _ in
+            workspace.persistPaneControlChange(leafID)
         }
         .onChange(of: controller.dataStore.usagesVersion) { _, _ in
             Task { @MainActor in
@@ -119,6 +183,7 @@ struct PaneConversationView: View {
             Task { @MainActor in
                 brief = await controller.buildInsightBriefSnapshotAsync(refreshRollups: false)
             }
+            workspace.markSeenIfVisible(leafID)
         }
     }
 
@@ -127,10 +192,43 @@ struct PaneConversationView: View {
     @ViewBuilder
     private var paneHeader: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
+            Button {
+                workspace.setActive(leafID)
+                renameDraft = paneTitle
+                isRenamingPane = true
+            } label: {
+                HStack(spacing: 6) {
+                    if leaf?.unseenCompletionAt != nil {
+                        PaneStatusDot(color: accent)
+                    }
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 7, height: 7)
+                        .opacity(leaf?.colorToken == nil ? 0.55 : 1)
+                    Text(paneTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 150, alignment: .leading)
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Rename pane")
+            .draggable(PaneDragPayload(paneID: leafID))
+
             ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
             ChatEngineModelMenu(controller: controller)
                 .layoutPriority(1)
             Spacer(minLength: DesignSystem.Spacing.sm)
+            Button {
+                workspace.setActive(leafID)
+                workspace.toggleZoomActive()
+            } label: {
+                Image(systemName: workspace.selectedTab.zoomedPaneID == leafID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Zoom pane")
+            .accessibilityLabel("Zoom pane")
+            paneMenu
             Button {
                 workspace.setActive(leafID)
                 workspace.splitActive(axis: .horizontal)
@@ -163,6 +261,52 @@ struct PaneConversationView: View {
         .padding(.vertical, DesignSystem.Spacing.xs + 2)
         .background(DesignSystem.Colors.surface.opacity(isActive ? 0.55 : 0.3))
         .overlay(alignment: .bottom) { Divider().opacity(0.35) }
+    }
+
+    @ViewBuilder
+    private var paneMenu: some View {
+        Menu {
+            Button("Rename") {
+                renameDraft = paneTitle
+                isRenamingPane = true
+            }
+            Menu("Color") {
+                Button("None") { workspace.setPaneColor(leafID, colorToken: nil) }
+                Divider()
+                ForEach(PaneColorToken.allCases) { token in
+                    Button(token.rawValue.capitalized) {
+                        workspace.setPaneColor(leafID, colorToken: token)
+                    }
+                }
+            }
+            Button((leaf?.alertsEnabled ?? true) ? "Mute Completion Alerts" : "Enable Completion Alerts") {
+                workspace.setPaneAlertsEnabled(leafID, enabled: !(leaf?.alertsEnabled ?? true))
+            }
+            Divider()
+            Button("Move to New Tab") {
+                workspace.setActive(leafID)
+                workspace.moveToNewTab(leafID)
+            }
+            if workspace.tabs.count > 1 {
+                Menu("Move to Tab") {
+                    ForEach(workspace.tabs.filter { $0.id != workspace.selectedTabID }) { tab in
+                        Button(workspace.displayTitle(for: tab)) {
+                            workspace.setActive(leafID)
+                            workspace.movePane(leafID, toTab: tab.id)
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Mark Seen") { workspace.markSeen(leafID) }
+            Button("Close Pane") {
+                workspace.setActive(leafID)
+                workspace.closeActive()
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .help("Pane options")
     }
 
     @ViewBuilder

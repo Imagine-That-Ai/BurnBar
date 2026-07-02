@@ -68,6 +68,11 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test:unit --prefix functions
 
+      - name: Callable input validation ratchet
+        run: |
+          node --test scripts/ci/check-callable-validation.test.mjs
+          node scripts/ci/check-callable-validation.mjs
+
       - name: Guard parser regressions (test-guards.mjs)
         run: npm run test:guards --prefix functions
 

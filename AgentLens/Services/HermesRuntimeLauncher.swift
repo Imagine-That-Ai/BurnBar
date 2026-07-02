@@ -3,12 +3,16 @@ import Foundation
 struct HermesRuntimeStatus: Equatable {
     var hermesCLIPath: String?
     var gatewayRunning: Bool = false
+    /// The gateway answered the catalog probe with 401/403: it is running, but
+    /// the API key OpenBurnBar presented was rejected. Fixing the key — not
+    /// (re)launching the gateway — is the remedy.
+    var authRejected: Bool = false
     var dashboardRunning: Bool = false
     var modelName: String?
     var message: String = "Hermes has not been checked yet."
 
     var isReady: Bool {
-        hermesCLIPath != nil && gatewayRunning
+        hermesCLIPath != nil && gatewayRunning && !authRejected
     }
 }
 
@@ -32,7 +36,7 @@ struct HermesRuntimeLauncherDependencies: Sendable {
     var resolveHermesExecutable: @Sendable () async -> String?
     var runCommand: @Sendable (_ executable: String, _ arguments: [String]) async throws -> String
     var launchDetached: @Sendable (_ executable: String, _ arguments: [String]) async throws -> Void
-    var probeGateway: @Sendable (_ baseURL: URL, _ bearerToken: String?) async -> (available: Bool, modelName: String?)
+    var probeGateway: @Sendable (_ baseURL: URL, _ bearerToken: String?) async -> (available: Bool, authRejected: Bool, modelName: String?)
     var ensureAPIServerEnabled: @Sendable () async throws -> Void
     var readAPIServerKey: @Sendable () async -> String?
 
@@ -47,7 +51,7 @@ struct HermesRuntimeLauncherDependencies: Sendable {
             try await HermesRuntimeProcessRunner.launchDetached(executable: executable, arguments: arguments)
         },
         probeGateway: { baseURL, bearerToken in
-            await OpenAICompatibleModelProbe.probeWithModel(
+            await OpenAICompatibleModelProbe.probeWithModelAuth(
                 baseURL: baseURL,
                 bearerToken: bearerToken,
                 timeout: 8
@@ -69,21 +73,22 @@ extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
     /// Settings UI and `HermesRuntimeGate` can render Hermes through the same
     /// `ManagedAgentRuntimeAdapter` surface used by Pi.
     var managedStatus: ManagedAgentRuntimeStatus {
+        let usableGatewayRunning = status.gatewayRunning && !status.authRejected
         var snapshot = ManagedAgentRuntimeStatus(
             executablePath: status.hermesCLIPath,
-            gatewayRunning: status.gatewayRunning,
+            gatewayRunning: usableGatewayRunning,
             appRunning: status.dashboardRunning,
             modelName: status.modelName,
             redisStatus: nil,
-            selectedInstanceID: status.gatewayRunning ? "default" : nil,
+            selectedInstanceID: usableGatewayRunning ? "default" : nil,
             message: status.message
         )
-        if status.gatewayRunning {
+        if usableGatewayRunning {
             snapshot.instances = [
                 ManagedAgentInstance(
                     id: "default",
                     displayName: "Default",
-                    isOnline: status.gatewayRunning,
+                    isOnline: true,
                     activeSessionID: nil,
                     gatewayBaseURL: nil
                 )
@@ -149,12 +154,22 @@ final class HermesRuntimeLauncher {
         async let dashboard = dashboardIsRunning(executable: executable)
         let gateway = await gatewayProbe
         let dashboardRunning = await dashboard
+        // A 401/403 catalog answer means the gateway IS running (something
+        // answered) — report it as such so Settings tells the truth, with the
+        // key called out as the thing to fix.
+        let gatewayRunning = gateway.available || gateway.authRejected
         let next = HermesRuntimeStatus(
             hermesCLIPath: executable,
-            gatewayRunning: gateway.available,
+            gatewayRunning: gatewayRunning,
+            authRejected: gateway.authRejected,
             dashboardRunning: dashboardRunning,
             modelName: gateway.modelName,
-            message: statusMessage(gatewayRunning: gateway.available, dashboardRunning: dashboardRunning, modelName: gateway.modelName)
+            message: statusMessage(
+                gatewayRunning: gatewayRunning,
+                authRejected: gateway.authRejected,
+                dashboardRunning: dashboardRunning,
+                modelName: gateway.modelName
+            )
         )
         status = next
         lastError = nil
@@ -182,7 +197,14 @@ final class HermesRuntimeLauncher {
             try await dependencies.ensureAPIServerEnabled()
             let effectiveBearerToken = await resolvedBearerToken(bearerToken)
             let gatewayProbe = await dependencies.probeGateway(baseURL, effectiveBearerToken)
-            if !gatewayProbe.available {
+            if gatewayProbe.authRejected {
+                // A gateway is already answering on this port but rejected the
+                // key — it is running with a stale API_SERVER_KEY (e.g. the
+                // .env was regenerated after it started). `gateway run
+                // --replace` restarts it in place with the current .env; a
+                // plain `gateway run` would fork a duplicate beside it.
+                try await dependencies.launchDetached(executable, ["gateway", "run", "--replace"])
+            } else if !gatewayProbe.available {
                 do {
                     try await dependencies.launchDetached(executable, ["gateway", "run"])
                 } catch {
@@ -230,7 +252,10 @@ final class HermesRuntimeLauncher {
         return await dependencies.readAPIServerKey()
     }
 
-    private func statusMessage(gatewayRunning: Bool, dashboardRunning: Bool, modelName: String?) -> String {
+    private func statusMessage(gatewayRunning: Bool, authRejected: Bool, dashboardRunning: Bool, modelName: String?) -> String {
+        if authRejected {
+            return Self.authRejectedStatusMessage
+        }
         if gatewayRunning && dashboardRunning {
             if let modelName, !modelName.isEmpty {
                 return "Hermes Dashboard and gateway are running. Model: \(modelName)."
@@ -248,6 +273,10 @@ final class HermesRuntimeLauncher {
         }
         return "Hermes Dashboard and gateway are not running."
     }
+
+    /// Shown by Settings (and asserted by tests) when the gateway is up but the
+    /// key is wrong — the one state where "Open Hermes + Gateway" cannot help.
+    static let authRejectedStatusMessage = "Hermes gateway is running, but it rejected this app's API key. Update the Bearer Token below to match API_SERVER_KEY in ~/.hermes/.env — or clear it to reuse the local key automatically — then check health again."
 }
 
 enum HermesEnvironmentFile {

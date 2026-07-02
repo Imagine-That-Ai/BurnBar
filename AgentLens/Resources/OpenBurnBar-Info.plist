@@ -41,6 +41,29 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>OpenBurnBar Chat Thread</string>
+			<key>UTTypeIdentifier</key>
+			<string>ai.burnbar.chat-thread</string>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>OpenBurnBar Chat Pane</string>
+			<key>UTTypeIdentifier</key>
+			<string>ai.burnbar.chat-pane</string>
+		</dict>
+	</array>
 	<!-- Swift 6.2 (Xcode 26+) made swift_task_isCurrentExecutor crash on an
 	     isolation mismatch where it previously returned false. Until the
 	     concurrency-isolation migration is complete, restore the legacy

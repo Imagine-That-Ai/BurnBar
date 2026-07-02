@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.24"
-    CURRENT_PROJECT_VERSION: 64
+    MARKETING_VERSION: "1.0.26"
+    CURRENT_PROJECT_VERSION: 66
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -96,6 +96,15 @@ targets:
               # IMPORTANT: Replace YOUR_CLIENT_ID_SUFFIX with your actual reversed Firebase client ID suffix.
               # Obtain from: GoogleService-Info.plist -> REVERSED_CLIENT_ID
               - com.googleusercontent.apps.YOUR_CLIENT_ID_SUFFIX
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: ai.burnbar.chat-thread
+            UTTypeDescription: OpenBurnBar Chat Thread
+            UTTypeConformsTo:
+              - public.data
+          - UTTypeIdentifier: ai.burnbar.chat-pane
+            UTTypeDescription: OpenBurnBar Chat Pane
+            UTTypeConformsTo:
+              - public.data
         NSBonjourServices:
           - _googlecast._tcp
           - _http._tcp

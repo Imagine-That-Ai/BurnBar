@@ -77,6 +77,19 @@ const HERMES_GATEWAY_BEARER_LIMITS: Record<
   hermes_gateway_event_enqueue: { windowSeconds: 60, maxAttempts: 120 },
 };
 
+// Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
+// access but does not bound per-account request volume, and each call bills
+// input tokens to the owner's OpenRouter budget. A short burst window plus a
+// daily ceiling keeps a single Pro account from draining that budget with
+// looped calls, while leaving normal interactive Q&A unthrottled. Keyed per
+// uid so the limit follows the account, not a device/IP.
+type HostedInsightsRateLimitAction = "insights_hosted_answer_burst" | "insights_hosted_answer_daily";
+
+const HOSTED_INSIGHTS_LIMITS: Record<HostedInsightsRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  insights_hosted_answer_burst: { windowSeconds: 60, maxAttempts: 10 },
+  insights_hosted_answer_daily: { windowSeconds: 86_400, maxAttempts: 200 },
+};
+
 function rateLimitDocId(keyMaterial: string, action: string): string {
   const hash = createHash("sha256").update(`${keyMaterial}:${action}`).digest("hex");
   return `${action}_${hash.slice(0, 40)}`;
@@ -135,6 +148,25 @@ async function incrementRateLimit(
 export async function checkPublicHttpRateLimit(keyMaterial: string, action: PublicHttpRateLimitAction): Promise<void> {
   const limit = PUBLIC_HTTP_LIMITS[action];
   await incrementRateLimit(rateLimitDocId(keyMaterial, action), action, limit);
+}
+
+/**
+ * Per-user rate limit for the owner-funded hosted Intelligence Brief callable
+ * (`insightsHostedAnswer`). Enforces both a short burst window and a daily
+ * ceiling so a single Pro account cannot loop calls to drain the owner's
+ * OpenRouter budget. Throws `resource-exhausted` when either bound is hit.
+ */
+export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<void> {
+  await incrementRateLimit(
+    rateLimitDocId(uid, "insights_hosted_answer_burst"),
+    "insights_hosted_answer_burst",
+    HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_burst,
+  );
+  await incrementRateLimit(
+    rateLimitDocId(uid, "insights_hosted_answer_daily"),
+    "insights_hosted_answer_daily",
+    HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_daily,
+  );
 }
 
 export async function checkHermesGatewayBearerRateLimit(
@@ -196,14 +228,12 @@ export function isPublicRateLimitExceeded(err: unknown): boolean {
  * Declared set of public HTTPS endpoints with product-layer rate limits.
  * Used by the static inventory test to ensure every public endpoint is bounded.
  */
-export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze(
-  [
-    "burnBarHermesGateway",
-    "healthCheck",
-    "healthLive",
-    "healthReady",
-    "latestRouterRundown",
-    "pollCliLink",
-    "startCliLink",
-  ],
-);
+export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze([
+  "burnBarHermesGateway",
+  "healthCheck",
+  "healthLive",
+  "healthReady",
+  "latestRouterRundown",
+  "pollCliLink",
+  "startCliLink",
+]);

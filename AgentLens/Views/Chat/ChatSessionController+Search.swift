@@ -82,6 +82,7 @@ extension ChatSessionController {
     /// own. (Thread-switch paths still revoke, because there the live controller is
     /// leaving the thread rather than being destroyed.)
     func teardownForPaneClose() {
+        onStreamSettled = nil
         streamTask?.cancel()
         cliBridge.cancel()
         streamTask = nil
@@ -429,15 +430,26 @@ extension ChatSessionController {
         )
 
         let searchSvc = typedSearchService
+        let retrievalFilters = RetrievalFilters(
+            artifactTypes: [.conversation, .skillDoc, .agentDoc],
+            ownership: .personal
+        )
+        let activeProjectionJobs: Int
+        do {
+            activeProjectionJobs = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        } catch {
+            activeProjectionJobs = retrievalHealthSnapshot.projectionQueue.queueDepth
+            AppLogger.chat.silentFailure("countProjectionJobs (chat retrieval gate)", error: error)
+        }
+        let typedRetrievalAvailable = searchSvc != nil
+            && activeProjectionJobs == 0
+            && !retrievalHealthSnapshot.rebuild.inProgress
         let queryRun: OpenBurnBarQueryRunResult
-        if let searchSvc {
+        if let searchSvc, typedRetrievalAvailable {
             queryRun = await searchSvc.runBurnBarQuery(
                 RetrievalQuery(
                     text: retrievalText,
-                    filters: RetrievalFilters(
-                        artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                        ownership: .personal
-                    ),
+                    filters: retrievalFilters,
                     lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
                     semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
                     rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
@@ -445,17 +457,25 @@ extension ChatSessionController {
                 )
             )
         } else {
-            AppLogger.chat.info(
-                "chat send continuing without typed search service",
-                metadata: ["backend": chatBackend.rawValue]
-            )
+            if searchSvc == nil {
+                AppLogger.chat.info(
+                    "chat send continuing without typed search service",
+                    metadata: ["backend": chatBackend.rawValue]
+                )
+            } else {
+                AppLogger.chat.info(
+                    "chat send using fallback retrieval while search index catches up",
+                    metadata: [
+                        "backend": chatBackend.rawValue,
+                        "activeProjectionJobs": String(activeProjectionJobs),
+                        "rebuildInProgress": retrievalHealthSnapshot.rebuild.inProgress ? "true" : "false"
+                    ]
+                )
+            }
             queryRun = await runFallbackBurnBarQuery(
                 text: retrievalText,
                 plan: retrievalPlan,
-                filters: RetrievalFilters(
-                    artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                    ownership: .personal
-                )
+                filters: retrievalFilters
             )
         }
         let retrievalResults = queryRun.retrievalResults
@@ -911,13 +931,15 @@ extension ChatSessionController {
                         self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
                     }
                     self.selectedContext = nil
+                    self.onStreamSettled?(.completed)
                 }.value
             } catch {
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
+                    let shouldPersistFailure = !(error is CancellationError)
                     // Don't surface cancellation as an error — cancelGeneration() already cleaned up
-                    if !(error is CancellationError) {
+                    if shouldPersistFailure {
                         let nsError = error as NSError
                         Analytics.shared.track(.chatGenerationFailed, [
                             "backend": .string(self.chatBackend.rawValue),
@@ -933,8 +955,20 @@ extension ChatSessionController {
                         if self.messages[idx].content.isEmpty {
                             self.messages[idx].content = self.streamError ?? "Error"
                         }
+                        if shouldPersistFailure {
+                            do {
+                                try await self.dataStore.saveChatMessage(
+                                    self.messages[idx],
+                                    threadID: self.activeThreadID
+                                )
+                                self.refreshHistory()
+                            } catch {
+                                AppLogger.chat.silentFailure("saveChatMessage (streaming failure)", error: error)
+                            }
+                        }
                     }
                     self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
+                    self.onStreamSettled?(.failed(cancelled: error is CancellationError))
                 }.value
             }
         }
@@ -983,13 +1017,34 @@ extension ChatSessionController {
     private func validateChatBackendAvailability() async -> Bool {
         switch chatBackend {
         case .hermes:
-            if !hermesAvailable {
+            // Re-resolve the bearer fallback every send: a Settings token
+            // cleared mid-session must not leave the cached ~/.hermes/.env key
+            // nil'd out from the last explicit-token probe.
+            await refreshHermesEnvFallbackBearerToken()
+            // Re-probe when unavailable, but ALSO when the last probe saw the
+            // key rejected — the user may have just fixed the token in
+            // Settings, and this send should self-heal without a restart.
+            if !hermesAvailable || hermesCatalogAuthRejected {
                 await probeHermesAvailability()
             }
             if !hermesAvailable {
                 await appendAndPersistAssistantError(
                     await hermesUnavailableMessage(),
                     logContext: "Hermes unavailable"
+                )
+                return false
+            }
+            if hermesCatalogAuthRejected {
+                // Fail fast with the exact fix, instead of letting the send
+                // reach the gateway just to be bounced on auth (and instead of
+                // paying the retrieval pass first).
+                await appendAndPersistAssistantError(
+                    Self.hermesAuthRejectedMessage(
+                        settingsTokenPresent: !settingsManager.hermesBearerToken
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        envKeyPresent: hermesEnvFallbackKeyPresent
+                    ),
+                    logContext: "Hermes auth rejected"
                 )
                 return false
             }

@@ -4,13 +4,24 @@ import OpenBurnBarCore
 /// Row representing a chat thread summary. Shared by the floating panel's
 /// menu popover, the maximized workspace thread rail, and the pop-out window.
 struct ChatHistoryRow: View {
+    enum PaneRailBadge: Equatable {
+        case none
+        case openInPane
+        case unseen
+    }
+
     let thread: ChatThreadSummary
     let isActive: Bool
     /// True when this thread is open in a (non-active) tiling pane — drawn as a subtle
     /// "open in a pane" hint so the rail shows which conversations are tiled.
     var isOpenInPane: Bool = false
+    var paneBadge: PaneRailBadge = .none
     var accent: Color = DesignSystem.Colors.whimsy
     let onSelect: () -> Void
+
+    private var effectivePaneBadge: PaneRailBadge {
+        paneBadge != .none ? paneBadge : (isOpenInPane ? .openInPane : .none)
+    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -27,7 +38,10 @@ struct ChatHistoryRow: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(accent)
-                    } else if isOpenInPane {
+                    } else if effectivePaneBadge == .unseen {
+                        PaneStatusDot(color: accent)
+                            .help("Pane completed")
+                    } else if effectivePaneBadge == .openInPane {
                         Image(systemName: "rectangle.split.2x1")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(accent.opacity(0.7))
@@ -51,7 +65,7 @@ struct ChatHistoryRow: View {
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
                     .fill(isActive ? accent.opacity(0.10)
-                        : (isOpenInPane ? accent.opacity(0.05) : DesignSystem.Colors.surface.opacity(0.30)))
+                        : (effectivePaneBadge != .none ? accent.opacity(0.05) : DesignSystem.Colors.surface.opacity(0.30)))
             )
         }
         .buttonStyle(.plain)
