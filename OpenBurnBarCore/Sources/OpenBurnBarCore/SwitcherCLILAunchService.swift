@@ -825,7 +825,7 @@ public enum CLILaunchAdapter {
 
 /// Typed errors for CLI launch failures.
 /// All errors are actionable and provide clear remediation guidance.
-public enum CLILaunchError: Error, Equatable, Sendable {
+public enum CLILaunchError: LocalizedError, Equatable, Sendable {
     case executableNotFound(SwitcherCLIProfileType)
     case profileNotFound(String)
     case profileTypeMismatch(expected: SwitcherCLIProfileType, actual: SwitcherCLIProfileType?)

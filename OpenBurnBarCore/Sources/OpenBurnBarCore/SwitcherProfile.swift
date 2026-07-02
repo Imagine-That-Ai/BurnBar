@@ -112,7 +112,9 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .codex:
             return [
                 "/usr/local/bin/codex",
-                "/opt/homebrew/bin/codex"
+                "/opt/homebrew/bin/codex",
+                "$HOME/.local/bin/codex",
+                "$HOME/.codex/bin/codex"
             ]
         case .claude:
             return [
