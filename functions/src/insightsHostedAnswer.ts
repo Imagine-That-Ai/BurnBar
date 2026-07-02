@@ -72,6 +72,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
+import { checkHostedInsightsAnswerRateLimit } from "./callables/publicRateLimit.js";
 import { wrapCallableHandler } from "./logging.js";
 import {
   INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
@@ -101,6 +102,8 @@ const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const DEFAULT_MODEL_SLUG = "minimax/minimax-m2";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
+const DEFAULT_MAX_PROMPT_CHARS = 8000;
+const DEFAULT_MAX_USER_PROMPT_CHARS = 12000;
 // Default-model pricing lives in pricing.ts (single source of truth for
 // hardcoded USD rates in functions).
 
@@ -480,6 +483,18 @@ export const insightsHostedAnswer = onCall(
           "Hosted fallback requires a non-empty prompt in request.prompt or promptPreview.",
         );
       }
+      // Keep the fallback prompt to a few KB so one caller cannot smuggle a
+      // large blob through the owner's OpenRouter budget.
+      const maxPromptChars = Math.max(
+        1,
+        Math.floor(parseNumericEnv("INSIGHTS_HOSTED_FALLBACK_MAX_PROMPT_CHARS", DEFAULT_MAX_PROMPT_CHARS)),
+      );
+      if (prompt.length > maxPromptChars) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Hosted fallback prompt is too long: max ${maxPromptChars} characters, got ${prompt.length}.`,
+        );
+      }
       if (instruction !== "answerFollowUp" && instruction !== "generateReport") {
         // We don't gate the request, but we *do* limit hosted-budget
         // burn to actual Q&A turns. The Swift/Kotlin orchestrator
@@ -491,7 +506,6 @@ export const insightsHostedAnswer = onCall(
           `Hosted fallback only handles answerFollowUp / generateReport (got "${instruction}").`,
         );
       }
-
       const apiKey = OPENROUTER_API_KEY.value().trim();
       if (!apiKey) {
         throw new HttpsError(
@@ -499,7 +513,6 @@ export const insightsHostedAnswer = onCall(
           "Hosted fallback is unconfigured: OPENROUTER_API_KEY secret is empty.",
         );
       }
-
       const modelSlug = (process.env.INSIGHTS_HOSTED_FALLBACK_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
       const baseURL = (process.env.INSIGHTS_HOSTED_FALLBACK_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;
       const modelDisplayName = (process.env.INSIGHTS_HOSTED_FALLBACK_DISPLAY_NAME ?? "").trim() || DEFAULT_DISPLAY_NAME;
@@ -507,6 +520,23 @@ export const insightsHostedAnswer = onCall(
       const digestSummary = digestSummaryFor(rawRequest);
       const systemPrompt = systemPromptText();
       const userPrompt = userPromptText({ prompt, digestSummary });
+      const maxUserPromptChars = Math.max(
+        1,
+        Math.floor(
+          parseNumericEnv("INSIGHTS_HOSTED_FALLBACK_MAX_USER_PROMPT_CHARS", DEFAULT_MAX_USER_PROMPT_CHARS),
+        ),
+      );
+      if (userPrompt.length > maxUserPromptChars) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Hosted fallback payload is too long: max ${maxUserPromptChars} characters, got ${userPrompt.length}.`,
+        );
+      }
+
+      // Bound owner OpenRouter spend per uid after the request has passed
+      // validation, secret preflight, payload-size cap, and qualifies as a
+      // billable hosted answer.
+      await checkHostedInsightsAnswerRateLimit(uid);
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 45_000);
