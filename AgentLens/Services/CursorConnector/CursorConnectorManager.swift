@@ -453,6 +453,7 @@ final class CursorConnectorManager {
             "secret_broker_token": secretBroker?.bearerToken ?? "",
             "rate_limit_requests": config.tunnel.tunnelRateLimitRequests,
             "rate_limit_window": config.tunnel.tunnelRateLimitWindow,
+            "auth_fail_limit": config.tunnel.tunnelAuthFailLimit ?? 20,
             "routes": routes.mapValues { [
                 "provider": $0.provider,
                 "base_url": $0.baseURL,
@@ -1243,7 +1244,7 @@ final class CursorConnectorManager {
     static func proxyScript() -> String {
         """
         #!/usr/bin/env python3
-        import json, ssl, sys, uuid, datetime, time, threading
+        import hmac, ipaddress, json, ssl, sys, uuid, datetime, time, threading
         from http import HTTPStatus
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from urllib.error import HTTPError, URLError; from urllib.request import Request, urlopen
@@ -1672,10 +1673,35 @@ final class CursorConnectorManager {
         TUNNEL_ROTATION_TOKEN = load_config().get("tunnel_rotation_token", "")
         RATE_LIMIT_REQUESTS = int(load_config().get("rate_limit_requests", 100) or 100)
         RATE_LIMIT_WINDOW = int(load_config().get("rate_limit_window", 60) or 60)
+        AUTH_FAIL_LIMIT = int(load_config().get("auth_fail_limit", 20) or 20)
 
         # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
         _rate_limit_lock = threading.Lock()
         _rate_limit_state = {}
+        _auth_fail_lock = threading.Lock()
+        _auth_fail_state = {}
+
+        def _normalize_client_ip(value):
+            if not isinstance(value, str):
+                return None
+            token = value.split(",", 1)[0].strip()
+            if not token:
+                return None
+            try:
+                return ipaddress.ip_address(token).compressed
+            except ValueError:
+                return None
+
+        def _client_identity(handler):
+            peer = handler.client_address[0] if handler.client_address else None
+            normalized_peer = _normalize_client_ip(peer)
+            if normalized_peer in ("127.0.0.1", "::1"):
+                connecting_ip = _normalize_client_ip(handler.headers.get("Cf-Connecting-IP"))
+                if connecting_ip:
+                    return f"cf:{connecting_ip}"
+            if normalized_peer:
+                return f"peer:{normalized_peer}"
+            return "peer:unknown"
 
         def _rate_limit_check(client_ip):
             # Returns (allowed, current_count). thread-safe.
@@ -1694,15 +1720,32 @@ final class CursorConnectorManager {
         def _rate_limit_record(client_ip, request_size=1):
             # Record a request for rate limiting. thread-safe.
             now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
             with _rate_limit_lock:
                 entries = _rate_limit_state.get(client_ip, [])
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
                 entries.append((now, request_size))
                 _rate_limit_state[client_ip] = entries
 
-        def _get_client_ip():
-            # Returns the client IP from the thread, or "unknown".
-            t = threading.current_thread()
-            return getattr(t, 'client_ip', "unknown")
+        def _auth_fail_record(client_ip, request_size=1):
+            now = time.time()
+            with _auth_fail_lock:
+                entries = _auth_fail_state.get(client_ip, [])
+                window_start = now - RATE_LIMIT_WINDOW
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                entries.append((now, request_size))
+                _auth_fail_state[client_ip] = entries
+                return sum(cnt for _, cnt in entries)
+
+        def _send_rate_limited(handler, limit):
+            retry_after = str(RATE_LIMIT_WINDOW)
+            handler.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+            handler.send_header("Retry-After", retry_after)
+            handler.send_header("X-RateLimit-Limit", str(limit))
+            handler.send_header("X-RateLimit-Remaining", "0")
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", "0")
+            handler.end_headers()
 
         def _is_health_path(path):
             return path.split("?", 1)[0] in ("/health", "/healthz")
@@ -1730,23 +1773,21 @@ final class CursorConnectorManager {
                 # Health checks are the only public endpoints.
                 if TUNNEL_ROTATION_TOKEN:
                     auth = self.headers.get("Authorization", "")
-                    if auth != f"Bearer {TUNNEL_ROTATION_TOKEN}":
-                        self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
+                    if not hmac.compare_digest(auth, f"Bearer {TUNNEL_ROTATION_TOKEN}"):
+                        client_identity = _client_identity(self)
+                        current = _auth_fail_record(client_identity)
+                        if current > AUTH_FAIL_LIMIT:
+                            _send_rate_limited(self, AUTH_FAIL_LIMIT)
+                        else:
+                            self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
                         return False
 
                 # Rate limiting on authenticated API requests only. Public
                 # health probes must not consume the user-visible tunnel quota.
-                client_ip = self.client_address[0] if self.client_address else "unknown"
-                allowed, current = _rate_limit_check(client_ip)
+                client_ip = _client_identity(self)
+                allowed, _current = _rate_limit_check(client_ip)
                 if not allowed:
-                    retry_after = str(RATE_LIMIT_WINDOW)
-                    self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
-                    self.send_header("Retry-After", retry_after)
-                    self.send_header("X-RateLimit-Limit", str(RATE_LIMIT_REQUESTS))
-                    self.send_header("X-RateLimit-Remaining", "0")
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
+                    _send_rate_limited(self, RATE_LIMIT_REQUESTS)
                     return False
 
                 return True
@@ -1756,7 +1797,7 @@ final class CursorConnectorManager {
                 if not self.check_auth():
                     return
                 # Record request for rate limiting after successful auth.
-                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
+                _rate_limit_record(_client_identity(self))
                 config = load_config()
                 if self.path.startswith("/v1/models"):
                     data = [{"id": mid, "object": "model", "created": 0, "owned_by": "openburnbar"} for mid in sorted(config["routes"].keys())]
@@ -1769,7 +1810,7 @@ final class CursorConnectorManager {
                 if not self.check_auth():
                     return
                 # Record request for rate limiting after successful auth.
-                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
+                _rate_limit_record(_client_identity(self))
                 config = load_config()
                 is_chat = self.path.startswith("/v1/chat/completions")
                 is_responses = self.path.startswith("/v1/responses")

@@ -371,6 +371,112 @@ final class CursorConnectorTests: XCTestCase {
         )
     }
 
+    func test_proxyScript_usesCfConnectingIPForIndependentRateLimitsAndCapsAuthFailures() async throws {
+        let directory = try makeTemporaryHome()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let scriptURL = directory.appendingPathComponent("cursor_connector_proxy.py")
+        let configURL = directory.appendingPathComponent("cursor_connector_proxy_config.json")
+        let usageLogURL = directory.appendingPathComponent("usage.jsonl")
+        let port = try availableLoopbackPort()
+        let bearerToken = "test-token-\(UUID().uuidString)"
+
+        try CursorConnectorManager.proxyScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        let config: [String: Any] = [
+            "port": port,
+            "session_token": "session-token",
+            "tunnel_rotation_token": bearerToken,
+            "secret_broker_url": "",
+            "secret_broker_token": "",
+            "rate_limit_requests": 1,
+            "rate_limit_window": 60,
+            "auth_fail_limit": 2,
+            "usage_log": usageLogURL.path,
+            "routes": [
+                "glm-5": [
+                    "provider": "zai",
+                    "base_url": "https://example.invalid/v1",
+                    "route_id": "route-zai"
+                ]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
+            .write(to: configURL, options: .atomic)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [scriptURL.path, configURL.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        defer {
+            process.terminate()
+            process.waitUntilExit()
+        }
+
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2
+        let session = URLSession(configuration: sessionConfig)
+        defer { session.invalidateAndCancel() }
+        let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
+        try await waitForProxyHealth(baseURL: baseURL, session: session)
+
+        let authHeaders = ["Authorization": "Bearer \(bearerToken)"]
+        let cfOneHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.10"], uniquingKeysWith: { _, new in new })
+        let cfTwoHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.11"], uniquingKeysWith: { _, new in new })
+
+        let firstClientStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfOneHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstClientStatus, 200)
+
+        let secondClientStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfTwoHeaders,
+            session: session
+        )
+        XCTAssertEqual(
+            secondClientStatus,
+            200,
+            "Distinct Cf-Connecting-IP identities must have independent request buckets."
+        )
+
+        let firstClientSecondStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfOneHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstClientSecondStatus, 429)
+
+        let badHeaders = ["Authorization": "Bearer definitely-wrong"]
+        let firstAuthFailStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: badHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstAuthFailStatus, 401)
+
+        let secondAuthFailStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: badHeaders,
+            session: session
+        )
+        XCTAssertEqual(secondAuthFailStatus, 401)
+
+        let thirdAuthFailStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: badHeaders,
+            session: session
+        )
+        XCTAssertEqual(
+            thirdAuthFailStatus,
+            429,
+            "Repeated auth failures should flip to 429 after the configured per-client cap."
+        )
+    }
+
     func test_routedClientSync_updatesBothFactoryConfigShapesAndPreservesExistingModels() throws {
         let home = try makeTemporaryHome()
         let factoryDirectory = home.appendingPathComponent(".factory", isDirectory: true)
