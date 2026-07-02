@@ -14,7 +14,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -115,26 +115,50 @@ const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME ||
   "hermes-realtime-relay-redis-prod-secure";
-const REQUIRED_BRANCH_CHECKS = [
-  "Fast Feedback Gate",
-  "App build + test (AgentLens)",
-  "guard",
-  "BurnBar AGPL product posture",
-  "Secret Detection (gitleaks)",
-  "Dependency Review (CVE check)",
-  "npm Audit (Node package locks)",
-  "Remote Installer Policy",
-  "Vendored Agent Provenance",
-  "Signal Activation Parity (fail-closed default)",
-  "Browser Target Policy (SSRF / DNS-rebinding)",
-  "OSV Scanner (open source vulnerabilities)",
-  "Hosted MCP Security Smoke",
-  "Hosted MCP Isolation Proofs (local, deterministic)",
-  "Firestore Security Rules Tests",
-  "Android ktlint",
-  "Analyze (javascript-typescript)",
-  "Analyze (python)",
-];
+// The required-status-check set is NOT hand-maintained here. It is read from the
+// governance source of truth (governance/branch-protection.main.json) so this
+// gate can never pass while live branch protection has drifted BELOW the desired
+// policy — the exact failure a stale local copy would hide (a check added to the
+// JSON but forgotten here). Only `required_status_checks.contexts` is consumed;
+// the segregated `_pending_required_status_checks` placeholders (e.g.
+// `diff-coverage (PR)`) live under a different key and are intentionally excluded
+// because no workflow emits them yet.
+const BRANCH_PROTECTION_SOURCE_OF_TRUTH =
+  process.env.OPENBURNBAR_BRANCH_PROTECTION_SOURCE ||
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "governance",
+    "branch-protection.main.json",
+  );
+
+export function loadRequiredBranchChecks(
+  sourcePath = BRANCH_PROTECTION_SOURCE_OF_TRUTH,
+) {
+  let raw;
+  try {
+    raw = readFileSync(sourcePath, "utf8");
+  } catch (error) {
+    throw new Error(
+      `cannot read branch-protection source of truth at ${sourcePath}: ${error.message}`,
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`invalid JSON in ${sourcePath}: ${error.message}`);
+  }
+  const contexts = parsed?.required_status_checks?.contexts;
+  if (!Array.isArray(contexts) || contexts.length === 0) {
+    // Fail closed: an empty/absent required set must halt the gate, never let it
+    // pass against a shorter (or empty) list of checks.
+    throw new Error(
+      `${sourcePath} has no required_status_checks.contexts; refusing to run the launch gate with an empty required-check set`,
+    );
+  }
+  return [...contexts];
+}
 const REQUIRED_CODEQL_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
@@ -784,6 +808,10 @@ function checkProtection() {
         .filter(Boolean)),
     ]),
   ];
+  const requiredBranchChecks = loadRequiredBranchChecks();
+  const missingRequiredChecks = requiredBranchChecks.filter(
+    (check) => !checks.includes(check),
+  );
   const pullRequestReviews = protection.required_pull_request_reviews || {};
   const reviewCount =
     pullRequestReviews.required_approving_review_count ?? 0;
@@ -807,10 +835,10 @@ function checkProtection() {
       staleReviewsDismissed &&
       latestPushApprovalRequired &&
       bypassAllowanceCount === 0 &&
-      REQUIRED_BRANCH_CHECKS.every((check) =>
-        checks.includes(check),
-      ),
+      missingRequiredChecks.length === 0,
     requiredChecks: checks,
+    desiredRequiredChecks: requiredBranchChecks,
+    missingRequiredChecks,
     codeOwnerReviewsRequired:
       pullRequestReviews.require_code_owner_reviews === true,
     staleReviewsDismissed,

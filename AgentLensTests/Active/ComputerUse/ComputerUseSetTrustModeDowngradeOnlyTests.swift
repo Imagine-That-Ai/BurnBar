@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import XCTest
+import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 

@@ -535,6 +535,16 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
+      - name: Prepare Signal FFI XCFramework for release app
+        env:
+          SIGNAL_FFI_BUILD_PROFILE: release
+          # The direct-download macOS release packages only the Mac app here.
+          # iOS/TestFlight artifacts are cut through the mobile lane, and the
+          # mobile test script prepares iOS slices when that gate is enabled.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+          CARGO_BUILD_JOBS: "2"
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
@@ -956,33 +966,57 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          OPENBURNBAR_NOTARY_OUTER_TIMEOUT_SECONDS: "2100"
+          OPENBURNBAR_STAPLER_OUTER_TIMEOUT_SECONDS: "600"
         run: |
           NOTARY_ARGS=(
             --key "$notary_key_path"
             --key-id "$APPLE_NOTARY_KEY_ID"
           )
 
+          run_notary_submit() {
+            local mode="$1"
+            shift
+
+            python3 scripts/ci/release-command-watchdog.py \
+              --mode "$mode" \
+              --outer-timeout-seconds "$OPENBURNBAR_NOTARY_OUTER_TIMEOUT_SECONDS" \
+              -- \
+              xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" "$@" --wait --timeout 30m
+          }
+
+          run_stapler() {
+            local mode="$1"
+            shift
+
+            python3 scripts/ci/release-command-watchdog.py \
+              --mode "$mode" \
+              --outer-timeout-seconds "$OPENBURNBAR_STAPLER_OUTER_TIMEOUT_SECONDS" \
+              -- \
+              xcrun stapler "$@" "$DMG_PATH"
+          }
+
           # Avoid using `notarytool history` as an auth probe because it can
           # trap on some runner/toolchain combinations. Probe by submit itself.
           if [[ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
             set +e
-            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait --timeout 30m
+            run_notary_submit "team API key" --issuer "$APPLE_NOTARY_ISSUER_ID"
             notary_status=$?
             set -e
             if [[ $notary_status -eq 0 ]]; then
               echo "Notary auth mode: team API key"
             else
               echo "::warning::Issuer-mode notarization failed; retrying without issuer (individual key mode)."
-              xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+              run_notary_submit "individual API key"
               echo "Notary auth mode: individual API key"
             fi
           else
-            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+            run_notary_submit "individual API key"
             echo "Notary auth mode: individual API key"
           fi
 
-          xcrun stapler staple "$DMG_PATH"
-          xcrun stapler validate "$DMG_PATH"
+          run_stapler "stapler staple" staple
+          run_stapler "stapler validate" validate
 
       - name: Create ZIP archive
         id: zip

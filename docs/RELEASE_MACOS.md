@@ -189,6 +189,13 @@ The workflow will:
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
 16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
 
+`notarytool` and `stapler` are wrapped by
+`scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
+is still passed to the inner notary request, and the wrapper enforces a separate
+process-group watchdog so a hung notarization or stapling attempt can retry the
+fallback auth mode or fail with a clear error instead of burning the entire
+protected release job timeout.
+
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.

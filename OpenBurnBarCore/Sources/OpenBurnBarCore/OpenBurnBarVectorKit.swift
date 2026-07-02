@@ -351,7 +351,17 @@ public struct BurnBarSemanticSearchConfig: Sendable {
     }
 
     /// Default configuration optimized for daemon use.
-    public static let `default` = BurnBarSemanticSearchConfig()
+    ///
+    /// Bounded by default so an on-device index can never grow without limit, mirroring
+    /// the resource-conscious intent of `.conservative`: the snapshot loader rejects any
+    /// index whose file exceeds `memoryBudgetMB` or whose vector count exceeds
+    /// `maxVectorCount` (semantic search then falls back to lexical), and vectors are
+    /// scalar-quantized to `UInt8`, cutting per-vector storage 4x versus `Float32`.
+    public static let `default` = BurnBarSemanticSearchConfig(
+        quantization: .scalarUInt8,
+        memoryBudgetMB: 256,
+        maxVectorCount: 500_000
+    )
 
     /// Conservative configuration for resource-constrained environments.
     public static let conservative = BurnBarSemanticSearchConfig(

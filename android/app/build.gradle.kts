@@ -116,8 +116,8 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.0.19"
+        versionCode = 33
+        versionName = "1.0.23"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution

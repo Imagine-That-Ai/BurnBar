@@ -29,6 +29,15 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     public let socketURL: URL
     public let authToken: String?
 
+    public static func resolvedSocketURL(environment: [String: String]) -> URL {
+        if let socketPath = environment["OPENBURNBAR_DAEMON_SOCKET_PATH"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_PATH"],
+           let trimmed = socketPath.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return URL(fileURLWithPath: trimmed, isDirectory: false)
+        }
+        return BurnBarDaemonPaths.defaultSocketURL
+    }
+
     public init(
         socketURL: URL = BurnBarDaemonPaths.defaultSocketURL,
         authToken: String? = nil

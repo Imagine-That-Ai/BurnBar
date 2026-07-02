@@ -1,9 +1,17 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def current_release_tag() -> str:
+    project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
+    match = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?', project_yml)
+    assert match is not None, "project.yml must declare MARKETING_VERSION"
+    return f"v{match.group(1)}"
 
 
 def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
@@ -17,8 +25,8 @@ def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
 
     assert result.returncode != 0
     assert "HOLD: BurnBar product release preflight is not ready" in result.stderr
-    assert "runtimeReadiness.status must be 'ready'" in result.stderr
-    assert "legal release review is not approved" in result.stderr
+    assert "legal release review is not approved: 'owner_attested_soft_approval'" in result.stderr
+    assert "legal release review pending evidence must explicitly say it is not legal approval" in result.stderr
 
 
 def test_release_preflight_rejects_pending_legal_template_as_release_approval():
@@ -43,8 +51,9 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
 def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
+    expected_release_tag = current_release_tag()
 
-    assert data["repo"]["releaseTag"] == "v1.0.19"
+    assert data["repo"]["releaseTag"] == expected_release_tag
 
     result = subprocess.run(
         [
@@ -52,7 +61,7 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
             "--expected-release-tag",
-            "v1.0.19",
+            expected_release_tag,
         ],
         cwd=ROOT,
         text=True,
@@ -187,6 +196,22 @@ def test_release_workflow_keeps_quiet_xcode_build_alive():
     assert "tail -n 40 \"$xcodebuild_log\"" in app_build_step
     assert "tail -n 200 \"$xcodebuild_log\"" in app_build_step
     assert "wait \"$xcodebuild_pid\"" in app_build_step
+
+
+def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    prepare_start = body.index("- name: Prepare Signal FFI XCFramework for release app")
+    lockfile_index = body.index("- name: Verify OpenBurnBar app SwiftPM lockfile")
+    resolve_index = body.index("- name: Resolve Xcode packages")
+    app_build_index = body.index("- name: Build Release .app (unsigned)")
+    prepare_step = body[prepare_start:lockfile_index]
+
+    assert prepare_start < lockfile_index < resolve_index < app_build_index
+    assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
+    assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
+    assert "CARGO_BUILD_JOBS: \"2\"" in prepare_step
+    assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
 
 
 def test_release_workflow_guards_owner_approved_validation_bypass():
@@ -495,10 +520,22 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'python3 - "$installed_cli_bin"' in script
     assert '[cli, "health"]' in script
     assert "subprocess.TimeoutExpired" in script
-    assert "timeout=2" in script
-    assert "health_deadline_seconds=30" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS" in script
+    assert "timeout=timeout" in script
+    assert "OpenBurnBarCLI health timed out after {timeout}s" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS" in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 45' in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 180' in script
+    assert '[[ "${GITHUB_ACTIONS:-}" == "true" ]]' in script
+    assert 'echo "::add-mask::$socket_auth_token"' in script
+    assert "--socket-auth-token-file" in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"' in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"' not in script
+    assert "<redacted>" in script
     assert 'while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]' in script
     assert "for attempt in {1..60}" not in script
+    assert "launchctl print" in script
+    assert "stat -f" in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
@@ -506,3 +543,16 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert '"method": "daemon.health"' not in script
     assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
+
+
+def test_daemon_token_file_arguments_override_inherited_environment():
+    daemon_main = (
+        ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift"
+    ).read_text(encoding="utf-8")
+
+    assert 'var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]' in daemon_main
+    assert 'var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]' in daemon_main
+    assert 'gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert 'socketAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert "if gatewayAuthToken == nil" not in daemon_main
+    assert "if socketAuthToken == nil" not in daemon_main

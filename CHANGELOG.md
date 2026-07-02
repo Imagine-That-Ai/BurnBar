@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-07-01
+
+### Fixed
+
+- **macOS release libsignal link** — prepares the ignored
+  `OpenBurnBarSignalFfiMac.xcframework` from the vendored libsignal submodule
+  inside the protected release workflow before Xcode resolves packages or links
+  the Developer ID app, so the public DMG no longer depends on a developer's
+  local FFI build output.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 33 / `versionName` `1.0.23` so Google Play receives the same
+  release cut as the website retry.
+
+## [1.0.22] - 2026-07-01
+
+### Fixed
+
+- **Release notarization watchdog** — supersedes the wedged `v1.0.21` macOS
+  publish run after the signed DMG entered the Apple notarize/staple step and
+  never returned from the old unbounded shell command. Release CI now wraps
+  `notarytool` and `stapler` in a process-group watchdog so Apple-tool hangs
+  retry or fail with clear logs instead of consuming the protected release job.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 32 / `versionName` `1.0.22` for the fixed release cut.
+
+## [1.0.21] - 2026-07-01
+
+### Fixed
+
+- **Release smoke auth hardening** — pulls the public release forward from the
+  failed `v1.0.20` tag to the newest `main` commit and closes the release-smoke
+  token leak: the smoke daemon now receives its socket auth token from a chmod
+  600 token file instead of LaunchAgent environment, diagnostics redact token
+  fields, local smoke runs no longer print the raw GitHub mask command, and
+  explicit token-file arguments override stale inherited launchd auth.
+- **Fresh mobile release build** — bumps the iOS, iPadOS, widget, and keyboard
+  build number to `81` so the TestFlight upload for this release is unique and
+  tied to the same source cut as the macOS and Android artifacts.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 31 / `versionName` `1.0.21` so Google Play receives the same
+  release cut as the website and Apple lanes.
+
+## [1.0.20] - 2026-07-01
+
+### Fixed
+
+- **Release DMG smoke resilience** — supersedes the failed `v1.0.19` publish
+  run after the signed app, notarized DMG, Android AAB, and provenance artifacts
+  built successfully but the macOS 15 smoke runner timed out during the
+  installed-layout daemon/CLI health handshake. The gate still requires the
+  mounted DMG to launch the app and authenticate through the signed CLI, but it
+  now gives first-run code-signature validation realistic cold-runner headroom
+  and emits launchd/socket diagnostics if health does not come up.
+
 ## [1.0.19] - 2026-07-01
 
 ### Fixed

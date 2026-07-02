@@ -9,6 +9,11 @@ name: Confidentiality Guard
 # Engine:  scripts/security/scan-internal-content.mjs
 # Docs:    docs/security/CONFIDENTIALITY_POLICY.md
 #
+# The `guard` job is a REQUIRED status check (see governance/branch-protection.main.json),
+# so it is also the fail-closed home for the branch-protection bypass-recipe guard
+# (scripts/ci/check-no-bypass-recipe.sh, R-G3): a required lane guarantees a future PR
+# that re-adds an admin-enforcement-disable recipe cannot merge undetected.
+#
 # Branch protection should require the "Confidentiality Guard / guard" check.
 
 on:
@@ -53,3 +58,9 @@ jobs:
 
       - name: Self-test public evidence redaction guard
         run: node --test scripts/security/__tests__/check-public-evidence-redaction.test.mjs
+
+      - name: Run branch-protection bypass-recipe guard (fail-closed)
+        run: bash scripts/ci/check-no-bypass-recipe.sh
+
+      - name: Self-test bypass-recipe guard
+        run: bash scripts/ci/check-no-bypass-recipe.test.sh
