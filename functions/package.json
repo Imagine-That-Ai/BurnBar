@@ -64,6 +64,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "check:region-literals": "node ../scripts/ci/check-region-literals.mjs",
+    "check:callable-validation": "node ../scripts/ci/check-callable-validation.mjs",
     "test:unit": "vitest run --reporter=verbose",
     "test:unit:coverage": "vitest run --reporter=verbose --reporter=json --coverage",
     "test:integration": "FUNCTIONS_EMULATOR=true vitest run --testPathPattern=integration"

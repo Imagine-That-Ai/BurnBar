@@ -145,6 +145,14 @@ jobs:
       - name: Verify resilience wiring (ops)
         run: bash scripts/ci/verify-resilience-wiring.sh
 
+      - name: Verify callable input validation (security ratchet)
+        # R-S1: every new callable that reads a client payload must validate it.
+        # Self-test the scanner first, then run the shrink-only offender ratchet so
+        # an unvalidated callable can never merge without failing this gate.
+        run: |
+          node --test scripts/ci/check-callable-validation.test.mjs
+          node scripts/ci/check-callable-validation.mjs
+
   android:
     name: Android
     runs-on: ubuntu-latest

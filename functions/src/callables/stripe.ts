@@ -18,7 +18,6 @@ import {
   STRIPE_WEBHOOK_SECRETS,
   GOOGLE_PLAY_ACTIVE_STATES,
   nowISO,
-  boundedTrimmedString,
   sha256Hex,
   requireConfiguredStripe,
   requireConfiguredStripeWebhookSecret,
@@ -33,6 +32,7 @@ import {
   writeBurnBarProEntitlement,
 } from "./shared.js";
 import Stripe from "stripe";
+import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "./stripeInputSchemas.js";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
 import {
   allowanceDocPath,
@@ -378,9 +378,8 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       enforceAuthAndAppCheck(request, uid);
 
       const cfg = getConfig();
-      const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
-      const productID =
-        boundedTrimmedString(request.data.productID, "productID", 256, false) ?? cfg.googlePlaySubscriptionProductID;
+      const { purchaseToken, productID: requestedProductID } = parseGooglePlayProSubscriptionInput(request.data);
+      const productID = requestedProductID ?? cfg.googlePlaySubscriptionProductID;
       const entitlementTarget = googlePlaySubscriptionEntitlement(productID);
 
       // Lazy-load googleapis (~500ms) so every other function skips it on cold start.
@@ -490,8 +489,7 @@ export const verifyGooglePlayCloudProTopUp = onCall(
       await assertActiveBurnBarCloudProEntitlement(uid);
 
       const cfg = getConfig();
-      const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
-      const productID = boundedTrimmedString(request.data.productID, "productID", 256, true);
+      const { purchaseToken, productID } = parseGooglePlayTopUpInput(request.data);
       const kind = googlePlayTopUpKind(productID);
       const tokenHash = sha256Hex(purchaseToken);
 
