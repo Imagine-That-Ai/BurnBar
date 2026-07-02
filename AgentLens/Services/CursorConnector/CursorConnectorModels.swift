@@ -109,10 +109,12 @@ struct TunnelState: Codable, Hashable {
     /// Rotatable bearer token used to authenticate requests to the proxy.
     /// Regenerated on each connect to invalidate tokens from previous sessions.
     var tunnelRotationToken: String?
-    /// Maximum requests per client IP per rate-limit window. Default 100.
+    /// Maximum requests per client per rate-limit window. Default 100.
     var tunnelRateLimitRequests: Int
     /// Rate-limit window in seconds. Default 60.
     var tunnelRateLimitWindow: Int
+    /// Maximum failed auth attempts per client per rate-limit window. Default 20.
+    var tunnelAuthFailLimit: Int?
 
     init(
         mode: TunnelMode = .quick,
@@ -123,7 +125,8 @@ struct TunnelState: Codable, Hashable {
         lastVerifiedAt: Date? = nil,
         tunnelRotationToken: String? = nil,
         tunnelRateLimitRequests: Int = 100,
-        tunnelRateLimitWindow: Int = 60
+        tunnelRateLimitWindow: Int = 60,
+        tunnelAuthFailLimit: Int? = nil
     ) {
         self.mode = mode
         self.publicBaseURL = publicBaseURL
@@ -134,6 +137,7 @@ struct TunnelState: Codable, Hashable {
         self.tunnelRotationToken = tunnelRotationToken
         self.tunnelRateLimitRequests = tunnelRateLimitRequests
         self.tunnelRateLimitWindow = tunnelRateLimitWindow
+        self.tunnelAuthFailLimit = tunnelAuthFailLimit
     }
 }
 
