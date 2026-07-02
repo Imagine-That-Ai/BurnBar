@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-02T04:43:02Z",
+  "generatedAt": "2026-07-02T13:05:30Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "release/v1.0.25",
-    "originMain": "e3413a576e",
-    "releaseTag": "v1.0.25"
+    "branch": "release/v1.0.26-prep",
+    "originMain": "cd364f1d11",
+    "releaseTag": "v1.0.26"
   },
-  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG and the v1.0.24 publish job exposed a macOS Bash compatibility defect.",
+  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the newest main chat launch stability fixes were validated locally and need to replace the v1.0.25 public DMG.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-07-02T04:43:02Z",
+    "attestedAt": "2026-07-02T13:05:30Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the newest-main signed and notarized macOS direct-download artifact after v1.0.24 built, signed, notarized, and passed the packaged DMG smoke test, but the GitHub release publish job failed because the macOS runner's Bash 3.2 shell does not provide mapfile. This v1.0.25 retry keeps the release train on current main and fixes the publish lane so users stop receiving stale-download, Gatekeeper, missing-Firebase-auth, menu-bar, and mobile launch regressions.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.25 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.25 public release lane.",
+    "emergencyReason": "Publish the newest-main signed and notarized macOS direct-download artifact after v1.0.25 shipped before the dashboard/popover chat launch crash fixes. This v1.0.26 retry keeps the release train on current main and ships the locally validated Claude, Hermes, and Codex chat launch stability fixes so users stop receiving a crashing or dead chat surface.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.26 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.26 public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.25",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.26",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {
