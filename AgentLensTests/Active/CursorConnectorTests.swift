@@ -465,15 +465,12 @@ final class CursorConnectorTests: XCTestCase {
         )
         XCTAssertEqual(secondAuthFailStatus, 401)
 
-        let thirdAuthFailStatus = try await proxyResponseStatus(
-            baseURL.appendingPathComponent("v1/models"),
-            headers: badHeaders,
-            session: session
-        )
+        let malformedAuthorization = Array("Bearer definitely-wrong-".utf8) + [0xff]
+        let thirdAuthFailStatus = try rawProxyResponseStatus(port: port, authorizationBytes: malformedAuthorization)
         XCTAssertEqual(
             thirdAuthFailStatus,
             429,
-            "Repeated auth failures should flip to 429 after the configured per-client cap."
+            "Malformed non-ASCII bearer headers should count as auth failures instead of aborting compare_digest."
         )
     }
 
@@ -645,6 +642,62 @@ final class CursorConnectorTests: XCTestCase {
         }
         let (_, response) = try await session.data(for: request)
         return try XCTUnwrap(response as? HTTPURLResponse).statusCode
+    }
+
+    private func rawProxyResponseStatus(port: Int, authorizationBytes: [UInt8]) throws -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { close(fd) }
+
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(port).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let connectResult = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connectResult == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        var request = Data()
+        request.append(Data("GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nAuthorization: ".utf8))
+        request.append(contentsOf: authorizationBytes)
+        request.append(Data("\r\n\r\n".utf8))
+        let bytesSent = request.withUnsafeBytes { rawBuffer in
+            Darwin.send(fd, rawBuffer.baseAddress, rawBuffer.count, 0)
+        }
+        guard bytesSent == request.count else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        var response = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { rawBuffer in
+                Darwin.recv(fd, rawBuffer.baseAddress, rawBuffer.count, 0)
+            }
+            if count > 0 {
+                response.append(contentsOf: buffer.prefix(count))
+            } else {
+                break
+            }
+        }
+
+        let responseText = String(decoding: response, as: UTF8.self)
+        let statusLine = try XCTUnwrap(responseText.components(separatedBy: "\r\n").first)
+        let parts = statusLine.split(separator: " ")
+        return try XCTUnwrap(Int(parts[1]))
     }
 }
 

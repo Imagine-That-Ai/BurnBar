@@ -1311,6 +1311,14 @@ final class CursorConnectorManager {
             handler.send_header("Content-Type", "application/json")
             handler.send_header("Content-Length", "0")
             handler.end_headers()
+
+        def _constant_time_ascii_equal(value, expected):
+            if not isinstance(value, str) or not isinstance(expected, str):
+                return False
+            try:
+                return hmac.compare_digest(value.encode("ascii"), expected.encode("ascii"))
+            except UnicodeEncodeError:
+                return False
         """
     }
 
@@ -1776,7 +1784,7 @@ final class CursorConnectorManager {
                 # Health checks are the only public endpoints.
                 if TUNNEL_ROTATION_TOKEN:
                     auth = self.headers.get("Authorization", "")
-                    if not hmac.compare_digest(auth, f"Bearer {TUNNEL_ROTATION_TOKEN}"):
+                    if not _constant_time_ascii_equal(auth, f"Bearer {TUNNEL_ROTATION_TOKEN}"):
                         client_identity = _client_identity(self)
                         current = _auth_fail_record(client_identity)
                         if current > AUTH_FAIL_LIMIT:
