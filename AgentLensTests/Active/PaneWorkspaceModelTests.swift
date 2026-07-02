@@ -12,11 +12,13 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        PaneWorkspaceModel.resetSharedForTesting()
         UserDefaults.standard.removeObject(forKey: layoutKey)
     }
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: layoutKey)
+        PaneWorkspaceModel.resetSharedForTesting()
         super.tearDown()
     }
 
@@ -280,6 +282,124 @@ final class PaneWorkspaceModelTests: XCTestCase {
         ws.splitActive(axis: .horizontal)
         XCTAssertEqual(ws.boundThreadIDs, Set(ws.leaves.map { $0.controller.activeThreadID }))
         XCTAssertEqual(ws.boundThreadIDs.count, 2)
+    }
+
+    // MARK: - Tabs
+
+    func test_newTab_closeAndReopen_restoresClosedTab() throws {
+        let ws = try makeWorkspace()
+        let originalTabID = ws.selectedTabID
+        ws.newTab()
+        let newTabID = ws.selectedTabID
+
+        XCTAssertEqual(ws.tabs.count, 2)
+        XCTAssertNotEqual(newTabID, originalTabID)
+
+        ws.closeTab(newTabID)
+        XCTAssertEqual(ws.tabs.count, 1)
+        XCTAssertEqual(ws.selectedTabID, originalTabID)
+
+        ws.reopenClosedTab()
+        XCTAssertEqual(ws.tabs.count, 2)
+        XCTAssertNotEqual(ws.selectedTabID, originalTabID)
+        XCTAssertEqual(ws.paneCount, 1)
+    }
+
+    func test_closeOtherTabs_keepsRequestedTabAndRehomesPrimary() throws {
+        let ws = try makeWorkspace()
+        ws.newTab()
+        let keptTabID = ws.selectedTabID
+        ws.newTab()
+
+        ws.closeOtherTabs(keeping: keptTabID)
+
+        XCTAssertEqual(ws.tabs.map(\.id), [keptTabID])
+        XCTAssertEqual(ws.selectedTabID, keptTabID)
+        XCTAssertEqual(ws.allLeaves.filter { $0.isPrimary }.count, 1)
+        XCTAssertTrue(ws.allLeaves.contains { $0.controller === ws.primaryController })
+    }
+
+    func test_tabMetadataAndPaneMetadata_roundTripThroughV2Snapshot() throws {
+        let ws = try makeWorkspace()
+        let tabID = ws.selectedTabID
+        let leafID = ws.activeLeafID
+        ws.renameTab(tabID, title: "Ops")
+        ws.setTabColor(tabID, colorToken: .amber)
+        ws.renamePane(leafID, title: "Build lane")
+        ws.setPaneColor(leafID, colorToken: .success)
+        ws.setPaneAlertsEnabled(leafID, enabled: false)
+        ws.persist()
+
+        let primary2 = try makeController()
+        let restored = PaneWorkspaceModel.restore(
+            primaryController: primary2,
+            dataStore: primary2.dataStore,
+            settingsManager: primary2.settingsManager
+        )
+        let restoredTab = try XCTUnwrap(restored.tabs.first)
+        let restoredLeaf = try XCTUnwrap(restored.leaves.first)
+
+        XCTAssertEqual(restoredTab.title, "Ops")
+        XCTAssertEqual(restoredTab.colorToken, .amber)
+        XCTAssertEqual(restoredLeaf.customTitle, "Build lane")
+        XCTAssertEqual(restoredLeaf.colorToken, .success)
+        XCTAssertFalse(restoredLeaf.alertsEnabled)
+    }
+
+    func test_moveToNewTab_splitsPaneOutOfCurrentTab() throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let movedPaneID = ws.activeLeafID
+
+        ws.moveToNewTab(movedPaneID)
+
+        XCTAssertEqual(ws.tabs.count, 2)
+        XCTAssertEqual(ws.paneCount, 1)
+        XCTAssertEqual(ws.activeLeafID, movedPaneID)
+        XCTAssertTrue(ws.tabs.contains { $0.leaves.contains { $0.id == movedPaneID } })
+    }
+
+    func test_toggleZoomActive_tracksSelectedTabOnly() throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let zoomedPaneID = ws.activeLeafID
+
+        ws.toggleZoomActive()
+
+        XCTAssertEqual(ws.selectedTab.zoomedPaneID, zoomedPaneID)
+
+        ws.toggleZoomActive()
+
+        XCTAssertNil(ws.selectedTab.zoomedPaneID)
+    }
+
+    func test_unseenCompletion_marksHiddenPaneAndJumpFocusesIt() throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let hiddenPaneID = ws.activeLeafID
+        let hiddenLeaf = try XCTUnwrap(ws.leaf(hiddenPaneID))
+        hiddenLeaf.alertsEnabled = false
+        ws.mountedViewCount = 0
+
+        ws.handleStreamSettled(leafID: hiddenPaneID, outcome: .completed)
+
+        XCTAssertNotNil(hiddenLeaf.unseenCompletionAt)
+        XCTAssertTrue(ws.unseenThreadIDs.contains(hiddenLeaf.controller.activeThreadID))
+
+        ws.mountedViewCount = 1
+        ws.jumpToMostRecentUnseen()
+
+        XCTAssertEqual(ws.activeLeafID, hiddenPaneID)
+        XCTAssertNil(hiddenLeaf.unseenCompletionAt)
+    }
+
+    func test_boundThreadIDs_spansAllTabs() throws {
+        let ws = try makeWorkspace()
+        let firstThreadID = ws.activeController.activeThreadID
+        ws.newTab()
+        let secondThreadID = ws.activeController.activeThreadID
+
+        XCTAssertEqual(ws.boundThreadIDs, Set([firstThreadID, secondThreadID]))
     }
 
     // MARK: - Drop binding

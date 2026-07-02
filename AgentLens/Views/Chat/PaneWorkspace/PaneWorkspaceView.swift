@@ -12,30 +12,67 @@ struct PaneWorkspaceView: View {
     var onJumpToConversation: (ConversationJumpTarget) -> Void = { _ in }
 
     var body: some View {
-        PaneNodeView(
-            node: workspace.root,
-            workspace: workspace,
-            settingsManager: settingsManager,
-            onJumpToConversation: onJumpToConversation
-        )
-        .id(workspace.root.id)
-        .background { shortcuts }
+        Group {
+            if let zoomedPaneID = workspace.selectedTab.zoomedPaneID,
+               let leaf = workspace.leaf(zoomedPaneID) {
+                PaneConversationView(
+                    controller: leaf.controller,
+                    settingsManager: settingsManager,
+                    workspace: workspace,
+                    leafID: leaf.id,
+                    onJumpToConversation: onJumpToConversation
+                )
+                .id(leaf.id)
+            } else {
+                PaneNodeView(
+                    node: workspace.root,
+                    workspace: workspace,
+                    settingsManager: settingsManager,
+                    onJumpToConversation: onJumpToConversation
+                )
+                .id(workspace.root.id)
+            }
+        }
+        .id(workspace.selectedTabID)
+        .background { ChatWorkspaceShortcuts(workspace: workspace) }
+        .onAppear { workspace.mountedViewCount += 1 }
+        .onDisappear { workspace.mountedViewCount = max(0, workspace.mountedViewCount - 1) }
     }
+}
 
-    /// ⌘D / ⌘⇧D split the active pane; ⌘W closes it. ⌘W is mounted ONLY while tiled, so a
-    /// single-pane ⌘W falls through to the standard macOS window close (a disabled shortcut
-    /// would be version-fragile). Hidden buttons keep the shortcuts in the responder chain
-    /// without taking layout space.
-    @ViewBuilder
-    private var shortcuts: some View {
+/// Hidden controls keep workspace commands in the responder chain without taking layout.
+private struct ChatWorkspaceShortcuts: View {
+    var workspace: PaneWorkspaceModel
+
+    var body: some View {
         ZStack {
             Button("") { workspace.splitActive(axis: .horizontal) }
                 .keyboardShortcut("d", modifiers: .command)
             Button("") { workspace.splitActive(axis: .vertical) }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
-            if workspace.paneCount > 1 {
-                Button("") { workspace.closeActive() }
+            Button("") { workspace.newTab() }
+                .keyboardShortcut("t", modifiers: .command)
+            Button("") { workspace.reopenClosedTab() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+            Button("") { workspace.selectAdjacentTab(offset: -1) }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+            Button("") { workspace.selectAdjacentTab(offset: 1) }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("") { workspace.toggleZoomActive() }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+            Button("") { workspace.jumpToMostRecentUnseen() }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+            Button("") { workspace.focusAdjacentPane(offset: -1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+            Button("") { workspace.focusAdjacentPane(offset: 1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+            if workspace.paneCount > 1 || workspace.tabs.count > 1 {
+                Button("") { _ = workspace.performCloseShortcut() }
                     .keyboardShortcut("w", modifiers: .command)
+            }
+            ForEach(Array(workspace.tabs.prefix(9).enumerated()), id: \.element.id) { idx, tab in
+                Button("") { workspace.selectTab(tab.id) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
             }
         }
         .hidden()

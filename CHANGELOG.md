@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tabbed Chat pane workspaces** — extends the cmux-style Chat tiling surface
+  with multiple conversation tabs, tab restore/reopen, per-tab names/colors,
+  per-pane names/colors, pane zoom, pane-to-tab moves, drag-to-swap panes, and
+  rail indicators that distinguish open panes from hidden panes with completed
+  background replies. Completion alerts now route through local notifications
+  and focus the relevant pane when tapped. The workspace persists via a v2
+  snapshot while still migrating the original v1 tiling layout.
+
 ## [1.0.24] - 2026-07-02
 
 ### Fixed
