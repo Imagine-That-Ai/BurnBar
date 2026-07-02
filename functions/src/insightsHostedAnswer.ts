@@ -103,6 +103,7 @@ const DEFAULT_MODEL_SLUG = "minimax/minimax-m2";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
 const DEFAULT_MAX_PROMPT_CHARS = 8000;
+const DEFAULT_MAX_USER_PROMPT_CHARS = 12000;
 // Default-model pricing lives in pricing.ts (single source of truth for
 // hardcoded USD rates in functions).
 
@@ -512,10 +513,6 @@ export const insightsHostedAnswer = onCall(
           "Hosted fallback is unconfigured: OPENROUTER_API_KEY secret is empty.",
         );
       }
-      // Bound owner OpenRouter spend per uid after the request has passed
-      // validation, secret preflight, and qualifies as a billable hosted answer.
-      await checkHostedInsightsAnswerRateLimit(uid);
-
       const modelSlug = (process.env.INSIGHTS_HOSTED_FALLBACK_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
       const baseURL = (process.env.INSIGHTS_HOSTED_FALLBACK_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;
       const modelDisplayName = (process.env.INSIGHTS_HOSTED_FALLBACK_DISPLAY_NAME ?? "").trim() || DEFAULT_DISPLAY_NAME;
@@ -523,6 +520,23 @@ export const insightsHostedAnswer = onCall(
       const digestSummary = digestSummaryFor(rawRequest);
       const systemPrompt = systemPromptText();
       const userPrompt = userPromptText({ prompt, digestSummary });
+      const maxUserPromptChars = Math.max(
+        1,
+        Math.floor(
+          parseNumericEnv("INSIGHTS_HOSTED_FALLBACK_MAX_USER_PROMPT_CHARS", DEFAULT_MAX_USER_PROMPT_CHARS),
+        ),
+      );
+      if (userPrompt.length > maxUserPromptChars) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Hosted fallback payload is too long: max ${maxUserPromptChars} characters, got ${userPrompt.length}.`,
+        );
+      }
+
+      // Bound owner OpenRouter spend per uid after the request has passed
+      // validation, secret preflight, payload-size cap, and qualifies as a
+      // billable hosted answer.
+      await checkHostedInsightsAnswerRateLimit(uid);
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 45_000);

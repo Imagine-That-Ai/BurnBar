@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ALICE_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc } from "./bola/callableBolaHarness.js";
 
 const PROMPT_CAP_ENV = "INSIGHTS_HOSTED_FALLBACK_MAX_PROMPT_CHARS";
+const USER_PROMPT_CAP_ENV = "INSIGHTS_HOSTED_FALLBACK_MAX_USER_PROMPT_CHARS";
 const NOW = "2026-06-25T09:30:00.000Z";
 
 const mocks = vi.hoisted(() => ({
@@ -96,6 +97,7 @@ describe("insightsHostedAnswer prompt cap", () => {
 
   afterEach(() => {
     delete process.env[PROMPT_CAP_ENV];
+    delete process.env[USER_PROMPT_CAP_ENV];
   });
 
   it("rejects oversized prompts before it reaches OpenRouter", async () => {
@@ -131,6 +133,34 @@ describe("insightsHostedAnswer prompt cap", () => {
     ).rejects.toMatchObject({
       code: "failed-precondition",
       message: expect.stringContaining("OPENROUTER_API_KEY"),
+    });
+
+    expect([...mocks.store.keys()].filter((key) => key.startsWith("public_rate_limits/"))).toEqual([]);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized digest payloads before it reaches OpenRouter or consumes quota", async () => {
+    process.env[PROMPT_CAP_ENV] = "1000";
+    process.env[USER_PROMPT_CAP_ENV] = "700";
+    const run = callableRunner(insightsHostedAnswer);
+
+    await expect(
+      run(
+        callableRequest(ALICE_UID, {
+          instruction: "answerFollowUp",
+          request: {
+            prompt: "Summarize this.",
+            context: {
+              digest: {
+                totals: { inflated: "x".repeat(2000) },
+              },
+            },
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid-argument",
+      message: expect.stringContaining("Hosted fallback payload is too long"),
     });
 
     expect([...mocks.store.keys()].filter((key) => key.startsWith("public_rate_limits/"))).toEqual([]);
