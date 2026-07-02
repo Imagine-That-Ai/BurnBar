@@ -333,6 +333,11 @@ final class ComputerUseRuntimeController: ObservableObject {
                 self.panelModel.liveTrustMode = state?.liveTrustMode ?? .manual
                 self.panelModel.auditHeadHashHex = state?.auditChainHeadHashHex
                 self.panelModel.currentSessionStartedAt = state?.manifest.startedAt
+                // A session is live only until it ends (`endedAt` is stamped by
+                // every teardown path); the retained post-end `state` is just a
+                // seed for the next session. Mirrors the `activeSessionId`
+                // liveness gate on the authoritative `setTrustMode` clamp.
+                self.panelModel.isSessionActive = state.map { $0.endedAt == nil } ?? false
                 if state == nil {
                     self.stopPanicMonitoring()
                 }
