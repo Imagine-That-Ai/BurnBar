@@ -180,6 +180,12 @@ pub trait Packetizer: Send {
     ) -> Result<(), MediaError>;
 }
 
+/// Maximum packets allowed in a single frame.
+///
+/// The same cap is enforced before emission and while receiving so the local
+/// packetizer never creates frames the depacketizer will reject.
+const MAX_PACKETS_PER_FRAME: u16 = 4096;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DatagramPacketizer {
     stream_id: u16,
@@ -206,9 +212,9 @@ impl Packetizer for DatagramPacketizer {
 
         let chunk_len = max_datagram_payload - MEDIA_DATAGRAM_HEADER_LEN;
         let packet_count_usize = frame.bytes.len().div_ceil(chunk_len);
-        if packet_count_usize > u16::MAX as usize {
+        if packet_count_usize > MAX_PACKETS_PER_FRAME as usize {
             return Err(MediaError::Packetize(format!(
-                "frame requires {packet_count_usize} packets, exceeds u16 packet_count"
+                "frame requires {packet_count_usize} packets, exceeds maximum {MAX_PACKETS_PER_FRAME}"
             )));
         }
         let packet_count = u16::try_from(packet_count_usize).map_err(|_| {
@@ -263,14 +269,6 @@ struct PartialFrame {
     expected_count: u16,
     packets: BTreeMap<u16, Bytes>,
 }
-
-/// Maximum packets allowed in a single reassembled frame.
-///
-/// Even at the maximum u16 payload of 65535 bytes per packet, this bounds one
-/// frame to roughly 256 MiB. With smaller packets it still allows multi-MiB
-/// frames, which is far above any real video frame while keeping reassembly
-/// work bounded.
-const MAX_PACKETS_PER_FRAME: u16 = 4096;
 
 /// Upper bound applied to `max_incomplete_frames` when constructing the
 /// depacketizer.
@@ -899,6 +897,36 @@ mod tests {
         assert_eq!(out.stream_id, 3);
         assert_eq!(out.dependency, FrameDependency::Key);
         assert_eq!(out.bytes.len(), 4_096);
+    }
+
+    #[test]
+    fn packetizer_enforces_depacketizer_packet_count_cap() {
+        let mut packetizer = DatagramPacketizer::new(4);
+        let mut packets = Vec::new();
+        let one_byte_payload = MEDIA_DATAGRAM_HEADER_LEN + 1;
+        let boundary_frame = EncodedFrame {
+            metadata: frame_metadata(12),
+            codec: Codec::Av1,
+            dependency: FrameDependency::Delta,
+            bytes: Bytes::from(vec![42u8; MAX_PACKETS_PER_FRAME as usize]),
+        };
+
+        must(
+            packetizer.packetize(boundary_frame, one_byte_payload, &mut packets),
+            "boundary frame should packetize",
+        );
+        assert_eq!(packets.len(), MAX_PACKETS_PER_FRAME as usize);
+
+        let oversized_frame = EncodedFrame {
+            metadata: frame_metadata(13),
+            codec: Codec::Av1,
+            dependency: FrameDependency::Delta,
+            bytes: Bytes::from(vec![42u8; MAX_PACKETS_PER_FRAME as usize + 1]),
+        };
+        match packetizer.packetize(oversized_frame, one_byte_payload, &mut packets) {
+            Err(MediaError::Packetize(_)) => {}
+            other => panic!("expected packetize error, got {other:?}"),
+        }
     }
 
     #[test]
