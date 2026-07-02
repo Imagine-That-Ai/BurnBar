@@ -505,10 +505,6 @@ export const insightsHostedAnswer = onCall(
           `Hosted fallback only handles answerFollowUp / generateReport (got "${instruction}").`,
         );
       }
-      // Bound owner OpenRouter spend per uid after the request has passed
-      // validation and qualifies as a billable hosted answer.
-      await checkHostedInsightsAnswerRateLimit(uid);
-
       const apiKey = OPENROUTER_API_KEY.value().trim();
       if (!apiKey) {
         throw new HttpsError(
@@ -516,6 +512,9 @@ export const insightsHostedAnswer = onCall(
           "Hosted fallback is unconfigured: OPENROUTER_API_KEY secret is empty.",
         );
       }
+      // Bound owner OpenRouter spend per uid after the request has passed
+      // validation, secret preflight, and qualifies as a billable hosted answer.
+      await checkHostedInsightsAnswerRateLimit(uid);
 
       const modelSlug = (process.env.INSIGHTS_HOSTED_FALLBACK_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
       const baseURL = (process.env.INSIGHTS_HOSTED_FALLBACK_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;

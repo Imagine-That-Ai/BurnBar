@@ -115,4 +115,25 @@ describe("insightsHostedAnswer prompt cap", () => {
     });
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
+
+  it("does not consume hosted-answer quota when OpenRouter is unconfigured", async () => {
+    mocks.secretValues.delete("OPENROUTER_API_KEY");
+    process.env[PROMPT_CAP_ENV] = "100";
+    const run = callableRunner(insightsHostedAnswer);
+
+    await expect(
+      run(
+        callableRequest(ALICE_UID, {
+          instruction: "answerFollowUp",
+          request: { prompt: "Can you summarize this?" },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "failed-precondition",
+      message: expect.stringContaining("OPENROUTER_API_KEY"),
+    });
+
+    expect([...mocks.store.keys()].filter((key) => key.startsWith("public_rate_limits/"))).toEqual([]);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
 });
