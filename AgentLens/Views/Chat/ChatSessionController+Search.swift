@@ -75,12 +75,9 @@ extension ChatSessionController {
     /// retains `self` via `guard let self` — and `deinit` never cancels the
     /// `cliBridge`. The pane workspace calls this before dropping the leaf.
     ///
-    /// This intentionally does NOT revoke the desktop-control grant: grants are
-    /// keyed process-wide by `(runtimeID, threadID)`, so a sibling pane showing the
-    /// same thread on the same backend may still be using it. Cancelling the stream
-    /// stops this pane from issuing further tool calls; the grant TTL-expires on its
-    /// own. (Thread-switch paths still revoke, because there the live controller is
-    /// leaving the thread rather than being destroyed.)
+    /// Desktop-control grant revocation is coordinated by `PaneWorkspaceModel`,
+    /// because only the workspace can tell whether another live pane still owns the
+    /// same `(runtimeID, threadID)` authorization.
     func teardownForPaneClose() {
         onStreamSettled = nil
         streamTask?.cancel()

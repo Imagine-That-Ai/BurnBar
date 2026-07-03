@@ -1,5 +1,6 @@
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 
 /// Unit tests for the cmux-style pane-tiling tree (`PaneWorkspaceModel`): split, close
@@ -173,6 +174,120 @@ final class PaneWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(ws.activeLeafID, survivor.id, "focus moves to the busy survivor instead")
         XCTAssertTrue(survivor.controller.sendInFlight, "the survivor stream/send state must remain untouched")
         survivor.controller.sendInFlight = false
+    }
+
+    func test_closeActive_nonPrimaryRevokesLastPaneDesktopControlGrant() throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let closingLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        closingLeaf.controller.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        let runtimeID = closingLeaf.controller.assistantRuntimeID(for: closingLeaf.controller.chatBackend)
+        let threadID = closingLeaf.controller.activeThreadID
+        XCTAssertNotNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: threadID))
+
+        ws.closeActive()
+
+        XCTAssertNil(
+            AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: threadID),
+            "closing the last pane for a thread/backend must revoke its desktop-control grant"
+        )
+    }
+
+    func test_closeActive_preservesGrantWhenSiblingOwnsSameRuntimeAndThread() async throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal)
+        let closingLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        let sharedThreadID = "shared-pane-grant-\(UUID().uuidString)"
+        _ = try await ws.dataStore.createChatThread(id: sharedThreadID)
+        await ws.primaryController.openHistoryThreadAsync(sharedThreadID)
+        await closingLeaf.controller.openHistoryThreadAsync(sharedThreadID)
+        closingLeaf.controller.chatBackend = .codex
+        ws.primaryController.chatBackend = .codex
+        closingLeaf.controller.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        let runtimeID = closingLeaf.controller.assistantRuntimeID(for: closingLeaf.controller.chatBackend)
+        XCTAssertNotNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: sharedThreadID))
+
+        ws.closeActive()
+
+        XCTAssertNotNil(
+            AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: sharedThreadID),
+            "a sibling pane on the same runtime/thread still owns the grant after close"
+        )
+        ws.primaryController.revokeDesktopControl()
+    }
+
+    func test_closeActive_preservesGrantWhenSurvivorOutsideSiblingSubtreeOwnsSameRuntimeAndThread() async throws {
+        let ws = try makeWorkspace()
+        ws.splitActive(axis: .horizontal) // primary | B
+        ws.splitActive(axis: .vertical)   // primary | (B / C), with C active
+        let closingLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        let sharedThreadID = "shared-nested-pane-grant-\(UUID().uuidString)"
+        _ = try await ws.dataStore.createChatThread(id: sharedThreadID)
+        await ws.primaryController.openHistoryThreadAsync(sharedThreadID)
+        await closingLeaf.controller.openHistoryThreadAsync(sharedThreadID)
+        ws.primaryController.chatBackend = .codex
+        closingLeaf.controller.chatBackend = .codex
+        closingLeaf.controller.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        let runtimeID = closingLeaf.controller.assistantRuntimeID(for: closingLeaf.controller.chatBackend)
+        XCTAssertNotNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: sharedThreadID))
+
+        ws.closeActive()
+
+        XCTAssertNotNil(
+            AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: sharedThreadID),
+            "a surviving pane outside the closed pane's sibling subtree still owns the grant"
+        )
+        ws.primaryController.revokeDesktopControl()
+    }
+
+    func test_closeTab_nonPrimaryRevokesDesktopControlGrant() throws {
+        let ws = try makeWorkspace()
+        ws.newTab()
+        let closingTabID = ws.selectedTabID
+        let closingLeaf = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        closingLeaf.controller.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        let runtimeID = closingLeaf.controller.assistantRuntimeID(for: closingLeaf.controller.chatBackend)
+        let threadID = closingLeaf.controller.activeThreadID
+        XCTAssertNotNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: threadID))
+
+        ws.closeTab(closingTabID)
+
+        XCTAssertNil(
+            AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: threadID),
+            "closing a non-primary tab must revoke grants for controllers that no surviving pane owns"
+        )
+    }
+
+    func test_closeTab_primaryRevokesClosedPrimaryThreadDesktopControlGrant() throws {
+        let ws = try makeWorkspace()
+        let primaryTabID = ws.selectedTabID
+        let oldPrimaryThreadID = ws.primaryController.activeThreadID
+        let runtimeID = ws.primaryController.assistantRuntimeID(for: ws.primaryController.chatBackend)
+        ws.primaryController.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        XCTAssertNotNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: oldPrimaryThreadID))
+        ws.newTab()
+
+        ws.closeTab(primaryTabID)
+
+        XCTAssertNil(
+            AgentCapabilityGrantStore.shared.activeGrant(runtimeID: runtimeID, threadID: oldPrimaryThreadID),
+            "closing the primary tab must revoke the old primary thread grant before rehoming"
+        )
     }
 
     func test_closeActive_lastPane_isIndestructible() throws {
