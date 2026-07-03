@@ -82,6 +82,7 @@ final class LiveCloudReader: CloudReader {
 
             let macDeviceId: String?
             let macName: String
+            let macPresenceAt: Date?
             if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
                 let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
                 let right = CloudDeviceActivityDateResolver.date(from: rhs.data()) ?? .distantPast
@@ -90,9 +91,11 @@ final class LiveCloudReader: CloudReader {
                 let d = macDoc.data()
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
+                macPresenceAt = CloudDeviceActivityDateResolver.date(from: d)
             } else {
                 macDeviceId = nil
                 macName = "Mac"
+                macPresenceAt = nil
             }
 
             let syncStatusCollection = db.collection("users/\(uid)/sync_status")
@@ -102,7 +105,8 @@ final class LiveCloudReader: CloudReader {
                     return Self.syncStatusSnapshot(
                         deviceID: macDeviceId,
                         displayName: macName,
-                        data: doc.data()
+                        data: doc.data(),
+                        devicePresenceAt: macPresenceAt
                     )
                 }
             }
@@ -115,7 +119,24 @@ final class LiveCloudReader: CloudReader {
                 return Self.syncStatusSnapshot(
                     deviceID: latest.documentID,
                     displayName: macName,
-                    data: latest.data()
+                    data: latest.data(),
+                    devicePresenceAt: macPresenceAt
+                )
+            }
+
+            // The Mac has registered presence but never landed a sync-status
+            // doc: still a real "last seen" — don't collapse it to "never".
+            if let macDeviceId, let macPresenceAt {
+                return CloudSyncStatusSnapshot(
+                    lastPublishedAt: nil,
+                    lastReadAt: Date(),
+                    publisher: CloudPublisherDevice(
+                        deviceID: macDeviceId,
+                        displayName: macName,
+                        platform: "macOS",
+                        lastSeen: macPresenceAt
+                    ),
+                    lastErrorClassification: nil
                 )
             }
 
@@ -132,11 +153,16 @@ final class LiveCloudReader: CloudReader {
         deviceID: String,
         displayName: String,
         data: [String: Any]?,
-        readAt: Date = Date()
+        readAt: Date = Date(),
+        devicePresenceAt: Date? = nil
     ) -> CloudSyncStatusSnapshot {
         let lastPublished = (data?["lastSyncAt"] as? Timestamp)?.dateValue()
             ?? (data?["updatedAt"] as? Timestamp)?.dateValue()
-        let lastError = data?["lastError"] as? String
+        // Presence (the devices-registry heartbeat) is a better "last seen"
+        // than the last successful data sync: a Mac whose upload is blocked is
+        // still very much alive, and saying "never"/hours-stale here sent
+        // users chasing sign-in problems that didn't exist.
+        let lastSeen = [devicePresenceAt, lastPublished].compactMap(\.self).max()
 
         return CloudSyncStatusSnapshot(
             lastPublishedAt: lastPublished,
@@ -145,10 +171,37 @@ final class LiveCloudReader: CloudReader {
                 deviceID: deviceID,
                 displayName: displayName,
                 platform: "macOS",
-                lastSeen: lastPublished ?? readAt
+                lastSeen: lastSeen ?? readAt
             ),
-            lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+            lastErrorClassification: Self.macReportedSyncError(from: data)
         )
+    }
+
+    /// Maps the Mac-reported bounded `lastErrorCode` vocabulary (written by
+    /// `UsageSyncService.publishSyncBlocked` on macOS) — falling back to the
+    /// legacy free-text `lastError` field — into a classification the health
+    /// store can render. Extend both ends together.
+    static func macReportedSyncError(from data: [String: Any]?) -> CloudErrorClassification? {
+        if let code = data?["lastErrorCode"] as? String {
+            switch code {
+            case "vault_key_unavailable":
+                return .other(message: "Your Mac is waiting for cloud-vault approval from another signed-in device.")
+            case "vault_key_mismatch", "vault_key_invalid":
+                return .other(message: "Your Mac's cloud-vault key doesn't match this account. Open OpenBurnBar on the Mac to repair it.")
+            case "permission_denied":
+                return .other(message: "Your Mac's uploads were rejected. Check that the Mac is signed into this same account.")
+            case "unauthenticated":
+                return .other(message: "Your Mac is signed out of cloud sync. Sign in on the Mac to resume.")
+            case "network_unavailable":
+                return .other(message: "Your Mac couldn't reach the sync service on its last attempt.")
+            default:
+                return .other(message: "Your Mac hit an error on its last sync attempt.")
+            }
+        }
+        if let legacy = data?["lastError"] as? String {
+            return .other(message: legacy)
+        }
+        return nil
     }
 
     func loadProviderSummaries() async throws -> [ProviderConnectionDoc] {

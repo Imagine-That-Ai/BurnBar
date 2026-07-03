@@ -144,6 +144,9 @@ struct IdentityHero: View {
         case .degraded:
             statusText = "Degraded"
             statusColor = MobileTheme.warning
+        case .networkDisabledOnThisDevice:
+            statusText = "Cloud sync off"
+            statusColor = MobileTheme.warning
         case .unknown:
             statusText = "Checking…"
             statusColor = MobileTheme.Colors.textMuted

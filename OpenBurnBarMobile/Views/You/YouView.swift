@@ -853,6 +853,7 @@ extension CloudSyncHealth {
         case .offline: return "icloud.slash.fill"
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
         case .degraded: return "icloud.fill"
+        case .networkDisabledOnThisDevice: return "icloud.slash.fill"
         case .unknown: return "questionmark.circle.fill"
         }
     }
@@ -865,6 +866,7 @@ extension CloudSyncHealth {
         case .offline: return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
         case .degraded: return MobileTheme.warning
+        case .networkDisabledOnThisDevice: return MobileTheme.warning
         case .unknown: return MobileTheme.Colors.textMuted
         }
     }
@@ -889,6 +891,8 @@ extension CloudSyncHealth {
             return CloudErrorClassification.firebaseUnavailable.recoveryHint
         case .degraded(let reason):
             return reason.recoveryHint
+        case .networkDisabledOnThisDevice:
+            return "Cloud sync was turned off on this device by the emergency compatibility switch, so no data is being read. Remove the override to reconnect."
         }
     }
 }
