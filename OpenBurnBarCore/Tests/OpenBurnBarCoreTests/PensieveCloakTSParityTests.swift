@@ -13,7 +13,7 @@ final class PensieveCloakTSParityTests: XCTestCase {
     private func basis(_ i: Int) -> [Double] { var v = [Double](repeating: 0, count: dim); v[i] = 1; return v }
     private func ramp() -> [Double] { (0..<dim).map { sin(Double($0) * 0.013) } }
 
-    func test_matchesTSReferenceHeads() {
+    func test_matchesTSReferenceHeads() throws {
         let e5 = try PensieveVectorCloak.cloak(basis(5), vaultKey: key, modelVersion: "bge-small-en-v1.5")
         let e5Ref: [Double] = [0.022701304567289693, 0.006537578863229806, -0.026736270220641744, -0.0012151386975989675, -0.026879464463398724, 0.8776905243399359]
         for (i, ref) in e5Ref.enumerated() { XCTAssertEqual(e5[i], ref, accuracy: 1e-12, "e5[\(i)]") }
@@ -30,7 +30,7 @@ final class PensieveCloakTSParityTests: XCTestCase {
     /// Full embed→cloak path matches the TS deterministic hashing embedder +
     /// cloak for the same phrase, so chunks the daemon/app seal are recall-
     /// compatible with the published shim and the hosted MCP.
-    func test_embedAndCloakMatchesTSReference() {
+    func test_embedAndCloakMatchesTSReference() throws {
         let cloaked = try PensieveVectorCloak.embedAndCloak(
             "hosted minimax encrypted session search",
             vaultKey: key,
