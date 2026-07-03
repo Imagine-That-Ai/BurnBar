@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows storage seam for the OpenBurnBar port (R2 — the DB byte-compat
+    kill-risk). This library is the Windows-side peer of the Mac
+    AgentLens/Services/DataStore/ + OpenBurnBarDaemon cipher stacks: it opens the
+    SAME SQLCipher-encrypted SQLite file the Mac writes, using the pinned
+    SQLCipher-4 compatibility profile (see decisions/sqlcipher-params.md), and —
+    this lane's contribution — WRITES into it inside a transaction so Windows is a
+    real read-WRITE peer, not a read-only mirror.
+
+    Wave-1 read seam (#1198) established the OPEN + read + byte-compat vector
+    (VAL-P0-DB-010). This project EXTENDS it with the transactional write path +
+    the migration-marker/schema-hash stability contract (VAL-P0-DB-011). If the
+    read seam's opener lands with a different type name, the two converge on one
+    canonical opener in the factory reconcile step; the pinned params + passphrase
+    keying are identical by construction.
+
+    Targets plain net10.0 (no Windows TFM): SQLitePCLRaw.bundle_e_sqlcipher ships
+    a cross-platform SQLCipher build, so this same assembly + its tests run on the
+    macOS authoring host today (the proof pasted in the PR) AND on windows-latest /
+    windows-11-arm in CI, keying and mutating the identical committed fixture.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Storage</RootNamespace>
+    <AssemblyName>OpenBurnBar.Storage</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Microsoft.Data.Sqlite.Core (no bundled vanilla SQLite) + the SQLCipher
+      provider bundle. bundle_e_sqlcipher registers a SQLCipher-enabled sqlite3
+      as the ambient provider, so `PRAGMA key` genuinely keys the codec rather
+      than being a silent plaintext no-op.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+  </ItemGroup>
+
+</Project>

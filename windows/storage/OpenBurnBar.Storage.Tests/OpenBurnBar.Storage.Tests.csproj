@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DB byte-compat WRITE + MIGRATION round-trip proof (VAL-P0-DB-011), the
+    read-WRITE extension of the Wave-1 read seam (#1198 / VAL-P0-DB-010).
+
+    This suite OPENS the committed Mac-produced SQLCipher fixture
+    (AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher) with
+    the pinned params + non-secret key, WRITES a token_usage row in a transaction,
+    reopens the file, and asserts the row round-trips AND the schema hash +
+    migration marker + user_version are unchanged — proving a Windows write leaves
+    the file byte-compatible and reopenable on Mac.
+
+    Targets plain net10.0: SQLitePCLRaw.bundle_e_sqlcipher ships a cross-platform
+    SQLCipher, so `dotnet test` runs this on the macOS authoring host today AND on
+    windows-latest / windows-11-arm in CI against the identical committed fixture.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Link (do NOT duplicate) the committed encrypted fixture into the test output
+      so the suite opens the SAME bytes the Mac validator opens. The suite always
+      copies it to a temp working file before mutating, so the committed file is
+      never modified.
+    -->
+    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v53.sqlcipher</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
