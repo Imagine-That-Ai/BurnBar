@@ -35,7 +35,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 // update this audited live URL in the same PR, after the replacement artifact is
 // published and manually verified.
 const AUDITED_LIVE_MAC_DOWNLOAD_URL =
-  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26/OpenBurnBar-1.0.26-macOS.dmg";
+  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.28/OpenBurnBar-1.0.28-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
   /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/;
