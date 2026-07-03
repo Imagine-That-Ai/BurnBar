@@ -127,6 +127,23 @@ public enum BurnBarPersistentVectorIndexKeyCodec {
         return mapping
     }
 
+    /// Round-4 perf sweep (B1 integration): allocate a single deterministic
+    /// key for `chunkID` that does not collide with any key in `existingKeys`.
+    /// Used by the delta overlay to assign keys to newly-added chunks without
+    /// rehashing the entire base mapping. The scheme is identical to
+    /// `makeMapping`'s per-chunkID loop: try `stableKey(salt=0)`, and if it
+    /// collides, increment `salt` until a free key is found.
+    public static func key(for chunkID: String, avoiding existingKeys: Set<UInt64>) -> UInt64 {
+        var salt: UInt64 = 0
+        while true {
+            let candidate = stableKey(for: chunkID, salt: salt)
+            if !existingKeys.contains(candidate) {
+                return candidate
+            }
+            salt &+= 1
+        }
+    }
+
     private static func stableKey(for chunkID: String, salt: UInt64) -> UInt64 {
         let payload = Data((salt == 0 ? chunkID : "\(salt):\(chunkID)").utf8)
         let digest = PlatformCrypto.sha256(payload)

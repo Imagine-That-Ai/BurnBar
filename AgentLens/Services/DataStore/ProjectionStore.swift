@@ -673,6 +673,32 @@ final class ProjectionStore: Sendable {
         }
     }
 
+    /// Round-4 perf sweep (B1 integration): lightweight key scan that returns
+    /// `(chunkID, updatedAt)` for every embedding in a version WITHOUT loading
+    /// the `vectorBlob` column. This is the cheap O(n) metadata scan used by
+    /// the delta overlay to compute added/updated/deleted sets against a base
+    /// snapshot's `builtAt`. The expensive O(k) vector fetch is then performed
+    /// only for the changed chunkIDs.
+    func fetchChunkEmbeddingKeys(embeddingVersionID: String) async throws -> [(chunkID: String, updatedAt: Date)] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT chunkID, updatedAt
+                FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                ORDER BY chunkID ASC
+                """,
+                arguments: [embeddingVersionID]
+            )
+            return rows.compactMap { row in
+                guard let chunkID = row["chunkID"] as? String else { return nil }
+                let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? .distantPast
+                return (chunkID: chunkID, updatedAt: updatedAt)
+            }
+        }
+    }
+
     // MARK: - Vector Index Snapshots
 
     func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) async throws {

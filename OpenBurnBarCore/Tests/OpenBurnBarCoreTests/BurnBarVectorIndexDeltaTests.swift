@@ -225,7 +225,6 @@ final class BurnBarVectorIndexDeltaTests: XCTestCase {
     }
 
     // MARK: - Parity: delta overlay vs. full rebuild
-
     func test_deltaOverlay_matchesFullRebuild() throws {
         // Build a base with 5 vectors.
         let baseVectors: [(key: UInt64, vector: [Float], chunkID: String)] = [
@@ -264,5 +263,47 @@ final class BurnBarVectorIndexDeltaTests: XCTestCase {
         // Both should contain c6.
         XCTAssertTrue(overlayResults.contains { $0.chunkID == "c6" })
         XCTAssertTrue(fullResults.contains { $0.chunkID == "c6" })
+    }
+
+    // MARK: - Key Codec: single-key allocation (B1 integration)
+
+    func test_keyCodec_keyForChunkID_avoidingExistingKeys() {
+        // Allocate a key for a new chunkID — should not collide with existing keys.
+        let existingKeys: Set<UInt64> = [100, 200, 300]
+        let key = BurnBarPersistentVectorIndexKeyCodec.key(for: "new-chunk-1", avoiding: existingKeys)
+        XCTAssertFalse(existingKeys.contains(key), "Allocated key must not collide with existing keys.")
+        XCTAssertNotEqual(key, 0, "Key must never be 0 (the codec maps 0 to 1).")
+    }
+
+    func test_keyCodec_keyForChunkID_isDeterministic() {
+        // The same chunkID with the same existing-keys set should produce the same key.
+        let existingKeys: Set<UInt64> = [100, 200]
+        let key1 = BurnBarPersistentVectorIndexKeyCodec.key(for: "deterministic-chunk", avoiding: existingKeys)
+        let key2 = BurnBarPersistentVectorIndexKeyCodec.key(for: "deterministic-chunk", avoiding: existingKeys)
+        XCTAssertEqual(key1, key2, "Key allocation must be deterministic for the same chunkID + existing set.")
+    }
+
+    func test_keyCodec_keyForChunkID_saltsOnCollision() {
+        // Force a collision: allocate a key, then add it to the existing set
+        // and re-allocate — the new key must differ.
+        let existingKeys: Set<UInt64> = []
+        let key1 = BurnBarPersistentVectorIndexKeyCodec.key(for: "collision-test-chunk", avoiding: existingKeys)
+
+        // Now make key1 "existing" — the codec should salt and return a different key.
+        let collidingKeys: Set<UInt64> = [key1]
+        let key2 = BurnBarPersistentVectorIndexKeyCodec.key(for: "collision-test-chunk", avoiding: collidingKeys)
+        XCTAssertNotEqual(key1, key2, "Key must differ when the first allocation collides with existing keys.")
+    }
+
+    func test_keyCodec_keyForChunkID_consistentWithMakeMapping() throws {
+        // A key allocated via `key(for:avoiding:)` for a chunkID not in the
+        // existing set should match the key that `makeMapping` assigns for
+        // that same chunkID in a single-element mapping.
+        let mapping = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: ["solo-chunk"])
+        let mappedKey = mapping["solo-chunk"]
+        XCTAssertNotNil(mappedKey)
+
+        let directKey = BurnBarPersistentVectorIndexKeyCodec.key(for: "solo-chunk", avoiding: [])
+        XCTAssertEqual(mappedKey, directKey, "Single-key allocation must match makeMapping for the same chunkID.")
     }
 }

@@ -535,8 +535,23 @@ the threshold is exceeded. Added `searchKeys(for:limit:)`,
 `chunkID(forKey:)`, and `keyToChunkIDMapping` to
 `BurnBarPersistentVectorIndexSnapshot` to support the overlay merge.
 
-Validation: `BurnBarVectorIndexDeltaTests` (10 tests: append, tombstone,
-re-add, clear, compaction threshold, parity vs. full rebuild).
+The delta overlay is wired into `VectorSemanticCandidateProvider`'s
+snapshot lifecycle. When the embedding version fingerprint changes
+(chunks added/updated/deleted), the provider computes a delta against the
+existing base snapshot instead of triggering a full rebuild. The delta
+computation uses a cheap O(n) metadata scan (`fetchChunkEmbeddingKeys` —
+`chunkID` + `updatedAt` only, no `vectorBlob`) to diff against the base
+mapping, then an O(k) vector fetch for only the changed chunkIDs. When
+the total changes exceed the compaction threshold (`max(2000, baseSize /
+5)`), the provider falls through to a full rebuild. Delta metrics
+(appended count, tombstoned count, compaction threshold, base vector
+count) are surfaced in `SemanticRetrievalHealthDetails` for observability.
+
+Validation: `BurnBarVectorIndexDeltaTests` (14 tests: append, tombstone,
+re-add, clear, compaction threshold, parity vs. full rebuild, key codec
+allocation), `VectorSemanticDeltaIntegrationTests` (6 tests: add via
+delta, delete via tombstone, update via override, compaction fallback,
+parity with full rebuild, fresh-launch disk recovery).
 
 **B2 — Streaming Claude JSONL parser (bounded accumulator).** The
 `ClaudeConversationAccumulator.fullText` grew unbounded via O(n²) string

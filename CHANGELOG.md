@@ -32,7 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Incremental HNSW delta segments** (B1): LSM-tree "base + delta"
     overlay (`BurnBarVectorIndexDeltaOverlay`) eliminates full O(n log n)
     HNSW rebuilds on every projection cycle; bounded delta with
-    compaction threshold.
+    compaction threshold. The overlay is wired into
+    `VectorSemanticCandidateProvider`'s snapshot lifecycle — when chunks
+    are added/updated/deleted, a delta is computed via a cheap metadata
+    scan (`fetchChunkEmbeddingKeys`) plus an O(k) vector fetch for only
+    the changed chunkIDs, avoiding the full rebuild. Compaction triggers
+    when changes exceed `max(2000, baseSize / 5)`. Delta metrics are
+    surfaced in `SemanticRetrievalHealthDetails`.
   - **Streaming Claude JSONL bounded accumulator** (B2): replaced O(n²)
     string concatenation with array-based join-once-at-finalize and 1 MB
     `maxFullTextBytes` cap; added `maxLineBytes` guard to

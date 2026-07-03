@@ -37,6 +37,13 @@ private struct SemanticRetrievalHealthDetails: Codable {
     let exactRerankLatencyMs: Double?
     let fallbackExactLatencyMs: Double?
     let totalQueryLatencyMs: Double?
+    /// Round-4 perf sweep (B1): delta overlay observability. When non-nil,
+    /// the provider is serving queries from `base + delta` instead of a
+    /// freshly rebuilt snapshot.
+    let deltaAppendedCount: Int?
+    let deltaTombstonedCount: Int?
+    let deltaCompactionThreshold: Int?
+    let deltaBaseVectorCount: Int?
 }
 
 private extension EmbeddingDistanceMetric {
@@ -73,6 +80,10 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         let fingerprint: String
         let snapshot: BurnBarPersistentVectorIndexSnapshot?
         let snapshotRecord: VectorIndexSnapshotRecord?
+        /// Round-4 perf sweep (B1): the delta overlay wrapping `snapshot`.
+        /// When non-nil, searches route through the overlay (base + delta
+        /// merge). When nil, searches delegate directly to `snapshot`.
+        let overlay: BurnBarVectorIndexDeltaOverlay?
     }
 
     private let dataStore: DataStore
@@ -96,6 +107,11 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private var lastSnapshotFileBytes: Int64?
     private var lastSnapshotBuiltAt: Date?
     private var lastSnapshotBackendVersion: String?
+    /// Round-4 perf sweep (B1): delta overlay metrics for health reporting.
+    private var lastDeltaAppendedCount: Int?
+    private var lastDeltaTombstonedCount: Int?
+    private var lastDeltaCompactionThreshold: Int?
+    private var lastDeltaBaseVectorCount: Int?
     private(set) var lastHealthWriteError: String?
 
     init(
@@ -309,6 +325,34 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             return (candidates, false, metrics)
 
         case .ann:
+            if let overlay = snapshotContext?.overlay {
+                // Round-4 perf sweep (B1): route through the delta overlay.
+                // The overlay delegates to the base snapshot when no delta is
+                // set, and merges base + delta results when a delta is active.
+                let annStartedAt = OpenBurnBarPerformanceTimer.now()
+                let candidateLimit = min(indexedVectorCount, max(boundedLimit, exactRerankEnabled ? exactRerankLimit : boundedLimit))
+                let annCandidates = try overlay.candidates(for: queryVector, limit: candidateLimit).map {
+                    VectorIndexCandidate(chunkID: $0.chunkID, score: $0.score)
+                }
+                let annLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: annStartedAt)
+                metrics.annCandidateGenerationLatencyMs = annLatencyMs
+                metrics.candidateGenerationLatencyMs = annLatencyMs
+
+                if exactRerankEnabled {
+                    let rerankStartedAt = OpenBurnBarPerformanceTimer.now()
+                    let reranked = try await exactRerank(
+                        candidates: annCandidates,
+                        queryVector: queryVector,
+                        limit: boundedLimit
+                    )
+                    metrics.exactRerankLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: rerankStartedAt)
+                    metrics.candidateGenerationLatencyMs = annLatencyMs + (metrics.exactRerankLatencyMs ?? 0)
+                    return (reranked, false, metrics)
+                }
+
+                return (Array(annCandidates.prefix(boundedLimit)), false, metrics)
+            }
+
             if let snapshot = snapshotContext?.snapshot {
                 let annStartedAt = OpenBurnBarPerformanceTimer.now()
                 let candidateLimit = min(indexedVectorCount, max(boundedLimit, exactRerankEnabled ? exactRerankLimit : boundedLimit))
@@ -441,12 +485,14 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 embeddingVersionID: selection.version.id,
                 fingerprint: fingerprint,
                 snapshot: nil,
-                snapshotRecord: nil
+                snapshotRecord: nil,
+                overlay: nil
             )
             lastSnapshotState = nil
             lastSnapshotFileBytes = nil
             lastSnapshotBuiltAt = nil
             lastSnapshotBackendVersion = nil
+            clearDeltaMetrics()
             return
         }
 
@@ -466,25 +512,210 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
            record.state == .ready,
            record.fingerprint == fingerprint,
            let snapshot = try loadSnapshotIfPresent(from: record) {
+            let overlay = BurnBarVectorIndexDeltaOverlay(baseSnapshot: snapshot)
             snapshotContext = SnapshotContext(
                 embeddingVersionID: selection.version.id,
                 fingerprint: fingerprint,
                 snapshot: snapshot,
-                snapshotRecord: record
+                snapshotRecord: record,
+                overlay: overlay
             )
             syncSnapshotMetadata(from: record)
+            clearDeltaMetrics()
             return
+        }
+
+        // Round-4 perf sweep (B1): delta path. If a ready base snapshot exists
+        // for the same embedding version + dimensions + distance metric but
+        // its fingerprint is stale (vectorCount or newestUpdatedAt changed),
+        // compute a delta (added/updated/deleted) against the base instead of
+        // triggering a full O(n log n) HNSW rebuild. If the delta is too large
+        // (>= compaction threshold), fall through to a full rebuild.
+        if let record,
+           record.state == .ready,
+           record.embeddingVersionID == selection.version.id,
+           record.dimensions == selection.model.dimensions,
+           record.distanceMetric == selection.model.distanceMetric,
+           let baseSnapshot = try loadSnapshotIfPresent(from: record) {
+            let baseVectorCount = baseSnapshot.manifest.vectorCount
+            let compactionThreshold = max(Self.deltaCompactionFloor, baseVectorCount / Self.deltaCompactionDivisor)
+            let deltaResult = try await computeDelta(
+                baseSnapshot: baseSnapshot,
+                selection: selection,
+                compactionThreshold: compactionThreshold
+            )
+            switch deltaResult {
+            case .noChanges:
+                // The base snapshot is actually current — use it directly.
+                let overlay = BurnBarVectorIndexDeltaOverlay(baseSnapshot: baseSnapshot)
+                snapshotContext = SnapshotContext(
+                    embeddingVersionID: selection.version.id,
+                    fingerprint: fingerprint,
+                    snapshot: baseSnapshot,
+                    snapshotRecord: record,
+                    overlay: overlay
+                )
+                syncSnapshotMetadata(from: record)
+                clearDeltaMetrics()
+                return
+            case .delta(let delta):
+                let overlay = BurnBarVectorIndexDeltaOverlay(baseSnapshot: baseSnapshot)
+                overlay.updateDelta(delta)
+                snapshotContext = SnapshotContext(
+                    embeddingVersionID: selection.version.id,
+                    fingerprint: fingerprint,
+                    snapshot: baseSnapshot,
+                    snapshotRecord: record,
+                    overlay: overlay
+                )
+                syncSnapshotMetadata(from: record)
+                lastDeltaAppendedCount = delta.appendedCount
+                lastDeltaTombstonedCount = delta.tombstonedCount
+                lastDeltaCompactionThreshold = compactionThreshold
+                lastDeltaBaseVectorCount = baseVectorCount
+                return
+            case .needsCompaction:
+                // Too many changes — fall through to full rebuild.
+                break
+            }
         }
 
         let builtRecord = try await rebuildSnapshot(selection: selection, fingerprint: fingerprint, existingRecord: record)
         let builtSnapshot = try loadSnapshotIfPresent(from: builtRecord)
+        let builtOverlay = builtSnapshot.map { BurnBarVectorIndexDeltaOverlay(baseSnapshot: $0) }
         snapshotContext = SnapshotContext(
             embeddingVersionID: selection.version.id,
             fingerprint: fingerprint,
             snapshot: builtSnapshot,
-            snapshotRecord: builtRecord
+            snapshotRecord: builtRecord,
+            overlay: builtOverlay
         )
         syncSnapshotMetadata(from: builtRecord)
+        clearDeltaMetrics()
+    }
+
+    // MARK: - Delta Computation (B1)
+
+    /// Compaction floor: never compact below this many appended vectors,
+    /// regardless of base size. Keeps brute-force delta scan trivially cheap
+    /// for small corpora.
+    private static let deltaCompactionFloor = 2_000
+
+    /// Compaction divisor: compact when appended vectors reach
+    /// `baseVectorCount / divisor`. With divisor = 5, the delta is compacted
+    /// when it reaches 20% of the base, keeping brute-force scan overhead
+    /// bounded relative to the ANN base search.
+    private static let deltaCompactionDivisor = 5
+
+    private enum DeltaComputationResult {
+        /// The base snapshot is already current — no delta needed.
+        case noChanges
+        /// A delta was computed and should be applied to the overlay.
+        case delta(BurnBarVectorIndexDelta)
+        /// Too many changes (>= compaction threshold) — trigger a full rebuild.
+        case needsCompaction
+    }
+
+    /// Computes the delta (added/updated/deleted vectors) between the base
+    /// snapshot and the current chunk embedding state.
+    ///
+    /// This is the core of the B1 integration. It performs:
+    /// 1. A cheap O(n) metadata scan (`fetchChunkEmbeddingKeys`) that loads
+    ///    only `(chunkID, updatedAt)` — no vector blobs.
+    /// 2. A set-difference against the base snapshot's key→chunkID mapping.
+    /// 3. An O(k) vector fetch for only the changed chunkIDs (added + updated).
+    ///
+    /// If the total changes >= `compactionThreshold`, returns `.needsCompaction`
+    /// so the caller falls through to a full rebuild.
+    private func computeDelta(
+        baseSnapshot: BurnBarPersistentVectorIndexSnapshot,
+        selection: ActiveEmbeddingSelection,
+        compactionThreshold: Int
+    ) async throws -> DeltaComputationResult {
+        let baseMapping = baseSnapshot.keyToChunkIDMapping           // [UInt64: String]
+        let baseKeyByChunkID = Dictionary(uniqueKeysWithValues: baseMapping.map { ($1, $0) })  // [String: UInt64]
+        let baseChunkIDs = Set(baseKeyByChunkID.keys)
+        let baseBuiltAt = baseSnapshot.manifest.builtAt
+
+        // 1. Cheap metadata scan — no vectorBlob I/O.
+        let currentKeys = try await dataStore.fetchChunkEmbeddingKeys(
+            embeddingVersionID: selection.version.id
+        )
+        let currentChunkIDs = Set(currentKeys.map(\.chunkID))
+
+        // 2. Set differences.
+        let addedChunkIDs = currentChunkIDs.subtracting(baseChunkIDs)
+        let deletedChunkIDs = baseChunkIDs.subtracting(currentChunkIDs)
+
+        // 3. Updated: in both sets but with updatedAt > baseBuiltAt.
+        let updatedChunkIDs = currentKeys.filter { entry in
+            baseChunkIDs.contains(entry.chunkID) && entry.updatedAt > baseBuiltAt
+        }.map(\.chunkID)
+        let updatedChunkIDSet = Set(updatedChunkIDs)
+
+        // 4. No changes → base is current.
+        if addedChunkIDs.isEmpty && deletedChunkIDs.isEmpty && updatedChunkIDSet.isEmpty {
+            return .noChanges
+        }
+
+        // 5. Too many changes → compact (full rebuild).
+        let totalChanges = addedChunkIDs.count + deletedChunkIDs.count + updatedChunkIDSet.count
+        if totalChanges >= compactionThreshold {
+            return .needsCompaction
+        }
+
+        // 6. Build the delta.
+        let dimensions = selection.model.dimensions
+        let metric = selection.model.distanceMetric.burnBarCoreMetric
+        var delta = BurnBarVectorIndexDelta(
+            dimensions: dimensions,
+            distanceMetric: metric,
+            compactionThreshold: compactionThreshold
+        )
+
+        // 7. Tombstone deleted keys.
+        for chunkID in deletedChunkIDs {
+            if let key = baseKeyByChunkID[chunkID] {
+                delta.tombstone(key: key)
+            }
+        }
+
+        // 8. Fetch vectors for added + updated, then append.
+        let changedChunkIDs = Array(addedChunkIDs) + Array(updatedChunkIDSet)
+        if changedChunkIDs.isEmpty == false {
+            let embeddings = try await dataStore.fetchChunkEmbeddings(
+                chunkIDs: changedChunkIDs,
+                embeddingVersionID: selection.version.id
+            )
+            let existingKeys = Set(baseMapping.keys)
+            for embedding in embeddings {
+                guard let vector = VectorBlobCodec.decode(embedding.vectorBlob),
+                      vector.count == dimensions else { continue }
+                let key: UInt64
+                if let baseKey = baseKeyByChunkID[embedding.chunkID] {
+                    // Updated: reuse the base key. The overlay's merge logic
+                    // ensures the delta's version wins over the base's.
+                    key = baseKey
+                } else {
+                    // Added: allocate a new key avoiding collisions with the
+                    // base mapping and any keys already assigned in this loop.
+                    key = BurnBarPersistentVectorIndexKeyCodec.key(
+                        for: embedding.chunkID,
+                        avoiding: existingKeys
+                    )
+                }
+                delta.append(key: key, vector: vector, chunkID: embedding.chunkID)
+            }
+        }
+
+        return .delta(delta)
+    }
+
+    private func clearDeltaMetrics() {
+        lastDeltaAppendedCount = nil
+        lastDeltaTombstonedCount = nil
+        lastDeltaCompactionThreshold = nil
+        lastDeltaBaseVectorCount = nil
     }
 
     private func rebuildSnapshot(
@@ -685,6 +916,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         lastSnapshotFileBytes = nil
         lastSnapshotBuiltAt = nil
         lastSnapshotBackendVersion = nil
+        clearDeltaMetrics()
     }
 
     private func syncSnapshotMetadata(from record: VectorIndexSnapshotRecord?) {
@@ -727,7 +959,11 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             annCandidateGenerationLatencyMs: performanceMetrics?.annCandidateGenerationLatencyMs,
             exactRerankLatencyMs: performanceMetrics?.exactRerankLatencyMs,
             fallbackExactLatencyMs: performanceMetrics?.fallbackExactLatencyMs,
-            totalQueryLatencyMs: performanceMetrics?.totalQueryLatencyMs
+            totalQueryLatencyMs: performanceMetrics?.totalQueryLatencyMs,
+            deltaAppendedCount: lastDeltaAppendedCount,
+            deltaTombstonedCount: lastDeltaTombstonedCount,
+            deltaCompactionThreshold: lastDeltaCompactionThreshold,
+            deltaBaseVectorCount: lastDeltaBaseVectorCount
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
