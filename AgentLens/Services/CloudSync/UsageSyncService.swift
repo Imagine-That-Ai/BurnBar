@@ -62,7 +62,13 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 for usage in unsynced {
                     let docId = "\(deviceId)_\(usage.id.uuidString)"
                     let docRef = collectionRef.document(docId)
-                    let data = try encodeUsage(usage, deviceId: deviceId, vaultKey: resolvedVaultKey.keyData)
+                    let data = try encodeUsage(
+                        usage,
+                        uid: uid,
+                        deviceId: deviceId,
+                        docID: docId,
+                        vaultKey: resolvedVaultKey.keyData
+                    )
                     batch.setData(data, forDocument: docRef, merge: true)
                 }
 
@@ -159,7 +165,13 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
-    private func encodeUsage(_ usage: TokenUsage, deviceId: String, vaultKey: Data) throws -> [String: Any] {
+    private func encodeUsage(
+        _ usage: TokenUsage,
+        uid: String,
+        deviceId: String,
+        docID: String,
+        vaultKey: Data
+    ) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
@@ -191,7 +203,22 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         // Seal the project name instead of writing it in clear. The server stays a
         // blind store-and-forward: only on-device key holders can recover the name.
-        let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
+        // The deployed rules only accept a sealed envelope that carries the exact
+        // per-document AAD context (`validCloudSealedTextAt`): schemaVersion >= 2
+        // plus `aad == "OpenBurnBar-CloudVault-aad-v2|uid|usage|docID|sealedProjectName|2|sealedProjectName"`.
+        // Sealing without the context omits both fields, so every usage create is
+        // PERMISSION_DENIED — the writer must bind the seal to its document.
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "usage",
+            docID: docID,
+            field: "sealedProjectName"
+        )
+        let sealedProjectName = try CloudVaultCrypto.sealText(
+            usage.projectName,
+            keyData: vaultKey,
+            aadContext: aadContext
+        )
         data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(sealedProjectName)
         // Opaque keyed group-by trapdoor so readers can bucket usage by project
         // without decrypting every row. Absent for empty/blank names. A real
