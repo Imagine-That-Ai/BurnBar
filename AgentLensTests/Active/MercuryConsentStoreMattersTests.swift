@@ -191,7 +191,33 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertTrue(store.rememberAcceptedMirrorPeers,
                       "the legacy global consent was broader than device-bound grants; carry intent forward")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                      "legacy migration must persist remember-on, not just mutate the launch-time store")
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_legacyAlwaysAllowFalseMigratesToRememberOff() {
+        defaults.set(false, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an explicit legacy opt-out must not become remember-on during migration")
+        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                       "legacy opt-out migration must persist remember-off")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_liveStoresObserveRememberOptOutChanges() async {
+        let routerStore = MercuryConsentStore(defaults: defaults)
+        let settingsStore = MercuryConsentStore(defaults: defaults)
+        XCTAssertTrue(routerStore.rememberAcceptedMirrorPeers)
+
+        settingsStore.rememberAcceptedMirrorPeers = false
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
+        await Task.yield()
+
+        XCTAssertFalse(routerStore.rememberAcceptedMirrorPeers,
+                       "the live router store must observe Settings opt-outs without waiting for restart")
     }
 
     func test_autoAcceptSlidesGrantExpiryForward() {
@@ -219,6 +245,13 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
             remotePeerNodeId: "ABC123",
             now: t1
         ))
+        store.renewAutoAcceptGrant(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            now: t1
+        )
         let renewedExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(renewedExpiry)
         XCTAssertGreaterThan(renewedExpiry!, firstExpiry!,

@@ -1133,6 +1133,14 @@ extension MercuryRouter {
         if (hasMirrorAutoAcceptGrant || remoteUnlockSession != nil) && !pending.requestsAgentTerminal {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
+            if hasMirrorAutoAcceptGrant {
+                consentStore.renewAutoAcceptGrant(
+                    connectionId: frame.connectionId,
+                    viewerDeviceId: req.viewerDeviceId,
+                    controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId,
+                    remotePeerNodeId: remotePeerNodeID
+                )
+            }
             await beginMirror(for: pending)
             return
         }
