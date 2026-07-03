@@ -62,7 +62,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             ("openclaude-1", "openclaude"),
             ("junie-1", "jetbrains-junie")
         ] {
-            historyStore.upsert(Self.makeThread(id: id, runtime: runtime, title: runtime))
+            historyStore.upsert(Self.makeThread(id: id, rawRuntime: runtime, title: runtime))
         }
 
         let inbox = ThreadInboxStore(historyStore: historyStore, cliReader: nil, missionHost: nil)
@@ -674,6 +674,22 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         messageCount: Int = 1,
         updatedAt: Date = Date()
     ) -> MobileChatThread {
+        makeThread(
+            id: id,
+            rawRuntime: runtime.rawValue,
+            title: title,
+            messageCount: messageCount,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func makeThread(
+        id: String,
+        rawRuntime: String,
+        title: String,
+        messageCount: Int = 1,
+        updatedAt: Date = Date()
+    ) -> MobileChatThread {
         let messages = (0..<messageCount).map { idx in
             MobileChatMessage(
                 id: "\(id)-m\(idx)",
@@ -684,7 +700,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         }
         return MobileChatThread(
             id: id,
-            runtime: runtime.rawValue,
+            runtime: rawRuntime,
             title: title,
             preview: "Preview for \(title)",
             modelName: nil,

@@ -457,11 +457,10 @@ final class BurnBarResumeService: @unchecked Sendable {
             // Junie's project association is its working directory; the spawn
             // applies `workingDirectory` as the process cwd, so no flag needed.
             // `--prompt` starts the interactive session with the handoff
-            // prompt submitted (model selection stays on the user's default).
-            return TargetInvocation(
-                argv: ["junie", "--prompt", prompt],
-                cleanupPath: hint.cleanup ? hint.path : nil
-            )
+            // prompt submitted.
+            var argv = ["junie", "--prompt", prompt]
+            if let model = nonBlank(model) { argv += ["--model", model] }
+            return TargetInvocation(argv: argv, cleanupPath: hint.cleanup ? hint.path : nil)
         default:
             return TargetInvocation(
                 argv: ["open", nonBlank(workingDirectory) ?? hint.path],
