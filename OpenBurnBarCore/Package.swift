@@ -517,6 +517,34 @@ let firstPartyTargetsBase: [Target] = [
             exclude: signalSessionTransportFallbackExcludes,
             sources: signalSessionTransportSources
         ),
+        // Windows-port Phase-1 walking skeleton (PHASE1_CORE_SPLIT_PLAN.md, PR-5).
+        // A Foundation-only executable that drives the vertical slice — one
+        // provider -> parse -> auth -> one dashboard tile — over REAL Core APIs,
+        // proving the split Engine is consumable end-to-end off the macOS app.
+        //
+        // It depends ONLY on the OpenBurnBarCore library and every Core type it
+        // uses is Foundation-only and NOT in `openBurnBarCoreExcludes`, so it
+        // compiles in the non-Apple Windows/Linux Engine subset while staying
+        // present on the macOS host (SwiftPM manifests are host-evaluated, as the
+        // `#if os(Linux)` excludes above show) so `swift run` works on macOS today.
+        //
+        // Deliberately NOT gated behind `#if os(Windows) || os(Linux)`: that
+        // guidance exists to keep an added target out of the Apple app product
+        // graph, but host-evaluation would also delete it from the macOS host and
+        // break the mandated `swift run` verification. The same "never perturbs the
+        // Apple product graph" outcome is achieved structurally instead — this
+        // target declares NO product in `packageProducts` (only the implicit
+        // executable product SwiftPM needs for `swift run`) and is absent from the
+        // app's `project.yml`, so the XcodeGen app scheme never resolves, links, or
+        // builds it. It is a never-referenced leaf on every platform.
+        .executableTarget(
+            name: "OpenBurnBarWalkingSkeleton",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarWalkingSkeleton",
+            resources: [
+                .copy("Fixtures/openai_stream.sse")
+            ]
+        ),
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
             dependencies: [

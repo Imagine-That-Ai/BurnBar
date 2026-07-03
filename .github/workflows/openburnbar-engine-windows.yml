@@ -114,21 +114,49 @@ jobs:
 
       # Set SDKROOT to the Windows.sdk and put the toolchain + runtime on PATH
       # (recipe: PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe").
+      # The swift.org installer layout has varied by release/image, so we discover
+      # the SDK rather than hard-coding one root.
       - name: Export SDKROOT + toolchain PATH
         run: |
           $ver = "${env:SWIFT_VERSION}"
-          $root = "${env:SWIFT_ROOT}"
-          $sdkRoot = Join-Path $root "Platforms\$ver\Windows.platform\Developer\SDKs\Windows.sdk"
-          if (-not (Test-Path $sdkRoot)) {
-            throw "Expected Windows.sdk at $sdkRoot — confirm the installed toolchain layout."
+          $candidates = @(
+            "${env:SWIFT_ROOT}",
+            "C:\Program Files\Swift",
+            "C:\Program Files (x86)\Swift",
+            "C:\Library\Developer"
+          )
+          $sdkRoot = $null
+          foreach ($root in $candidates) {
+            if (-not (Test-Path $root)) { continue }
+            $sdkRoot = Get-ChildItem -Path $root -Recurse -Filter "Windows.sdk" -Directory -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($sdkRoot) { break }
+          }
+          if (-not $sdkRoot) {
+            throw "Could not find Windows.sdk under any candidate root: $($candidates -join ', ')"
           }
           "SDKROOT=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $toolchainBin = Join-Path $root "Toolchains\$ver+Asserts\usr\bin"
-          $runtimeBin   = Join-Path $root "Runtimes\$ver\usr\bin"
+
+          $toolchainBin = $null
+          $runtimeBin = $null
+          foreach ($root in $candidates) {
+            if (-not (Test-Path $root)) { continue }
+            if (-not $toolchainBin) {
+              $toolchainBin = Get-ChildItem -Path $root -Recurse -Directory -Filter "bin" -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -like "*Toolchains*$ver*usr*bin" -or $_.FullName -like "*usr*bin" } |
+                Select-Object -ExpandProperty FullName -First 1
+            }
+            if (-not $runtimeBin) {
+              $runtimeBin = Get-ChildItem -Path $root -Recurse -Directory -Filter "bin" -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -like "*Runtimes*$ver*usr*bin" } |
+                Select-Object -ExpandProperty FullName -First 1
+            }
+          }
           foreach ($p in @($toolchainBin, $runtimeBin)) {
-            if (Test-Path $p) { $p | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
+            if ($p) { $p | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
           }
           Write-Host "SDKROOT=$sdkRoot"
+          Write-Host "PATH additions: toolchainBin=$toolchainBin runtimeBin=$runtimeBin"
 
       - name: Print Swift version
         run: swift --version
@@ -142,3 +170,12 @@ jobs:
       # verification item; scope-building the single target keeps the compile narrow.
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
+
+      # Phase-1 walking skeleton (PR-5): run the Foundation-only executable that
+      # drives provider -> parse -> guard -> auth -> tile over real Core APIs.
+      # This is the automated Windows evidence for the G1 gate.
+      - name: Run Phase-1 walking skeleton
+        # `swift run` takes the executable name positionally (there is no
+        # `--target` option, unlike `swift build`). The executable exits 0 only
+        # when all walking-skeleton assertions pass, so this step IS the G1 gate.
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
