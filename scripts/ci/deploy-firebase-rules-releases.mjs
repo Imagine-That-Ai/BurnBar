@@ -182,10 +182,11 @@ export function buildReleasePatchRequest(releaseName, rulesetName) {
   const update = buildReleaseUpdate(releaseName, rulesetName);
   return {
     method: "PATCH",
-    // Match firebase-tools' Rules API PATCH shape: the live API rejects an
-    // update mask here and accepts the nested release payload.
+    // Firebase Rules PATCH updates only rulesetName; send the documented
+    // field mask so existing releases are updated instead of recreated.
     body: JSON.stringify({
       release: update,
+      updateMask: "rulesetName",
     }),
   };
 }

@@ -23,12 +23,8 @@ assert.deepEqual(JSON.parse(patch.body), {
     name: releaseName,
     rulesetName,
   },
+  updateMask: "rulesetName",
 });
-assert.equal(
-  Object.hasOwn(JSON.parse(patch.body), "updateMask"),
-  false,
-  "Firebase Rules release PATCH must not send an unsupported update mask",
-);
 
 const create = buildReleaseCreateRequest(releaseName, rulesetName);
 assert.equal(create.method, "POST");
