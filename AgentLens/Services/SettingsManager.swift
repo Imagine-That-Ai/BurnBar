@@ -256,8 +256,8 @@ final class SettingsManager {
         "media_kill_switch": NSNumber(value: true),
         // Memory extraction fleet kill switch. Default true (extraction allowed);
         // Remote Config sets false to halt extraction instantly. Fetch transport
-        // errors preserve the previous value so opted-in local extraction is not
-        // stranded by an unreachable config service.
+        // errors keep any active cached false authoritative while avoiding
+        // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
@@ -292,13 +292,17 @@ final class SettingsManager {
                 continuation.resume(returning: (status, error))
             }
         }
+        let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             mediaKillSwitch = true
-            // Preserve the current memory fleet value on transport failures. An
-            // explicit fetched `memory_extraction_enabled=false` still kills the
-            // feature below, but a transient Firebase outage must not silently
-            // strand opted-in local-only extraction backlogs.
+            // Preserve opted-in local memory only when the active cached config is
+            // not a fleet kill. A previously activated false value remains
+            // authoritative even if this refresh cannot reach Firebase.
+            if !activeMemoryExtractionEnabled {
+                memoryExtractionRemoteConfigEnabled = false
+                NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+            }
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
             return
         }
@@ -325,7 +329,7 @@ final class SettingsManager {
 
         mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
 
-        let memoryRCEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let memoryRCEnabled = activeMemoryExtractionEnabled
         memoryExtractionRemoteConfigEnabled = memoryRCEnabled
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
@@ -752,7 +756,7 @@ final class SettingsManager {
 
     /// Remote Config `memory_extraction_enabled`. Not user-settable; written by
     /// successful RC refreshes. Explicit fleet kills set this false; fetch
-    /// transport errors preserve the prior value.
+    /// transport errors still honor an active cached false kill.
     var memoryExtractionRemoteConfigEnabled: Bool {
         get { memory.remoteConfigExtractionEnabled }
         set { memory.remoteConfigExtractionEnabled = newValue }
