@@ -46,6 +46,11 @@
     <!--
       Windows App SDK 1.7 (stable). Brings WinUI 3, MicaBackdrop, the bootstrapper,
       and Microsoft.Windows.SDK.BuildTools transitively (no separate ref needed).
+      It also brings the WebView2 control (Microsoft.UI.Xaml.Controls.WebView2) and
+      CoreWebView2 (Microsoft.Web.WebView2.Core) transitively — the offscreen
+      Pretext text-layout host (Pretext/WebView2PretextHost.cs) uses those. If a
+      Windows build ever needs to pin the WebView2 runtime independently, add an
+      explicit Microsoft.Web.WebView2 PackageReference matching WindowsAppSDK 1.7.
     -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <!--
@@ -61,6 +66,15 @@
   <ItemGroup>
     <!-- Engine-agnostic particle renderer core (model + painters + drawing seam). -->
     <ProjectReference Include="..\..\particles\OpenBurnBar.Particles\OpenBurnBar.Particles.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Portable Pretext text-layout bridge (W6-DS-PRETEXT). net8.0, no Windows deps —
+      the transport-agnostic engine + protocol + metric-parity harness. The
+      Windows-only WebView2 transport lives in Pretext/WebView2PretextHost.cs above.
+    -->
+    <ProjectReference Include="../../pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj" />
   </ItemGroup>
 
 </Project>

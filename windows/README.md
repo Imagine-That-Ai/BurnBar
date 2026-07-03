@@ -19,6 +19,7 @@ builds, lints, and ratchets. No product code lives here yet.
 | [`native/`](native/) | The **native shim** — the C-ABI / FFI bridge that surfaces the Rust crates (`crates/openburnbar-iroh`, `crates/burnbar-remote`) and the DB/crypto engine to the managed shell. | W2 |
 | [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read + write DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. | W2 |
 | [`particles/`](particles/) | The **Win2D particle-engine renderer** — the platform-agnostic swarm/substrate engine library (`OpenBurnBar.Particles`: substrate math, frame model, FFI spec) + a headless perf harness. The WinUI-facing host lives in `app/OpenBurnBar.App/Particles/`. | W6 |
+| [`pretext/`](pretext/) | The **Pretext text-layout engine** — the managed `OpenBurnBar.Pretext` engine + JS bridge that drive an offscreen WebView2 host for text metrics, with a Mac-golden metric-parity harness. The WinUI host lives in `app/OpenBurnBar.App/Pretext/`. | W6 |
 | [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. | W11 |
 
 ## The aggregating solution
@@ -33,7 +34,7 @@ those PRs only *add* to a known-good aggregator rather than inventing the top-le
 ## Where new Windows source goes
 
 Every Windows **source file** (`.cs`, `.xaml`, `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.rs`)
-must live under one of the six documented sub-trees above. The per-tree budget
+must live under one of the seven documented sub-trees above. The per-tree budget
 ([`scripts/debt/check-windows-tree-budget.sh`](../scripts/debt/check-windows-tree-budget.sh))
 fails a PR that drops source directly under `windows/` outside those areas, so the layout stays
 self-enforcing.
