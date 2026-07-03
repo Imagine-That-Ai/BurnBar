@@ -1,0 +1,34 @@
+[
+  {
+    "name" : "cipher_version",
+    "value" : "4.16.0 community"
+  },
+  {
+    "name" : "cipher_provider",
+    "value" : "commoncrypto"
+  },
+  {
+    "name" : "cipher_provider_version",
+    "value" : "62460.0.22"
+  },
+  {
+    "name" : "cipher_page_size",
+    "value" : "4096"
+  },
+  {
+    "name" : "kdf_iter",
+    "value" : "256000"
+  },
+  {
+    "name" : "cipher_default_kdf_iter",
+    "value" : "256000"
+  },
+  {
+    "name" : "cipher_hmac_algorithm",
+    "value" : "HMAC_SHA512"
+  },
+  {
+    "name" : "cipher_kdf_algorithm",
+    "value" : "PBKDF2_HMAC_SHA512"
+  }
+]
