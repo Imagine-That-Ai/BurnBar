@@ -94,6 +94,14 @@
       (windows/tests/settings/); the WinUI XAML that binds it is XamlCompiler-deferred.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+    <!--
+      Portable presentation layer (net8.0, no WinUI) for the SessionLogs + Memory
+      surfaces (Phase 3 · W7): view-models, ported record types, grouping passes, and
+      the transcript parser the XAML views under SessionLogs/ + Memory/ x:Bind to. It
+      is unit-tested on macOS (windows/tests/presentation); these views are the Windows
+      render of that same logic.
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
   </ItemGroup>
 
 </Project>
