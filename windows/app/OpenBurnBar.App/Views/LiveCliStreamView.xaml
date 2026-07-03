@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:OpenBurnBar.App.ViewModels"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -25,10 +26,12 @@
 
             <Button Grid.Column="0"
                     Content="Start"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}"
                     Click="Start_Click"
                     IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}" />
             <Button Grid.Column="1"
                     Content="Stop"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}"
                     Click="Stop_Click"
                     IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}" />
 
@@ -40,12 +43,15 @@
                        Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
         </Grid>
 
-        <!-- Streamed lines. -->
+        <!--
+          Streamed lines. The container is the Liquid-Glass "surface" plate: the
+          LiquidGlassSurfaceStyle carries shape/stroke/padding, and theme:LiquidGlass.Surface
+          swaps in the transparency-preference-aware brush (Mica-translucent / Acrylic / solid)
+          at runtime through the W6-DS-GLASS chokepoint.
+        -->
         <Border Grid.Row="1"
-                CornerRadius="{StaticResource OBBCardCornerRadius}"
-                Background="{StaticResource OBBSurfaceBrush}"
-                BorderThickness="1"
-                BorderBrush="{StaticResource OBBStrokeBrush}">
+                Style="{StaticResource LiquidGlassSurfaceStyle}"
+                theme:LiquidGlass.Surface="True">
             <ListView x:Name="LinesList"
                       Padding="12,8"
                       FontFamily="Cascadia Mono, Consolas, Courier New"
