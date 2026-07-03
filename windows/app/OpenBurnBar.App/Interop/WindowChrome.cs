@@ -39,11 +39,15 @@ internal static class WindowChrome
         LiquidGlass.ApplyWindowBackdrop(window, LiquidGlassEnvironment.Current);
 
     /// <summary>
-    /// Enable or disable the translucent backdrop for a window. Enabling re-applies Mica
-    /// when the OS supports it; disabling clears <see cref="Window.SystemBackdrop"/> so the
-    /// window falls back to its solid theme brush. This is the shell's reduced-transparency /
-    /// high-contrast path (master plan §9.6 theme axes) and is independent of the per-card
-    /// Liquid-Glass shim (#1200).
+    /// Enable or disable the translucent window backdrop — the shell's window-level
+    /// reduced-transparency / high-contrast on/off switch (master plan §9.6 theme axes),
+    /// owned by <c>ThemeService</c>. Enabling routes through <see cref="TryApplyMica"/> →
+    /// <see cref="LiquidGlass.ApplyWindowBackdrop"/> so the resolved kind (Mica BaseAlt ↔
+    /// Mica Base ↔ DesktopAcrylic) still honors the transparency-preference math in the
+    /// glass shim (#1200); disabling clears <see cref="Window.SystemBackdrop"/> so the window
+    /// falls back to its solid theme brush — the same null backdrop the shim itself resolves
+    /// to for its <c>Solid</c> kind. One coherent backdrop path: every window-backdrop
+    /// decision flows through the single glass seam, this method only gates it on/off.
     /// </summary>
     public static void ApplyBackdrop(Window window, bool enabled)
     {
