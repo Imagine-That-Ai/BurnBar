@@ -79,7 +79,9 @@ jobs:
           bash -n scripts/ci/verify-apple-release-firebase-config.sh
           bash -n scripts/ci/verify-apple-release-firebase-config.test.sh
           bash -n scripts/ci/verify-apple-appcheck-release-artifact.sh
+          bash -n scripts/ci/verify-public-macos-download-trust.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
+          bash scripts/ci/verify-public-macos-download-trust.test.sh
 
   verify-public-macos-download-trust:
     needs: detect-public-macos-download-change

@@ -3,31 +3,28 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-site_config="$repo_root/website/src/data/site.ts"
-
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "::error::Public macOS download trust verification must run on macOS." >&2
-  exit 78
-fi
+site_config="${1:-$repo_root/website/src/data/site.ts}"
 
 if [[ ! -f "$site_config" ]]; then
   echo "::error::SITE config not found at $site_config" >&2
   exit 66
 fi
 
-site_metadata="$(
+read_site_metadata() {
   node --input-type=module - "$site_config" <<'NODE'
 import { readFileSync } from "node:fs";
 
 const siteConfig = process.argv[2];
-const text = readFileSync(siteConfig, "utf8");
+const source = readFileSync(siteConfig, "utf8");
+const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const { SITE } = await import(moduleUrl);
 
 function stringField(name) {
-  const match = text.match(new RegExp(`${name}:\\s*"([^"]*)"`));
-  if (!match) {
-    throw new Error(`SITE.${name} was not found`);
+  const value = SITE?.[name];
+  if (typeof value !== "string") {
+    throw new Error(`SITE.${name} must be a string`);
   }
-  return match[1];
+  return value;
 }
 
 const base = stringField("macDownloadBaseUrl").replace(/\/+$/, "");
@@ -55,7 +52,19 @@ console.log(url.href);
 console.log(expectedVersion);
 console.log(file);
 NODE
-)"
+}
+
+if [[ "${OPENBURNBAR_PRINT_PUBLIC_MACOS_DOWNLOAD_METADATA:-}" == "1" ]]; then
+  read_site_metadata
+  exit 0
+fi
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "::error::Public macOS download trust verification must run on macOS." >&2
+  exit 78
+fi
+
+site_metadata="$(read_site_metadata)"
 download_url="$(printf '%s\n' "$site_metadata" | sed -n '1p')"
 expected_version="$(printf '%s\n' "$site_metadata" | sed -n '2p')"
 mac_release_file="$(printf '%s\n' "$site_metadata" | sed -n '3p')"
