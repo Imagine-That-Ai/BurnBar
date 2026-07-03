@@ -72,7 +72,24 @@ enum WalkingSkeleton {
         ) else {
             fail("could not locate committed fixture openai_stream.sse in Bundle.module")
         }
-        let fixture = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let rawFixture = try String(contentsOf: fixtureURL, encoding: .utf8)
+        // Normalize line endings globally. A Windows git checkout (core.autocrlf) can
+        // rewrite the committed LF fixture to CRLF; SSE is line-oriented over CRLF too,
+        // so collapsing CRLF/CR to LF keeps this slice byte-identical on macOS + Windows.
+        let fixture = rawFixture
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        // Inline probe (prints on every host): prove the first SSE data payload parses
+        // through Foundation's JSON on this platform, so a corelibs-Foundation
+        // divergence is visible in CI rather than hidden behind a bare event count.
+        if let firstData = fixture
+            .split(separator: "\n")
+            .first(where: { $0.hasPrefix("data: ") && !$0.contains("[DONE]") }) {
+            let payload = String(firstData.dropFirst("data: ".count))
+            let jsonOK = (payload.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) } != nil
+            print("  [diag] firstPayload=\(payload.debugDescription) jsonParses=\(jsonOK)")
+        }
 
         var parser = HermesOpenAICompatibleStreamParser()
         var allEvents: [HermesStreamEvent] = []
@@ -81,13 +98,7 @@ enum WalkingSkeleton {
         var usageTotalTokens: Int?
 
         for rawLine in fixture.split(separator: "\n", omittingEmptySubsequences: false) {
-            // Normalize CRLF -> LF. A Windows git checkout (core.autocrlf) can rewrite
-            // the committed LF fixture to CRLF, leaving a trailing "\r" that would
-            // corrupt the JSON payloads and the "[DONE]" sentinel. SSE is line-oriented
-            // over CRLF too, so dropping a trailing CR is the correct platform-agnostic
-            // read and keeps this vertical slice byte-identical on macOS and Windows.
-            var line = String(rawLine)
-            if line.hasSuffix("\r") { line.removeLast() }
+            let line = String(rawLine)
             let result = parser.events(fromSSELine: line)
             allEvents.append(contentsOf: result.events)
             if result.done { streamDone = true }
