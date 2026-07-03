@@ -149,13 +149,14 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         print("[db-compat] Candidate artifacts written to \(outputDir.path)")
 
         // (6) Validate against the COMMITTED (bundled) fixture + vector.
-        guard let committedVectorURL = bundledURL(resource: vectorBaseName, ext: "json"),
-              let committedFixtureURL = bundledURL(resource: fixtureBaseName, ext: "sqlcipher") else {
-            throw XCTSkip(
-                "No committed DB-compat fixture bundled yet. Copy \(outputDir.path)/* into "
-                + "AgentLensTests/Fixtures/DBByteCompat/, regenerate the project, and re-run."
-            )
-        }
+        let committedVectorURL = try XCTUnwrap(
+            bundledURL(resource: vectorBaseName, ext: "json"),
+            "Committed DB-compat vector must be bundled from AgentLensTests/Fixtures/DBByteCompat."
+        )
+        let committedFixtureURL = try XCTUnwrap(
+            bundledURL(resource: fixtureBaseName, ext: "sqlcipher"),
+            "Committed DB-compat SQLCipher fixture must be bundled from AgentLensTests/Fixtures/DBByteCompat."
+        )
 
         let committedVector = try JSONDecoder().decode(
             DatabaseByteCompatVector.Vector.self,
