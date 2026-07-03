@@ -1,0 +1,1 @@
+(uint32 2, (0, {'children-display': <'submenu'>}, [<(2, {'label': <'Open dashboard'>}, @av [])>, <(3, {'label': <'Reconnect daemon'>}, @av [])>, <(4, {'label': <'Quit OpenBurnBar'>}, @av [])>]))

@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-07-03T11:36:59.676Z",
+  "lane": "W06LinuxShellUx",
+  "mode": "daemon-backed-oracle",
+  "daemon": {
+    "ok": true,
+    "protocolVersion": 1,
+    "daemonVersion": "gui-session-fake-daemon-0.1.0",
+    "socketPath": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock",
+    "gatewayEnabled": true,
+    "gatewayHost": "127.0.0.1",
+    "gatewayPort": 47877
+  },
+  "routes": [
+    {
+      "route": "overview",
+      "label": "overview",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "insights",
+      "label": "insights",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "database",
+      "label": "database",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "providers",
+      "label": "providers",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "projects",
+      "label": "projects",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "missions",
+      "label": "missions",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "activity",
+      "label": "activity",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "chat",
+      "label": "chat",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    },
+    {
+      "route": "memory",
+      "label": "memory",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "127.0.0.1:47877"
+        }
+      ]
+    }
+  ]
+}

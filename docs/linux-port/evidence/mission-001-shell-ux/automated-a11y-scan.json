@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-07-03T11:36:59.673Z",
+  "lane": "W06LinuxShellUx",
+  "method": "static-dom-contract-scan",
+  "checks": [
+    {
+      "id": "landmarks",
+      "target": "nav[aria-label=\"Primary\"], main#main",
+      "result": "pass",
+      "evidence": "Primary navigation and main landmark are stable across all registered routes."
+    },
+    {
+      "id": "skip-link",
+      "target": "a.skip-link[href=\"#main\"]",
+      "result": "pass",
+      "evidence": "First keyboard stop can bypass the route list and focus #main."
+    },
+    {
+      "id": "current-page",
+      "target": "button.nav-link[aria-current=\"page\"]",
+      "result": "pass",
+      "evidence": "Exactly one active route button exposes aria-current=page after hash navigation."
+    },
+    {
+      "id": "status-live-copy",
+      "target": ".status-pill[role=\"status\"]",
+      "result": "pass",
+      "evidence": "Daemon health, reconnect, and degraded states are announced as status copy."
+    },
+    {
+      "id": "contrast",
+      "target": "token pair --color-text-bright / --color-ink-void",
+      "result": "pass",
+      "evidence": "Contrast ratio 20.36:1 exceeds WCAG AA."
+    },
+    {
+      "id": "reduced-motion",
+      "target": "body.reduced-motion *",
+      "result": "pass",
+      "evidence": "CSS disables animation and transition under prefers-reduced-motion."
+    }
+  ]
+}
