@@ -90,7 +90,23 @@ final class HermesConversationStateStore {
         capRetainedMessages()
     }
 
-    func persistCurrentThread() {
+    @ObservationIgnored private var persistDebounceTask: Task<Void, Never>?
+
+    func persistCurrentThread(debounced: Bool = false) {
+        if debounced {
+            persistDebounceTask?.cancel()
+            persistDebounceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled else { return }
+                self?.persistCurrentThreadImmediately()
+            }
+            return
+        }
+        persistDebounceTask?.cancel()
+        persistCurrentThreadImmediately()
+    }
+
+    private func persistCurrentThreadImmediately() {
         guard let id = selectedSessionID, !messages.isEmpty else { return }
         let now = Date()
         let createdAt = history.thread(id: id)?.createdAt ?? messages.first?.timestamp ?? now
@@ -514,7 +530,7 @@ final class HermesConversationStateStore {
                 ?? Self.trimmedNilIfEmpty(snapshot.currentStepLabel)
                 ?? "Hermes Terminal running..."
         }
-        persistCurrentThread()
+        persistCurrentThread(debounced: !snapshot.isTerminal)
     }
 
     private static func visibleCLIResponseText(from snapshot: CLIAgentMissionSnapshot) -> String? {

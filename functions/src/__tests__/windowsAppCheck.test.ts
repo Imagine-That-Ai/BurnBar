@@ -14,6 +14,7 @@
  * needed and macOS runs it fully.
  */
 
+import { generateKeyPairSync, createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -31,6 +32,7 @@ const {
   buildWindowsAttestationVerifiers,
   mintWindowsAppCheckTokenCore,
   signMockAttestation,
+  aikPublicKeyFingerprint,
   MOCK_ATTESTATION_KIND,
   MOCK_ATTESTATION_MAX_AGE_MS,
   DEFAULT_MINT_TTL_MS,
@@ -245,7 +247,7 @@ describe("VAL-P0-AC-011 attestation-gated production fence", () => {
       expectedAppId: APP_ID,
       replayStore: new Set(),
     });
-    expect(prodVerifiers.size).toBe(0);
+    expect(prodVerifiers.size).toBe(1);
     expect(prodVerifiers.has(MOCK_ATTESTATION_KIND)).toBe(false);
 
     await expect(
@@ -299,5 +301,138 @@ describe("VAL-P0-AC-011B index.ts registration-presence (wiring)", () => {
   it("exposes the callable object from the module", async () => {
     const mod = await import("../callables/windowsAppCheck.js");
     expect(mod.mintWindowsAppCheckToken).toBeDefined();
+  });
+});
+
+describe("VAL-P2-APPCHECK-TPM-BACKEND TPM verifier", () => {
+  const TPM_NONCE = "tpm-nonce-0123456789abcdef";
+
+  /**
+   * Build a TPM attestation claim: an AIK-signed quote embedding the nonce, wrapped
+   * as hex(JSON) in `mac`. Returns the claim plus the AIK's trust fingerprint so a
+   * test can (or deliberately can't) pin it as trusted.
+   */
+  function makeTpmClaim(opts: {
+    nonce?: string;
+    signWith?: "aik" | "other";
+    embedNonce?: boolean;
+    appId?: string;
+    issuedAtMs?: number;
+  } = {}): { claim: WindowsAttestationClaim; aikFingerprint: string } {
+    const nonce = opts.nonce ?? TPM_NONCE;
+    const aik = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const other = generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+    const aikCertPem = aik.publicKey.export({ type: "pkcs1", format: "pem" }) as string;
+    const embedded = opts.embedNonce === false ? "not-the-nonce-at-all" : nonce;
+    const quote = "1234567890abcdef" + Buffer.from(embedded, "utf8").toString("hex");
+
+    const signer = createSign("sha256");
+    signer.update(Buffer.from(quote, "hex"));
+    const signingKey = opts.signWith === "other" ? other.privateKey : aik.privateKey;
+    const signature = signer.sign(signingKey, "hex");
+
+    const mac = Buffer.from(JSON.stringify({ quote, signature, aikCertPem }), "utf8").toString("hex");
+    const aikFingerprint = aikPublicKeyFingerprint(aikCertPem);
+    expect(aikFingerprint).not.toBeNull();
+    return {
+      claim: {
+        kind: "tpm",
+        appId: opts.appId ?? APP_ID,
+        nonce,
+        issuedAtMs: opts.issuedAtMs ?? NOW,
+        mac,
+      },
+      aikFingerprint: aikFingerprint as string,
+    };
+  }
+
+  function tpmVerifier(trusted: string[]) {
+    const verifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: APP_ID,
+      trustedAikFingerprints: trusted,
+    });
+    const v = verifiers.get("tpm");
+    expect(v).toBeDefined();
+    return v!;
+  }
+
+  it("verifies a valid AIK-signed quote when the AIK is a pinned trust anchor", () => {
+    const { claim, aikFingerprint } = makeTpmClaim();
+    const result = tpmVerifier([aikFingerprint]).verify(claim, NOW);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.appId).toBe(APP_ID);
+  });
+
+  it("rejects a well-formed self-signed claim whose AIK is NOT trusted (forgeable-key defense)", () => {
+    // Correctly signed by its own key + nonce embedded — the ONLY thing wrong is
+    // that the presented AIK is not pinned. This is the attack the trust anchor stops.
+    const { claim } = makeTpmClaim();
+    const result = tpmVerifier([]).verify(claim, NOW); // empty trust set = prod default
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("untrusted");
+  });
+
+  it("rejects a claim whose AIK is trusted but the quote signature is forged", () => {
+    const { claim, aikFingerprint } = makeTpmClaim({ signWith: "other" });
+    const result = tpmVerifier([aikFingerprint]).verify(claim, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("forged");
+  });
+
+  it("rejects a trusted, correctly-signed quote that omits the expected nonce (anti-replay)", () => {
+    const { claim, aikFingerprint } = makeTpmClaim({ embedNonce: false });
+    const result = tpmVerifier([aikFingerprint]).verify(claim, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("replayed");
+  });
+
+  it("rejects a stale quote even from a trusted AIK", () => {
+    const { claim, aikFingerprint } = makeTpmClaim({ issuedAtMs: NOW - MOCK_ATTESTATION_MAX_AGE_MS - 1 });
+    const result = tpmVerifier([aikFingerprint]).verify(claim, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("stale");
+  });
+
+  it("PROD FENCE: an otherwise-valid TPM claim cannot MINT when no AIK is pinned, and createToken is never called", async () => {
+    const { claim } = makeTpmClaim();
+    const createToken = stubMinter();
+    // Prod-shaped registry: mock absent, tpm present but with an EMPTY trust set.
+    const prodVerifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: APP_ID,
+      trustedAikFingerprints: [],
+    });
+    expect(prodVerifiers.has("tpm")).toBe(true);
+    await expect(
+      mintWindowsAppCheckTokenCore({
+        claim,
+        verifiers: prodVerifiers,
+        allowedAppIDs: [APP_ID],
+        createToken,
+        nowMillis: NOW,
+      }),
+    ).rejects.toThrow(/not a trusted attestation identity/i);
+    expect(createToken.calls).toHaveLength(0);
+  });
+
+  it("mints for a trusted AIK claim through the full mint core (createToken called once)", async () => {
+    const { claim, aikFingerprint } = makeTpmClaim({ nonce: "tpm-nonce-mint-abcdef0123" });
+    const createToken = stubMinter();
+    const verifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: APP_ID,
+      trustedAikFingerprints: [aikFingerprint],
+    });
+    const result = await mintWindowsAppCheckTokenCore({
+      claim,
+      verifiers,
+      allowedAppIDs: [APP_ID],
+      createToken,
+      nowMillis: NOW,
+    });
+    expect(result.appId).toBe(APP_ID);
+    expect(createToken.calls).toEqual([{ appId: APP_ID, ttlMillis: DEFAULT_MINT_TTL_MS }]);
   });
 });

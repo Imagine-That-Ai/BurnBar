@@ -373,6 +373,9 @@ struct IgnisEmbersView: View {
 struct LivingFireCanvas: View {
     let size: CGFloat
     let reduceMotion: Bool
+    @Environment(\.navDecorativeAnimationsPaused) private var navDecorativeAnimationsPaused
+
+    private var animationsPaused: Bool { reduceMotion || navDecorativeAnimationsPaused }
 
     private struct ParticleSeed {
         let baseSpawn: CGFloat   // 0..1 horizontal jitter at the wick
@@ -415,10 +418,10 @@ struct LivingFireCanvas: View {
     ]
 
     var body: some View {
-        if reduceMotion {
+        if animationsPaused {
             staticFire
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: animationsPaused)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 renderFire(time: t)
             }
@@ -539,75 +542,64 @@ struct LivingFireCanvas: View {
 struct DormantEmberFlame: View {
     let size: CGFloat
     let reduceMotion: Bool
+    @Environment(\.navDecorativeAnimationsPaused) private var navDecorativeAnimationsPaused
+
+    private var animationsPaused: Bool { reduceMotion || navDecorativeAnimationsPaused }
 
     var body: some View {
         ZStack {
-            // Outline silhouette
             IgnisFlameShape(tier: 0, flicker: 0)
                 .stroke(
                     MobileTheme.Colors.textMuted.opacity(0.85),
                     style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
                 )
 
-            // Soft inner smolder (warm tint that pulses)
-            if reduceMotion {
+            if animationsPaused {
                 IgnisFlameShape(tier: 1, flicker: 0)
                     .fill(MobileTheme.ember.opacity(0.16))
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
-                    let pulse = 0.10 + 0.10 * (0.5 + 0.5 * sin(t * 1.3))
-                    IgnisFlameShape(tier: 1, flicker: 0)
-                        .fill(MobileTheme.ember.opacity(pulse))
-                }
-            }
-
-            // Coal glow at the wick — small bright dot that pulses
-            if reduceMotion {
                 Circle()
                     .fill(MobileTheme.ember.opacity(0.55))
                     .frame(width: size * 0.10, height: size * 0.10)
                     .position(x: size / 2, y: size * 0.84)
                     .blur(radius: size * 0.04)
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: animationsPaused)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
-                    let pulse = 0.45 + 0.30 * (0.5 + 0.5 * sin(t * 1.6))
-                    let scale = 0.85 + 0.20 * (0.5 + 0.5 * sin(t * 1.2 + 0.6))
-                    Circle()
-                        .fill(MobileTheme.ember.opacity(pulse))
-                        .frame(width: size * 0.10, height: size * 0.10)
-                        .scaleEffect(scale)
-                        .position(x: size / 2, y: size * 0.84)
-                        .blur(radius: size * 0.04)
-                        .blendMode(.plusLighter)
-                }
-            }
-
-            // Single drifting ember every ~2.4s — the icon never feels dead
-            if !reduceMotion {
-                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
+                    let smolderPulse = 0.10 + 0.10 * (0.5 + 0.5 * sin(t * 1.3))
+                    let coalPulse = 0.45 + 0.30 * (0.5 + 0.5 * sin(t * 1.6))
+                    let coalScale = 0.85 + 0.20 * (0.5 + 0.5 * sin(t * 1.2 + 0.6))
                     let life: TimeInterval = 2.4
                     let local = (t.truncatingRemainder(dividingBy: life)) / life
                     let p = CGFloat(local)
-                    let y = size * (0.84 - 0.50 * p)
-                    let x = size / 2 + sin(p * .pi * 1.5) * size * 0.06
-                    let r = size * 0.018 * (1.0 - p * 0.4)
-                    let opacity = max(0, 1 - p) * 0.85
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.white, MobileTheme.amber, MobileTheme.ember.opacity(0)],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: r
+                    let emberY = size * (0.84 - 0.50 * p)
+                    let emberX = size / 2 + sin(p * .pi * 1.5) * size * 0.06
+                    let emberR = size * 0.018 * (1.0 - p * 0.4)
+                    let emberOpacity = max(0, 1 - p) * 0.85
+
+                    ZStack {
+                        IgnisFlameShape(tier: 1, flicker: 0)
+                            .fill(MobileTheme.ember.opacity(smolderPulse))
+                        Circle()
+                            .fill(MobileTheme.ember.opacity(coalPulse))
+                            .frame(width: size * 0.10, height: size * 0.10)
+                            .scaleEffect(coalScale)
+                            .position(x: size / 2, y: size * 0.84)
+                            .blur(radius: size * 0.04)
+                            .blendMode(.plusLighter)
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [Color.white, MobileTheme.amber, MobileTheme.ember.opacity(0)],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: emberR
+                                )
                             )
-                        )
-                        .frame(width: r * 2, height: r * 2)
-                        .opacity(opacity)
-                        .position(x: x, y: y)
-                        .blendMode(.plusLighter)
+                            .frame(width: emberR * 2, height: emberR * 2)
+                            .opacity(emberOpacity)
+                            .position(x: emberX, y: emberY)
+                            .blendMode(.plusLighter)
+                    }
                 }
             }
         }
@@ -1241,7 +1233,10 @@ struct AuroraNavIcon: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.navDecorativeAnimationsPaused) private var navDecorativeAnimationsPaused
     @State private var youHaloRotation: Double = 0
+
+    private var decorativeAnimationsPaused: Bool { reduceMotion || navDecorativeAnimationsPaused }
 
     /// Animation driver — 0 at rest, 1 when selected. Drives the
     /// `animatableData` of every shape so the spring on isSelected
@@ -1490,10 +1485,10 @@ struct AuroraNavIcon: View {
     /// surrounding layout.
     @ViewBuilder
     private var streamsContent: some View {
-        if reduceMotion || !isSelected {
+        if decorativeAnimationsPaused || !isSelected {
             colorBars(phase: 0.5)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: decorativeAnimationsPaused)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 let phase = CGFloat((t.truncatingRemainder(dividingBy: 2.4)) / 2.4)
                 ZStack {
@@ -1570,8 +1565,8 @@ struct AuroraNavIcon: View {
 
     @ViewBuilder
     private func antennaeLayer(strokeStyle: AnyShapeStyle, detailStroke: CGFloat) -> some View {
-        if isSelected, !reduceMotion {
-            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: false)) { context in
+        if isSelected, !decorativeAnimationsPaused {
+            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: decorativeAnimationsPaused)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 let wiggle = CGFloat(sin(t * 1.6)) * 0.5 + 0.5
                 StreamsTVAntennaShape(lift: wiggle)

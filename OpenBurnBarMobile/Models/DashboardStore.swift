@@ -89,6 +89,8 @@ final class DashboardStore {
 
     private var listener: ListenerRegistration?
     private var lastRebuildAttempt: Date = .distantPast
+    private var lastUsageStalenessProbeAt: Date = .distantPast
+    private static let usageStalenessProbeCooldown: TimeInterval = 300
 
     /// Minimum interval between automatic rebuild attempts.
     private static let rebuildCooldown: TimeInterval = 60
@@ -209,9 +211,13 @@ final class DashboardStore {
                         await self.refresh()
                         return
                     }
-                    if await self.hasUsageNewerThanRollups(rollups) {
-                        await self.refresh()
-                        return
+                    let now = Date()
+                    if now.timeIntervalSince(self.lastUsageStalenessProbeAt) >= Self.usageStalenessProbeCooldown {
+                        self.lastUsageStalenessProbeAt = now
+                        if await self.hasUsageNewerThanRollups(rollups) {
+                            await self.refresh()
+                            return
+                        }
                     }
                     self.applyRollups(rollups)
                     self.error = nil

@@ -675,6 +675,114 @@ struct ShortcutChip: View {
     }
 }
 
+// MARK: - Command Omnibar (palette launcher)
+//
+// The Command Deck's centerpiece. A wide, capsule-shaped launcher that lives
+// in the toolbar's principal slot and opens the Command Palette on click
+// (or ⌘K from anywhere). Reads as a search field so the bar never looks
+// empty: leading gradient magnifier, muted invitation text, a live context
+// summary ("133 sessions · 5 providers"), and the ⌘K chip given a real home.
+
+struct BurnRailCommandOmnibar: View {
+    var placeholder: String = "Search or jump anywhere…"
+    var contextSummary: String?
+    var isLive: Bool = false
+    var onActivate: () -> Void
+
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: onActivate) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(
+                        hover
+                            ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+                            : AnyShapeStyle(DesignSystem.Colors.textSecondary)
+                    )
+
+                Text(placeholder)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+
+                Spacer(minLength: 16)
+
+                if let contextSummary, !contextSummary.isEmpty {
+                    HStack(spacing: 5) {
+                        if isLive {
+                            Circle()
+                                .fill(DesignSystem.Colors.ember)
+                                .frame(width: 4.5, height: 4.5)
+                                .shadow(color: DesignSystem.Colors.ember.opacity(0.7), radius: 2.5)
+                        }
+                        Text(contextSummary)
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.85))
+                            .lineLimit(1)
+                    }
+                    .transition(.opacity)
+                }
+
+                ShortcutChip(keys: ["\u{2318}", "K"])
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .frame(minWidth: 300, idealWidth: 460, maxWidth: 560)
+            .background(omnibarSurface)
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        hover
+                            ? AnyShapeStyle(DesignSystem.Colors.primaryGradient.opacity(0.45))
+                            : AnyShapeStyle(DesignSystem.Colors.border.opacity(0.5)),
+                        lineWidth: hover ? 1.0 : 0.5
+                    )
+            )
+            .clipShape(Capsule(style: .continuous))
+            .shadow(
+                color: hover ? DesignSystem.Colors.ember.opacity(0.18) : .clear,
+                radius: 8, y: 2
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .animation(DesignSystem.Animation.hover, value: hover)
+        .help("Command Palette (\u{2318}K)")
+        .accessibilityLabel("Search and command palette")
+        .accessibilityHint("Opens the Command Palette")
+    }
+
+    @ViewBuilder
+    private var omnibarSurface: some View {
+        if #available(macOS 26.0, *) {
+            Capsule(style: .continuous)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
+                .opacity(hover ? 0.95 : 0.72)
+        } else {
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(hover ? 0.72 : 0.5))
+        }
+    }
+}
+
+#if DEBUG
+#Preview("Command omnibar") {
+    VStack(spacing: 16) {
+        BurnRailCommandOmnibar(
+            contextSummary: "133 sessions · 5 providers",
+            isLive: true,
+            onActivate: {}
+        )
+        BurnRailCommandOmnibar(onActivate: {})
+    }
+    .padding(24)
+    .background(DesignSystem.Colors.background)
+}
+#endif
+
 // MARK: - Section: Workspace Context
 //
 // Lives in the principal toolbar slot. Anchors the rail in *where you are* and

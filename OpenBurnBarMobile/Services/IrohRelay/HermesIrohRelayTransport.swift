@@ -33,44 +33,26 @@ typealias IrohMediaFrameDispatcher = @Sendable (
 ) async -> Void
 
 private enum IrohNetworkAuditSnapshot {
-    private final class ContinuationGate: Sendable {
-        private let didResume = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
+    private final class SharedPathMonitor: @unchecked Sendable {
+        static let shared = SharedPathMonitor()
+        private let monitor = NWPathMonitor()
+        private let lock = OSAllocatedUnfairLock<NWPath?>(initialState: nil)
 
-        func finish(
-            with path: NWPath,
-            monitor: NWPathMonitor,
-            continuation: CheckedContinuation<[String: String], Never>
-        ) {
-            let shouldResume = didResume.withLockUnchecked { resumed -> Bool in
-                guard !resumed else { return false }
-                resumed = true
-                return true
+        private init() {
+            monitor.pathUpdateHandler = { [lock] path in
+                lock.withLock { $0 = path }
             }
-            guard shouldResume else { return }
-            let detail = auditDetail(for: path)
-            monitor.cancel()
-            continuation.resume(returning: detail)
+            monitor.start(queue: DispatchQueue(label: "com.openburnbar.iroh-network-audit-shared"))
+        }
+
+        func currentDetail() -> [String: String] {
+            let path = lock.withLock { $0 } ?? monitor.currentPath
+            return auditDetail(for: path)
         }
     }
 
     static func capture(timeout: DispatchTimeInterval = .milliseconds(250)) async -> [String: String] {
-        await withCheckedContinuation { continuation in
-            let monitor = NWPathMonitor()
-            let queue = DispatchQueue(label: "com.openburnbar.iroh-network-audit")
-            let gate = ContinuationGate()
-
-            @Sendable func finish(with path: NWPath) {
-                gate.finish(with: path, monitor: monitor, continuation: continuation)
-            }
-
-            monitor.pathUpdateHandler = { path in
-                finish(with: path)
-            }
-            monitor.start(queue: queue)
-            queue.asyncAfter(deadline: .now() + timeout) {
-                finish(with: monitor.currentPath)
-            }
-        }
+        SharedPathMonitor.shared.currentDetail()
     }
 
     private static func auditDetail(for path: NWPath) -> [String: String] {
@@ -159,6 +141,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
     private var identity: IrohEndpointIdentity?
+    private var lastPersistedPeerNodeId: String?
     private var endpointRelayURL: String?
     /// Mercury Phase 1b — single-shot installer for the persistent media
     /// control stream. AppDelegate calls
@@ -432,7 +415,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             stage = "dial_start"
             let localNodeId = identity?.nodeId ?? ""
             if !localNodeId.isEmpty {
-                await persistIrohPeerNodeId(localNodeId, uid: uid)
+                await persistIrohPeerNodeIdIfNeeded(localNodeId, uid: uid)
             }
             await auditLogger.record(
                 event: .pairingVerified,
@@ -593,7 +576,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
             switch Self.requestStreamRoute(for: frame.type) {
             case .responseChunk:
-                guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
+                guard let chunk = try await chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
                 receivedChunkCount += 1
                 try chunkValidator.record(sequence: chunk.sequence)
                 let graceDeadline = Date().addingTimeInterval(Self.responseCompleteGraceTimeout)
@@ -927,35 +910,37 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         uid: String,
         connectionID: String,
         requestID: String
-    ) throws -> HermesRelayChunkRecord? {
+    ) async throws -> HermesRelayChunkRecord? {
         guard let payload = frame.payload,
               let kind = payload.kind,
               let sequence = payload.sequence,
               let ciphertext = payload.ciphertext else {
             return nil
         }
-        let plaintext = try HermesRelayCrypto.openBase64(
-            ciphertext: ciphertext,
-            keyData: keyData,
-            aad: HermesRelayCrypto.chunkAAD(
-                uid: uid,
-                connectionID: connectionID,
-                requestID: requestID,
-                sequence: sequence,
-                kind: kind.rawValue
+        return try await Task.detached(priority: .userInitiated) {
+            let plaintext = try HermesRelayCrypto.openBase64(
+                ciphertext: ciphertext,
+                keyData: keyData,
+                aad: HermesRelayCrypto.chunkAAD(
+                    uid: uid,
+                    connectionID: connectionID,
+                    requestID: requestID,
+                    sequence: sequence,
+                    kind: kind.rawValue
+                )
             )
-        )
-        let text = String(data: plaintext, encoding: .utf8)
-        return HermesRelayChunkRecord(
-            id: String(format: "%08d", sequence),
-            requestId: requestID,
-            sequence: sequence,
-            kind: kind,
-            data: text,
-            text: text,
-            error: nil,
-            schemaVersion: 2
-        )
+            let text = String(data: plaintext, encoding: .utf8)
+            return HermesRelayChunkRecord(
+                id: String(format: "%08d", sequence),
+                requestId: requestID,
+                sequence: sequence,
+                kind: kind,
+                data: text,
+                text: text,
+                error: nil,
+                schemaVersion: 2
+            )
+        }.value
     }
 
     static func defaultTransport(relayURL: String? = nil) -> any IrohRelayTransport {
@@ -976,26 +961,30 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
     }
 
-    private func persistIrohPeerNodeId(_ nodeId: String, uid: String) async {
+    private func persistIrohPeerNodeIdIfNeeded(_ nodeId: String, uid: String) async {
+        guard lastPersistedPeerNodeId != nodeId else { return }
+        lastPersistedPeerNodeId = nodeId
         guard FirebaseApp.app() != nil else { return }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
         let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("devices").document(deviceId)
-                .setData(
-                    [
-                        "deviceId": deviceId,
-                        "irohPeerNodeId": nodeId,
-                        "updated_at_millis": nowMillis
-                    ],
-                    merge: true
-                )
-        } catch {
-            #if DEBUG
-            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(irohPublicErrorClass(error))")
-            #endif
+        Task.detached(priority: .utility) {
+            do {
+                try await Firestore.firestore()
+                    .collection("users").document(uid)
+                    .collection("devices").document(deviceId)
+                    .setData(
+                        [
+                            "deviceId": deviceId,
+                            "irohPeerNodeId": nodeId,
+                            "updated_at_millis": nowMillis
+                        ],
+                        merge: true
+                    )
+            } catch {
+                #if DEBUG
+                print("HermesIrohRelayTransport irohPeerNodeId persist failed")
+                #endif
+            }
         }
     }
 }

@@ -8,22 +8,31 @@
  * Check token minted here with `admin.appCheck().createToken(appId, {ttlMillis})`.
  * This is the FIRST `createToken` caller in the codebase.
  *
- * Phase-0 trust model — attestation-gated, NOT endpoint-disabled:
- *   • The ONLY verifier registered in Phase 0 is a MOCK verifier over a shared
- *     fixture secret. It accepts a well-formed, freshly-signed, single-use mock
- *     claim and rejects invalid / forged / replayed ones.
- *   • The mock verifier is registered ONLY under non-production config
- *     (`allowMockAppCheckAttestation`, forced false in prod by config.ts). Under
- *     production config the verifier registry has NO verifier for a mock claim,
- *     so a mock/unverified claim finds no accepting verifier and CANNOT mint —
- *     WITHOUT hard-disabling the endpoint. AC-013's real TPM verifier plugs into
- *     this same registry/mint path in prod with no security guard to remove.
+ * Trust model — attestation-gated, NOT endpoint-disabled:
+ *   • MOCK verifier (dev/CI): accepts a well-formed, freshly-signed, single-use
+ *     mock claim over a shared fixture secret; rejects invalid/forged/replayed.
+ *     Registered ONLY under non-production config (`allowMockAppCheckAttestation`,
+ *     forced false in prod by config.ts), so under prod config no verifier accepts
+ *     a mock claim and it CANNOT mint.
+ *   • REAL TPM verifier (AC-013): validates a TPM quote signed by an Attestation
+ *     Identity Key whose SPKI fingerprint is a pinned trust anchor, embedding the
+ *     freshness nonce. Registered in ALL configs (prod too), but the pinned-AIK
+ *     trust set is EMPTY in prod today, so it FAILS CLOSED — it mints nothing
+ *     until an operator provisions real TPM trust anchors + a real Windows app id.
  *
- * There is deliberately no `if (prod) disable endpoint` branch: the fence is the
- * absence of an accepting verifier, not a disabled route.
+ * Both fences are the same shape: a claim only mints when SOME registered verifier
+ * accepts it, and in prod none does yet. There is deliberately no `if (prod)
+ * disable endpoint` branch — the fence is a failed attestation, not a dead route.
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  timingSafeEqual,
+  createVerify,
+  createPublicKey,
+  X509Certificate,
+  type KeyObject,
+} from "node:crypto";
 
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { getAppCheck } from "firebase-admin/app-check";
@@ -35,7 +44,7 @@ import { assertAuth } from "../auth.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
-import { optionalBoundedInt, optionalUnknown, parseCallableInput } from "../validation/callableSchema.js";
+import { parseCallableInput } from "../validation/callableSchema.js";
 
 /** Discriminator for the Phase-0 mock attestation claim. */
 const MOCK_ATTESTATION_KIND = "mock" as const;
@@ -88,7 +97,8 @@ type AttestationRejectReason =
   | "app_id_not_expected"
   | "stale"
   | "forged"
-  | "replayed";
+  | "replayed"
+  | "untrusted";
 
 /**
  * A verifier proves a platform attestation claim and returns the bound app id.
@@ -176,6 +186,149 @@ class MockWindowsAttestationVerifier implements WindowsAttestationVerifier {
 }
 
 /**
+ * Load the Attestation Identity Key (AIK) public key from an attestation claim.
+ * Accepts either a bare public-key PEM (SPKI/PKCS#1) or a full X.509 AIK/EK
+ * certificate PEM; in the certificate case the embedded subject public key is
+ * used. Throws on unparseable input (caller maps that to a rejection).
+ */
+function loadAikPublicKey(aikCertPem: string): KeyObject {
+  if (aikCertPem.includes("BEGIN CERTIFICATE")) {
+    return new X509Certificate(aikCertPem).publicKey;
+  }
+  return createPublicKey(aikCertPem);
+}
+
+/**
+ * Canonical trust identity of an AIK: the lowercase hex SHA-256 over the key's
+ * canonical SPKI DER encoding. Independent of the PEM wrapper (bare key vs.
+ * certificate) so the same AIK always yields the same fingerprint. This is the
+ * value an operator pins as a trusted-AIK anchor.
+ */
+function aikPublicKeyFingerprint(aikCertPem: string): string | null {
+  try {
+    const der = loadAikPublicKey(aikCertPem).export({ type: "spki", format: "der" });
+    return createHash("sha256").update(der).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+/** Normalize a pinned fingerprint to lowercase hex (drop `:`/whitespace separators). */
+function normalizeFingerprint(fp: string): string {
+  return fp.toLowerCase().replace(/[^0-9a-f]/g, "");
+}
+
+/**
+ * REAL TPM attestation verifier (AC-013). Proves a Windows client is a genuine,
+ * unmodified app by validating a TPM quote signed by an Attestation Identity Key
+ * whose EK/AIK the operator has anchored as trusted:
+ *
+ *   1. shape / app-id / freshness (mirrors the mock verifier),
+ *   2. parse the claim's `mac` (hex JSON) into `{ quote, signature, aikCertPem }`,
+ *   3. TRUST ANCHOR — the presented AIK's SPKI-SHA256 fingerprint MUST be one of
+ *      the pinned `trustedAikFingerprints`. With no anchors pinned the verifier
+ *      FAILS CLOSED (every claim rejected `untrusted`), so a self-signed key can
+ *      never mint. This is the AIK/EK trust check; without it the signature step
+ *      below only proves "signed by whoever supplied the key", which is forgeable.
+ *   4. verify the quote signature under the (now-trusted) AIK public key,
+ *   5. bind freshness/anti-replay by requiring the claim nonce inside the quote.
+ *
+ * The trust set is empty under production config today (no real Windows app / TPM
+ * roots provisioned yet), so this verifier mints NOTHING in prod — the same
+ * fail-closed posture as the absent mock verifier — while the mint path stays
+ * live for provisioning. It is registered in ALL configs; there is no prod-only
+ * disable to remove.
+ */
+class WindowsTpmAttestationVerifier implements WindowsAttestationVerifier {
+  readonly kind = "tpm";
+
+  private readonly trustedAikFingerprints: Set<string>;
+
+  constructor(
+    private readonly expectedAppId: string,
+    trustedAikFingerprints: readonly string[] = [],
+  ) {
+    this.trustedAikFingerprints = new Set(
+      trustedAikFingerprints.map(normalizeFingerprint).filter((fp) => fp.length > 0),
+    );
+  }
+
+  verify(claim: WindowsAttestationClaim, nowMillis: number): VerifyResult {
+    if (
+      typeof claim.appId !== "string" ||
+      claim.appId.length === 0 ||
+      typeof claim.nonce !== "string" ||
+      claim.nonce.length < MIN_NONCE_LENGTH ||
+      claim.nonce.length > MAX_NONCE_LENGTH ||
+      typeof claim.issuedAtMs !== "number" ||
+      !Number.isFinite(claim.issuedAtMs) ||
+      typeof claim.mac !== "string"
+    ) {
+      return { ok: false, reason: "malformed" };
+    }
+    if (claim.appId !== this.expectedAppId) {
+      return { ok: false, reason: "app_id_not_expected" };
+    }
+
+    // Freshness: reject a quote signed too far in the past or implausibly ahead.
+    const age = nowMillis - claim.issuedAtMs;
+    if (age > MOCK_ATTESTATION_MAX_AGE_MS || age < -MOCK_ATTESTATION_CLOCK_SKEW_MS) {
+      return { ok: false, reason: "stale" };
+    }
+
+    let quote: unknown;
+    let signature: unknown;
+    let aikCertPem: unknown;
+    try {
+      const payload: unknown = JSON.parse(Buffer.from(claim.mac, "hex").toString("utf8"));
+      if (!isRecord(payload)) {
+        return { ok: false, reason: "malformed" };
+      }
+      ({ quote, signature, aikCertPem } = payload);
+    } catch {
+      return { ok: false, reason: "malformed" };
+    }
+    if (
+      typeof quote !== "string" || quote.length === 0 ||
+      typeof signature !== "string" || signature.length === 0 ||
+      typeof aikCertPem !== "string" || aikCertPem.length === 0
+    ) {
+      return { ok: false, reason: "malformed" };
+    }
+
+    // TRUST ANCHOR: the AIK must be pinned. Empty trust set ⇒ fail closed.
+    const fingerprint = aikPublicKeyFingerprint(aikCertPem);
+    if (fingerprint === null) {
+      return { ok: false, reason: "malformed" };
+    }
+    if (!this.trustedAikFingerprints.has(fingerprint)) {
+      return { ok: false, reason: "untrusted" };
+    }
+
+    try {
+      // Verify the quote signature under the trusted AIK public key.
+      const publicKey = loadAikPublicKey(aikCertPem);
+      const verify = createVerify("sha256");
+      verify.update(Buffer.from(quote, "hex"));
+      if (!verify.verify(publicKey, Buffer.from(signature, "hex"))) {
+        return { ok: false, reason: "forged" };
+      }
+    } catch {
+      return { ok: false, reason: "forged" };
+    }
+
+    // Anti-replay: the freshly-issued client nonce must be embedded in the quote.
+    const quoteBuffer = Buffer.from(quote, "hex");
+    const nonceBuffer = Buffer.from(claim.nonce, "utf8");
+    if (!quoteBuffer.includes(nonceBuffer)) {
+      return { ok: false, reason: "replayed" };
+    }
+
+    return { ok: true, appId: claim.appId };
+  }
+}
+
+/**
  * Build the attestation verifier registry for the current config.
  *
  * THE FENCE: under production config (`allowMock === false`) the registry is
@@ -188,6 +341,11 @@ function buildWindowsAttestationVerifiers(opts: {
   expectedAppId: string;
   sharedSecret?: string;
   replayStore?: Set<string>;
+  /**
+   * Pinned trusted-AIK SPKI-SHA256 fingerprints for the real TPM verifier. Empty
+   * (the prod default until AC-013 provisioning) ⇒ the TPM verifier fails closed.
+   */
+  trustedAikFingerprints?: readonly string[];
 }): Map<string, WindowsAttestationVerifier> {
   const verifiers = new Map<string, WindowsAttestationVerifier>();
   if (opts.allowMock) {
@@ -196,8 +354,13 @@ function buildWindowsAttestationVerifiers(opts: {
       new MockWindowsAttestationVerifier(opts.expectedAppId, opts.sharedSecret, opts.replayStore),
     );
   }
-  // AC-013: verifiers.set("tpm", new WindowsTpmAttestationVerifier(...)) — registered
-  // in ALL configs (including prod). No prod-only disable to remove here.
+  // AC-013: the real TPM verifier is registered in ALL configs (including prod).
+  // With no trusted AIK fingerprints pinned it fails closed, so registering it in
+  // prod cannot mint until an operator provisions real trust anchors.
+  verifiers.set(
+    "tpm",
+    new WindowsTpmAttestationVerifier(opts.expectedAppId, opts.trustedAikFingerprints ?? []),
+  );
   return verifiers;
 }
 
@@ -213,6 +376,8 @@ function rejectReasonToError(reason: AttestationRejectReason): HttpsError {
       return new HttpsError("unauthenticated", "The attestation signature did not verify.");
     case "replayed":
       return new HttpsError("unauthenticated", "The attestation nonce was already used.");
+    case "untrusted":
+      return new HttpsError("permission-denied", "The attestation key is not a trusted attestation identity.");
   }
 }
 
@@ -296,12 +461,29 @@ export const __testing__ = {
   buildWindowsAttestationVerifiers,
   mintWindowsAppCheckTokenCore,
   signMockAttestation,
+  aikPublicKeyFingerprint,
   MOCK_ATTESTATION_KIND,
   MOCK_ATTESTATION_SHARED_SECRET,
   MOCK_ATTESTATION_MAX_AGE_MS,
   DEFAULT_MINT_TTL_MS,
   makeReplayStore: (): Set<string> => new Set<string>(),
 };
+
+/**
+ * Read the operator-pinned trusted-AIK fingerprints for the real TPM verifier
+ * from the environment (comma/newline separated hex SHA-256 fingerprints). Unset
+ * (the current production posture) ⇒ empty ⇒ the TPM verifier fails closed. This
+ * is the AC-013 provisioning seam; it is read here rather than added to the typed
+ * config surface so the mint path stays self-contained.
+ */
+function resolveTrustedAikFingerprints(): string[] {
+  const raw = process.env.WINDOWS_TPM_AIK_FINGERPRINTS;
+  if (typeof raw !== "string" || raw.trim().length === 0) return [];
+  return raw
+    .split(/[\s,]+/)
+    .map((fp) => fp.trim())
+    .filter((fp) => fp.length > 0);
+}
 
 /** Module-scoped replay store for the deployed callable's mock verifier. */
 const moduleReplayStore = new Set<string>();
@@ -349,6 +531,7 @@ export const mintWindowsAppCheckToken = onCall(
           allowMock: config.allowMockAppCheckAttestation,
           expectedAppId: config.windowsAppCheckAppID,
           replayStore: moduleReplayStore,
+          trustedAikFingerprints: resolveTrustedAikFingerprints(),
         }),
         allowedAppIDs: config.allowedAppCheckAppIDs,
         createToken: defaultCreateToken,

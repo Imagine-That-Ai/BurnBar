@@ -28,8 +28,24 @@ struct PulseLiveCostCurve: View {
 
     @State private var pulsePhase: CGFloat = 0
     @State private var sweepPhase: CGFloat = 0
+    @State private var displaySamples: [Sample] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+
+    private var usagesFingerprint: Int {
+        var hasher = Hasher()
+        hasher.combine(usages.count)
+        if let last = usages.last {
+            hasher.combine(last.id)
+            hasher.combine(last.endTime.timeIntervalSince1970)
+        }
+        return hasher.finalize()
+    }
+
+    private var sampleCacheToken: String {
+        let minuteBucket = Int(now.timeIntervalSince1970 / 60)
+        return "\(scope.rawValue)-\(usagesFingerprint)-\(minuteBucket)-\(displayMode.rawValue)"
+    }
 
     // MARK: - Sample Model
 
@@ -42,7 +58,7 @@ struct PulseLiveCostCurve: View {
 
     var body: some View {
         let domain = currentDomain
-        let samples = buildSamples(domain: domain)
+        let samples = displaySamples
         let peak = samples.map(\.cumulative).max() ?? 0
         let isEmpty = peak <= 0.0001
 
@@ -61,6 +77,9 @@ struct PulseLiveCostCurve: View {
         .padding(.top, 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary(samples: samples))
+        .task(id: sampleCacheToken) {
+            displaySamples = buildSamples(domain: currentDomain)
+        }
         .onAppear { startAnimating() }
         .onChange(of: reduceMotion) { _, _ in startAnimating() }
     }

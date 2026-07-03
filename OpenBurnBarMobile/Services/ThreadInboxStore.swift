@@ -21,6 +21,10 @@ import OpenBurnBarCore
 @Observable
 final class ThreadInboxStore {
     private(set) var items: [ThreadInboxItem] = []
+    /// Pre-partitioned inbox rows so views don't re-run `splitForInbox()`
+    /// (two allocations + two sorts) on every body evaluation.
+    private(set) var serviceItems: [ThreadInboxItem] = []
+    private(set) var subscriptionItems: [ThreadInboxItem] = []
     private(set) var lastRefreshedAt: Date?
     private(set) var refreshError: String?
     private(set) var isLoading: Bool = false
@@ -61,10 +65,9 @@ final class ThreadInboxStore {
             })
         }
         if let cli = cliReader {
-            // Make sure we have a recent snapshot — refresh is cheap and
-            // idempotent. Cooperative with the Firestore listener already
-            // running inside the reader.
-            await cli.refresh()
+            if !cli.hasActiveListener {
+                await cli.refresh()
+            }
             merged.append(contentsOf: itemsFromCLIReader(cli, excludingThreadIDs: mobileCLIThreadIDs))
         }
         if let host = missionHost {
@@ -72,6 +75,9 @@ final class ThreadInboxStore {
         }
 
         items = merged.sortedForInbox()
+        let split = items.splitForInbox()
+        serviceItems = split.service
+        subscriptionItems = split.subscription
         lastRefreshedAt = Date()
     }
 
@@ -144,21 +150,7 @@ final class ThreadInboxStore {
                 needsAttention: false,
                 source: .cliMirror,
                 liveMissionID: nil,
-                searchText: [
-                    record.title,
-                    record.preview,
-                    record.agent.displayName,
-                    record.modelName ?? "",
-                    record.workspaceLabel ?? "",
-                    record.messages.map { message in
-                        [
-                            message.role.rawValue,
-                            message.text,
-                            message.toolUses.map { "\($0.name) \($0.status) \($0.detail ?? "")" }
-                                .joined(separator: " ")
-                        ].joined(separator: " ")
-                    }.joined(separator: " ")
-                ].joined(separator: " "),
+                searchText: CLIAgentSessionListenerSupport.searchText(for: record),
                 attachments: [],
                 customTitle: record.customTitle,
                 labelColorHex: record.labelColorHex,

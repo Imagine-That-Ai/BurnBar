@@ -26,6 +26,7 @@ struct WebsiteBackgroundView: View {
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
+    @Environment(\.webglBackdropAncestorActive) private var webglBackdropAncestorActive
 
     private var substrate: SwarmSubstrate {
         substrateBox.resolve(kernelID: mobileBackdropKernel, selectedID: substrateID, enabled: substrateEnabled)
@@ -174,11 +175,25 @@ struct WebsiteBackgroundView: View {
         let providerGlyphsSelected = !prefs.selectedGlyphs.isEmpty
         let substrateSelected = substrateEnabled && substrateID != SubstrateCatalog.plainID
 
+        let webglPaused = scenePhase != .active
+            || reduceMotion
+            || isLowPowerModeEnabled
+            || visibility == .hidden
+            || visibility == .obscured
+        let webglFrameRate = isLowPowerModeEnabled ? 15.0 : plan.maxFrameRate
+
         ZStack {
-            // WebGL kernel base — same `KernelBackdrop` bundle as macOS/web,
-            // driven by the raw kernel id (e.g. "constellation", "fluid-aurora").
-            MobileWebGLKernelBackdropView(kernelID: kernel.rawValue, theme: theme)
+            if webglBackdropAncestorActive {
+                staticBackdrop
+            } else {
+                MobileWebGLKernelBackdropView(
+                    kernelID: kernel.rawValue,
+                    theme: theme,
+                    paused: webglPaused,
+                    maxFrameRate: webglFrameRate
+                )
                 .ignoresSafeArea()
+            }
 
             // Transparent swarm + substrate over the kernel, like macOS
             // DashboardBackdrop.kernelSubstrateOverlay. Provider glyphs are an

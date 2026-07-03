@@ -1036,12 +1036,31 @@ final class FirestoreRepository {
     /// incorrectly falling back to Pro/Cloud.
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
         let uid = try uid()
+        let entitlementIDs = ["burnbar_ultra", "burnbar_pro_max", "burnbar_pro", "hosted_quota_sync"]
+        // Parallel reads — one RTT instead of four serial awaits. Payload is
+        // boxed as `@unchecked Sendable` because Firestore returns `[String: Any]`.
+        struct EntitlementPayload: @unchecked Sendable {
+            let id: String
+            let data: [String: Any]?
+        }
+        let snapshots = try await withThrowingTaskGroup(of: EntitlementPayload.self) { group in
+            for entitlementID in entitlementIDs {
+                group.addTask {
+                    let snapshot = try await self.db
+                        .document("users/\(uid)/entitlements/\(entitlementID)")
+                        .getDocument()
+                    return EntitlementPayload(id: entitlementID, data: snapshot.data())
+                }
+            }
+            var byID: [String: [String: Any]] = [:]
+            for try await payload in group {
+                if let data = payload.data { byID[payload.id] = data }
+            }
+            return byID
+        }
         var inactiveResponse: HostedQuotaEntitlementResponse?
-        for entitlementID in ["burnbar_ultra", "burnbar_pro_max", "burnbar_pro", "hosted_quota_sync"] {
-            let snapshot = try await db
-                .document("users/\(uid)/entitlements/\(entitlementID)")
-                .getDocument()
-            guard let data = snapshot.data() else { continue }
+        for entitlementID in entitlementIDs {
+            guard let data = snapshots[entitlementID] else { continue }
             let fallbackProductID: String
             switch entitlementID {
             case "burnbar_ultra":

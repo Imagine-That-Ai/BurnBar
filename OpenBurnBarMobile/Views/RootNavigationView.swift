@@ -54,7 +54,7 @@ struct RootNavigationView: View {
     /// App-scope Agent Watch overlay singleton. The iPad split shell needs the
     /// same always-on control stream as iPhone so Mac-initiated screen sharing
     /// can surface without first navigating to You -> Agent Watch.
-    @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
+    private let liveStageSingleton = AgentWatchOverlaySingleton.shared
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
     @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 

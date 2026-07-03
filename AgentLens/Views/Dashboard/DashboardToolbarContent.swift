@@ -6,16 +6,17 @@ import SwiftUI
 //
 // A single ~52pt bar replacing the old toolbar + tab-card strip.
 //
-//   [navigation]    back · 🔥 OpenBurnBar · section switcher · ⌘K hint
-//   [principal]     (empty — the section menu already names the route)
-//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow
+//   [navigation]    back · 🔥 OpenBurnBar · section switcher
+//   [principal]     ⌘K command omnibar (search-field-shaped palette launcher
+//                   carrying a live "N sessions · M providers" summary)
+//   [primaryAction] range chip · BURN hero (range + unit in popover) · ⋯ overflow
 
 extension DashboardView {
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
-        // MARK: Navigation — back · brand · section switcher · ⌘K hint
+        // MARK: Navigation — back · brand · section switcher
 
         ToolbarItemGroup(placement: .navigation) {
             if canGoBack {
@@ -39,23 +40,51 @@ extension DashboardView {
                     }
                 }
             )
-
-            Button {
-                showCommandPalette = true
-            } label: {
-                ShortcutChip(keys: ["\u{2318}", "K"])
-            }
-            .buttonStyle(.plain)
-            .help("Command Palette (\u{2318}K)")
         }
 
-        // MARK: Primary — BURN hero (with range/unit popover) · overflow
+        // MARK: Principal — command omnibar (⌘K)
+
+        ToolbarItem(placement: .principal) {
+            BurnRailCommandOmnibar(
+                placeholder: commandOmnibarPlaceholder,
+                contextSummary: commandOmnibarSummary,
+                isLive: burnRailIsLive,
+                onActivate: { showCommandPalette = true }
+            )
+        }
+
+        // MARK: Primary — range chip · BURN hero · overflow
 
         ToolbarItemGroup(placement: .primaryAction) {
+            BurnRailTimeRangeMenuChip(
+                selected: Binding(
+                    get: { selectedTimeRange },
+                    set: { range in
+                        selectedTimeRange = range
+                        Analytics.shared.track(.dashboardTimeRangeChanged, ["time_range": .string(range.rawValue)])
+                    }
+                )
+            )
+
             commandDeckHero
 
             commandDeckOverflow
         }
+    }
+
+    // MARK: - Omnibar copy
+
+    private var commandOmnibarPlaceholder: String {
+        "Search sessions, projects, models…"
+    }
+
+    private var commandOmnibarSummary: String? {
+        let sessions = dashboardUsageWindow.sessionCount
+        let providers = activeProviderCount
+        guard sessions > 0 || providers > 0 else { return nil }
+        let sessionPart = "\(sessions.formatted()) session\(sessions == 1 ? "" : "s")"
+        let providerPart = "\(providers) provider\(providers == 1 ? "" : "s")"
+        return "\(sessionPart) · \(providerPart)"
     }
 
     // MARK: - BURN hero with range + unit popover

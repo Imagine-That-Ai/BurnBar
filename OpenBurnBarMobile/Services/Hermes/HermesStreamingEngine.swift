@@ -406,22 +406,40 @@ final class HermesStreamingEngine {
 
     private func appendStreamedRefusal(_ chunk: String, to message: inout HermesChatMessage) {
         guard !chunk.isEmpty else { return }
+        let isFirstChunk = message.streamedRefusal.isEmpty
         if message.streamedRefusal.isEmpty || chunk.hasPrefix(message.streamedRefusal) {
             message.streamedRefusal = chunk
         } else if chunk != message.streamedRefusal {
             message.streamedRefusal += chunk
         }
-        commitMessage(message)
+        commitMessageIfThrottled(message, force: isFirstChunk)
     }
 
     private func appendStreamedReasoning(_ chunk: String, to message: inout HermesChatMessage) {
         guard !chunk.isEmpty else { return }
+        let isFirstChunk = message.streamedReasoning.isEmpty
         if message.streamedReasoning.isEmpty || chunk.hasPrefix(message.streamedReasoning) {
             message.streamedReasoning = chunk
         } else if chunk != message.streamedReasoning {
             message.streamedReasoning += chunk
         }
+        commitMessageIfThrottled(message, force: isFirstChunk)
+    }
+
+    private func commitMessageIfThrottled(_ message: HermesChatMessage, force: Bool = false) {
+        guard shouldCommitStream(force: force) else { return }
         commitMessage(message)
+    }
+
+    private func shouldCommitStream(force: Bool) -> Bool {
+        if force {
+            lastStreamCommit = ContinuousClock.now
+            return true
+        }
+        let now = ContinuousClock.now
+        guard now - lastStreamCommit >= Self.streamCommitInterval else { return false }
+        lastStreamCommit = now
+        return true
     }
 
     private func streamingUpstreamErrorMessage(from json: [String: Any]) -> String? {
@@ -488,6 +506,7 @@ final class HermesStreamingEngine {
         if !rawToolCalls.isEmpty {
             message.markFirstResponseChunk()
         }
+        var addedNewToolCall = false
         for raw in rawToolCalls {
             let function = raw["function"] as? [String: Any]
             let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
@@ -518,10 +537,8 @@ final class HermesStreamingEngine {
                     message.toolCalls[index].arguments += argsFragment
                 }
                 message.toolCalls[index].status = "running"
-                message.toolCalls[index].detail = Self.summarizeToolArguments(
-                    message.toolCalls[index].arguments
-                ) ?? message.toolCalls[index].detail
             } else {
+                addedNewToolCall = true
                 let name = nameFragment?.isEmpty == false ? nameFragment! : "Hermes tool"
                 let arguments = argsFragment ?? ""
                 message.toolCalls.append(
@@ -530,9 +547,18 @@ final class HermesStreamingEngine {
                         name: name,
                         status: "running",
                         arguments: arguments,
-                        detail: Self.summarizeToolArguments(arguments)
+                        detail: nil
                     )
                 )
+            }
+        }
+        // Summarize only when we actually commit — avoids O(n²) regex/JSON work
+        // on every argument fragment while still refreshing the pill label as
+        // more of the JSON becomes parseable.
+        guard shouldCommitStream(force: addedNewToolCall) else { return }
+        for index in message.toolCalls.indices {
+            if let detail = Self.summarizeToolArguments(message.toolCalls[index].arguments) {
+                message.toolCalls[index].detail = detail
             }
         }
         commitMessage(message)
@@ -571,11 +597,18 @@ final class HermesStreamingEngine {
     /// Returns `nil` when nothing meaningful can be extracted — the caller
     /// should keep any prior detail in that case so a partial chunk doesn't
     /// wipe out a previously-resolved label.
-    static func summarizeToolArguments(_ raw: String) -> String? {
+    nonisolated private static let toolArgumentRegexes: [NSRegularExpression] = {
+        ["path", "file_path", "command", "pattern", "query", "url", "prompt"].compactMap { key in
+            try? NSRegularExpression(pattern: "\"\(key)\"\\s*:\\s*\"([^\"]+)\"")
+        }
+    }()
+
+    nonisolated static func summarizeToolArguments(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let data = trimmed.data(using: .utf8),
+        if trimmed.hasSuffix("}"),
+           let data = trimmed.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
                 if let value = obj[key] as? String, !value.isEmpty {
@@ -591,16 +624,12 @@ final class HermesStreamingEngine {
 
         // Mid-stream: arguments may still be partial JSON. Try a permissive
         // regex-ish pull on the keys the user cares about, before giving up.
-        for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
-            let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]+)\""
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(
-                in: trimmed,
-                range: NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-               ),
+        let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        for regex in toolArgumentRegexes {
+            if let match = regex.firstMatch(in: trimmed, range: range),
                match.numberOfRanges >= 2,
-               let range = Range(match.range(at: 1), in: trimmed) {
-                let value = String(trimmed[range])
+               let valueRange = Range(match.range(at: 1), in: trimmed) {
+                let value = String(trimmed[valueRange])
                 if !value.isEmpty { return String(value.prefix(200)) }
             }
         }
@@ -981,7 +1010,9 @@ final class HermesStreamingEngine {
             modelID: modelID,
             parentSessionID: nil,
             resumeAction: "continue",
-            onEvent: { event in
+            onEvent: { [weak self] event in
+                guard let self else { return }
+                let isFirstText = event.text.map { !$0.isEmpty && assistantMessage.text.isEmpty } ?? false
                 if let text = event.text {
                     assistantMessage.text = text
                     SystemPermissionTextClassifier.shared.observeAssistantText(
@@ -997,8 +1028,10 @@ final class HermesStreamingEngine {
                 if event.isTerminal {
                     assistantMessage.isStreaming = false
                 }
-                if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-                    coordinator.messages[index] = assistantMessage
+                if event.isTerminal || self.shouldCommitStream(force: isFirstText) {
+                    if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                        coordinator.messages[index] = assistantMessage
+                    }
                 }
             }
         )

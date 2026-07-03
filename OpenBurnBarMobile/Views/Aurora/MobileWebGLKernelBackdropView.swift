@@ -25,55 +25,67 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
     let kernelID: String
     /// `"light"` or `"dark"`. Anything else normalizes to `"dark"`.
     let theme: String
+    var paused: Bool = false
+    var maxFrameRate: Double? = nil
+    var useSharedHost: Bool = true
 
-    init(kernelID: String, theme: String) {
+    init(kernelID: String, theme: String, paused: Bool = false, maxFrameRate: Double? = nil, useSharedHost: Bool = true) {
         self.kernelID = kernelID
         self.theme = theme
+        self.paused = paused
+        self.maxFrameRate = maxFrameRate
+        self.useSharedHost = useSharedHost
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
+        context.coordinator.requestedKernel = resolvedKernelID
+        context.coordinator.requestedTheme = themeName
+        context.coordinator.paused = paused
+        context.coordinator.maxFrameRate = maxFrameRate
+        if useSharedHost {
+            return SharedWebGLBackdropHost.shared.borrowWebView(
+                coordinator: context.coordinator,
+                initialKernel: resolvedKernelID
+            )
+        }
         let configuration = WKWebViewConfiguration()
         configuration.suppressesIncrementalRendering = false
+        let bridge = WKUserScript(
+            source: SharedWebGLBackdropHost.shared.rafBridgeScriptForInjection,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        configuration.userContentController.addUserScript(bridge)
 
         let webView = NonInteractiveWebView(frame: .zero, configuration: configuration)
-        // Let whatever is behind us (dashboard surface, substrate, blur) show
-        // through — the kernels paint their own field; we don't want
-        // WKWebView's opaque default backing. On iOS this is the opacity trio
-        // rather than the macOS `drawsBackground` KVC.
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
-        // Without this, UIKit insets the web layout viewport by the enclosing
-        // safe area / navigation bar, so the WebGL canvas starts ~100pt down and
-        // the uncovered strip renders as a black band with a hard edge (the
-        // "break" at the top of Pulse/Agents). The backdrop must be edge-to-edge:
-        // the bundle already declares `viewport-fit=cover` and pins #host to
-        // `inset: 0`, so zeroing the native adjustment is the missing half.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        // Belt-and-suspenders click-through alongside the hitTest override.
         webView.isUserInteractionEnabled = false
         webView.navigationDelegate = context.coordinator
-
-        context.coordinator.requestedKernel = resolvedKernelID
-        context.coordinator.requestedTheme = themeName
+        context.coordinator.attach(to: webView)
         context.coordinator.load(initialKernel: resolvedKernelID, into: webView)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.paused = paused
+        context.coordinator.maxFrameRate = maxFrameRate
         context.coordinator.apply(
             kernel: resolvedKernelID,
             theme: themeName,
             to: webView
         )
+        SharedWebGLBackdropHost.shared.applyRenderPolicy(paused: paused, maxFrameRate: maxFrameRate)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.navigationDelegate = nil
-        webView.stopLoading()
+        SharedWebGLBackdropHost.shared.releaseWebView(webView)
     }
 
     /// Clamp junk back to the default so a stale/removed id never leaves a blank
@@ -90,7 +102,15 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var requestedKernel: String = MobileKernelCatalogIDs.defaultID
         var requestedTheme: String = "dark"
+        var paused = false
+        var maxFrameRate: Double?
         private var isLoaded = false
+        private weak var attachedWebView: WKWebView?
+
+        func attach(to webView: WKWebView) {
+            attachedWebView = webView
+            webView.navigationDelegate = self
+        }
 
         func load(initialKernel: String, into webView: WKWebView) {
             guard
@@ -123,10 +143,9 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isLoaded = true
-            // The bundle mounts asynchronously and only exposes the bridge once
-            // `window.__backdropReady === true`, so poll briefly before driving.
             evaluateSetTheme(requestedTheme, on: webView)
             evaluateSetKernel(requestedKernel, on: webView)
+            SharedWebGLBackdropHost.shared.applyRenderPolicy(paused: paused, maxFrameRate: maxFrameRate)
         }
 
         private func evaluateSetKernel(_ kernel: String, on webView: WKWebView) {
@@ -163,7 +182,7 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
 /// A `WKWebView` that is invisible to the hit-testing system, so the backdrop
 /// never steals touches from the dashboard content composited above it. UIKit's
 /// `hitTest(_:with:)` signature (vs the macOS `hitTest(_:)`).
-private final class NonInteractiveWebView: WKWebView {
+final class NonInteractiveWebView: WKWebView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
 }
 

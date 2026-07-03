@@ -171,7 +171,7 @@ final class AgentWatchOverlaySingleton: ObservableObject {
             .sink { [weak self] frame in
                 guard let self else { return }
                 self.attachPictureInPictureIfNeeded()
-                Task { await self.videoCoordinator.ingest(frame: frame) }
+                self.videoCoordinator.ingest(frame: frame)
             }
             .store(in: &cancellables)
 

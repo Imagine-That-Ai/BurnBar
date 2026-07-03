@@ -124,9 +124,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var activeUID: String?
     private var activeConnectionID: String?
     private var supervisorGeneration: UInt64 = 0
-    private let mediaPacketCodec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
-    private let mediaFrameV2Codec = MediaFrameV2Codec()
-    private var frameChunkAssembler = MediaFrameChunkAssembler()
+    private let mirrorFrameProcessor = MediaMirrorFrameProcessor()
 
     /// Mercury Phase 8 — iOS receives ack frames from the Mac in
     /// response to `mediaMirrorRequest` sends. The Hermes Square root
@@ -572,8 +570,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
             while let frame = try await stream.receive() {
                 guard frame.uid == uid, frame.connectionId == connectionID else { continue }
                 lastInboundAt = Date()
-                Self.log.info("control_stream_receive type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
-                Self.debugTrace("control_stream_receive type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
+                if frame.type != .mediaStreamFrame {
+                    Self.log.info("control_stream_receive type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+                    Self.debugTrace("control_stream_receive type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
+                }
                 switch frame.type {
                 case .mediaBlobAdvertise:
                     await receiver.handleAdvertise(frame: frame, ackSender: ackSender)
@@ -599,46 +599,24 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     }
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
-                          let chunkData = Data(base64Encoded: encoded),
-                          var data = frameChunkAssembler.accept(
-                            chunk: frame.media?.frameChunk,
-                            bytes: chunkData
+                          let decoded = await mirrorFrameProcessor.processStreamFrame(
+                            encodedFrameBase64: encoded,
+                            frameChunk: frame.media?.frameChunk,
+                            sealedFramePosition: frame.media?.sealedFramePosition,
+                            sealKey: mediaFrameSealKey,
+                            sealEstablished: mediaFrameSealEstablished
                           ) else {
                         continue
                     }
-                    // F7: after the Mac explicitly confirms a media-frame-AEAD
-                    // session, every stream frame must be OBMFA1 sealed and
-                    // must open under the session key with the cleartext
-                    // position rebuilt into the AAD. Plaintext legacy frames
-                    // remain valid until that accepted ack confirms sealing.
-                    if MediaFrameAEAD.isSealedEnvelope(data) {
-                        guard let sealKey = mediaFrameSealKey,
-                              let position = frame.media?.sealedFramePosition,
-                              let opened = try? MediaFrameAEAD().open(
-                                envelope: data,
-                                key: sealKey,
-                                streamClass: MediaStreamClass.screenVideo.rawValue,
-                                kind: position.kind,
-                                gopID: position.gopId,
-                                frameIndex: position.frameIndex
-                              ) else {
-                            continue
+                    switch decoded {
+                    case .v1(let mediaFrame):
+                        if let handler = mirrorFrameHandler {
+                            await handler(mediaFrame)
                         }
-                        data = opened
-                    } else if mediaFrameSealEstablished {
-                        continue
-                    }
-                    do {
-                        if MediaFrameV2Codec.isEncodedEnvelope(data),
-                           let handler = mirrorFrameV2Handler {
-                            let decoded = try mediaFrameV2Codec.decode(data).frame
-                            await handler(decoded)
-                        } else if let handler = mirrorFrameHandler {
-                            let decoded = try mediaPacketCodec.decode(data).frame
-                            await handler(decoded)
+                    case .v2(let mediaFrameV2):
+                        if let handler = mirrorFrameV2Handler {
+                            await handler(mediaFrameV2)
                         }
-                    } catch {
-                        continue
                     }
                 case .mediaMirrorRequest:
                     // iOS is the requester, not the receiver.
@@ -835,66 +813,3 @@ private actor IrohRelayStreamSendGate {
     }
 }
 
-private struct MediaFrameChunkAssembler {
-    private struct Assembly {
-        var chunkCount: Int
-        var totalBytes: Int
-        var chunks: [Data?]
-    }
-
-    private let maxAssemblies = 8
-    private let maxTotalBytes = MediaFrameV2Codec.defaultMaxPayloadBytes + 4096
-    private var assemblies: [String: Assembly] = [:]
-    private var insertionOrder: [String] = []
-
-    mutating func accept(
-        chunk: HermesRealtimeRelayMediaFrameChunk?,
-        bytes: Data
-    ) -> Data? {
-        guard let chunk else { return bytes }
-        guard chunk.chunkCount > 0,
-              chunk.chunkIndex >= 0,
-              chunk.chunkIndex < chunk.chunkCount,
-              chunk.totalBytes > 0,
-              chunk.totalBytes <= maxTotalBytes else {
-            assemblies.removeValue(forKey: chunk.chunkId)
-            insertionOrder.removeAll { $0 == chunk.chunkId }
-            return nil
-        }
-
-        if assemblies[chunk.chunkId] == nil {
-            trimOldestIfNeeded()
-            assemblies[chunk.chunkId] = Assembly(
-                chunkCount: chunk.chunkCount,
-                totalBytes: chunk.totalBytes,
-                chunks: Array(repeating: nil, count: chunk.chunkCount)
-            )
-            insertionOrder.append(chunk.chunkId)
-        }
-
-        guard var assembly = assemblies[chunk.chunkId],
-              assembly.chunkCount == chunk.chunkCount,
-              assembly.totalBytes == chunk.totalBytes else {
-            assemblies.removeValue(forKey: chunk.chunkId)
-            insertionOrder.removeAll { $0 == chunk.chunkId }
-            return nil
-        }
-
-        assembly.chunks[chunk.chunkIndex] = bytes
-        assemblies[chunk.chunkId] = assembly
-        guard assembly.chunks.allSatisfy({ $0 != nil }) else { return nil }
-
-        let complete = assembly.chunks.reduce(into: Data(capacity: assembly.totalBytes)) { result, part in
-            result.append(part ?? Data())
-        }
-        assemblies.removeValue(forKey: chunk.chunkId)
-        insertionOrder.removeAll { $0 == chunk.chunkId }
-        return complete.count == assembly.totalBytes ? complete : nil
-    }
-
-    private mutating func trimOldestIfNeeded() {
-        guard assemblies.count >= maxAssemblies, let oldest = insertionOrder.first else { return }
-        insertionOrder.removeFirst()
-        assemblies.removeValue(forKey: oldest)
-    }
-}

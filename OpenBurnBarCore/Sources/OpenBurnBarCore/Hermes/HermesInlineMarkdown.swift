@@ -85,7 +85,42 @@ public enum HermesInlineMarkdown {
     // consumed by SwiftUI surfaces (all under Views/, excluded off-Apple), so it is
     // Apple-only. The plain run-stream expansion (`expand`) above stays cross-platform.
     #if canImport(Darwin)
+    /// Boxes `AttributedString` for `NSCache` without round-tripping through
+    /// `NSAttributedString`, which can drop presentation intents.
+    private final class HermesAttributedStringBox: NSObject {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    private final class HermesMarkdownCache: @unchecked Sendable {
+        static let shared = HermesMarkdownCache()
+        private let cache = NSCache<NSString, HermesAttributedStringBox>()
+
+        private init() {
+            cache.countLimit = 256
+            cache.totalCostLimit = 2 * 1024 * 1024
+        }
+
+        func lookup(_ text: String) -> AttributedString? {
+            cache.object(forKey: text as NSString)?.value
+        }
+
+        func store(_ text: String, value: AttributedString) {
+            let cost = max(1, text.utf8.count)
+            cache.setObject(HermesAttributedStringBox(value), forKey: text as NSString, cost: cost)
+        }
+    }
+
     public static func attributedString(_ text: String) -> AttributedString {
+        if let cached = HermesMarkdownCache.shared.lookup(text) {
+            return cached
+        }
+        let built = buildAttributedString(text)
+        HermesMarkdownCache.shared.store(text, value: built)
+        return built
+    }
+
+    private static func buildAttributedString(_ text: String) -> AttributedString {
         var result = AttributedString()
         for run in HermesAtomParser.parse(text) {
             var piece = AttributedString(run.text)

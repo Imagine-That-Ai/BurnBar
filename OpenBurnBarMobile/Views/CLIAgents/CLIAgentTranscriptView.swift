@@ -17,22 +17,23 @@ struct CLIAgentTranscriptView: View {
 
     /// Always prefer the freshest snapshot the reader has — keeps the
     /// view consistent if Firestore upserts arrive while it's open.
-    private var liveSession: CLIAgentSessionRecord {
+    private func resolvedSession() -> CLIAgentSessionRecord {
         reader.session(id: session.id) ?? session
     }
 
     var body: some View {
+        let liveSession = resolvedSession()
         ZStack {
             AuroraBackdrop()
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                    metadataBanner
+                    metadataBanner(for: liveSession)
                     if liveSession.messages.isEmpty, liveSession.sourceKind == .archivedLog {
                         archivedLogBanner
                     } else {
                         ForEach(liveSession.messages) { message in
-                            bubble(for: message)
+                            bubble(for: message, session: liveSession)
                         }
                     }
                     if !liveSession.isCompleted {
@@ -47,8 +48,7 @@ struct CLIAgentTranscriptView: View {
     }
 
     @ViewBuilder
-    private var metadataBanner: some View {
-        let session = liveSession
+    private func metadataBanner(for session: CLIAgentSessionRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(session.agent.displayName)
@@ -96,12 +96,12 @@ struct CLIAgentTranscriptView: View {
             Label("Archived provider session", systemImage: "lock.doc")
                 .font(MobileTheme.Typography.body.weight(.semibold))
                 .foregroundStyle(accent)
-            Text(liveSession.encryptedTranscriptAvailable
+            Text(resolvedSession().encryptedTranscriptAvailable
                  ? "The full transcript is stored in your encrypted cloud session log index. Search Hermes Square to open matching encrypted snippets."
                  : "This session was indexed from the paired Mac.")
                 .font(MobileTheme.Typography.caption)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
-            if let handle = liveSession.resumeHandle {
+            if let handle = resolvedSession().resumeHandle {
                 VStack(alignment: .leading, spacing: 4) {
                     if handle.canResume {
                         Text("Resume on Mac")
@@ -132,13 +132,13 @@ struct CLIAgentTranscriptView: View {
     }
 
     @ViewBuilder
-    private func bubble(for message: CLIAgentMessage) -> some View {
+    private func bubble(for message: CLIAgentMessage, session: CLIAgentSessionRecord) -> some View {
         let isUser = message.role == .user
         HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
             if isUser { Spacer(minLength: 32) }
             VStack(alignment: .leading, spacing: 6) {
                 if !isUser {
-                    Text("via \(liveSession.agent.displayName)")
+                    Text("via \(session.agent.displayName)")
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)
                         .foregroundStyle(accent)
@@ -200,7 +200,7 @@ struct CLIAgentTranscriptView: View {
     }
 
     private var accent: Color {
-        switch liveSession.agent {
+        switch session.agent {
         case .codex:    return Color(hex: "1ABC9C")
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")

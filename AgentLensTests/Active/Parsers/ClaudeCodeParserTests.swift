@@ -51,9 +51,37 @@ final class ClaudeCodeParserTests: XCTestCase {
         XCTAssertTrue(result.usages.isEmpty)
         XCTAssertTrue(result.conversations.isEmpty)
     }
-    
+
     func testProviderReturnsCorrectValue() {
         let parser = ClaudeCodeParser()
         XCTAssertEqual(parser.provider, .claudeCode)
+    }
+
+    func testDecodeProjectName() {
+        let parser = ClaudeCodeParser()
+
+        // POSIX path decoding
+        XCTAssertEqual(
+            parser.decodeProjectName("-Users-albertonunez-Documents-Developer-BurnBar"),
+            "~/Documents/Developer/BurnBar"
+        )
+        XCTAssertEqual(
+            parser.decodeProjectName("-Users-albertonunez"),
+            "~"
+        )
+
+        // Windows path decoding
+        XCTAssertEqual(
+            parser.decodeProjectName("C--Users-Alice-project"),
+            "~\\project"
+        )
+        XCTAssertEqual(
+            parser.decodeProjectName("C--Users-Alice"),
+            "~"
+        )
+        XCTAssertEqual(
+            parser.decodeProjectName("D--Work-my-project"),
+            "D:\\Work\\my\\project"
+        )
     }
 }

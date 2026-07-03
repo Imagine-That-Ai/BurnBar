@@ -177,7 +177,6 @@ final class QuotaStore {
                     ))
                     self.error = nil
                     await self.refreshAccountsIfStale()
-                    await self.refreshStaleCloudQuotaIfPossible()
                 case .failure(let err):
                     self.error = err.localizedDescription
                 }

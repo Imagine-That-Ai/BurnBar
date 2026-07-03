@@ -480,4 +480,8 @@ private final class CLITestMobileChatLocalStore: MobileChatLocalStoring {
     func save(_ snapshot: MobileChatHistorySnapshot) throws {
         self.snapshot = snapshot
     }
+
+    func saveAsync(_ snapshot: MobileChatHistorySnapshot) {
+        try? save(snapshot)
+    }
 }

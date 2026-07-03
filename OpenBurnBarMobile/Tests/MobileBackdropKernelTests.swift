@@ -58,12 +58,10 @@ final class MobileBackdropKernelTests: XCTestCase {
         }
     }
 
-    func testNativeKernelFrameRateSanitizesPowerPlanRates() {
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(15), 15)
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(30), 30)
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(120), 30)
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(nil), 30)
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(.nan), 30)
-        XCTAssertEqual(MobileKernelBackdropView.sanitizedFrameRate(0), 30)
+    func testStreamingThrottlePolicyCapsAtTwenty() {
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: nil, streamingActive: true), 20)
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 60, streamingActive: true), 20)
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 15, streamingActive: true), 15)
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 30, streamingActive: false), 30)
     }
 }

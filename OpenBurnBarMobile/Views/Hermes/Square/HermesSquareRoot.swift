@@ -79,12 +79,7 @@ struct HermesSquareRoot: View {
     @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
     @State private var bootingMercuryConnectionID: String?
     @State private var mercuryBootError: String?
-    @State private var searchReindexTask: Task<Void, Never>?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
-
-    private var inboxSplit: (service: [ThreadInboxItem], subscription: [ThreadInboxItem]) {
-        inbox.items.splitForInbox()
-    }
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -215,7 +210,9 @@ struct HermesSquareRoot: View {
 
     // MARK: Body
 
-    var body: some View {
+    /// Split from `body` so the Swift type-checker can finish in reasonable time.
+    @ViewBuilder
+    private var squareRootChrome: some View {
         ZStack(alignment: .top) {
             squareBackground
             squareContent
@@ -231,8 +228,6 @@ struct HermesSquareRoot: View {
             await reindexSearch()
             subscriptionTopicStore.bootstrap()
             await subscriptionTopicStore.refresh()
-            // Observe rollback snapshots for every active CLI session so
-            // the rollback card shows up the moment the Mac writes one.
             rollbackService.startObservingRequests()
             let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
                 tile.id.isEmpty ? nil : tile.id
@@ -240,7 +235,6 @@ struct HermesSquareRoot: View {
             for sessionID in sessionIDs {
                 rollbackService.startObservingSession(sessionID)
             }
-            // Round-4 perf sweep: seed the rollback sessions cache on appear.
             rebuildRollbackSessionsCache()
         }
         .onChange(of: rollbackService.snapshotsBySession) { _, _ in
@@ -258,14 +252,14 @@ struct HermesSquareRoot: View {
         .task(id: AssistantPendingThread.shared.hermes) {
             consumePendingHermesThread()
         }
-        .onChange(of: inbox.items) { _, _ in
-            scheduleSearchReindex()
+        .onChange(of: inbox.items.count) { _, _ in
+            Task { await reindexSearch() }
         }
-        .onChange(of: registry.identities) { _, _ in
-            scheduleSearchReindex()
+        .onChange(of: registry.identities.count) { _, _ in
+            Task { await reindexSearch() }
         }
-        .onChange(of: projectsStore.summaries) { _, _ in
-            scheduleSearchReindex()
+        .onChange(of: projectsStore.summaries.count) { _, _ in
+            Task { await reindexSearch() }
         }
         .onChange(of: mercuryPeerSource.peer) { _, peer in
             syncMercuryPeer(peer)
@@ -320,14 +314,12 @@ struct HermesSquareRoot: View {
                 }
                 missionForActionSheet = nil
             }
-
             Button("Just Dismiss", role: .none) {
                 if let mission = missionForActionSheet {
                     missionHost.dismissMission(id: mission.id)
                 }
                 missionForActionSheet = nil
             }
-
             Button("Keep Running", role: .cancel) {
                 missionForActionSheet = nil
             }
@@ -336,7 +328,11 @@ struct HermesSquareRoot: View {
                 Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
             }
         }
-        .navigationDestination(item: $navTarget) { target in
+    }
+
+    var body: some View {
+        squareRootChrome
+            .navigationDestination(item: $navTarget) { target in
             switch target {
             case .thread(let id):
                 threadDetailView(id: id)
@@ -705,7 +701,7 @@ struct HermesSquareRoot: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
-            let (service, _) = inboxSplit
+            let service = inbox.serviceItems
             if service.isEmpty {
                 Text("No conversations yet. Pick an agent to begin.")
                     .font(.caption)
@@ -788,7 +784,7 @@ struct HermesSquareRoot: View {
     }
 
     private var subscriptionsSection: some View {
-        let (_, subscription) = inboxSplit
+        let subscription = inbox.subscriptionItems
         let count = max(subscription.count, subscriptionTopicStore.topics.count)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -1076,7 +1072,7 @@ struct HermesSquareRoot: View {
     }
 
     private func moveThreadItem(_ item: ThreadInboxItem, direction: MoveDirection) {
-        let (service, _) = inboxSplit
+        let service = inbox.serviceItems
         let conversations = service.filter { $0.source != .missionGroup }
         guard let index = conversations.firstIndex(where: { $0.id == item.id }) else { return }
 
@@ -1131,15 +1127,6 @@ struct HermesSquareRoot: View {
                 return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
             }
             .prefix(30))
-    }
-
-    private func scheduleSearchReindex() {
-        searchReindexTask?.cancel()
-        searchReindexTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            guard !Task.isCancelled else { return }
-            await reindexSearch()
-        }
     }
 
     private func reindexSearch() async {

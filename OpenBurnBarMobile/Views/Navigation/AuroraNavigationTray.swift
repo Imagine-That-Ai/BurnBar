@@ -54,6 +54,14 @@ struct AuroraNavigationTray: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    private var navAnimationsPaused: Bool {
+        reduceMotion
+            || isLowPowerModeEnabled
+            || scenePhase != .active
+    }
 
     // Floating-pill geometry. Labels stay visible so core routes such as
     // Store are discoverable without relying on icon interpretation.
@@ -82,6 +90,10 @@ struct AuroraNavigationTray: View {
         pill
             .padding(.bottom, pillBottomInset)
             .padding(.horizontal, 32)
+            .environment(\.navDecorativeAnimationsPaused, navAnimationsPaused)
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
             .accessibilityElement(children: .contain)
     }
 

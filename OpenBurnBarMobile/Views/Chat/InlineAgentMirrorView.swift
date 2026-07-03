@@ -155,7 +155,7 @@ struct InlineAgentMirrorView: View {
         }
         .onChange(of: singleton.state.currentFrame) { _, frame in
             guard let frame, usingSingleton else { return }
-            Task { await singleton.videoCoordinator.ingest(frame: frame) }
+            singleton.videoCoordinator.ingest(frame: frame)
             if let context = singleton.state.currentFocus, smartZoomMode != .off {
                 applySmartZoom(context: context)
             }

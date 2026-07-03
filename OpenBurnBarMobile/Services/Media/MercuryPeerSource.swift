@@ -29,41 +29,60 @@ final class MercuryPeerSource: ObservableObject {
     private let transport: HermesIrohRelayTransport
     private let relayConnectionProvider: @MainActor () -> HermesConnectionRecord?
     private let displayNameProvider: @MainActor () -> String?
-    private let pollInterval: TimeInterval
+    private let freshnessInterval: TimeInterval
     private let clock: @Sendable () -> Date
 
-    private var pollTask: Task<Void, Never>?
+    private var freshnessTask: Task<Void, Never>?
+    private var phaseCancellable: AnyCancellable?
     private var lastHeartbeat: HermesRealtimeRelayPresenceHeartbeat?
 
     init(
         transport: HermesIrohRelayTransport = .shared,
         relayConnectionProvider: @escaping @MainActor () -> HermesConnectionRecord? = { nil },
         displayNameProvider: @escaping @MainActor () -> String? = { nil },
-        pollInterval: TimeInterval = 1.0,
+        /// Legacy name kept for call-site compatibility. Used as the slow
+        /// freshness timer interval (phase changes are event-driven).
+        pollInterval: TimeInterval = 60.0,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.transport = transport
         self.relayConnectionProvider = relayConnectionProvider
         self.displayNameProvider = displayNameProvider
-        self.pollInterval = pollInterval
+        self.freshnessInterval = pollInterval
         self.clock = clock
     }
 
     func start() {
-        guard pollTask == nil else { return }
-        pollTask = Task { [weak self] in
+        guard freshnessTask == nil else { return }
+        attachPhaseObserverIfNeeded()
+        Task { await refresh() }
+        freshnessTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                // Coordinator may appear after start(); re-bind when it does.
+                await self?.attachPhaseObserverIfNeeded()
                 try? await Task.sleep(
-                    nanoseconds: UInt64((self?.pollInterval ?? 1.0) * 1_000_000_000)
+                    nanoseconds: UInt64((self?.freshnessInterval ?? 60.0) * 1_000_000_000)
                 )
+                await self?.refresh()
             }
         }
     }
 
     func stop() {
-        pollTask?.cancel()
-        pollTask = nil
+        freshnessTask?.cancel()
+        freshnessTask = nil
+        phaseCancellable?.cancel()
+        phaseCancellable = nil
+    }
+
+    private func attachPhaseObserverIfNeeded() {
+        guard phaseCancellable == nil,
+              let coordinator = transport.currentMediaControlCoordinator else { return }
+        phaseCancellable = coordinator.$phase
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                Task { await self?.refresh() }
+            }
     }
 
     /// Surface a freshly-received presence heartbeat from the Mac. The
@@ -108,7 +127,17 @@ final class MercuryPeerSource: ObservableObject {
             blurredWallpaperBase64: lastHeartbeat?.blurredWallpaperBase64
         )
 
-        if next != peer {
+        // Skip no-op publishes. Wallpaper is compared by value (not hash) so
+        // large base64 blobs never risk a false-equal hash collision.
+        guard let existing = peer else {
+            peer = next
+            return
+        }
+        if existing.connectionID != next.connectionID
+            || existing.displayName != next.displayName
+            || existing.isOnline != next.isOnline
+            || existing.capabilities != next.capabilities
+            || existing.blurredWallpaperBase64 != next.blurredWallpaperBase64 {
             peer = next
         }
     }

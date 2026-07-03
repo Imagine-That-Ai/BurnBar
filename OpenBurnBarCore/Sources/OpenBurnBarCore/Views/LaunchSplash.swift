@@ -64,7 +64,7 @@ public extension View {
     ///   out. The default lets the dots converge, the flame solidify, and the
     ///   glass cube settle before the hand-off.
     func burnBarLaunchSplash(
-        duration: Double = 4.2,
+        duration: Double = 2.0,
         onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void = { _ in }
     ) -> some View {
         modifier(BurnBarLaunchSplashModifier(duration: duration, onHaptic: onHaptic))

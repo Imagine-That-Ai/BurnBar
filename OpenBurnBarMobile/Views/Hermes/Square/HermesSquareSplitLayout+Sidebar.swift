@@ -85,7 +85,9 @@ struct HermesSquareRuntimeHistorySidebar: View {
 
     var body: some View {
         ZStack {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle)
+                .environment(\.webglBackdropAncestorActive, true)
+                .ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 ScrollView {

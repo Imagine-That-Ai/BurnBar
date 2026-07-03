@@ -5,6 +5,7 @@ import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import os
 
 @MainActor
 final class FirestoreHermesRelayTransport: HermesRelayTransporting {
@@ -138,7 +139,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     private func pollRelay(
         handle: RelayRequestHandle,
         timeout: TimeInterval,
-        onChunk: (HermesRelayChunkRecord) throws -> Void
+        onChunk: @escaping (HermesRelayChunkRecord) throws -> Void
     ) async throws {
         guard FirebaseApp.app() != nil else {
             throw FirestoreError.firebaseUnavailable
@@ -148,46 +149,117 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         }
         let request = requestRef(uid: uid, requestID: handle.requestID)
         let deadline = Date().addingTimeInterval(timeout)
-        var lastSequence = -1
-        while Date() < deadline {
-            try Task.checkCancellation()
 
-            let chunkSnapshot = try await request
-                .collection("chunks")
-                .whereField("sequence", isGreaterThan: lastSequence)
-                .order(by: "sequence")
-                .getDocuments()
-            for document in chunkSnapshot.documents {
-                if let chunk = decodeChunk(document.data(), docID: document.documentID) {
-                    try onChunk(decryptChunkIfNeeded(chunk, uid: uid, handle: handle))
-                    lastSequence = max(lastSequence, chunk.sequence)
+        // Event-driven wait: listeners replace the old 250ms getDocuments poll.
+        // Chunk and request listeners can race (status may complete before the
+        // final chunk snapshot lands), so completion is gated on both status
+        // and `lastSequence` and re-checked from either callback.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            struct RelayWaitSnapshot: Sendable {
+                var lastSequence = -1
+                var expectedChunkCount: Int?
+                var finished = false
+            }
+            final class RelayWaitState: @unchecked Sendable {
+                let lock = OSAllocatedUnfairLock(initialState: RelayWaitSnapshot())
+                var chunkListener: ListenerRegistration?
+                var requestListener: ListenerRegistration?
+            }
+            let state = RelayWaitState()
+
+            func finish(_ result: Result<Void, Error>) {
+                let shouldResume = state.lock.withLock { snapshot -> Bool in
+                    guard !snapshot.finished else { return false }
+                    snapshot.finished = true
+                    return true
+                }
+                guard shouldResume else { return }
+                state.chunkListener?.remove()
+                state.requestListener?.remove()
+                switch result {
+                case .success:
+                    continuation.resume()
+                case .failure(let error):
+                    continuation.resume(throwing: error)
                 }
             }
 
-            let requestSnapshot = try await request.getDocument()
-            let requestData = requestSnapshot.data() ?? [:]
-            guard let statusText = requestData["status"] as? String,
-                  let status = HermesRelayRequestStatus(rawValue: statusText) else {
-                throw HermesServiceError.relayUnavailable("Remote Hermes relay request disappeared.")
+            func tryFinishIfComplete() {
+                let ready = state.lock.withLock { snapshot -> Bool in
+                    guard !snapshot.finished, let expected = snapshot.expectedChunkCount else {
+                        return false
+                    }
+                    return expected == 0 || snapshot.lastSequence + 1 >= expected
+                }
+                if ready {
+                    finish(.success(()))
+                }
             }
-            switch status {
-            case .completed:
-                let expectedChunkCount = requestData["chunkCount"] as? Int ?? 0
-                if expectedChunkCount == 0 || lastSequence + 1 >= expectedChunkCount {
+
+            state.chunkListener = request.collection("chunks")
+                .order(by: "sequence")
+                .addSnapshotListener { snapshot, error in
+                    if let error {
+                        finish(.failure(error))
+                        return
+                    }
+                    guard let snapshot else { return }
+                    do {
+                        for change in snapshot.documentChanges where change.type != .removed {
+                            guard let chunk = self.decodeChunk(change.document.data(), docID: change.document.documentID) else {
+                                continue
+                            }
+                            let shouldApply = state.lock.withLock { snapshot in
+                                chunk.sequence > snapshot.lastSequence && !snapshot.finished
+                            }
+                            guard shouldApply else { continue }
+                            try onChunk(self.decryptChunkIfNeeded(chunk, uid: uid, handle: handle))
+                            state.lock.withLock { snapshot in
+                                snapshot.lastSequence = max(snapshot.lastSequence, chunk.sequence)
+                            }
+                        }
+                        tryFinishIfComplete()
+                    } catch {
+                        finish(.failure(error))
+                    }
+                }
+
+            state.requestListener = request.addSnapshotListener { snapshot, error in
+                if let error {
+                    finish(.failure(error))
                     return
                 }
-                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
-            case .failed:
-                let error = requestData["error"] as? String
-                throw HermesServiceError.relayFailure(error, fallback: "Remote Hermes relay failed.")
-            case .cancelled, .expired:
-                throw HermesServiceError.relayUnavailable("Remote Hermes relay request was \(status.rawValue).")
-            case .pending, .claimed, .streaming:
-                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+                guard let data = snapshot?.data(),
+                      let statusText = data["status"] as? String,
+                      let status = HermesRelayRequestStatus(rawValue: statusText) else {
+                    finish(.failure(HermesServiceError.relayUnavailable("Remote Hermes relay request disappeared.")))
+                    return
+                }
+                switch status {
+                case .completed:
+                    state.lock.withLock { snapshot in
+                        snapshot.expectedChunkCount = data["chunkCount"] as? Int ?? 0
+                    }
+                    tryFinishIfComplete()
+                case .failed:
+                    let error = data["error"] as? String
+                    finish(.failure(HermesServiceError.relayFailure(error, fallback: "Remote Hermes relay failed.")))
+                case .cancelled, .expired:
+                    finish(.failure(HermesServiceError.relayUnavailable("Remote Hermes relay request was \(status.rawValue).")))
+                case .pending, .claimed, .streaming:
+                    break
+                }
+            }
+
+            Task {
+                while Date() < deadline {
+                    let finished = state.lock.withLock(\.finished)
+                    if finished { return }
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+                finish(.failure(HermesServiceError.relayTimeout))
             }
         }
-        try? await cancelRelayRequest(handle.requestID)
-        throw HermesServiceError.relayTimeout
     }
 
     private func decryptChunkIfNeeded(
@@ -268,9 +340,9 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         )
     }
 
-    private static var iso8601: ISO8601DateFormatter {
+    private static let iso8601: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }
+    }()
 }

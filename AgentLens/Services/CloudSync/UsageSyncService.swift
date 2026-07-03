@@ -46,9 +46,13 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         defer { state.endSyncing() }
 
-        do {
-            await publishDeviceHeartbeatBestEffort(uid: uid, deviceId: deviceId)
+        // Presence first, and never behind the vault key: the devices-registry
+        // doc is the only signal iOS uses for "Mac last seen", so a crypto or
+        // upload failure below must not be able to starve it. Best-effort — a
+        // presence write failure must not block the usage upload either.
+        await publishDevicePresence(uid: uid, deviceId: deviceId)
 
+        do {
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
@@ -62,13 +66,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 for usage in unsynced {
                     let docId = "\(deviceId)_\(usage.id.uuidString)"
                     let docRef = collectionRef.document(docId)
-                    let data = try encodeUsage(
-                        usage,
-                        uid: uid,
-                        deviceId: deviceId,
-                        docID: docId,
-                        vaultKey: resolvedVaultKey.keyData
-                    )
+                    let data = try encodeUsage(usage, deviceId: deviceId, vaultKey: resolvedVaultKey.keyData)
                     batch.setData(data, forDocument: docRef, merge: true)
                 }
 
@@ -101,15 +99,33 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
             await recordSyncError(error)
+            // Best-effort: land the failure where the phone can read it, so a
+            // blocked Mac shows up as "sync blocked: <reason>" instead of a
+            // silently stale (or empty) dashboard. Never throws upward.
+            await publishSyncBlocked(uid: uid, deviceId: deviceId, error: error)
         }
     }
 
-    private func publishDeviceHeartbeatBestEffort(uid: String, deviceId: String) async {
+    /// Writes the devices-registry doc only. This is the presence signal iOS
+    /// renders as "Mac last seen", deliberately independent of the vault key,
+    /// the usage batch, and the heartbeat, so those failing can never make the
+    /// Mac look like it was never here. Best-effort by design.
+    private func publishDevicePresence(uid: String, deviceId: String) async {
+        let now = Date()
+        let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
+        let userRef = context.firestoreGateway.collection("users").document(uid)
         do {
-            try await publishDeviceHeartbeat(uid: uid, deviceId: deviceId, at: Date())
+            try await userRef.collection("devices").document(deviceId).setData([
+                "deviceId": deviceId,
+                "deviceName": deviceName,
+                "platform": "macOS",
+                "isLocal": true,
+                "lastSeenAt": Timestamp(date: now),
+                "updatedAt": Timestamp(date: now)
+            ], merge: true)
         } catch {
-            AppLogger.sync.error(
-                "usage_sync_heartbeat_failed",
+            AppLogger.sync.notice(
+                "device_presence_publish_failed",
                 metadata: ["errorClass": "\(String(describing: type(of: error)))"]
             )
         }
@@ -117,30 +133,64 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
     private func publishSyncHeartbeat(uid: String, deviceId: String, collectionsInSync: [String]) async throws {
         let now = Date()
-        try await publishDeviceHeartbeat(uid: uid, deviceId: deviceId, at: now)
-
-        try await context.firestoreGateway.collection("users").document(uid)
-            .collection("sync_status").document(deviceId).setData([
-                "deviceId": deviceId,
-                "isOnline": true,
-                "lastSyncAt": Timestamp(date: now),
-                "collectionsInSync": collectionsInSync,
-                "updatedAt": Timestamp(date: now)
-            ], merge: true)
-    }
-
-    private func publishDeviceHeartbeat(uid: String, deviceId: String, at now: Date) async throws {
-        let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
         let userRef = context.firestoreGateway.collection("users").document(uid)
 
-        try await userRef.collection("devices").document(deviceId).setData([
+        try await userRef.collection("sync_status").document(deviceId).setData([
             "deviceId": deviceId,
-            "deviceName": deviceName,
-            "platform": "macOS",
-            "isLocal": true,
-            "lastSeenAt": Timestamp(date: now),
+            "isOnline": true,
+            "lastSyncAt": Timestamp(date: now),
+            "lastAttemptAt": Timestamp(date: now),
+            "collectionsInSync": collectionsInSync,
+            // NSNull (not delete) so merge readers see an explicit "no error".
+            "lastErrorCode": NSNull(),
             "updatedAt": Timestamp(date: now)
         ], merge: true)
+    }
+
+    /// Records WHY the sync pass failed in `sync_status`, in a bounded,
+    /// non-sensitive vocabulary (no raw error text crosses the wire). iOS maps
+    /// the code back to a human explanation next to "Mac last seen".
+    private func publishSyncBlocked(uid: String, deviceId: String, error: Error) async {
+        let now = Date()
+        let userRef = context.firestoreGateway.collection("users").document(uid)
+        do {
+            try await userRef.collection("sync_status").document(deviceId).setData([
+                "deviceId": deviceId,
+                "isOnline": true,
+                "lastAttemptAt": Timestamp(date: now),
+                "lastErrorCode": Self.syncBlockedCode(for: error),
+                "updatedAt": Timestamp(date: now)
+            ], merge: true)
+        } catch {
+            AppLogger.sync.notice(
+                "sync_blocked_publish_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
+    }
+
+    /// Bounded error vocabulary shared with the iOS reader
+    /// (`CloudSyncStatusSnapshot.macSyncBlockedDescription`). Extend both ends
+    /// together.
+    static func syncBlockedCode(for error: Error) -> String {
+        if let vaultError = error as? CloudVaultAccessError {
+            switch vaultError {
+            case .vaultKeyUnavailable: return "vault_key_unavailable"
+            case .vaultKeyMismatch: return "vault_key_mismatch"
+            case .invalidWrappedKey: return "vault_key_invalid"
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain {
+            switch FirestoreErrorCode.Code(rawValue: nsError.code) {
+            case .permissionDenied: return "permission_denied"
+            case .unauthenticated: return "unauthenticated"
+            case .unavailable: return "network_unavailable"
+            default: break
+            }
+        }
+        if nsError.domain == NSURLErrorDomain { return "network_unavailable" }
+        return "other"
     }
 
     private func recordSyncError(_ error: Error) async {
@@ -165,13 +215,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
-    private func encodeUsage(
-        _ usage: TokenUsage,
-        uid: String,
-        deviceId: String,
-        docID: String,
-        vaultKey: Data
-    ) throws -> [String: Any] {
+    private func encodeUsage(_ usage: TokenUsage, deviceId: String, vaultKey: Data) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
@@ -203,22 +247,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         // Seal the project name instead of writing it in clear. The server stays a
         // blind store-and-forward: only on-device key holders can recover the name.
-        // The deployed rules only accept a sealed envelope that carries the exact
-        // per-document AAD context (`validCloudSealedTextAt`): schemaVersion >= 2
-        // plus `aad == "OpenBurnBar-CloudVault-aad-v2|uid|usage|docID|sealedProjectName|2|sealedProjectName"`.
-        // Sealing without the context omits both fields, so every usage create is
-        // PERMISSION_DENIED — the writer must bind the seal to its document.
-        let aadContext = try CloudVaultAADContext(
-            uid: uid,
-            collection: "usage",
-            docID: docID,
-            field: "sealedProjectName"
-        )
-        let sealedProjectName = try CloudVaultCrypto.sealText(
-            usage.projectName,
-            keyData: vaultKey,
-            aadContext: aadContext
-        )
+        let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
         data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(sealedProjectName)
         // Opaque keyed group-by trapdoor so readers can bucket usage by project
         // without decrypting every row. Absent for empty/blank names. A real

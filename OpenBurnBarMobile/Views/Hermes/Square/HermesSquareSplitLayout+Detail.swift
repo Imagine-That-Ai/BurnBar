@@ -381,7 +381,9 @@ struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle)
+                .environment(\.webglBackdropAncestorActive, true)
+                .ignoresSafeArea()
         }
     }
 
@@ -479,7 +481,9 @@ struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle)
+                .environment(\.webglBackdropAncestorActive, true)
+                .ignoresSafeArea()
         }
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)

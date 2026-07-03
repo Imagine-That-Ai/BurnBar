@@ -97,7 +97,9 @@ struct HermesSquareLeftColumn: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            WebsiteBackgroundView(accent: .purple, visibility: .subtle)
+                .environment(\.webglBackdropAncestorActive, true)
+                .ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 14) {
                     federatedSearchBar

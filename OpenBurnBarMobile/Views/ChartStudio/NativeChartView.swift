@@ -249,7 +249,7 @@ private struct TimeLineChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let date = point.x.asDate ?? Date()
                     if fillArea {
                         AreaMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
@@ -276,7 +276,7 @@ private struct TimeBarChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let date = point.x.asDate ?? Date()
                     BarMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
                         .foregroundStyle(
@@ -304,7 +304,7 @@ private struct TimeStackedAreaChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let date = point.x.asDate ?? Date()
                     AreaMark(
                         x: .value("Date", date, unit: .day),
@@ -336,7 +336,7 @@ private struct TimeScatterChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let date = point.x.asDate ?? Date()
                     PointMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
                         .foregroundStyle(color)
@@ -359,7 +359,7 @@ private struct NumericScatterChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let x = point.x.asDouble ?? 0
                     PointMark(x: .value("X", x), y: .value("Y", point.y))
                         .foregroundStyle(color)
@@ -380,7 +380,7 @@ private struct NumericBarChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let x = point.x.asDouble ?? 0
                     BarMark(x: .value("X", x), y: .value("Y", point.y))
                         .foregroundStyle(
@@ -407,7 +407,7 @@ private struct NumericLineChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let x = point.x.asDouble ?? 0
                     AreaMark(x: .value("X", x), y: .value("Y", point.y))
                         .foregroundStyle(color.gradientFill(topOpacity: 0.28, bottomOpacity: 0.02))
@@ -435,7 +435,7 @@ private struct CategoricalBarChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     BarMark(
                         x: .value("X", point.x.asString ?? "—"),
                         y: .value("Y", point.y)
@@ -473,7 +473,7 @@ private struct CategoricalHeatmapChart: View {
     var body: some View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let xValue = point.x.asString ?? "—"
                     let seriesName = series.name
                     let intensity = point.y
@@ -529,7 +529,7 @@ private struct DonutChart: View {
     var body: some View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     let label = point.label ?? (point.x.asString ?? series.name)
                     let color = donutPalette[sliceLabels.firstIndex(of: label) ?? 0]
                     SectorMark(
@@ -561,7 +561,7 @@ private struct RuleOnlyChart: View {
     var body: some View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
-                ForEach(series.points, id: \.self) { point in
+                ForEach(Array(series.points.enumerated()), id: \.offset) { _, point in
                     RuleMark(y: .value("Y", point.y))
                         .foregroundStyle(MobileTheme.amber)
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))

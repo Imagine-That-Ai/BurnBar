@@ -72,7 +72,7 @@ public struct AgentWatchView<Placeholder: View>: View {
         }
         .onChange(of: state.currentFrame) { _, frame in
             guard let frame else { return }
-            Task { await video.ingest(frame: frame) }
+            video.ingest(frame: frame)
         }
         .sheet(isPresented: $showingTimeline) {
             AgentActionTimelineSheet(entries: state.actionTimeline)

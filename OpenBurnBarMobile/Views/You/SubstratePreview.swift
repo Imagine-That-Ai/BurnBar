@@ -304,6 +304,7 @@ struct SubstrateLivePreviewStrip: View {
             // The real composite. Pinned to the strip frame and clipped; hit
             // testing off so taps fall through to the cards / form.
             WebsiteBackgroundView(accent: MobileTheme.ember, visibility: .prominent)
+                .environment(\.webglBackdropAncestorActive, true)
                 .environment(\.mobileBackgroundVisibility, .prominent)
                 .allowsHitTesting(false)
                 .frame(height: stripHeight)

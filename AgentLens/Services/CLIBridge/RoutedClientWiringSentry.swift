@@ -266,17 +266,32 @@ final class RoutedClientWiringSentry {
         }
         guard descriptor >= 0 else { return nil }
 
+        // The event handler below calls into this @MainActor instance, and
+        // on this toolchain *any* attempt to hop from a background-queue
+        // callback into MainActor from here traps with
+        // `_dispatch_assert_queue_fail` inside
+        // `swift_task_isCurrentExecutorWithFlagsImpl` — Task, Task.detached,
+        // DispatchQueue.main.async + assumeIsolated, and even a
+        // NotificationCenter relay posted from this closure all hit the
+        // identical fault, including with a completely empty handler body.
+        // That points at the closure itself being treated as (incorrectly)
+        // MainActor-isolated by lexical inheritance from `makeWatcher`,
+        // which only traps because it isn't *actually* running on the main
+        // queue. Fix the mismatch at the source instead of fighting the
+        // hop: schedule the DispatchSource directly on `.main` so the
+        // handler's real execution context matches what the compiler
+        // assumes. These are rare config-file-change events, not a hot
+        // path, so doing the (lightweight) repair check on the main queue
+        // is an acceptable trade-off.
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
             eventMask: configuration.monitoredEvents,
-            queue: queue
+            queue: .main
         )
         let watcher = Watcher(descriptor: descriptor, source: source)
         source.setEventHandler { [weak self, weak watcher] in
-            let data = watcher?.source.data ?? []
-            Task { @MainActor [weak self] in
-                self?.handleFileSystemEvent(target: target, events: data)
-            }
+            guard let self, let data = watcher?.source.data else { return }
+            self.handleFileSystemEvent(target: target, events: data)
         }
         source.setCancelHandler {
             close(descriptor)

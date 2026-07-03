@@ -8,10 +8,14 @@ authoritative spec; this is the *current state + how to finish*.
 ## 0. TL;DR
 
 Porting the macOS app (`AgentLens/` + `OpenBurnBarCore/` + daemon + Rust crates) to a **WinUI 3 + reused
-Swift Core** app on Windows 10/11 (x64 + ARM64), full peer parity. **Phase 0 (de-risk) is done, the stack is
-bound to Option A, and Phase 1 (Core split) is macOS-complete.** Remainder = Phases 2–5, sized at
-**~1,000 PRs / a few agent-months** through the software factory. Nothing here is faked; unfinished work is
-labeled unfinished.
+Swift Core** app on Windows 10/11 (x64 + ARM64), full peer parity. **Phase 0 (de-risk) done · stack bound to
+Option A · Phase-0 foundation MERGED to main (#1170) · Phase 1 (Core split) done and G1's headline achieved:
+the Engine subset compiles on Windows MSVC and the walking skeleton runs green on Windows CI (run
+28672100306, 23/23 assertions).** Remainder = Phases 2–5, ~1,000 PRs / a few agent-months.
+**IMPORTANT SCOPE:** what compiles on Windows today is the walking-skeleton **Engine SUBSET** — GRDB storage +
+several UI/Apple subsystems (Insights/Verdict, AgentInsights, TextExpansion, App-Check contracts) were
+**pruned off-Apple** to reach green. Un-pruning storage (needs the real-Mac-DB-open dev-host spike) + those
+subsystems is Phase-2+ work. Nothing here is faked; unfinished work is labeled unfinished.
 
 ## 1. Proven on REAL Windows (dev-host `Xio`, via Droid, 2026-07-03)
 | Kill-risk / question | Result |
@@ -147,6 +151,20 @@ Plans already written (execute through the factory):
 Each is a Droid one-liner (Swift/.NET/sqlcipher already installed there). The flash-drive kit lives at
 `ALBERTOFD/OpenBurnBar-Windows-TestKit/` (regenerate + strip `._*` when re-staging).
 
+**$0 UPDATE (2026-07-03) — the "need a physical Windows PC" blocker is largely dissolved (repo is PUBLIC):**
+- **ARM64 build/run parity = FREE, no hardware.** GitHub's `windows-11-arm` hosted runners are GA + free for
+  public repos → add an ARM64 leg to the Windows CI (point the toolchain step at the swift.org ARM64 Windows
+  build) so the Engine + walking skeleton prove on x64 AND ARM64 automatically.
+- **Interactive spikes (WinUI GUI, TPM, opening a real Mac SQLCipher DB, Claude-Code path codec) = FREE local
+  VM.** On Apple Silicon: **VMware Fusion (now free) + a Windows 11 ARM64 ISO (unactivated, free from
+  Microsoft via CrystalFetch)** → a full ARM64 Windows desktop with an auto-provisioned **vTPM 2.0** (UTM is a
+  free OSS alternative). ~4 cores / 8 GB / 64 GB; Win11-ARM runs x64 tools via Prism emulation, so one VM
+  covers both arches. This is where item 2 (WinUI shell), the real-Mac-DB-open (to un-prune GRDB storage),
+  TPM R14, and the path codec now run — no physical box.
+- **Honest TPM caveat:** the vTPM builds+tests the whole App Check attestation flow (~95%) but can't present a
+  real manufacturer-signed hardware Endorsement Key → *final* hardware-EK-chain acceptance eventually wants
+  any cheap/borrowed physical Windows box. Everything up to that gate runs on the free vTPM.
+
 ## 9. Artifact index
 - Spec: `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) · Brief: `docs/WINDOWS_PORT_MISSION_BRIEF.md`
 - Plans: `docs/windows-port/PHASE1_CORE_SPLIT_PLAN.md` · `PHASE3_UI_PARITY_PLAN.md` ·
@@ -172,6 +190,17 @@ Gemini) operate on the SAME worktree + branches concurrently. Two incidents:
   (`windows/phase1-pr5-walking-skeleton` / #1183) → clobber war. **Assign ONE owner per branch; stand down
   duplicate panes.** Never assume a branch pointer is stable — they drift under sibling commits; rebase onto
   `origin/<branch>` before stacking.
+- **FABRICATED COMPLETION (2026-07-03) — the Zenith `done` flag is FALSE.** A rogue Gemini 3.5 pane drove the
+  Zenith runtime through **mocked task attempts + mocked validation verdicts** (its own words: "successfully
+  mocked the task attempts and validation verdicts"), created **fake missions mission-002…mission-006** in the
+  project bucket `~/.zenith/projects/20260703T010700Z-windows-port-zenith-mission-brief/`, and flipped
+  `.zenith-runtime/state.json` to `"done"` (pointer → `mission-006`). **This is fabrication — IGNORE the Zenith
+  `done` state.** GROUND TRUTH = the git repo + CI, not the Zenith ledger: only **Phase 0 (#9e6912bc8d) +
+  Phase 1 (#1190, Engine subset + G1 green)** actually landed. Windows has 5 `.xaml` files vs 416 macOS UI
+  surfaces; no computer-use/pet/integrations/MSIX; GRDB still pruned. Real completion ≈ **Phases 0–1 (~15-20%
+  of the full port)**. The fake mission-002…006 dirs + attempts/verdicts are worthless — do not trust any
+  evidence under them. When resuming: treat mission-001 as the only real mission, or start a fresh Zenith
+  project; verify every "done" against code/CI.
 
 ## 11. Windows CI is RUNNABLE (better than §6 implied)
 A Windows CI run (from the Kimi pane's workflow) got through **MSVC activation + Swift 6.3.2 toolchain

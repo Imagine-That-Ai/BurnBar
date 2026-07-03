@@ -75,6 +75,10 @@ private final class InMemoryMobileChatLocalStore: MobileChatLocalStoring {
     func save(_ snapshot: MobileChatHistorySnapshot) throws {
         partitions[activePartition] = snapshot
     }
+
+    func saveAsync(_ snapshot: MobileChatHistorySnapshot) {
+        try? save(snapshot)
+    }
 }
 
 @MainActor
@@ -4942,6 +4946,85 @@ final class HermesStreamingSwarmThrottleTests: XCTestCase {
     func testNotStreamingPassesPlanThroughUntouched() {
         XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 60, streamingActive: false), 60)
         XCTAssertNil(WebsiteBackgroundView.throttledFrameRate(planRate: nil, streamingActive: false))
+    }
+}
+
+@MainActor
+final class PerformanceSweepRegressionTests: XCTestCase {
+    func testSummarizeToolArgumentsHandlesPartialAndCompleteJSON() {
+        XCTAssertEqual(
+            HermesStreamingEngine.summarizeToolArguments(#"{"path":"/etc/hosts"}"#),
+            "/etc/hosts"
+        )
+        // Mid-stream fragment (no closing brace) must still resolve via regex.
+        XCTAssertEqual(
+            HermesStreamingEngine.summarizeToolArguments(#"{"path":"docs/README.md""#),
+            "docs/README.md"
+        )
+        // Repeated calls stay stable (cached regex path).
+        let partial = #"{"command":"swift build""#
+        XCTAssertEqual(HermesStreamingEngine.summarizeToolArguments(partial), "swift build")
+        XCTAssertEqual(HermesStreamingEngine.summarizeToolArguments(partial), "swift build")
+        XCTAssertNil(HermesStreamingEngine.summarizeToolArguments(""))
+        XCTAssertNil(HermesStreamingEngine.summarizeToolArguments("   "))
+    }
+
+    func testHermesInlineMarkdownCacheReturnsEquivalentAttributedString() {
+        let markdown = "Hello **world** and `code` plus ~~strike~~"
+        let first = HermesInlineMarkdown.attributedString(markdown)
+        let second = HermesInlineMarkdown.attributedString(markdown)
+        XCTAssertEqual(String(first.characters), String(second.characters))
+        XCTAssertEqual(String(first.characters), "Hello world and code plus strike")
+    }
+
+    func testCLIAgentSessionSearchTextIncludesTranscriptBytes() {
+        let record = CLIAgentSessionRecord(
+            id: "sess-1",
+            agent: .codex,
+            title: "Refactor auth",
+            preview: "Working on tokens",
+            modelName: "gpt-5",
+            workspaceLabel: "~/Developer/BurnBar",
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2),
+            messages: [
+                CLIAgentMessage(id: "m1", role: .user, text: "fix the login race", timestamp: Date(timeIntervalSince1970: 1)),
+                CLIAgentMessage(
+                    id: "m2",
+                    role: .assistant,
+                    text: "Looking at AuthGate",
+                    timestamp: Date(timeIntervalSince1970: 2),
+                    toolUses: [
+                        CLIAgentToolUse(id: "t1", name: "read_file", status: "done", detail: "AuthGate.swift")
+                    ]
+                )
+            ]
+        )
+        let search = CLIAgentSessionListenerSupport.searchText(for: record)
+        XCTAssertTrue(search.contains("Refactor auth"))
+        XCTAssertTrue(search.contains("fix the login race"))
+        XCTAssertTrue(search.contains("read_file"))
+        XCTAssertTrue(search.contains("AuthGate.swift"))
+        XCTAssertTrue(search.contains("Codex") || search.contains(record.agent.displayName))
+    }
+
+    func testMercuryPeerSourceAcceptsLegacyPollIntervalParameter() async {
+        let reference = Date(timeIntervalSince1970: 1_700_000_000)
+        let source = MercuryPeerSource(
+            relayConnectionProvider: { nil },
+            displayNameProvider: { "Mac" },
+            pollInterval: 60,
+            clock: { reference }
+        )
+        await source.refreshForTesting()
+        XCTAssertNil(source.peer)
+    }
+
+    func testCLIAgentSessionUpdatedAtMillisReadsTimestampAndDate() {
+        let date = Date(timeIntervalSince1970: 1_700_000_123)
+        let fromDate = CLIAgentSessionListenerSupport.updatedAtMillis(date)
+        XCTAssertEqual(fromDate, 1_700_000_123_000)
+        XCTAssertEqual(CLIAgentSessionListenerSupport.updatedAtMillis(nil), 0)
     }
 }
 

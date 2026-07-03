@@ -259,6 +259,8 @@ protocol MobileChatLocalStoring: AnyObject {
     func setActivePartition(_ key: String)
     func load() throws -> MobileChatHistorySnapshot
     func save(_ snapshot: MobileChatHistorySnapshot) throws
+    /// Non-blocking save for streaming hot paths — work runs on the store queue.
+    func saveAsync(_ snapshot: MobileChatHistorySnapshot)
 }
 
 @MainActor
@@ -311,6 +313,9 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
     /// by partition so switching users never cross-contaminates. Reset lazily
     /// from disk on the first access of a partition.
     private var digestCache: [String: [String: Int]] = [:]
+    /// Per-partition `updatedAt` stamp for each thread — skips JSON encode when
+    /// the in-memory thread body did not change since the last successful write.
+    private var updatedAtCache: [String: [String: Date]] = [:]
     private var migratedPartitions: Set<String> = []
 
     init(
@@ -362,6 +367,17 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         }
     }
 
+    func saveAsync(_ snapshot: MobileChatHistorySnapshot) {
+        queue.async { [self] in
+            do {
+                try migrateLegacyFileIfNeeded(for: partitionKey)
+                try saveSnapshotLocked(snapshot, for: partitionKey)
+            } catch {
+                logger.error("Async chat history save failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
     // MARK: - Locked helpers (must run on `queue`)
 
     private func loadSnapshotLocked(for partition: String) throws -> MobileChatHistorySnapshot {
@@ -375,6 +391,7 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
 
         var threads: [MobileChatThread] = []
         var digests: [String: Int] = [:]
+        var updatedAts: [String: Date] = [:]
         threads.reserveCapacity(index.threadIDs.count)
         for threadID in index.threadIDs {
             let url = existingThreadFileURL(for: partition, threadID: threadID)
@@ -382,8 +399,10 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
             guard let thread = try? decoder.decode(MobileChatThread.self, from: data) else { continue }
             threads.append(thread)
             digests[thread.id] = Self.digest(of: data)
+            updatedAts[thread.id] = thread.updatedAt
         }
         digestCache[partition] = digests
+        updatedAtCache[partition] = updatedAts
         return MobileChatHistorySnapshot(threads: threads, tombstones: index.tombstones)
     }
 
@@ -398,19 +417,30 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         let encoder = Self.makeEncoder()
 
         var nextDigests: [String: Int] = [:]
+        var nextUpdatedAts: [String: Date] = [:]
         let previousDigests = digestCache[partition] ?? loadDigestsFromDiskLocked(for: partition)
+        let previousUpdatedAts = updatedAtCache[partition] ?? [:]
         let liveIDs = Set(snapshot.threads.map(\.id))
 
         // 1. Write only the thread bodies whose serialized content changed.
         for thread in snapshot.threads {
+            let threadURL = threadFileURL(for: partition, threadID: thread.id)
+            if previousDigests[thread.id] != nil,
+               previousUpdatedAts[thread.id] == thread.updatedAt,
+               fileManager.fileExists(atPath: threadURL.path) {
+                nextDigests[thread.id] = previousDigests[thread.id]
+                nextUpdatedAts[thread.id] = thread.updatedAt
+                continue
+            }
             let data = try encoder.encode(thread)
             let digest = Self.digest(of: data)
             nextDigests[thread.id] = digest
+            nextUpdatedAts[thread.id] = thread.updatedAt
             if previousDigests[thread.id] == digest,
-               fileManager.fileExists(atPath: threadFileURL(for: partition, threadID: thread.id).path) {
+               fileManager.fileExists(atPath: threadURL.path) {
                 continue // Unchanged body already on disk — skip the rewrite.
             }
-            try writeProtected(data, to: threadFileURL(for: partition, threadID: thread.id))
+            try writeProtected(data, to: threadURL)
             removeLegacyThreadFileIfNeeded(for: partition, threadID: thread.id)
         }
 
@@ -429,6 +459,7 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         try writeProtected(indexData, to: indexFileURL(for: partition))
 
         digestCache[partition] = nextDigests
+        updatedAtCache[partition] = nextUpdatedAts
     }
 
     /// Writes sensitive chat bytes at rest with NSFileProtectionComplete and
@@ -1351,11 +1382,16 @@ final class MobileChatHistoryStore {
         saveLocally()
     }
 
+    private var pendingLocalSaveTask: Task<Void, Never>?
+
     private func saveLocally() {
-        do {
-            try local.save(MobileChatHistorySnapshot(threads: threads, tombstones: tombstones))
-        } catch {
-            logger.error("Failed to persist chat history to disk: \(String(describing: error), privacy: .public)")
+        let snapshot = MobileChatHistorySnapshot(threads: threads, tombstones: tombstones)
+        pendingLocalSaveTask?.cancel()
+        // Trailing debounce: rapid streaming upserts collapse into one disk write.
+        pendingLocalSaveTask = Task { [local] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            local.saveAsync(snapshot)
         }
     }
 

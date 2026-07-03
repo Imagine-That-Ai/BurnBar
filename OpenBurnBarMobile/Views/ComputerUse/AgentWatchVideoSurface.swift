@@ -16,6 +16,7 @@ final class AgentWatchVideoCoordinator: ObservableObject {
     let displayLayer: AVSampleBufferDisplayLayer
     @Published var displayAspectRatio: CGFloat?
     private var pipeline: VideoReceivePipeline?
+    private let frameIngest = BoundedVideoFrameIngest()
 
     init() {
         let layer = AVSampleBufferDisplayLayer()
@@ -26,9 +27,16 @@ final class AgentWatchVideoCoordinator: ObservableObject {
                 self?.enqueue(sampleBuffer: sampleBuffer)
             }
         }
+        frameIngest.bind { [weak self] frame in
+            await self?.ingestDirect(frame)
+        }
     }
 
-    func ingest(frame: MediaFrame) async {
+    func ingest(frame: MediaFrame) {
+        frameIngest.submit(frame)
+    }
+
+    private func ingestDirect(_ frame: MediaFrame) async {
         do {
             try await pipeline?.ingest(frame: frame)
         } catch {

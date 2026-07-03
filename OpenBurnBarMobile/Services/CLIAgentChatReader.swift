@@ -33,9 +33,16 @@ final class CLIAgentChatReader {
     private(set) var isLoading: Bool = false
     private(set) var lastError: String?
     private(set) var lastRefreshedAt: Date?
+    /// True while a Firestore snapshot listener is attached — callers can
+    /// skip redundant whole-collection fetches.
+    private(set) var hasActiveListener: Bool = false
 
     private let remote: CLIAgentChatRemoteSource
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "CLIAgentChatReader")
+    @ObservationIgnored private var sessionsByID: [String: CLIAgentSessionRecord] = [:]
+    /// Serializes listener decode work so concurrent snapshot deliveries never
+    /// race the accumulator / decrypt memo (vault key fetch is async).
+    @ObservationIgnored private var listenerDecodeTail: Task<Void, Never>?
     @ObservationIgnored private nonisolated(unsafe) var authListenerHandle: AuthStateDidChangeListenerHandle?
     @ObservationIgnored private nonisolated(unsafe) var sessionsListener: ListenerRegistration?
 
@@ -67,7 +74,7 @@ final class CLIAgentChatReader {
     /// view to pick up live edits from the Mac without refetching the
     /// full list).
     func session(id: String) -> CLIAgentSessionRecord? {
-        sessions.first { $0.id == id }
+        sessionsByID[id]
     }
 
     /// Pull a fresh snapshot from Firestore. Safe to call repeatedly;
@@ -79,7 +86,8 @@ final class CLIAgentChatReader {
         lastError = nil
         defer { isLoading = false }
         do {
-            sessions = try await remote.fetchAll()
+            let fetched = try await remote.fetchAll()
+            publishSessions(fetched)
             lastRefreshedAt = Date()
         } catch {
             lastError = error.localizedDescription
@@ -94,7 +102,10 @@ final class CLIAgentChatReader {
                 if user == nil {
                     self?.sessionsListener?.remove()
                     self?.sessionsListener = nil
-                    self?.sessions = []
+                    self?.listenerDecodeTail?.cancel()
+                    self?.listenerDecodeTail = nil
+                    self?.hasActiveListener = false
+                    self?.publishSessions([])
                     self?.lastRefreshedAt = nil
                 } else {
                     self?.startListening(uid: user?.uid)
@@ -107,6 +118,11 @@ final class CLIAgentChatReader {
     private func startListening(uid: String?) {
         guard let uid, FirebaseApp.app() != nil else { return }
         sessionsListener?.remove()
+        listenerDecodeTail?.cancel()
+        listenerDecodeTail = nil
+        hasActiveListener = true
+        let accumulator = CLIAgentSessionAccumulator()
+        let decodeCache = CLIAgentSessionDecodeCache()
         sessionsListener = Firestore.firestore()
             .collection("users").document(uid)
             .collection("cli_sessions")
@@ -114,32 +130,75 @@ final class CLIAgentChatReader {
             .limit(to: 200)
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
+                    guard let self else { return }
                     if let error {
-                        self?.lastError = error.localizedDescription
-                        self?.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
+                        self.lastError = error.localizedDescription
+                        self.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
                         return
                     }
-                    // `uid` is already a non-optional String here (unwrapped by the
-                    // `guard let uid` above), so it can be used directly.
-                    let key: MobileCloudVaultResolvedKey?
-                    do {
-                        key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
-                    } catch {
-                        self?.logger.warning("CLI agent vault key read failed: \(String(describing: error), privacy: .public)")
-                        key = nil
-                    }
-                    self?.sessions = snapshot?.documents.compactMap { document in
-                        CLIAgentChatFirestoreSource.decodeDocument(
-                            documentID: document.documentID,
-                            uid: uid,
-                            data: document.data(),
-                            vaultKey: key?.keyData
+                    guard let snapshot else { return }
+                    let changes = snapshot.documentChanges.map { change -> CLIAgentSessionDocumentChange in
+                        let removed = change.type == .removed
+                        let payload = removed ? nil : change.document.data()
+                        return CLIAgentSessionDocumentChange(
+                            kind: removed ? .removed : .upsert,
+                            docID: change.document.documentID,
+                            payload: payload,
+                            updatedAtMillis: CLIAgentSessionListenerSupport.updatedAtMillis(payload?["updatedAt"])
                         )
-                    } ?? []
-                    self?.lastRefreshedAt = Date()
-                    self?.lastError = nil
+                    }
+                    // Chain decode tasks so deliveries apply in order even though
+                    // vault-key fetch suspends. Concurrent Tasks would race the
+                    // accumulator and could publish a stale snapshot.
+                    let previous = self.listenerDecodeTail
+                    self.listenerDecodeTail = Task(priority: .userInitiated) {
+                        _ = await previous?.result
+                        guard !Task.isCancelled else { return }
+                        let key: MobileCloudVaultResolvedKey?
+                        do {
+                            key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+                        } catch {
+                            key = nil
+                        }
+                        guard !Task.isCancelled else { return }
+                        let vaultKey = key?.keyData
+                        let rows: [CLIAgentSessionRecord] = {
+                            for change in changes {
+                                switch change.kind {
+                                case .upsert:
+                                    if let payload = change.payload,
+                                       let record = decodeCache.decode(
+                                        documentID: change.docID,
+                                        uid: uid,
+                                        data: payload,
+                                        vaultKey: vaultKey,
+                                        updatedAtMillis: change.updatedAtMillis
+                                       ) {
+                                        accumulator.upsert(record)
+                                    } else {
+                                        accumulator.remove(docID: change.docID)
+                                        decodeCache.remove(docID: change.docID)
+                                    }
+                                case .removed:
+                                    accumulator.remove(docID: change.docID)
+                                    decodeCache.remove(docID: change.docID)
+                                }
+                            }
+                            return accumulator.snapshot()
+                        }()
+                        await MainActor.run {
+                            self.publishSessions(rows)
+                            self.lastRefreshedAt = Date()
+                            self.lastError = nil
+                        }
+                    }
                 }
             }
+    }
+
+    private func publishSessions(_ records: [CLIAgentSessionRecord]) {
+        sessions = records
+        sessionsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
     }
 
     func updateSessionMetadata(
@@ -307,7 +366,7 @@ final class CLIAgentChatFirestoreSource: CLIAgentChatRemoteSource {
         }
     }
 
-    static func decodeDocument(documentID: String, uid: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
+    nonisolated static func decodeDocument(documentID: String, uid: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
             guard let vaultKey else { return nil }
             return CLIAgentSessionCodec.decodeSealed(documentID: documentID, uid: uid, data: data, vaultKey: vaultKey)
@@ -321,7 +380,7 @@ final class CLIAgentChatFirestoreSource: CLIAgentChatRemoteSource {
 
     /// Firestore returns `Timestamp` (not Foundation `Date`). The codec
     /// stays SDK-free; we plug an SDK-aware decoder here.
-    static let firestoreTimestampDecoder: (Any?) -> Date? = { raw in
+    nonisolated static let firestoreTimestampDecoder: @Sendable (Any?) -> Date? = { raw in
         if let value = raw as? Timestamp { return value.dateValue() }
         if let value = raw as? Date { return value }
         if let value = raw as? Double { return Date(timeIntervalSince1970: value) }
