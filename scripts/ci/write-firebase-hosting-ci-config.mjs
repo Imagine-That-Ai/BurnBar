@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,6 +89,28 @@ function copyDefined(source, keys) {
     }
   }
   return result;
+}
+
+function resolveRepoFilePath(value, label) {
+  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+    throw new Error(`${label} must be a non-empty trimmed path`);
+  }
+  const resolved = resolve(repoRoot, value);
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+    throw new Error(`${label} does not resolve to a file: ${resolved}`);
+  }
+  return resolved;
+}
+
+function resolveRepoDirectoryPath(value, label) {
+  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+    throw new Error(`${label} must be a non-empty trimmed path`);
+  }
+  const resolved = resolve(repoRoot, value);
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    throw new Error(`${label} does not resolve to a directory: ${resolved}`);
+  }
+  return resolved;
 }
 
 function buildHostingConfig(firebaseJson) {
@@ -182,6 +204,12 @@ function buildFunctionsConfig(firebaseJson) {
   const config = {
     functions: copyDefined(functions, ["source", "runtime", "ignore", "codebase"]),
   };
+  if (config.functions.source !== undefined) {
+    config.functions.source = resolveRepoDirectoryPath(
+      config.functions.source,
+      "functions.source",
+    );
+  }
   assertNoPredeploy(config, "firebase-functions.ci.json");
   return { config, manifest: { functionsSource: config.functions.source } };
 }
@@ -189,10 +217,27 @@ function buildFunctionsConfig(firebaseJson) {
 function buildFirestoreConfig(firebaseJson) {
   const config = {};
   if (firebaseJson.firestore !== undefined) {
-    config.firestore = firebaseJson.firestore;
+    const firestore = requirePlainObject(firebaseJson.firestore, "firebase.json firestore");
+    config.firestore = { ...firestore };
+    if (config.firestore.rules !== undefined) {
+      config.firestore.rules = resolveRepoFilePath(
+        config.firestore.rules,
+        "firestore.rules",
+      );
+    }
+    if (config.firestore.indexes !== undefined) {
+      config.firestore.indexes = resolveRepoFilePath(
+        config.firestore.indexes,
+        "firestore.indexes",
+      );
+    }
   }
   if (firebaseJson.storage !== undefined) {
-    config.storage = firebaseJson.storage;
+    const storage = requirePlainObject(firebaseJson.storage, "firebase.json storage");
+    config.storage = { ...storage };
+    if (config.storage.rules !== undefined) {
+      config.storage.rules = resolveRepoFilePath(config.storage.rules, "storage.rules");
+    }
   }
   if (!config.firestore && !config.storage) {
     throw new Error("firebase.json must contain firestore or storage config for firestore mode");

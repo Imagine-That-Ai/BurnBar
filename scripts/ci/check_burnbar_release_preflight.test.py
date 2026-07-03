@@ -183,6 +183,76 @@ def test_owner_emergency_preflight_always_enforces_runtime_readiness() -> None:
     with_shadow_scripts_package(run)
 
 
+def test_owner_emergency_runtime_hold_uses_source_integrity_not_runtime_readiness() -> None:
+    preflight = load_preflight_module()
+
+    def run(fake_repo: Path) -> None:
+        evidence = fake_repo / "launch-evidence/latest-agpl-store-legal-packet.json"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text(
+            json.dumps({"status": "owner_attested_soft_approval", "ownerAttestation": {}}),
+            encoding="utf-8",
+        )
+        blockers = preflight.collect_blockers(
+            repo_root=fake_repo,
+            legal_evidence=evidence,
+            allow_owner_emergency_approval=True,
+            allow_owner_emergency_runtime_hold=True,
+            expected_release_tag="v1.0.8",
+        )
+        assert blockers == ["source-blocker"]
+
+    with_shadow_scripts_package(run)
+
+
+def test_owner_emergency_runtime_hold_rejects_regular_approved_packet() -> None:
+    preflight = load_preflight_module()
+
+    def run(fake_repo: Path) -> None:
+        evidence = fake_repo / "launch-evidence/latest-agpl-store-legal-packet.json"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+        blockers = preflight.collect_blockers(
+            repo_root=fake_repo,
+            legal_evidence=evidence,
+            allow_owner_emergency_approval=True,
+            allow_owner_emergency_runtime_hold=True,
+            expected_release_tag="v1.0.8",
+        )
+        assert blockers == [
+            "owner emergency runtime hold requires owner-attested emergency approval status",
+            "runtime-blocker",
+        ]
+
+    with_shadow_scripts_package(run)
+
+
+def test_owner_emergency_runtime_hold_requires_valid_owner_approval() -> None:
+    preflight = load_preflight_module()
+
+    def run(fake_repo: Path) -> None:
+        evidence = fake_repo / "launch-evidence/latest-agpl-store-legal-packet.json"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text(
+            json.dumps({"status": "owner_attested_soft_approval", "ownerAttestation": {}}),
+            encoding="utf-8",
+        )
+        blockers = preflight.collect_blockers(
+            repo_root=fake_repo,
+            legal_evidence=evidence,
+            allow_owner_emergency_approval=True,
+            allow_owner_emergency_runtime_hold=True,
+            expected_release_tag="v1.0.9",
+        )
+        assert blockers == [
+            "owner emergency runtime hold requires valid owner emergency approval",
+            "runtime-blocker",
+            "owner emergency approval: expected release tag mismatch: v1.0.9",
+        ]
+
+    with_shadow_scripts_package(run)
+
+
 def main() -> int:
     tests = [
         test_load_ci_module_ignores_conflicting_scripts_package,
@@ -192,6 +262,9 @@ def main() -> int:
         test_owner_emergency_preflight_consumes_structured_attestation,
         test_owner_emergency_preflight_rejects_stale_release_tag,
         test_owner_emergency_preflight_always_enforces_runtime_readiness,
+        test_owner_emergency_runtime_hold_uses_source_integrity_not_runtime_readiness,
+        test_owner_emergency_runtime_hold_rejects_regular_approved_packet,
+        test_owner_emergency_runtime_hold_requires_valid_owner_approval,
     ]
     for test in tests:
         test()
