@@ -4,6 +4,18 @@ import OpenBurnBarCore
 // MARK: - Claude-format JSONL conversation extraction
 
 /// Accumulates user/assistant text and tool metadata from Claude Code / Factory JSONL lines.
+///
+/// Round-4 perf sweep: bounded accumulator. The previous implementation used
+/// `fullText += ...` on every message, which is O(n²) due to string reallocation
+/// and grows unbounded for long sessions (a 500-message session can produce a
+/// 5MB+ string held entirely in memory). The bounded accumulator:
+///
+/// 1. Collects message text fragments into an array (O(1) amortized append).
+/// 2. Joins once at finalize time (single O(n) allocation).
+/// 3. Caps total `fullText` byte count at `maxFullTextBytes` (default 1MB).
+///    Once the cap is reached, subsequent text fragments are counted for
+///    word/message metrics but not appended to `fullText`. This bounds peak
+///    memory regardless of session length.
 final class ClaudeConversationAccumulator {
     private(set) var fullText = ""
     private(set) var firstUserText: String?
@@ -21,6 +33,19 @@ final class ClaudeConversationAccumulator {
     private(set) var endTime: Date?
 
     private let titleMax = 120
+
+    // Round-4 perf sweep: bounded accumulator state.
+    private var fullTextParts: [String] = []
+    private var fullTextByteCount: Int = 0
+    private var fullTextCapped = false
+    /// Maximum byte count for `fullText`. Once exceeded, new text fragments
+    /// are counted for metrics but not appended. 1MB covers ~200K words,
+    /// sufficient for relevance search on any conversation.
+    let maxFullTextBytes: Int
+
+    init(maxFullTextBytes: Int = 1 << 20) {
+        self.maxFullTextBytes = maxFullTextBytes
+    }
 
     func ingest(jsonLine: [String: Any]) {
         applyTimeline(from: jsonLine)
@@ -146,8 +171,27 @@ final class ClaudeConversationAccumulator {
     }
 
     private func appendMessageText(_ text: String, isAssistant: Bool) {
-        if !fullText.isEmpty { fullText += "\n\n" }
-        fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: text)
+        // Round-4 perf sweep: array-based accumulator with byte cap.
+        // Word/message metrics are always counted; fullText is capped.
+        let formatted = SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: text)
+        if !fullTextCapped {
+            let partBytes = formatted.utf8.count
+            if fullTextByteCount + partBytes > maxFullTextBytes {
+                // Cap reached: append what fits (truncated to the byte budget)
+                // and mark as capped. Subsequent calls skip the append.
+                let remaining = maxFullTextBytes - fullTextByteCount
+                if remaining > 0 {
+                    let truncated = Self.truncateToUTF8Bytes(formatted, maxBytes: remaining)
+                    fullTextParts.append(truncated)
+                    fullTextByteCount += truncated.utf8.count
+                }
+                fullTextCapped = true
+            } else {
+                fullTextParts.append(formatted)
+                fullTextByteCount += partBytes
+            }
+        }
+
         let words = text.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
         if isAssistant {
             assistantWordCount += words
@@ -162,9 +206,35 @@ final class ClaudeConversationAccumulator {
         }
     }
 
+    /// Truncates a string to at most `maxBytes` UTF-8 bytes without splitting
+    /// a multi-byte scalar. Returns a substring of the first complete scalars
+    /// whose UTF8 encoding fits within the budget.
+    private static func truncateToUTF8Bytes(_ string: String, maxBytes: Int) -> String {
+        guard maxBytes > 0 else { return "" }
+        let utf8 = string.utf8
+        if utf8.count <= maxBytes { return string }
+        // Find the last valid scalar boundary at or before maxBytes.
+        var cut = maxBytes
+        // Walk back to a scalar boundary (UTF8 continuation bytes start with 10xxxxxx).
+        while cut > 0 {
+            let byte = utf8[utf8.index(utf8.startIndex, offsetBy: cut - 1)]
+            if byte & 0xC0 != 0x80 { break } // Not a continuation byte
+            cut -= 1
+        }
+        if cut == 0 { return "" }
+        let endIndex = utf8.index(utf8.startIndex, offsetBy: cut)
+        let stringIndex = String.Index(endIndex, within: string) ?? string.startIndex
+        return String(string[string.startIndex..<stringIndex])
+    }
+
     func finalizeArrays() {
         keyFiles = Array(fileSet).sorted()
         keyCommands = Array(commandSet).sorted()
         keyTools = Array(toolSet).sorted()
+        // Round-4 perf sweep: join once (single O(n) allocation) instead of
+        // O(n²) repeated string concatenation.
+        fullText = fullTextParts.joined(separator: "\n\n")
+        // Release the parts array to free memory before returning.
+        fullTextParts.removeAll(keepingCapacity: false)
     }
 }

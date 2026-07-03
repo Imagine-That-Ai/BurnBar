@@ -225,6 +225,32 @@ public final class BurnBarPersistentVectorIndexSnapshot: Sendable {
             return BurnBarSemanticCandidate(chunkID: chunkID, score: Double(pair.1), rank: index + 1)
         }
     }
+
+    /// Round-4 perf sweep: raw key-level search for delta overlay merge.
+    /// Returns (keys, scores) without resolving to chunkIDs. The caller
+    /// merges with delta results and then resolves via `chunkID(forKey:)`.
+    public func searchKeys(for query: [Float], limit: Int) throws -> (keys: [UInt64], scores: [Float]) {
+        guard query.count == manifest.dimensions else {
+            throw BurnBarPersistentVectorIndexError.invalidVectorDimensions(
+                expected: manifest.dimensions,
+                actual: query.count
+            )
+        }
+        let prepared = preparedVector(query, metric: manifest.distanceMetric)
+        return try index.search(vector: prepared, limit: limit)
+    }
+
+    /// Round-4 perf sweep: resolve a vector index key to its chunkID.
+    /// Used by the delta overlay to resolve delta-appended keys.
+    public func chunkID(forKey key: UInt64) -> String? {
+        chunkIDByKey[key]
+    }
+
+    /// Round-4 perf sweep: the full key → chunkID mapping. Used by the delta
+    /// overlay to resolve delta-appended keys that aren't in the base snapshot.
+    public var keyToChunkIDMapping: [UInt64: String] {
+        chunkIDByKey
+    }
 }
 
 public struct BurnBarMappedPersistentVectorIndexBackend: BurnBarPersistentVectorIndexBackend {

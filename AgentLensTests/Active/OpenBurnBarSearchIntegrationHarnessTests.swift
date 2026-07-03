@@ -535,6 +535,71 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertEqual(run.retrievalResults.compactMap(\.conversation?.id), [recentConversation.id])
     }
 
+    // Round-4 perf sweep: verify the collapsed single-scan occurrence count
+    // produces identical results to the old per-pattern UNION ALL approach
+    // when multiple patterns are provided. The recent conversation has
+    // "fuck fuck week" (2× "fuck", 1× "week"); the old one has "fuck" (1×
+    // "fuck", 0× "week"). Total: 3× "fuck" + 1× "week" = 4.
+    func test_aggregateCount_multiPattern_singleScanEquivalence() async throws {
+        let base = Date()
+        let harness = try OpenBurnBarSearchIntegrationHarness(
+            name: "aggregate-multi-pattern",
+            initialTime: base
+        )
+        defer { harness.cleanup() }
+
+        let recentConversation = OpenBurnBarSearchFixtureBuilder.conversation(
+            id: "conv-multi-recent",
+            fullText: "fuck fuck week",
+            indexedAt: base.addingTimeInterval(-2 * 86_400)
+        )
+        let oldConversation = OpenBurnBarSearchFixtureBuilder.conversation(
+            id: "conv-multi-old",
+            fullText: "fuck",
+            indexedAt: base.addingTimeInterval(-10 * 86_400)
+        )
+
+        try await harness.dataStore.upsertConversation(recentConversation)
+        try await harness.dataStore.upsertConversation(oldConversation)
+
+        let lastWeek = try XCTUnwrap(
+            BurnBarSearchTimeWindow.inferredDateRange(
+                from: "last week",
+                now: base,
+                calendar: .current
+            )
+        )
+
+        // Single pattern — must match the old behavior exactly.
+        let singleFuck = try await harness.dataStore.countOccurrencesInConversationFullText(
+            patterns: ["fuck"],
+            dateRange: lastWeek
+        )
+        XCTAssertEqual(singleFuck, 2, "Single-pattern count within last week must be 2 (recent conv only).")
+
+        // Multiple patterns — the collapsed single-scan must produce the sum
+        // of all pattern occurrences across all matching rows.
+        let multiCount = try await harness.dataStore.countOccurrencesInConversationFullText(
+            patterns: ["fuck", "week"],
+            dateRange: lastWeek
+        )
+        XCTAssertEqual(multiCount, 3, "Multi-pattern count: 2×fuck + 1×week in recent conv = 3.")
+
+        // No date range — all conversations, both recent and old.
+        let allCount = try await harness.dataStore.countOccurrencesInConversationFullText(
+            patterns: ["fuck", "week"],
+            dateRange: nil
+        )
+        XCTAssertEqual(allCount, 4, "Multi-pattern count (all time): 3×fuck + 1×week = 4.")
+
+        // Patterns that don't match — must return 0, not error.
+        let noMatch = try await harness.dataStore.countOccurrencesInConversationFullText(
+            patterns: ["nonexistent"],
+            dateRange: nil
+        )
+        XCTAssertEqual(noMatch, 0)
+    }
+
     private func monotonicNow() -> UInt64 {
         DispatchTime.now().uptimeNanoseconds
     }

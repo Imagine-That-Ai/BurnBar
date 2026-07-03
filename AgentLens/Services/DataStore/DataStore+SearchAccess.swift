@@ -111,6 +111,12 @@ extension DataStore {
         try await actor.searchIndexStore.fetchChunks(ids: ids)
     }
 
+    /// Round-4 perf sweep: combined chunk + document fetch via a single JOIN.
+    /// Eliminates one DB round-trip in the SearchService hydration path.
+    func fetchSearchChunksWithDocuments(ids: [String]) async throws -> [(chunk: SearchChunkRecord, document: SearchDocumentRecord)] {
+        try await actor.searchIndexStore.fetchChunksWithDocuments(ids: ids)
+    }
+
     func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchChunkRecord] {
         try await actor.searchIndexStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
     }
@@ -428,7 +434,10 @@ extension DataStore {
         var offset = 0
 
         while jumpTargets.count < boundedLimit {
-            let batch = try await actor.conversationStore.fetchTranscriptScanBatch(
+            // Round-4 perf sweep: use SQL-side pre-filter to skip conversations
+            // that don't contain any credential indicator substring before
+            // loading their fullText into Swift memory.
+            let batch = try await actor.conversationStore.fetchTranscriptScanBatchWithCredentialPreFilter(
                 provider: provider,
                 projectName: projectName,
                 dateRange: dateRange,

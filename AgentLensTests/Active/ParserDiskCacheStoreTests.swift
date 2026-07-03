@@ -109,10 +109,56 @@ final class ParserDiskCacheStoreTests: XCTestCase {
         store.persist(cache)
 
         let data = try Data(contentsOf: cacheURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let raw = try decoder.decode([String: AnyCodable].self, from: data)
+        // Round-4 perf sweep: caches are now binary plist, not JSON.
+        let raw = try PropertyListDecoder().decode([String: AnyCodable].self, from: data)
         XCTAssertNotNil(raw["lastUpdatedAt"])
+    }
+
+    func test_persistWritesBinaryPlistFormat() throws {
+        let store = makeStore()
+        var cache = store.load()
+        cache.fileEntries["key1"] = TestEntry(
+            signature: FileSignature(modifiedAt: 1, sizeBytes: 1),
+            payload: "a"
+        )
+        store.persist(cache)
+
+        let data = try Data(contentsOf: cacheURL)
+        // Binary plist magic bytes: `bplist`
+        XCTAssertEqual(String(data: data.prefix(6), encoding: .ascii), "bplist")
+    }
+
+    func test_loadUpgradesLegacyJSONCacheInPlace() throws {
+        // Write a legacy JSON cache (pre-round-4 format) directly to disk.
+        let legacyCache = ParserDiskCache<TestEntry>(
+            schemaVersion: 1,
+            fileEntries: [
+                "legacy": TestEntry(
+                    signature: FileSignature(modifiedAt: 1_700_000_000, sizeBytes: 99),
+                    payload: "old-format"
+                )
+            ]
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let jsonData = try encoder.encode(legacyCache)
+        try jsonData.write(to: cacheURL, options: .atomic)
+
+        // The store's dual-read must load the legacy JSON cache transparently.
+        let store = makeStore()
+        let loaded = store.load()
+        XCTAssertEqual(loaded.fileEntries.count, 1)
+        XCTAssertEqual(loaded.fileEntries["legacy"]?.payload, "old-format")
+
+        // After a persist, the file on disk is now binary plist.
+        store.persist(loaded)
+        let data = try Data(contentsOf: cacheURL)
+        XCTAssertEqual(String(data: data.prefix(6), encoding: .ascii), "bplist")
+
+        // And the binary plist round-trips identically.
+        let reloaded = store.load()
+        XCTAssertEqual(reloaded.fileEntries["legacy"]?.payload, "old-format")
     }
 
     func test_multipleEntriesPersistedAtomically() throws {

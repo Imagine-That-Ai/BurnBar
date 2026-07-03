@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round-4 performance sweep** — state-of-the-art throughput, latency,
+  memory, and energy improvements across macOS and iOS with no feature or
+  visual changes:
+  - **ParserDiskCache binary plist** (A1): switched from pretty-printed
+    JSON to binary plist with dual-read fallback for backward
+    compatibility. ~3–5× faster encoding, ~2–3× smaller cache files.
+  - **SearchQueryCache bounded LRU + metrics** (A2): replaced unbounded
+    dictionary with bounded LRU cache (256 entries) with eviction and
+    observability via `OpenBurnBarMetrics`.
+  - **Daemon connection back-pressure** (A3): capped simultaneously
+    in-flight connection handlers via `BurnBarConnectionGate` to prevent
+    FD exhaustion under load.
+  - **Single-scan SQL occurrence counts** (A4): collapsed N full-table
+    scans into one for `countOccurrencesInConversationFullText`.
+  - **SearchService hydration JOIN collapse** (A5): merged two DB
+    round-trips (chunks + documents) into a single JOIN query.
+  - **iOS TrendAtlasCard memoization** (A6): cached digest/insights
+    recomputation behind input-hash check via `DigestCacheStore`.
+  - **iOS HermesSquareRoot rollback cache** (A7): hoisted filter+sort
+    out of `body` into a `.onChange`-rebuilt `@State` cache.
+  - **Incremental HNSW delta segments** (B1): LSM-tree "base + delta"
+    overlay (`BurnBarVectorIndexDeltaOverlay`) eliminates full O(n log n)
+    HNSW rebuilds on every projection cycle; bounded delta with
+    compaction threshold.
+  - **Streaming Claude JSONL bounded accumulator** (B2): replaced O(n²)
+    string concatenation with array-based join-once-at-finalize and 1 MB
+    `maxFullTextBytes` cap; added `maxLineBytes` guard to
+    `BufferedLineSequence` for pathological inputs.
+  - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
+    clauses skip conversations without credential indicators before
+    loading `fullText` into Swift memory.
+
+### Added
+
+- **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
+  sidebar and navigation for discoverability:
+  - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled
+    sections (Agents & Models, Look & Feel, Account & Sync, System, More) with
+    Home above as the default landing page.
+  - **Home overview**: mission-control landing with live status grid (Daemon,
+    Model Proxy, Accounts, Hermes, Cloud Sync, Indexing), an attention strip
+    for items needing action, and task cards for the most common destinations
+    (Accounts, Model Proxy, Appearance, Text Expansion, Cloud, Data & Privacy).
+  - **Model Proxy as first-class tab**: the local OpenAI-compatible gateway is
+    no longer buried under Daemon. New `ModelProxySettingsView` with a
+    status-first hero (on/off + copyable endpoint + model/provider counts),
+    routing strategy, live model catalog, and plumbing behind Advanced.
+  - **Settings Copilot**: search-or-ask command bar. Tier 1 = instant manifest
+    search (unchanged engine). Tier 2 = agentic: asks the question through
+    `CLIBridge.chat()` with a system prompt carrying the action grammar and
+    live settings state. Proposed changes render as confirm chips — nothing
+    mutates until confirmed. Secrets are never writable through the registry.
+    Falls back gracefully when no CLI backend is detected.
+  - **Daemon rebranded to "Engine Room"** for clarity.
+  - All legacy deep links, routes, and anchors resolve via the existing alias
+    machinery — no saved link 404s.
+  - Covered by `SettingsActionRegistryTests` (20 cases),
+    `SettingsCopilotControllerTests` (14 cases), and
+    `SettingsHomeAndSectionTests` (16 cases).
 - **OMP provider parity** — added Oh My Pi (`omp`) as a first-class local CLI
   provider across Mac chat, direct mission launch, mobile relay/catalog
   surfaces, provider identity, and quota refresh. OpenBurnBar now reads

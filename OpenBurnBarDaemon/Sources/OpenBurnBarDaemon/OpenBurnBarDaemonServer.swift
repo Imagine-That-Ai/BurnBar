@@ -9,6 +9,11 @@ public actor BurnBarDaemonServer {
     public let configuration: BurnBarDaemonConfiguration
 
     let logger: BurnBarDaemonLogger
+    /// Round-4 perf sweep: bounded concurrency gate for the accept loop.
+    /// Caps the number of simultaneously in-flight connection handlers to
+    /// prevent FD/memory exhaustion under client bursts. See
+    /// `BurnBarConnectionGate` for the contract.
+    let connectionGate: BurnBarConnectionGate
     /// RR-3: first-party code-signature gate for accepted control-socket peers.
     /// Enforced in production (wired by `OpenBurnBarDaemonMain`); `.disabled` for
     /// in-process tests and unsigned developer builds.
@@ -70,6 +75,7 @@ public actor BurnBarDaemonServer {
     ) {
         self.configuration = configuration
         self.logger = logger
+        self.connectionGate = BurnBarConnectionGate()
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
@@ -304,10 +310,11 @@ public actor BurnBarDaemonServer {
             )
         }
 
-        acceptLoopTask = Task.detached(priority: .background) { [logger] in
+        acceptLoopTask = Task.detached(priority: .background) { [logger, connectionGate] in
             await Self.runAcceptLoop(
                 server: self,
                 listenerFileDescriptor: fileDescriptor,
+                connectionGate: connectionGate,
                 logger: logger
             )
         }
@@ -655,6 +662,7 @@ public actor BurnBarDaemonServer {
     private static func runAcceptLoop(
         server: BurnBarDaemonServer,
         listenerFileDescriptor: Int32,
+        connectionGate: BurnBarConnectionGate,
         logger: BurnBarDaemonLogger
     ) async {
         while !Task.isCancelled {
@@ -676,10 +684,24 @@ public actor BurnBarDaemonServer {
                 continue
             }
 
+            // Round-4 perf sweep: back-pressure. If the gate is at capacity,
+            // close the connection immediately rather than spawning an
+            // unbounded handler. This prevents FD/memory exhaustion under
+            // client bursts; the client's retry is cheap over a local socket.
+            guard connectionGate.tryAcquire() else {
+                close(clientFileDescriptor)
+                logger.warning(
+                    "connection_limit_reached",
+                    metadata: ["max": "\(connectionGate.maxCount)"]
+                )
+                continue
+            }
+
             Task.detached(priority: .utility) { [logger] in
                 await Self.handleClientConnection(
                     server: server,
                     clientFileDescriptor: clientFileDescriptor,
+                    connectionGate: connectionGate,
                     logger: logger
                 )
             }
@@ -698,10 +720,12 @@ public actor BurnBarDaemonServer {
     private static func handleClientConnection(
         server: BurnBarDaemonServer,
         clientFileDescriptor: Int32,
+        connectionGate: BurnBarConnectionGate,
         logger: BurnBarDaemonLogger
     ) async {
         defer {
             close(clientFileDescriptor)
+            connectionGate.release()
         }
 
         BurnBarUnixDomainSocket.configureNoSigPipe(for: clientFileDescriptor)

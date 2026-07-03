@@ -179,44 +179,29 @@ final class ClaudeCodeParser: LogParser, Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func decodeProjectName(_ encoded: String) -> String {
-        guard encoded.hasPrefix("-Users-") else {
-            return encoded
-        }
+    func decodeProjectName(_ encoded: String) -> String {
+        let decoded = ClaudeCodeProjectPathCodec.decode(encoded)
+        let path = decoded.displayPath
 
-        let pathAfterPrefix = String(encoded.dropFirst(7))
-
-        var segments: [String] = []
-        var currentSegment = ""
-
-        for (index, char) in pathAfterPrefix.enumerated() {
-            if char == "-" && index + 1 < pathAfterPrefix.count {
-                let nextIndex = pathAfterPrefix.index(pathAfterPrefix.startIndex, offsetBy: index + 1)
-                let nextChar = pathAfterPrefix[nextIndex]
-
-                if nextChar.isUppercase {
-                    if !currentSegment.isEmpty {
-                        segments.append(currentSegment)
-                    }
-                    currentSegment = ""
-                } else {
-                    currentSegment.append(char)
-                }
-            } else {
-                currentSegment.append(char)
+        if decoded.style == .posix, path.hasPrefix("/Users/") {
+            let components = path.split(separator: "/")
+            if components.count >= 2 {
+                let rest = components.dropFirst(2).joined(separator: "/")
+                return rest.isEmpty ? "~" : "~/" + rest
             }
         }
 
-        if !currentSegment.isEmpty {
-            segments.append(currentSegment)
+        if decoded.style == .windows {
+            if path.lowercased().hasPrefix("c:\\users\\") {
+                let components = path.split(separator: "\\")
+                if components.count >= 3 {
+                    let rest = components.dropFirst(3).joined(separator: "\\")
+                    return rest.isEmpty ? "~" : "~\\" + rest
+                }
+            }
         }
 
-        if segments.count == 1 {
-            return "~/" + segments[0]
-        } else {
-            let pathComponents = segments.dropFirst()
-            return "~/" + pathComponents.joined(separator: "/")
-        }
+        return path
     }
 
     private func parseClaudeSession(

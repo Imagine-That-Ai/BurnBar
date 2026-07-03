@@ -134,4 +134,49 @@ final class BufferedLineSequenceTests: XCTestCase {
 
         XCTAssertEqual(bufferedLines, oldLines)
     }
+
+    // MARK: - Round-4 perf sweep: oversized line guard
+
+    func test_oversizedLine_isSkipped() throws {
+        // Create a file with a line that exceeds maxLineBytes.
+        // maxLineBytes = 100, chunkSize = 32.
+        let oversized = String(repeating: "B", count: 500)
+        let content = "before\n\(oversized)\nafter"
+        let url = try write(content, to: "oversized.txt")
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { handle.closeFile() }
+        let seq = BufferedLineSequence(fileHandle: handle, chunkSize: 32, maxLineBytes: 100)
+        let lines = Array(seq)
+
+        // The oversized line should be skipped; "before" and "after" remain.
+        XCTAssertEqual(lines, ["before", "after"])
+    }
+
+    func test_oversizedLine_atEOF_isSkipped() throws {
+        // Oversized line is the last line (no trailing newline).
+        let oversized = String(repeating: "C", count: 500)
+        let content = "ok\n\(oversized)"
+        let url = try write(content, to: "oversized_eof.txt")
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { handle.closeFile() }
+        let seq = BufferedLineSequence(fileHandle: handle, chunkSize: 32, maxLineBytes: 100)
+        let lines = Array(seq)
+
+        XCTAssertEqual(lines, ["ok"])
+    }
+
+    func test_normalLines_unaffectedByMaxLineBytes() throws {
+        // Verify that normal-sized lines are not affected by the guard.
+        let content = "line1\nline2\nline3\n"
+        let url = try write(content, to: "normal.txt")
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { handle.closeFile() }
+        let seq = BufferedLineSequence(fileHandle: handle, chunkSize: 16, maxLineBytes: 100)
+        let lines = Array(seq)
+
+        XCTAssertEqual(lines, ["line1", "line2", "line3"])
+    }
 }

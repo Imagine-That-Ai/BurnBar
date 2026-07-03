@@ -64,6 +64,10 @@ struct HermesSquareRoot: View {
     @State private var activeGroupObserver = MissionGroupObserver()
     @State private var approvalPolicyStore = ApprovalPolicyStore.shared
     @State private var rollbackService = RollbackService.shared
+    /// Round-4 perf sweep: cached filtered+sorted rollback sessions.
+    /// Rebuilt only when `snapshotsBySession` changes (via `.onChange`),
+    /// not on every body evaluation.
+    @State private var cachedRollbackSessions: [(key: String, value: [RollbackSnapshot])] = []
     @State private var voiceIntentBanner: VoiceIntent?
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
     /// Mercury Phase 8 — paired Mac peer presence + Live sheet plumbing.
@@ -75,7 +79,12 @@ struct HermesSquareRoot: View {
     @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
     @State private var bootingMercuryConnectionID: String?
     @State private var mercuryBootError: String?
+    @State private var searchReindexTask: Task<Void, Never>?
     @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
+
+    private var inboxSplit: (service: [ThreadInboxItem], subscription: [ThreadInboxItem]) {
+        inbox.items.splitForInbox()
+    }
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -231,6 +240,11 @@ struct HermesSquareRoot: View {
             for sessionID in sessionIDs {
                 rollbackService.startObservingSession(sessionID)
             }
+            // Round-4 perf sweep: seed the rollback sessions cache on appear.
+            rebuildRollbackSessionsCache()
+        }
+        .onChange(of: rollbackService.snapshotsBySession) { _, _ in
+            rebuildRollbackSessionsCache()
         }
         .task {
             HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
@@ -245,13 +259,13 @@ struct HermesSquareRoot: View {
             consumePendingHermesThread()
         }
         .onChange(of: inbox.items) { _, _ in
-            Task { await reindexSearch() }
+            scheduleSearchReindex()
         }
         .onChange(of: registry.identities) { _, _ in
-            Task { await reindexSearch() }
+            scheduleSearchReindex()
         }
         .onChange(of: projectsStore.summaries) { _, _ in
-            Task { await reindexSearch() }
+            scheduleSearchReindex()
         }
         .onChange(of: mercuryPeerSource.peer) { _, peer in
             syncMercuryPeer(peer)
@@ -396,13 +410,10 @@ struct HermesSquareRoot: View {
 
     @ViewBuilder
     private var rollbackSections: some View {
-        let sessions = rollbackService.snapshotsBySession
-            .filter { !$0.value.isEmpty }
-            .sorted { lhs, rhs in
-                let lTop = lhs.value.map(\.takenAt).max() ?? .distantPast
-                let rTop = rhs.value.map(\.takenAt).max() ?? .distantPast
-                return lTop > rTop
-            }
+        // Round-4 perf sweep: use the cached filtered+sorted sessions instead
+        // of re-running filter+sort on every body evaluation. The cache is
+        // rebuilt via `.onChange(of: rollbackService.snapshotsBySession)`.
+        let sessions = cachedRollbackSessions
         if sessions.isEmpty {
             EmptyView()
         } else {
@@ -423,6 +434,21 @@ struct HermesSquareRoot: View {
                 }
             }
         }
+    }
+
+    /// Round-4 perf sweep: rebuild the cached filtered+sorted rollback sessions.
+    /// Called on appear and whenever `snapshotsBySession` changes. Hoists the
+    /// filter+sort out of `body` so it runs once per data change, not once per
+    /// body evaluation.
+    private func rebuildRollbackSessionsCache() {
+        cachedRollbackSessions = rollbackService.snapshotsBySession
+            .filter { !$0.value.isEmpty }
+            .sorted { lhs, rhs in
+                let lTop = lhs.value.map(\.takenAt).max() ?? .distantPast
+                let rTop = rhs.value.map(\.takenAt).max() ?? .distantPast
+                return lTop > rTop
+            }
+            .map { (key: $0.key, value: $0.value) }
     }
 
     private var federatedSearchBar: some View {
@@ -679,7 +705,7 @@ struct HermesSquareRoot: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
-            let (service, _) = inbox.items.splitForInbox()
+            let (service, _) = inboxSplit
             if service.isEmpty {
                 Text("No conversations yet. Pick an agent to begin.")
                     .font(.caption)
@@ -762,7 +788,7 @@ struct HermesSquareRoot: View {
     }
 
     private var subscriptionsSection: some View {
-        let (_, subscription) = inbox.items.splitForInbox()
+        let (_, subscription) = inboxSplit
         let count = max(subscription.count, subscriptionTopicStore.topics.count)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -1050,7 +1076,7 @@ struct HermesSquareRoot: View {
     }
 
     private func moveThreadItem(_ item: ThreadInboxItem, direction: MoveDirection) {
-        let (service, _) = inbox.items.splitForInbox()
+        let (service, _) = inboxSplit
         let conversations = service.filter { $0.source != .missionGroup }
         guard let index = conversations.firstIndex(where: { $0.id == item.id }) else { return }
 
@@ -1105,6 +1131,15 @@ struct HermesSquareRoot: View {
                 return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
             }
             .prefix(30))
+    }
+
+    private func scheduleSearchReindex() {
+        searchReindexTask?.cancel()
+        searchReindexTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            await reindexSearch()
+        }
     }
 
     private func reindexSearch() async {

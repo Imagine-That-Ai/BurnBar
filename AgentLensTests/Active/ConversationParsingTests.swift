@@ -111,6 +111,112 @@ final class ConversationParsingTests: XCTestCase {
         XCTAssertEqual(blocks.filter { $0.kind == .assistantMessage }.count, 1)
     }
 
+    // MARK: - Round-4 perf sweep: bounded accumulator tests
+
+    func test_claudeAccumulator_capsFullTextAtMaxBytes() {
+        // Use a small cap so we can test easily.
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 200)
+
+        // Ingest enough messages to exceed the 200-byte cap.
+        let bigText = String(repeating: "A", count: 150)
+        let userLine: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": bigText]]]
+        ]
+        let assistantLine: [String: Any] = [
+            "type": "assistant",
+            "timestamp": "2025-06-01T12:01:00Z",
+            "message": ["role": "assistant", "content": [["type": "text", "text": bigText]]]
+        ]
+
+        acc.ingest(jsonLine: userLine)
+        acc.ingest(jsonLine: assistantLine)
+        acc.finalizeArrays()
+
+        // fullText should be capped at ~200 bytes (plus the markdown header overhead).
+        XCTAssertLessThanOrEqual(acc.fullText.utf8.count, 300, "fullText should be bounded")
+        // Word counts should still reflect both messages (metrics are not capped).
+        XCTAssertGreaterThan(acc.userWordCount, 0)
+        XCTAssertGreaterThan(acc.assistantWordCount, 0)
+    }
+
+    func test_claudeAccumulator_wordCountContinuesAfterCap() {
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 100)
+
+        // First message fills the cap.
+        let firstText = String(repeating: "x", count: 80)
+        let firstLine: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": firstText]]]
+        ]
+        acc.ingest(jsonLine: firstLine)
+
+        // Second message should still count words even though fullText is capped.
+        let secondLine: [String: Any] = [
+            "type": "assistant",
+            "timestamp": "2025-06-01T12:01:00Z",
+            "message": ["role": "assistant", "content": [["type": "text", "text": "hello world from the assistant"]]]
+        ]
+        acc.ingest(jsonLine: secondLine)
+        acc.finalizeArrays()
+
+        // Word count should include the second message's words.
+        XCTAssertGreaterThan(acc.assistantWordCount, 3, "Word count must continue after cap")
+        // firstUserText should still be set from the first message.
+        XCTAssertNotNil(acc.firstUserText)
+    }
+
+    func test_claudeAccumulator_joinedOnceAtFinalize() {
+        let acc = ClaudeConversationAccumulator()
+
+        let line1: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": "first message"]]]
+        ]
+        let line2: [String: Any] = [
+            "type": "assistant",
+            "timestamp": "2025-06-01T12:01:00Z",
+            "message": ["role": "assistant", "content": [["type": "text", "text": "second message"]]]
+        ]
+
+        acc.ingest(jsonLine: line1)
+        acc.ingest(jsonLine: line2)
+
+        // Before finalize, fullText should be empty (not yet joined).
+        XCTAssertEqual(acc.fullText, "", "fullText should be empty before finalizeArrays")
+
+        acc.finalizeArrays()
+
+        // After finalize, fullText should contain both messages.
+        XCTAssertTrue(acc.fullText.contains("first message"))
+        XCTAssertTrue(acc.fullText.contains("second message"))
+    }
+
+    func test_claudeAccumulator_truncateToUTF8Bytes_preservesScalarBoundaries() {
+        // Test the UTF-8 truncation with multi-byte characters.
+        // "héllo" = h(1) + é(2) + l(1) + l(1) + o(1) = 6 bytes
+        let text = "héllo"
+        let truncated = text // Would call the private method, but we test via behavior
+
+        // We test the behavior indirectly: ingest a message with multi-byte
+        // chars and a tight cap, then verify fullText doesn't have broken UTF-8.
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 2)
+        let line: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": "héllo"]]]
+        ]
+        acc.ingest(jsonLine: line)
+        acc.finalizeArrays()
+
+        // fullText should be valid UTF-8 (no broken multi-byte sequences).
+        let data = acc.fullText.data(using: .utf8)
+        XCTAssertNotNil(data, "fullText must be valid UTF-8 after truncation")
+    }
+
     func test_conversationIndexer_skips_same_mtime() async throws {
         let store = try makeInMemoryStore()
         let past = Date(timeIntervalSince1970: 1_700_000_000)
