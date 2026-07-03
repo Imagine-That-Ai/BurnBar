@@ -45,9 +45,16 @@ concurrency:
 env:
   # Swift toolchain proven on the dev host for the Windows Engine compile.
   SWIFT_VERSION: "6.3.2"
-  # Per-machine swift.org install root (the installer lays down
-  # `Platforms\<ver>\Windows.platform\...` and `Toolchains\<ver>+Asserts\usr\bin`).
+  # Fallback install-root hint only. The swift.org installer actually defaults to
+  # the PER-USER `%LOCALAPPDATA%\Programs\Swift`; the SDKROOT step discovers the
+  # real location and does not rely on this.
   SWIFT_ROOT: "C:\\Program Files\\Swift"
+  # Prune the GRDB-SQLCipher path package + OpenBurnBarData from the Windows graph.
+  # The Engine subset (Core + walking skeleton) never links GRDB, and GRDB-SQLCipher
+  # does not resolve/build off-Apple yet, so leaving it in would fail package
+  # resolution before Core ever compiles. A first-class Windows storage story is
+  # later-phase work; this flag keeps the Phase-1 Engine compile honest and narrow.
+  OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD: "1"
 
 jobs:
   build:
@@ -112,51 +119,92 @@ jobs:
             throw "Swift installer exited with code $($p.ExitCode)."
           }
 
-      # Set SDKROOT to the Windows.sdk and put the toolchain + runtime on PATH
-      # (recipe: PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe").
-      # The swift.org installer layout has varied by release/image, so we discover
-      # the SDK rather than hard-coding one root.
+      # Discover SDKROOT + toolchain/runtime PATH rather than hard-coding a root.
+      # The swift.org Windows installer defaults to a PER-USER location
+      # (`%LOCALAPPDATA%\Programs\Swift`, i.e. C:\Users\runneradmin\AppData\Local\
+      # Programs\Swift) — NOT `C:\Program Files\Swift` — with the SDK under
+      # `Platforms\<ver>\Windows.platform\Developer\SDKs\Windows.sdk`. The prior
+      # candidate list omitted LOCALAPPDATA, so the recursive search never found it.
+      # We now search the per-user root first, print the real layout for
+      # diagnosability, and fail with the roots we looked under.
       - name: Export SDKROOT + toolchain PATH
         run: |
-          $ver = "${env:SWIFT_VERSION}"
-          $candidates = @(
-            "${env:SWIFT_ROOT}",
-            "C:\Program Files\Swift",
-            "C:\Program Files (x86)\Swift",
-            "C:\Library\Developer"
-          )
-          $sdkRoot = $null
-          foreach ($root in $candidates) {
-            if (-not (Test-Path $root)) { continue }
-            $sdkRoot = Get-ChildItem -Path $root -Recurse -Filter "Windows.sdk" -Directory -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName -First 1
-            if ($sdkRoot) { break }
+          $roots = @(
+            "$env:LOCALAPPDATA\Programs\Swift",
+            "$env:USERPROFILE\AppData\Local\Programs\Swift",
+            "$env:ProgramFiles\Swift",
+            "${env:ProgramFiles(x86)}\Swift",
+            "$env:SystemDrive\Library\Developer",
+            "${env:SWIFT_ROOT}"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+          Write-Host "Swift install roots present:"; $roots | ForEach-Object { Write-Host "  $_" }
+          foreach ($r in $roots) {
+            Get-ChildItem -Path $r -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -in @('Windows.sdk','swiftc.exe','swift.exe') } |
+              ForEach-Object { Write-Host "  found: $($_.FullName)" }
           }
-          if (-not $sdkRoot) {
-            throw "Could not find Windows.sdk under any candidate root: $($candidates -join ', ')"
-          }
-          "SDKROOT=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          $toolchainBin = $null
+          $sdk = $null
+          foreach ($r in $roots) {
+            $sdk = Get-ChildItem -Path $r -Recurse -Directory -Filter 'Windows.sdk' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($sdk) { break }
+          }
+          if (-not $sdk) { throw "Windows.sdk not found under: $($roots -join ', ')" }
+          "SDKROOT=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $swiftc = $null
+          foreach ($r in $roots) {
+            $swiftc = Get-ChildItem -Path $r -Recurse -Filter 'swiftc.exe' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($swiftc) { break }
+          }
+          if (-not $swiftc) { throw "swiftc.exe not found under: $($roots -join ', ')" }
+          $toolchainBin = Split-Path $swiftc -Parent
+          $toolchainBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
           $runtimeBin = $null
-          foreach ($root in $candidates) {
-            if (-not (Test-Path $root)) { continue }
-            if (-not $toolchainBin) {
-              $toolchainBin = Get-ChildItem -Path $root -Recurse -Directory -Filter "bin" -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -like "*Toolchains*$ver*usr*bin" -or $_.FullName -like "*usr*bin" } |
-                Select-Object -ExpandProperty FullName -First 1
-            }
-            if (-not $runtimeBin) {
-              $runtimeBin = Get-ChildItem -Path $root -Recurse -Directory -Filter "bin" -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -like "*Runtimes*$ver*usr*bin" } |
-                Select-Object -ExpandProperty FullName -First 1
+          foreach ($r in $roots) {
+            $runtimeBin = Get-ChildItem -Path $r -Recurse -Directory -Filter 'bin' -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'Runtimes' } |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($runtimeBin) { break }
+          }
+          if ($runtimeBin) { $runtimeBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
+          Write-Host "SDKROOT=$sdk"
+          Write-Host "toolchainBin=$toolchainBin runtimeBin=$runtimeBin"
+
+      # Deploy the Windows SDK module maps into the UCRT + VC include trees so the
+      # Swift compiler can import the C runtime (`ucrt`, `visualc`, `WinSDK`). The
+      # .exe installer usually does this against the VS it detects at install time,
+      # but we deploy defensively (idempotent copy) to preempt the common
+      # "cannot load underlying module for 'ucrt'" compile failure. The env vars
+      # come from the vcvars64 import step above.
+      - name: Deploy Windows SDK module maps into VS
+        run: |
+          $sdk = "${env:SDKROOT}"
+          $ucrt = "${env:UniversalCRTSdkDir}"
+          $ucrtVer = "${env:UCRTVersion}"
+          $vc = "${env:VCToolsInstallDir}"
+          Write-Host "SDKROOT=$sdk"
+          Write-Host "UniversalCRTSdkDir=$ucrt UCRTVersion=$ucrtVer VCToolsInstallDir=$vc"
+          function Deploy($src, $dst) {
+            if (Test-Path $src) {
+              New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
+              Copy-Item -Force $src $dst
+              Write-Host "deployed: $src -> $dst"
+            } else {
+              Write-Host "skip (missing source): $src"
             }
           }
-          foreach ($p in @($toolchainBin, $runtimeBin)) {
-            if ($p) { $p | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
+          if ($ucrt -and $ucrtVer) {
+            Deploy "$sdk\usr\share\ucrt.modulemap"   "$ucrt\Include\$ucrtVer\ucrt\module.modulemap"
+            Deploy "$sdk\usr\share\winsdk.modulemap" "$ucrt\Include\$ucrtVer\um\module.modulemap"
           }
-          Write-Host "SDKROOT=$sdkRoot"
-          Write-Host "PATH additions: toolchainBin=$toolchainBin runtimeBin=$runtimeBin"
+          if ($vc) {
+            Deploy "$sdk\usr\share\visualc.modulemap" "$vc\include\module.modulemap"
+            Deploy "$sdk\usr\share\visualc.apinotes"  "$vc\include\visualc.apinotes"
+          }
 
       - name: Print Swift version
         run: swift --version
