@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable parity tests for the Liquid-Glass transparency preference math
+    (Phase 3 · W6 · W6-DS-GLASS). Runs on the macOS authoring host today via
+    `dotnet test` — it LINKS the dependency-free
+    ../../app/OpenBurnBar.App/Theme/LiquidGlassTransparency.cs (System-only, no WinUI),
+    so the parity-critical port of the Swift `enum LiquidGlassTransparency`
+    (AgentLens/Theme/LiquidGlass.swift) is asserted against independently hand-computed
+    Swift golden values. The WinUI adapters (LiquidGlass.cs) are Windows-only and are
+    type-checked separately; see the PR's Validation section.
+
+    Mirrors windows/tests/ipc/OpenBurnBar.Pal.Ipc.Tests.csproj (net10.0, xUnit) so the
+    toolchain is the one already proven on this host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Link the pure-math chokepoint core directly (no WinUI dependency). -->
+    <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassTransparency.cs" />
+    <Compile Include="LiquidGlassTransparencyTests.cs" />
+  </ItemGroup>
+
+</Project>
