@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.UnifiedGlassCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of OpenBurnBarCore/.../UnifiedGlassCard.swift — a frosted-glass card with a
+      diagonal sheen and a luminous edge. The plate routes through the W6-DS-GLASS chokepoint:
+      theme:LiquidGlass.Surface="True" swaps in the transparency-preference-aware surface brush
+      (Mica-translucent / Acrylic / solid). Content goes in via the ContentProperty (CardContent).
+      Radius + spacing come from the Pensieve tokens. Hover scale (1.015) is wired in code-behind
+      when Interactive is set (Swift: the .onHover scaleEffect).
+    -->
+    <Grid x:Name="Root"
+          RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1" />
+        </Grid.RenderTransform>
+
+        <!-- The transparency-preference-aware glass plate (foundation chokepoint). -->
+        <Border x:Name="GlassBorder"
+                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                theme:LiquidGlass.Surface="True" />
+
+        <!-- Diagonal sheen (dark-shell branch of the Swift glassSheenGradient). -->
+        <Border CornerRadius="{StaticResource PensieveRadiusLgCorner}">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Offset="0.0" Color="#14FFFFFF" />
+                    <GradientStop Offset="0.5" Color="#00000000" />
+                    <GradientStop Offset="1.0" Color="#05FA5053" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- Luminous edge (dark-shell branch of the Swift glassEdgeGradient). -->
+        <Border CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                BorderThickness="0.75">
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Offset="0.0" Color="#1FFFFFFF" />
+                    <GradientStop Offset="0.5" Color="#26FFFFFF" />
+                    <GradientStop Offset="1.0" Color="#0FFA5053" />
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+        </Border>
+
+        <!-- The caller's content. -->
+        <ContentPresenter x:Name="Presenter"
+                          Padding="{StaticResource PensieveSpace4Thickness}"
+                          Content="{x:Bind CardContent, Mode=OneWay}" />
+    </Grid>
+</UserControl>

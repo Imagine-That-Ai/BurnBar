@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.QuotaSourceBadge"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of the QuotaSourceBadge in
+      AgentLens/Views/Components/ProviderQuota/ProviderQuotaStripViews.swift — a capsule that
+      names the quota SOURCE, tinted by CONFIDENCE (exact→green, estimated→amber, else muted).
+      Colors are applied from code-behind; the label text comes from the parity-tested
+      QuotaFill.SourceLabel.
+    -->
+    <Border x:Name="Capsule"
+            CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+            BorderThickness="1"
+            Padding="8,5">
+        <TextBlock x:Name="Label"
+                   FontSize="11" />
+    </Border>
+</UserControl>
