@@ -1,0 +1,24 @@
+worktree /Users/albertonunez/Documents/Developer/BurnBar
+HEAD 86435e53249c89ce4e3509a769afcfd0cbf2d77d
+branch refs/heads/docs/windows-port-master-plan
+
+worktree /private/tmp/openburnbar-linux-mission-001
+HEAD 5f0650bbde30320a5354662f2a438c2c52c2b292
+branch refs/heads/zenith-mission-001-linux-setup
+
+worktree /Users/albertonunez/Documents/Developer/BurnBar-ink-verify
+HEAD ea63c67c1a85d0d742861ae118a9708e0d5214f4
+branch refs/heads/feat/kernel-ink-refinements
+
+worktree /Users/albertonunez/Documents/Developer/BurnBar-memory-authority-main
+HEAD 5f0650bbde30320a5354662f2a438c2c52c2b292
+branch refs/heads/codex/memory-authority-writes-main
+
+worktree /Users/albertonunez/Documents/Developer/BurnBar-pane-tabs
+HEAD 5f0650bbde30320a5354662f2a438c2c52c2b292
+branch refs/heads/main
+
+worktree /Users/albertonunez/Documents/Developer/BurnBar-swiftui-liquid-glass
+HEAD 866c34766df836210e6b4e73f9049a432db1a6fe
+branch refs/heads/feature/liquid-glass-transparency
+

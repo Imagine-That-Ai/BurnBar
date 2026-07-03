@@ -1,0 +1,106 @@
+Client:
+ Version:    29.2.1
+ Context:    desktop-linux
+ Debug Mode: false
+ Plugins:
+  agent: create or run AI agents (Docker Inc.)
+    Version:  v1.27.1
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-agent
+  ai: Docker AI Agent - Ask Gordon (Docker Inc.)
+    Version:  v1.18.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-ai
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  v0.31.1-desktop.1
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  v5.1.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-compose
+  debug: Get a shell into any image or container (Docker Inc.)
+    Version:  0.0.47
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-debug
+  desktop: Docker Desktop commands (Docker Inc.)
+    Version:  v0.3.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-desktop
+  extension: Manages Docker extensions (Docker Inc.)
+    Version:  v0.2.31
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-extension
+  init: Creates Docker-related starter files for your project (Docker Inc.)
+    Version:  v1.4.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-init
+  mcp: Docker MCP Plugin (Docker Inc.)
+    Version:  v0.40.2
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-mcp
+  model: Docker Model Runner (Docker Inc.)
+    Version:  v1.1.5
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-model
+  offload: Docker Offload (Docker Inc.)
+    Version:  v0.5.56
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-offload
+  pass: Docker Pass Secrets Manager Plugin (beta) (Docker Inc.)
+    Version:  v0.0.24
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-pass
+  sandbox: Docker Sandbox (Docker Inc.)
+    Version:  v0.12.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-sandbox
+  sbom: View the packaged-based Software Bill Of Materials (SBOM) for an image (Anchore Inc.)
+    Version:  0.6.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-sbom
+  scout: Docker Scout (Docker Inc.)
+    Version:  v1.20.0
+    Path:     /Users/albertonunez/.docker/cli-plugins/docker-scout
+
+Server:
+ Containers: 0
+  Running: 0
+  Paused: 0
+  Stopped: 0
+ Images: 6
+ Server Version: 29.2.1
+ Storage Driver: overlayfs
+  driver-type: io.containerd.snapshotter.v1
+ Logging Driver: json-file
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ CDI spec directories:
+  /etc/cdi
+  /var/run/cdi
+ Discovered Devices:
+  cdi: docker.com/gpu=webgpu
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: dea7da592f5d1d2b7755e3a161be07f43fad8f75
+ runc version: v1.3.4-0-gd6d73eb8
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.12.72-linuxkit
+ Operating System: Docker Desktop
+ OSType: linux
+ Architecture: aarch64
+ CPUs: 18
+ Total Memory: 7.651GiB
+ Name: docker-desktop
+ ID: db86fd99-24de-4a97-bcad-e7ad6b435859
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+ HTTP Proxy: http.docker.internal:3128
+ HTTPS Proxy: http.docker.internal:3128
+ No Proxy: hubproxy.docker.internal
+ Labels:
+  com.docker.desktop.address=unix:///Users/albertonunez/Library/Containers/com.docker.docker/Data/docker-cli.sock
+ Experimental: false
+ Insecure Registries:
+  hubproxy.docker.internal:5555
+  ::1/128
+  127.0.0.0/8
+ Live Restore Enabled: false
+ Firewall Backend: iptables
+

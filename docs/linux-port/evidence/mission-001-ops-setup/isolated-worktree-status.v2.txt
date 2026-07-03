@@ -1,0 +1,10 @@
+# branch.oid 5f0650bbde30320a5354662f2a438c2c52c2b292
+# branch.head zenith-mission-001-linux-setup
+# branch.upstream origin/main
+# branch.ab +0 -0
+? docs/linux-port/evidence/mission-001-ops-setup/isolated-worktree-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/main-checkout-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/protected-paths-main.txt
+? docs/linux-port/evidence/mission-001-ops-setup/worktrees.txt
+? tools/linux-toolchain/Dockerfile
+? tools/linux-toolchain/smoke.sh

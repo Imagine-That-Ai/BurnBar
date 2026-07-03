@@ -1,0 +1,91 @@
+== runner ==
+Linux 251ba2bb03f9 6.12.72-linuxkit #1 SMP Wed Feb 25 13:21:17 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+== swift ==
+Swift version 6.2.4 (swift-6.2.4-RELEASE)
+Target: aarch64-unknown-linux-gnu
+swift-smoke-ok
+== node-npm ==
+v18.19.1
+9.2.0
+{"nodeSmoke":true,"platform":"linux","arch":"arm64"}
+== rust-cargo ==
+rustc 1.75.0 (82e1608df 2023-12-21) (built from a source tarball)
+cargo 1.75.0
+Hello, world!
+== sqlite-sqlcipher ==
+3.45.1 2024-01-30 16:01:20 e876e51a0ed5c5b3126f52e532044363a014bc594cfefa87ffb5b82257ccalt1 (64-bit)
+3.44.2 2023-11-24 11:41:44 ebead0e7230cd33bcec9f95d2183069565b9e709bf745c9b5db65cc0cbf9alt1 (64-bit) (SQLCipher 4.5.6 community)
+3.45.1
+4.5
+== linux-desktop-libs ==
+2.52.3
+0.5.90
+0.21.4
+1.0.5
+1.14.10
+xdg-desktop-portal=1.18.4-1ubuntu2.24.04.2
+xdg-desktop-portal 1.18.4
+xdg-desktop-portal-gtk=1.15.1-1build2
+xdg-desktop-portal-gtk executable present; --version requires a display in this headless container
+
+(xdg-desktop-portal-gtk:75): Gtk-WARNING **: 02:07:54.081: cannot open display: 
+1.2.1
+2.52.0
+1.8.7
+1.5.2
+1.15
+1.6.0
+libkf5wallet-dev=5.115.0-0ubuntu3
+== package-signing-tools ==
+Debian 'dpkg-deb' package archive backend version 1.22.6 (arm64).
+Debian dpkg-buildpackage version 1.22.6.
+fakeroot version 1.33
+RPM version 4.18.2
+gpg (GnuPG) 2.4.4
+patchelf 0.18.0
+file-5.45
+== package-version-manifest ==
+swift=official-swift-docker swift-6.2.4-RELEASE ubuntu24.04 52BB7E3DE28A71BE22EC05FFEF80A866B47A981F
+cargo=1.75.0+dfsg0ubuntu1-0ubuntu7.4
+dbus=1.14.10-4ubuntu4.1
+dbus-x11=1.14.10-4ubuntu4.1
+dpkg-dev=1.22.6ubuntu6.6
+fakeroot=1.33-1
+file=1:5.45-3build1
+gnupg=2.4.4-2ubuntu17.4
+libatspi2.0-dev:arm64=2.52.0-1build1
+libayatana-appindicator3-dev=0.5.93-1build3
+libei-dev:arm64=1.2.1-1
+libkf5wallet-dev:arm64=5.115.0-0ubuntu3
+libpipewire-0.3-dev:arm64=1.0.5-1ubuntu3.2
+libsecret-1-dev:arm64=0.21.4-1build3
+libsqlcipher-dev:arm64=4.5.6-1build2
+libwebkit2gtk-4.1-dev=2.52.3-0ubuntu0.24.04.1
+libx11-dev:arm64=2:1.8.7-1build1
+libxcb1-dev:arm64=1.15-1ubuntu2
+libxkbcommon-dev:arm64=1.6.0-1build1
+libxrandr-dev:arm64=2:1.5.2-2build1
+nodejs=18.19.1+dfsg-6ubuntu5
+npm=9.2.0~ds1-2
+patchelf=0.18.0-1.1build1
+pipewire:arm64=1.0.5-1ubuntu3.2
+rpm=4.18.2+dfsg-2.1build2
+rustc=1.75.0+dfsg0ubuntu1-0ubuntu7.4
+sqlcipher=4.5.6-1build2
+sqlite3=3.45.1-1ubuntu2.6
+xdg-desktop-portal=1.18.4-1ubuntu2.24.04.2
+xdg-desktop-portal-gtk=1.15.1-1build2
+openburnbar-linux-toolchain-smoke-ok

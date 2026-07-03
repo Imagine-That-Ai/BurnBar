@@ -1,0 +1,195 @@
+# branch.oid 86435e53249c89ce4e3509a769afcfd0cbf2d77d
+# branch.head docs/windows-port-master-plan
+1 .M N... 100644 100644 100644 25bef0728a691ab2e9e1b00687fd7c72388ef895 25bef0728a691ab2e9e1b00687fd7c72388ef895 .agent/GOALS.md
+1 .M N... 100644 100644 100644 340967dc30cfc9df38f2d7c14d236210b7033872 340967dc30cfc9df38f2d7c14d236210b7033872 .github/workflows/release.yml
+1 .M N... 100644 100644 100644 22622e5105014ea75fc78fe01a83659605834713 22622e5105014ea75fc78fe01a83659605834713 .gitleaks.toml
+1 .M N... 100644 100644 100644 0542ac39ace28ae12f4378f99a86d399e629e997 0542ac39ace28ae12f4378f99a86d399e629e997 .mcp.json
+1 .M N... 100644 100644 100644 73290f6b3682a5ad7a2932ab93afa05f2ada9c85 73290f6b3682a5ad7a2932ab93afa05f2ada9c85 AgentLens/App/AgentLensApp+MemoryServices.swift
+1 .M N... 100644 100644 100644 698daf27078b19d47b54432ca907eb8ab8fc88c1 698daf27078b19d47b54432ca907eb8ab8fc88c1 AgentLens/App/AppDelegate.swift
+1 .M N... 100644 100644 100644 b9ac9bbf0f1dd3a1c74e343c8d9172bfc05806f4 b9ac9bbf0f1dd3a1c74e343c8d9172bfc05806f4 AgentLens/Models/AgentProvider.swift
+1 .M N... 100644 100644 100644 08cd75389104eb021103cfe7320e4d7cc9adb886 08cd75389104eb021103cfe7320e4d7cc9adb886 AgentLens/Models/ChatBackendID.swift
+1 .M N... 100644 100644 100644 b36285340f694261bc26efbe1e8046e624118683 b36285340f694261bc26efbe1e8046e624118683 AgentLens/PetCompanion/Agents/PetKeychainStore.swift
+1 .M N... 100644 100644 100644 55c050a75196f4e50011b73fb9a7382603ee2857 55c050a75196f4e50011b73fb9a7382603ee2857 AgentLens/PetCompanion/Chat/PetChatProvider.swift
+1 .M N... 100644 100644 100644 bc85689e22765b30300ca35dd97ac0cd4b81fddb bc85689e22765b30300ca35dd97ac0cd4b81fddb AgentLens/Services/CLIAgentRelayChatExecutor.swift
+1 .M N... 100644 100644 100644 90c7bbf5b3f08b5d995c044ef4808ff5de8284e4 90c7bbf5b3f08b5d995c044ef4808ff5de8284e4 AgentLens/Services/CLIBridge/CLIArgumentBuilder.swift
+1 .M N... 100644 100644 100644 d225abc2b3035ada7777e2c2ff0c0b345039021c d225abc2b3035ada7777e2c2ff0c0b345039021c AgentLens/Services/CLIBridge/CLIBridge.swift
+1 .M N... 100644 100644 100644 33813452c66a4801d6dfb784ebfa30d869bc1213 33813452c66a4801d6dfb784ebfa30d869bc1213 AgentLens/Services/CLIBridge/CLIProcessStreamRunner.swift
+1 .M N... 100644 100644 100644 9aa5dd68d81944003875578aae180a2c0d87a58e 9aa5dd68d81944003875578aae180a2c0d87a58e AgentLens/Services/CLIBridge/InteractiveTerminalLauncher.swift
+1 .M N... 100644 100644 100644 e22c815ce2a30ee38814b741232bd047029e2558 e22c815ce2a30ee38814b741232bd047029e2558 AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Planner.swift
+1 .M N... 100644 100644 100644 a685d27d00e08448bffc232eb1e4e36afe66e9f9 a685d27d00e08448bffc232eb1e4e36afe66e9f9 AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift
+1 .M N... 100644 100644 100644 a436eb72aef56cb711bc85ad0b386d582dab267a a436eb72aef56cb711bc85ad0b386d582dab267a AgentLens/Services/DataStore/ControlPlaneStore+Memory.swift
+1 .M N... 100644 100644 100644 8e7a4da1b8ccbf0aeda48a6593711ab07c85b6d0 8e7a4da1b8ccbf0aeda48a6593711ab07c85b6d0 AgentLens/Services/DataStore/ControlPlaneStore.swift
+1 .M N... 100644 100644 100644 8b782d7499ad81409efb12dd3663a322c97bd38e 8b782d7499ad81409efb12dd3663a322c97bd38e AgentLens/Services/Memory/MemoryExtractionEngine.swift
+1 .M N... 100644 100644 100644 ba4359a41bbcca75f8ae6f5437ed8c4b9e1c34b9 ba4359a41bbcca75f8ae6f5437ed8c4b9e1c34b9 AgentLens/Services/Memory/MemoryExtractionPolicy.swift
+1 .M N... 100644 100644 100644 32e66c3b2c9db82e9177c321ec5ee019402a0352 32e66c3b2c9db82e9177c321ec5ee019402a0352 AgentLens/Services/OpenBurnBarStartupRecovery.swift
+1 .M N... 100644 100644 100644 06d02298a4edbc129aaf59c660de1031543f4620 06d02298a4edbc129aaf59c660de1031543f4620 AgentLens/Services/ProviderQuota/ProviderQuotaService.swift
+1 .M N... 100644 100644 100644 d43a4a3a8091aa54ff5ad5b72ebb1211c472c9d4 d43a4a3a8091aa54ff5ad5b72ebb1211c472c9d4 AgentLens/Services/ProviderQuota/QuotaRefreshActor.swift
+1 .M N... 100644 100644 100644 719798ef1fd04696553b541a236c2799ad61d0cd 719798ef1fd04696553b541a236c2799ad61d0cd AgentLens/Services/SmartHub/SmartHubBridgeController.swift
+1 .M N... 100644 100644 100644 f0f5182bc0831d0c06b7c3967b054e7033c90c32 f0f5182bc0831d0c06b7c3967b054e7033c90c32 AgentLens/Services/SwitcherCLIAuthCoordinator.swift
+1 .M N... 100644 100644 100644 d44060b34c92d8268a3c08c78864650d60ec31be d44060b34c92d8268a3c08c78864650d60ec31be AgentLens/Services/SwitcherCLIFallbackPlanner.swift
+1 .M N... 100644 100644 100644 843fea19d778eb7d684940dff6cb5efebd675567 843fea19d778eb7d684940dff6cb5efebd675567 AgentLens/Services/SwitcherDiscoveryService.swift
+1 .M N... 100644 100644 100644 e28618309223a444fe859f83e58900b661930d9d e28618309223a444fe859f83e58900b661930d9d AgentLens/Theme/DesignSystem.swift
+1 .M N... 100644 100644 100644 9ff6ef3381cbfcf41cb65facd43725b0e09eabb0 9ff6ef3381cbfcf41cb65facd43725b0e09eabb0 AgentLens/Theme/LiquidGlass.swift
+1 .M N... 100644 100644 100644 cfcf35f3ba3cffed9c91e173d9347894fe0cbcdb cfcf35f3ba3cffed9c91e173d9347894fe0cbcdb AgentLens/Views/Chat/ChatPanel.swift
+1 .M N... 100644 100644 100644 208b2a066e38dba4cfb4a6b721b0a4b4b736fe57 208b2a066e38dba4cfb4a6b721b0a4b4b736fe57 AgentLens/Views/Chat/ChatSessionController+Retrieval.swift
+1 .M N... 100644 100644 100644 7630e413f1cbfd36245b1c3008c4b7a1ea8001c6 7630e413f1cbfd36245b1c3008c4b7a1ea8001c6 AgentLens/Views/Chat/ChatSessionController+Search.swift
+1 .M N... 100644 100644 100644 81c702f01386e79b4ca5bb0e7bf974ba0a470947 81c702f01386e79b4ca5bb0e7bf974ba0a470947 AgentLens/Views/Chat/ChatSessionController.swift
+1 .M N... 100644 100644 100644 4ca5bb490611c5efe3324e576364cf2e224fb507 4ca5bb490611c5efe3324e576364cf2e224fb507 AgentLens/Views/Chat/Components/ChatEngineBackendStrip.swift
+1 .M N... 100644 100644 100644 2e2a97fd856ebc998b37a018102e6b10fbafb03e 2e2a97fd856ebc998b37a018102e6b10fbafb03e AgentLens/Views/Chat/Components/ChatEngineModelMenu.swift
+1 .M N... 100644 100644 100644 5b17b94e271f109f553dc2773503d29ccc638e08 5b17b94e271f109f553dc2773503d29ccc638e08 AgentLens/Views/Chat/Components/ChatHistoryRow.swift
+1 .M N... 100644 100644 100644 675027c26975e066f6df35dcd5b773cdfc673042 675027c26975e066f6df35dcd5b773cdfc673042 AgentLens/Views/Chat/Components/ChatInputRow.swift
+1 .M N... 100644 100644 100644 8710be8489e5437d125b7b3ce1ccfd6b6ff0aacb 8710be8489e5437d125b7b3ce1ccfd6b6ff0aacb AgentLens/Views/Chat/DashboardChatWorkspaceToolbar.swift
+1 .M N... 100644 100644 100644 bfafe7ad5e28cd7da2042543b4a7b62dd8687b39 bfafe7ad5e28cd7da2042543b4a7b62dd8687b39 AgentLens/Views/Chat/DashboardChatWorkspaceView.swift
+1 .M N... 100644 100644 100644 b110386518e7bdf2fb51975ead817f241dae422e b110386518e7bdf2fb51975ead817f241dae422e AgentLens/Views/Dashboard/Components/ConstellationBackgroundView.swift
+1 .M N... 100644 100644 100644 92f42005ee2db00befad3f93aa7bbb063c3923a2 92f42005ee2db00befad3f93aa7bbb063c3923a2 AgentLens/Views/Dashboard/Components/DashboardDepthBackdrop.swift
+1 .M N... 100644 100644 100644 f1ad5f30b04cfef7e9fec109b818d1711d58bf64 f1ad5f30b04cfef7e9fec109b818d1711d58bf64 AgentLens/Views/Dashboard/Components/DashboardToolbarAndBackdrop.swift
+1 .M N... 100644 100644 100644 bcb025c0249f2742a41d54c49bccb954ee612535 bcb025c0249f2742a41d54c49bccb954ee612535 AgentLens/Views/Dashboard/DashboardSidebarView.swift
+1 .M N... 100644 100644 100644 a6ca6cc5ae5d9940f930d5df9381e4dad090f04d a6ca6cc5ae5d9940f930d5df9381e4dad090f04d AgentLens/Views/Dashboard/DashboardView.swift
+1 .M N... 100644 100644 100644 88f9945c79c60cf5432df17df1e867cba11544ea 88f9945c79c60cf5432df17df1e867cba11544ea AgentLens/Views/Dashboard/Layouts/AtelierLayoutView.swift
+1 .M N... 100644 100644 100644 b9c605a869de9fcec6bae43c8c22b94e97f7439a b9c605a869de9fcec6bae43c8c22b94e97f7439a AgentLens/Views/Dashboard/Layouts/DashboardConceptComponents.swift
+1 .M N... 100644 100644 100644 efe5219c90f78ab87cbd80381fe387da7596283a efe5219c90f78ab87cbd80381fe387da7596283a AgentLens/Views/Dashboard/MissionsLaneView.swift
+1 .M N... 100644 100644 100644 b1127df18cc8cfbe149e4d2b1e6d976963efab7f b1127df18cc8cfbe149e4d2b1e6d976963efab7f AgentLens/Views/Dashboard/ProjectsView.swift
+1 .M N... 100644 100644 100644 46fe6083de9ddb12aac33a8e88d47620bea4222f 46fe6083de9ddb12aac33a8e88d47620bea4222f AgentLens/Views/Dashboard/Quota/QuotaWorkspaceView.swift
+1 .M N... 100644 100644 100644 c6dc125405cae38949428fea32413cccaa60126c c6dc125405cae38949428fea32413cccaa60126c AgentLens/Views/Insights/MacAgentInsightsWorkspace.swift
+1 .M N... 100644 100644 100644 81b5ca789ffb0ee4dcf082d4455ceab2246d4409 81b5ca789ffb0ee4dcf082d4455ceab2246d4409 AgentLens/Views/Onboarding/Switcher/SwitcherOnboardingScanAddStep.swift
+1 .M N... 100644 100644 100644 d7c74fc014fbe7e3a373c50752169d53d9e6d854 d7c74fc014fbe7e3a373c50752169d53d9e6d854 AgentLens/Views/Onboarding/Switcher/SwitcherOnboardingWizardView.swift
+1 .M N... 100644 100644 100644 e72f45b92eeb4e5f3e135a4e7acf31385fb7866e e72f45b92eeb4e5f3e135a4e7acf31385fb7866e AgentLens/Views/Popover/HermesPopoverChatView.swift
+1 .M N... 100644 100644 100644 26625d459e308dc930116503fe0824cb404a0ca5 26625d459e308dc930116503fe0824cb404a0ca5 AgentLens/Views/Popover/HermesPopoverStrip.swift
+1 .M N... 100644 100644 100644 1633aa343db557175070a78d2a8fa2ab79533111 1633aa343db557175070a78d2a8fa2ab79533111 AgentLens/Views/SessionLogs/SessionLogsView.swift
+1 .M N... 100644 100644 100644 59e432bd28c98b8bf1eefa7d13365bdeb17eb995 59e432bd28c98b8bf1eefa7d13365bdeb17eb995 AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+DataOperations.swift
+1 .M N... 100644 100644 100644 9b8d5c40d24ecc2b6fc5d2eb8638e234208c84fd 9b8d5c40d24ecc2b6fc5d2eb8638e234208c84fd AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+Rendering.swift
+1 .M N... 100644 100644 100644 14eb38c13a2ae58e36387bb607f109f03494af91 14eb38c13a2ae58e36387bb607f109f03494af91 AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift
+1 .M N... 100644 100644 100644 8335f53d5af3f88f1e87b7d555d98a861db3f138 8335f53d5af3f88f1e87b7d555d98a861db3f138 AgentLens/Views/Settings/AppearanceCorkboardSection.swift
+1 .M N... 100644 100644 100644 48232061a62532f0650bf6ed04b1fe96b012d876 48232061a62532f0650bf6ed04b1fe96b012d876 AgentLens/Views/Settings/AppearancePreviewCard.swift
+1 .M N... 100644 100644 100644 458be44a21b71f27627c8395666e2bfe84412497 458be44a21b71f27627c8395666e2bfe84412497 AgentLens/Views/Settings/ChatGatewaySettingsView.swift
+1 .M N... 100644 100644 100644 42fec34618a99212dd79f9555a906838a2b21529 42fec34618a99212dd79f9555a906838a2b21529 AgentLens/Views/Settings/ConnectionsSettingsView.swift
+1 .M N... 100644 100644 100644 94ef9509dcd088bafcad9446f76e9edb31a0c621 94ef9509dcd088bafcad9446f76e9edb31a0c621 AgentLens/Views/Settings/ProviderPlanWizardView+QuotaAndCLI.swift
+1 .M N... 100644 100644 100644 c365448b6d0584ea8f08d1e3e4f530f4c2c453b5 c365448b6d0584ea8f08d1e3e4f530f4c2c453b5 AgentLens/Views/Settings/ProviderPlanWizardView+SaveDelete.swift
+1 .M N... 100644 100644 100644 ad813f382b50d44f031dd5ed126584593a276619 ad813f382b50d44f031dd5ed126584593a276619 AgentLens/Views/Settings/SettingsDrillRow.swift
+1 .M N... 100644 100644 100644 73c5a2f4464ed14562aed55a9d206d445154d5f9 73c5a2f4464ed14562aed55a9d206d445154d5f9 AgentLens/Views/Settings/SettingsView.swift
+1 .M N... 100644 100644 100644 68f8add4da64ecb67aa20e21c94369813e2dc59b 68f8add4da64ecb67aa20e21c94369813e2dc59b AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift
+1 .M N... 100644 100644 100644 988e8f3ac7160ea30cce776c87b137c760f6893b 988e8f3ac7160ea30cce776c87b137c760f6893b AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 32bf566504ab76fdb027a2a7d922fe4a9a54d154 AgentLens/Views/Settings/SubstratePreviewMac.swift
+1 .M N... 100644 100644 100644 6d1e39f24d91d7390f96e8057932133474b6a58e 6d1e39f24d91d7390f96e8057932133474b6a58e AgentLensTests/Active/CLIAgentSessionMirrorTests.swift
+1 .M N... 100644 100644 100644 872b2cde9608dbe9994ea61632feca826cff1560 872b2cde9608dbe9994ea61632feca826cff1560 AgentLensTests/Active/CLIBridgeTests.swift
+1 .M N... 100644 100644 100644 ac56fa5e81f82d8aa2af1fb57e641cfcc1bbd5c1 ac56fa5e81f82d8aa2af1fb57e641cfcc1bbd5c1 AgentLensTests/Active/ChatSessionControllerSearchStateTests.swift
+1 .M N... 100644 100644 100644 78c7add70834c7f0ee0b06aa4a60b956eeda1302 78c7add70834c7f0ee0b06aa4a60b956eeda1302 AgentLensTests/Active/DashboardToolbarTests.swift
+1 .M N... 100644 100644 100644 bdda8e751d2336edcc8f9e33b8b5f20a5aeaf206 bdda8e751d2336edcc8f9e33b8b5f20a5aeaf206 AgentLensTests/Active/MemoryActivationEndToEndTests.swift
+1 .M N... 100644 100644 100644 cd854981b10add06c51aac036c6244773bfab2bf cd854981b10add06c51aac036c6244773bfab2bf AgentLensTests/Active/OpenBurnBarDatabaseMigrationTests.swift
+1 .M N... 100644 100644 100644 36680be4974160ef4d3106615b0d46f28732b8d1 36680be4974160ef4d3106615b0d46f28732b8d1 AgentLensTests/Active/OpenBurnBarRuntimeTests.swift
+1 .M N... 100644 100644 100644 6c2adc17b62465c560d73bccae5779cc8deb2e47 6c2adc17b62465c560d73bccae5779cc8deb2e47 AgentLensTests/Active/PopoverContentPrewarmerTests.swift
+1 .M N... 100644 100644 100644 9f989aef761c8ce5a17f2b6e1816c35f838e5973 9f989aef761c8ce5a17f2b6e1816c35f838e5973 CHANGELOG.md
+1 .M N... 100644 100644 100644 b33491a729351446767247ced6f9c9021a62e32a b33491a729351446767247ced6f9c9021a62e32a OpenBurnBar.xcodeproj/project.pbxproj
+1 .M N... 100644 100644 100644 0e70e4db4d32cc3010e06e8696709eadebf67be5 0e70e4db4d32cc3010e06e8696709eadebf67be5 OpenBurnBarCore/Sources/OpenBurnBarCore/CLIAuthDiscovery.swift
+1 .M N... 100644 100644 100644 24a5020e2652a75f43c1b2197764fa4e3fb3d2c2 24a5020e2652a75f43c1b2197764fa4e3fb3d2c2 OpenBurnBarCore/Sources/OpenBurnBarCore/CLITerminalSessionSupervisor.swift
+1 .M N... 100644 100644 100644 f9120a200ac35fc243e998950f82a349afa2afd1 f9120a200ac35fc243e998950f82a349afa2afd1 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentIdentity.swift
+1 .M N... 100644 100644 100644 b3ee523c67641ad9ec88030b5cf821eb92bd13a9 b3ee523c67641ad9ec88030b5cf821eb92bd13a9 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentIdentityProviderBridge.swift
+1 .M N... 100644 100644 100644 b8c8509e9729e97a3325c2577c7c18e9c533a86e b8c8509e9729e97a3325c2577c7c18e9c533a86e OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider+LogoBackdrop.swift
+1 .M N... 100644 100644 100644 d8f74cff27308402f07a848aeefc791470b41f91 d8f74cff27308402f07a848aeefc791470b41f91 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider.swift
+1 .M N... 100644 100644 100644 63501765d0cb2b49c896056bbcd43094177db825 63501765d0cb2b49c896056bbcd43094177db825 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AssistantRuntimeID.swift
+1 .M N... 100644 100644 100644 807d7dfea5de09ec65b3c4981e85521d76630813 807d7dfea5de09ec65b3c4981e85521d76630813 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentResumePresentation.swift
+1 .M N... 100644 100644 100644 d930fc9c1ca662f058ac7cb426243cdc5d699b6b d930fc9c1ca662f058ac7cb426243cdc5d699b6b OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift
+1 .M N... 100644 100644 100644 f3c72f5844a6207e3add5b73ceca3d6af5698569 f3c72f5844a6207e3add5b73ceca3d6af5698569 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIRuntimeModelCatalog.swift
+1 .M N... 100644 100644 100644 0a9413949abb1147a9d1cdb224500702f020ef33 0a9413949abb1147a9d1cdb224500702f020ef33 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SwarmColorDriver.swift
+1 .M N... 100644 100644 100644 79819fc4d34ace350f1225d2dfe34abd4ff5c282 79819fc4d34ace350f1225d2dfe34abd4ff5c282 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ThemePrimitives.swift
+1 .M N... 100644 100644 100644 bcfeb5d42b6d8fa81211ab119097484294d1c01e bcfeb5d42b6d8fa81211ab119097484294d1c01e OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift
+1 .M N... 100644 100644 100644 fc2e939e13d69492f5edf6a9bad4fa247bdbe7ee fc2e939e13d69492f5edf6a9bad4fa247bdbe7ee OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift
+1 .M N... 100644 100644 100644 054d4248a275c0887a97ad8fbcf58adcd810e1cb 054d4248a275c0887a97ad8fbcf58adcd810e1cb OpenBurnBarCore/Sources/OpenBurnBarCore/Views/BurnBarLogoFormationView.swift
+1 .M N... 100644 100644 100644 f3c21a9cc88eff153b4386ed0da70eae7f9c3e21 f3c21a9cc88eff153b4386ed0da70eae7f9c3e21 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsRosterView.swift
+1 .M N... 100644 100644 100644 4b78d31a7424093cb61cb0aa7704c384dd596ea0 4b78d31a7424093cb61cb0aa7704c384dd596ea0 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsView.swift
+1 .M N... 100644 100644 100644 a76756e5af29b0b10cdce1386fe8ce2b835a3ab3 a76756e5af29b0b10cdce1386fe8ce2b835a3ab3 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView.swift
+1 .M N... 100644 100644 100644 32d6dac7b6e222fba3490281a014d79f8fd04357 32d6dac7b6e222fba3490281a014d79f8fd04357 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Aurora/AuroraFilamentSubstrate.swift
+1 .M N... 100644 100644 100644 eaf8b671b589a97c4a0281c2a7930ee815eb4344 eaf8b671b589a97c4a0281c2a7930ee815eb4344 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Flow/PetalDriftSubstrate.swift
+1 .M N... 100644 100644 100644 0c801fa50d35c9e8dab5ff9c6e75f5b4401a1a31 0c801fa50d35c9e8dab5ff9c6e75f5b4401a1a31 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshCausticSubstrate.swift
+1 .M N... 100644 100644 100644 ad26a9dd566801799b873083fc64e7b88c8b9b3f ad26a9dd566801799b873083fc64e7b88c8b9b3f OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshIsolineSubstrate.swift
+1 .M N... 100644 100644 100644 12955d17e39441ccd6e0ac3ec27a067d34f8c25e 12955d17e39441ccd6e0ac3ec27a067d34f8c25e OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshPatchSubstrate.swift
+1 .M N... 100644 100644 100644 a889836588773dcf1d401d24619d0c9ded94a6d9 a889836588773dcf1d401d24619d0c9ded94a6d9 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/FilmBubbleSubstrate.swift
+1 .M N... 100644 100644 100644 e1064e69cbad7d47aefb2d3371dc30b063f6364e e1064e69cbad7d47aefb2d3371dc30b063f6364e OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/FringeBloomSubstrate.swift
+1 .M N... 100644 100644 100644 7fcd884a86d8904a79e25302454195af3cb36289 7fcd884a86d8904a79e25302454195af3cb36289 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/LatticeFacetSubstrate.swift
+1 .M N... 100644 100644 100644 7a0489b60d6151bee955c26eef5734978d22890b 7a0489b60d6151bee955c26eef5734978d22890b OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/RulingGratingSubstrate.swift
+1 .M N... 100644 100644 100644 dba982b915836736297a381d7f75d801202e9cb2 dba982b915836736297a381d7f75d801202e9cb2 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/DustMotesSubstrate.swift
+1 .M N... 100644 100644 100644 f19dbb819bce399329f1da25456f8e2d8db53b97 f19dbb819bce399329f1da25456f8e2d8db53b97 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/SmokedGlassSubstrate.swift
+1 .M N... 100644 100644 100644 1c5549c5708006985c7816ead67682caec754fbb 1c5549c5708006985c7816ead67682caec754fbb OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+Color.swift
+1 .M N... 100644 100644 100644 70426ee76cdd99442b48a5acfade7eb79e542238 70426ee76cdd99442b48a5acfade7eb79e542238 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift
+1 .M N... 100644 100644 100644 a81f4b44400e4d65e4406de706c79ce4b102d791 a81f4b44400e4d65e4406de706c79ce4b102d791 OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmFormationMode.swift
+1 .M N... 100644 100644 100644 f0e57bae1a71571e40a93c4fedb697c0105b9ad3 f0e57bae1a71571e40a93c4fedb697c0105b9ad3 OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Plan2SharedModelsTests.swift
+1 .M N... 100644 100644 100644 def07dc794c526ed58707adc0a0379ea455502fa def07dc794c526ed58707adc0a0379ea455502fa OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SwarmLogoShapeTests.swift
+1 .M N... 100644 100644 100644 613e76a36d95f0be45516cb311743677513e0925 613e76a36d95f0be45516cb311743677513e0925 OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SwarmSubstrateContractTests.swift
+1 .M N... 100644 100644 100644 8cf8b9c78bb9180668f019d6a38073777c4266df 8cf8b9c78bb9180668f019d6a38073777c4266df OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SwarmSubstratePreviewRenderTests.swift
+1 .M N... 100644 100644 100644 f16af9dcff10f6ac26788bec6ea1cb1d46ea022c f16af9dcff10f6ac26788bec6ea1cb1d46ea022c OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
+1 .M N... 100644 100644 100644 be34daab0b59e92caaf5adaa603c27a37337e1dc be34daab0b59e92caaf5adaa603c27a37337e1dc OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarSwitcherShell.swift
+1 .M N... 100644 100644 100644 0f646b55b2ef76f820b3c7a8c245c8fb1637d309 0f646b55b2ef76f820b3c7a8c245c8fb1637d309 OpenBurnBarMobile/App/AppDelegate.swift
+1 .M N... 100644 100644 100644 4a9fd938cc697519c390fba78788a2b12410f67a 4a9fd938cc697519c390fba78788a2b12410f67a OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift
+1 .M N... 100644 100644 100644 4ab656178f551e16d92b940645cffed0bd8edd56 4ab656178f551e16d92b940645cffed0bd8edd56 OpenBurnBarMobile/Models/DataVaultStore.swift
+1 .M N... 100644 100644 100644 b4a30452982c4ecbea3cf725e0ade5954b232e37 b4a30452982c4ecbea3cf725e0ade5954b232e37 OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift
+1 .M N... 100644 100644 100644 b2109cd942c0030e9c615ae906875dea81a33a02 b2109cd942c0030e9c615ae906875dea81a33a02 OpenBurnBarMobile/Services/AgentIdentityRegistry.swift
+1 .M N... 100644 100644 100644 99901a1ac40f3f5c7cde565f519596941383ac93 99901a1ac40f3f5c7cde565f519596941383ac93 OpenBurnBarMobile/Services/AssistantModelCatalog.swift
+1 .M N... 100644 100644 100644 98c852ca4e2fde5bc739ba8482400b78dc77d5fe 98c852ca4e2fde5bc739ba8482400b78dc77d5fe OpenBurnBarMobile/Services/AssistantModelLens.swift
+1 .M N... 100644 100644 100644 a0f8fa58848f1f50441eb7004eabc853cdd6e8ef a0f8fa58848f1f50441eb7004eabc853cdd6e8ef OpenBurnBarMobile/Services/AssistantModelMerger.swift
+1 .M N... 100644 100644 100644 3fb454986e7a37c8f146b7c99a0d21a0d948843e 3fb454986e7a37c8f146b7c99a0d21a0d948843e OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift
+1 .M N... 100644 100644 100644 5a508e04816f57d2bafc8238599a470eab09e91b 5a508e04816f57d2bafc8238599a470eab09e91b OpenBurnBarMobile/Services/ThreadInboxStore.swift
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 ba914fe7dba491f86096f67dc3f3ad472c65e292 OpenBurnBarMobile/Views/Aurora/MobileWebGLKernelBackdropView.swift
+1 .M N... 100644 100644 100644 33bf1f586bf546ed4bd0965e1c67c350081fc288 33bf1f586bf546ed4bd0965e1c67c350081fc288 OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift
+1 .M N... 100644 100644 100644 629110f2b93a761102092b7c79509efde6dff75b 629110f2b93a761102092b7c79509efde6dff75b OpenBurnBarMobile/Views/Aurora/WebsiteBackgroundView.swift
+1 .M N... 100644 100644 100644 30c84d2bf040e8182d92f43facbf3bdaaba6b41f 30c84d2bf040e8182d92f43facbf3bdaaba6b41f OpenBurnBarMobile/Views/CLIAgents/CLIAgentConversationListView.swift
+1 .M N... 100644 100644 100644 e3756660176f88fec146851f749e3558614a5d65 e3756660176f88fec146851f749e3558614a5d65 OpenBurnBarMobile/Views/CLIAgents/CLIAgentTranscriptView.swift
+1 .M N... 100644 100644 100644 649c0fbf7f447f89904edeb1b63a8bded3e7e47f 649c0fbf7f447f89904edeb1b63a8bded3e7e47f OpenBurnBarMobile/Views/Hermes/AgentSwitcherSheet.swift
+1 .M N... 100644 100644 100644 67c6a40bf0a89bb4fce1449238a202171459a3ab 67c6a40bf0a89bb4fce1449238a202171459a3ab OpenBurnBarMobile/Views/Hermes/AssistantConnectionSheet.swift
+1 .M N... 100644 100644 100644 dc958b150112b6324ff2b2d64e427de1e393bf6d dc958b150112b6324ff2b2d64e427de1e393bf6d OpenBurnBarMobile/Views/Hermes/AssistantModelPickerSheet.swift
+1 .M N... 100644 100644 100644 d28cd82d6e64387ac834adf68787be307451c486 d28cd82d6e64387ac834adf68787be307451c486 OpenBurnBarMobile/Views/Hermes/AssistantTileBridgeView.swift
+1 .M N... 100644 100644 100644 fc6a810d789f732251ef250a061e1fb041edad1f fc6a810d789f732251ef250a061e1fb041edad1f OpenBurnBarMobile/Views/Hermes/Square/AgentBrandZoneView.swift
+1 .M N... 100644 100644 100644 33635d999f14e87050f127085dadb8fa1a119554 33635d999f14e87050f127085dadb8fa1a119554 OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift
+1 .M N... 100644 100644 100644 93786f2c8cbab8966e9e68adf15bb28f9389f66d 93786f2c8cbab8966e9e68adf15bb28f9389f66d OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout+Detail.swift
+1 .M N... 100644 100644 100644 594fb7ca663d3dfef2b968aac9466a0225fc4847 594fb7ca663d3dfef2b968aac9466a0225fc4847 OpenBurnBarMobile/Views/Onboarding/ProviderSetupGuide.swift
+1 .M N... 100644 100644 100644 0f46f38f586554baf0e4c238a06b5fdb3eca6ff4 0f46f38f586554baf0e4c238a06b5fdb3eca6ff4 OpenBurnBarMobile/Views/You/ChatTilesSettingsView.swift
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 7402e4a23e9d8f5cb2e13fa449528b2337021eb2 OpenBurnBarMobile/Views/You/SubstratePreview.swift
+1 .M N... 100644 100644 100644 cd9764df2bf1bb22b140ed56b7296b2fde047ffb cd9764df2bf1bb22b140ed56b7296b2fde047ffb OpenBurnBarMobile/Views/You/ThemeSettingsView.swift
+1 .M N... 100644 100644 100644 a35173152320bb92248448b88036ff0b9ba666a7 a35173152320bb92248448b88036ff0b9ba666a7 OpenBurnBarMobile/Views/You/YouView.swift
+1 .M N... 100644 100644 100644 0127a21b8c336ec6a5f40f8b1981ac916e99abe3 0127a21b8c336ec6a5f40f8b1981ac916e99abe3 OpenBurnBarMobileTests/AppStoreReviewComplianceTests.swift
+1 .M N... 100644 100644 100644 c4211b409253e4232e5704e7967c333b281ea39c c4211b409253e4232e5704e7967c333b281ea39c OpenBurnBarMobileTests/HostedQuotaSubscriptionStoreTests.swift
+1 .M N... 100644 100644 100644 6c4c9cc94767a34ad13752ee2daaab6b96d2d3cf 6c4c9cc94767a34ad13752ee2daaab6b96d2d3cf README.md
+1 .M N... 100644 100644 100644 e78460ece73712a55fc7b40ed99b4a315034f861 e78460ece73712a55fc7b40ed99b4a315034f861 SECURITY.md
+1 .M N... 100644 100644 100644 ee2c3968730b1e4049764d6a7fa60b497044aa29 ee2c3968730b1e4049764d6a7fa60b497044aa29 docs/PROVIDERS.md
+1 .M N... 100644 100644 100644 e6125214446c28276b24084a0f5f80d2540b9797 e6125214446c28276b24084a0f5f80d2540b9797 docs/WINDOWS_PORT_MASTER_PLAN.md
+1 .M N... 100644 100644 100644 8063a2a8aa8266aa6760abdfed64bbe4c6240cc2 8063a2a8aa8266aa6760abdfed64bbe4c6240cc2 docs/WINDOWS_PORT_MISSION_BRIEF.md
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 e300bea1d3feef2433486e2cee5fe60191c74d2a docs/runbooks/public-macos-emergency-release.md
+1 .M N... 100644 100644 100644 817383e0560674f1d911b36bd4b689a9d1683241 817383e0560674f1d911b36bd4b689a9d1683241 extensions/openburnbar/package.json
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 03c29f3979cc850aff9b15af51776fae04b7a780 launch-evidence/agpl-store-legal-packet-20260630T053310Z.json
+1 .M N... 100644 100644 100644 3e88a10d8ca2ad5538b004e7e0cdf9b548fb7c41 3e88a10d8ca2ad5538b004e7e0cdf9b548fb7c41 launch-evidence/latest-agpl-store-legal-packet.json
+1 .M N... 100644 100644 100644 230dfd601932d611dc51bed5e6e875af389f1edf 230dfd601932d611dc51bed5e6e875af389f1edf project.yml
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 1364c9d2aa10be12469473554d8a9948f794979c scripts/__init__.py
+1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 60c0dfe644e46ac5c6a8e813329c29cf8b5f18ae scripts/ci/__init__.py
+1 .M N... 100755 100755 100755 e5203d3610ad5178d6211be8edb3f4ae84db9997 e5203d3610ad5178d6211be8edb3f4ae84db9997 scripts/ci/check_agpl_legal_release_review.py
+1 .M N... 100755 100755 100755 e935ad4943005eb494bccb22b4af1b5dbe52342d e935ad4943005eb494bccb22b4af1b5dbe52342d scripts/ci/check_burnbar_release_preflight.py
+1 .M N... 100644 100644 100644 d5406d925f1788100c8c82f984a2a0dcda31a6c1 d5406d925f1788100c8c82f984a2a0dcda31a6c1 scripts/ci/check_burnbar_release_preflight.test.py
+1 .M N... 100644 100644 100644 15c69ec9bca02ffcb8716eccbfbb4b1006f9e276 15c69ec9bca02ffcb8716eccbfbb4b1006f9e276 scripts/ci/verify-release-provenance-boundaries.mjs
+1 .M N... 100644 100644 100644 89ce0215e890abd78cad6c2a1897d3dcc1d02791 89ce0215e890abd78cad6c2a1897d3dcc1d02791 scripts/ci/verify-release-provenance-boundaries.test.mjs
+1 .M N... 100755 100755 100755 e58ed6e6180318d59ba1b2a21d1bbdb7efc730de e58ed6e6180318d59ba1b2a21d1bbdb7efc730de scripts/security/scan-publishable-tree.sh
+1 .M N... 100644 100644 100644 05c49b2d37adf32299e35098978fb0a10b964d2b 05c49b2d37adf32299e35098978fb0a10b964d2b tests/test_agpl_legal_release_review.py
+1 .M N... 100644 100644 100644 7c313fb800277f41e60778582cb9124f928c7c64 7c313fb800277f41e60778582cb9124f928c7c64 tests/test_burnbar_release_preflight.py
+1 .M N... 100644 100644 100644 0b576791998517689fa3a4fcd84720a945bb6ed4 0b576791998517689fa3a4fcd84720a945bb6ed4 website/src/scripts/dotConstellation.ts
+1 .M N... 100644 100644 100644 c33cbf40421c794e0832e013b1a7438570cdb853 c33cbf40421c794e0832e013b1a7438570cdb853 website/src/scripts/emberSwarm.ts
+? .claude/agents/contract-review.md
+? .claude/agents/feature-reviewer.md
+? .claude/agents/flow-validator.md
+? .claude/agents/investigator.md
+? .claude/orchestrator_prompt.md
+? .claude/skills
+? .context/codex-session-id
+? AgentLens/Resources/Assets.xcassets/OMPLogo.imageset/Contents.json
+? AgentLens/Resources/Assets.xcassets/OMPLogo.imageset/OMPLogo.svg
+? AgentLens/Services/ProviderQuota/OMPQuotaAdapter.swift
+? AgentLens/Views/Chat/PaneWorkspace/PaneConversationView.swift
+? AgentLens/Views/Chat/PaneWorkspace/PaneWorkspaceModel.swift
+? AgentLens/Views/Chat/PaneWorkspace/PaneWorkspaceView.swift
+? AgentLensTests/Active/ChatSessionControllerOMPTests.swift
+? AgentLensTests/Active/ChatSessionControllerPaneModeTests.swift
+? AgentLensTests/Active/PaneWorkspaceModelTests.swift
+? AgentLensTests/Active/ProviderQuota/OMPQuotaAdapterTests.swift
+? OpenBurnBarCore/Tests/OpenBurnBarCoreTests/OMPProviderTests.swift
+? OpenBurnBarMobile/Resources/Assets.xcassets/OMPLogo.imageset/Contents.json
+? OpenBurnBarMobile/Resources/Assets.xcassets/OMPLogo.imageset/OMPLogo.svg
+? TECH_DEBT_AUDIT_2026-06-30.md
+? docs/CHAT_PANE_TILING_PLAN.md
+? docs/DESKTOP_FOUNDATION.md
+? docs/LINUX_PORT_MASTER_PLAN.md

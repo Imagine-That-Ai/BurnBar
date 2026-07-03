@@ -1,0 +1,19 @@
+# branch.oid 5f0650bbde30320a5354662f2a438c2c52c2b292
+# branch.head zenith-mission-001-linux-setup
+# branch.upstream origin/main
+# branch.ab +0 -0
+? docs/linux-port/evidence/mission-001-ops-setup/README.md
+? docs/linux-port/evidence/mission-001-ops-setup/docker-desktop-status.txt
+? docs/linux-port/evidence/mission-001-ops-setup/docker-image-history.txt
+? docs/linux-port/evidence/mission-001-ops-setup/docker-image-inspect.json
+? docs/linux-port/evidence/mission-001-ops-setup/docker-info.txt
+? docs/linux-port/evidence/mission-001-ops-setup/docker-version.txt
+? docs/linux-port/evidence/mission-001-ops-setup/isolated-worktree-final-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/isolated-worktree-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/main-checkout-final-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/main-checkout-status.v2.txt
+? docs/linux-port/evidence/mission-001-ops-setup/protected-paths-main.txt
+? docs/linux-port/evidence/mission-001-ops-setup/smoke-output.txt
+? docs/linux-port/evidence/mission-001-ops-setup/worktrees.txt
+? tools/linux-toolchain/Dockerfile
+? tools/linux-toolchain/smoke.sh

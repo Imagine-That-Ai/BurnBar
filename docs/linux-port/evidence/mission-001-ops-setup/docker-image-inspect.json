@@ -1,0 +1,65 @@
+[
+    {
+        "Id": "sha256:cd30d3f99b8980fa8ab15a04773fe0e54e53bc7fcca7c756d137c4a9eae0dc0d",
+        "RepoTags": [
+            "openburnbar-linux-toolchain:mission-001"
+        ],
+        "RepoDigests": [
+            "openburnbar-linux-toolchain@sha256:cd30d3f99b8980fa8ab15a04773fe0e54e53bc7fcca7c756d137c4a9eae0dc0d"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-07-03T02:06:21.093254756Z",
+        "Config": {
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "SWIFT_SIGNING_KEY=52BB7E3DE28A71BE22EC05FFEF80A866B47A981F",
+                "SWIFT_PLATFORM=ubuntu24.04",
+                "SWIFT_BRANCH=swift-6.2.4-release",
+                "SWIFT_VERSION=swift-6.2.4-RELEASE",
+                "SWIFT_WEBROOT=https://download.swift.org"
+            ],
+            "Cmd": [
+                "/usr/local/bin/openburnbar-linux-toolchain-smoke"
+            ],
+            "WorkingDir": "/workspace",
+            "Labels": {
+                "description": "Docker Container for the Swift programming language",
+                "maintainer": "Swift Infrastructure <swift-infrastructure@forums.swift.org>",
+                "org.opencontainers.image.version": "24.04"
+            },
+            "ArgsEscaped": true
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 1616303895,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:2c042ab36ee22da5e09730c3dce27e9d84ff1cc8af8e5a8ed2275c05f0133445",
+                "sha256:2df0d22d2b7711359b5ca8e0feb7ba6e65df9770158f336205b54a464735fdb8",
+                "sha256:31256e469ffab1fa179d625f7763ef833dfaf85f2517776a3457e91e0a11d599",
+                "sha256:b92aaf2ff971f092192dd450ff8017e96a63ffee7049ebeaab2396eb1c40f9cf",
+                "sha256:4fd347dd04e7244f06e0b0e34fd45cd57fca1f7f7e8ce66595b3fa43a874e0de",
+                "sha256:8b5864f97d60a20ce395247f7cb0f965fe5050ea5e15fdfed3bf9bcd78f316fe",
+                "sha256:137ff552c1f4967d2e30ada414fed4c14af8e92df5e4c5313acc7c36fc71c856",
+                "sha256:405bb504ab634d999db54926e2ad8d33cdb51e646be0cb225e7dda0e13027491"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-07-03T02:06:21.134487798Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:cd30d3f99b8980fa8ab15a04773fe0e54e53bc7fcca7c756d137c4a9eae0dc0d",
+            "size": 856
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "sn6belcmhcdqfeq0nvnlrjk4s",
+                    "CreatedAt": "2026-07-03T02:06:21.146048798Z"
+                }
+            ]
+        }
+    }
+]
