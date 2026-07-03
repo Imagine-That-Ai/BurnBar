@@ -82,6 +82,9 @@ struct SettingsItem: Hashable, Identifiable {
 /// Concrete destinations inside the macOS Settings hierarchy. Each case maps
 /// 1:1 to a sub-screen that can be pushed via `NavigationStack`.
 enum SettingsPageRoute: Hashable, Codable {
+    // Home
+    case homeRoot
+
     // General
     case generalRoot
     case operatorModel
@@ -113,6 +116,9 @@ enum SettingsPageRoute: Hashable, Codable {
     case agentsRuntimes
     case agentsModels
     case agentsAdvanced
+
+    // Model Proxy (local gateway + routing + model catalog)
+    case modelProxyRoot
 
     // Legacy aliases kept so existing deep links resolve. The router maps
     // each of these onto the appropriate `.agents*` route at navigation
@@ -289,6 +295,14 @@ enum SettingsAnchor {
     // The Elder Wand — standing fusion spend / impact screen
     static let fusionImpact = "agents.fusionImpact"
     static let fusionImpactPeriod = "agents.fusionImpact.period"
+
+    // Model Proxy
+    static let modelProxyOverview = "modelProxy.overview"
+    static let modelProxyEndpoint = "modelProxy.endpoint"
+    static let modelProxyRouting = "modelProxy.routing"
+
+    // Home
+    static let homeOverview = "home.overview"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"
