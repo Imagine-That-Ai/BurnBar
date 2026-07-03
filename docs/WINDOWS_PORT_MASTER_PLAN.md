@@ -1,6 +1,6 @@
 # OpenBurnBar — Windows Port Master Plan
 
-**Status:** DRAFT v2 (post adversarial review) · **Author:** Claude (8-agent survey + synthesis + 4-critic adversarial pass) · **Date:** 2026-07-02
+**Status:** DRAFT v2.1 (post adversarial review + Codex second opinion + web research) · **Author:** Claude (8-agent survey + synthesis + 4-critic adversarial pass + Codex consult) · **Date:** 2026-07-02
 **Target:** Full **peer** parity of the macOS app (`AgentLens/`) on Windows 10/11 (x64 + ARM64).
 **Not** a cloud-only companion (that is what iOS/Android already are). Windows is a **local log-reading peer**, like the Mac.
 
@@ -84,6 +84,38 @@ PAL at G1" trap replaced with **per-seam semver freeze on second consumer**; fac
 single-owned shared files, rolling gates, per-workstream integration branches**); Phase 0 re-sized **S→M** with new
 spikes; a **defensible sizing envelope** added (§14); and the Pet / secure-desktop "fast-follow" trapdoors converted
 to an explicit **v1.1 non-goals list** (§15.1).
+
+**Codex second-opinion pass (v2 → v2.1), verified against the code + web research.** A `/codex` consult
+(read-only, code-verified) confirmed the v2 direction but showed three items were still under-scoped, and found one
+new blocker:
+- **The Core split is 24-file cross-cutting surgery, not "de-SwiftUI AgentProvider + peers."** Outside `Views/`,
+  Codex found 24 non-UI files with unguarded UI/Apple imports — `PretextEngine` imports **WebKit + OSLog and owns a
+  `WKWebView`**; `PretextTypes` imports CoreGraphics; `CloudVaultCrypto` imports Security; plus feature-flag and
+  app-state types. `ComputerUseCore` adds **12 files** with Darwin/XPC/`audit_token_t`/Keychain entanglement
+  (`PrivilegedInputXPCClient`, `ControllerKeyPinStore` Keychain-default). The split spans rendering, crypto, and app
+  state — see the sharpened R21. (§9.2)
+- **App Check: the concrete attestation *signal* was hand-waved.** Codex correctly flagged "Windows client → minting
+  endpoint" is a bearer-token vending machine until the signal is named. Web research resolves it: the signal is
+  **TPM hardware-backed key attestation** (Windows CNG `NCryptCreateClaim` / Windows Attestation APIs) verified by a
+  **new Node Firebase-Admin backend** that then mints an App Check token via `createToken`. There is a **known
+  `App attestation failed` bug on Windows 11 with the Admin SDK** (firebase-admin-node #2308) to validate in the
+  spike. R14 updated from "existential unknown" to "hard but solvable — a real backend workstream." (§9.3, R14)
+- **`wrapUntrusted` is a hard serialization predecessor, not a later cleanup.** W3/W4/W7 cannot safely run in
+  parallel until it's extracted to Core and frozen — it's a security boundary with delimiter-defanging + truncation
+  reseal. Now an explicit Phase-1 predecessor (§6.2, R18).
+- **New blocker: Pretext is a `WKWebView`-backed engine** (bundled JS, cached prepared-text handles) called directly
+  by chat surfaces — not "UI shell." Windows needs a **WebView2 + JS bridge** (or a native text-layout replacement)
+  with its own parity tests. Added to §10.1 + R22.
+- **SQLCipher parity pinning made concrete:** byte-compat holds only **within a SQLCipher major version**; the port
+  must pin `cipher_compatibility` / `kdf_iter` / `cipher_page_size` and match the `porter unicode61` tokenizer +
+  `bm25()`/`snippet()` ordering. The crypto provider can differ (Mac CommonCrypto vs. Windows OpenSSL/CNG) **iff
+  algorithm params match** — so the real fix is explicit PRAGMA pinning (currently implicit in the Mac code). (R2, §9.2)
+- **Swift-on-Windows reality check (web research):** officially supported since 2020 (Foundation/Dispatch/XCTest/SPM/
+  LLDB), but the **Swift Windows Workgroup only formed Jan 2026** — an organizational-commitment signal, explicitly
+  "still maturing." This *reinforces* keeping Option A spike-gated with a hard Option-B fallback (§4); the UI stays
+  WinUI (Swift-on-Windows has no production UI story).
+- **Estimate tempered:** Codex calls ~1,000–1,300 PRs optimistic given rework concentrates on PAL/DB/App Check/
+  security/UI — §14 now states the envelope holds only if rework stays low and leans to the higher end for Option A.
 
 ---
 
@@ -229,13 +261,27 @@ options.** Rationale unchanged — maximal reuse, single source of truth for por
 protecting Windows — **but** the reuse premise now depends on three unproven things that Phase 0 must retire:
 
 1. **0-a Core split + compile** — split `OpenBurnBarCore`→`Engine`/`UI` (and `ComputerUseCore`→policy/`Mac`), compile
-   the Engine subset on Swift-on-Windows incl. swift-crypto (identify the SecureEnclave substitute).
-2. **0-d DB byte-compat** — open a **real Mac SQLCipher DB** on Windows (matched PBKDF2/cipher/FTS5 tokenizer), run
-   an FTS5 MATCH returning an **identical row set**, migrate to **v53**, assert **schema hash == Mac**, write a row,
-   reopen on Mac. **If GRDB won't build on Windows, prove the raw-SQLCipher-C fallback here.**
+   the Engine subset on Swift-on-Windows incl. swift-crypto (identify the SecureEnclave substitute). **Scope reality
+   (Codex-verified):** this is **24 non-`Views/` files** with unguarded UI/Apple imports, not a move — the sharpest
+   are `PretextEngine` (WebKit + `WKWebView` + OSLog), `PretextTypes` (CoreGraphics), `CloudVaultCrypto` (Security),
+   plus feature-flag/app-state types; `ComputerUseCore` is 12 more Darwin/XPC/Keychain files. The spike must prove the
+   split is *tractable*, not just started. **Swift-on-Windows is officially supported since 2020 but only got a
+   governance Workgroup in Jan 2026 — treat maturity as an open question, which is exactly what this spike settles.**
+2. **0-d DB byte-compat** — open a **real Mac SQLCipher DB** on Windows and prove parity concretely: **pin
+   `PRAGMA cipher_compatibility`, `kdf_iter`, `cipher_page_size`** to the Mac's SQLCipher major version (byte-compat
+   holds only *within* a major version), build with **`--enable-fts5`**, match the **`porter unicode61`** tokenizer,
+   run an FTS5 `MATCH` with `bm25()`/`snippet()` returning an **identical row set**, migrate to **v53**, assert
+   **schema hash == Mac**, write a row, reopen on Mac. The crypto provider may differ (Mac CommonCrypto vs. Windows
+   OpenSSL/CNG) **iff algorithm params match** — so the spike also **adds explicit PRAGMA pins** (currently implicit
+   in the Mac code — a latent risk on *both* platforms). **If GRDB won't build on Windows, prove the raw-SQLCipher-C
+   fallback here.**
 3. **0-e Firebase Auth + App Check** — interactive desktop OAuth (loopback redirect) → Firebase custom-token → an
-   authenticated Firestore REST read/write, **and** determine the App Check enforcement posture and whether a custom
-   provider / debug path exists for Windows. **This can PIVOT the entire cloud strategy.**
+   authenticated Firestore REST read/write, **and** prove the App Check custom-provider pipeline end-to-end: a
+   Windows client mints a **TPM hardware-backed key attestation** (CNG `NCryptCreateClaim` / Windows Attestation
+   APIs) → a **new Node Firebase-Admin backend** verifies it → `createToken` mints an App Check token → an enforced
+   callable accepts it. **Validate the known Windows-11 Admin-SDK `App attestation failed` bug (firebase-admin-node
+   #2308) does not block minting.** If the TPM pipeline can't be stood up in the spike window, **this PIVOTS the cloud
+   strategy** (open decision #6: fund the backend, ship a weaker MSIX-identity signal, or ship local-only v1).
 
 Plus 0-b (WinUI shell + tray + Mica + live CLI stream), 0-c (iroh/burnbar-remote → `x86_64-pc-windows-msvc` + call
 from C# via `uniffi-bindgen-cs` round-tripping one async+callback+error interface), 0-f (ConPTY interactive +
@@ -317,6 +363,13 @@ W10 CI  ── gates every PR from Phase 1     W11 Parity harness ── fixture
 - **W3 cloud is gated on R14** (App Check). Local persistence proceeds; cloud sync waits on the attestation decision.
 - **W10 + W11 enable at Phase 0** so every production PR is gated by the Windows CI lane and asserts against parity
   vectors from the first commit — no post-merge coverage theater.
+- **Serialization predecessors (Codex-surfaced) that gate the "parallel" fan-out — these land in Phase 1 before the
+  wide parallel work, or the parallelism is a lie:**
+  1. **Core `Engine`/`UI` split** (24-file refactor) — nothing compiles on Windows until it lands (§9.2, R21).
+  2. **`wrapUntrusted` extracted to Core + frozen** — W3 (cloud), W4 (agent), W7 (chat/UI) all route untrusted content
+     through it; parallelizing them before it's extracted risks divergent security reimplementations (R18).
+  3. **`Pretext` engine decision** (WebView2 vs. native) — chat surfaces (W7) depend on it (R22).
+  4. **PAL seam stubs + DB engine open-path** — the walking skeleton needs these to exist as contracts.
 
 ### 6.3 Factory operating model (scaled for ~1,000+ PRs)
 
@@ -442,16 +495,25 @@ Freeze **per-seam on the second consumer**, under semver; publish stubs day one.
 
 ### 9.2 W2 — Native core / crypto / transport
 
-- **Core split first:** `OpenBurnBarCore` → `…Engine` (no SwiftUI/AppKit — the ~90k portable subset) + `…UI`
-  (the 30.7k SwiftUI, reference-only); `AgentProvider.swift` and peers de-SwiftUI'd; `OpenBurnBarComputerUseCore` →
-  policy/crypto + `Mac` glue. This is a **prerequisite refactor**, landed on macOS first (no behavior change) so the
-  Mac build keeps protecting it.
+- **Core split first (bigger than a move — Codex-verified):** `OpenBurnBarCore` → `…Engine` (no SwiftUI/AppKit — the
+  portable subset) + `…UI` (the 30.7k SwiftUI, reference-only). Beyond `Views/`, **24 non-UI files carry unguarded
+  UI/Apple imports** and must be untangled or Mac-gated: `AgentProvider.swift` (SwiftUI), **`PretextEngine`/`PretextTypes`
+  (WebKit + `WKWebView` + OSLog + CoreGraphics — see the Pretext port, §9.6/R22)**, `CloudVaultCrypto` (Security),
+  and feature-flag/app-state types. `OpenBurnBarComputerUseCore` splits into policy/crypto + `Mac` glue, but that glue
+  is **12 files** deep (`PrivilegedInputXPCClient` = Darwin/NSXPC/`audit_token_t`/Unix-socket; `ControllerKeyPinStore`
+  = Keychain-backed production default). This is a **prerequisite refactor spanning rendering, crypto, and app state**,
+  landed on macOS first (no behavior change) so the Mac build keeps protecting it — sized accordingly (R21).
 - **Rust → Windows:** add `x86_64/aarch64-pc-windows-msvc` to `openburnbar-iroh` + `burnbar-remote`; build `.dll`/`.lib`
   (mirror the `-android-aar` scripts/workflows into `Vendor/`); Credential-Manager backend behind a feature; C-ABI
   shim consumed from C# (`uniffi-bindgen-cs` proven in 0-c). **libsignal** gets the same Windows binding.
-- **DB engine:** SQLCipher passphrase mode + **FTS5**, byte-compatible. **GRDB-for-Windows is unproven (R2)** —
-  primary path compiles the vendored GRDB; **fallback is raw SQLCipher-C + a thin data layer** reproducing the exact
-  PRAGMA/cipher/tokenizer config. Decided in 0-d.
+- **DB engine:** SQLCipher **passphrase mode** (`usePassphrase` → PBKDF2, *not* raw-key) + **FTS5**, byte-compatible.
+  Byte-compat holds only **within a SQLCipher major version**, so the port must **pin `cipher_compatibility`,
+  `kdf_iter`, `cipher_page_size`** to the Mac's major version, build with `--enable-fts5`, and match the
+  `porter unicode61` tokenizer + `bm25()`/`snippet()` query semantics. The crypto provider may differ (Mac
+  CommonCrypto vs. Windows OpenSSL/CNG) **iff those params match**. These PRAGMAs are currently **implicit in the Mac
+  code** (`DatabaseEncryptionService.usePassphrase`, no explicit compat/kdf pins) — a latent risk on both platforms;
+  W2 **makes them explicit**. **GRDB-for-Windows is unproven (R2)** — primary path compiles the vendored GRDB;
+  **fallback is raw SQLCipher-C + a thin data layer** reproducing the exact pinned config. Decided in 0-d.
 - **Crypto shim:** swift-crypto covers AES-GCM/HKDF/SHA/P256; **SecureEnclave has no swift-crypto equivalent** →
   TPM/CNG-backed non-exportable key for the `PhoneControlAuthoritySigningKey` path, with a written downgrade note
   (R15).
@@ -463,11 +525,17 @@ Freeze **per-seam on the second consumer**, under semver; publish stubs day one.
   schema-hash + round-trip (the 0-d/G1 vector).
 - **Firestore REST gateway:** implement `CloudSyncFirestoreGateway` against Firestore REST + **the 53 callables**;
   the `…FakeGateway` seam + 14 `OpenBurnBarFirestoreModels` types are the contract.
-- **App Check (R14, the blocker):** stand up a **custom App Check provider** — Windows client → a new
-  minting endpoint that verifies a real Windows signal → Firebase custom App Check token — **or** carry the
-  written, risk-accepted weaker posture from G0. **High-risk computer-use callables** (`assertAppAttestBoundClaims`)
-  have no Windows attestation; do **not** relax the server gate for everyone — either mint a real Windows attestation
-  or accept those specific callables are server-refused on Windows (documented).
+- **App Check (R14, the blocker) — the concrete pipeline:** the custom provider is the **documented, supported path
+  for "desktop OSes"** (Firebase docs). The named attestation **signal** (this is the part Codex flagged as
+  hand-waved, now resolved): the Windows client mints a **TPM hardware-backed key attestation** (Windows CNG
+  `NCryptCreateClaim` / Windows Attestation APIs — hardware-rooted, not a bare bearer secret); a **new secure Node
+  Firebase-Admin backend service** verifies the TPM claim (AIK/EK chain + nonce) and calls `createToken` to mint the
+  App Check token; the client's `getToken()` returns it (TTL 30 min–7 day, default 1 h). **Validate firebase-admin-node
+  #2308** (`App attestation failed` on Windows 11) in the 0-e spike. **Weaker fallbacks if the TPM path slips:** MSIX
+  package-identity signal (weaker assurance, written risk acceptance) or Windows-local-only v1 (open decision #6).
+  **High-risk computer-use callables** (`assertAppAttestBoundClaims`) bind the *Apple* App Attest app-id; do **not**
+  relax that server gate for all platforms — either the Windows TPM attestation feeds an equivalent bound claim, or
+  those specific callables are documented as server-refused on Windows.
 - **CloudVault crypto:** reimplement P-256 ECDH + HKDF-SHA256 + AES-256-GCM vs. `apps/console/lib/escrow.ts` + the
   Swift/Kotlin vectors (cross-platform decrypt, both directions).
 - **On-disk layout:** map every Application-Support subtree.
@@ -499,8 +567,10 @@ halt preserved; high-risk server gate ties to R14.
 WinUI 3 shell, `Shell_NotifyIcon` tray + resizable/reorderable flyout, main window. **Glass:** the single
 `Theme/LiquidGlass.swift` chokepoint → one Mica/Acrylic shim (Frosted↔System↔Clear + reduced-transparency).
 **Particle engine:** reimplement `SwarmCanvasView` + `SwarmSubstrate.paint` (30 substrates, 6 families) on Win2D/
-Composition — a real port. **Design tokens:** WinUI emitter added to `packages/design-tokens`. **Pretext** markdown/
-code-block engine ported.
+Composition — a real port. **Design tokens:** WinUI emitter added to `packages/design-tokens`. **Pretext** is **not** a plain markdown host: it is a
+`WKWebView`-backed rendering engine (bundled JS, cached prepared-text handles) called directly by chat surfaces, so
+the Windows port needs a **WebView2 + JS bridge** (reuse the same bundled JS) or a native text-layout replacement —
+with its own parity tests (R22). This is real engine work, sized separately from the shell.
 
 ### 9.7 W7 — UI surfaces
 
@@ -594,6 +664,7 @@ WS = owning workstream.
 | **TextExpansion (global keystroke intercept)** | `Services/TextExpansion/` | `WH_KEYBOARD_LL` hook | B | W1/W4 |
 | **StoreKit Pro paywall / IAP** | `Views/Settings/CloudStoreSettingsView` | Stripe web / Store IAP | C | W3/W7 |
 | **DailyDigest** | `Services/DailyDigestManager.swift` | Scheduled toast | B | W4 |
+| **Pretext text-rendering engine** | `OpenBurnBarCore/.../Pretext/` (`WKWebView` + bundled JS) | WebView2 + JS bridge, or native text layout | B | W6 |
 | Themes / Glass / 30 substrates | `Theme/` + Core `Views/` | Mica/Acrylic + Win2D particle | B | W6 |
 | PetCompanion | `PetCompanion/` (115 glb) | glTF + layered click-through | B | W8 |
 | Menu-bar UI | NSStatusItem + NSPopover | Tray + flyout | B | W6 |
@@ -650,7 +721,7 @@ artifacts. New secrets: `WINDOWS_CODESIGN_*`/Trusted-Signing creds, `WINDOWS_UPD
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | R1 | Swift-on-Windows can't carry Swift-6 strict concurrency at prod quality | Med | High | Phase-0 0-a binds A/B; Option B ready fallback |
-| R2 | **GRDB has no Windows support; SQLCipher/FTS5 byte-incompat → unreadable DBs/corrupt sync** | Med-High | **Critical** | **Phase-0 0-d** opens a real Mac DB; raw-SQLCipher-C fallback proven there |
+| R2 | **GRDB has no Windows support; SQLCipher/FTS5 byte-incompat → unreadable DBs/corrupt sync.** Byte-compat holds only within a SQLCipher major version; Mac uses passphrase mode with **implicit** cipher/kdf/page pins + `porter unicode61` FTS5 | Med-High | **Critical** | **Phase-0 0-d** opens a real Mac DB; **pin `cipher_compatibility`/`kdf_iter`/`cipher_page_size` explicitly** (make them explicit on Mac too), match tokenizer + `bm25()`/`snippet()`; raw-SQLCipher-C fallback proven there |
 | R3 | Parser parity unverifiable (no portable fixtures) | High (today) | High | W11 extracts fixtures **before** W4; parser-output contract required |
 | R4 | Firestore REST reimplements SDK offline/listener semantics with bugs | Med | High | `FakeGateway` seam + models; E2EE fails closed; explicit sync vectors |
 | R5 | Claude Code Windows path encoding differs | High | Med | 0-h captures the real encoding; decoder handles both forms |
@@ -662,13 +733,15 @@ artifacts. New secrets: `WINDOWS_CODESIGN_*`/Trusted-Signing creds, `WINDOWS_UPD
 | R11 | Windows lane inherits post-merge-coverage theater | Med | Med | Coverage + ratchets required **on PRs**, per-tree, from commit #1 |
 | R12 | Auth: Apple Sign-In Windows web-only; MSA new | Low | Med | Google present; MSA/email; Apple via web |
 | R13 | Scope illusion — "complete parity" narrows | Med | High | Tier contract + §10.1 full inventory + parity-gap lens |
-| **R14** | **Firebase App Check lockout — Apple-only attestation, fail-closed, 52 function files + Firestore console tier + relay; a Windows client is rejected at the network boundary** | **High** | **Critical (existential for cloud)** | **Phase-0 0-e**; new App Check **custom-attestation provider** (backend work) OR written risk-accepted posture OR PIVOT-to-Alberto; never relax the high-risk server gate for all platforms |
+| **R14** | **Firebase App Check lockout — Apple-only attestation, fail-closed, 52 function files + Firestore console tier + relay; a Windows client is rejected at the network boundary.** Solvable but a real workstream, not a config flag (Codex: "bearer-token vending machine" if the signal isn't named) | **High** | **Critical (existential for cloud)** | **Phase-0 0-e** proves the concrete pipeline: **TPM key attestation (CNG `NCryptCreateClaim`) → new Node Firebase-Admin backend verifies → `createToken`**; validate **firebase-admin-node #2308** (Win11 `App attestation failed`); fallbacks = MSIX-identity signal (weaker) or local-only v1; never relax the high-risk server gate for all platforms |
 | **R15** | **DPAPI ≠ Keychain: no locked-when-locked release, no true device-binding (domain DPAPI backup key / roaming recover it), offline-extractable, Hello is consent-only (doesn't withhold key)** | **High** | **High** | **TPM/CNG NCRYPT KSP, non-exportable, Hello-gated *release*** + DPAPI outer wrap; split secret classes; parity assertion **fails on domain-joined roaming** |
 | **R16** | **Named-pipe peer-auth weaker than codesign gate: PID reuse/TOCTOU, DLL injection into signed process passes Authenticode, pipe squatting, release env compile-out** | **Med-High** | **High** | Handle-validate the peer (or `ImpersonateNamedPipeClient` + SID); verify image **+ loaded modules**; `FIRST_PIPE_INSTANCE` + owner DACL + signed-nonce handshake; compile out disable-env in release; freeze into PAL before G1 |
 | **R17** | **`SendInput` makes the capability-token gate advisory (any same-integrity process bypasses it); RC kill-switch may be App-Check-undeliverable; high-risk attestation binding has no Windows analog; UIPI forces whole-agent elevation** | **Med-High** | **High** | Route non-bypassable actions through ViGEm/driver; **watchdog process + signed local kill channel independent of RC**; carry fail-closed-on-RC-error; document which actions are advisory |
-| **R18** | **Prompt-injection `wrapUntrusted` is a rewrite target (in app, not Core) with no contract vector — a C# reimpl can silently drop neutralization/re-seal** | Med | High | **Move `wrapUntrusted` into Core** (Option A reuses it); add the **wrap contract vector** as a required PR check |
+| **R18** | **Prompt-injection `wrapUntrusted` is a rewrite target (in app, not Core) with no contract vector AND a hidden serialization point — W3/W4/W7 can't safely parallelize until it's extracted + frozen (Codex)** | Med | High | **Move `wrapUntrusted` into Core as a Phase-1 predecessor** (Option A reuses it); add the **wrap contract vector** (delimiter-defang + truncation-reseal) as a required PR check before W3/W4/W7 fan out |
 | **R19** | **Signing gaps: no notarization/staple analog; DLL sideload defeats Authenticode + `WinVerifyTrust` self-check; cert-rotation trust drift; MSIX Store re-sign breaks Sigstore provenance** | Med | High (for the sideload path) | DLL-load hardening (library-validation equivalent); **pin Ed25519 feed key** independent of the cert; **direct+winget primary**; state the missing staple honestly |
 | R20 | External cert/Store/winget lead-times gate G5 regardless of fleet width | Med | Med | **W0 starts at Phase 0**; §14 flags these as calendar-bound |
+| **R21** | **Option-A Core split is 24-file cross-cutting surgery, not a move (Codex): Pretext/WebKit, CloudVaultCrypto/Security, ComputerUseCore's 12 Darwin/XPC/Keychain files, feature-flag/app-state types** | Med-High | High (mis-sizes Option A) | **Phase-0 0-a proves the split is tractable**; size it as a real refactor spanning rendering/crypto/state; if intractable → Option B |
+| **R22** | **Pretext is a `WKWebView`-backed engine (bundled JS) called by chat, not a markdown host — no Windows analog without a WebView2/JS bridge or native text-layout replacement** | Med | Med | Port to **WebView2 + the same bundled JS** (or native layout) with parity tests; sized in W6, decided as a Phase-1 predecessor |
 
 ---
 
@@ -687,6 +760,10 @@ LOC counts:
   operation**, dominated by the W1/W2 spine and the two XL phases.
 - **Three swing factors** Alberto should weigh: **Option A vs B** (±50% LOC), **review parallelism** (single vs.
   sharded Codex — §6.3), and the **gate-rework rate** (how often G-gates return FIX/PIVOT).
+- **Honesty note (Codex):** this envelope holds only if **rework stays low**, and rework concentrates on exactly the
+  hardest areas — PAL, the DB byte-compat, the App Check backend, the security seams, and UI parity. If the Option-A
+  Core split (R21), the Pretext WebView port (R22), or the App Check TPM backend (R14) run hot, expect the **upper end
+  or beyond**. Treat ~1,000–1,300 PRs as a floor for Option A, not a midpoint.
 - **Calendar-bound items width can't dissolve (W0):** Authenticode/EV or Trusted-Signing identity validation, Store
   cert validation, and the Microsoft-reviewed winget manifest PR. Start at Phase 0.
 
@@ -710,12 +787,15 @@ certification), gates G0–G5 between each.
 5. **Secure-desktop input injection** — commit to a WHQL-signed virtual-HID driver now, or **ViGEm v1 + driver as an
    explicit v1.1 non-goal**? *(Rec: ViGEm v1, driver v1.1.)*
 6. **⚠️ App Check / attestation (R14)** — this gates the *entire* cloud/sync/relay/high-risk-computer-use surface and
-   has **no client-only fix**. Choose: **(a)** fund a new **App Check custom-attestation backend** for Windows;
-   **(b)** ship a **separate Windows Firebase app id with a documented weaker posture** (written risk acceptance);
-   or **(c)** ship Windows as a **local-only peer for v1** (log ingestion + usage + computer-use-local, **no cloud
-   sync / no Hermes relay / no hosted Insights**) and add cloud when (a) lands. *(Rec: decide at G0; (c) is the
-   honest fast path to a shippable v1 if (a) is too heavy — but it means "complete parity" is explicitly phased, and
-   that must be stated to users, not hidden.)*
+   has **no client-only fix**. The concrete pipeline is now known (§9.3): TPM key attestation → Node Firebase-Admin
+   backend → `createToken`. Choose: **(a)** fund the **TPM-attestation custom-provider backend** (strongest; a real
+   new service + TPM verification, with the Win11 Admin-SDK bug #2308 to clear); **(b)** ship a **weaker
+   MSIX-package-identity signal** via the same custom-provider plumbing (faster, documented lower assurance, written
+   risk acceptance); or **(c)** ship Windows as a **local-only peer for v1** (log ingestion + usage + local
+   computer-use, **no cloud sync / no Hermes relay / no hosted Insights**) and add cloud when (a) lands. *(Rec:
+   decide at G0 on 0-e evidence; (a) is the right long-term answer; (c) is the honest fast path to a shippable v1 if
+   (a) is too heavy — but it means "complete parity" is explicitly phased, and that must be stated to users, not
+   hidden.)*
 
 ### 15.1 Explicit v1.1 non-goals (no runtime trapdoors)
 
@@ -732,7 +812,18 @@ Everything else in §10.1 is **v1 scope**.
 
 ---
 
+## 16. External sources (v2.1 research)
+
+Web research backing the v2.1 corrections:
+- Swift on Windows status + Jan-2026 Windows Workgroup — [swift.org/blog/announcing-windows-workgroup](https://www.swift.org/blog/announcing-windows-workgroup/)
+- Firebase App Check custom provider (the desktop/Windows path) — [firebase.google.com/docs/app-check/custom-provider](https://firebase.google.com/docs/app-check/custom-provider)
+- Known Windows-11 Admin-SDK App Check bug — [firebase-admin-node #2308](https://github.com/firebase/firebase-admin-node/issues/2308)
+- SQLCipher cross-platform compatibility + `cipher_compatibility` — [github.com/sqlcipher/sqlcipher](https://github.com/sqlcipher/sqlcipher), [zetetic.net SQLCipher API](https://www.zetetic.net/sqlcipher/sqlcipher-api/#cipher_compatibility)
+
+---
+
 *This plan was produced by an 8-agent parallel codebase survey, synthesized, then hardened by a 4-lens adversarial
-review (technical / parity-gap / process / security) that verified every claim against the codebase. It is intended
-to be executed by a parallel agent fleet through the BurnBar software factory, with adversarial review gates between
-phases as the quality spine. Update this file as gates return verdicts.*
+review (technical / parity-gap / process / security) that verified every claim against the codebase, then a
+code-verified Codex second opinion + targeted web research (v2.1). It is intended to be executed by a parallel agent
+fleet through the BurnBar software factory, with adversarial review gates between phases as the quality spine. Update
+this file as gates return verdicts.*
