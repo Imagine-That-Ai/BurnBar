@@ -108,6 +108,24 @@ enum WalkingSkeleton {
             return false
         }.count
 
+        // Diagnostic (prints on every host, incl. Windows CI) so a parse mismatch
+        // reports the real shape instead of a bare assertion.
+        func kind(_ e: HermesStreamEvent) -> String {
+            switch e {
+            case .messageChunk(let t): return "chunk(\(t.debugDescription))"
+            case .reasoningChunk: return "reasoning"
+            case .refusalChunk: return "refusal"
+            case .toolCallChunk: return "toolCallChunk"
+            case .toolCallFinished: return "toolCallFinished"
+            case .toolResult: return "toolResult"
+            case .longToolHint: return "longToolHint"
+            case .notice(let l, let t): return "notice(\(l):\(t.debugDescription))"
+            case .messageStop(let fr, _, let u): return "stop(finish=\(fr ?? "nil"),usageTotal=\(u?.totalTokens.map(String.init) ?? "nil"))"
+            }
+        }
+        print("  [diag] fixtureBytes=\(fixture.utf8.count) events=\(allEvents.count) done=\(streamDone) text=\(assembledText.debugDescription) usageTotal=\(usageTotalTokens.map(String.init) ?? "nil")")
+        print("  [diag] kinds=[\(allEvents.map(kind).joined(separator: ", "))]")
+
         // N structured events: 2 messageChunk + 2 messageStop (usage stop + finish_reason stop).
         expect(allEvents.count == 4, "fixture parsed into exactly 4 structured stream events")
         expect(messageChunkCount == 2, "exactly 2 messageChunk events were emitted")
