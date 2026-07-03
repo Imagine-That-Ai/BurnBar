@@ -103,6 +103,63 @@ async function createRuleset(token, fileName, content) {
   return { contentHash, rulesetName: ruleset.name };
 }
 
+export function rulesetFileContentHash(ruleset, fileName) {
+  const files = ruleset?.source?.files;
+  if (!Array.isArray(files)) return null;
+  const file = files.find((candidate) => candidate?.name === fileName);
+  if (typeof file?.content !== "string") return null;
+  return sha256(file.content.trimEnd());
+}
+
+export async function releasesNeedingRulesetDeploy({
+  releaseNames,
+  desiredContentHash,
+  fileName,
+  fetchResource,
+}) {
+  const staleReleaseNames = [];
+  const rulesetHashCache = new Map();
+  let unchangedReleaseCount = 0;
+
+  for (const releaseName of releaseNames) {
+    let release;
+    try {
+      release = await fetchResource(releaseName);
+    } catch (error) {
+      if (error?.status !== 404) throw error;
+      staleReleaseNames.push(releaseName);
+      continue;
+    }
+
+    const rulesetName = release?.rulesetName;
+    if (typeof rulesetName !== "string" || rulesetName.length === 0) {
+      staleReleaseNames.push(releaseName);
+      continue;
+    }
+
+    if (!rulesetHashCache.has(rulesetName)) {
+      try {
+        const ruleset = await fetchResource(rulesetName);
+        rulesetHashCache.set(
+          rulesetName,
+          rulesetFileContentHash(ruleset, fileName),
+        );
+      } catch (error) {
+        if (error?.status !== 404) throw error;
+        rulesetHashCache.set(rulesetName, null);
+      }
+    }
+
+    if (rulesetHashCache.get(rulesetName) === desiredContentHash) {
+      unchangedReleaseCount += 1;
+    } else {
+      staleReleaseNames.push(releaseName);
+    }
+  }
+
+  return { staleReleaseNames, unchangedReleaseCount };
+}
+
 function isRulesetPropagationError(error) {
   return (
     error?.status === 400 &&
@@ -209,17 +266,29 @@ async function verifyRelease(token, releaseName, rulesetName) {
 
 async function deployRulesFile(token, fileName, releaseNames) {
   const content = readFileSync(resolve(repoRoot, fileName), "utf8");
-  const { contentHash, rulesetName } = await createRuleset(
-    token,
-    fileName,
-    content,
-  );
-  for (const releaseName of releaseNames) {
+  const contentHash = sha256(content.trimEnd());
+  const { staleReleaseNames, unchangedReleaseCount } =
+    await releasesNeedingRulesetDeploy({
+      releaseNames,
+      desiredContentHash: contentHash,
+      fileName,
+      fetchResource: (path) => firebaseRulesJson(path, token),
+    });
+
+  if (staleReleaseNames.length === 0) {
+    console.log(
+      `firebase rules release unchanged project=${project} file=${fileName} releases=${releaseNames.length} rules=${contentHash}`,
+    );
+    return;
+  }
+
+  const { rulesetName } = await createRuleset(token, fileName, content);
+  for (const releaseName of staleReleaseNames) {
     await patchRelease(token, releaseName, rulesetName);
     await verifyRelease(token, releaseName, rulesetName);
   }
   console.log(
-    `firebase rules release deployed project=${project} file=${fileName} releases=${releaseNames.length} ruleset=${rulesetName} rules=${contentHash}`,
+    `firebase rules release deployed project=${project} file=${fileName} releases=${releaseNames.length} updated=${staleReleaseNames.length} unchanged=${unchangedReleaseCount} ruleset=${rulesetName} rules=${contentHash}`,
   );
 }
 
