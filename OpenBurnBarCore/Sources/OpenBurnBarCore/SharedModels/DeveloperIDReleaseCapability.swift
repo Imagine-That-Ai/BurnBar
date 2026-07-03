@@ -42,7 +42,7 @@ public struct DeveloperIDReleaseCapability: Sendable, Equatable {
 
     /// Expected capability matrix for `OpenBurnBarRelease.entitlements` (Developer-ID website build).
     public static let expectedDeveloperIDRelease = DeveloperIDReleaseCapability(
-        keychainAccessGroups: false,
+        keychainAccessGroups: true,
         iCloudDocuments: false,
         appleSignIn: false
     )

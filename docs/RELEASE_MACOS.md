@@ -97,20 +97,24 @@ that a DMG exists.
 The macOS trust gate downloads the same public DMG and runs Apple platform
 checks against the real artifact: Gatekeeper assessment for the DMG, stapler
 validation for the notarization ticket, app bundle code-signature verification,
-Developer ID certificate inspection, and Gatekeeper execution assessment for
-the mounted app. A public download is not shippable unless this command passes;
-URL liveness alone is not enough. The `Public macOS Download Trust` workflow
-runs this check automatically when `website/src/data/site.ts` changes, so a
-future button update cannot silently point users at an unsigned or unstapled
-DMG.
+Developer ID certificate inspection, Firebase Auth Keychain entitlement/profile
+verification, and Gatekeeper execution assessment for the mounted app. A public
+download is not shippable unless this command passes; URL liveness alone is not
+enough. The `Public macOS Download Trust` workflow runs this check automatically
+when `website/src/data/site.ts` changes, so a future button update cannot
+silently point users at an unsigned, unstapled, or Keychain-broken DMG.
 
-Release artifacts must also include the shipped Firebase client plist. It is
-client configuration, not a private signing secret, and it must be embedded
-before Developer ID signing so the sealed app can initialize cloud auth. The
-release workflow runs `scripts/ci/verify-apple-release-firebase-config.sh` on
-the unsigned app and packaged DMG/ZIP; the website trust gate runs the same
-check against the downloaded public copy. A DMG that launches with "Cloud auth
-is unavailable" is not shippable.
+Release artifacts must also include the shipped Firebase client plist and the
+app's `MAC_APP_DIRECT` provisioning profile. The plist is client configuration,
+not a private signing secret. The profile authorizes Firebase Auth's macOS
+Keychain access group for `com.openburnbar.app`. Both must be embedded before
+Developer ID signing so the sealed app can initialize cloud auth and persist the
+signed-in Firebase user. The release workflow runs
+`scripts/ci/verify-apple-release-firebase-config.sh` on the unsigned app and
+packaged DMG/ZIP; the website trust gate runs the same config check plus the
+Keychain entitlement/profile check against the downloaded public copy. A DMG
+that launches with "Cloud auth is unavailable" or Keychain access errors is not
+shippable.
 
 If the branded `downloads.burnbar.ai` host is down, the emergency recovery path
 is to repoint the website at a known live GitHub Release asset, rerun the
@@ -321,7 +325,16 @@ provisioning profiles are intentionally excluded because they are not publishabl
 
 ## Release entitlements
 
-The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`. That file intentionally omits provisioning-profile-only capabilities such as iCloud, Apple Sign-In, and keychain access groups unless a matching Developer ID provisioning profile is embedded before signing. The development entitlements in `AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode builds.
+The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`
+after expanding the team/bundle placeholders into a temporary signing plist. The
+direct-download app must embed a `MAC_APP_DIRECT` profile for
+`com.openburnbar.app` and must sign with `keychain-access-groups` containing
+`TEAMID.com.openburnbar.app`; Firebase Auth on macOS cannot persist users
+without it. Direct-download release entitlements still omit iCloud and Apple
+Sign-In until those capabilities are intentionally added to the Developer ID
+profile and QA flow. The development entitlements in
+`AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode
+builds.
 
 ## Rollback
 
@@ -340,6 +353,7 @@ Tagged releases are **fail-hard**: if any required secret below is missing, the 
 | `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
 | `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
 | `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
+| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; required so Firebase Auth can use the app Keychain access group |
 | `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
 | `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast |
