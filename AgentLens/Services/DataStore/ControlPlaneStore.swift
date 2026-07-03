@@ -7,7 +7,7 @@ import OpenBurnBarCore
 
 /// Operating action history and controller runtime cache.
 final class ControlPlaneStore: Sendable {
-    static let chatMemoryAuthorityWritesEnabledByDefault = false
+    static let chatMemoryAuthorityWritesEnabledByDefault = true
 
     let dbQueue: any DatabaseWriter
 
