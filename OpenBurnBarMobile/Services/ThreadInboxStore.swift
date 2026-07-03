@@ -92,7 +92,7 @@ final class ThreadInboxStore {
             case "pi":
                 agentURI = AgentIdentity.builtInURI(.pi)
                 source = .pi
-            case "codex", "claude", "openclaw", "junie", "junie-agent", "jetbrains-junie":
+            case _ where Self.cliRuntime(from: thread.runtime) != nil:
                 guard let runtime = Self.cliRuntime(from: thread.runtime) else { return nil }
                 agentURI = AgentIdentity.builtInURI(runtime)
                 source = .cliMirror

@@ -629,6 +629,14 @@ public enum CLILaunchAdapter {
         return allowlistedEnvKeys.contains(key)
     }
 
+    /// Returns true only for keys that are safe in the cross-CLI ambient baseline.
+    /// Profile-scoped credentials such as `JUNIE_API_KEY` may be accepted by
+    /// `filterAllowlistedEnvironment` but must not leak through child-process
+    /// baselines for unrelated agents.
+    public static func isBaselineEnvKeyAllowlisted(_ key: String) -> Bool {
+        return baselineEnvKeys.contains(key)
+    }
+
     /// Filters environment variables to only allowlisted keys.
     /// Values are taken from the current process environment.
     public static func filterAllowlistedEnvironment(
