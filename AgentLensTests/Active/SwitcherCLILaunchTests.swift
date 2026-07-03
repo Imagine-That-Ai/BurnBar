@@ -886,6 +886,18 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertFalse(result.keys.contains("GITHUB_TOKEN"), "Sensitive token should not be in baseline environment")
     }
 
+    func test_buildAllowlistedBaselineEnvironment_excludesProfileScopedJunieAPIKey() {
+        let ambientEnv = [
+            "HOME": "/Users/test",
+            "JUNIE_API_KEY": "junie-secret"
+        ]
+
+        let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
+
+        XCTAssertEqual(result["HOME"], "/Users/test")
+        XCTAssertNil(result["JUNIE_API_KEY"], "Junie API key must only pass through explicit profile envKeysToPass")
+    }
+
     func test_buildAllowlistedBaselineEnvironment_includesAllKnownAllowlistedKeys() {
         let ambientEnv: [String: String] = [
             "HOME": "/Users/test",

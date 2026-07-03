@@ -194,6 +194,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
             return [
                 "/usr/local/bin/junie",
                 "/opt/homebrew/bin/junie",
+                "$HOME/.junie/bin/junie",
                 "$HOME/.local/bin/junie"
             ]
         }

@@ -59,9 +59,9 @@ public enum CLILaunchAdapter {
 
     // MARK: - Allowlisted Environment Variables
 
-    /// Environment variables that are allowlisted for CLI profile launching.
-    /// These are considered safe as they only affect basic OS behavior,
-    /// not authentication, credentials, or security boundaries.
+    /// Environment variables that may be passed by explicit CLI profile metadata.
+    /// Credentials belong here only when profile-scoped; the ambient baseline below
+    /// must stay free of API keys and tokens.
     ///
     /// NOTE: Values are NOT stored - only the keys. Values are resolved at launch
     /// from the current process environment.
@@ -98,6 +98,10 @@ public enum CLILaunchAdapter {
         "CURSOR_AGENT_CONFIG_PATH",
         "JUNIE_API_KEY"
     ]
+
+    private static let baselineEnvKeys: Set<String> = allowlistedEnvKeys.subtracting([
+        "JUNIE_API_KEY"
+    ])
 
     // MARK: - Additional Arguments Allowlist
 
@@ -339,6 +343,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.gemini/bin",
             "\(homeDirectory)/.kimi/bin",
             "\(homeDirectory)/.pi/bin",
+            "\(homeDirectory)/.junie/bin",
             "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
@@ -658,7 +663,7 @@ public enum CLILaunchAdapter {
     ) -> [String: String] {
         var result: [String: String] = [:]
 
-        for key in allowlistedEnvKeys {
+        for key in baselineEnvKeys {
             if let value = baseEnv[key] {
                 let sanitized = sanitizeEnvValue(value)
                 if !sanitized.isEmpty {
