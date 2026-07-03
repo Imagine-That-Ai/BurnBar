@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2025-07-01T00:00:00Z","message":{"role":"user","content":"Write a test function"}}
+{"type":"assistant","timestamp":"2025-07-01T00:00:00Z","message":{"role":"assistant","content":"Here's the test: func test() {}","usage":{"input_tokens":800,"output_tokens":400},"model":"glm-4"}}
