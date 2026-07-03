@@ -212,7 +212,7 @@ struct BurnRailIdentitySection: View {
 // subtle pulse when hovered; the wordmark uses a rounded, mixed-case treatment
 // that reads as a product name instead of a system stamp.
 
-private struct BurnRailBrandMark: View {
+struct BurnRailBrandMark: View {
     @State private var hover = false
 
     var body: some View {
@@ -651,7 +651,7 @@ private struct BurnRailSearchSuggestionsPopover: View {
     }
 }
 
-private struct ShortcutChip: View {
+struct ShortcutChip: View {
     let keys: [String]
     var body: some View {
         HStack(spacing: 2) {
@@ -1236,7 +1236,7 @@ struct BurnRailAppearanceQuickMenu: View {
     }
 }
 
-private extension AppearanceMode {
+extension AppearanceMode {
     var quickMenuLabel: String {
         switch self {
         case .system: return "System"
@@ -1246,7 +1246,7 @@ private extension AppearanceMode {
     }
 }
 
-private extension AppSkin {
+extension AppSkin {
     var quickMenuLabel: String {
         switch self {
         case .aurora: return "Aurora (dark ember)"
