@@ -162,7 +162,7 @@ def test_owner_emergency_preflight_rejects_stale_release_tag() -> None:
     with_shadow_scripts_package(run)
 
 
-def test_owner_emergency_runtime_bypass_requires_valid_attestation() -> None:
+def test_owner_emergency_preflight_always_enforces_runtime_readiness() -> None:
     preflight = load_preflight_module()
 
     def run(fake_repo: Path) -> None:
@@ -176,10 +176,9 @@ def test_owner_emergency_runtime_bypass_requires_valid_attestation() -> None:
             repo_root=fake_repo,
             legal_evidence=evidence,
             allow_owner_emergency_approval=True,
-            expected_release_tag="v1.0.9",
+            expected_release_tag="v1.0.8",
         )
-        assert "runtime-blocker" in blockers
-        assert "owner emergency approval: expected release tag mismatch: v1.0.9" in blockers
+        assert blockers == ["runtime-blocker"]
 
     with_shadow_scripts_package(run)
 
@@ -192,7 +191,7 @@ def main() -> int:
         test_legal_preflight_ignores_conflicting_scripts_package,
         test_owner_emergency_preflight_consumes_structured_attestation,
         test_owner_emergency_preflight_rejects_stale_release_tag,
-        test_owner_emergency_runtime_bypass_requires_valid_attestation,
+        test_owner_emergency_preflight_always_enforces_runtime_readiness,
     ]
     for test in tests:
         test()
