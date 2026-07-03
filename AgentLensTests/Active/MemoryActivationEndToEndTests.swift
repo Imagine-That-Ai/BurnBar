@@ -257,6 +257,67 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertEqual(memCount, 0, "nothing written while the kill switch is off")
     }
 
+    // MARK: - Gate-open leg: persisted backlog drains when consent opens after enqueue
+
+    func test_gateOpeningAfterJobEnqueued_launchesDrainForExistingBacklog() async throws {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
+        let store = ControlPlaneStore(dbQueue: queue)
+        let settings = Self.makeIsolatedSettings()
+        Self.configureLocalProvider(settings)
+        settings.memoryAutomaticExtraction = true
+        settings.memoryExtractionRemoteConfigEnabled = true
+        XCTAssertFalse(settings.memoryExtractionEnabled, "consent is still closed, so the engine must not claim yet")
+
+        let service = OpenBurnBarMemoryService(store: store)
+        let engine = MemoryExtractionEngine(
+            chatMemoryStore: store,
+            dataStore: dataStore,
+            settingsManager: settings,
+            providerAPIKeyStore: ProviderAPIKeyStore(),
+            authorityWritesGoLiveEnabled: true
+        )
+        XCTAssertNil(engine.lastPumpReport)
+
+        let threadID = "thread-gate-open"
+        let terminalID = "msg-gate-open-terminal"
+        MemoryActivationHTTPStub.responseJSON = """
+        {"memories":[{"text":"User prefers local memory extraction.","kind":"preference","confidence":0.91,"messageId":"\(terminalID)"}]}
+        """
+
+        try await dataStore.actor.conversationStore.saveChatMessage(
+            ChatMessageRecord(
+                id: terminalID,
+                role: .assistant,
+                content: "Remember that local memory extraction is preferred.",
+                timestamp: Date(timeIntervalSince1970: 1_950_000_300)
+            ),
+            threadID: threadID,
+            isTerminalAssistantCommit: true,
+            memoryService: service,
+            extractionContext: MemoryExtractionContext(
+                scope: Self.scope,
+                threadLogicalID: "\(threadID)-logical",
+                promptVersion: ChatSessionController.memoryPromptVersion
+            )
+        )
+
+        let jobIDValue = try await Self.onlyJobID(queue)
+        let jobID = try XCTUnwrap(jobIDValue)
+        let initialStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(initialStatus, .pending)
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "closed consent must not call the model")
+
+        settings.memoryConsentGranted = true
+
+        try await Self.waitForJobStatus(.succeeded, jobID: jobID, store: store)
+        let chatMemoryCount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
+        }
+        XCTAssertEqual(chatMemoryCount, 1, "opening the gate drains the already-pending backlog")
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 1, "the drain was launched by the gate-open notification")
+    }
+
     // MARK: - Gate-matrix leg (PR-D FIX #2): extraction ENABLED + authority OFF => 0 writes
     //
     // This is the regression the original headline test made UNREPRESENTABLE: it set only
@@ -406,6 +467,22 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         try await queue.read { db in
             try String.fetchOne(db, sql: "SELECT id FROM memory_extraction_jobs LIMIT 1")
         }
+    }
+
+    private static func waitForJobStatus(
+        _ expected: MemoryEventStatus,
+        jobID: String,
+        store: ControlPlaneStore,
+        timeout: TimeInterval = 3
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastStatus: MemoryEventStatus?
+        while Date() < deadline {
+            lastStatus = try await store.memoryExtractionJobStatus(id: jobID)
+            if lastStatus == expected { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("timed out waiting for job \(jobID) to reach \(expected), last status: \(String(describing: lastStatus))")
     }
 }
 
