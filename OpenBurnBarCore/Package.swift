@@ -6,7 +6,13 @@ import Foundation
 
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
-#if os(Linux)
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): this manifest is
+// host-evaluated, and this marker is an *Apple-vs-non-Apple* switch (Vendor
+// `.xcframework`s only exist for Apple). Windows joins Linux on the non-Apple
+// side: no Vendor xcframeworks, so every `has*XCFramework` flag is false and the
+// binaryTargets/products they gate are pruned exactly as on Linux. The Apple
+// `#else` branch (which probes `../Vendor/*.xcframework`) stays byte-identical.
+#if os(Linux) || os(Windows)
 let hasIrohXCFramework = false
 let hasSignalFfiIOSXCFramework = false
 let hasSignalFfiMacXCFramework = false
@@ -316,7 +322,14 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
     condition: .when(platforms: [.windows, .linux])
 )
 
-#if os(Linux)
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): the exclude/prune
+// lists below are the *non-Apple* file seam. They are **empty on Apple** (the
+// `#else` branch), so macOS/iOS compile the whole target byte-identically to the
+// pre-port baseline; populated off-Apple, they carve the Foundation(+swift-crypto)
+// Engine subset out of the UI/Vendor-coupled remainder. Windows joins Linux here
+// so the production `OpenBurnBarCore` target is pruned identically on both
+// non-Apple hosts. Host-evaluated, so `os(Windows)` is true only on a Windows host.
+#if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
     "Views",
     "CLITerminalSessionSupervisor.swift",

@@ -1,0 +1,144 @@
+name: OpenBurnBarCore Engine (Windows / MSVC)
+
+# Windows-port Phase-1 lane (PHASE1_CORE_SPLIT_PLAN.md, PR-3+): compile the
+# production `OpenBurnBarCore` target on a native `windows-latest` host, proving
+# the Linux→Windows portability seam extended in PR-3 (the `#if os(Linux) ||
+# os(Windows)` markers in `OpenBurnBarCore/Package.swift` + the non-Apple
+# `SharedModels` stubs). The manifest is host-evaluated, so on this Windows runner
+# `os(Windows)` is true and the target is pruned to the Foundation(+swift-crypto)
+# Engine subset exactly as it is on Linux.
+#
+# STATUS: authored, NOT yet auto-executed. Per the plan, the Windows lane is a
+# required PR gate only from PR-5 onward; until then this runs on `workflow_dispatch`
+# (and, once merged to the default branch, on the paths below). The dev host has
+# already proven Swift 6.3.2 compiles the Engine SUBSET on x86_64-unknown-windows-msvc
+# (spike/core-engine-split, exit 0); this lane brings that under CI for the
+# PRODUCTION target. The toolchain download URL + install paths follow swift.org's
+# documented Windows layout and should be confirmed on the first real Windows run
+# (billing/runner enablement is the open toggle, mirroring build-iroh-windows.yml).
+
+permissions:
+  contents: read
+
+on:
+  # Primary entry point until the lane becomes a required gate (PR-5).
+  workflow_dispatch:
+  # Wired so it becomes a real gate once this file is on the default branch.
+  push:
+    branches: [main]
+    paths:
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Package.resolved"
+      - ".github/workflows/openburnbar-engine-windows.yml"
+  pull_request:
+    paths:
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Package.resolved"
+      - ".github/workflows/openburnbar-engine-windows.yml"
+
+concurrency:
+  group: openburnbar-engine-windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Swift toolchain proven on the dev host for the Windows Engine compile.
+  SWIFT_VERSION: "6.3.2"
+  # Per-machine swift.org install root (the installer lays down
+  # `Platforms\<ver>\Windows.platform\...` and `Toolchains\<ver>+Asserts\usr\bin`).
+  SWIFT_ROOT: "C:\\Program Files\\Swift"
+
+jobs:
+  build:
+    name: swift build --target OpenBurnBarCore (x86_64-unknown-windows-msvc)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      # Python 3.10 — part of the documented Windows toolchain recipe
+      # (PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe"); also backs SwiftPM's
+      # plugin/lldb tooling on Windows.
+      - name: Install Python 3.10
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.10"
+
+      # windows-latest ships VS 2022 with the VC toolset + Windows SDK. Import the
+      # x64 developer environment (vcvars64) into $GITHUB_ENV so the Swift driver's
+      # clang/link find MSVC, the CRT, and the Windows SDK headers/libs. This is the
+      # "VS 2022 BuildTools (VCTools) + VCRedist" half of the recipe, satisfied by
+      # the preinstalled toolset rather than a fresh winget install (faster + pinned
+      # to the image). If a future runner image drops VCTools, add:
+      #   winget install --id Microsoft.VisualStudio.2022.BuildTools --override `
+      #     "--quiet --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+      #      --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
+      - name: Activate MSVC x64 developer environment
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $vsPath) { throw "VS 2022 with VC Tools (x86.x64) not found on the runner image." }
+          $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
+          Write-Host "Importing developer environment from: $vcvars"
+          cmd /c "`"$vcvars`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              "$($matches[1])=$($matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+
+      # Install the swift.org Windows toolchain. URL follows swift.org's documented
+      # release layout; pinned by $SWIFT_VERSION. Confirm the exact artifact on the
+      # first real Windows run (see STATUS note at the top of this file).
+      - name: Install Swift ${{ env.SWIFT_VERSION }} Windows toolchain
+        run: |
+          $ver = "${env:SWIFT_VERSION}"
+          $url = "https://download.swift.org/swift-$ver-release/windows10/swift-$ver-RELEASE/swift-$ver-RELEASE-windows10.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "swift-$ver-windows10.exe"
+          Write-Host "Downloading Swift toolchain: $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Installing (passive)…"
+          $p = Start-Process -FilePath $installer -ArgumentList "/passive","/norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+            throw "Swift installer exited with code $($p.ExitCode)."
+          }
+
+      # Set SDKROOT to the Windows.sdk and put the toolchain + runtime on PATH
+      # (recipe: PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe").
+      - name: Export SDKROOT + toolchain PATH
+        run: |
+          $ver = "${env:SWIFT_VERSION}"
+          $root = "${env:SWIFT_ROOT}"
+          $sdkRoot = Join-Path $root "Platforms\$ver\Windows.platform\Developer\SDKs\Windows.sdk"
+          if (-not (Test-Path $sdkRoot)) {
+            throw "Expected Windows.sdk at $sdkRoot — confirm the installed toolchain layout."
+          }
+          "SDKROOT=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $toolchainBin = Join-Path $root "Toolchains\$ver+Asserts\usr\bin"
+          $runtimeBin   = Join-Path $root "Runtimes\$ver\usr\bin"
+          foreach ($p in @($toolchainBin, $runtimeBin)) {
+            if (Test-Path $p) { $p | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
+          }
+          Write-Host "SDKROOT=$sdkRoot"
+
+      - name: Print Swift version
+        run: swift --version
+
+      # The seam under test: build ONLY the production OpenBurnBarCore target. On
+      # this Windows host the manifest prunes to the Engine subset (Views/ + the
+      # UI/Vendor-coupled remnants excluded; swift-crypto substitutes CryptoKit via
+      # Platform/PlatformSupport.swift's canImport(CryptoKit) shim). Dependency
+      # resolution over the whole package (GRDB path pkg, swift-testing, swift-crypto,
+      # optional LibSignal) must also succeed off-Apple — tracked as a Windows-CI
+      # verification item; scope-building the single target keeps the compile narrow.
+      - name: swift build --target OpenBurnBarCore
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
