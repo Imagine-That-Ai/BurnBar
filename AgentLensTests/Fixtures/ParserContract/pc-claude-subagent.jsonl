@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2025-03-15T00:55:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Research async/await patterns."}]}}
+{"type":"assistant","timestamp":"2025-03-15T00:55:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll research this using a subagent."},{"type":"text","text":"[Spawning subagent for research]"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":150}}}

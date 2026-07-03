@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2025-07-01T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Hello, help me write a function that adds two numbers."}]}}
+{"type":"assistant","timestamp":"2025-07-01T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"Here's a simple Swift function:"},{"type":"text","text":"func add(_ a: Int, _ b: Int) -> Int { a + b }"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"model":"claude-sonnet-4-20250514"}}
