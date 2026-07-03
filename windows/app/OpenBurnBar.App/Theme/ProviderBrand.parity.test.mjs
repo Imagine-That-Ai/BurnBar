@@ -68,7 +68,11 @@ function region(src, startAnchor, endAnchor) {
 /** Parse Swift `case .a, .b: return <expr>` arms → { csMember: HEX }. */
 function swiftArms(block, caseMap) {
   const arms = {};
-  const re = /case\s+((?:\.\w+\s*,?\s*)+):\s*return\s+([^\n/]+)/g;
+  // Separators between labels are a single `[\s,]*` class (not the ambiguous
+  // `\s*,?\s*`) so the group has no overlapping quantifiers — avoids the
+  // js/redos exponential-backtracking CodeQL alert. Labels are re-extracted
+  // below via matchAll, so collapsing the separator is semantically identical.
+  const re = /case\s+((?:\.\w+[\s,]*)+):\s*return\s+([^\n/]+)/g;
   let m;
   while ((m = re.exec(block))) {
     const labels = [...m[1].matchAll(/\.(\w+)/g)].map((x) => x[1]);
