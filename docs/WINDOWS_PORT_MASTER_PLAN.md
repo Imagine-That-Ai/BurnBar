@@ -775,6 +775,12 @@ certification), gates G0–G5 between each.
 
 ## 15. Open decisions for Alberto
 
+> **Resolved 2026-07-02** (see [`WINDOWS_PORT_MISSION_BRIEF.md`](WINDOWS_PORT_MISSION_BRIEF.md)): **#1 = spike-first**
+> (bind Option A/B at G0; don't touch the production Core until then); **#6 = full cloud via the TPM-attestation App
+> Check backend** (not local-only); **build environment = hosted Windows CI + macOS prep + one user-provided Windows
+> dev host**. #2 (WinUI 3), #3 (direct+winget primary), #4 (Pet in v1), #5 (ViGEm v1 / driver v1.1) stand at their
+> recommendations. The list below is retained for rationale.
+
 1. **Engine stack bias** — proceed with **Option A** (Swift-on-Windows core reuse) as the Phase-0 primary + Option B
    fallback, or start from **Option B/C**? *(Rec: A-primary, decided by G0 evidence.)*
 2. **UI framework** — **WinUI 3** (best Windows citizen, no Linux path) vs. **Avalonia** (future Linux, weaker glass)?
