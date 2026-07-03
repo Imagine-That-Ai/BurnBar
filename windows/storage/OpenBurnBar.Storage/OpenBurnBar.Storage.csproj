@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows storage layer for the OpenBurnBar port (R2 — the crown-jewel DB
+    kill-risk). This is the REAL un-pruned database seam: off-Apple the macOS
+    build prunes GRDB/storage (OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD), so the
+    Windows side owns opening the *same* Mac-produced SQLCipher file. It does so
+    through SQLCipher's C library (SQLitePCLRaw.bundle_e_sqlcipher) behind the
+    ADO.NET provider (Microsoft.Data.Sqlite.Core) — the master plan's sanctioned
+    "raw-SQLCipher-C + a thin data layer reproducing the exact pinned config"
+    fallback (docs/WINDOWS_PORT_MASTER_PLAN.md R2, lines 517 / 725), realized as
+    managed code.
+
+    It targets plain net10.0 (no Windows TFM, zero P/Invoke, zero OS calls) on
+    purpose — the SAME managed assembly that ships on Windows is unit-tested on
+    the macOS authoring host today (the native SQLCipher comes from the bundle
+    per-RID: win-x64/win-arm64 on Windows, osx-arm64 here). This mirrors the
+    already-proven OpenBurnBar.Pal.Ipc portable-core pattern (VAL-P0-CONPTY-018).
+
+    Contract: VAL-P0-DB-010 (open the committed Mac fixture; reproduce the
+    schema hash + FTS5 bm25()/snippet() vector). Decision:
+    decisions/sqlcipher-params.md · Fixtures: AgentLensTests/Fixtures/DBByteCompat.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Storage</RootNamespace>
+    <AssemblyName>OpenBurnBar.Storage</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Microsoft.Data.Sqlite.Core (provider only, NO bundled native) +
+      SQLitePCLRaw.bundle_e_sqlcipher (the open-source SQLCipher 4.x amalgamation
+      per-RID). This exact pairing is what opened the Mac DB on the Windows dev
+      host (HANDOFF.md §1). .Core (not the full Microsoft.Data.Sqlite) is required
+      so the SQLCipher bundle is the sole native provider — the full package would
+      pull the non-cipher bundle_e_sqlite3 and PRAGMA key would be a silent no-op.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
+  </ItemGroup>
+
+</Project>

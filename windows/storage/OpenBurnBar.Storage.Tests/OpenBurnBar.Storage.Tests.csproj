@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Byte-compat proof for the Windows storage layer (VAL-P0-DB-010, the R2
+    crown-jewel kill-risk). Opens the COMMITTED Mac-produced SQLCipher fixture
+    (AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher) with
+    the pinned compatibility-4 cipher profile + the non-secret fixture key, then
+    reproduces the committed schema hash + FTS5 bm25()/snippet() vector.
+
+    Runs on the macOS authoring host today via `dotnet test`: the SAME managed
+    assembly ships on Windows; the native SQLCipher comes from
+    bundle_e_sqlcipher per-RID (osx-arm64 here, win-x64/win-arm64 on Windows CI).
+    This mirrors the already-proven OpenBurnBar.Pal.Ipc.Tests pattern.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+</Project>
