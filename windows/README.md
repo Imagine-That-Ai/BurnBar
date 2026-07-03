@@ -14,13 +14,13 @@ builds, lints, and ratchets. No product code lives here yet.
 | Path | Contents | Workstream |
 |------|----------|------------|
 | [`OpenBurnBar.sln`](OpenBurnBar.sln) | The aggregating Visual Studio solution. Now registers the WinUI shell spike (`app/OpenBurnBar.App`, **WINUI-016**); the PAL, native shim, and test projects register into it as they land. | W10 |
-| [`app/`](app/) | The **WinUI 3 (C#/.NET) shell** — tray flyout, main window, Mica/Acrylic glass, design-token theme, Pretext host. | W6 |
+| [`app/`](app/) | The **WinUI 3 (C#/.NET) shell** — tray flyout, main window, Mica/Acrylic glass, design-token theme, Pretext host. Also hosts `app/OpenBurnBar.App.Presentation` (a **portable net8.0 view-model layer**, no WinUI) with the SessionLogs + Memory view-models, ported record types, grouping passes, and transcript parser; the WinUI views under `app/OpenBurnBar.App/SessionLogs/` + `.../Memory/` render it. | W6–W7 |
 | [`pal/`](pal/) | The **Platform Abstraction Layer** — FS paths, secret store (CNG/TPM + DPAPI), process/ConPTY, named-pipe IPC, toasts, tray, watchers, autolaunch, hotkey, single-instance, mDNS/Bonjour, self-signature check. | W1 |
 | [`native/`](native/) | The **native shim** — the C-ABI / FFI bridge that surfaces the Rust crates (`crates/openburnbar-iroh`, `crates/burnbar-remote`) and the DB/crypto engine to the managed shell. | W2 |
-| [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read + write DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. | W2 |
+| [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read + write DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. Includes `storage/OpenBurnBar.Storage.SessionLogs`, the net10.0 adapter mapping the read seam onto the presentation `ISessionLogReadSource` for the SessionLogs surface. | W2–W7 |
 | [`particles/`](particles/) | The **Win2D particle-engine renderer** — the platform-agnostic swarm/substrate engine library (`OpenBurnBar.Particles`: substrate math, frame model, FFI spec) + a headless perf harness. The WinUI-facing host lives in `app/OpenBurnBar.App/Particles/`. | W6 |
 | [`pretext/`](pretext/) | The **Pretext text-layout engine** — the managed `OpenBurnBar.Pretext` engine + JS bridge that drive an offscreen WebView2 host for text metrics, with a Mac-golden metric-parity harness. The WinUI host lives in `app/OpenBurnBar.App/Pretext/`. | W6 |
-| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. | W11 |
+| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. Includes `tests/presentation` (net10.0, xUnit) — the macOS-runnable proof of the SessionLogs + Memory view-models: the inbox model, grouping/filter, transcript parser, and an end-to-end SessionLogs read through the SQLCipher adapter against the committed byte-compat fixture. | W7, W11 |
 
 ## The aggregating solution
 

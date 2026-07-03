@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SessionLogs read adapter: bridges the SQLCipher DataStore read seam
+    (OpenBurnBar.Storage.IConversationReadStore, VAL-P0-DB-010) to the
+    dependency-free presentation seam (OpenBurnBar.App.Presentation
+    ISessionLogReadSource) that the WinUI list-detail view-model consumes.
+
+    Why a separate project: the storage layer targets net10.0 (SQLCipher/ADO.NET),
+    while the presentation layer targets net8.0 so the net8.0-windows WinUI app can
+    reference it. This adapter (net10.0) references BOTH — a lower-TFM library is
+    consumable by a higher-TFM one — and has ZERO WinUI dependency, so it builds and
+    is exercised on the macOS authoring host today (StorageSessionLogReadSourceTests
+    reads the committed Mac fixture through it end-to-end).
+
+    App wiring note: the net8.0-windows app cannot reference this net10.0 adapter
+    directly; the app↔storage TFM reconciliation is owned by the shell-integration
+    lane (#1203). Until then the app binds the view-model to a sample source; this
+    project proves the real storage→presentation mapping independently.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Storage.SessionLogs</RootNamespace>
+    <AssemblyName>OpenBurnBar.Storage.SessionLogs</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>
