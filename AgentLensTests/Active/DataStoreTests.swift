@@ -5,6 +5,13 @@ import GRDB
 @MainActor
 final class DataStoreTests: XCTestCase {
 
+    func test_parseDateValue_acceptsSqliteSecondsPrecisionDates() {
+        let parsed = OpenBurnBarDatabase.parseDateValue("2026-07-03 02:48:41")
+
+        XCTAssertNotNil(parsed)
+        XCTAssertEqual(OpenBurnBarDatabase.sqliteDateString(parsed!), "2026-07-03 02:48:41.000")
+    }
+
     func test_unmigratedStoreDoesNotAutoRefreshOnInit() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: false)

@@ -255,8 +255,9 @@ final class SettingsManager {
         // "computer_use_audit_export_allowed": NSNumber(value: true),
         "media_kill_switch": NSNumber(value: true),
         // Memory extraction fleet kill switch. Default true (extraction allowed);
-        // Remote Config sets false to halt extraction instantly. A fetch error
-        // fail-closes the gate (see refreshComputerUseRemoteConfigOnce).
+        // Remote Config sets false to halt extraction instantly. Fetch transport
+        // errors preserve the previous value so opted-in local extraction is not
+        // stranded by an unreachable config service.
         "memory_extraction_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
@@ -294,9 +295,11 @@ final class SettingsManager {
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             mediaKillSwitch = true
-            memoryExtractionRemoteConfigEnabled = false
+            // Preserve the current memory fleet value on transport failures. An
+            // explicit fetched `memory_extraction_enabled=false` still kills the
+            // feature below, but a transient Firebase outage must not silently
+            // strand opted-in local-only extraction backlogs.
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
-            NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
             return
         }
 
@@ -748,7 +751,8 @@ final class SettingsManager {
     }
 
     /// Remote Config `memory_extraction_enabled`. Not user-settable; written by
-    /// the RC refresh. Fail-closed (false) on fetch error or fleet kill.
+    /// successful RC refreshes. Explicit fleet kills set this false; fetch
+    /// transport errors preserve the prior value.
     var memoryExtractionRemoteConfigEnabled: Bool {
         get { memory.remoteConfigExtractionEnabled }
         set { memory.remoteConfigExtractionEnabled = newValue }

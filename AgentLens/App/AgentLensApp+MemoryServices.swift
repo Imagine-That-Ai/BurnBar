@@ -121,11 +121,13 @@ extension OpenBurnBarRuntimeContext {
     /// Stash the constructed memory services on the context in one call, so the
     /// app-startup site does not grow line-by-line per field (`AgentLensApp.swift`
     /// is at its debt-gate baseline). Sets the shared store, the drain engine, and
-    /// the PR-E2 cloud-sync domain. Flips nothing on — the engine + domain stay
-    /// dormant until their own gates allow.
+    /// the PR-E2 cloud-sync domain, then kicks the local backlog. The engine re-reads
+    /// the combined gate before doing work, so this flips nothing on when memory is
+    /// disabled.
     func applyMemoryServices(_ services: OpenBurnBarApp.MemoryServices) {
         chatMemoryStore = services.store
         memoryExtractionEngine = services.engine
         memoryCloudSyncDomain = services.cloudSyncDomain
+        services.engine.launchDrain()
     }
 }
