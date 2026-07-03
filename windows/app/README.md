@@ -25,3 +25,20 @@ The **only** stub is `StubCliStream` (a canned, timed transcript); WINUI-017 / W
 ConPTY-backed source behind the same `ICliStream` seam. See the runbook for exact build/run/record steps.
 
 Source files here (`.cs` / `.xaml`) are ratcheted by the per-tree budget under the `app` area.
+
+### `OpenBurnBar.App.Settings/` + `OpenBurnBar.App/Settings/` — Settings shell + search (W7)
+
+The **Settings** surface, split into a portable core and its WinUI face — the Windows peer of
+`AgentLens/Views/Settings/` (`SettingsView` / `SettingsTab` + `Search/{SettingsManifest,SettingsRouter,`
+`SettingsSearchEngine,SettingsItem,SettingsSearchResultsView}`).
+
+| Piece | Where | macOS analog |
+|------|-------|--------------|
+| **Portable search core** — `net8.0`, no Windows deps: manifest (104 rows), weighted ranking engine, router path logic, route-display breadcrumbs, provider identity subset | `OpenBurnBar.App.Settings/` | `Search/*.swift` + `AgentProvider` |
+| **Real unit tests** — 75 xUnit tests run on macOS via `dotnet test` | [`../tests/settings/`](../tests/settings/) | search/manifest/router coverage |
+| **WinUI shell + leaf pages** — `NavigationView` sidebar + `AutoSuggestBox` search + `SettingsCard`/`SettingsExpander` forms (General, Appearance, Updates) with real jump-to-anchor scroll+pulse | `OpenBurnBar.App/Settings/` | `SettingsView` sidebar/detail |
+
+The portable core (`OpenBurnBar.App.Settings`, referenced by the app and by the test project) **builds
+and is unit-tested on the macOS authoring host today**. The WinUI XAML that binds it is
+XamlCompiler-deferred (same gate as WINUI-016). The `NavigationView` app-shell that will host
+`SettingsPage` as a nav destination is reconciled by the shell lane (#1203).
