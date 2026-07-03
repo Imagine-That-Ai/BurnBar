@@ -387,6 +387,17 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.junie.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "junie",
+                arguments: CLIArgumentBuilder.junieArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.forge.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "forge",

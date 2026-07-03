@@ -218,8 +218,10 @@ enum CLIArgumentBuilder {
             arguments.append(contentsOf: ["--model", trimmedModel])
         }
         _ = workspaceDirectory
-        _ = capabilityGrant
-        arguments.append(contentsOf: ["--task", sanitizedPrompt(prompt)])
+        arguments.append(contentsOf: [
+            "--task",
+            juniePrompt(prompt, capabilityGrant: capabilityGrant)
+        ])
         return arguments
     }
 
@@ -249,9 +251,40 @@ enum CLIArgumentBuilder {
             return sanitizedPrompt("""
             \(prompt)
 
+            OpenBurnBar remote safety: answer in read-only mode. Do not edit files and do not execute shell commands unless the user grants
+            those capabilities in this thread.
+            """)
+        }
+        let capabilities = capabilityGrant?.capabilities ?? []
+        var constraints: [String] = []
+        if !capabilities.contains(.workspaceWrite) {
+            constraints.append("Do not edit files.")
+        }
+        if !capabilities.contains(.shell) {
+            constraints.append("Do not execute shell commands.")
+        }
+        guard !constraints.isEmpty else {
+            return sanitizedPrompt(prompt)
+        }
+        return sanitizedPrompt("""
+        \(prompt)
+
+        OpenBurnBar remote safety: \(constraints.joined(separator: " "))
+        """)
+    }
+
+    private static func juniePrompt(
+        _ prompt: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> String {
+        guard capabilityGrant?.isActive() == true else {
+            return sanitizedPrompt("""
+            \(prompt)
+
             OpenBurnBar remote safety: answer in read-only mode. Do not edit files and do not execute shell commands unless the user grants those capabilities in this thread.
             """)
         }
+
         let capabilities = capabilityGrant?.capabilities ?? []
         var constraints: [String] = []
         if !capabilities.contains(.workspaceWrite) {

@@ -785,9 +785,10 @@ private struct APIKeyEntrySheet: View {
 private extension APIKeyEntrySheet {
     var cliTypes: [SwitcherCLIProfileType] {
         var types: [SwitcherCLIProfileType] = []
-        types.reserveCapacity(3)
+        types.reserveCapacity(4)
         types.append(.codex)
         types.append(.claude)
+        types.append(.junie)
         types.append(.opencode)
         return types
     }
