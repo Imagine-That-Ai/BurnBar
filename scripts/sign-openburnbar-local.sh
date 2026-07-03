@@ -73,11 +73,59 @@ PY
 
 sign_path() {
   local path="$1"
+  local options="${2:-runtime}"
+  local identifier="${3:-}"
+  local preserve_metadata="${4:-}"
   [[ -e "$path" ]] || return 0
-  /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$path"
+  local args=(--force --sign "$IDENTITY" --timestamp=none)
+  if [[ -n "$options" ]]; then
+    args+=(--options "$options")
+  fi
+  if [[ -n "$identifier" ]]; then
+    args+=(--identifier "$identifier")
+  fi
+  if [[ -n "$preserve_metadata" ]]; then
+    args+=(--preserve-metadata="$preserve_metadata")
+  fi
+  /usr/bin/codesign "${args[@]}" "$path"
 }
 
-sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon"
+assert_peer_signature() {
+  local path="$1"
+  local expected_identifier="$2"
+  local signature
+
+  [[ -e "$path" ]] || return 0
+  signature="$(/usr/bin/codesign -d -vvv "$path" 2>&1)"
+  if ! grep -q "Identifier=$expected_identifier" <<<"$signature"; then
+    echo "ERROR: $path is signed with the wrong identifier; expected $expected_identifier." >&2
+    printf '%s\n' "$signature" >&2
+    exit 1
+  fi
+  if ! grep -q "flags=.*runtime" <<<"$signature" || ! grep -q "flags=.*library-validation" <<<"$signature"; then
+    echo "ERROR: $path must be signed with hardened runtime and library validation for privileged socket policy." >&2
+    printf '%s\n' "$signature" >&2
+    exit 1
+  fi
+}
+
+sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
+sign_path \
+  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \
+  "runtime,library" \
+  "com.openburnbar.privileged-input-execution" \
+  "entitlements"
+sign_path \
+  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarVirtualHIDBridge" \
+  "runtime,library" \
+  "com.openburnbar.virtual-hid-bridge" \
+  "entitlements"
+sign_path \
+  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
+  "runtime,library" \
+  "com.openburnbar.privileged-input-killswitch-watchdog" \
+  "entitlements"
 sign_path "$APP_BUNDLE/Contents/Helpers/libOpenBurnBarCore.dylib"
 sign_path "$APP_BUNDLE/Contents/Frameworks/OpenBurnBarCore.framework"
 
@@ -88,22 +136,33 @@ if [[ -d "$APP_BUNDLE/Contents/Frameworks" ]]; then
 fi
 
 if [[ "${OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS:-0}" == "1" ]]; then
-  /usr/bin/codesign \
-    --force \
-    --sign "$IDENTITY" \
-    --timestamp=none \
-    --generate-entitlement-der \
-    --preserve-metadata=entitlements,requirements,flags \
-    "$APP_BUNDLE"
+	  /usr/bin/codesign \
+	    --force \
+	    --sign "$IDENTITY" \
+	    --timestamp=none \
+	    --generate-entitlement-der \
+	    --options runtime,library \
+	    --preserve-metadata=entitlements,requirements \
+	    "$APP_BUNDLE"
 else
-  /usr/bin/codesign \
-    --force \
-    --sign "$IDENTITY" \
-    --timestamp=none \
-    --options runtime \
-    --entitlements "$TEMP_ENTITLEMENTS" \
-    "$APP_BUNDLE"
+	  /usr/bin/codesign \
+	    --force \
+	    --sign "$IDENTITY" \
+	    --timestamp=none \
+	    --options runtime,library \
+	    --entitlements "$TEMP_ENTITLEMENTS" \
+	    "$APP_BUNDLE"
 fi
 
 /usr/bin/codesign --verify --strict --verbose=2 "$APP_BUNDLE"
+assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"
+assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"
+assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"
+assert_peer_signature \
+  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \
+  "com.openburnbar.privileged-input-execution"
+assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
+assert_peer_signature \
+  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
+  "com.openburnbar.privileged-input-killswitch-watchdog"
 echo "Signed $APP_BUNDLE with $IDENTITY (team $TEAM_ID, bundle $BUNDLE_ID)."

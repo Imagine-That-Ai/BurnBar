@@ -159,7 +159,7 @@ public enum HermesRatchetCrypto {
         let localPrivateKey = try privateKey(from: localInitialRatchetKeyPair.privateKeyBase64)
         let remotePublicKey = try publicKey(from: remoteInitialRatchetPublicKeyBase64)
         let dhOutput = try sharedSecretBytes(privateKey: localPrivateKey, publicKey: remotePublicKey)
-        let derived = rootKDF(rootKey: sharedSecret, dhOutput: dhOutput)
+        let derived = try rootKDF(rootKey: sharedSecret, dhOutput: dhOutput)
         return HermesRatchetSessionState(
             role: .initiator,
             sessionID: sessionID,
@@ -203,7 +203,7 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.missingSendingChain
         }
         let sendingChainKey = try symmetricKeyData(fromBase64: sendingChainKeyBase64, label: "sendingChainKey")
-        let derived = chainKDF(chainKey: sendingChainKey)
+        let derived = try chainKDF(chainKey: sendingChainKey)
         let privateKey = try privateKey(from: state.sendingRatchetPrivateKeyBase64)
         let header = HermesRatchetHeader(
             sessionID: state.sessionID,
@@ -259,7 +259,7 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.missingReceivingChain
         }
         let receivingChainKey = try symmetricKeyData(fromBase64: receivingChainKeyBase64, label: "receivingChainKey")
-        let derived = chainKDF(chainKey: receivingChainKey)
+        let derived = try chainKDF(chainKey: receivingChainKey)
         let plaintext = try open(envelope, messageKey: derived.messageKey, associatedData: associatedData)
         state.receivingChainKeyBase64 = derived.chainKey.base64EncodedString()
         state.receiveMessageNumber += 1
@@ -273,12 +273,12 @@ public enum HermesRatchetCrypto {
         let currentPrivateKey = try privateKey(from: state.sendingRatchetPrivateKeyBase64)
         let remotePublicKey = try publicKey(from: remoteRatchetPublicKeyBase64)
         let rootKey = try symmetricKeyData(fromBase64: state.rootKeyBase64, label: "rootKey")
-        let receiveDerived = rootKDF(
+        let receiveDerived = try rootKDF(
             rootKey: rootKey,
             dhOutput: try sharedSecretBytes(privateKey: currentPrivateKey, publicKey: remotePublicKey)
         )
         let nextPrivateKey = PlatformCrypto.p256KeyAgreementPrivateKey()
-        let sendDerived = rootKDF(
+        let sendDerived = try rootKDF(
             rootKey: receiveDerived.rootKey,
             dhOutput: try sharedSecretBytes(privateKey: nextPrivateKey, publicKey: remotePublicKey)
         )
@@ -309,7 +309,7 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.missingReceivingChain
         }
         while state.receiveMessageNumber < messageNumber {
-            let derived = chainKDF(chainKey: receivingChainKey)
+            let derived = try chainKDF(chainKey: receivingChainKey)
             let key = skippedKeyID(
                 ratchetPublicKeyBase64: remoteRatchetPublicKeyBase64,
                 messageNumber: state.receiveMessageNumber
@@ -357,8 +357,8 @@ public enum HermesRatchetCrypto {
         _ = try publicKey(from: header.ratchetPublicKeyBase64)
     }
 
-    private static func rootKDF(rootKey: Data, dhOutput: Data) -> (rootKey: Data, chainKey: Data) {
-        let data = try! PlatformCrypto.deriveHKDFSHA256KeyData(
+    private static func rootKDF(rootKey: Data, dhOutput: Data) throws -> (rootKey: Data, chainKey: Data) {
+        let data = try PlatformCrypto.deriveHKDFSHA256KeyData(
             inputKeyMaterial: dhOutput,
             salt: rootKey,
             info: Data("OpenBurnBar-HermesRatchet-v1-root".utf8),
@@ -367,9 +367,9 @@ public enum HermesRatchetCrypto {
         return (Data(data.prefix(32)), Data(data.suffix(32)))
     }
 
-    private static func chainKDF(chainKey: Data) -> (chainKey: Data, messageKey: Data) {
-        let next = try! PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-chain".utf8), keyData: chainKey)
-        let message = try! PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-message".utf8), keyData: chainKey)
+    private static func chainKDF(chainKey: Data) throws -> (chainKey: Data, messageKey: Data) {
+        let next = try PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-chain".utf8), keyData: chainKey)
+        let message = try PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-message".utf8), keyData: chainKey)
         return (next, message)
     }
 
