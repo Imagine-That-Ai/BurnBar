@@ -428,6 +428,10 @@ final class WindowManager: ObservableObject {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         if let window = dashboardWindow {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.orderFrontRegardless()
             window.makeKeyAndOrderFront(nil)
             return
         }
@@ -894,13 +898,6 @@ private final class DashboardWindowLifecycleDelegate: NSObject, NSWindowDelegate
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         return false
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        guard window.isVisible, window.attachedSheet == nil, NSApp.modalWindow == nil else { return }
-
-        window.orderOut(nil)
     }
 }
 

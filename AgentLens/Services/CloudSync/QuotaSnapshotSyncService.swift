@@ -62,30 +62,32 @@ final class ProviderAccountSyncService: Sendable {
             "isDefault": account.isDefault,
             "sortKey": account.sortKey,
             "schemaVersion": account.schemaVersion,
-            "createdAt": Timestamp(date: account.createdAt),
-            "updatedAt": Timestamp(date: account.updatedAt),
-            "syncedAt": FieldValue.serverTimestamp()
+            "createdAt": iso8601String(account.createdAt),
+            "updatedAt": iso8601String(account.updatedAt)
         ]
         if let identityHint = account.identityHint {
             result["identityHint"] = identityHint
         }
         if let sourceDeviceID = account.sourceDeviceID ?? fallbackSourceDeviceID(for: account, deviceId: deviceId) {
             result["sourceDeviceID"] = sourceDeviceID
-            result["deviceId"] = sourceDeviceID
         }
         if let linkedSwitcherProfileID = account.linkedSwitcherProfileID {
             result["linkedSwitcherProfileID"] = linkedSwitcherProfileID
         }
         if let lastValidatedAt = account.lastValidatedAt {
-            result["lastValidatedAt"] = Timestamp(date: lastValidatedAt)
+            result["lastValidatedAt"] = iso8601String(lastValidatedAt)
         }
         if let lastRefreshAt = account.lastRefreshAt {
-            result["lastRefreshAt"] = Timestamp(date: lastRefreshAt)
+            result["lastRefreshAt"] = iso8601String(lastRefreshAt)
         }
         if let lastErrorCode = account.lastErrorCode {
             result["lastErrorCode"] = lastErrorCode
         }
         return result
+    }
+
+    private nonisolated func iso8601String(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     private func fallbackSourceDeviceID(for account: ProviderAccountDoc, deviceId: String) -> String? {

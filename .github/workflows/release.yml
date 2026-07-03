@@ -816,6 +816,7 @@ jobs:
           APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
+          export APP_PROFILE
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"

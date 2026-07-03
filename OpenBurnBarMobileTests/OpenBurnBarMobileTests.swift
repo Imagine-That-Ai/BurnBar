@@ -2935,6 +2935,26 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(snapshot.lastErrorClassification)
     }
 
+    func testLiveCloudReaderBuildsSyncStatusSnapshotFromDeviceFallback() throws {
+        let readAt = Date(timeIntervalSince1970: 1_800_000_500)
+        let macLastSeen = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let snapshot = LiveCloudReader.syncStatusSnapshot(
+            deviceID: "mac-device-id",
+            displayName: "Alberto's Mac",
+            data: nil,
+            fallbackLastSeen: macLastSeen,
+            readAt: readAt
+        )
+
+        let publishedAt = try XCTUnwrap(snapshot.lastPublishedAt)
+        let publisher = try XCTUnwrap(snapshot.publisher)
+        XCTAssertEqual(publishedAt.timeIntervalSince1970, macLastSeen.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(publisher.lastSeen.timeIntervalSince1970, macLastSeen.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(publisher.displayName, "Alberto's Mac")
+        XCTAssertNil(snapshot.lastErrorClassification)
+    }
+
     func testLiveCloudReaderCarriesSyncStatusErrorClassification() {
         let snapshot = LiveCloudReader.syncStatusSnapshot(
             deviceID: "mac-1",

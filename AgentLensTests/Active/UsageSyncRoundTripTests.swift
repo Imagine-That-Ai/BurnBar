@@ -74,6 +74,38 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
+    func test_usageSyncPublishesDeviceHeartbeatBeforeVaultKeyFailureWithoutSyncStatus() async throws {
+        let throwingProvider = ThrowingConversationVaultKeyProvider(error: TestVaultError.unavailable)
+        usageSync = UsageSyncService(context: context, vaultKeyProvider: throwingProvider)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "session-vault-failure",
+            projectName: "TestProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try await dataStore.insert(usage)
+
+        await usageSync.sync()
+
+        let deviceDoc = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/devices/test-device-1"))
+        XCTAssertEqual(deviceDoc["deviceId"] as? String, "test-device-1")
+        XCTAssertEqual(deviceDoc["platform"] as? String, "macOS")
+        XCTAssertNotNil(deviceDoc["lastSeenAt"] as? Timestamp)
+
+        XCTAssertNil(
+            fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"),
+            "sync_status must not claim usage is synced before the upload path succeeds"
+        )
+
+        XCTAssertEqual(throwingProvider.callCount, 1)
+        let unsyncedAfter = try await dataStore.fetchUnsynced()
+        XCTAssertEqual(unsyncedAfter.count, 1)
+    }
+
     // MARK: - Project-name sealing
 
     func test_usageUpload_sealsProjectName_andWritesNoPlaintext() async throws {
@@ -204,6 +236,11 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(docData["label"] as? String, "Work")
         XCTAssertEqual(docData["storageScope"] as? String, ProviderAccountStorageScope.deviceKeychain.rawValue)
         XCTAssertEqual(docData["sourceDeviceID"] as? String, "test-device-1")
+        XCTAssertEqual(docData["createdAt"] as? String, ISO8601DateFormatter().string(from: now))
+        XCTAssertEqual(docData["updatedAt"] as? String, ISO8601DateFormatter().string(from: now))
+        XCTAssertEqual(docData["lastRefreshAt"] as? String, ISO8601DateFormatter().string(from: now))
+        XCTAssertNil(docData["deviceId"])
+        XCTAssertNil(docData["syncedAt"])
         XCTAssertNil(docData["apiKey"])
         XCTAssertNil(docData["secretVersionName"])
         XCTAssertFalse(docData.keys.contains("credential"))
@@ -212,6 +249,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
     func test_providerAccountDownload_importsRemoteAccountMetadataWithoutCredentialFields() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let encodedNow = ISO8601DateFormatter().string(from: now)
         fakeGateway.setDocumentData([
             "id": "openai-personal",
             "providerID": "openai",
@@ -225,9 +263,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
             "isDefault": true,
             "sortKey": 0,
             "schemaVersion": 1,
-            "createdAt": Timestamp(date: now),
-            "updatedAt": Timestamp(date: now),
-            "lastRefreshAt": Timestamp(date: now),
+            "createdAt": encodedNow,
+            "updatedAt": encodedNow,
+            "lastValidatedAt": encodedNow,
+            "lastRefreshAt": encodedNow,
             // Plaintext-shaped fields the cloud-sync layer must drop on
             // ingestion. Values are placeholders only; assertions check
             // that the keys are nil after sync, not the values themselves.
@@ -246,6 +285,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(account.sourceDeviceID, "iphone-1")
         XCTAssertTrue(account.isDefault)
         XCTAssertEqual(account.redactedLabel, "sk-...abcd")
+        XCTAssertEqual(account.createdAt, now)
+        XCTAssertEqual(account.updatedAt, now)
+        XCTAssertEqual(account.lastValidatedAt, now)
+        XCTAssertEqual(account.lastRefreshAt, now)
     }
 
     func test_quotaSnapshotUpload_writesDisplayableMacQuotaForMobile() async throws {
@@ -823,5 +866,31 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private func readMirrorState(from url: URL) throws -> ICloudSessionMirrorStateFile {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(ICloudSessionMirrorStateFile.self, from: data)
+    }
+}
+
+private enum TestVaultError: Error {
+    case unavailable
+}
+
+private final class ThrowingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
+    private let error: Error
+    private let lock = NSLock()
+    private var calls = 0
+
+    var callCount: Int { lock.withLock { calls } }
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey {
+        lock.withLock { calls += 1 }
+        throw error
+    }
+
+    func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey? {
+        lock.withLock { calls += 1 }
+        throw error
     }
 }
