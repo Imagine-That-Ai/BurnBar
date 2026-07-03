@@ -20,6 +20,7 @@ import { isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
+import { optionalBoundedInt, optionalUnknown, parseCallableInput } from "../validation/callableSchema.js";
 
 const MOCK_ATTESTATION_KIND = "mock" as const;
 const MOCK_ATTESTATION_DOMAIN = "openburnbar.appcheck.linux.mock.v1";
@@ -220,6 +221,13 @@ export const mintLinuxAppCheckToken = onCall(
       assertAuth(request);
       await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", uid);
 
+      const input = parseCallableInput("mintLinuxAppCheckToken", {
+        ttlMillis: { optional: true, parse: (v: unknown): number | undefined => typeof v === "number" ? v : undefined },
+      }, request.data);
+      if (request.data?.attestation === undefined) {
+        throw new HttpsError("invalid-argument", "mintLinuxAppCheckToken: attestation is required.");
+      }
+
       const config = getConfig();
       const result = await mintLinuxAppCheckTokenCore({
         claim: request.data?.attestation,
@@ -231,7 +239,7 @@ export const mintLinuxAppCheckToken = onCall(
         allowedAppIDs: config.allowedAppCheckAppIDs,
         createToken: defaultCreateToken,
         nowMillis: Date.now(),
-        ttlMillis: typeof request.data?.ttlMillis === "number" ? request.data.ttlMillis : undefined,
+        ttlMillis: typeof input.ttlMillis === "number" ? input.ttlMillis : undefined,
       });
 
       logInfo({

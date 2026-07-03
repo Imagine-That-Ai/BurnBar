@@ -35,6 +35,7 @@ import { assertAuth } from "../auth.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
+import { optionalBoundedInt, optionalUnknown, parseCallableInput } from "../validation/callableSchema.js";
 
 /** Discriminator for the Phase-0 mock attestation claim. */
 const MOCK_ATTESTATION_KIND = "mock" as const;
@@ -334,6 +335,12 @@ export const mintWindowsAppCheckToken = onCall(
       // App Check is not enforced on this bootstrap path, so bound mint abuse
       // per-uid before doing any attestation/mint work.
       await checkPublicHttpEndpointRateLimit("mintWindowsAppCheckToken", uid);
+      const input = parseCallableInput("mintWindowsAppCheckToken", {
+        ttlMillis: { optional: true, parse: (v: unknown): number | undefined => typeof v === "number" ? v : undefined },
+      }, request.data);
+      if (request.data?.attestation === undefined) {
+        throw new HttpsError("invalid-argument", "mintWindowsAppCheckToken: attestation is required.");
+      }
 
       const config = getConfig();
       const result = await mintWindowsAppCheckTokenCore({
@@ -346,7 +353,7 @@ export const mintWindowsAppCheckToken = onCall(
         allowedAppIDs: config.allowedAppCheckAppIDs,
         createToken: defaultCreateToken,
         nowMillis: Date.now(),
-        ttlMillis: typeof request.data?.ttlMillis === "number" ? request.data.ttlMillis : undefined,
+        ttlMillis: typeof input.ttlMillis === "number" ? input.ttlMillis : undefined,
       });
 
       logInfo({

@@ -15,8 +15,8 @@ final class PensieveVectorCloakTests: XCTestCase {
 
     func test_cloak_isDeterministicForKeyAndModel() {
         let v = PensieveVectorCloak.deterministicEmbed("hosted minimax encrypted search")
-        let a = PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
-        let b = PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
+        let a = try PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
+        let b = try PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
         XCTAssertEqual(a, b)
     }
 
@@ -26,8 +26,8 @@ final class PensieveVectorCloakTests: XCTestCase {
         let x = PensieveVectorCloak.deterministicEmbed("pensieve repo docs and notes")
         let y = PensieveVectorCloak.deterministicEmbed("repo documentation knowledge memory")
 
-        let qx = PensieveVectorCloak.cloak(x, vaultKey: key)
-        let qy = PensieveVectorCloak.cloak(y, vaultKey: key)
+        let qx = try PensieveVectorCloak.cloak(x, vaultKey: key)
+        let qy = try PensieveVectorCloak.cloak(y, vaultKey: key)
 
         XCTAssertEqual(norm(qx), norm(x), accuracy: 1e-9)
         XCTAssertEqual(norm(qy), norm(y), accuracy: 1e-9)
@@ -36,8 +36,8 @@ final class PensieveVectorCloakTests: XCTestCase {
 
     func test_cloak_differsByKey() {
         let v = PensieveVectorCloak.deterministicEmbed("private launch plan")
-        let a = PensieveVectorCloak.cloak(v, vaultKey: key)
-        let b = PensieveVectorCloak.cloak(v, vaultKey: otherKey)
+        let a = try PensieveVectorCloak.cloak(v, vaultKey: key)
+        let b = try PensieveVectorCloak.cloak(v, vaultKey: otherKey)
         XCTAssertNotEqual(a, b)
         // But each still preserves the norm.
         XCTAssertEqual(norm(a), norm(v), accuracy: 1e-9)

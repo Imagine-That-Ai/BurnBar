@@ -236,7 +236,7 @@ public enum PensieveKnowledgeChunker {
             let dedupHash = try CloudVaultCrypto.pensieveDedupHash(trimmed, keyData: vaultKey)
             guard seen.insert(dedupHash).inserted else { continue }
 
-            let cloaked = PensieveVectorCloak.embedAndCloak(
+            let cloaked = try PensieveVectorCloak.embedAndCloak(
                 trimmed,
                 vaultKey: vaultKey,
                 isQuery: false,

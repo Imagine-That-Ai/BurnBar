@@ -349,7 +349,7 @@ public enum HermesRelayCrypto {
         if let senderPrivateKey {
             // v2 authenticated: ikm = ECDH(eph, R) ‖ ECDH(skS, R)
             let dh2 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: senderPrivateKey.key, publicKey: recipientKey)
-            wrappingKey = authenticatedWrappingKey(
+            wrappingKey = try authenticatedWrappingKey(
                 dh1: dh1,
                 dh2: dh2,
                 enc: enc,
@@ -401,7 +401,7 @@ public enum HermesRelayCrypto {
                 throw HermesRelayCryptoError.invalidPublicKey
             }
             let dh2 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey.key, publicKey: senderKey)
-            wrappingKey = authenticatedWrappingKey(
+            wrappingKey = try authenticatedWrappingKey(
                 dh1: dh1,
                 dh2: dh2,
                 enc: Data(ephemeralPublicKeyData),
@@ -434,7 +434,7 @@ public enum HermesRelayCrypto {
         recipientPublicKey: Data,
         senderPublicKey: Data,
         aad: Data
-    ) -> PlatformSymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         var ikm = Data()
         dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
         dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
@@ -443,7 +443,7 @@ public enum HermesRelayCrypto {
         info.append(enc)
         info.append(recipientPublicKey)
         info.append(senderPublicKey)
-        return try! PlatformCrypto.deriveHKDFSHA256Key(
+        return try PlatformCrypto.deriveHKDFSHA256Key(
             inputKeyMaterial: ikm,
             salt: Data(),
             info: info,

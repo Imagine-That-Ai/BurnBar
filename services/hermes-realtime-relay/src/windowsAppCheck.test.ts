@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { authenticateRequest, type AppCheckVerifier, type IdTokenVerifier, type RelayRequest } from "./auth.js";
 import type { EntitlementVerifier } from "./entitlements.js";
+import { RelayHttpError } from "./errors.js";
 
 /**
  * VAL-P0-AC-011B — Hermes relay `allowedAppIDs` enforcement (auth.ts:58),
@@ -63,9 +64,9 @@ test("REJECTS a non-allowlisted app id (403 app_check_app_denied)", async () => 
       appCheckVerifier: appCheckReturning("1:999999999999:web:evilappid"),
     }),
     (err: unknown) => {
-      const e = err as { statusCode?: number; code?: string };
-      assert.equal(e.statusCode, 403);
-      assert.equal(e.code, "app_check_app_denied");
+      assert.ok(err instanceof RelayHttpError);
+      assert.equal(err.statusCode, 403);
+      assert.equal(err.code, "app_check_app_denied");
       return true;
     },
   );
