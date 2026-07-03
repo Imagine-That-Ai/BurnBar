@@ -193,7 +193,19 @@ final class MemoryExtractionEngine {
     /// `AutoSummaryEngine.launchAutoSummarySweep`. No-op when the gate is off.
     func launchDrain() {
         refreshKillSwitch()
-        guard settingsManager.memoryExtractionEnabled, !isExtracting else { return }
+        let gateEnabled = settingsManager.memoryExtractionEnabled
+        if !gateEnabled || isExtracting {
+            AppLogger.dataStore.notice(
+                "memory_extraction_launch_skipped",
+                metadata: diagnosticGateMetadata(gateEnabled: gateEnabled)
+                    .merging(["isExtracting": String(isExtracting)], uniquingKeysWith: { current, _ in current })
+            )
+            return
+        }
+        AppLogger.dataStore.notice(
+            "memory_extraction_launch_started",
+            metadata: diagnosticGateMetadata(gateEnabled: gateEnabled)
+        )
         Task(priority: .utility) { [weak self] in
             await self?.runDrain()
         }
@@ -213,6 +225,10 @@ final class MemoryExtractionEngine {
         guard settingsManager.memoryExtractionEnabled else {
             let report = MemoryExtractionPumpReport(stoppedReason: .killSwitchOff)
             lastPumpReport = report
+            AppLogger.dataStore.notice(
+                "memory_extraction_pump_skipped",
+                metadata: diagnosticGateMetadata(gateEnabled: false)
+            )
             return report
         }
         guard !isExtracting else {
@@ -275,6 +291,10 @@ final class MemoryExtractionEngine {
                 // Kill switch off pre-claim, admission busy, or nothing claimable.
                 report.stoppedReason = .idle
                 lastPumpReport = report
+                AppLogger.dataStore.notice(
+                    "memory_extraction_pump_finished",
+                    metadata: diagnosticReportMetadata(report)
+                )
                 return report
             }
         }
@@ -284,10 +304,40 @@ final class MemoryExtractionEngine {
             report.stoppedReason = .reachedJobCeiling
         }
         lastPumpReport = report
+        AppLogger.dataStore.notice(
+            "memory_extraction_pump_finished",
+            metadata: diagnosticReportMetadata(report)
+        )
+        scheduleContinuationIfNeeded(after: report)
         return report
     }
 
     // MARK: - Failure surfacing (errors do NOT propagate through drainNext — must-fix #3)
+
+    private func scheduleContinuationIfNeeded(after report: MemoryExtractionPumpReport) {
+        switch report.stoppedReason {
+        case .reachedJobCeiling, .reachedDeadline:
+            break
+        case .idle, .killSwitchOff, .cancelled, .transientFailure:
+            return
+        }
+        refreshKillSwitch()
+        guard settingsManager.memoryExtractionEnabled else { return }
+        AppLogger.dataStore.notice(
+            "memory_extraction_continuation_scheduled",
+            metadata: diagnosticReportMetadata(report)
+        )
+        Task(priority: .utility) { [weak self] in
+            do {
+                try await Task.sleep(
+                    nanoseconds: UInt64(MemoryExtractionPolicy.continuationDelay * 1_000_000_000)
+                )
+            } catch {
+                return
+            }
+            self?.launchDrain()
+        }
+    }
 
     /// Read the most recently failed job's status to populate `lastError`. Best-effort:
     /// a failed status read must not itself crash the pump.
@@ -306,6 +356,24 @@ final class MemoryExtractionEngine {
             error: error,
             context: [:]
         )
+    }
+
+    private func diagnosticGateMetadata(gateEnabled: Bool) -> [String: String] {
+        [
+            "gateEnabled": String(gateEnabled),
+            "consentGranted": String(settingsManager.memoryConsentGranted),
+            "automaticExtraction": String(settingsManager.memoryAutomaticExtraction),
+            "remoteConfigEnabled": String(settingsManager.memoryExtractionRemoteConfigEnabled)
+        ]
+    }
+
+    private func diagnosticReportMetadata(_ report: MemoryExtractionPumpReport) -> [String: String] {
+        [
+            "processed": String(report.processed),
+            "failed": String(report.failed),
+            "dropped": String(report.dropped),
+            "stoppedReason": String(describing: report.stoppedReason)
+        ]
     }
 
     // MARK: - Settings snapshot (local-only HARD default — must-fix #7)

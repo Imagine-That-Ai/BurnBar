@@ -1822,6 +1822,14 @@ final class OpenBurnBarDatabase: Sendable {
         return formatter
     }()
 
+    static let sqliteDateSecondsFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
+
     static func sqliteDateString(_ date: Date) -> String {
         sqliteDateFormatter.string(from: date)
     }
@@ -1854,6 +1862,7 @@ final class OpenBurnBarDatabase: Sendable {
         }
         if let string = value as? String {
             if let parsed = sqliteDateFormatter.date(from: string) { return parsed }
+            if let parsed = sqliteDateSecondsFormatter.date(from: string) { return parsed }
             return parseISO8601Date(string)
         }
         return nil

@@ -38,7 +38,8 @@ final class MemorySettings {
 
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
-    /// instantly. Fail-closed: a fetch error flips this false.
+    /// instantly. Fetch transport errors preserve extraction only when the
+    /// active cached config is not already false.
     var remoteConfigExtractionEnabled: Bool = true {
         didSet {
             propagateExtractionGate()
