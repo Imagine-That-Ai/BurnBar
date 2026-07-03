@@ -19,7 +19,6 @@ struct DashboardView: View {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var runtimeContext: OpenBurnBarRuntimeContext?
-    @State var navigationModel = DashboardNavigationModel()
     @State var consentCoordinator: DashboardConsentCoordinator?
     @State var mainRoute: DashboardMainRoute = .overview
     @State var routeHistory: [DashboardMainRoute] = []
@@ -45,11 +44,14 @@ struct DashboardView: View {
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
+    @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
     @State private var showMacWandComposer = false
-    @State private var pendingMemoryReviewCount: Int?
+    @State var pendingMemoryReviewCount: Int?
+    @State var showCommandPalette = false
+    @State var showHeroPopover = false
 
     init(
         dataStore: DataStore,
@@ -147,6 +149,35 @@ struct DashboardView: View {
         case .model(let modelName): return modelName
         }
     }
+
+    func openBurnBarCursorExtension() {
+        let id = "openburnbar.openburnbar"
+        let candidates = [
+            URL(string: "cursor:extension/\(id)"),
+            URL(string: "vscode:extension/\(id)")
+        ].compactMap { $0 }
+        for url in candidates where NSWorkspace.shared.open(url) {
+            return
+        }
+    }
+
+    #if DEBUG
+    func testTriggerNavigate(to route: DashboardMainRoute) {
+        navigate(to: route)
+    }
+
+    func testTriggerGoBack() {
+        goBack()
+    }
+
+    func testTriggerScan() {
+        Task { await aggregator?.refreshAll() }
+    }
+
+    func testTriggerRecount() {
+        Task { await aggregator?.recountAll() }
+    }
+    #endif
 
     var body: some View {
         @Bindable var chatController = chatController
@@ -261,6 +292,27 @@ struct DashboardView: View {
             .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
         }
         .toolbar { toolbarContent }
+        .background {
+            sectionShortcuts
+            commandPaletteShortcut
+        }
+        .sheet(isPresented: $showCommandPalette) {
+            CommandDeckPalette(
+                activeChatBackend: chatController.chatBackend,
+                searchService: chatController.typedSearchService,
+                onNavigate: { route in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        navigate(to: route)
+                    }
+                },
+                onSessionJump: { target in
+                    sessionLogJumpTarget = target
+                    if mainRoute != .sessionLogs {
+                        navigate(to: .sessionLogs)
+                    }
+                }
+            )
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 settingsManager: settingsManager,
@@ -382,17 +434,51 @@ struct DashboardView: View {
             }
         }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
         .environment(settingsManager)
+    }
+
+    // MARK: - Hidden keyboard shortcuts
+
+    /// Window-level ⌘1–⌘7 for primary sections. Zero-size, non-interactive
+    /// buttons so the shortcut fires regardless of focus but the views are
+    /// never visible. Mirrors the proven `globalShortcut` pattern from
+    /// `BurnBarTopRail.swift`.
+    @ViewBuilder
+    private var sectionShortcuts: some View {
+        ForEach(Array(DashboardMainRoute.primarySections.enumerated()), id: \.element) { index, route in
+            Button {
+                withAnimation(DesignSystem.Animation.standard) {
+                    navigate(to: route)
+                }
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// Hidden ⌘K to open the Command Palette from anywhere in the window.
+    private var commandPaletteShortcut: some View {
+        Button {
+            showCommandPalette = true
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("k", modifiers: .command)
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Detail View
 
     @ViewBuilder
     var detailView: some View {
-        VStack(spacing: 0) {
-            dashboardWorkspaceNavStrip
-
-            Group {
+        Group {
                 switch mainRoute {
                 case .overview:
                     overviewRouteView
@@ -502,7 +588,6 @@ struct DashboardView: View {
             // does not restore a stale NSScrollView offset from the previously visible pane.
             .id(mainRoute)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
         .safeAreaInset(edge: .top, spacing: 0) {
             if let agg = aggregator, agg.isSummarizing {
                 SummarizingStatusStrip(
@@ -567,17 +652,6 @@ struct DashboardView: View {
         }
     }
 
-    @ViewBuilder
-    private var dashboardWorkspaceNavStrip: some View {
-        DashboardWorkspaceNavStrip(
-            currentRoute: mainRoute,
-            activeChatBackend: chatController.chatBackend,
-            pendingMemoryCount: pendingMemoryReviewCount
-        ) { route in
-            navigate(to: route)
-        }
-    }
-
     // MARK: - Memory Review
 
     /// First-class Memory Review destination. The inbox is the human approval gate
@@ -601,7 +675,7 @@ struct DashboardView: View {
                 description: Text("The memory store is not ready yet. It activates once OpenBurnBar finishes starting up.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
+            .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
         }
     }
 
@@ -905,8 +979,16 @@ struct DashboardView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
+        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
         .onAppear { overviewEmptyStateAppeared = true }
+    }
+
+    var dashboardLiveBackdropActive: Bool {
+        DashboardLiveBackdropVisibility.exposesContentBackdrop(
+            appearanceSkin: settingsManager.appearanceSkin,
+            useWebsiteBackground: settingsManager.useWebsiteBackground,
+            useKernelBackdrop: useKernelBackdrop
+        )
     }
 
     private func openSessionLogs(_ target: ConversationJumpTarget) {

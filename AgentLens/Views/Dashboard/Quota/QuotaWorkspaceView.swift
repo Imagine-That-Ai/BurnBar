@@ -24,6 +24,7 @@ struct QuotaWorkspaceView: View {
 
     @State private var viewModel = QuotaWorkspaceViewModel()
     @State private var selectedProvider: AgentProvider?
+    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
     @AppStorage("quotaTab.sort") private var sortStorage: QuotaSortMode = .urgency
     @AppStorage("quotaTab.viewMode") private var viewModeStorage: QuotaViewMode = .cards
     @AppStorage("quotaTab.showInactive") private var showInactiveStorage: Bool = false
@@ -119,7 +120,7 @@ struct QuotaWorkspaceView: View {
         .scrollContentBackground(.hidden)
         .background {
             ZStack {
-                if settingsManager.useWebsiteBackground {
+                if dashboardLiveBackdropActive {
                     Color.clear
                 } else {
                     DesignSystem.Colors.background

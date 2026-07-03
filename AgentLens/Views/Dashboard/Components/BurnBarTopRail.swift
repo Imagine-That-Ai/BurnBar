@@ -6,7 +6,7 @@ import SwiftUI
 //
 // Redesigned dashboard top bar — composable primitives that render as a single
 // rail (for the #Preview) or as discrete toolbar sections (live in the macOS
-// toolbar via DashboardToolbar.swift).
+// toolbar via DashboardToolbarContent.swift — the Command Deck bar).
 //
 //   [ back · 🔥 OpenBurnBar · Agents·Models ]   [ 🔍 omnibar (⌘K) ]   [ range · unit · BURN hero · actions ]
 //
@@ -212,7 +212,7 @@ struct BurnRailIdentitySection: View {
 // subtle pulse when hovered; the wordmark uses a rounded, mixed-case treatment
 // that reads as a product name instead of a system stamp.
 
-private struct BurnRailBrandMark: View {
+struct BurnRailBrandMark: View {
     @State private var hover = false
 
     var body: some View {
@@ -651,7 +651,7 @@ private struct BurnRailSearchSuggestionsPopover: View {
     }
 }
 
-private struct ShortcutChip: View {
+struct ShortcutChip: View {
     let keys: [String]
     var body: some View {
         HStack(spacing: 2) {
@@ -755,10 +755,10 @@ struct BurnRailWorkspaceContextPill: View {
 
 // MARK: - Time range menu chip
 //
-// Public counterpart of the private menu chip in `DashboardToolbar.swift` —
-// the live toolbar in `DashboardToolbarContent.swift` reaches for this so the
-// macOS-toolbar `ToolbarItem` can render a calendar pill with the same visual
-// language as the rest of the BurnRail primitives.
+// Public range menu chip — the live Command Deck toolbar in
+// `DashboardToolbarContent.swift` reaches for this so the macOS-toolbar
+// `ToolbarItem` can render a calendar pill with the same visual language
+// as the rest of the BurnRail primitives.
 
 struct BurnRailTimeRangeMenuChip: View {
     @Binding var selected: TimeRange
@@ -1236,7 +1236,7 @@ struct BurnRailAppearanceQuickMenu: View {
     }
 }
 
-private extension AppearanceMode {
+extension AppearanceMode {
     var quickMenuLabel: String {
         switch self {
         case .system: return "System"
@@ -1246,7 +1246,7 @@ private extension AppearanceMode {
     }
 }
 
-private extension AppSkin {
+extension AppSkin {
     var quickMenuLabel: String {
         switch self {
         case .aurora: return "Aurora (dark ember)"

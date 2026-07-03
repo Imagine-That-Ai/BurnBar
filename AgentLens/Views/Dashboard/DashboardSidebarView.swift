@@ -28,6 +28,19 @@ extension DashboardView {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                Picker("View Mode", selection: $viewMode) {
+                    Text("Agents").tag(DashboardViewMode.agents)
+                    Text("Models").tag(DashboardViewMode.models)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: viewMode) { _, _ in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        routeHistory.removeAll()
+                        mainRoute = .overview
+                    }
+                }
+
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     SidebarItem(
                         provider: nil,
