@@ -132,6 +132,7 @@
 		0D463BB646BAB7F18B301151 /* ContextPackExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217FC40F07BA5583CD430A29 /* ContextPackExportTests.swift */; };
 		0D4E56581D55986F17D1F8E1 /* OpenBurnBarConnectorSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7AD97848EEB1063D5AA7BF /* OpenBurnBarConnectorSecretStore.swift */; };
 		0D4F295D586687DCB08BC44A /* QuotaRefreshActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4273C28B33EF41A099966C09 /* QuotaRefreshActor.swift */; };
+		0DAE247A1C119E512ED5C7CB /* UsageSyncPresenceDecouplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BD2E6E095F857DBD60A31D /* UsageSyncPresenceDecouplingTests.swift */; };
 		0DBD8C6CBF93A3C60BA1C9FA /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7C6404809803AAB447B155E0 /* OpenBurnBarCore */; };
 		0DD957126FB6F4CA2D5858E0 /* MicrophoneCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B19A36CC660D0E0A80DDF96 /* MicrophoneCaptureService.swift */; };
 		0DE26600775B6CA96A3B6664 /* LocalMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A67224E60A68DDF632014874 /* LocalMetricsView.swift */; };
@@ -4164,6 +4165,7 @@
 		E87BC0D2B9B4594EACDBC44D /* ConceptStatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConceptStatTile.swift; sourceTree = "<group>"; };
 		E88170D7828BC868123885FF /* CloudVaultRotationPickupLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudVaultRotationPickupLifecycle.swift; sourceTree = "<group>"; };
 		E88D619C6C40B439C10EEBB8 /* ProviderPlanWizardView+QuotaAndCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderPlanWizardView+QuotaAndCLI.swift"; sourceTree = "<group>"; };
+		E8BD2E6E095F857DBD60A31D /* UsageSyncPresenceDecouplingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSyncPresenceDecouplingTests.swift; sourceTree = "<group>"; };
 		E8D0E93F43C241FDCE3AD492 /* ComputerUseBudgetStatusStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseBudgetStatusStoreTests.swift; sourceTree = "<group>"; };
 		E8E98FF2DC510DE9B747CE01 /* AuroraLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraLayoutView.swift; sourceTree = "<group>"; };
 		E8F5C75EC606A794E0B11DF2 /* LiquidGlassTransparencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassTransparencyTests.swift; sourceTree = "<group>"; };
@@ -6783,6 +6785,7 @@
 				1C2F37A6CA116C4E9D547608 /* UsageConflictResolutionTests.swift */,
 				CFA1629DB0FF43124BE615BF /* UsageRefreshPipelineTests.swift */,
 				4FC989ED7CC05F575AB460D9 /* UsageReplaceGateTests.swift */,
+				E8BD2E6E095F857DBD60A31D /* UsageSyncPresenceDecouplingTests.swift */,
 				E2A01BCBF27918660142EC62 /* UsageSyncRoundTripTests.swift */,
 				FD07165F91E0ACF8F5596747 /* UsageSyncServiceMattersTests.swift */,
 				53A2CB82CDFDE16ABB466842 /* VibeProxyMigrationServiceTests.swift */,
@@ -8369,6 +8372,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0F52A7D2AC1074108EE5C2CC /* Build configuration list for PBXNativeTarget "OpenBurnBarMobile" */;
 			buildPhases = (
+				A0179ED15466BB0DD8186459 /* Guard source-built gRPC (iOS 27 Firestore crash) */,
 				989FB439884BAD69F857287F /* Sources */,
 				6AA6774C598CE731F3D09BD0 /* Resources */,
 				E9A9CE05EB1CB5A0032B0BF2 /* Frameworks */,
@@ -9039,6 +9043,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\nHELPERS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nmkdir -p \"${HELPERS_DIR}\"\nfor NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge OpenBurnBarPrivilegedInputKillSwitchWatchdog; do\n  SOURCE=\"${BUILT_PRODUCTS_DIR}/${NAME}\"\n  if [[ ! -x \"${SOURCE}\" ]]; then\n    echo \"warning: ${NAME} helper not built; Remote Unlock setup may be unavailable.\"\n    continue\n  fi\n  cp \"${SOURCE}\" \"${HELPERS_DIR}/${NAME}\"\n  chmod 755 \"${HELPERS_DIR}/${NAME}\"\ndone\n";
+		};
+		A0179ED15466BB0DD8186459 /* Guard source-built gRPC (iOS 27 Firestore crash) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Guard source-built gRPC (iOS 27 Firestore crash)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The prebuilt grpc-binary SIGSEGVs in BoringSSL (OPENSSL_cleanse via\n# ssl_cert_dup -> create_tsi_ssl_handshaker) the first time Firestore\n# opens its TLS channel on iOS 27 — verified on-device 2026-07-03 with\n# Firebase 12.15/grpc-binary 1.69.1. Firestore MUST be built from\n# source (grpc-ios + BoringSSL-SwiftPM): resolve packages with\n# FIREBASE_SOURCE_FIRESTORE=1 in the environment. This tripwire turns\n# a silent runtime crash into a build error when the graph regresses.\n# See docs/FIREBASE_IOS27_GRPC.md.\nresolved=\"$SRCROOT/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved\"\nif [ -f \"$resolved\" ] && grep -q '\"grpc-binary\"' \"$resolved\"; then\n  echo \"error: Package graph resolved with prebuilt grpc-binary, which crashes Firestore on iOS 27. Re-resolve with FIREBASE_SOURCE_FIRESTORE=1 (see docs/FIREBASE_IOS27_GRPC.md).\"\n  exit 1\nfi\n";
 		};
 		A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -10334,6 +10357,7 @@
 				3695EF802356B63017E4D203 /* UsageConflictResolutionTests.swift in Sources */,
 				3ADFADE6BA7A5F5A6C9AD46B /* UsageRefreshPipelineTests.swift in Sources */,
 				2A20F5E44315325E87D694E0 /* UsageReplaceGateTests.swift in Sources */,
+				0DAE247A1C119E512ED5C7CB /* UsageSyncPresenceDecouplingTests.swift in Sources */,
 				3C58D3AA6FC20391CC81ABAD /* UsageSyncRoundTripTests.swift in Sources */,
 				242D38CB97FC4CE76935DFDB /* UsageSyncServiceMattersTests.swift in Sources */,
 				74334077FFE7BAB69B42258C /* VibeProxyMigrationServiceTests.swift in Sources */,
@@ -11205,11 +11229,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_282DD4A0-29EB-445A-B62E-154625AFD3CC" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_64371E07-E92C-43B3-96F5-8703C1D7BBFC" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_DFA7CA61-6C4B-474E-8185-5029448EE1FD" /* OpenBurnBarCore */;
+			productRef = "TEMP_23424C6E-9D47-4C39-8095-9A1EB57E93F1" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11262,7 +11286,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_334C091C-DB5C-4F69-9B6D-F1141CBF4347" /* OpenBurnBarCore */;
+			productRef = "TEMP_304EAA71-2236-4246-B129-D1149BAB09B5" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11280,15 +11304,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_B601ECE3-0CDB-414F-8C71-391C9C776CAA" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_A0C99071-F1F6-45C2-AAA3-7FB6C4A29E4F" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_17690755-B3CE-40CB-9B40-0707C0A0B68E" /* OpenBurnBarMedia */;
+			productRef = "TEMP_F4A74180-6546-4B9E-91D7-B5C19D63A1B4" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A5AE8A8D-6B58-4AE3-8D1C-74423B8125BA" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_124F564E-199B-49E6-9AFC-066B7F2BE845" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -12299,7 +12323,7 @@
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 11.0.0;
+				minimumVersion = 12.15.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -12543,29 +12567,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_17690755-B3CE-40CB-9B40-0707C0A0B68E" /* OpenBurnBarMedia */ = {
+		"TEMP_124F564E-199B-49E6-9AFC-066B7F2BE845" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_23424C6E-9D47-4C39-8095-9A1EB57E93F1" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_304EAA71-2236-4246-B129-D1149BAB09B5" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_64371E07-E92C-43B3-96F5-8703C1D7BBFC" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_A0C99071-F1F6-45C2-AAA3-7FB6C4A29E4F" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_F4A74180-6546-4B9E-91D7-B5C19D63A1B4" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
-		};
-		"TEMP_282DD4A0-29EB-445A-B62E-154625AFD3CC" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_334C091C-DB5C-4F69-9B6D-F1141CBF4347" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_A5AE8A8D-6B58-4AE3-8D1C-74423B8125BA" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_B601ECE3-0CDB-414F-8C71-391C9C776CAA" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_DFA7CA61-6C4B-474E-8185-5029448EE1FD" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

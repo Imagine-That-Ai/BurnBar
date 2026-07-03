@@ -41,6 +41,7 @@ class MobileBackdropKernelTest {
                 "origami",
                 "ink-diffusion",
                 "petroleum-sheen",
+                "boids",
             ),
             MobileBackdropKernel.websiteKernelIds,
         )
