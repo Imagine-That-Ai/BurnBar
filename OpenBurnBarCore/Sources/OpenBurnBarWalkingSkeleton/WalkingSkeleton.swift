@@ -81,7 +81,14 @@ enum WalkingSkeleton {
         var usageTotalTokens: Int?
 
         for rawLine in fixture.split(separator: "\n", omittingEmptySubsequences: false) {
-            let result = parser.events(fromSSELine: String(rawLine))
+            // Normalize CRLF -> LF. A Windows git checkout (core.autocrlf) can rewrite
+            // the committed LF fixture to CRLF, leaving a trailing "\r" that would
+            // corrupt the JSON payloads and the "[DONE]" sentinel. SSE is line-oriented
+            // over CRLF too, so dropping a trailing CR is the correct platform-agnostic
+            // read and keeps this vertical slice byte-identical on macOS and Windows.
+            var line = String(rawLine)
+            if line.hasSuffix("\r") { line.removeLast() }
+            let result = parser.events(fromSSELine: line)
             allEvents.append(contentsOf: result.events)
             if result.done { streamDone = true }
             for event in result.events {
