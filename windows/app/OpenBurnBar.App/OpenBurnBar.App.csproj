@@ -48,6 +48,19 @@
       and Microsoft.Windows.SDK.BuildTools transitively (no separate ref needed).
     -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
+    <!--
+      Win2D (Phase 3 / W6-DS-SWARM). The GPU renderer for the particle-engine
+      substrate layer: CanvasAnimatedControl host + CanvasDrawingSession adapter in
+      Particles/. Windows-only; the ParticleS RENDERER LOGIC lives in the
+      platform-agnostic OpenBurnBar.Particles lib below, which builds + is
+      perf-measured on macOS. Only this GPU binding is Windows/CI-deferred.
+    -->
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Engine-agnostic particle renderer core (model + painters + drawing seam). -->
+    <ProjectReference Include="..\..\particles\OpenBurnBar.Particles\OpenBurnBar.Particles.csproj" />
   </ItemGroup>
 
 </Project>
