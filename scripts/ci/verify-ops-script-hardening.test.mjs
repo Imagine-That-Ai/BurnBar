@@ -37,13 +37,19 @@ assert.match(
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.match(
   firebaseRules,
-  /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*\}\)/,
-  "Firebase Rules release PATCH must use the nested release payload",
+  /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*updateMask: "rulesetName",\s*\}\)/,
+  "Firebase Rules release PATCH must use the nested release payload with a field mask",
 );
-assert.doesNotMatch(
-  firebaseRules,
-  /updateMask\s*:/,
-  "Firebase Rules release PATCH payload must not send updateMask",
+const firestoreWorkflow = read(".github/workflows/deploy-firestore.yml");
+assert.match(
+  firestoreWorkflow,
+  /--only firestore:indexes,storage/,
+  "Firestore deploy workflow must avoid firebase-tools' broken firestore:rules release path",
+);
+assert.match(
+  firestoreWorkflow,
+  /node scripts\/ci\/deploy-firebase-rules-releases\.mjs "\$FIREBASE_PROJECT"/,
+  "Firestore deploy workflow must release rules through the hardened REST script",
 );
 
 console.log("PASS: ops script hardening regression checks");

@@ -276,7 +276,7 @@ jobs:
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
       - name: BurnBar product release preflight
-        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "${{ steps.version.outputs.tag_name }}"
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag "${{ steps.version.outputs.tag_name }}"
 
       - name: Validate mobile unit test bypass reason
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
@@ -816,6 +816,7 @@ jobs:
           APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
+          export APP_PROFILE
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"

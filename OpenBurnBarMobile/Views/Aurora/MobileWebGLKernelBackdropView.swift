@@ -46,6 +46,13 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
+        // Without this, UIKit insets the web layout viewport by the enclosing
+        // safe area / navigation bar, so the WebGL canvas starts ~100pt down and
+        // the uncovered strip renders as a black band with a hard edge (the
+        // "break" at the top of Pulse/Agents). The backdrop must be edge-to-edge:
+        // the bundle already declares `viewport-fit=cover` and pins #host to
+        // `inset: 0`, so zeroing the native adjustment is the missing half.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Belt-and-suspenders click-through alongside the hitTest override.
         webView.isUserInteractionEnabled = false
         webView.navigationDelegate = context.coordinator
@@ -200,7 +207,8 @@ private enum MobileKernelCatalogIDs {
         "storm-signal",
         "origami",
         "ink-diffusion",
-        "petroleum-sheen"
+        "petroleum-sheen",
+        "boids"
     ]
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.

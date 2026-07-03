@@ -1298,6 +1298,8 @@ service cloud.firestore {
           "status",
           "profileName",
           "advertisedModel",
+          "hostInstallationId",
+          "replacedByConnectionId",
           "relayPublicKey",
           "relayKeyVersion",
           "relayEncryption",
@@ -1315,6 +1317,8 @@ service cloud.firestore {
         && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
         && request.resource.data.schemaVersion is int
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
+        && (!("hostInstallationId" in request.resource.data) || (request.resource.data.hostInstallationId is string && request.resource.data.hostInstallationId.size() <= 256))
+        && (!("replacedByConnectionId" in request.resource.data) || (request.resource.data.replacedByConnectionId is string && request.resource.data.replacedByConnectionId.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
         && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))

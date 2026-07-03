@@ -289,6 +289,17 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         if let timestamp = value as? Timestamp {
             return timestamp.dateValue()
         }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            let formatter = ISO8601DateFormatter()
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter.date(from: trimmed)
+        }
         return value as? Date
     }
 

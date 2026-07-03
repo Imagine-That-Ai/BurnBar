@@ -11,7 +11,7 @@ struct KernelCatalogEntry: Identifiable, Hashable {
     let label: String
 }
 
-/// The 30 bundled kernels, in registry order. Hardcoded (rather than read back
+/// The 31 bundled kernels, in registry order. Hardcoded (rather than read back
 /// from `window.__kernels`) so the picker renders instantly and offline. Keep
 /// in sync with the engine's `KERNEL_META`.
 enum KernelCatalog {
@@ -48,7 +48,8 @@ enum KernelCatalog {
         KernelCatalogEntry(id: "storm-signal", label: "Tempest"),
         KernelCatalogEntry(id: "origami", label: "Origami"),
         KernelCatalogEntry(id: "ink-diffusion", label: "Ink Diffusion"),
-        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen")
+        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen"),
+        KernelCatalogEntry(id: "boids", label: "Boids")
     ]
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.
