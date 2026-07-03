@@ -372,16 +372,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc nonisolated private func handleStatusItemClick(_ sender: Any?) {
+        let triggeringEvent = NSApp.currentEvent.map(OpenBurnBarStatusItemEventSnapshot.init)
         Task { @MainActor [weak self] in
-            self?.handleStatusItemClickOnMainActor()
+            self?.handleStatusItemClickOnMainActor(triggeringEvent: triggeringEvent)
         }
     }
 
-    private func handleStatusItemClickOnMainActor() {
+    private func handleStatusItemClickOnMainActor(triggeringEvent: OpenBurnBarStatusItemEventSnapshot?) {
         guard let button = statusItem?.button else {
             return
         }
-        guard shouldHandleStatusItemEventWithoutEvent() else {
+        guard !OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
+            triggeringEvent,
+            isPopoverShown: popover?.isShown ?? false
+        ) else {
+            return
+        }
+        guard shouldHandleStatusItemEvent(triggeringEvent) else {
             return
         }
 
@@ -536,8 +543,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func shouldHandleStatusItemEvent(_ event: NSEvent?) -> Bool {
-        guard let event else { return true }
+    private func shouldHandleStatusItemEvent(_ event: OpenBurnBarStatusItemEventSnapshot?) -> Bool {
+        guard let event else {
+            return shouldHandleStatusItemEvent(
+                key: nil,
+                timestamp: ProcessInfo.processInfo.systemUptime
+            )
+        }
         let key = OpenBurnBarStatusItemClick.EventKey(event)
         return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
     }
@@ -549,10 +561,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             timestamp: event.timestamp
         )
         return shouldHandleStatusItemEvent(key: key, timestamp: event.timestamp)
-    }
-
-    private func shouldHandleStatusItemEventWithoutEvent() -> Bool {
-        shouldHandleStatusItemEvent(key: nil, timestamp: ProcessInfo.processInfo.systemUptime)
     }
 
     private func shouldHandleStatusItemEvent(
@@ -1323,13 +1331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func configureMenuPopoverWindow(_ window: NSWindow) {
-        window.level = .statusBar
-        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-        if let panel = window as? NSPanel {
-            panel.hidesOnDeactivate = false
-            panel.becomesKeyOnlyIfNeeded = true
-        }
-        window.orderFrontRegardless()
+        OpenBurnBarPopoverWindowConfigurator.apply(to: window)
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {
@@ -1378,6 +1380,12 @@ enum OpenBurnBarStatusItemClick {
             self.timestampBucket = Int(event.timestamp * 1_000)
         }
 
+        init(_ event: OpenBurnBarStatusItemEventSnapshot) {
+            self.eventNumber = event.eventNumber
+            self.eventTypeRawValue = event.eventTypeRawValue
+            self.timestampBucket = Int(event.timestamp * 1_000)
+        }
+
         init(eventNumber: Int, eventTypeRawValue: NSEvent.EventType.RawValue, timestamp: TimeInterval) {
             self.eventNumber = eventNumber
             self.eventTypeRawValue = eventTypeRawValue
@@ -1404,6 +1412,59 @@ enum OpenBurnBarStatusItemClick {
         default:
             return .ignore
         }
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(_ event: NSEvent?, isPopoverShown: Bool) -> Bool {
+        shouldIgnoreKeyboardRetoggle(
+            eventType: event?.type,
+            charactersIgnoringModifiers: event?.charactersIgnoringModifiers,
+            isPopoverShown: isPopoverShown
+        )
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(
+        _ event: OpenBurnBarStatusItemEventSnapshot?,
+        isPopoverShown: Bool
+    ) -> Bool {
+        shouldIgnoreKeyboardRetoggle(
+            eventType: event?.eventType,
+            charactersIgnoringModifiers: event?.charactersIgnoringModifiers,
+            isPopoverShown: isPopoverShown
+        )
+    }
+
+    static func shouldIgnoreKeyboardRetoggle(
+        eventType: NSEvent.EventType?,
+        charactersIgnoringModifiers: String?,
+        isPopoverShown: Bool
+    ) -> Bool {
+        guard isPopoverShown, eventType == .keyDown else {
+            return false
+        }
+        switch charactersIgnoringModifiers {
+        case " ", "\r", "\n", "\u{3}":
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+struct OpenBurnBarStatusItemEventSnapshot: Sendable {
+    let eventNumber: Int
+    let eventTypeRawValue: NSEvent.EventType.RawValue
+    let timestamp: TimeInterval
+    let charactersIgnoringModifiers: String?
+
+    init(_ event: NSEvent) {
+        self.eventNumber = event.eventNumber
+        self.eventTypeRawValue = event.type.rawValue
+        self.timestamp = event.timestamp
+        self.charactersIgnoringModifiers = event.charactersIgnoringModifiers
+    }
+
+    var eventType: NSEvent.EventType? {
+        NSEvent.EventType(rawValue: eventTypeRawValue)
     }
 }
 
@@ -1523,6 +1584,30 @@ private extension CGRect {
 enum OpenBurnBarPopoverClickRegion {
     static func isInsideInteractiveRegion(_ point: CGPoint, statusItemFrame: CGRect, popoverFrame: CGRect) -> Bool {
         return statusItemFrame.insetBy(dx: -5, dy: -5).contains(point) || popoverFrame.contains(point)
+    }
+}
+
+enum OpenBurnBarPopoverWindowConfigurator {
+    static func apply(to window: NSWindow) {
+        apply(to: window, orderFront: defaultOrderFront)
+    }
+
+    static func apply(to window: NSWindow, orderFront: (NSWindow) -> Void) {
+        window.level = .statusBar
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        if let panel = window as? NSPanel {
+            panel.hidesOnDeactivate = false
+            // Keep SwiftUI text fields in the popover as normal key-window
+            // editors. If the status-item button keeps keyboard ownership,
+            // Space performs the button again and closes the popover.
+            panel.becomesKeyOnlyIfNeeded = false
+        }
+        orderFront(window)
+    }
+
+    private static func defaultOrderFront(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 }
 
@@ -1714,7 +1799,7 @@ struct SwarmWallpaperView: View {
             isAutoCyclingEnabled: autoCyclesShapes,
             enabledProviderGlyphs: providerGlyphs,
             enableSwarmSparkles: enableSparkles,
-            excludeBrandShapesFromSwarm: excludeBrandShapes,
+            excludeBrandShapesFromSwarm: excludeBrandShapes || !providerGlyphs.isEmpty,
             // The wallpaper is an ambient surface that sits behind every
             // window and icon — capping at 30 fps + rendering the Canvas
             // asynchronously halves CPU work with no perceptible change in

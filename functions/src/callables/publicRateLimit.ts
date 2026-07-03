@@ -24,8 +24,13 @@ type PublicHttpEndpointName =
   | "healthLive"
   | "healthReady"
   | "latestRouterRundown"
+  | "mintLinuxAppCheckToken"
   | "pollCliLink"
-  | "startCliLink";
+  | "startCliLink"
+  // Authenticated callables that MINT lower-trust desktop App Check tokens; App Check is
+  // not-required on the bootstrap path (chicken-and-egg), so a per-uid product
+  // limit bounds mint abuse from an otherwise-valid account. Keyed by uid.
+  | "mintWindowsAppCheckToken";
 
 type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
 
@@ -61,6 +66,10 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   // shared `cli_link_start` action; it is tighter than poll (60/min) because
   // this endpoint mints a fresh session and writes to Firestore.
   startCliLink: { windowSeconds: 3600, maxAttempts: 20 },
+  // App Check mint: a legitimate device re-mints roughly every token TTL
+  // (>=30 min), so 30/hour/uid is generous headroom while capping mint farming.
+  mintLinuxAppCheckToken: { windowSeconds: 3600, maxAttempts: 30 },
+  mintWindowsAppCheckToken: { windowSeconds: 3600, maxAttempts: 30 },
 };
 
 const APPROVAL_LIMITS: Record<CallableApprovalRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
@@ -203,7 +212,9 @@ export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpoin
     "healthLive",
     "healthReady",
     "latestRouterRundown",
+    "mintLinuxAppCheckToken",
     "pollCliLink",
     "startCliLink",
+    "mintWindowsAppCheckToken",
   ],
 );

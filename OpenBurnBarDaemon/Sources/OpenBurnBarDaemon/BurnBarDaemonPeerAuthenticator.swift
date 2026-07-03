@@ -1,6 +1,16 @@
 import OpenBurnBarComputerUseCore
-import Darwin
 import Foundation
+#if os(macOS)
+import Darwin
+public typealias BurnBarDaemonAuditToken = audit_token_t
+public typealias BurnBarDaemonStatus = OSStatus
+private let daemonTokenUnavailableStatus = errSecCSReqFailed
+#else
+import Foundation
+public typealias BurnBarDaemonAuditToken = Int32
+public typealias BurnBarDaemonStatus = Int32
+private let daemonTokenUnavailableStatus: BurnBarDaemonStatus = 0
+#endif
 
 /// Failures raised when authenticating a peer of the main daemon JSON-RPC socket.
 ///
@@ -12,7 +22,7 @@ import Foundation
 /// or simply connects to the socket must be refused before any RPC is honored.
 public enum BurnBarDaemonPeerAuthenticationFailure: Error, Equatable, Sendable {
     case auditTokenUnavailable
-    case codeSignatureInvalid(status: OSStatus)
+    case codeSignatureInvalid(status: BurnBarDaemonStatus)
 }
 
 /// First-party daemon RPC peer identity after code-signature validation.
@@ -50,7 +60,7 @@ public enum BurnBarDaemonPeerIdentity: String, CaseIterable, Codable, Sendable {
 /// signature gate is what makes a swapped/forged peer binary fail closed even
 /// when it learned the token.
 public struct BurnBarDaemonPeerAuthenticator: Sendable {
-    public typealias CodeSignatureValidator = @Sendable (audit_token_t) throws -> BurnBarDaemonPeerIdentity
+    public typealias CodeSignatureValidator = @Sendable (BurnBarDaemonAuditToken) throws -> BurnBarDaemonPeerIdentity
 
     /// `true` enforces the first-party code-signature gate on every accepted
     /// peer. `false` lets every peer through — used for local in-process tests
@@ -117,7 +127,7 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     public func validatePeer(socketFD: Int32, peerPID: pid_t?) throws -> BurnBarPeerCapabilityProfile {
         guard isEnforced else { return .full }
 
-        let auditToken: audit_token_t
+        let auditToken: BurnBarDaemonAuditToken
         do {
             auditToken = try OpenBurnBarPrivilegedTrust.peerAuditToken(socketFD: socketFD)
         } catch {
@@ -131,12 +141,19 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         } catch let failure as BurnBarDaemonPeerAuthenticationFailure {
             reject(failure, peerPID: peerPID)
             throw failure
-        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
-            let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
-            reject(wrapped, peerPID: peerPID)
-            throw wrapped
         } catch {
-            let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+            #if os(macOS)
+            if case let PrivilegedSocketTrustError.codeSignatureInvalid(status) = error {
+                let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(
+                    status: status
+                )
+                reject(wrapped, peerPID: peerPID)
+                throw wrapped
+            }
+            #endif
+            let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(
+                status: daemonTokenUnavailableStatus
+            )
             reject(wrapped, peerPID: peerPID)
             throw wrapped
         }
@@ -155,7 +172,7 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     /// Production validator: delegate to the shared first-party trust primitive
     /// and re-map its error into the daemon-peer failure space.
     @Sendable
-    public static func defaultCodeSignatureValidation(auditToken: audit_token_t) throws -> BurnBarDaemonPeerIdentity {
+    public static func defaultCodeSignatureValidation(auditToken: BurnBarDaemonAuditToken) throws -> BurnBarDaemonPeerIdentity {
         #if os(macOS)
         do {
             let identifier = try OpenBurnBarPrivilegedTrust.validateCodeSignature(

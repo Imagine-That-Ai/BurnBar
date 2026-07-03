@@ -22,7 +22,7 @@ struct MissionsLaneView: View {
     @State private var refreshing = false
     @State private var heroAppeared = false
 
-    @Environment(SettingsManager.self) private var settingsManager
+    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
 
     private var runtime: OpenBurnBarControllerRuntimeSnapshot {
         operatingLayer.snapshot.controllerRuntime
@@ -466,7 +466,7 @@ struct MissionsLaneView: View {
 
     private var laneBackdrop: some View {
         ZStack {
-            if settingsManager.useWebsiteBackground {
+            if dashboardLiveBackdropActive {
                 Color.clear
             } else {
                 DesignSystem.Colors.background

@@ -3,6 +3,29 @@ import OpenBurnBarCore
 import SwiftUI
 import WebKit
 
+enum DashboardLiveBackdropVisibility {
+    static func exposesContentBackdrop(
+        appearanceSkin: AppSkin,
+        useWebsiteBackground: Bool,
+        useKernelBackdrop: Bool
+    ) -> Bool {
+        appearanceSkin == .editorial
+            || useWebsiteBackground
+            || useKernelBackdrop
+    }
+}
+
+private struct DashboardLiveBackdropActiveKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var dashboardLiveBackdropActive: Bool {
+        get { self[DashboardLiveBackdropActiveKey.self] }
+        set { self[DashboardLiveBackdropActiveKey.self] = newValue }
+    }
+}
+
 struct UsageModeToolbarPicker: View {
     @Binding var selection: UsageDisplayMode
 
@@ -70,7 +93,11 @@ struct DashboardBackdrop: View {
     }
 
     private var dynamicBackdropEnabled: Bool {
-        settingsManager.useWebsiteBackground || useKernelBackdrop
+        DashboardLiveBackdropVisibility.exposesContentBackdrop(
+            appearanceSkin: settingsManager.appearanceSkin,
+            useWebsiteBackground: settingsManager.useWebsiteBackground,
+            useKernelBackdrop: useKernelBackdrop
+        )
     }
 
     private var substrate: SwarmSubstrate {
@@ -102,7 +129,10 @@ struct DashboardBackdrop: View {
                             .ignoresSafeArea()
                         kernelSubstrateOverlay
                     } else if settingsManager.useConstellationBackground {
-                        ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
+                        ConstellationBackgroundView(
+                            accent: DesignSystem.Colors.ember,
+                            enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs
+                        )
                     } else {
                         WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
                     }
@@ -118,18 +148,21 @@ struct DashboardBackdrop: View {
 
     @ViewBuilder
     private var kernelSubstrateOverlay: some View {
-        if substrateEnabled {
+        let enabledProviderGlyphs = settingsManager.desktopWallpaperProviderGlyphs
+        if substrateEnabled || !enabledProviderGlyphs.isEmpty {
             SwarmCanvasView(
                 accent: DesignSystem.Colors.ember,
                 pace: .cinematic,
                 isTransparent: true,
                 motionSpeedMultiplier: 0.6,
+                enabledProviderGlyphs: enabledProviderGlyphs,
                 enableSwarmSparkles: false,
+                excludeBrandShapesFromSwarm: !enabledProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
                 rendersAsynchronously: true,
-                substrate: substrate
+                substrate: substrateEnabled ? substrate : nil
             )
             .ignoresSafeArea()
-            .opacity(0.58)
+            .opacity(substrateEnabled ? 0.58 : 0.5)
             .allowsHitTesting(false)
         }
     }
@@ -204,7 +237,9 @@ struct WebsiteBackgroundView: View {
                     pace: .cinematic,
                     isTransparent: true,
                     motionSpeedMultiplier: 0.7,
+                    enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs,
                     enableSwarmSparkles: false,
+                    excludeBrandShapesFromSwarm: !settingsManager.desktopWallpaperProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
                     rendersAsynchronously: true,
                     substrate: substrate
                 )
@@ -212,7 +247,14 @@ struct WebsiteBackgroundView: View {
                 .opacity(0.85)
             }
         } else {
-            SwarmCanvasView(accent: accent, pace: .energetic, rendersAsynchronously: true, substrate: substrate)
+            SwarmCanvasView(
+                accent: accent,
+                pace: .energetic,
+                enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs,
+                excludeBrandShapesFromSwarm: settingsManager.excludeBrandShapesFromSwarm,
+                rendersAsynchronously: true,
+                substrate: substrate
+            )
                 .ignoresSafeArea()
         }
         // cov:ignore-end

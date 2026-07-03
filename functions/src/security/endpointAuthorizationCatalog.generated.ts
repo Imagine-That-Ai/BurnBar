@@ -1535,6 +1535,55 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "mintLinuxAppCheckToken",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid only; the minted Linux App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+    handlerModule: "callables/shared.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["mintLinuxAppCheckToken"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
+  },
+  {
+    exportedName: "mintWindowsAppCheckToken",
+    trigger: "callable",
+    authMethod: "Firebase Auth; attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid only; the minted App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+    handlerModule: "callables/shared.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["mintWindowsAppCheckToken"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that MINTS an App Check token, so it cannot itself require one (chicken-and-egg). Gated by a platform attestation verifier instead; under production config no mock verifier is registered so only AC-013's real verifier can mint.",
+  },
+  {
     exportedName: "onCliSessionAgentReplyNotification",
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",

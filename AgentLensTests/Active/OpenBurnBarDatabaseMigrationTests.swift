@@ -1192,7 +1192,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
         let store = ControlPlaneStore(dbQueue: queue)
-        let disabledService = OpenBurnBarMemoryService(store: store)
+        let disabledService = OpenBurnBarMemoryService(store: store, authorityWritesEnabled: { false })
         let scope = MemoryScope(userID: "service-user", appID: "service-app")
 
         do {
@@ -2293,7 +2293,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             idempotencyKey: "disabled-worker-idem-pr3"
         )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
-        let worker = MemoryExtractionWorker(store: store, nowProvider: { now }, extractor: { _ in
+        let worker = MemoryExtractionWorker(store: store, nowProvider: { now }, authorityWritesEnabled: { false }, extractor: { _ in
             XCTFail("Extractor must not run while chat memory authority writes are disabled.")
             return []
         })

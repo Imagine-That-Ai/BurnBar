@@ -24,6 +24,36 @@ final class SwarmLogoShapeTests: XCTestCase {
         }))
     }
 
+    func testProviderOnlyCycleStartsWithProviderLogoWhenProvidersAreSelected() {
+        let cycle = SwarmFormationMode.defaultCycle(for: [.codex, .openClaw], excludeBrandShapes: true)
+
+        XCTAssertEqual(cycle.first, .shapeProviderLogo([.codex, .openClaw]))
+        XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
+        XCTAssertFalse(cycle.contains(.shapeDollar))
+        XCTAssertFalse(cycle.contains(.shapeCode))
+        XCTAssertFalse(cycle.contains(.shapeRings))
+        XCTAssertFalse(cycle.contains(.shapeRouterFlow))
+    }
+
+    func testProviderOnlyCycleTreatsEmptyProviderSelectionAsOff() {
+        XCTAssertEqual(
+            SwarmFormationMode.defaultCycle(for: [], excludeBrandShapes: true),
+            [.swarm]
+        )
+    }
+
+    @MainActor
+    func testProviderOnlySimulationInitializesOnFirstProviderLogo() {
+        let simulation = SwarmSimulation(
+            particleCount: 24,
+            pace: .cinematic,
+            enabledProviderGlyphs: [.codex],
+            excludeBrandShapes: true
+        )
+
+        XCTAssertEqual(simulation.mode, .shapeProviderLogo([.codex]))
+    }
+
     func testInspectionCycleExcludesBrandShapesWhenRequested() {
         let cycle = SwarmFormationMode.inspectionCycle(for: SwarmFormationMode.showcaseProviders, excludeBrandShapes: true)
         XCTAssertFalse(cycle.contains(.shapeBurnBarLogo))
@@ -218,6 +248,17 @@ final class SwarmLogoShapeTests: XCTestCase {
             center.y + topBitmapRow.y * scale,
             center.y + bottomBitmapRow.y * scale,
             "Top image row must render at a smaller Canvas Y (higher on screen) than the bottom row."
+        )
+    }
+
+    func testLaunchBurnBarLogoTopBitmapRowRendersAboveBottomRow() {
+        let topBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 0)
+        let bottomBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 1)
+
+        XCTAssertLessThan(
+            topBitmapRow.y,
+            bottomBitmapRow.y,
+            "Top AppLogo pixels must render above bottom pixels so the splash logo is upright."
         )
     }
 

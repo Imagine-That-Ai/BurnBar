@@ -34,25 +34,25 @@ final class DashboardViewIntegrationTests: XCTestCase {
 
     func test_initialRouteIsOverview() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.mainRoute, .overview)
+        XCTAssertEqual(view.mainRoute, .overview)
     }
 
     func test_testTriggerNavigate_changesRoute() throws {
         let view = try makeDashboardView()
         view.testTriggerNavigate(to: .database)
-        XCTAssertEqual(view.navigationModel.mainRoute, .database)
+        XCTAssertEqual(view.mainRoute, .database)
     }
 
     func test_testTriggerGoBack_returnsToOverview() throws {
         let view = try makeDashboardView()
         view.testTriggerNavigate(to: .database)
         view.testTriggerGoBack()
-        XCTAssertEqual(view.navigationModel.mainRoute, .overview)
+        XCTAssertEqual(view.mainRoute, .overview)
     }
 
     func test_viewModeDefaultsToAgents() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.viewMode, .agents)
+        XCTAssertEqual(view.viewMode, .agents)
     }
 
     func test_settingsSheetStartsClosed() throws {
@@ -63,20 +63,11 @@ final class DashboardViewIntegrationTests: XCTestCase {
     func test_navigateToChatRoute() throws {
         let view = try makeDashboardView()
         view.testTriggerNavigate(to: .chat)
-        XCTAssertEqual(view.navigationModel.mainRoute, .chat)
-    }
-
-    func test_sidebarRouteOrderIncludesChat() throws {
-        let view = try makeDashboardView()
-        let order = view.navigationModel.sidebarRouteOrder(
-            providerSummaries: [],
-            modelSummaries: []
-        )
-        XCTAssertTrue(order.contains(.chat))
+        XCTAssertEqual(view.mainRoute, .chat)
     }
 
     func test_routeTitleForChat() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.routeTitle(.chat), "Chat")
+        XCTAssertEqual(view.routeTitle(.chat), "Chat")
     }
 }

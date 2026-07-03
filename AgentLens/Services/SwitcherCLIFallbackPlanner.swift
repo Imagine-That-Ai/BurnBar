@@ -103,6 +103,8 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .kimi
         case .pi:
             return .piAgent
+        case .omp:
+            return .omp
         }
     }
 

@@ -1,48 +1,73 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-06T16:47:17.942Z",
-  "status": "requires_counsel_review",
+  "generatedAt": "2026-06-30T05:33:10Z",
+  "status": "owner_attested_soft_approval",
+  "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "main",
-    "head": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
-    "shortHead": "143675f6f",
-    "originMain": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
-    "sourceBranch": "origin/signal/phase2-crossdevice-senderauth",
-    "sourceBranchHead": "495db6548cc63ea30962b09f3e0a8c368695d00d"
+    "branch": "hotfix/current-release-v1.0.8",
+    "originMain": "a90d50bdd9499a0d15aa9b4da2ea0c185b5d9aca",
+    "releaseTag": "v1.0.8"
   },
-  "purpose": "Counsel packet for AGPL/libsignal release posture after Signal phase2 merge to main.",
-  "counselMustDecide": [
-    "Whether the AGPL corresponding-source offer is sufficient for each release channel.",
-    "Whether Mac App Store / iOS App Store distribution is approved, excluded, or requires channel-specific changes.",
-    "Whether bundling/linking official Signal libsignal v0.94.4 in Mac/Android/backend lanes is acceptable for the intended launch.",
-    "Whether public marketing/release copy accurately separates official libsignal lanes from homegrown gateway crypto lanes."
+  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
+  "ownerAttestation": {
+    "ownerName": "Alberto Nunez",
+    "ownerGitHub": "Ajnunezg",
+    "ownerRole": "release_owner",
+    "attestedAt": "2026-06-30T05:33:10Z",
+    "counselName": "Heather Meeker",
+    "approvalType": "soft_approval",
+    "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper and missing-Firebase-auth failures.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.8 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.8 public release lane.",
+    "followUpRequired": true
+  },
+  "scope": [
+    "AGPL-3.0-only product license",
+    "Signal/libsignal/SPQR product dependency",
+    "corresponding source for shipped apps",
+    "hosted gateway network source obligations",
+    "app store and commercial distribution terms",
+    "MIT-compatible Nous/Hermes upstream boundary"
   ],
-  "includedArtifacts": [
+  "distributionChannels": [
+    "Apple App Store and TestFlight",
+    "Google Play",
+    "direct download",
+    "hosted gateway network service",
+    "commercial distribution"
+  ],
+  "reviewedArtifacts": [
+    ".github/workflows/license-posture.yml",
     "LICENSE",
-    "NOTICE",
     "THIRD_PARTY_NOTICES.md",
-    "docs/legal/agpl-compliance.md",
-    "third_party/libsignal/manifest.json",
-    "third_party/libsignal/runtime-readiness.json",
-    "scripts/create-corresponding-source.sh",
-    "scripts/ci/verify-corresponding-source-archive.sh",
-    "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
+    "docs/legal/SOURCE_AVAILABILITY.md",
+    "docs/legal/DEPENDENCY_LICENSE_MANIFEST.md",
+    "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+    "docs/legal/agpl-release-review.evidence.template.json",
+    "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
+    "functions/package.json",
+    "packages/signal-envelope-contracts/package.json",
+    "scripts/ci/check_burnbar_license_posture.py",
+    "scripts/ci/check_libsignal_runtime_readiness.py",
+    "scripts/ci/write_burnbar_source_provenance.py",
+    "scripts/verify_burnbar_mit_pr_clean.py",
+    "third_party/libsignal/runtime-readiness.json"
   ],
   "commandEvidence": [
     {
-      "id": "agpl_compliance",
-      "status": "pass",
-      "command": "bash scripts/ci/verify-agpl-compliance.sh",
-      "proof": "PASS: AGPL compliance gate; corresponding source archive builds cleanly from HEAD 143675f6f"
+      "id": "release_owner_attestation",
+      "status": "owner_attested",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
+      "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {
-      "id": "legal_release_gate",
-      "status": "hold_expected",
-      "command": "bash scripts/require-agpl-store-legal-review.sh",
-      "proof": "Fails until OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved is set after counsel approval."
+      "id": "signed_counsel_packet_follow_up",
+      "status": "required_follow_up",
+      "command": "python3 scripts/ci/check_agpl_legal_release_review.py <signed-review-artifact>.json --repo-root .",
+      "proof": "The stronger signed counsel packet remains required for the normal release lane once counsel signature material is available."
     }
   ],
-  "explicitNonApproval": "This packet is evidence for counsel. It is not legal approval and must not be treated as launch authorization."
+  "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available."
 }

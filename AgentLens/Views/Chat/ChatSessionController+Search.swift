@@ -385,37 +385,34 @@ extension ChatSessionController {
             OpenBurnBarChatContextBudget.chatRetrievalMaxResultLimit
         )
 
-        guard let searchSvc = typedSearchService else {
-            if let routingError = pendingModelRoutingError {
-                let err = ChatMessageRecord(
-                    role: .assistant,
-                    content: routingError,
-                    cliUsed: nil
+        let searchSvc = typedSearchService
+        let queryRun: OpenBurnBarQueryRunResult
+        if let searchSvc {
+            queryRun = await searchSvc.runBurnBarQuery(
+                RetrievalQuery(
+                    text: retrievalText,
+                    filters: RetrievalFilters(
+                        artifactTypes: [.conversation, .skillDoc, .agentDoc],
+                        ownership: .personal
+                    ),
+                    lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
+                    semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
+                    rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
+                    resultLimit: retrievalResultLimit
                 )
-                messages.append(err)
-                do {
-                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-                } catch {
-                    AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
-                }
-                refreshHistory()
-            }
-            return
-        }
-
-        let queryRun = await searchSvc.runBurnBarQuery(
-            RetrievalQuery(
-                text: retrievalText,
-                filters: RetrievalFilters(
-                    artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                    ownership: .personal
-                ),
-                lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
-                semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
-                rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
-                resultLimit: retrievalResultLimit
             )
-        )
+        } else {
+            AppLogger.chat.info(
+                "chat send continuing without typed search service",
+                metadata: ["backend": chatBackend.rawValue]
+            )
+            queryRun = OpenBurnBarQueryRunResult(
+                plan: retrievalPlan,
+                retrievalResults: [],
+                aggregateOccurrenceCount: nil,
+                aggregateWindowDescription: nil
+            )
+        }
         let retrievalResults = queryRun.retrievalResults
         conversationJumpTargets = await buildConversationJumpTargets(
             queryText: retrievalText,
@@ -745,6 +742,14 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .omp:
+                        return self.cliBridge.chatOMPStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -925,7 +930,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -959,11 +964,23 @@ extension ChatSessionController {
                 "Antigravity CLI was not found. Install Google Antigravity and ensure `agy` is on your PATH.",
                 "Antigravity not found"
             )
-        case .cursorAgent, .openClaude:
+        case .cursorAgent:
             requirement = (
                 "cursor-agent",
                 "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",
                 "Cursor Agent not found"
+            )
+        case .openClaude:
+            requirement = (
+                "openclaude",
+                "OpenClaude CLI was not found. Install OpenClaude and ensure `openclaude` is on your PATH.",
+                "OpenClaude not found"
+            )
+        case .omp:
+            requirement = (
+                "omp",
+                "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.",
+                "OMP not found"
             )
         case .codex:
             requirement = (

@@ -76,6 +76,7 @@ budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
 budgets/singleton-baseline.json
 budgets/swift-file-size-baseline.json
+budgets/windows-tree-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable

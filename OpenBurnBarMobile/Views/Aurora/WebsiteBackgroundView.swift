@@ -16,6 +16,7 @@ struct WebsiteBackgroundView: View {
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
     @Environment(\.hermesStreamingActive) private var hermesStreamingActive
     @Environment(\.scenePhase) private var scenePhase
@@ -76,14 +77,14 @@ struct WebsiteBackgroundView: View {
                     colorPalette: themePalette.swarmPalette,
                     motionSpeedMultiplier: 0.7,
                     isAutoCyclingEnabled: true,
-                    // Empty selection (the "None" glyph choice) would yield a cycle
-                    // with no provider logos — fall back to the full roster so the
-                    // dot-crest always has logos to form.
-                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
+                    // Empty selection (the "None" glyph choice) is meaningful:
+                    // provider logos stay hidden while the non-provider cycle can
+                    // still run when brand shapes are enabled.
+                    enabledProviderGlyphs: prefs.selectedGlyphs,
                     isAvatarEnabled: prefs.isAvatarEnabled,
                     isBrandTextEnabled: prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
-                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || !prefs.selectedGlyphs.isEmpty,
                     maxFrameRate: streamingThrottledFrameRate(nil),
                     rendersAsynchronously: true,
                     substrate: substrate
@@ -153,6 +154,14 @@ struct WebsiteBackgroundView: View {
         }
     }
 
+    /// The live kernel backdrop. Every kernel now renders through the WebGL
+    /// host (`MobileWebGLKernelBackdropView`) — the SAME offline bundle macOS
+    /// and the website use — as the BASE layer. When the substrate picker is
+    /// enabled we layer the transparent SwarmCanvasView + substrate OVER the
+    /// kernel, mirroring macOS `DashboardBackdrop` (kernel base, then optional
+    /// `kernelSubstrateOverlay`). This retires the old procedural
+    /// `MobileKernelBackdropView`/`ConstellationBackgroundView` live renderers
+    /// in favour of the real WebGL kernels, for parity across platforms.
     @ViewBuilder
     private func liveBackdrop(
         for kernel: MobileBackdropKernel,
@@ -160,22 +169,44 @@ struct WebsiteBackgroundView: View {
         plan: SwarmBackgroundRenderPlan,
         visibility: MobileBackgroundVisibility
     ) -> some View {
-        switch kernel {
-        case .constellation:
-            ConstellationBackgroundView(
-                accent: accent,
-                visibility: visibility,
-                enabledProviderGlyphs: prefs.selectedGlyphs
-            )
-        default:
-            MobileKernelBackdropView(
-                kernel: kernel,
-                accent: accent,
-                visibility: visibility,
-                colorDriver: colorDriver,
-                backdropColors: themePalette.backdropColors,
-                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate)
-            )
+        // Dark by default; light for the editorial/paper skin or a light scheme.
+        let theme = (appSkin == .editorial || colorScheme == .light) ? "light" : "dark"
+        let providerGlyphsSelected = !prefs.selectedGlyphs.isEmpty
+        let substrateSelected = substrateEnabled && substrateID != SubstrateCatalog.plainID
+
+        ZStack {
+            // WebGL kernel base — same `KernelBackdrop` bundle as macOS/web,
+            // driven by the raw kernel id (e.g. "constellation", "fluid-aurora").
+            MobileWebGLKernelBackdropView(kernelID: kernel.rawValue, theme: theme)
+                .ignoresSafeArea()
+
+            // Transparent swarm + substrate over the kernel, like macOS
+            // DashboardBackdrop.kernelSubstrateOverlay. Provider glyphs are an
+            // independent wallpaper control, so a non-empty selection gets an
+            // overlay even when the substrate itself is disabled.
+            if substrateSelected || providerGlyphsSelected {
+                SwarmCanvasView(
+                    accent: accent,
+                    pace: .cinematic,
+                    particleCount: editorialParticleCount(for: visibility),
+                    colorDriver: providerGlyphsSelected ? nil : colorDriver,
+                    isTransparent: true,
+                    colorPalette: themePalette.swarmPalette,
+                    motionSpeedMultiplier: 0.6,
+                    isAutoCyclingEnabled: true,
+                    enabledProviderGlyphs: prefs.selectedGlyphs,
+                    isAvatarEnabled: providerGlyphsSelected ? false : prefs.isAvatarEnabled,
+                    isBrandTextEnabled: providerGlyphsSelected ? false : prefs.isBrandTextEnabled,
+                    enableSwarmSparkles: false,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || providerGlyphsSelected,
+                    maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
+                    rendersAsynchronously: true,
+                    substrate: substrateSelected ? substrate : nil
+                )
+                .ignoresSafeArea()
+                .opacity(providerGlyphsSelected ? 0.62 : 0.58)
+                .allowsHitTesting(false)
+            }
         }
     }
 

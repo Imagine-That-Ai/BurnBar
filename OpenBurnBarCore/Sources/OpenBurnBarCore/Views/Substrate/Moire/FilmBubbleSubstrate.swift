@@ -40,6 +40,15 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
     private var rads: [Double] = []
     private var rims: [RGBA] = []
 
+    // Continuous thin-film field: a coarse canvas grid whose cells carry a low-
+    // frequency iridescent thickness (the connecting "oily sheen" between bubbles),
+    // modulated by a cheap splatted particle-density buffer so it INTENSIFIES under
+    // clusters and feathers to nothing where the sparse swarm is absent. Reallocated
+    // only when the grid dimensions change.
+    private var filmDensity: [Double] = []
+    private var filmGridW = 0
+    private var filmGridH = 0
+
     // ── thin-film spectrum LUT (built once; the hot loop never touches HSL math) ──
     private static let spectrumN = 256
     private static let spectrum: [RGBA] = {
@@ -94,6 +103,12 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         let bFy = 1.05 * invR
         let aRate = 0.55
         let bRate = -0.42
+        // Extra LOW-frequency octave — long wavelength so its hue sweeps slowly across
+        // the whole canvas, giving the continuous film a single connected iridescent
+        // sheen (rather than per-cell confetti) that the two faster carriers ripple over.
+        let cFx = 0.78 * invR
+        let cFy = 0.55 * invR
+        let cRate = 0.21
         let specN = Double(Self.spectrumN)
 
         // ── pass 0: precompute drift, radius + iridescent rim hue per bubble once ──
@@ -152,18 +167,98 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
             (1.0, RGBA(r: 1, g: 1, b: 1, a: 0.0))
         ]))
 
+        // On the full-bleed Atelier backdrop the swarm is SPARSE and free (no shape
+        // target): without a connecting material the bubbles read as disconnected
+        // specks on near-black. Detect that regime and (a) lay a continuous iridescent
+        // thin-film under everything, (b) lift the bloom ~1.5× so the field glows.
+        let sparse = !frame.isShapeMode
+
+        // ── continuous thin-film density grid (sparse regime only) ─────────────────
+        // Coarse canvas grid; each dot splats a small falloff into its 3×3 neighbours.
+        // Cell size is bounded in absolute screen px (never cloudRadius) so a wide
+        // sparse field keeps the same fine film as a thumbnail.
+        let cell = clampD(sizePx * 17, 30, 56)
+        let invCell = 1.0 / cell
+        if sparse && !lite {
+            let gw = max(2, Int((frame.size.width * invCell).rounded(.up)) + 1)
+            let gh = max(2, Int((frame.size.height * invCell).rounded(.up)) + 1)
+            if filmGridW != gw || filmGridH != gh {
+                filmGridW = gw; filmGridH = gh
+                filmDensity = .init(repeating: 0, count: gw * gh)
+            } else {
+                for k in 0..<filmDensity.count { filmDensity[k] = 0 }
+            }
+            for d in frame.dots {
+                let gx = d.x * invCell, gy = d.y * invCell
+                let ci = min(gw - 1, max(0, Int(gx)))
+                let cj = min(gh - 1, max(0, Int(gy)))
+                var jj = max(0, cj - 1)
+                while jj <= min(gh - 1, cj + 1) {
+                    var ii = max(0, ci - 1)
+                    while ii <= min(gw - 1, ci + 1) {
+                        let ddx = Double(ii) + 0.5 - gx
+                        let ddy = Double(jj) + 0.5 - gy
+                        let w = 1.0 - (ddx * ddx + ddy * ddy) * 0.55
+                        if w > 0 { filmDensity[jj * gw + ii] += w }
+                        ii += 1
+                    }
+                    jj += 1
+                }
+            }
+        }
+
         // ── BLOOM FIELD (the biggest premium lever) ───────────────────────────────
         // One real Gaussian-blurred layer of iridescent cores → a luminous haze that
         // fills the silhouette and glows. Dark: additive `.plusLighter`. Light: a
-        // gentle `.normal` colored halo for presence (never blown out). Throttle
-        // drops ONLY this pass (the heaviest); everything else still reads richly.
+        // gentle `.normal` colored halo for presence (never blown out). At sparse
+        // density the same layer first paints the connected thin-film sheet (cells
+        // smear together under the blur), then the bubble cores glow ~1.5× brighter.
+        // Throttle drops ONLY this pass (the heaviest); everything else still reads.
         if !lite {
-            let blurScale = dark ? 1.15 : 0.9
+            let bloomBoost = sparse ? 1.5 : 1.0
+            let blurScale = (dark ? 1.15 : 0.9) * (sparse ? 1.35 : 1.0)
             let haloR = dark ? 1.35 : 1.1
-            let haloA = (dark ? 0.24 : 0.16) * f
+            let haloA = (dark ? 0.24 : 0.16) * f * bloomBoost
+            // film blur is generous so neighbouring cells fuse into one oily sheet.
+            let filmBlur = max(2.0, sizePx * 2.0 * blurScale + (sparse ? cell * 0.42 : 0))
             ctx.drawLayer { layer in
                 layer.blendMode = dark ? .plusLighter : .normal
-                layer.addFilter(.blur(radius: max(2.0, sizePx * 2.0 * blurScale)))
+                layer.addFilter(.blur(radius: filmBlur))
+
+                // (a) continuous iridescent film — one disc per occupied cell, hue from
+                // the low-frequency octave + the two beating carriers, opacity feathered
+                // by particle density so it fades to nothing where the swarm is absent.
+                if sparse {
+                    let gw = filmGridW, gh = filmGridH
+                    let filmA = (dark ? 0.13 : 0.085) * f
+                    let fr = cell * 0.95
+                    var j = 0
+                    while j < gh {
+                        let cyp = (Double(j) + 0.5) * cell
+                        let ry = cyp - cy
+                        var i = 0
+                        while i < gw {
+                            let dens = filmDensity[j * gw + i]
+                            if dens > 0.004 {
+                                let cxp = (Double(i) + 0.5) * cell
+                                let rx = cxp - cx
+                                let thick = sin(rx * aFx + ry * aFy * 0.6 + tt * aRate)
+                                    + sin(rx * bFx * 0.7 + ry * bFy + tt * bRate)
+                                    + 0.9 * sin(rx * cFx + ry * cFy + tt * cRate)
+                                let u = frac(thick * 0.16 + 0.5)
+                                let si = min(Self.spectrumN - 1, max(0, Int(u * specN)))
+                                let a = clampD(filmA * smoothstep(0.0, 1.5, dens), 0, dark ? 0.5 : 0.4)
+                                layer.fill(
+                                    Path(ellipseIn: CGRect(x: cxp - fr, y: cyp - fr, width: fr * 2, height: fr * 2)),
+                                    with: .color(Self.spectrum[si].withOpacity(a).color))
+                            }
+                            i += 1
+                        }
+                        j += 1
+                    }
+                }
+
+                // (b) per-bubble iridescent cores → the luminous bloom haze.
                 for i in 0..<count {
                     let r = rads[i] * haloR
                     // glow leans iridescent (toward the rim hue's lit color), kept

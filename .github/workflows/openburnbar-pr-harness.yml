@@ -229,6 +229,68 @@ jobs:
         if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
         run: echo "Skipping debug APK artifact because this run injected the real Android Firebase config."
 
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 25
+    # Skeleton Windows lane (greenfield windows/ tree). Mirrors the `android`
+    # job's phase structure — build + lint + unit + coverage + artifact — so the
+    # Windows port owns a registered platform-confidence lane from day one. The
+    # heavy toolchain steps are intentionally skeleton placeholders on the
+    # greenfield tree; real windows-latest execution (msbuild/dotnet over the
+    # WinUI projects added by WINUI-016) is proven separately by CI-003. The Rust
+    # crate-build workflows (build-iroh-windows.yml / build-burnbar-remote-windows.yml)
+    # are owned by W-RUST / RUST-005 and are only referenced, never invoked, here.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify Windows source tree + aggregating solution
+        run: |
+          set -euo pipefail
+          test -f windows/OpenBurnBar.sln
+          test -f windows/README.md
+          for area in app pal native tests; do
+            test -d "windows/${area}"
+          done
+          echo "Windows tree + OpenBurnBar.sln present (app / pal / native / tests)."
+
+      - name: Build (skeleton — real msbuild/dotnet lands in CI-003)
+        run: |
+          echo "SKELETON build: WinUI app + PAL + native shim compile once WINUI-016 adds projects to windows/OpenBurnBar.sln."
+
+      - name: Lint (skeleton — real analyzers land in CI-003)
+        run: |
+          echo "SKELETON lint: dotnet format / Roslyn analyzers over windows/ once projects exist."
+
+      - name: Unit tests (skeleton — real test run lands in CI-003)
+        run: |
+          echo "SKELETON unit tests: run the windows/tests projects once they exist."
+
+      - name: Coverage (skeleton — real diff coverage lands in CI-003)
+        run: |
+          echo "SKELETON coverage: emit Windows diff coverage once test projects exist."
+
+      - name: Assemble skeleton artifact
+        run: |
+          set -euo pipefail
+          mkdir -p windows-skeleton-artifact
+          {
+            echo "OpenBurnBar Windows skeleton lane"
+            echo "tree: windows/ (app, pal, native, tests)"
+            echo "solution: windows/OpenBurnBar.sln (empty aggregator)"
+            echo "commit: ${GITHUB_SHA:-unknown}"
+          } > windows-skeleton-artifact/manifest.txt
+
+      - name: Upload Windows skeleton artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-skeleton-manifest
+          path: windows-skeleton-artifact/manifest.txt
+
   node-evals:
     name: Node Evals
     runs-on: macos-26
@@ -677,6 +739,7 @@ jobs:
       - platform-misc
       - functions-integration
       - android
+      - windows
       - node-evals
       - supply-chain
       - swift-core

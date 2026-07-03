@@ -1,0 +1,11 @@
+{
+  "unicodeQuery": "café",
+  "unicodeChunkIDs": ["search-chunk-1", "search-chunk-2"],
+  "providerQuery": "hermes",
+  "providerChunkIDs": ["search-chunk-2"],
+  "vectorMetadataContains": [
+    "backendID=sqlite-vector-fixture",
+    "vectorCount=2",
+    "state=ready"
+  ]
+}

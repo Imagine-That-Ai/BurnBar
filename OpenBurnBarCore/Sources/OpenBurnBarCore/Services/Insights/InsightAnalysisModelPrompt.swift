@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Builds the model prompt for the structured Insights intelligence layer.
@@ -419,7 +418,7 @@ enum InsightAnalysisModelDecoder {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(copy) else { return "" }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(data)
     }
 
     private struct CitationResolver {

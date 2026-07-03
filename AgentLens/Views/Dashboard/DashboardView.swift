@@ -19,7 +19,6 @@ struct DashboardView: View {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var runtimeContext: OpenBurnBarRuntimeContext?
-    @State var navigationModel = DashboardNavigationModel()
     @State var consentCoordinator: DashboardConsentCoordinator?
     @State var mainRoute: DashboardMainRoute = .overview
     @State var routeHistory: [DashboardMainRoute] = []
@@ -150,6 +149,35 @@ struct DashboardView: View {
         case .model(let modelName): return modelName
         }
     }
+
+    func openBurnBarCursorExtension() {
+        let id = "openburnbar.openburnbar"
+        let candidates = [
+            URL(string: "cursor:extension/\(id)"),
+            URL(string: "vscode:extension/\(id)")
+        ].compactMap { $0 }
+        for url in candidates where NSWorkspace.shared.open(url) {
+            return
+        }
+    }
+
+    #if DEBUG
+    func testTriggerNavigate(to route: DashboardMainRoute) {
+        navigate(to: route)
+    }
+
+    func testTriggerGoBack() {
+        goBack()
+    }
+
+    func testTriggerScan() {
+        Task { await aggregator?.refreshAll() }
+    }
+
+    func testTriggerRecount() {
+        Task { await aggregator?.recountAll() }
+    }
+    #endif
 
     var body: some View {
         @Bindable var chatController = chatController

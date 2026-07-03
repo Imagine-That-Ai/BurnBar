@@ -38,6 +38,9 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("grok"), "grok")
         XCTAssertEqual(exe("openclaw"), "openclaw")
         XCTAssertEqual(exe("openclaude"), "openclaude")
+        XCTAssertEqual(exe("omp"), "omp")
+        XCTAssertEqual(exe("ohmypi"), "omp")
+        XCTAssertEqual(exe("oh-my-pi"), "omp")
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
         XCTAssertEqual(exe("ollama"), "zsh")
@@ -336,6 +339,36 @@ final class CLIBridgeTests: XCTestCase {
 
         XCTAssertEqual(value(after: "--auto", in: args), "medium")
         XCTAssertNil(value(after: "--disabled-tools", in: args))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_placePromptImmediatelyAfterDashP() throws {
+        let prompt = "Mission packet body"
+        let args = CLIArgumentBuilder.ompArguments(prompt: prompt)
+
+        let promptFlagIndex = try XCTUnwrap(args.firstIndex(of: "-p"))
+        XCTAssertEqual(args[promptFlagIndex + 1], prompt)
+        XCTAssertEqual(Array(args.prefix(4)), ["-p", prompt, "--mode", "json"])
+        XCTAssertTrue(args.contains("--no-session"))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_readOnlyGrantUsesNoTools() {
+        let args = CLIArgumentBuilder.ompArguments(prompt: "read only")
+        XCTAssertTrue(args.contains("--no-tools"))
+        XCTAssertFalse(args.contains("--tools"))
+        XCTAssertFalse(args.contains("--auto-approve"))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_shellGrantIncludesBashTool() throws {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .omp,
+            threadID: "thread-omp",
+            capabilities: [.shell, .workspaceRead]
+        )
+        let args = CLIArgumentBuilder.ompArguments(prompt: "run", capabilityGrant: grant)
+        let toolsIndex = try XCTUnwrap(args.firstIndex(of: "--tools"))
+        let tools = args[toolsIndex + 1]
+        XCTAssertTrue(tools.contains("bash"))
+        XCTAssertTrue(args.contains("--auto-approve"))
     }
 
     // MARK: - Forge Arguments Tests

@@ -1,0 +1,12 @@
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.deps.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.GeneratedMSBuildEditorConfig.editorconfig
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.AssemblyInfoInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.AssemblyInfo.cs
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.csproj.CoreCompileInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.sourcelink.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/refint/OpenBurnBar.Pal.Ipc.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc/obj/Debug/net10.0/ref/OpenBurnBar.Pal.Ipc.dll

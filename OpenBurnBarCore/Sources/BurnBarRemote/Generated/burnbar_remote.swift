@@ -526,6 +526,24 @@ fileprivate struct FfiConverterString: FfiConverter {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias SwiftType = Data
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        let len: Int32 = try readInt(&buf)
+        return Data(try readBytes(&buf, count: Int(len)))
+    }
+
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value)
+    }
+}
+
 
 
 
@@ -654,6 +672,206 @@ public func FfiConverterTypeBurnBarRemoteQualityController_lift(_ pointer: Unsaf
 #endif
 public func FfiConverterTypeBurnBarRemoteQualityController_lower(_ value: BurnBarRemoteQualityController) -> UnsafeMutableRawPointer {
     return FfiConverterTypeBurnBarRemoteQualityController.lower(value)
+}
+
+
+
+
+/**
+ * Foreign-implemented progress sink invoked during `encode_quality_decision`.
+ *
+ * This is a UniFFI *foreign trait* (`with_foreign`): Swift/Kotlin/C# each
+ * implement it and hand an instance across the FFI boundary. It exists to
+ * exercise the callback ABI end-to-end from the round-trip test — the encoder
+ * reports each stage it passes through so the foreign side can assert the
+ * callback fired in order.
+ */
+public protocol WireProgressListener : AnyObject {
+
+    /**
+     * Called once per encode stage, in order: `"validate"`, `"encode"`,
+     * `"done"`.
+     */
+    func onStage(stage: String)
+
+}
+
+/**
+ * Foreign-implemented progress sink invoked during `encode_quality_decision`.
+ *
+ * This is a UniFFI *foreign trait* (`with_foreign`): Swift/Kotlin/C# each
+ * implement it and hand an instance across the FFI boundary. It exists to
+ * exercise the callback ABI end-to-end from the round-trip test — the encoder
+ * reports each stage it passes through so the foreign side can assert the
+ * callback fired in order.
+ */
+open class WireProgressListenerImpl:
+    WireProgressListener {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // UniFFI note: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_burnbar_remote_fn_clone_wireprogresslistener(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_burnbar_remote_fn_free_wireprogresslistener(pointer, $0) }
+    }
+
+
+
+
+    /**
+     * Called once per encode stage, in order: `"validate"`, `"encode"`,
+     * `"done"`.
+     */
+open func onStage(stage: String) {try! rustCall() {
+    uniffi_burnbar_remote_fn_method_wireprogresslistener_on_stage(self.uniffiClonePointer(),
+        FfiConverterString.lower(stage),$0
+    )
+}
+}
+
+
+}
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceWireProgressListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceWireProgressListener = UniffiVTableCallbackInterfaceWireProgressListener(
+        onStage: { (
+            uniffiHandle: UInt64,
+            stage: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeWireProgressListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onStage(
+                     stage: try FfiConverterString.lift(stage)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterTypeWireProgressListener.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface WireProgressListener: handle missing in uniffiFree")
+            }
+        }
+    )
+}
+
+private func uniffiCallbackInitWireProgressListener() {
+    uniffi_burnbar_remote_fn_init_callback_vtable_wireprogresslistener(&UniffiCallbackInterfaceWireProgressListener.vtable)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWireProgressListener: FfiConverter {
+    fileprivate static var handleMap = UniffiHandleMap<WireProgressListener>()
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = WireProgressListener
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> WireProgressListener {
+        return WireProgressListenerImpl(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: WireProgressListener) -> UnsafeMutableRawPointer {
+        guard let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: handleMap.insert(obj: value))) else {
+            fatalError("Cast to UnsafeMutableRawPointer failed")
+        }
+        return ptr
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WireProgressListener {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: WireProgressListener, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWireProgressListener_lift(_ pointer: UnsafeMutableRawPointer) throws -> WireProgressListener {
+    return try FfiConverterTypeWireProgressListener.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWireProgressListener_lower(_ value: WireProgressListener) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeWireProgressListener.lower(value)
 }
 
 
@@ -1154,6 +1372,10 @@ public enum BurnBarRemoteFfiError {
     case InvalidDimensions(width: UInt32, height: UInt32
     )
     case ControllerLockPoisoned
+    case WireTruncated(expected: UInt32, found: UInt32
+    )
+    case WireVersionMismatch(expected: UInt8, found: UInt8
+    )
 }
 
 
@@ -1175,6 +1397,14 @@ public struct FfiConverterTypeBurnBarRemoteFfiError: FfiConverterRustBuffer {
             height: try FfiConverterUInt32.read(from: &buf)
             )
         case 2: return .ControllerLockPoisoned
+        case 3: return .WireTruncated(
+            expected: try FfiConverterUInt32.read(from: &buf),
+            found: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 4: return .WireVersionMismatch(
+            expected: try FfiConverterUInt8.read(from: &buf),
+            found: try FfiConverterUInt8.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1195,6 +1425,18 @@ public struct FfiConverterTypeBurnBarRemoteFfiError: FfiConverterRustBuffer {
 
         case .ControllerLockPoisoned:
             writeInt(&buf, Int32(2))
+
+
+        case let .WireTruncated(expected,found):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(expected, into: &buf)
+            FfiConverterUInt32.write(found, into: &buf)
+
+
+        case let .WireVersionMismatch(expected,found):
+            writeInt(&buf, Int32(4))
+            FfiConverterUInt8.write(expected, into: &buf)
+            FfiConverterUInt8.write(found, into: &buf)
 
         }
     }
@@ -1603,11 +1845,94 @@ fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
         }
     }
 }
+private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
+private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
+
+fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+
+fileprivate func uniffiRustCallAsync<F, T>(
+    rustFutureFunc: () -> UInt64,
+    pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> (),
+    completeFunc: (UInt64, UnsafeMutablePointer<RustCallStatus>) -> F,
+    freeFunc: (UInt64) -> (),
+    liftFunc: (F) throws -> T,
+    errorHandler: ((RustBuffer) throws -> Swift.Error)?
+) async throws -> T {
+    // Make sure to call uniffiEnsureInitialized() since future creation doesn't have a
+    // RustCallStatus param, so doesn't use makeRustCall()
+    uniffiEnsureInitialized()
+    let rustFuture = rustFutureFunc()
+    defer {
+        freeFunc(rustFuture)
+    }
+    var pollResult: Int8;
+    repeat {
+        pollResult = await withUnsafeContinuation {
+            pollFunc(
+                rustFuture,
+                uniffiFutureContinuationCallback,
+                uniffiContinuationHandleMap.insert(obj: $0)
+            )
+        }
+    } while pollResult != UNIFFI_RUST_FUTURE_POLL_READY
+
+    return try liftFunc(makeRustCall(
+        { completeFunc(rustFuture, $0) },
+        errorHandler: errorHandler
+    ))
+}
+
+// Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
+// lift the return value or error and resume the suspended function.
+fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
+    if let continuation = try? uniffiContinuationHandleMap.remove(handle: handle) {
+        continuation.resume(returning: pollResult)
+    } else {
+        print("uniffiFutureContinuationCallback invalid handle")
+    }
+}
 public func burnbarRemoteReadiness() -> RemoteReadiness {
     return try!  FfiConverterTypeRemoteReadiness.lift(try! rustCall() {
     uniffi_burnbar_remote_fn_func_burnbar_remote_readiness($0
     )
 })
+}
+/**
+ * Decode a `RemoteQualityDecision` from its canonical wire vector.
+ *
+ * Fails closed with a typed error on a truncated buffer or an unknown version
+ * byte — this is the error path the C# round-trip test asserts against.
+ */
+public func decodeQualityDecision(bytes: Data)throws  -> RemoteQualityDecision {
+    return try  FfiConverterTypeRemoteQualityDecision.lift(try rustCallWithError(FfiConverterTypeBurnBarRemoteFfiError.lift) {
+    uniffi_burnbar_remote_fn_func_decode_quality_decision(
+        FfiConverterData.lower(bytes),$0
+    )
+})
+}
+/**
+ * Encode a `RemoteQualityDecision` to its canonical wire vector, reporting
+ * progress through `listener`.
+ *
+ * `async` purely to exercise the foreign-future ABI; the body performs no
+ * I/O and is fully deterministic, so it needs no async runtime. Returns
+ * `WireTruncated`/`WireVersionMismatch` only via the decode inverse; encoding
+ * a well-formed record is infallible but is typed `Result` so the C# binding
+ * generates the fallible async signature that FFI-008 also needs.
+ */
+public func encodeQualityDecision(decision: RemoteQualityDecision, listener: WireProgressListener)async throws  -> Data {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_burnbar_remote_fn_func_encode_quality_decision(FfiConverterTypeRemoteQualityDecision.lower(decision),FfiConverterTypeWireProgressListener.lower(listener)
+                )
+            },
+            pollFunc: ffi_burnbar_remote_rust_future_poll_rust_buffer,
+            completeFunc: ffi_burnbar_remote_rust_future_complete_rust_buffer,
+            freeFunc: ffi_burnbar_remote_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: FfiConverterTypeBurnBarRemoteFfiError.lift
+        )
 }
 public func remoteModeRequiresPermission(mode: RemoteSessionMode, permission: RemotePermission) -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -1645,6 +1970,12 @@ private var initializationResult: InitializationResult = {
     if (uniffi_burnbar_remote_checksum_func_burnbar_remote_readiness() != 62187) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_burnbar_remote_checksum_func_decode_quality_decision() != 51301) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_burnbar_remote_checksum_func_encode_quality_decision() != 16007) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_burnbar_remote_checksum_func_remote_mode_requires_permission() != 62626) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1654,10 +1985,14 @@ private var initializationResult: InitializationResult = {
     if (uniffi_burnbar_remote_checksum_method_burnbarremotequalitycontroller_update() != 32776) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_burnbar_remote_checksum_method_wireprogresslistener_on_stage() != 15407) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_burnbar_remote_checksum_constructor_burnbarremotequalitycontroller_new() != 50369) {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitWireProgressListener()
     return InitializationResult.ok
 }()
 

@@ -1,0 +1,68 @@
+{
+  "eventCount" : 3,
+  "events" : [
+    {
+      "detail" : "cat marker.txt",
+      "index" : 0,
+      "kind" : "toolUse",
+      "sourceLineIndex" : 7,
+      "toolName" : "Bash"
+    },
+    {
+      "detail" : "BURNBAR_STREAM_GOLDEN_MARKER_7F3A9C2E",
+      "index" : 1,
+      "kind" : "toolResult",
+      "sourceLineIndex" : 8,
+      "toolName" : "toolu_01HWPquxfMG4ys8AsmzX81Xi"
+    },
+    {
+      "index" : 2,
+      "kind" : "text",
+      "sourceLineIndex" : 9,
+      "text" : "BURNBAR_STREAM_GOLDEN_MARKER_7F3A9C2E"
+    }
+  ],
+  "formatVersion" : 1,
+  "model" : "claude-haiku-4-5-20251001",
+  "parser" : "ClaudeCodeStreamJSONParser",
+  "provider" : "Claude Code",
+  "rawEventKinds" : [
+    {
+      "count" : 3,
+      "subtype" : "",
+      "type" : "assistant"
+    },
+    {
+      "count" : 1,
+      "subtype" : "",
+      "type" : "rate_limit_event"
+    },
+    {
+      "count" : 1,
+      "subtype" : "success",
+      "type" : "result"
+    },
+    {
+      "count" : 1,
+      "subtype" : "init",
+      "type" : "system"
+    },
+    {
+      "count" : 4,
+      "subtype" : "thinking_tokens",
+      "type" : "system"
+    },
+    {
+      "count" : 1,
+      "subtype" : "",
+      "type" : "user"
+    }
+  ],
+  "rawLineCount" : 11,
+  "scenario" : {
+    "captureCommand" : "env -i HOME=$HOME USER=$USER LANG=en_US.UTF-8 PATH=<node-bin>:/usr/bin:/bin <real-claude-binary> -p \"$PROMPT\" --model claude-haiku-4-5 --output-format stream-json --verbose --strict-mcp-config --setting-sources \"\" --disable-slash-commands --allowedTools Bash --permission-mode acceptEdits  (see scripts/windows-port/capture-claude-stream-json-golden.sh)",
+    "description" : "A real, authenticated `claude --output-format stream-json` run on macOS (Claude Code 2.1.191), invoking the genuine claude binary directly (not the cmux wrapper shim) in a stripped env with --setting-sources \"\" + --disable-slash-commands + --strict-mcp-config so the system/init line is canonical (no personal skills/plugins/MCP servers). The marker-file scenario forces one Bash tool_use + tool_result, so the raw stream exercises system/init, a rate_limit_event, system/thinking_tokens, assistant thinking, assistant tool_use, user tool_result, assistant text, and the final result-with-usage. The shipped ClaudeCodeStreamJSONParser projects this raw stream to exactly the events below (toolUse + toolResult + text — the complete reachable set for this parser); it does not emit reasoning/usage for Claude, which is faithful production behavior (usage arrives on the raw result line, harvested by the log/quota path, not the live stream parser). The committed raw carries one deterministic, event-neutral PII redaction: the local macOS home path was rewritten to /Users/openburnbar in the inert system/init memory_paths field, which the parser never reads (zero parsed-event impact — proven by re-parsing the committed raw).",
+    "marker" : "BURNBAR_STREAM_GOLDEN_MARKER_7F3A9C2E",
+    "prompt" : "There is a file named marker.txt in the current working directory. Use the Bash tool to run: cat marker.txt — to read its contents. Then reply with ONLY the exact one-line contents of that file and nothing else. Do not guess; you must actually run the command to learn the value."
+  }
+}

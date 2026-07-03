@@ -27,7 +27,6 @@
 //     (entropy or decoded-view) cannot be located on the original text. You can
 //     never redact what you cannot point at.
 
-import CryptoKit
 import Foundation
 
 // MARK: - Public surface

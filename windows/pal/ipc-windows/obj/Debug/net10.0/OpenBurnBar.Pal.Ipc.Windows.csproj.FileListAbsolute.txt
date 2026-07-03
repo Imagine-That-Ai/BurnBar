@@ -1,0 +1,16 @@
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.deps.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/bin/Debug/net10.0/OpenBurnBar.Pal.Ipc.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.csproj.AssemblyReference.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.GeneratedMSBuildEditorConfig.editorconfig
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.AssemblyInfoInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.AssemblyInfo.cs
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.csproj.CoreCompileInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.sourcelink.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurn.569F73D7.Up2Date
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/refint/OpenBurnBar.Pal.Ipc.Windows.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/OpenBurnBar.Pal.Ipc.Windows.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pal/ipc-windows/obj/Debug/net10.0/ref/OpenBurnBar.Pal.Ipc.Windows.dll

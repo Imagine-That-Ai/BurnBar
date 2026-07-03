@@ -600,7 +600,38 @@ final class CLIBridge: ObservableObject {
         }
     }
 
-    /// Streams using Factory Droid CLI only.
+    /// Streams using the Oh My Pi `omp` CLI.
+    func chatOMPStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "omp") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runOMP(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     func chatDroidStream(
         systemPrompt: String,
         userMessage: String,

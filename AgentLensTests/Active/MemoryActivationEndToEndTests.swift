@@ -21,17 +21,15 @@ import OpenBurnBarCore
 //   #3 Architectural guard: the engine's only durable-write path is the worker's
 //      preflight/quarantine; a clean fact lands `.quarantined`, NEVER `.approved`, even
 //      though the model proposed `.approved` — the worker overrode it.
-//   #5 With both levers ON, the engine drains and writes; with the extraction gate OFF,
-//      nothing is claimed and nothing is written (asserted by the kill-switch leg); with
-//      extraction ON but the human-owned go-live flag OFF, the loop may run but ZERO
-//      durable memories are written (asserted by the gate-matrix leg — PR-D FIX #2).
+    //   #5 With both levers ON, the engine drains and writes; with the extraction gate OFF,
+    //      nothing is claimed and nothing is written (asserted by the kill-switch leg); with
+    //      extraction ON but authority writes explicitly OFF, the loop may run but ZERO
+    //      durable memories are written (asserted by the gate-matrix leg; PR-D FIX #2).
 //
-// THE FEATURE SHIPS OFF. Durable writes require the AND of two independent levers:
-// `memoryExtractionEnabled` (the G4 gate, default TRUE) AND the human-owned go-live flag
-// `chatMemoryAuthorityWritesEnabledByDefault` (static, default FALSE). The go-live flag's
-// default-false value is what keeps the subsystem dormant out of the box. This test forces
-// BOTH levers ON explicitly (the engine takes `authorityWritesGoLiveEnabled: true`) to
-// exercise the write path; it never mutates global state.
+    // The production path is live after opt-in: durable writes require the AND of two
+    // independent levers, `memoryExtractionEnabled` (consent + user toggle + fleet gate)
+    // and `chatMemoryAuthorityWritesEnabledByDefault`. This test keeps both levers on to
+    // exercise the write path; it never mutates global state.
 @MainActor
 final class MemoryActivationEndToEndTests: XCTestCase {
 
@@ -67,8 +65,8 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
         // The engine over the SAME store. It builds a real extractor + LLM client; the HTTP
         // stub answers the OpenAI-compatible /chat/completions the local provider calls.
-        // BOTH levers ON: extraction enabled (in `settings`) AND the human-owned go-live
-        // flag forced true here, so the worker's authority closure (their AND) permits the
+        // BOTH levers ON: extraction enabled (in `settings`) AND authority writes allowed
+        // here, so the worker's authority closure (their AND) permits the
         // durable write this test asserts.
         let engine = MemoryExtractionEngine(
             chatMemoryStore: store,
@@ -204,8 +202,8 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         let store = ControlPlaneStore(dbQueue: queue)
         // Gate CLOSED via the EXTRACTION lever: the user toggle is off, so
         // `memoryExtractionEnabled` is false and the engine's `runDrain` short-circuits to
-        // `.killSwitchOff` before any pump. The go-live flag is forced ON here so this leg
-        // isolates the extraction-gate lever (not the go-live lever, which the gate-matrix
+        // `.killSwitchOff` before any pump. Authority writes are allowed here so this leg
+        // isolates the extraction-gate lever (not the authority-write lever, which the gate-matrix
         // test below exercises).
         let settings = Self.makeSettingsWithExtractionDisabled()
         let service = OpenBurnBarMemoryService(store: store)
@@ -259,17 +257,16 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertEqual(memCount, 0, "nothing written while the kill switch is off")
     }
 
-    // MARK: - Gate-matrix leg (PR-D FIX #2): extraction ENABLED + go-live OFF ⇒ 0 writes
+    // MARK: - Gate-matrix leg (PR-D FIX #2): extraction ENABLED + explicit writes OFF => 0 writes
     //
     // This is the regression the original headline test made UNREPRESENTABLE: it set only
     // `memoryExtractionEnabled` (default TRUE) and asserted a durable write, which encoded
     // the two-levers-collapsed-into-one bug as expected behavior. Here extraction is ENABLED
-    // but the human-owned go-live flag (`chatMemoryAuthorityWritesEnabledByDefault`) is OFF
-    // (its real default — we do NOT pass `authorityWritesGoLiveEnabled: true`). The worker's
-    // authority closure is the AND of the two levers, so it is `true && false == false`:
+    // but the explicit authority-write override is OFF. The worker's authority closure is
+    // the AND of the two levers, so it is `true && false == false`:
     // the loop may run, but ZERO durable `agent_memories` rows are written, and crucially the
     // job is NOT silently marked succeeded as if it had written.
-    func test_gateMatrix_extractionEnabled_goLiveOff_drainsButWritesNothing() async throws {
+    func test_gateMatrix_extractionEnabled_explicitWritesOff_drainsButWritesNothing() async throws {
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
         let store = ControlPlaneStore(dbQueue: queue)
@@ -277,21 +274,19 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         // Extraction ENABLED (both G4 sub-levers on) — the LLM round-trip is permitted.
         let settings = Self.makeSettingsWithExtractionEnabled()
         XCTAssertTrue(settings.memoryExtractionEnabled, "extraction lever is ON for this leg")
-        // Go-live flag is its real default (FALSE): the second, human-owned lever. We rely
-        // on the default rather than forcing it, so this test fails if a future edit flips
-        // the static default to true.
-        XCTAssertFalse(
+        // Production is live; this leg uses an explicit false override to keep the dormant
+        // authority path covered.
+        XCTAssertTrue(
             ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
-            "the go-live default must stay FALSE; this test asserts dormancy on that default"
+            "the production default should allow writes once consent + fleet gates are open"
         )
         let service = OpenBurnBarMemoryService(store: store)
-        // NOTE: no `authorityWritesGoLiveEnabled:` argument ⇒ the engine uses the static
-        // default-false go-live flag, the exact ship configuration.
         let engine = MemoryExtractionEngine(
             chatMemoryStore: store,
             dataStore: dataStore,
             settingsManager: settings,
-            providerAPIKeyStore: ProviderAPIKeyStore()
+            providerAPIKeyStore: ProviderAPIKeyStore(),
+            authorityWritesGoLiveEnabled: false
         )
 
         let threadID = "thread-golive-off"
@@ -320,9 +315,9 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         }
         XCTAssertEqual(jobRows, 1, "enqueue is independent of the go-live lever")
 
-        // Drain with extraction ON but go-live OFF. `runDrain` passes its own
+        // Drain with extraction ON but authority writes OFF. `runDrain` passes its own
         // `memoryExtractionEnabled` entry guard (extraction IS enabled), so it builds a pump
-        // and ticks the worker — but the worker's pre-claim authority guard (the AND) is
+        // and ticks the worker, but the worker's pre-claim authority guard (the AND) is
         // false, so it claims NOTHING and the pump reports idle with zero processed.
         let report = await engine.runDrain()
         XCTAssertEqual(report.processed, 0, "no job processed while the go-live lever is off")
@@ -333,26 +328,26 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         )
         // The model is NEVER called: the worker short-circuits before the extractor runs, so
         // there is no LLM egress when the go-live lever is off (defense against paid calls).
-        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "no LLM egress while go-live is off")
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "no LLM egress while authority writes are off")
 
         // The job is NOT silently succeeded — it stays claimable (`pending`) for a future
         // drain after go-live is flipped. This is the "does not succeed as if it wrote" half.
         let jobIDValue = try await Self.onlyJobID(queue)
         let jobID = try XCTUnwrap(jobIDValue)
-        let goLiveOffStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        let writesOffStatus = try await store.memoryExtractionJobStatus(id: jobID)
         XCTAssertEqual(
-            goLiveOffStatus, .pending,
-            "an off go-live lever must not claim or terminally complete the job"
+            writesOffStatus, .pending,
+            "an off authority-write lever must not claim or terminally complete the job"
         )
 
         // ZERO durable memories written — the headline assertion of this regression.
         let chatMemoryCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
         }
-        XCTAssertEqual(chatMemoryCount, 0, "extraction ON + go-live OFF ⇒ ZERO durable memories")
+        XCTAssertEqual(chatMemoryCount, 0, "extraction ON + authority writes OFF => ZERO durable memories")
         // The deterministic id that WOULD have been written is absent.
         let wouldBeMemory = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-0")
-        XCTAssertNil(wouldBeMemory, "no authority record exists while go-live is off")
+        XCTAssertNil(wouldBeMemory, "no authority record exists while authority writes are off")
     }
 
     // MARK: - Fixtures

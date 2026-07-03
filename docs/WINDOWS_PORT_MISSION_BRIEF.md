@@ -4,6 +4,7 @@
 Pass this file's content as the `brief` to `start_project(brief, workspace_dir)`. The **authoritative
 specification** is [`docs/WINDOWS_PORT_MASTER_PLAN.md`](WINDOWS_PORT_MASTER_PLAN.md) (v2.1) — read it first; this
 brief only records the accepted scope + the decisions that were open in that plan and are now resolved.
+Shared desktop substrate contracts live in [`DESKTOP_FOUNDATION.md`](DESKTOP_FOUNDATION.md); this brief inherits them and records only Windows-specific execution decisions.
 
 **Created:** 2026-07-02 · **Workspace:** `/Users/albertonunez/Documents/Developer/BurnBar` (macOS)
 

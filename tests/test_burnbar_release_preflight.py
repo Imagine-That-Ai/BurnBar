@@ -11,8 +11,7 @@ def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
         ["python3", "scripts/ci/check_burnbar_release_preflight.py"],
         cwd=ROOT,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
 
@@ -32,8 +31,7 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
         ],
         cwd=ROOT,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
 
@@ -72,8 +70,7 @@ def test_release_preflight_strictly_validates_claimed_approval(tmp_path):
         ],
         cwd=ROOT,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
 
@@ -96,6 +93,13 @@ def test_product_release_workflows_invoke_release_preflight():
         assert "release_hold_bypass_reason must contain non-whitespace text" not in body, workflow
         assert "Record owner-approved release hold bypass" not in body, workflow
         assert "trim(inputs.release_hold_bypass_reason)" not in body, workflow
+
+    release_body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    deploy_body = (ROOT / ".github/workflows/deploy-production.yml").read_text(encoding="utf-8")
+    assert "check_burnbar_release_preflight.py" in release_body
+    assert "--allow-owner-emergency-approval" in release_body
+    assert '--expected-release-tag "${{ steps.version.outputs.tag_name }}"' in release_body
+    assert "--allow-owner-emergency-approval" not in deploy_body
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
@@ -122,27 +126,24 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert "Verify checksum GPG signature (when configured)" in body
     assert "Sigstore blob attestations (SBOM + VEX + checksums + binaries)" in body
     assert "cosign attest-blob --yes" in body
-    assert "--predicate \"$predicate_path\"" in body
-    assert "--bundle \"$bundle_path\"" in body
+    assert '--predicate "$predicate_path"' in body
+    assert '--bundle "$bundle_path"' in body
     assert "release-provenance-v${VERSION}" in body
     assert "Upload release provenance bundles artifact" in body
     assert "PROVENANCE_PATHS" in body
-    assert (
-        'find "$RUNNER_TEMP" -type f \\( -name "*.sigstore.json" -o -name "*.predicate.json" \\)'
-        in body
-    )
+    assert 'find "$RUNNER_TEMP" -type f \\( -name "*.sigstore.json" -o -name "*.predicate.json" \\)' in body
     assert (
         'find "$RUNNER_TEMP" -maxdepth 1 -type f \\( -name "*.sigstore.json" -o -name "*.predicate.json" \\)'
         not in body
     )
-    assert "cosign attest --yes \"$CHECKSUMS_PATH\"" not in body
+    assert 'cosign attest --yes "$CHECKSUMS_PATH"' not in body
     assert "if: steps.provenance-policy.outputs.gpg_configured == 'true'" in body
-    assert "if [[ -z \"${SIGNATURE_PATH:-}\" || ! -f \"$SIGNATURE_PATH\" ]]" in body
+    assert 'if [[ -z "${SIGNATURE_PATH:-}" || ! -f "$SIGNATURE_PATH" ]]' in body
 
     assert "RELEASE_SIGNING_KEY is not set. GPG checksum signing is required" not in body
     assert "if: env.RELEASE_SIGNING_KEY == ''" not in body
     assert 'tag_ref="refs/tags/${TAG_NAME}"' in body
-    assert 'Manual release dispatch for ${TAG_NAME} must run from ${tag_ref}, not ${GITHUB_REF}.' in body
+    assert "Manual release dispatch for ${TAG_NAME} must run from ${tag_ref}, not ${GITHUB_REF}." in body
     assert "keyless provenance is tag-bound" in body
     assert 'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"' in body
     assert 'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"' in body
@@ -172,7 +173,7 @@ def test_supply_chain_provenance_uses_resolved_release_tag_commit():
     assert "RUN_HEAD: ${{ github.event.workflow_run.head_branch }}" in body
     assert "RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}" in body
     assert 'tag_ref="refs/tags/${TAG}"' in body
-    assert 'Manual provenance dispatch for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}.' in body
+    assert "Manual provenance dispatch for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}." in body
     assert "keyless provenance is tag-bound" in body
     assert 'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"' in body
     assert 'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"' in body
@@ -197,11 +198,11 @@ def test_release_attestation_verifier_uses_sigstore_blob_bundles():
     assert "OPENBURNBAR_RELEASE_PREDICATE_TYPE" in body
     assert "certificate_issuer=" in body
     assert "predicate_type=" in body
-    assert "download_optional_pattern \"*.sigstore.json\"" in body
-    assert "download_optional_pattern \"*.predicate.json\"" in body
+    assert 'download_optional_pattern "*.sigstore.json"' in body
+    assert 'download_optional_pattern "*.predicate.json"' in body
     assert "signed_statement_from_bundle(bundle)" in body
     assert "release predicate sidecar does not match the signed Sigstore bundle payload" in body
-    assert "\"runner.environment\": predicate.get(\"runner\", {}).get(\"environment\")" in body
+    assert '"runner.environment": predicate.get("runner", {}).get("environment")' in body
     assert "artifact.sha256" in body
     assert "release.tag" in body
     assert "release.ref" in body
@@ -212,7 +213,7 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     script = (ROOT / "scripts/ci/smoke-openburnbar-release-dmg.sh").read_text(encoding="utf-8")
     website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
 
-    assert "bash scripts/ci/smoke-openburnbar-release-dmg.sh \"$DMG_PATH\"" in workflow
+    assert 'bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"' in workflow
     assert "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI" in workflow
     assert '--identifier "$identifier"' in workflow
     assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in workflow
@@ -229,13 +230,17 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
         '"com.openburnbar.privileged-input-execution"'
     ) in workflow
     assert (
-        'assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" '
-        '"com.openburnbar.virtual-hid-bridge"'
+        'assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"'
     ) in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"' in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarCLI"' in workflow
-    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"' in website_release
-    assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"' in website_release
+    assert (
+        'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"'
+        in website_release
+    )
+    assert (
+        'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"' in website_release
+    )
     assert 'cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"' in workflow
     assert 'cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"' in website_release
     assert 'cp -R "$PROJECT_CODE_MEMORY_DIR" "$HELPERS_DIR/ProjectCodeMemory"' not in workflow
@@ -252,7 +257,7 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'cp "$daemon_bin" "$installed_daemon_bin"' in script
     assert 'cp "$cli_bin" "$installed_cli_bin"' in script
     assert 'for framework in "$app_path"/Contents/Frameworks/*.framework; do' in script
-    assert 'SQLCipher.framework was not mirrored to installed daemon rpath directory' in script
+    assert "SQLCipher.framework was not mirrored to installed daemon rpath directory" in script
     assert "OPENBURNBAR_DAEMON_SUPPORT_DIR" in script
     assert "com.openburnbar.daemon.release-smoke" in script
     assert 'python3 - "$installed_cli_bin"' in script
@@ -260,12 +265,12 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "subprocess.TimeoutExpired" in script
     assert "timeout=2" in script
     assert "health_deadline_seconds=30" in script
-    assert "while [[ \"$(date +%s)\" -lt \"$health_deadline_epoch\" ]]" in script
+    assert 'while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]' in script
     assert "for attempt in {1..60}" not in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
     assert "import socket" not in script
-    assert "\"method\": \"daemon.health\"" not in script
+    assert '"method": "daemon.health"' not in script
     assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow

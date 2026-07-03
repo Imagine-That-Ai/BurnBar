@@ -6,7 +6,7 @@ import SwiftUI
 //
 // Redesigned dashboard top bar — composable primitives that render as a single
 // rail (for the #Preview) or as discrete toolbar sections (live in the macOS
-// toolbar via DashboardToolbar.swift).
+// toolbar via DashboardToolbarContent.swift — the Command Deck bar).
 //
 //   [ back · 🔥 OpenBurnBar · Agents·Models ]   [ 🔍 omnibar (⌘K) ]   [ range · unit · BURN hero · actions ]
 //
@@ -755,10 +755,10 @@ struct BurnRailWorkspaceContextPill: View {
 
 // MARK: - Time range menu chip
 //
-// Public counterpart of the private menu chip in `DashboardToolbar.swift` —
-// the live toolbar in `DashboardToolbarContent.swift` reaches for this so the
-// macOS-toolbar `ToolbarItem` can render a calendar pill with the same visual
-// language as the rest of the BurnRail primitives.
+// Public range menu chip — the live Command Deck toolbar in
+// `DashboardToolbarContent.swift` reaches for this so the macOS-toolbar
+// `ToolbarItem` can render a calendar pill with the same visual language
+// as the rest of the BurnRail primitives.
 
 struct BurnRailTimeRangeMenuChip: View {
     @Binding var selected: TimeRange

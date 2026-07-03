@@ -78,6 +78,7 @@ actor QuotaRefreshActor {
         self.adapters = [
             .codex: CodexQuotaAdapter(),
             .openCode: OpenCodeQuotaAdapter(),
+            .omp: OMPQuotaAdapter(),
             .openAI: OpenAIQuotaAdapter(),
             .deepSeek: DeepSeekQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
@@ -685,6 +686,8 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".kimi", isDirectory: true).path
     case .pi:
         return homeDirectoryURL.appendingPathComponent(".pi", isDirectory: true).path
+    case .omp:
+        return homeDirectoryURL.appendingPathComponent(".omp", isDirectory: true).path
     }
 }
 
@@ -735,6 +738,8 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .kimi
     case .pi:
         return .piAgent
+    case .omp:
+        return .omp
     }
 }
 

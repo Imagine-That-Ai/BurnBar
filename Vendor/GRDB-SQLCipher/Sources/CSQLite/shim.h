@@ -1,4 +1,8 @@
+#if defined(__has_include) && __has_include(<SQLCipher/SQLCipher.h>)
 #include <SQLCipher/SQLCipher.h>
+#else
+#include <sqlite3.h>
+#endif
 
 typedef void(*_errorLogCallback)(void *pArg, int iErrCode, const char *zMsg);
 

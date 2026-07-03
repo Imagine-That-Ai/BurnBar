@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Views.LiveCliStreamView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:OpenBurnBar.App.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Transport toolbar. -->
+        <Grid Grid.Row="0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0"
+                    Content="Start"
+                    Click="Start_Click"
+                    IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}" />
+            <Button Grid.Column="1"
+                    Content="Stop"
+                    Click="Stop_Click"
+                    IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}" />
+
+            <TextBlock Grid.Column="3"
+                       x:Name="StatusLabel"
+                       VerticalAlignment="Center"
+                       Opacity="0.7"
+                       FontSize="12"
+                       Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+        </Grid>
+
+        <!-- Streamed lines. -->
+        <Border Grid.Row="1"
+                CornerRadius="{StaticResource OBBCardCornerRadius}"
+                Background="{StaticResource OBBSurfaceBrush}"
+                BorderThickness="1"
+                BorderBrush="{StaticResource OBBStrokeBrush}">
+            <ListView x:Name="LinesList"
+                      Padding="12,8"
+                      FontFamily="Cascadia Mono, Consolas, Courier New"
+                      FontSize="12.5"
+                      SelectionMode="None"
+                      IsItemClickEnabled="False"
+                      ItemsSource="{x:Bind ViewModel.Lines, Mode=OneWay}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CliLineViewModel">
+                        <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+                                   Foreground="{x:Bind Foreground}"
+                                   TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" />
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "OpenBurnBar.App (Unpackaged)": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

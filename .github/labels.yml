@@ -54,6 +54,10 @@
   color: "d4edda"
   description: "Android app."
 
+- name: "area: Windows"
+  color: "cfe2f3"
+  description: "Windows port: WinUI app, PAL, native shim, tests."
+
 - name: "area: extension"
   color: "f1d5e8"
   description: "VS Code / Cursor extension."

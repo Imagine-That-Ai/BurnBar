@@ -24,28 +24,17 @@ struct DashboardSectionSwitcher: View {
                 Button {
                     onNavigate(route)
                 } label: {
-                    if route == currentRoute {
-                        Label {
-                            HStack {
-                                Text(route.title(activeChatBackend: activeChatBackend))
-                                if route == .memoryReview, let badge = memoryBadge {
-                                    Text("(\(badge))")
-                                }
+                    Label {
+                        HStack {
+                            Text(route.title(activeChatBackend: activeChatBackend))
+                            if route == .memoryReview, let badge = memoryBadge {
+                                Text("(\(badge))")
                             }
-                        } icon: {
-                            Image(systemName: route.systemImage(activeChatBackend: activeChatBackend))
                         }
-                    } else {
-                        Label {
-                            HStack {
-                                Text(route.title(activeChatBackend: activeChatBackend))
-                                if route == .memoryReview, let badge = memoryBadge {
-                                    Text("(\(badge))")
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: route.systemImage(activeChatBackend: activeChatBackend))
-                        }
+                    } icon: {
+                        Image(systemName: route == currentRoute
+                            ? "checkmark"
+                            : route.systemImage(activeChatBackend: activeChatBackend))
                     }
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)

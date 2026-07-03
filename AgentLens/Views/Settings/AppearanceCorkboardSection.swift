@@ -872,8 +872,6 @@ private struct SwarmSubstrateSettingsRow: View {
     private var family: SubstrateFamily { SubstrateFamily.forKernel(backdropKernel) }
     private var styles: [SubstrateDescriptor] { SubstrateCatalog.styles(forKernel: backdropKernel) }
 
-    private let columns = [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: DesignSystem.Spacing.sm)]
-
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             SettingsToggle(
@@ -902,73 +900,34 @@ private struct SwarmSubstrateSettingsRow: View {
             }
             .padding(.leading, 32)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                ForEach(styles) { style in
-                    SubstrateTile(
-                        descriptor: style,
-                        isSelected: substrateID == style.id,
-                        action: {
-                            substrateID = style.id
-                            Analytics.shared.track(.settingsChanged, [
-                                "setting_key": "swarm_substrate",
-                                "new_value": .string(style.id)
-                            ])
-                        }
-                    )
+            // Tall, horizontally-scrollable cards — each a real mini-render of the
+            // substrate's material (not a flat swatch), so it's easy to tell what
+            // each style is. Mirrors the iOS picker; the live preview is the mini
+            // SwarmCanvasView in `AppearancePreviewCard` above, which swaps the
+            // instant a card is tapped.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(styles) { style in
+                        MacSubstrateCard(
+                            descriptor: style,
+                            isSelected: substrateID == style.id,
+                            action: {
+                                substrateID = style.id
+                                Analytics.shared.track(.settingsChanged, [
+                                    "setting_key": "swarm_substrate",
+                                    "new_value": .string(style.id)
+                                ])
+                            }
+                        )
+                    }
                 }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 4)
             }
             .padding(.leading, 32)
             .opacity(substrateEnabled ? 1.0 : 0.55)
             .disabled(!substrateEnabled)
         }
-    }
-}
-
-/// One Image #3-style substrate card: an accent gradient swatch, the style label,
-/// and its one-word texture hint, with a selection ring.
-private struct SubstrateTile: View {
-    let descriptor: SubstrateDescriptor
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [descriptor.accent.color, descriptor.accent2.color],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(height: 40)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
-                    )
-
-                Text(descriptor.label)
-                    .font(DesignSystem.Typography.caption.weight(.medium))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                Text(descriptor.hint.uppercased())
-                    .font(.system(size: 8, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .lineLimit(1)
-            }
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(isSelected ? DesignSystem.Colors.ember : DesignSystem.Colors.border,
-                                  lineWidth: isSelected ? 1.5 : 0.5)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -1103,7 +1062,7 @@ private struct LiquidGlassTransparencyRow: View {
 /// exclusively. System chrome (sheet material, window backdrop) always uses
 /// glass when available. Gated to macOS 26+; hidden on earlier systems.
 private struct LiquidGlassContentSurfacesToggleRow: View {
-    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
 
     var body: some View {
         if #available(macOS 26, *) {

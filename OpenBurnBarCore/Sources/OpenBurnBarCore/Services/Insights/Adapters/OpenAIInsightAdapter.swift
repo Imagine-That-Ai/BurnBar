@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Adapter for OpenAI's Chat Completions API. Same shape as Anthropic
 /// modulo wire format. Uses strict JSON-Schema on `gpt-5*` and later.

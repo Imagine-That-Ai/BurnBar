@@ -15,7 +15,7 @@ public extension AgentProvider {
             switch self {
             case .openAI, .codex, .cursor, .cursorAgent, .forgeDev, .claudeCode,
                  .factory, .windsurf, .copilot, .aider, .ollama,
-                 .openClaw, .openClaude, .geminiCLI, .antigravity, .goose, .augment, .cline,
+                 .openClaw, .openClaude, .omp, .geminiCLI, .antigravity, .goose, .augment, .cline,
                  .kiloCode, .rooCode, .hermes, .xAI:
                 return true
             default:

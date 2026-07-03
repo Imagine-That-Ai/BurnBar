@@ -204,7 +204,11 @@ struct ThemeSettingsView: View {
             .opacity(appSkin == .editorial ? 0.45 : 1)
 
             if substrateEnabled, appSkin != .editorial {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Live backdrop preview — the real kernel + substrate composite,
+                    // updating the instant a card below is tapped (shared AppStorage).
+                    SubstrateLivePreviewStrip()
+
                     HStack(spacing: 6) {
                         Image(systemName: substrateFamily.symbolName)
                             .font(.caption)
@@ -215,61 +219,30 @@ struct ThemeSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+
+                    // Tall vertical preview cards, horizontally scrollable. Each
+                    // shows a real mini-render of the substrate; tapping one writes
+                    // the shared `substrateKey`, lighting up the strip above live.
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             ForEach(SubstrateCatalog.styles(forKernel: mobileBackdropKernel)) { style in
-                                MobileSubstrateTile(descriptor: style, isSelected: substrateID == style.id) {
+                                MobileSubstrateCard(descriptor: style, isSelected: substrateID == style.id) {
                                     substrateID = style.id
                                 }
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 4)
                     }
+                    .sensoryFeedback(.selection, trigger: substrateID)
                 }
-                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12))
+                .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 14, trailing: 12))
             }
         } header: {
             Text("Swarm Substrate")
         } footer: {
             Text("Compose the provider-glyph swarm from a material drawn from the active backdrop theme — twinkling stars, glass ribbons, caustic light, crepuscular shafts. The styles re-couple to whichever backdrop kernel is selected above.")
         }
-    }
-}
-
-/// One Image #3-style substrate card for the iOS picker.
-private struct MobileSubstrateTile: View {
-    let descriptor: SubstrateDescriptor
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(LinearGradient(colors: [descriptor.accent.color, descriptor.accent2.color],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 96, height: 46)
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
-                Text(descriptor.label)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(descriptor.hint.uppercased())
-                    .font(.system(size: 8, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(width: 96, alignment: .leading)
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? MobileTheme.ember : Color.primary.opacity(0.08),
-                              lineWidth: isSelected ? 1.6 : 0.5))
-        }
-        .buttonStyle(.plain)
     }
 }
 

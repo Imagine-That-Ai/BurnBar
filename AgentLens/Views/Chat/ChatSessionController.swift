@@ -33,6 +33,8 @@ final class ChatSessionController {
         case localOracle
         case hybridIndexThenLLM
     }
+    let persistsViewState: Bool
+
     var messages: [ChatMessageRecord] = []
 
     var inputText = ""
@@ -72,27 +74,27 @@ final class ChatSessionController {
     /// Per-backend `model` selection for the active chat. Empty means the
     /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
-        didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
+        didSet { persistViewStateValue(chatModelCodex, forKey: Self.udChatModelCodex) }
     }
 
     var chatModelClaude: String = "" {
-        didSet { UserDefaults.standard.set(chatModelClaude, forKey: Self.udChatModelClaude) }
+        didSet { persistViewStateValue(chatModelClaude, forKey: Self.udChatModelClaude) }
     }
 
     var chatModelHermes: String = "" {
-        didSet { UserDefaults.standard.set(chatModelHermes, forKey: Self.udChatModelHermes) }
+        didSet { persistViewStateValue(chatModelHermes, forKey: Self.udChatModelHermes) }
     }
 
     var chatModelOpenClaw: String = "" {
-        didSet { UserDefaults.standard.set(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) }
+        didSet { persistViewStateValue(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) }
     }
 
     var chatModelPiAgent: String = "" {
-        didSet { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
+        didSet { persistViewStateValue(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
     }
 
     var chatModelDroid: String = "" {
-        didSet { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) }
+        didSet { persistViewStateValue(chatModelDroid, forKey: Self.udChatModelDroid) }
     }
 
     nonisolated static func buildFocusSessionPromptSection(
@@ -122,19 +124,23 @@ final class ChatSessionController {
     }
 
     var chatModelForge: String = "" {
-        didSet { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) }
+        didSet { persistViewStateValue(chatModelForge, forKey: Self.udChatModelForge) }
     }
 
     var chatModelAntigravity: String = "" {
-        didSet { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
+        didSet { persistViewStateValue(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
     }
 
     var chatModelCursorAgent: String = "" {
-        didSet { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
+        didSet { persistViewStateValue(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
     }
 
     var chatModelOpenClaude: String = "" {
-        didSet { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) }
+        didSet { persistViewStateValue(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) }
+    }
+
+    var chatModelOMP: String = "" {
+        didSet { persistViewStateValue(chatModelOMP, forKey: Self.udChatModelOMP) }
     }
 
     var hermesAvailable: Bool = false
@@ -269,7 +275,7 @@ final class ChatSessionController {
         }
         return .agent
     }() {
-        didSet { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
+        didSet { persistViewStateValue(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
     }
 
     /// User-attached files staged for the next outgoing message. Cleared on
@@ -314,6 +320,7 @@ final class ChatSessionController {
 
     static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
     static let udChatModelOpenClaude = "chatPanel.model.openclaude"
+    static let udChatModelOMP = "chatPanel.model.omp"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -375,12 +382,15 @@ final class ChatSessionController {
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
+        initialThreadID: String? = nil,
+        persistsViewState: Bool = true,
         cliBridge: CLIBridge? = nil,
         memoryService: (any MemoryServing)? = nil,
         memoryExtractionEngine: MemoryExtractionEngine? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.persistsViewState = persistsViewState
         self.memoryService = memoryService
         self.memoryExtractionEngine = memoryExtractionEngine
         if let searchService {
@@ -398,12 +408,19 @@ final class ChatSessionController {
         self.retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
         self.cliBridge = cliBridge ?? CLIBridge()
 
-        Self.migrateLegacyChatModeIfNeeded()
-        Self.migrateThreadIDSlotsIfNeeded()
+        if persistsViewState {
+            Self.migrateLegacyChatModeIfNeeded()
+            Self.migrateThreadIDSlotsIfNeeded()
+        }
 
-        if let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
+        if persistsViewState,
+           let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
            let backend = ChatBackendID(rawValue: raw) {
             chatBackend = backend
+        }
+
+        if let initialThreadID {
+            activeThreadID = initialThreadID
         }
 
         chatModelCodex = UserDefaults.standard.string(forKey: Self.udChatModelCodex) ?? ""
@@ -416,6 +433,7 @@ final class ChatSessionController {
         chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
         chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
+        chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -463,6 +481,7 @@ final class ChatSessionController {
         case .antigravity: return chatModelAntigravity
         case .cursorAgent: return chatModelCursorAgent
         case .openClaude: return chatModelOpenClaude
+        case .omp: return chatModelOMP
         }
     }
 
@@ -478,6 +497,7 @@ final class ChatSessionController {
         case .antigravity: chatModelAntigravity = value
         case .cursorAgent: chatModelCursorAgent = value
         case .openClaude: chatModelOpenClaude = value
+        case .omp: chatModelOMP = value
         }
     }
 
@@ -598,6 +618,7 @@ final class ChatSessionController {
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
+        case .omp: return .omp
         }
     }
 
@@ -635,6 +656,8 @@ final class ChatSessionController {
             return chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines)
         case .openClaude:
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .omp:
+            return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -684,7 +707,7 @@ final class ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             return 0
         }
     }
@@ -697,7 +720,7 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             return []
         }
     }
@@ -1117,7 +1140,7 @@ final class ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
@@ -1198,9 +1221,13 @@ final class ChatSessionController {
             "backend": .string(backend.rawValue),
             "previous_backend": .string(previousBackend.rawValue)
         ])
-        UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
+        if persistsViewState {
+            UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
+        }
 
-        let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
+        let nextThread = persistsViewState
+            ? await resolveThreadID(for: backend, createIfMissing: true)
+            : activeThreadID
         activeThreadID = nextThread
         let fetchedMessages: [ChatMessageRecord]
         do {
@@ -1270,6 +1297,11 @@ final class ChatSessionController {
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
+    private func persistViewStateValue(_ value: String, forKey key: String) {
+        guard persistsViewState else { return }
+        UserDefaults.standard.set(value, forKey: key)
+    }
+
     func clampedPanelOffset(_ proposed: CGSize, container: CGSize, padding: CGFloat) -> CGSize {
         guard container.width > 1, container.height > 1 else { return proposed }
         let minX = -(container.width - panelWidth - padding * 2)
@@ -1290,6 +1322,7 @@ final class ChatSessionController {
     }
 
     func persistPanelGeometry() {
+        guard persistsViewState else { return }
         UserDefaults.standard.set(Double(panelWidth), forKey: Self.udPanelW)
         UserDefaults.standard.set(Double(panelHeight), forKey: Self.udPanelH)
         UserDefaults.standard.set(Double(panelFloatOffset.width), forKey: Self.udOffsetX)
@@ -1297,6 +1330,7 @@ final class ChatSessionController {
     }
 
     func persistActiveThreadSlot() {
+        guard persistsViewState else { return }
         UserDefaults.standard.set(activeThreadID, forKey: Self.threadStorageKey(for: chatBackend))
         UserDefaults.standard.set(activeThreadID, forKey: Self.udActiveThreadID)
     }
@@ -1312,6 +1346,14 @@ final class ChatSessionController {
     }
 
     func resolveThreadID(for backend: ChatBackendID, createIfMissing: Bool) async -> String {
+        guard persistsViewState else {
+            if createIfMissing,
+               (try? await dataStore.chatThreadExists(id: activeThreadID)) != true {
+                _ = try? await dataStore.createChatThread(id: activeThreadID)
+            }
+            return activeThreadID
+        }
+
         let key = Self.threadStorageKey(for: backend)
         if let tid = UserDefaults.standard.string(forKey: key),
            (try? await dataStore.chatThreadExists(id: tid)) == true {
@@ -1319,7 +1361,7 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 UserDefaults.standard.set(legacy, forKey: key)
@@ -1379,6 +1421,11 @@ final class ChatSessionController {
     }
 
     func loadPersistedMessagesAsync() async {
+        guard persistsViewState else {
+            await hydratePaneThread()
+            return
+        }
+
         await migrateCodexThreadFromLegacyIfNeeded()
         await syncChatBackendWithEnabledBackendsAsync()
 
@@ -1405,6 +1452,51 @@ final class ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
         refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+    }
+
+    func hydratePaneThread() async {
+        let threadID = activeThreadID
+        do {
+            if try await dataStore.chatThreadExists(id: threadID) == false {
+                _ = try await dataStore.createChatThread(id: threadID)
+            }
+            let fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
+            guard activeThreadID == threadID else { return }
+            messages = fetchedMessages
+            firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+            conversationJumpTargets = []
+            ensureChatWorkspaceDirectoryExists()
+            refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+        } catch {
+            AppLogger.chat.silentFailure("hydratePaneThread", error: error)
+        }
+    }
+
+    func teardownForPaneClose() {
+        streamTask?.cancel()
+        searchTask?.cancel()
+        refreshHistoryTask?.cancel()
+        retrievalHealthTask?.cancel()
+        textExpansionPreviewTask?.cancel()
+        textExpansionLookupTask?.cancel()
+        cliBridge.cancel()
+        revokeDesktopControl()
+        streamTask = nil
+        searchTask = nil
+        refreshHistoryTask = nil
+        retrievalHealthTask = nil
+        textExpansionPreviewTask = nil
+        textExpansionLookupTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+        streamError = nil
+        selectedContext = nil
+        conversationJumpTargets = []
+        lastRecalledMemoryCitations = []
+        pendingMemoryJumpMessageID = nil
+        memoryJumpHighlightMessageID = nil
+        pendingAttachments = []
+        attachmentError = nil
     }
 
     func clearChat() {

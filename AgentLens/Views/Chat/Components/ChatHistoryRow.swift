@@ -7,6 +7,9 @@ struct ChatHistoryRow: View {
     let thread: ChatThreadSummary
     let isActive: Bool
     var accent: Color = DesignSystem.Colors.whimsy
+    /// True when this thread is currently loaded in one of the tiling panes (but is not
+    /// the active pane's thread) — a subtle hint that complements the active checkmark.
+    var isOpenInPane: Bool = false
     let onSelect: () -> Void
 
     var body: some View {
@@ -24,6 +27,11 @@ struct ChatHistoryRow: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(accent)
+                    } else if isOpenInPane {
+                        Image(systemName: "rectangle.split.2x1")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(accent.opacity(0.7))
+                            .help("Open in a pane")
                     }
                 }
 

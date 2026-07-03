@@ -219,13 +219,11 @@ final class OpenBurnBarRuntimeContext {
 
     /// The `@MainActor` scheduler that drains the extraction outbox (PR-D2). Owned here
     /// so the start-site (`startLiveServicesIfNeeded`) and the post-commit drain hook
-    /// (`ChatSessionController`) share one engine. The whole feature ships OFF: the combined
-    /// kill switch (`memoryExtractionEnabled`) DEFAULTS FALSE because user consent (G0) is
-    /// off until opt-in, so out of the box nothing reads transcripts or calls the LLM; and
-    /// durable writes additionally require the human-owned go-live flag
-    /// (`chatMemoryAuthorityWritesEnabledByDefault`, default FALSE), AND-ed in the worker's
-    /// authority closure (PR-D FIX #1). Either lever off keeps the subsystem dormant out of
-    /// the box; this engine flips nothing on.
+    /// (`ChatSessionController`) share one engine. The combined kill switch
+    /// (`memoryExtractionEnabled`) defaults false because user consent (G0) is off until
+    /// opt-in, so out of the box nothing reads transcripts or calls the LLM. Durable writes
+    /// are additionally AND-ed with `chatMemoryAuthorityWritesEnabledByDefault` in the
+    /// worker's authority closure (PR-D FIX #1).
     var memoryExtractionEngine: MemoryExtractionEngine?
 
     /// PR-E2 approved-memory cloud-replication scheduler over the SAME shared store as the

@@ -39,9 +39,72 @@ interface OpenBurnBarAppCheckAttestationClaim {
   boundAtMillis: number;
 }
 
+export type AppCheckTrustClass =
+  | "apple_attested"
+  | "android_play_integrity"
+  | "web_recaptcha"
+  | "linux_lower_trust"
+  | "windows_lower_trust"
+  | "unknown";
+
+export interface CallableTrustDecision {
+  appId: string;
+  trustClass: AppCheckTrustClass;
+}
+
+const LOW_RISK_CLOUD_SYNC_TRUST_CLASSES = new Set<AppCheckTrustClass>([
+  "apple_attested",
+  "android_play_integrity",
+  "web_recaptcha",
+  "linux_lower_trust",
+]);
+
 export function readAppIdFromCallableRequest(request: CallableRequest): string | undefined {
   const appCheck = "app" in request ? request.app : undefined;
   return isRecord(appCheck) && typeof appCheck.appId === "string" ? appCheck.appId : undefined;
+}
+
+export function appCheckTrustClassForAppId(
+  appId: string | undefined,
+  config: Pick<ReturnType<typeof getConfig>, "linuxAppCheckAppID" | "windowsAppCheckAppID"> = getConfig(),
+): AppCheckTrustClass {
+  if (!appId) return "unknown";
+  if (appId === config.linuxAppCheckAppID) return "linux_lower_trust";
+  if (appId === config.windowsAppCheckAppID) return "windows_lower_trust";
+  if (/^1:[0-9]+:ios:/u.test(appId)) return "apple_attested";
+  if (/^1:[0-9]+:android:/u.test(appId)) return "android_play_integrity";
+  if (/^1:[0-9]+:web:/u.test(appId)) return "web_recaptcha";
+  return "unknown";
+}
+
+export function callableTrustDecision(request: CallableRequest): CallableTrustDecision {
+  const appId = readAppIdFromCallableRequest(request);
+  if (!appId) {
+    throw new functions.HttpsError("unauthenticated", "App Check attestation is required.");
+  }
+  return {
+    appId,
+    trustClass: appCheckTrustClassForAppId(appId),
+  };
+}
+
+export function enforceLowRiskCloudSyncCallable(
+  request: CallableRequest,
+  expectedUid: string,
+): CallableTrustDecision | undefined {
+  assertAuth(request);
+  assertAppCheck(request);
+  assertOwnership(request, expectedUid);
+  if (!getConfig().enforceAppCheck) return undefined;
+
+  const decision = callableTrustDecision(request);
+  if (!LOW_RISK_CLOUD_SYNC_TRUST_CLASSES.has(decision.trustClass)) {
+    throw new functions.HttpsError(
+      "permission-denied",
+      `App Check trust class ${decision.trustClass} is not allowed for low-risk cloud sync.`,
+    );
+  }
+  return decision;
 }
 
 export function readAppCheckAttestationClaim(
@@ -104,7 +167,10 @@ export async function bindAppCheckAttestationForUid(
  *
  * Skipped when `enforceAppCheck` is false (local emulation).
  */
-function assertAppAttestBoundClaims(request: CallableRequest): void {
+function assertAppAttestBoundClaims(
+  request: CallableRequest,
+  options: { allowLowerTrustDesktop?: boolean } = {},
+): CallableTrustDecision | undefined {
   if (!getConfig().enforceAppCheck) return;
 
   assertAuth(request);
@@ -135,16 +201,31 @@ function assertAppAttestBoundClaims(request: CallableRequest): void {
       "App Check attestation binding expired. Call bindAppCheckAttestation again.",
     );
   }
+  const trustDecision = appCheckTrustClassForAppId(liveAppId);
+  if (
+    (trustDecision === "linux_lower_trust" || trustDecision === "windows_lower_trust") &&
+    options.allowLowerTrustDesktop !== true
+  ) {
+    throw new functions.HttpsError(
+      "failed-precondition",
+      "Lower-trust desktop App Check tokens require a fresh nonce plus trusted-device step-up for high-risk actions.",
+    );
+  }
+  return { appId: liveAppId, trustClass: trustDecision };
 }
 
 /**
  * Auth + App Check + ownership + attestation-bound claims for high-risk mutations.
  */
-export function enforceHighRiskComputerUseCallable(request: CallableRequest, expectedUid: string): void {
+export function enforceHighRiskComputerUseCallable(
+  request: CallableRequest,
+  expectedUid: string,
+  options: { allowLowerTrustDesktop?: boolean } = {},
+): CallableTrustDecision | undefined {
   assertAuth(request);
   assertAppCheck(request);
   assertOwnership(request, expectedUid);
-  assertAppAttestBoundClaims(request);
+  return assertAppAttestBoundClaims(request, options);
 }
 
 /**
@@ -241,8 +322,9 @@ export async function enforceHighRiskComputerUseCallableWithNonce(
   request: CallableRequest,
   expectedUid: string,
   nonce: unknown,
+  options: { allowLowerTrustDesktop?: boolean } = {},
 ): Promise<HighRiskNonceEnforcementResult> {
-  enforceHighRiskComputerUseCallable(request, expectedUid);
+  enforceHighRiskComputerUseCallable(request, expectedUid, options);
   if (!getConfig().enforceAppCheck) return { nonceConsumed: false };
   const supplied = typeof nonce === "string" && nonce.length > 0 ? nonce : undefined;
   if (!supplied) {

@@ -219,6 +219,13 @@ private struct Glyph { var pos: CGPoint; var vel: CGVector; var prov: Int; var b
 private let glyphStartT = 3.35
 
 enum BurnBarLogoFormationGeometry {
+    static func logoPoint(nx: Double, ny: Double) -> CGPoint {
+        CGPoint(
+            x: FormationLayout.logoOX + CGFloat(nx) * FormationLayout.logoSize,
+            y: FormationLayout.logoOY + CGFloat(ny) * FormationLayout.logoSize
+        )
+    }
+
     static func providerGlyphPoint(gx: Int, gy: Int, grid: Int) -> CGPoint {
         let denominator = Double(max(grid - 1, 1))
         return CGPoint(
@@ -265,10 +272,10 @@ private func sampleDots(_ logoName: String) -> [Dot] {
     var dots: [Dot] = []
     for item in raw {
         let (n, r, g, b) = item
-        let visualY = 1 - n.y
         let cell = FormationLayout.logoSize / CGFloat(grid)
-        let tx = FormationLayout.logoOX + n.x * FormationLayout.logoSize + CGFloat(rng.next() - 0.5) * cell * 0.8
-        let ty = FormationLayout.logoOY + visualY * FormationLayout.logoSize + CGFloat(rng.next() - 0.5) * cell * 0.8
+        let target = BurnBarLogoFormationGeometry.logoPoint(nx: n.x, ny: n.y)
+        let tx = target.x + CGFloat(rng.next() - 0.5) * cell * 0.8
+        let ty = target.y + CGFloat(rng.next() - 0.5) * cell * 0.8
         let sx: CGFloat
         let sy: CGFloat
         // Keep the ignition swarm out of the hero box at rest. The particles

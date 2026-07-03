@@ -3,6 +3,7 @@
 **Status:** DRAFT v2.1 (post adversarial review + Codex second opinion + web research) · **Author:** Claude (8-agent survey + synthesis + 4-critic adversarial pass + Codex consult) · **Date:** 2026-07-02
 **Target:** Full **peer** parity of the macOS app (`AgentLens/`) on Windows 10/11 (x64 + ARM64).
 **Not** a cloud-only companion (that is what iOS/Android already are). Windows is a **local log-reading peer**, like the Mac.
+**Shared substrate:** [`DESKTOP_FOUNDATION.md`](DESKTOP_FOUNDATION.md) now owns the cross-desktop engine, IPC, schema, design, release, and parity contracts; this document is the Windows platform delta.
 
 > **The completion bar (from `AGENTS.md`).** This plan ships the *whole* thing: the local-peer engine, every UI
 > surface, computer-use, the daemon, the pet, distribution, and a parity-certification harness that proves it.

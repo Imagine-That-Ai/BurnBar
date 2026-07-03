@@ -148,16 +148,32 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         let lite = frame.batteryThrottled
         let t = frame.t
 
+        let shapeMode = frame.isShapeMode
+
         // f eases the bloom in with assembly (settleProgress == source `formed`).
+        // In the FREE SWARM (isShapeMode == false) settleProgress is pinned at 0,
+        // so `f` alone would zero every petal's alpha/orbit/sheen and the whole
+        // field would render PURE BLACK. `present` adds a full-presence floor when
+        // off-shape so the petals stay luminous and visible everywhere; in shape
+        // mode `present == f` EXACTLY, preserving the assembly bloom-in untouched.
         let f = reduced ? 1.0 : clampD(frame.settleProgress, 0, 1)
+        let present = shapeMode ? f : 1.0
         // Slow current drift; frozen to a fixed phase under reduced motion.
         let phase = reduced ? 1.1 : t * 0.22
 
         // Petal scale: sized so each teardrop reads clearly as a petal (with its
         // cream sheen) rather than collapsing to a dot, while still clustering
-        // into a readable blossom-mosaic. R / sqrt(count) ≈ inter-point spacing.
-        let spacing = frame.cloudRadius / max(8, (Double(count)).squareRoot())
-        let petalLen = clampD(frame.sizePx * 3.4 + spacing * 1.05, 7, 15)
+        // into a readable blossom-mosaic. HARD RULE — off-shape the size derives
+        // from absolute screen px (sizePx) ONLY, never cloudRadius, so a sparse
+        // uniform swarm (low local density) still shows boldly-sized petals
+        // everywhere. Shape mode keeps its original spacing-aware formula intact.
+        let petalLen: Double
+        if shapeMode {
+            let spacing = frame.cloudRadius / max(8, (Double(count)).squareRoot())
+            petalLen = clampD(frame.sizePx * 3.4 + spacing * 1.05, 7, 15)
+        } else {
+            petalLen = clampD(frame.sizePx * 4.6, 9, 15)
+        }
 
         // Fixed top-left key light for the back-facing orientation cull.
         let lightX = -0.62, lightY = -0.78
@@ -195,14 +211,29 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             var ox = 0.0, oy = 0.0, flutter = 1.0, spin = 0.0
             if !reduced {
                 let orbT = t * 0.55 + ph
-                let amp = 2.2 * f
+                let amp = 2.2 * present
                 ox = cos(orbT) * amp
                 oy = sin(orbT * 1.13 + 0.7) * amp * 0.8
                 flutter = sin(t * 1.9 + ph)
                 spin = sin(t * 0.5 + ph * 1.7) * 0.22
             }
             let x = tx + ox, y = ty + oy
-            let ang = wind + spin
+
+            // Orientation follows the curl wind; off-shape we additionally let the
+            // dot's own drift VELOCITY tug the long axis toward its travel heading
+            // so each petal flutters along the local current. Vector-blended (no
+            // angle wraparound) and gated to the free swarm so shape mode is byte-
+            // identical: atan2(sin(wind), cos(wind)) + spin == wind + spin.
+            var dirx = cos(wind), diry = sin(wind)
+            if !shapeMode && !reduced {
+                let sp = (d.vx * d.vx + d.vy * d.vy).squareRoot()
+                if sp > 0.02 {
+                    let w = clampD(sp * 0.45, 0, 0.6)
+                    dirx += (d.vx / sp) * w
+                    diry += (d.vy / sp) * w
+                }
+            }
+            let ang = atan2(diry, dirx) + spin
             let broad = 0.32 + 0.68 * abs(flutter)
 
             let nx = cos(ang + .pi / 2), ny = sin(ang + .pi / 2)
@@ -211,7 +242,11 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
 
             let len = petalLen * (0.85 + 0.3 * seed)
             let halfW = len * 0.42 * broad
-            let aBody = clampD((0.62 + 0.34 * lit) * f, 0, 1) * d.rgba.a
+            // Off-shape, floor the dot's own alpha so a faint scattered swarm dot
+            // still resolves into a luminous, fully-present petal — the presence
+            // floor that guarantees the field is never black.
+            let dotA = shapeMode ? d.rgba.a : max(d.rgba.a, 0.9)
+            let aBody = clampD((0.62 + 0.34 * lit) * present, 0, 1) * dotA
             let cc: RGBA = lit >= 0.999 ? d.rgba
                 : d.rgba.mix(with: fold, amount: 1 - clampD(lit, 0.4, 1))
             return PetalGeometry(x: x, y: y, angle: ang, length: len, halfWidth: halfW,
@@ -291,7 +326,7 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
             ctx.fill(body, with: .color(g.color.withOpacity(g.bodyAlpha).color))
 
             if let sheen {
-                let aSheen = clampD((dark ? 0.62 : 0.5) * g.lit * f, 0, 0.85)
+                let aSheen = clampD((dark ? 0.62 : 0.5) * g.lit * present, 0, 0.85)
                 if aSheen > 0.003 {
                     let spriteSide = Double(SPRITE)
                     let scaleX = (g.length / (spriteSide * 0.62)) * 1.04
