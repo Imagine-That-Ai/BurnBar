@@ -249,6 +249,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
     func test_providerAccountDownload_importsRemoteAccountMetadataWithoutCredentialFields() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let encodedNow = ISO8601DateFormatter().string(from: now)
         fakeGateway.setDocumentData([
             "id": "openai-personal",
             "providerID": "openai",
@@ -262,9 +263,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
             "isDefault": true,
             "sortKey": 0,
             "schemaVersion": 1,
-            "createdAt": Timestamp(date: now),
-            "updatedAt": Timestamp(date: now),
-            "lastRefreshAt": Timestamp(date: now),
+            "createdAt": encodedNow,
+            "updatedAt": encodedNow,
+            "lastValidatedAt": encodedNow,
+            "lastRefreshAt": encodedNow,
             // Plaintext-shaped fields the cloud-sync layer must drop on
             // ingestion. Values are placeholders only; assertions check
             // that the keys are nil after sync, not the values themselves.
@@ -283,6 +285,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(account.sourceDeviceID, "iphone-1")
         XCTAssertTrue(account.isDefault)
         XCTAssertEqual(account.redactedLabel, "sk-...abcd")
+        XCTAssertEqual(account.createdAt, now)
+        XCTAssertEqual(account.updatedAt, now)
+        XCTAssertEqual(account.lastValidatedAt, now)
+        XCTAssertEqual(account.lastRefreshAt, now)
     }
 
     func test_quotaSnapshotUpload_writesDisplayableMacQuotaForMobile() async throws {
