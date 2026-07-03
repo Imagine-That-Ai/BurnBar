@@ -47,7 +47,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         defer { state.endSyncing() }
 
         do {
-            await publishSyncHeartbeatBestEffort(uid: uid, deviceId: deviceId, collectionsInSync: [])
+            await publishDeviceHeartbeatBestEffort(uid: uid, deviceId: deviceId)
 
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
@@ -98,9 +98,9 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private func publishSyncHeartbeatBestEffort(uid: String, deviceId: String, collectionsInSync: [String]) async {
+    private func publishDeviceHeartbeatBestEffort(uid: String, deviceId: String) async {
         do {
-            try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: collectionsInSync)
+            try await publishDeviceHeartbeat(uid: uid, deviceId: deviceId, at: Date())
         } catch {
             AppLogger.sync.error(
                 "usage_sync_heartbeat_failed",
@@ -111,6 +111,19 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
     private func publishSyncHeartbeat(uid: String, deviceId: String, collectionsInSync: [String]) async throws {
         let now = Date()
+        try await publishDeviceHeartbeat(uid: uid, deviceId: deviceId, at: now)
+
+        try await context.firestoreGateway.collection("users").document(uid)
+            .collection("sync_status").document(deviceId).setData([
+                "deviceId": deviceId,
+                "isOnline": true,
+                "lastSyncAt": Timestamp(date: now),
+                "collectionsInSync": collectionsInSync,
+                "updatedAt": Timestamp(date: now)
+            ], merge: true)
+    }
+
+    private func publishDeviceHeartbeat(uid: String, deviceId: String, at now: Date) async throws {
         let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
         let userRef = context.firestoreGateway.collection("users").document(uid)
 
@@ -120,14 +133,6 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             "platform": "macOS",
             "isLocal": true,
             "lastSeenAt": Timestamp(date: now),
-            "updatedAt": Timestamp(date: now)
-        ], merge: true)
-
-        try await userRef.collection("sync_status").document(deviceId).setData([
-            "deviceId": deviceId,
-            "isOnline": true,
-            "lastSyncAt": Timestamp(date: now),
-            "collectionsInSync": collectionsInSync,
             "updatedAt": Timestamp(date: now)
         ], merge: true)
     }

@@ -74,7 +74,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
-    func test_usageSyncPublishesHeartbeatBeforeVaultKeyFailure() async throws {
+    func test_usageSyncPublishesDeviceHeartbeatBeforeVaultKeyFailureWithoutSyncStatus() async throws {
         let throwingProvider = ThrowingConversationVaultKeyProvider(error: TestVaultError.unavailable)
         usageSync = UsageSyncService(context: context, vaultKeyProvider: throwingProvider)
         let usage = TokenUsage(
@@ -96,11 +96,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(deviceDoc["platform"] as? String, "macOS")
         XCTAssertNotNil(deviceDoc["lastSeenAt"] as? Timestamp)
 
-        let statusDoc = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"))
-        XCTAssertEqual(statusDoc["deviceId"] as? String, "test-device-1")
-        XCTAssertEqual(statusDoc["isOnline"] as? Bool, true)
-        XCTAssertNotNil(statusDoc["lastSyncAt"] as? Timestamp)
-        XCTAssertEqual(statusDoc["collectionsInSync"] as? [String], [])
+        XCTAssertNil(
+            fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"),
+            "sync_status must not claim usage is synced before the upload path succeeds"
+        )
 
         XCTAssertEqual(throwingProvider.callCount, 1)
         let unsyncedAfter = try await dataStore.fetchUnsynced()
@@ -237,9 +236,9 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(docData["label"] as? String, "Work")
         XCTAssertEqual(docData["storageScope"] as? String, ProviderAccountStorageScope.deviceKeychain.rawValue)
         XCTAssertEqual(docData["sourceDeviceID"] as? String, "test-device-1")
-        XCTAssertEqual(docData["createdAt"] as? String, ISO8601DateFormatter().string(from: now))
-        XCTAssertEqual(docData["updatedAt"] as? String, ISO8601DateFormatter().string(from: now))
-        XCTAssertEqual(docData["lastRefreshAt"] as? String, ISO8601DateFormatter().string(from: now))
+        XCTAssertEqual((docData["createdAt"] as? Timestamp)?.dateValue(), now)
+        XCTAssertEqual((docData["updatedAt"] as? Timestamp)?.dateValue(), now)
+        XCTAssertEqual((docData["lastRefreshAt"] as? Timestamp)?.dateValue(), now)
         XCTAssertNil(docData["deviceId"])
         XCTAssertNil(docData["syncedAt"])
         XCTAssertNil(docData["apiKey"])
