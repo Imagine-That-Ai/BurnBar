@@ -117,6 +117,13 @@ jobs:
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.
           allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0
+          # Per-package license exemptions (PURL) for classifier false-positives.
+          # Microsoft.Graphics.Win2D is MIT (github.com/microsoft/Win2D LICENSE.txt),
+          # but GitHub's dependency graph reports it as `LicenseRef-github-OTHER`
+          # because it cannot resolve the NuGet package's license expression. The
+          # actual license (MIT) is already in allow-licenses above; exempt the
+          # package by PURL so the Windows particle GPU renderer can land.
+          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D
           # Deny packages that have been deprecated or yanked
           deny-packages: ""
           comment-summary-in-pr: always

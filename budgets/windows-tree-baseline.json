@@ -5,14 +5,20 @@
     "app",
     "pal",
     "native",
+    "storage",
+    "particles",
+    "pretext",
     "tests"
   ],
   "oversized": {
     "app": [],
     "pal": [],
     "native": [],
+    "storage": [],
+    "particles": [],
+    "pretext": [],
     "tests": []
   },
   "generatedAt": "2026-07-03T00:00:00Z",
-  "note": "reason: per-tree shrink-only size ratchet for the Windows source tree, seeded greenfield (all areas empty). Mirrors budgets/swift-file-size-baseline.json but is rooted at windows/ and partitioned by the four documented sub-trees (app=WinUI shell, pal=Platform Abstraction Layer, native=C-ABI/Rust FFI shim, tests). scripts/debt/check-windows-tree-budget.sh counts source files (.cs/.xaml/.cpp/.cxx/.cc/.c/.h/.hpp/.rs) over `target` lines, per area. Partition guarantee: a macOS-tree (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or Android-tree (android/) change is never scanned because the scan root is windows/, so it cannot move any Windows counter; and each area counter is computed only from windows/<area>/, so app growth cannot move the pal/native/test counters. Regenerate with `scripts/debt/check-windows-tree-budget.sh --print-live` and commit as real WinUI/PAL/native/test code lands, ratcheting each area down as files drop below target."
+  "note": "reason: per-tree shrink-only size ratchet for the Windows source tree, seeded greenfield (all areas empty). Mirrors budgets/swift-file-size-baseline.json but is rooted at windows/ and partitioned by the seven documented sub-trees (app=WinUI shell, pal=Platform Abstraction Layer, native=C-ABI/Rust FFI shim, storage=SQLCipher DataStore seam, particles=Win2D particle-engine renderer + perf harness, pretext=Pretext text-layout engine + offscreen WebView2 host + metric-parity harness, tests). scripts/debt/check-windows-tree-budget.sh counts source files (.cs/.xaml/.cpp/.cxx/.cc/.c/.h/.hpp/.rs) over `target` lines, per area. Partition guarantee: a macOS-tree (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or Android-tree (android/) change is never scanned because the scan root is windows/, so it cannot move any Windows counter; and each area counter is computed only from windows/<area>/, so app growth cannot move the pal/native/storage/particles/pretext/test counters. Regenerate with `scripts/debt/check-windows-tree-budget.sh --print-live` and commit as real WinUI/PAL/native/storage/particles/pretext/test code lands, ratcheting each area down as files drop below target."
 }
