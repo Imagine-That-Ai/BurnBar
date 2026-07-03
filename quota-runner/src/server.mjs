@@ -1,4 +1,5 @@
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { fetchClaudeQuota } from "./providers/claude.mjs";
 import { fetchCodexQuota } from "./providers/codex.mjs";
 import { fetchOpenCodeQuota } from "./providers/opencode.mjs";
@@ -44,7 +45,12 @@ function requireAuth(req) {
   const expected = (process.env.RUNNER_SHARED_SECRET || "").trim();
   if (!expected) return;
   const got = String(req.headers.authorization || "").trim();
-  if (got !== `Bearer ${expected}`) {
+  const gotBuffer = Buffer.from(got);
+  const expectedBuffer = Buffer.from(`Bearer ${expected}`);
+  if (
+    gotBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(gotBuffer, expectedBuffer)
+  ) {
     throw Object.assign(new Error("unauthorized"), { status: 401 });
   }
 }

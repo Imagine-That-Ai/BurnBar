@@ -2293,10 +2293,15 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             idempotencyKey: "disabled-worker-idem-pr3"
         )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
-        let worker = MemoryExtractionWorker(store: store, nowProvider: { now }, authorityWritesEnabled: { false }, extractor: { _ in
-            XCTFail("Extractor must not run while chat memory authority writes are disabled.")
-            return []
-        })
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { false },
+            extractor: { _ in
+                XCTFail("Extractor must not run while chat memory authority writes are disabled.")
+                return []
+            }
+        )
 
         let drained = try await worker.drainOne()
         XCTAssertFalse(drained)

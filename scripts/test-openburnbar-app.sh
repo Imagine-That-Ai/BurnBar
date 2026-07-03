@@ -17,7 +17,11 @@
 # Environment knobs:
 #   OPENBURNBAR_ENABLE_COVERAGE=YES   Capture xcresult at canonical path.
 #   OPENBURNBAR_APP_TEST_ATTEMPTS=N   Override max attempts (default 4).
-#   OPENBURNBAR_APP_TEST_FILTER=...   Pass a custom -only-testing target.
+#   OPENBURNBAR_APP_TEST_FILTER=...   Pass one custom -only-testing target.
+#   OPENBURNBAR_APP_TEST_FILTERS=...  Pass newline/comma/semicolon-separated
+#                                      -only-testing targets in one xcodebuild
+#                                      invocation. CLI -only-testing arguments
+#                                      take precedence over both env knobs.
 #                                      `AgentLensTests/...` is accepted as a
 #                                      stable alias for `OpenBurnBarTests/...`.
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
@@ -84,28 +88,30 @@ usage() {
 Usage: scripts/test-openburnbar-app.sh [options]
 
 Options:
-  -only-testing:<target>  Run a specific XCTest bundle/class/method.
-  -only-testing <target>  Same as above.
-  -h, --help             Show this help.
+  -only-testing:<target>       Run a specific XCTest bundle/class/method.
+                               May be repeated.
+  -only-testing <target>       Same as above.
+  --print-xcodebuild-filters   Print normalized filters and exit.
+  -h, --help                  Show this help.
 
 Environment:
   OPENBURNBAR_APP_TEST_FILTER=<target>
       Default test filter when -only-testing is not supplied.
+  OPENBURNBAR_APP_TEST_FILTERS=<targets>
+      Newline/comma/semicolon-separated default filters when -only-testing is
+      not supplied. Takes precedence over OPENBURNBAR_APP_TEST_FILTER.
 EOF
 }
 
-cli_test_filter=""
+cli_test_filters=()
+print_xcodebuild_filters=0
 set_cli_test_filter() {
     local value="$1"
     if [[ -z "$value" ]]; then
         echo "error: -only-testing requires a non-empty target" >&2
         exit 64
     fi
-    if [[ -n "$cli_test_filter" && "$cli_test_filter" != "$value" ]]; then
-        echo "error: pass only one -only-testing filter to this wrapper" >&2
-        exit 64
-    fi
-    cli_test_filter="$value"
+    cli_test_filters+=("$value")
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -127,6 +133,10 @@ while [[ "$#" -gt 0 ]]; do
             usage
             exit 0
             ;;
+        --print-xcodebuild-filters)
+            print_xcodebuild_filters=1
+            shift
+            ;;
         *)
             echo "error: unsupported argument '$1'" >&2
             usage >&2
@@ -135,10 +145,38 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-raw_test_filter="${cli_test_filter:-${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}}"
-test_filter="$(normalize_app_test_filter "$raw_test_filter")"
-if [[ "$test_filter" != "$raw_test_filter" ]]; then
-    echo ">>> Normalized app test filter from '$raw_test_filter' to '$test_filter'."
+raw_test_filters=()
+if ((${#cli_test_filters[@]})); then
+    raw_test_filters=("${cli_test_filters[@]}")
+elif [[ -n "${OPENBURNBAR_APP_TEST_FILTERS:-}" ]]; then
+    while IFS= read -r raw_filter; do
+        raw_filter="${raw_filter#"${raw_filter%%[![:space:]]*}"}"
+        raw_filter="${raw_filter%"${raw_filter##*[![:space:]]}"}"
+        if [[ -n "$raw_filter" ]]; then
+            raw_test_filters+=("$raw_filter")
+        fi
+    done < <(printf '%s\n' "$OPENBURNBAR_APP_TEST_FILTERS" | tr ',;' '\n\n')
+else
+    raw_test_filters=("${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}")
+fi
+
+if ((${#raw_test_filters[@]} == 0)); then
+    echo "error: no app test filters resolved" >&2
+    exit 64
+fi
+
+test_filters=()
+for raw_test_filter in "${raw_test_filters[@]}"; do
+    test_filter="$(normalize_app_test_filter "$raw_test_filter")"
+    if [[ "$test_filter" != "$raw_test_filter" ]]; then
+        echo ">>> Normalized app test filter from '$raw_test_filter' to '$test_filter'."
+    fi
+    test_filters+=("$test_filter")
+done
+
+if [[ "$print_xcodebuild_filters" == "1" ]]; then
+    printf '%s\n' "${test_filters[@]}"
+    exit 0
 fi
 
 mkdir -p "$cache_dir"
@@ -288,8 +326,10 @@ populate_xcodebuild_args() {
         SWIFT_ENABLE_BATCH_MODE=NO
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
-        -only-testing:"$test_filter"
     )
+    for filter in "${test_filters[@]}"; do
+        xcodebuild_args+=("-only-testing:$filter")
+    done
     if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
         xcodebuild_args+=(-enableCodeCoverage YES)
     fi

@@ -1,0 +1,50 @@
+- generic [ref=f4e3]:
+  - link "Skip to content" [ref=f4e4] [cursor=pointer]:
+    - /url: "#main"
+  - navigation "Primary" [ref=f4e5]:
+    - generic [ref=f4e6]: OpenBurnBar Linux
+    - status [ref=f4e7]: Daemon fixture-0.1.0 (fixture)
+    - generic [ref=f4e8]: Dashboard
+    - button "Overview" [ref=f4e9] [cursor=pointer]
+    - button "Insights" [ref=f4e10] [cursor=pointer]
+    - button "Database" [ref=f4e11] [cursor=pointer]
+    - button "Providers & models" [ref=f4e12] [cursor=pointer]
+    - button "Projects" [ref=f4e13] [cursor=pointer]
+    - button "Missions" [ref=f4e14] [cursor=pointer]
+    - button "Activity & logs" [ref=f4e15] [cursor=pointer]
+    - button "Chat / Hermes" [ref=f4e16] [cursor=pointer]
+    - button "Memory" [ref=f4e17] [cursor=pointer]
+    - generic [ref=f4e18]: System
+    - button "Settings" [ref=f4e19] [cursor=pointer]
+    - button "Account & sync" [ref=f4e20] [cursor=pointer]
+    - button "Updates" [ref=f4e21] [cursor=pointer]
+    - button "Support & diagnostics" [ref=f4e22] [cursor=pointer]
+    - button "First-run setup" [ref=f4e23] [cursor=pointer]
+    - button "Pet companion" [ref=f4e24] [cursor=pointer]
+    - button "Text expansion" [ref=f4e25] [cursor=pointer]
+    - 'button "Skin: editorial" [ref=f4e26] [cursor=pointer]'
+  - main [ref=f4e27]:
+    - region "Providers & models" [ref=f4e28]:
+      - heading "Providers & models" [level=2] [ref=f4e29]
+      - paragraph [ref=f4e30]: Provider credentials, routing, and model catalog.
+      - generic "Provider glyphs" [ref=f4e31]:
+        - generic [ref=f4e32]: OpenAI
+        - generic [ref=f4e34]: Anthropic
+        - generic [ref=f4e36]: Google
+        - generic [ref=f4e38]: Hermes
+        - generic [ref=f4e40]: Codex
+        - generic [ref=f4e42]: Cursor
+        - generic [ref=f4e44]: OpenCode
+        - generic [ref=f4e46]: Ollama
+      - paragraph [ref=f4e48]: "Data source: fixture transcript"
+      - table [ref=f4e49]:
+        - rowgroup [ref=f4e50]:
+          - row "ID Title Detail" [ref=f4e51]:
+            - columnheader "ID" [ref=f4e52]
+            - columnheader "Title" [ref=f4e53]
+            - columnheader "Detail" [ref=f4e54]
+        - rowgroup [ref=f4e55]:
+          - row "p-1 Anthropic Fixture catalog row — connect live peer for credentials." [ref=f4e56]:
+            - cell "p-1" [ref=f4e57]
+            - cell "Anthropic" [ref=f4e58]
+            - cell "Fixture catalog row — connect live peer for credentials." [ref=f4e59]

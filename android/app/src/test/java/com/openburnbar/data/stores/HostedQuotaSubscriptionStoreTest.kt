@@ -47,6 +47,12 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HostedQuotaSubscriptionStoreTest {
+    companion object {
+        private const val ACTIVE_SUBSCRIPTION_EXPIRES_AT = "2099-06-30T12:00:00Z"
+        private val ACTIVE_SUBSCRIPTION_EXPIRES_AT_MS =
+            java.time.Instant.parse(ACTIVE_SUBSCRIPTION_EXPIRES_AT).toEpochMilli()
+    }
+
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
@@ -137,7 +143,7 @@ class HostedQuotaSubscriptionStoreTest {
                 purchaseToken = "pro-token",
                 productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
             )
-        } returns mapOf("active" to true, "expiresAt" to "2026-06-30T12:00:00Z")
+        } returns mapOf("active" to true, "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT)
 
         val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
 
@@ -429,7 +435,7 @@ class HostedQuotaSubscriptionStoreTest {
         } returns
             mapOf(
                 "active" to true,
-                "expiresAt" to "2026-06-30T12:00:00Z",
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
 
         val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
@@ -443,7 +449,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertTrue(store.isActive.value)
         assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
         assertEquals(123456789L, store.purchaseDate.value)
-        assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+        assertEquals(ACTIVE_SUBSCRIPTION_EXPIRES_AT_MS, store.expirationDate.value)
     }
 
     @Test
@@ -526,7 +532,7 @@ class HostedQuotaSubscriptionStoreTest {
         } returns
             mapOf(
                 "active" to true,
-                "expiresAt" to "2026-06-30T12:00:00Z",
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
 
         val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
@@ -594,7 +600,7 @@ class HostedQuotaSubscriptionStoreTest {
             mapOf(
                 "active" to true,
                 "productID" to "com.openburnbar.hostedQuotaSync.cloud.monthly",
-                "expiresAt" to "2026-06-30T12:00:00Z",
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
 
         entitlementListenerSlot.captured.onEvent(activeSnap, null)
@@ -658,7 +664,7 @@ class HostedQuotaSubscriptionStoreTest {
         } returns
             mapOf(
                 "active" to true,
-                "expiresAt" to "2026-06-30T12:00:00Z",
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
         coEvery {
             mockFunctions.verifyGooglePlayBurnBarProSubscription(
@@ -682,7 +688,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertTrue(store.isActive.value)
         assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
         assertEquals(123456789L + 1, store.purchaseDate.value)
-        assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+        assertEquals(ACTIVE_SUBSCRIPTION_EXPIRES_AT_MS, store.expirationDate.value)
         coVerify(exactly = 1) {
             mockFunctions.verifyGooglePlayBurnBarProSubscription(
                 purchaseToken = "cloud-pro-token",
@@ -732,7 +738,7 @@ class HostedQuotaSubscriptionStoreTest {
         } returns
             mapOf(
                 "active" to true,
-                "expiresAt" to "2026-06-30T12:00:00Z",
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
 
         val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)

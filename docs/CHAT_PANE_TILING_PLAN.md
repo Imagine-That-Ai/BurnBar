@@ -1,6 +1,7 @@
 # Chat pane tiling (cmux-style) — design + implementation plan
 
-Status: shipped (integration + drag-to-split live; see "v5" below). Owner: agent (under ultracode). Target: `AgentLens` macOS app, Chat screen.
+Status: implemented through tabbed pane workspaces. Owner: agent. Target:
+`AgentLens` macOS app, Chat screen.
 
 ## Goal
 
@@ -417,38 +418,70 @@ Reviewers also explicitly checked type/API signatures across the new code and fo
 - **Divider affordance.** The resize divider thickens slightly (7pt) and brightens to the accent on hover/drag, making the grab target obvious.
 - **Tests added.** `AgentLensTests/Active/PaneWorkspaceModelTests.swift` — 16 XCTest cases covering split (axis, isolation, distinct threads), close (non-primary reflow, primary re-home keeps the controller, last-pane indestructible, nested), persistence round-trip, the exactly-one-primary repair (zero/multiple/invalid-active/fraction-clamp corrupt blobs), `boundThreadIDs`, and the Codable snapshot round-trip. Registered in the project via XcodeGen.
 
-# Build verification status (v1–v4 background environment — superseded by v5)
+# v5 — tabbed panes, pane ops, and background completion alerts
 
-> **Superseded by the v5 run below.** On the interactive maintainer workstation the build now completes and all tests pass (see v5 "Verification"); this note is retained only as the historical record of why the *original background* attempts could not finish. A full headless build/test could not be completed **in that background environment** for two independent, environment-level reasons — confirmed across 9 build attempts, neither related to the code:
+The current implementation keeps the original v1 tiling contract and adds a
+tmux/cmux-style tab layer over the right-side chat workspace:
 
-1. **Xcode 27.0 Beta build-task sandbox** marks the source tree read-only, so `ProcessXCFramework` cannot extract the vendored binary xcframeworks (SQLCipher/Firebase/gRPC/Sentry/absl/…) into the in-repo `.spm-cache`.
-2. **Intermittent macOS TCC on `~/Documents` for spawned shell subprocesses.** The agent's own file tools (Read/Edit/Write) and `xcodegen` have reliable access, but `cp`/`ls`/`xcodebuild` subprocesses intermittently get `Operation not permitted` reading repo files (e.g. `Vendor/`, `project.yml`) — so neither building in-place nor copying the source out of Documents completes reliably.
+- **Shared workspace instance.** `DashboardChatWorkspaceView` uses
+  `PaneWorkspaceModel.shared(...)`, so embedded and pop-out chat surfaces point
+  at one pane tree instead of restoring separate local workspaces.
+- **Conversation tabs.** `ConversationTabStrip` exposes tab selection, close,
+  new tab, reopen closed tab, close others, rename, and color. Shortcuts cover
+  `cmd+T`, `cmd+shift+T`, `cmd+shift+[` / `cmd+shift+]`, and `cmd+1...9`.
+- **v2 persistence.** `PaneWorkspaceSnapshotV2` stores tabs, selected tab,
+  closed-tab stack, per-tab metadata, per-pane metadata, zoom state, active
+  pane, split fractions, and bound thread ids. Restore still falls back to the
+  original v1 snapshot shape, then rewrites as v2 on the next persist.
+- **Pane operations.** Pane chrome now supports rename, color, mute/enable
+  completion alerts, move to a new tab, move to another tab, mark seen, zoom,
+  and close. Dragging a pane header onto another pane swaps them; dragging a
+  thread from the rail still binds only the target pane.
+- **Hidden-work completion.** `ChatSessionController` reports stream settlement
+  to the workspace. Completed replies in hidden panes/tabs become unseen,
+  render as rail/tab/pane status dots, and can be jumped to with
+  `cmd+shift+U`. Local `pane_completion` notifications focus the relevant pane
+  when tapped through `ChatPaneAlertCenter`.
+- **Toolbar parity.** The top toolbar hides duplicate engine pickers while the
+  workspace is tiled or has multiple tabs. Single-pane/single-tab mode keeps the
+  old toolbar path.
+- **Tests expanded.** `PaneWorkspaceModelTests` now covers tab close/reopen,
+  v2 metadata round trip, pane move to new tab, tab-local zoom, hidden-pane
+  unseen completion, and all-tabs bound-thread aggregation in addition to the
+  original tiling invariants.
 
-The maintainer path (`make build`, scheme **`OpenBurnBar`**, or Xcode.app) runs in an interactive, TCC-granted context and is unaffected. Verification here rested on two independent multi-agent review rounds (design loophole-hunt + implementation review, both incl. type/API-signature checks) plus the new unit tests. **To get the definitive compile + test run:** `xcodegen generate --spec project.yml && make build`, then run `PaneWorkspaceModelTests` (e.g. via Xcode's test navigator or `xcodebuild test -only-testing:AgentLensTests/PaneWorkspaceModelTests`).
+# Build verification status
 
-# v5 — shipped: dashboard integration + drag-to-split
+Current v5 verification from the tabbed-pane implementation worktree:
 
-The model/view/tests (v1–v4) were built but never mounted — `DashboardChatWorkspaceView`
-kept rendering its own single `conversationColumn`, so `⌘D`/`⌘⇧D`/`⌘W` were dead and the
-drag drop had no source. This pass completed §9 and added the "suggest new pane location"
-affordance the brief implied.
+1. `xcodegen generate --spec project.yml` completed successfully and refreshed
+   `OpenBurnBar.xcodeproj/project.pbxproj`.
+2. `OPENBURNBAR_APP_TEST_ATTEMPTS=1 SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin ./scripts/test-openburnbar-app.sh -only-testing:AgentLensTests/PaneWorkspaceModelTests`
+   completed successfully: `PaneWorkspaceModelTests` executed 27 tests with 0
+   failures.
+3. Direct `xcodebuild build` attempts reached the final `OpenBurnBar` link, with
+   no pane Swift compile failures, then failed on the existing libsignal native
+   archive wiring: `ld: warning: Could not find or use auto-linked library
+   'signal_ffi': library 'signal_ffi' not found` followed by unresolved
+   `_signal_*` symbols from `LibSignalClient.o`. This is separate from the pane
+   implementation; the app-host XCTest wrapper remains the verified local build
+   path for this change.
+4. A validation-only Debug app build succeeded after supplying the missing local
+   Signal FFI linker path explicitly via `OTHER_LDFLAGS=$(inherited)
+   -L.../Vendor/OpenBurnBarSignalFfiMac.xcframework/macos-arm64 -lsignal_ffi`.
+   That produced
+   `/tmp/obb-pane-tabs-app-build-harness-flags/Build/Products/Debug/OpenBurnBar.app`.
 
-- **Integration (§9).** `DashboardChatWorkspaceView` now builds the `PaneWorkspaceModel`
-  lazily in `.onAppear` (an optional `@State`, NOT `init` — `State(wrappedValue: restore())`
-  would re-run the controller-building `restore()` on every parent re-render) and renders
-  `PaneWorkspaceView` in place of `conversationColumn`. The toolbar + rail selection bind to
-  `workspace.activeController` (falling back to the app-wide `controller`); the
-  `hermesRuntimeGate` stays bound to the app-wide primary controller (v2 §392). The dead
-  `conversationColumn` / `welcomeState` / suggestion helpers were deleted from the screen
-  (they live in `PaneConversationView`).
-- **Drag-to-split (new).** Thread rows (`ChatHistoryRow`) are now `.onDrag` sources carrying
-  the `threadID` as an `NSItemProvider`. Each pane uses a `PaneDropDelegate` (not
-  `.dropDestination`) so it sees the live drop LOCATION on every `dropUpdated` and highlights
-  a `PaneDropZone` in real time: `.center` loads the thread into the pane (`bind`), while an
-  edge splits the pane and drops the thread into a new pane on that side
-  (`PaneWorkspaceModel.splitLeaf`). Rows carry an `isOpenInPane` hint; the toolbar hides its
-  engine pickers while tiled (`showsEnginePickers`).
-- **Verification.** `xcodebuild ... -scheme OpenBurnBar -configuration Debug ... build` →
-  `** BUILD SUCCEEDED **`. Test run `** TEST SUCCEEDED **`, 30/30: `PaneWorkspaceModelTests`
-  (25 — the prior 15 plus 10 new `PaneDropZone.classify` + `splitLeaf` cases) +
-  `DashboardChatWorkspaceViewTests` (5).
+Manual QA checklist for the integrated Chat surface:
+
+1. Open Chat in single-tab/single-pane mode and confirm the toolbar and
+   conversation column match the pre-tiling surface.
+2. Split panes with `cmd+D` and `cmd+shift+D`; resize dividers; close panes with
+   `cmd+W`; verify the final pane stays alive.
+3. Create tabs with `cmd+T`, switch with `cmd+shift+[` / `cmd+shift+]`, reopen a
+   closed tab with `cmd+shift+T`, and select tabs with `cmd+1...9`.
+4. Rename/color tabs and panes, drag a thread from the rail onto a pane, drag a
+   pane header onto another pane to swap, and move a pane to a new/existing tab.
+5. Start a reply in a hidden pane/tab; confirm the rail/tab/pane unseen markers
+   appear, `cmd+shift+U` focuses the most recent unseen pane, and tapping a local
+   completion notification focuses the pane.

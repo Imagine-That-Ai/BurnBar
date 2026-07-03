@@ -91,31 +91,17 @@ def legal_review_blockers(
     ]
 
 
-def owner_emergency_approval_is_valid(
-    evidence_path: Path,
-    repo_root: Path,
-    *,
-    expected_release_tag: str | None = None,
-) -> bool:
+def has_owner_emergency_status(evidence_path: Path, repo_root: Path) -> bool:
     legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
-
     if not evidence_path.is_file():
         return False
-
     try:
         data = json.loads(evidence_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-
-    owner_status = getattr(legal_review, "OWNER_ATTESTED_SOFT_APPROVAL_STATUS", "owner_attested_soft_approval")
     status = data.get("reviewStatus") or data.get("status")
-    if status != owner_status:
-        return False
-
-    validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
-    if validator is None:
-        return False
-    return not validator(data, repo_root=repo_root, expected_release_tag=expected_release_tag)
+    owner_status = getattr(legal_review, "OWNER_ATTESTED_SOFT_APPROVAL_STATUS", "owner_attested_soft_approval")
+    return status == owner_status
 
 
 def collect_blockers(
@@ -125,26 +111,39 @@ def collect_blockers(
     include_runtime_readiness: bool = True,
     include_legal_review: bool = True,
     allow_owner_emergency_approval: bool = False,
+    allow_owner_emergency_runtime_hold: bool = False,
     expected_release_tag: str | None = None,
 ) -> list[str]:
     blockers = []
-    runtime_gate_required = include_runtime_readiness
-    if allow_owner_emergency_approval and include_legal_review:
-        runtime_gate_required = not owner_emergency_approval_is_valid(
+    legal_blockers = []
+    if include_legal_review:
+        legal_blockers = legal_review_blockers(
             legal_evidence,
             repo_root,
+            allow_owner_emergency_approval=allow_owner_emergency_approval,
             expected_release_tag=expected_release_tag,
         )
-    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=runtime_gate_required))
-    if include_legal_review:
-        blockers.extend(
-            legal_review_blockers(
-                legal_evidence,
-                repo_root,
-                allow_owner_emergency_approval=allow_owner_emergency_approval,
-                expected_release_tag=expected_release_tag,
-            )
+
+    runtime_readiness_required = include_runtime_readiness
+    if allow_owner_emergency_runtime_hold:
+        if not allow_owner_emergency_approval:
+            blockers.append("owner emergency runtime hold requires --allow-owner-emergency-approval")
+        elif not include_legal_review:
+            blockers.append("owner emergency runtime hold requires legal review")
+        elif legal_blockers:
+            blockers.append("owner emergency runtime hold requires valid owner emergency approval")
+        elif not has_owner_emergency_status(legal_evidence, repo_root):
+            blockers.append("owner emergency runtime hold requires owner-attested emergency approval status")
+        else:
+            runtime_readiness_required = False
+
+    blockers.extend(
+        source_provenance_blockers(
+            repo_root,
+            include_runtime_readiness=runtime_readiness_required,
         )
+    )
+    blockers.extend(legal_blockers)
     return blockers
 
 
@@ -174,8 +173,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Allow a structured owner-attested soft-approval packet to satisfy "
-            "runtime/legal release holds for an emergency artifact release. The "
-            "default path still requires signed external-counsel approval."
+            "the legal release hold for an emergency artifact release. Runtime "
+            "readiness is always enforced for product release preflight."
+        ),
+    )
+    parser.add_argument(
+        "--allow-owner-emergency-runtime-hold",
+        action="store_true",
+        help=(
+            "With a valid owner-attested emergency approval packet, allow an "
+            "emergency artifact release while runtimeReadiness remains not_ready. "
+            "Source integrity and the owner-emergency legal packet are still enforced."
         ),
     )
     parser.add_argument(
@@ -195,6 +203,9 @@ def main(argv: list[str] | None = None) -> int:
         include_runtime_readiness=not args.source_provenance_only,
         include_legal_review=not args.source_provenance_only,
         allow_owner_emergency_approval=args.allow_owner_emergency_approval and not args.source_provenance_only,
+        allow_owner_emergency_runtime_hold=(
+            args.allow_owner_emergency_runtime_hold and not args.source_provenance_only
+        ),
         expected_release_tag=args.expected_release_tag or release_tag_from_environment(),
     )
     if blockers:

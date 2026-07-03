@@ -1,18 +1,26 @@
 import SwiftUI
 import OpenBurnBarCore
+import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
-/// Full-canvas chat experience, modeled after Claude.ai and ChatGPT — a cmux-style
-/// tiling workspace.
+/// Full-canvas chat experience, modeled after Claude.ai and ChatGPT.
 ///
 /// Layout:
 ///   ┌─ Toolbar ─────────────────────────────────────────────────────────┐
 ///   │ Backend  Model   New chat  ⋯  Pop out  Restore window  Close      │
 ///   ├───────────────────────────────────────────────────────────────────┤
-///   │ Thread rail (260pt) │  PaneWorkspaceView (tiling conversation)     │
-///   │  + New chat         │   ⌘D split right · ⌘⇧D split down · ⌘W close │
-///   │  search             │   drag a thread chip onto a pane to load it, │
-///   │  thread rows (drag) │   or onto an edge to open it in a new pane   │
+///   │ Thread rail (260pt) │  Pane workspace (cmux-style tiling)          │
+///   │  + New chat         │   One full-size pane by default; ⌘D / ⌘⇧D    │
+///   │  search             │   split, drag a thread row onto any pane.    │
+///   │  thread rows        │                                              │
 ///   └───────────────────────────────────────────────────────────────────┘
+///
+/// The right viewer is a `PaneWorkspaceView` tiling tree. With a single pane it is
+/// pixel-identical to the previous single-conversation column; splitting reveals per-pane
+/// chrome. The `controller` injected here is the app-wide controller and becomes the
+/// workspace's primary leaf, so every other surface that holds it is unaffected.
 ///
 /// Two modes:
 ///   - `.embedded`  — rendered inside the dashboard `mainRoute == .chat`
@@ -33,30 +41,18 @@ struct DashboardChatWorkspaceView: View {
     var onRestoreFloating: (() -> Void)?
     var onClose: (() -> Void)?
 
-    /// The cmux-style tiling tree. Built lazily in `.onAppear` — NOT in `init`, which
-    /// would re-run the controller-building `restore()` on every parent re-render. The
-    /// passed-in `controller` is the app-wide primary controller reused by the primary
-    /// pane, so the single-pane experience and every other surface holding it are
-    /// unchanged.
-    @State private var workspace: PaneWorkspaceModel?
     @State private var showClearChatPrompt = false
-    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
+
+    /// The pane-tiling workspace for the right-side viewer. Built lazily on first appear
+    /// from the persisted layout (or a single primary pane bound to `controller`).
+    @State private var workspace: PaneWorkspaceModel?
+    @State private var alertCenter = ChatPaneAlertCenter()
 
     private let railWidth: CGFloat = 260
 
-    /// The focused pane's controller — the toolbar + rail selection target. Falls back to
-    /// the app-wide controller before the workspace is built.
-    private var activeController: ChatSessionController {
-        workspace?.activeController ?? controller
-    }
-
-    private var isTiled: Bool { (workspace?.paneCount ?? 1) > 1 }
-
-    private var railAccent: Color {
-        activeController.chatBackend == .hermes
-            ? DesignSystem.Colors.hermesAureate
-            : DesignSystem.Colors.whimsy
-    }
+    /// The focused pane's controller (falls back to the app-wide controller before the
+    /// workspace is built). Drives the toolbar, the rail selection, and retrieval refreshes.
+    private var activeController: ChatSessionController { workspace?.activeController ?? controller }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,7 +60,7 @@ struct DashboardChatWorkspaceView: View {
                 controller: activeController,
                 settingsManager: settingsManager,
                 mode: mode,
-                showsEnginePickers: !isTiled,
+                showsEnginePickers: !(workspace?.isTiled ?? false),
                 onNewChat: { activeController.clearChat() },
                 onShowClearChatPrompt: { showClearChatPrompt = true },
                 onPopOut: onPopOut,
@@ -80,36 +76,56 @@ struct DashboardChatWorkspaceView: View {
                         Divider().opacity(0.4)
                     }
 
-                conversationArea
-                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                Group {
+                    if let workspace {
+                        VStack(spacing: 0) {
+                            ConversationTabStrip(workspace: workspace)
+                            PaneWorkspaceView(
+                                workspace: workspace,
+                                settingsManager: settingsManager,
+                                onJumpToConversation: onOpenConversationJump
+                            )
+                        }
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
         .task {
             PretextEngine.shared.start()
         }
         .onAppear {
-            if workspace == nil {
-                workspace = PaneWorkspaceModel.restore(
-                    primaryController: controller,
-                    dataStore: dataStore,
-                    settingsManager: settingsManager
-                )
+            let paneWorkspace = workspace ?? PaneWorkspaceModel.shared(
+                primaryController: controller,
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                alertCenter: alertCenter
+            )
+            workspace = paneWorkspace
+            ChatPaneAlertCenter.paneCompletionTapHandler = { paneID, tabID in
+                #if canImport(AppKit)
+                NSApp.activate(ignoringOtherApps: true)
+                #endif
+                paneWorkspace.focusPane(paneID, inTab: tabID)
             }
             controller.refreshHistory()
         }
         .onChange(of: dataStore.usagesVersion) { _, _ in
-            controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+            forEachController { $0.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable) }
+            controller.refreshHistory()
         }
         .onChange(of: sharedFeaturesAvailable) { _, available in
-            controller.refreshRetrievalHealth(sharedFeaturesAvailable: available)
+            forEachController { $0.refreshRetrievalHealth(sharedFeaturesAvailable: available) }
         }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
-            controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+            forEachController { $0.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable) }
         }
         .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
-            controller.reconfigureSearchService()
+            forEachController { $0.reconfigureSearchService() }
         }
         .confirmationDialog("Clear current chat?", isPresented: $showClearChatPrompt) {
             Button("Clear Current Chat", role: .destructive) {
@@ -120,26 +136,19 @@ struct DashboardChatWorkspaceView: View {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
         .hermesRuntimeGate(
-            controller: controller,
+            controller: activeController,
             settingsManager: settingsManager,
             dataStore: dataStore
         )
     }
 
-    // MARK: - Conversation area (cmux-style tiling)
-
-    @ViewBuilder
-    private var conversationArea: some View {
+    /// Apply an action to every pane's controller (or just the app-wide controller before
+    /// the workspace is built), so global setting changes reach all panes.
+    private func forEachController(_ body: (ChatSessionController) -> Void) {
         if let workspace {
-            PaneWorkspaceView(
-                workspace: workspace,
-                settingsManager: settingsManager,
-                onJumpToConversation: onOpenConversationJump
-            )
+            workspace.allLeaves.forEach { body($0.controller) }
         } else {
-            // First frame before `.onAppear` builds the workspace — the backdrop shows
-            // through; the pane (with its own welcome + composer) lands immediately after.
-            Color.clear
+            body(controller)
         }
     }
 
@@ -159,12 +168,19 @@ struct DashboardChatWorkspaceView: View {
                         .fontWeight(.semibold)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(railAccent)
+                .foregroundStyle(activeController.chatBackend == .hermes
+                    ? DesignSystem.Colors.hermesAureate
+                    : DesignSystem.Colors.whimsy)
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs + 2)
                 .background(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .strokeBorder(railAccent.opacity(0.4), lineWidth: 0.75)
+                        .strokeBorder(
+                            activeController.chatBackend == .hermes
+                                ? DesignSystem.Colors.hermesAureate.opacity(0.4)
+                                : DesignSystem.Colors.whimsy.opacity(0.4),
+                            lineWidth: 0.75
+                        )
                 )
             }
             .buttonStyle(.plain)
@@ -199,7 +215,20 @@ struct DashboardChatWorkspaceView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                         ForEach(controller.historyThreads) { thread in
-                            threadRow(thread)
+                            ChatHistoryRow(
+                                thread: thread,
+                                isActive: thread.id == activeController.activeThreadID,
+                                paneBadge: railBadge(for: thread.id),
+                                accent: activeController.chatBackend == .hermes
+                                    ? DesignSystem.Colors.hermesAureate
+                                    : DesignSystem.Colors.whimsy,
+                                onSelect: { openThreadInActivePane(thread.id) }
+                            )
+                            .draggable(PaneThreadDropPayload(threadID: thread.id))
+                            .contextMenu {
+                                Button("Open in Active Pane") { openThreadInActivePane(thread.id) }
+                                Button("Open in New Tab") { workspace?.newTab(bindingThreadID: thread.id) }
+                            }
                         }
                     }
                 }
@@ -210,40 +239,17 @@ struct DashboardChatWorkspaceView: View {
         .padding(DesignSystem.Spacing.md)
     }
 
-    /// One draggable thread chip. Dragging it onto a pane loads the thread there; dropping
-    /// on a pane edge opens it in a new split pane (handled by `PaneDropDelegate`).
-    @ViewBuilder
-    private func threadRow(_ thread: ChatThreadSummary) -> some View {
-        ChatHistoryRow(
-            thread: thread,
-            isActive: thread.id == activeController.activeThreadID,
-            accent: railAccent,
-            isOpenInPane: workspace?.boundThreadIDs.contains(thread.id) ?? false,
-            onSelect: { activeController.openHistoryThread(thread.id) }
-        )
-        .onDrag {
-            NSItemProvider(object: thread.id as NSString)
-        } preview: {
-            threadDragPreview(thread)
+    private func openThreadInActivePane(_ threadID: String) {
+        if let workspace {
+            workspace.bind(threadID: threadID, toLeaf: workspace.activeLeafID)
+        } else {
+            activeController.openHistoryThread(threadID)
         }
     }
 
-    @ViewBuilder
-    private func threadDragPreview(_ thread: ChatThreadSummary) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.system(size: 11, weight: .semibold))
-            Text(thread.title)
-                .font(DesignSystem.Typography.caption)
-                .lineLimit(1)
-        }
-        .foregroundStyle(railAccent)
-        .padding(.horizontal, DesignSystem.Spacing.sm)
-        .padding(.vertical, DesignSystem.Spacing.xs)
-        .background(
-            Capsule(style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated)
-        )
-        .frame(maxWidth: 240)
+    private func railBadge(for threadID: String) -> ChatHistoryRow.PaneRailBadge {
+        if workspace?.unseenThreadIDs.contains(threadID) == true { return .unseen }
+        if workspace?.boundThreadIDs.contains(threadID) == true { return .openInPane }
+        return .none
     }
 }

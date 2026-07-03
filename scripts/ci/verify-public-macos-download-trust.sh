@@ -3,31 +3,35 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-site_config="$repo_root/website/src/data/site.ts"
-
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "::error::Public macOS download trust verification must run on macOS." >&2
-  exit 78
-fi
+site_config="${1:-$repo_root/website/src/data/site.ts}"
 
 if [[ ! -f "$site_config" ]]; then
   echo "::error::SITE config not found at $site_config" >&2
   exit 66
 fi
 
-site_metadata="$(
+read_site_metadata() {
   node --input-type=module - "$site_config" <<'NODE'
 import { readFileSync } from "node:fs";
 
 const siteConfig = process.argv[2];
-const text = readFileSync(siteConfig, "utf8");
+const source = readFileSync(siteConfig, "utf8");
+const withoutComments = source
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/(^|[^:])\/\/.*$/gm, "$1");
+const siteMatch = withoutComments.match(/export\s+const\s+SITE\s*=\s*\{([\s\S]*)\}\s*(?:as\s+const\s*)?;?\s*$/m);
+if (!siteMatch) {
+  throw new Error("website/src/data/site.ts must export a declarative SITE object");
+}
+const siteObject = siteMatch[1];
 
 function stringField(name) {
-  const match = text.match(new RegExp(`${name}:\\s*"([^"]*)"`));
+  const pattern = new RegExp(`(?:^|[,\\n])\\s*${name}\\s*:\\s*([\"'])([^\"'\\\\]*(?:\\\\.[^\"'\\\\]*)*)\\1\\s*(?:,|$)`, "m");
+  const match = siteObject.match(pattern);
   if (!match) {
-    throw new Error(`SITE.${name} was not found`);
+    throw new Error(`SITE.${name} must be a literal string`);
   }
-  return match[1];
+  return JSON.parse(`"${match[2].replace(/"/g, '\\"')}"`);
 }
 
 const base = stringField("macDownloadBaseUrl").replace(/\/+$/, "");
@@ -55,7 +59,19 @@ console.log(url.href);
 console.log(expectedVersion);
 console.log(file);
 NODE
-)"
+}
+
+if [[ "${OPENBURNBAR_PRINT_PUBLIC_MACOS_DOWNLOAD_METADATA:-}" == "1" ]]; then
+  read_site_metadata
+  exit 0
+fi
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "::error::Public macOS download trust verification must run on macOS." >&2
+  exit 78
+fi
+
+site_metadata="$(read_site_metadata)"
 download_url="$(printf '%s\n' "$site_metadata" | sed -n '1p')"
 expected_version="$(printf '%s\n' "$site_metadata" | sed -n '2p')"
 mac_release_file="$(printf '%s\n' "$site_metadata" | sed -n '3p')"
@@ -158,6 +174,43 @@ fail_gate "App bundle code signature verification" \
 bash "$repo_root/scripts/ci/verify-apple-release-firebase-config.sh" "$app_path"
 bash "$repo_root/scripts/ci/verify-apple-appcheck-release-artifact.sh" "$app_path"
 
+entitlements_plist="$tmpdir/app-entitlements.plist"
+codesign -d --entitlements :- "$app_path" > "$entitlements_plist" 2>/dev/null
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist" 2>/dev/null || true)"
+expected_app_identifier="${expected_team_id}.${bundle_id}"
+actual_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.application-identifier' "$entitlements_plist" 2>/dev/null || true)"
+actual_team_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$entitlements_plist" 2>/dev/null || true)"
+actual_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :keychain-access-groups' "$entitlements_plist" 2>/dev/null || true)"
+if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$expected_team_id" ]]; then
+  echo "::error::Public app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$expected_team_id'." >&2
+  exit 1
+fi
+if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
+  echo "::error::Public app is missing Firebase Auth Keychain group $expected_app_identifier." >&2
+  printf '%s\n' "$actual_keychain_groups" >&2
+  exit 1
+fi
+
+embedded_profile="$app_path/Contents/embedded.provisionprofile"
+if [[ ! -f "$embedded_profile" ]]; then
+  echo "::error::Public app is missing embedded MAC_APP_DIRECT provisioning profile." >&2
+  exit 1
+fi
+embedded_profile_plist="$tmpdir/embedded-profile.plist"
+security cms -D -i "$embedded_profile" > "$embedded_profile_plist"
+profile_all_devices="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:keychain-access-groups' "$embedded_profile_plist" 2>/dev/null || true)"
+if [[ "$profile_all_devices" != "true" || "$profile_app_identifier" != "$expected_app_identifier" ]]; then
+  echo "::error::Embedded profile must be all-devices and authorize $expected_app_identifier; found allDevices='${profile_all_devices:-missing}' app='${profile_app_identifier:-missing}'." >&2
+  exit 1
+fi
+if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profile_keychain_groups"; then
+  echo "::error::Embedded profile does not authorize the $expected_app_identifier Keychain group." >&2
+  printf '%s\n' "$profile_keychain_groups" >&2
+  exit 1
+fi
+
 signature="$(
   codesign -dv --verbose=4 "$app_path" 2>&1 || true
 )"
@@ -180,4 +233,4 @@ fi
 fail_gate "Gatekeeper app execution assessment" \
   spctl -a -vv --type execute "$app_path"
 
-echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, and Gatekeeper accepted."
+echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, Firebase-Keychain-profiled, and Gatekeeper accepted."

@@ -23,13 +23,16 @@ Only the release owner may use this lane.
    `launch-evidence/latest-agpl-store-legal-packet.json`.
 2. The packet must name the owner, GitHub owner account, counsel name, approval
    type, release boundary, emergency reason, and follow-up requirement.
-3. The release workflow may run:
-   `python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval`
-4. Do not add a generic bypass input. Do not conditionally skip the product
+3. The packet's `repo.releaseTag` must match the exact tag being cut. Check it
+   before tagging:
+   `python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag vX.Y.Z`
+4. The release workflow may run the same command with
+   `--expected-release-tag` set from the resolved release tag.
+5. Do not add a generic bypass input. Do not conditionally skip the product
    release preflight.
-5. Keep production deploy on the strict preflight unless a separate owner
+6. Keep production deploy on the strict preflight unless a separate owner
    decision explicitly scopes that deploy.
-6. Replace the emergency packet with signed counsel evidence when available.
+7. Replace the emergency packet with signed counsel evidence when available.
 
 This lane exists to publish a signed/notarized artifact when users are blocked
 by a stale or broken public download. It is not a replacement for the signed

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::c_void;
 use std::time::Duration;
 
@@ -180,6 +180,12 @@ pub trait Packetizer: Send {
     ) -> Result<(), MediaError>;
 }
 
+/// Maximum packets allowed in a single frame.
+///
+/// The same cap is enforced before emission and while receiving so the local
+/// packetizer never creates frames the depacketizer will reject.
+const MAX_PACKETS_PER_FRAME: u16 = 4096;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DatagramPacketizer {
     stream_id: u16,
@@ -206,9 +212,9 @@ impl Packetizer for DatagramPacketizer {
 
         let chunk_len = max_datagram_payload - MEDIA_DATAGRAM_HEADER_LEN;
         let packet_count_usize = frame.bytes.len().div_ceil(chunk_len);
-        if packet_count_usize > u16::MAX as usize {
+        if packet_count_usize > MAX_PACKETS_PER_FRAME as usize {
             return Err(MediaError::Packetize(format!(
-                "frame requires {packet_count_usize} packets, exceeds u16 packet_count"
+                "frame requires {packet_count_usize} packets, exceeds maximum {MAX_PACKETS_PER_FRAME}"
             )));
         }
         let packet_count = u16::try_from(packet_count_usize).map_err(|_| {
@@ -260,9 +266,13 @@ struct PartialFrame {
     capture_timestamp: TimestampMicros,
     dependency: FrameDependency,
     accepted_at: TimestampMicros,
-    received_count: usize,
-    packets: Vec<Option<Bytes>>,
+    expected_count: u16,
+    packets: BTreeMap<u16, Bytes>,
 }
+
+/// Upper bound applied to `max_incomplete_frames` when constructing the
+/// depacketizer.
+const MAX_INCOMPLETE_FRAMES_LIMIT: usize = 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct PartialFrameKey {
@@ -278,9 +288,10 @@ pub struct DatagramDepacketizer {
 }
 
 impl DatagramDepacketizer {
+    /// Create a depacketizer with enforced bounds on incomplete frame count.
     pub fn new(max_incomplete_frames: usize, max_frame_age: Duration) -> Self {
         Self {
-            max_incomplete_frames: max_incomplete_frames.max(1),
+            max_incomplete_frames: max_incomplete_frames.clamp(1, MAX_INCOMPLETE_FRAMES_LIMIT),
             max_frame_age,
             partials: HashMap::new(),
         }
@@ -303,6 +314,12 @@ impl DatagramDepacketizer {
                 header.packet_index, header.packet_count
             )));
         }
+        if header.packet_count > MAX_PACKETS_PER_FRAME {
+            return Err(MediaError::Depacketize(format!(
+                "packet count {} exceeds maximum {}",
+                header.packet_count, MAX_PACKETS_PER_FRAME
+            )));
+        }
 
         let dependency = frame_dependency_from_flags(header.flags);
         let key = PartialFrameKey {
@@ -318,11 +335,11 @@ impl DatagramDepacketizer {
             capture_timestamp: header.capture_timestamp,
             dependency,
             accepted_at: received_at,
-            received_count: 0,
-            packets: vec![None; header.packet_count as usize],
+            expected_count: header.packet_count,
+            packets: BTreeMap::new(),
         });
 
-        if partial.packets.len() != header.packet_count as usize
+        if partial.expected_count != header.packet_count
             || partial.capture_timestamp != header.capture_timestamp
             || partial.dependency != dependency
         {
@@ -333,12 +350,11 @@ impl DatagramDepacketizer {
             )));
         }
 
-        let slot = &mut partial.packets[header.packet_index as usize];
-        if slot.is_none() {
-            *slot = Some(payload);
-            partial.received_count += 1;
-        }
-        if partial.received_count != partial.packets.len() {
+        partial
+            .packets
+            .entry(header.packet_index)
+            .or_insert(payload);
+        if partial.packets.len() != partial.expected_count as usize {
             return Ok(None);
         }
 
@@ -348,18 +364,10 @@ impl DatagramDepacketizer {
                 header.stream_id, header.frame_id.0
             ))
         })?;
-        let total_len: usize = partial
-            .packets
-            .iter()
-            .map(|packet| packet.as_ref().map(Bytes::len).unwrap_or_default())
-            .sum();
+        let total_len: usize = partial.packets.values().map(Bytes::len).sum();
         let mut joined = BytesMut::with_capacity(total_len);
-        for packet in partial.packets {
-            joined.extend_from_slice(
-                packet
-                    .ok_or_else(|| MediaError::Depacketize("missing packet".into()))?
-                    .as_ref(),
-            );
+        for packet in partial.packets.values() {
+            joined.extend_from_slice(packet.as_ref());
         }
         Ok(Some(ReassembledFrame {
             frame_id: key.frame_id,
@@ -794,6 +802,31 @@ mod tests {
         }
     }
 
+    fn media_datagram(
+        frame_id: u64,
+        packet_index: u16,
+        packet_count: u16,
+        payload: &[u8],
+    ) -> Bytes {
+        must(
+            encode_media_datagram(
+                MediaDatagramHeader {
+                    class: DatagramClass::Video,
+                    flags: 0,
+                    stream_id: 7,
+                    frame_id: FrameId(frame_id),
+                    packet_index,
+                    packet_count,
+                    capture_timestamp: TimestampMicros(1234),
+                    payload_len: 0,
+                },
+                payload,
+            ),
+            "media datagram should encode",
+        )
+        .bytes
+    }
+
     #[test]
     fn relay_path_caps_bitrate() {
         let dims = dims(3840, 2160);
@@ -864,6 +897,81 @@ mod tests {
         assert_eq!(out.stream_id, 3);
         assert_eq!(out.dependency, FrameDependency::Key);
         assert_eq!(out.bytes.len(), 4_096);
+    }
+
+    #[test]
+    fn packetizer_enforces_depacketizer_packet_count_cap() {
+        let mut packetizer = DatagramPacketizer::new(4);
+        let mut packets = Vec::new();
+        let one_byte_payload = MEDIA_DATAGRAM_HEADER_LEN + 1;
+        let boundary_frame = EncodedFrame {
+            metadata: frame_metadata(12),
+            codec: Codec::Av1,
+            dependency: FrameDependency::Delta,
+            bytes: Bytes::from(vec![42u8; MAX_PACKETS_PER_FRAME as usize]),
+        };
+
+        must(
+            packetizer.packetize(boundary_frame, one_byte_payload, &mut packets),
+            "boundary frame should packetize",
+        );
+        assert_eq!(packets.len(), MAX_PACKETS_PER_FRAME as usize);
+
+        let oversized_frame = EncodedFrame {
+            metadata: frame_metadata(13),
+            codec: Codec::Av1,
+            dependency: FrameDependency::Delta,
+            bytes: Bytes::from(vec![42u8; MAX_PACKETS_PER_FRAME as usize + 1]),
+        };
+        match packetizer.packetize(oversized_frame, one_byte_payload, &mut packets) {
+            Err(MediaError::Packetize(_)) => {}
+            other => panic!("expected packetize error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn depacketizer_rejects_packet_count_amplification_attack() {
+        let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(100));
+        let datagram = media_datagram(11, 0, u16::MAX, b"x");
+
+        match depacketizer.push(datagram, TimestampMicros(50)) {
+            Err(MediaError::Depacketize(_)) => {}
+            other => panic!("expected depacketize error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn depacketizer_allows_boundary_packet_count_and_rejects_one_above() {
+        let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(100));
+
+        let accepted = media_datagram(12, 0, MAX_PACKETS_PER_FRAME, b"a");
+        assert!(must(
+            depacketizer.push(accepted, TimestampMicros(50)),
+            "boundary packet count should be accepted",
+        )
+        .is_none());
+
+        let rejected = media_datagram(13, 0, MAX_PACKETS_PER_FRAME + 1, b"b");
+        match depacketizer.push(rejected, TimestampMicros(51)) {
+            Err(MediaError::Depacketize(_)) => {}
+            other => panic!("expected depacketize error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn depacketizer_clamps_max_incomplete_frames() {
+        let mut depacketizer = DatagramDepacketizer::new(usize::MAX, Duration::from_secs(60));
+
+        for frame_id in 0..(MAX_INCOMPLETE_FRAMES_LIMIT + 1) {
+            let datagram = media_datagram(frame_id as u64, 0, 2, b"z");
+            assert!(must(
+                depacketizer.push(datagram, TimestampMicros(frame_id as u64)),
+                "first packet should stay incomplete",
+            )
+            .is_none());
+        }
+
+        assert_eq!(depacketizer.incomplete_count(), MAX_INCOMPLETE_FRAMES_LIMIT);
     }
 
     #[test]

@@ -11,6 +11,7 @@ scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"
 project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
 
@@ -63,6 +64,10 @@ if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
   exit 1
 fi
+if [[ ! -f "$app_profile" ]]; then
+  echo "ERROR: Missing app Developer ID provisioning profile at $app_profile. Set OPENBURNBAR_APP_PROFILE to the MAC_APP_DIRECT profile for com.openburnbar.app." >&2
+  exit 1
+fi
 if [[ ! -f "$privileged_input_entitlements" ]]; then
   echo "ERROR: Missing privileged input entitlements at $privileged_input_entitlements" >&2
   exit 1
@@ -92,6 +97,13 @@ mkdir -p "$release_dir"
 
 privileged_input_profile_plist="$release_dir/privileged-input-profile.plist"
 privileged_input_signing_entitlements="$release_dir/privileged-input-entitlements.plist"
+app_profile_plist="$release_dir/app-profile.plist"
+app_signing_entitlements="$release_dir/app-signing-entitlements.plist"
+security cms -D -i "$app_profile" > "$app_profile_plist"
+if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$app_profile_plist" 2>/dev/null || true)" != "true" ]]; then
+  echo "ERROR: App profile must be a Developer ID / MAC_APP_DIRECT all-devices profile." >&2
+  exit 1
+fi
 security cms -D -i "$privileged_input_profile" > "$privileged_input_profile_plist"
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" \
   "$privileged_input_profile_plist" > "$privileged_input_signing_entitlements"
@@ -193,6 +205,45 @@ if [[ "$bundle_id" != "com.openburnbar.app" || "$app_version" != "$version" || "
   echo "ERROR: App metadata mismatch: bundle=$bundle_id version=$app_version build=$app_build expected com.openburnbar.app $version $build" >&2
   exit 1
 fi
+app_profile_team_id="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$app_profile_plist" 2>/dev/null || true)"
+app_profile_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$app_profile_plist" 2>/dev/null || true)"
+expected_app_identifier="${app_profile_team_id}.${bundle_id}"
+if [[ ! "$app_profile_team_id" =~ ^[A-Z0-9]{10}$ || "$app_profile_identifier" != "$expected_app_identifier" ]]; then
+  echo "ERROR: App profile must authorize $bundle_id for team ${app_profile_team_id:-<missing>}; found application identifier '${app_profile_identifier:-missing}'." >&2
+  exit 1
+fi
+app_profile_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$app_profile_plist" 2>/dev/null || true)"
+if ! grep -q "${app_profile_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$app_profile_keychain_groups"; then
+  echo "ERROR: App profile does not authorize the $expected_app_identifier Keychain access group." >&2
+  printf '%s\n' "$app_profile_keychain_groups" >&2
+  exit 1
+fi
+python3 - "$entitlements" "$app_signing_entitlements" "$app_profile_team_id" "$bundle_id" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+source, destination, team_id, bundle_id = sys.argv[1:5]
+
+def expand(value):
+    if isinstance(value, str):
+        return (
+            value
+            .replace("$(AppIdentifierPrefix)", f"{team_id}.")
+            .replace("$(TeamIdentifierPrefix)", team_id)
+            .replace("$(PRODUCT_BUNDLE_IDENTIFIER)", bundle_id)
+        )
+    if isinstance(value, list):
+        return [expand(item) for item in value]
+    if isinstance(value, dict):
+        return {key: expand(item) for key, item in value.items()}
+    return value
+
+with Path(source).open("rb") as file:
+    entitlements = plistlib.load(file)
+with Path(destination).open("wb") as file:
+    plistlib.dump(expand(entitlements), file)
+PY
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$app_path"
 
@@ -315,8 +366,9 @@ wrap_privileged_input_execution_helper \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution.app"
 
+cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"
 codesign --force --timestamp --options runtime,library \
-  --entitlements "$entitlements" \
+  --entitlements "$app_signing_entitlements" \
   --sign "$identity" \
   "$app_path"
 codesign --verify --deep --strict --verbose=2 "$app_path"
@@ -331,6 +383,18 @@ codesign -d --entitlements :- "$app_path" > "$actual_entitlements" 2>/dev/null
 app_sandbox="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" "$actual_entitlements" 2>/dev/null || true)"
 if [[ "$app_sandbox" != "false" ]]; then
   echo "ERROR: Direct-download app must not be sandboxed; found '${app_sandbox:-missing}'." >&2
+  exit 1
+fi
+actual_app_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$actual_entitlements" 2>/dev/null || true)"
+actual_team_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$actual_entitlements" 2>/dev/null || true)"
+actual_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$actual_entitlements" 2>/dev/null || true)"
+if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$app_profile_team_id" ]]; then
+  echo "ERROR: Direct-download app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$app_profile_team_id'." >&2
+  exit 1
+fi
+if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
+  echo "ERROR: Direct-download app is missing Firebase Auth Keychain group $expected_app_identifier." >&2
+  printf '%s\n' "$actual_keychain_groups" >&2
   exit 1
 fi
 

@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-30T05:33:10Z",
+  "generatedAt": "2026-07-03T06:08:08Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "hotfix/current-release-v1.0.8",
-    "originMain": "a90d50bdd9499a0d15aa9b4da2ea0c185b5d9aca",
-    "releaseTag": "v1.0.8"
+    "branch": "release/v1.0.28-sync-rules",
+    "originMain": "9b72b746b7",
+    "releaseTag": "v1.0.28"
   },
-  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
+  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the v1.0.27 lane validated app signing but production cloud sync still needs Firestore rule and sync fallback fixes.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-06-30T05:33:10Z",
+    "attestedAt": "2026-07-03T06:08:08Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the current signed and notarized macOS direct-download artifact so users stop receiving stale-download Gatekeeper and missing-Firebase-auth failures.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.8 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.8 public release lane.",
+    "emergencyReason": "Publish the newest-main signed and notarized macOS direct-download artifact and matching Firestore rules after v1.0.27 still left production sync blocked by Hermes relay permission denials and iOS had no fallback for missing Mac sync_status heartbeats.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.28 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.28 public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.28",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {

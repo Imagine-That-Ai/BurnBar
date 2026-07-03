@@ -111,6 +111,7 @@ private func liquidGlassScrim(for t: Double, in shape: some Shape) -> some View 
 }
 
 private struct LiquidGlassSurfaceModifier<S: Shape>: ViewModifier {
+    let tint: Color?
     let shape: S
     let fallback: Material
 
@@ -121,12 +122,15 @@ private struct LiquidGlassSurfaceModifier<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
         if #available(macOS 26, *), contentSurfacesEnabled {
+            let base: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
+            let glass = tint.map { base.tint($0) } ?? base
             content
                 .background { liquidGlassScrim(for: t, in: shape) }
-                .glassEffect(LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular, in: shape)
+                .glassEffect(glass, in: shape)
         } else {
             content
                 .background { liquidGlassScrim(for: t, in: shape) }
+                .background { if let tint { shape.fill(tint.opacity(0.22)) } }
                 .background(fallback.opacity(LiquidGlassTransparency.fallbackPlateOpacity(t)), in: shape)
         }
     }
@@ -161,11 +165,16 @@ private struct LiquidGlassInteractiveModifier<S: Shape>: ViewModifier {
 extension View {
     /// Glass plate for a passive surface (tray, floating bar, card).
     /// Falls back to the given material on macOS 14–15.
+    ///
+    /// Pass `tint` to lean the plate toward a theme/brand cast (e.g. the
+    /// dashboard sidebar leaning on the active layout's signature colour). Keep
+    /// it subtle — the tint refracts the backdrop, it does not paint over it.
     func liquidGlassSurface(
+        tint: Color? = nil,
         in shape: some Shape,
         fallback: Material = .ultraThinMaterial
     ) -> some View {
-        modifier(LiquidGlassSurfaceModifier(shape: shape, fallback: fallback))
+        modifier(LiquidGlassSurfaceModifier(tint: tint, shape: shape, fallback: fallback))
     }
 
     /// Glass for a clickable control. Pass `tint` only to convey meaning
@@ -196,8 +205,10 @@ extension View {
 struct LiquidGlassStyle {
     var tintColor: Color?
     var isInteractive: Bool
+    var clearAtNeutral: Bool
 
-    static var regular: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false) }
+    static var regular: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false, clearAtNeutral: false) }
+    static var clear: LiquidGlassStyle { .init(tintColor: nil, isInteractive: false, clearAtNeutral: true) }
 
     func tint(_ color: Color?) -> LiquidGlassStyle {
         var style = self
@@ -213,7 +224,8 @@ struct LiquidGlassStyle {
 
     /// The system glass this style resolves to at transparency `t`.
     func resolvedGlass(at t: Double) -> Glass {
-        var glass: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
+        let shouldUseClear = clearAtNeutral ? t >= 0 : LiquidGlassTransparency.usesClearGlass(t)
+        var glass: Glass = shouldUseClear ? .clear : .regular
         if let tintColor { glass = glass.tint(tintColor) }
         if isInteractive { glass = glass.interactive() }
         return glass

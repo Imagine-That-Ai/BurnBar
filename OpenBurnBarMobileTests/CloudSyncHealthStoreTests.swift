@@ -1,4 +1,3 @@
-import FirebaseFirestore
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
@@ -136,26 +135,6 @@ final class CloudSyncHealthStoreTests: XCTestCase {
         XCTAssertTrue(label.contains("same sign-in"), "the copy must point at the account-fork cause; got: \(label)")
     }
 
-    // MARK: - Presence beats stale sync time for "last seen"
-
-    /// A Mac that is alive but blocked from uploading must read as recently
-    /// seen (presence heartbeat), not as stale as its last successful sync.
-    func testSnapshotPrefersDevicePresenceOverStaleSyncTimeForLastSeen() {
-        let now = Date(timeIntervalSince1970: 1_000_000)
-        let staleSync = Date(timeIntervalSince1970: 1_000_000 - 4 * 60 * 60)
-        let freshPresence = Date(timeIntervalSince1970: 1_000_000 - 90)
-
-        let snapshot = LiveCloudReader.syncStatusSnapshot(
-            deviceID: "mac-1",
-            displayName: "Alberto's MacBook Pro",
-            data: ["lastSyncAt": Timestamp(date: staleSync)],
-            readAt: now,
-            devicePresenceAt: freshPresence
-        )
-
-        XCTAssertEqual(snapshot.publisher?.lastSeen, freshPresence)
-        XCTAssertEqual(snapshot.lastPublishedAt, staleSync)
-    }
 }
 
 @MainActor

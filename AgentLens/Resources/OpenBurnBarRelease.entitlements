@@ -3,13 +3,19 @@
 <plist version="1.0">
 <dict>
 	<!--
-	Release signing entitlements for Developer ID distribution.
+		Release signing entitlements for Developer ID distribution.
 
-	Do not include capabilities that require a provisioning profile
-	(icloud, Apple Sign In, keychain access groups) in the notarized
-	release lane unless a matching Developer ID provisioning profile is
-	embedded before signing.
+		The direct-download app embeds a MAC_APP_DIRECT provisioning profile
+		before signing. Firebase Auth requires Keychain Sharing on macOS, so
+		the release lane must keep the app identifier, team identifier, and
+		keychain access group in the signed entitlements. Keep iCloud and
+		Apple Sign-In out of this profile until the direct-download release
+		flow intentionally supports those hosted account capabilities.
 	-->
+	<key>com.apple.application-identifier</key>
+	<string>$(AppIdentifierPrefix)com.openburnbar.app</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>$(TeamIdentifierPrefix)</string>
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.network.client</key>
@@ -18,5 +24,9 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.openburnbar.app</string>
+	</array>
 </dict>
 </plist>

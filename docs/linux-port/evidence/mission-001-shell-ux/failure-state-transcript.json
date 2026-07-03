@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-07-03T11:36:59.674Z",
+  "lane": "W06LinuxShellUx",
+  "cases": [
+    {
+      "id": "daemon-offline",
+      "route": "overview",
+      "condition": "bridge=null or health.ok=false",
+      "userMessage": "Packaged shell required for live daemon health (browser preview mode).",
+      "remediation": "Start openburnbar-cli service foreground; verify AF_UNIX socket."
+    },
+    {
+      "id": "tray-degraded",
+      "route": "support",
+      "condition": "trayDegraded=true",
+      "userMessage": "Tray degraded: use window reopen from launcher.",
+      "remediation": "Install Ayatana AppIndicator; pin app when DE hides tray."
+    },
+    {
+      "id": "secret-store-unavailable",
+      "route": "settings",
+      "condition": "libsecret/KWallet unavailable or locked",
+      "userMessage": "Secret Service locked or unavailable.",
+      "remediation": "Unlock GNOME Keyring/KWallet or configure the headless passphrase file."
+    },
+    {
+      "id": "network-offline",
+      "route": "settings",
+      "condition": "provider catalog/update request cannot reach network",
+      "userMessage": "Network offline.",
+      "remediation": "Keep local SQLite usable, then retry provider/update checks after reconnect."
+    },
+    {
+      "id": "permission-denied",
+      "route": "settings",
+      "condition": "provider log path cannot be read",
+      "userMessage": "Provider path permission denied.",
+      "remediation": "Grant read access only to selected XDG/provider session directories."
+    },
+    {
+      "id": "quota-exhausted",
+      "route": "account",
+      "condition": "provider quota bucket exhausted",
+      "userMessage": "Quota exhausted.",
+      "remediation": "Switch provider/model tier or wait for the reset window."
+    },
+    {
+      "id": "update-channel-unavailable",
+      "route": "updates",
+      "condition": "package channel unavailable",
+      "userMessage": "Update channel unavailable.",
+      "remediation": "Use support diagnostics/package-manager transcript; release packaging is outside this shell lane."
+    },
+    {
+      "id": "onboarding-incomplete",
+      "route": "onboarding",
+      "condition": "onboarding.completed=false",
+      "userMessage": "First-run wizard blocks dashboard until Continue or Skip.",
+      "remediation": "Complete onboarding or enable daemon fixture for host smoke."
+    },
+    {
+      "id": "text-expansion-no-consent",
+      "route": "text-expansion",
+      "condition": "consent=null",
+      "userMessage": "Acknowledge in-app-only expansion before saving snippets.",
+      "remediation": "Check consent box and save snippet."
+    }
+  ]
+}

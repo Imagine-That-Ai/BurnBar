@@ -428,6 +428,10 @@ final class WindowManager: ObservableObject {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         if let window = dashboardWindow {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.orderFrontRegardless()
             window.makeKeyAndOrderFront(nil)
             return
         }
@@ -895,13 +899,6 @@ private final class DashboardWindowLifecycleDelegate: NSObject, NSWindowDelegate
         sender.orderOut(nil)
         return false
     }
-
-    func windowDidResignKey(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        guard window.isVisible, window.attachedSheet == nil, NSApp.modalWindow == nil else { return }
-
-        window.orderOut(nil)
-    }
 }
 
 // MARK: - App Entry Point
@@ -1342,6 +1339,8 @@ struct OpenBurnBarApp: App {
 
         Task { @MainActor in
             StartupProfiler.event("live_services_start")
+            startMemoryExtractionIfNeeded(context: context)
+
             let sync: CloudSyncService
             sync = StartupProfiler.interval("cloud_sync_init") {
                 if let existingSync = context.cloudSyncService {
@@ -1376,8 +1375,6 @@ struct OpenBurnBarApp: App {
                 context.textExpansionRuntimeController?.start()
             }
             #endif
-
-            startMemoryExtractionIfNeeded(context: context)
 
             let mirror: ICloudSessionMirrorService
             mirror = StartupProfiler.interval("icloud_mirror_init") {

@@ -29,6 +29,15 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     public let socketURL: URL
     public let authToken: String?
 
+    public static func resolvedSocketURL(environment: [String: String]) -> URL {
+        if let socketPath = environment["OPENBURNBAR_DAEMON_SOCKET_PATH"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_PATH"],
+           let trimmed = socketPath.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return URL(fileURLWithPath: trimmed, isDirectory: false)
+        }
+        return BurnBarDaemonPaths.defaultSocketURL
+    }
+
     public init(
         socketURL: URL = BurnBarDaemonPaths.defaultSocketURL,
         authToken: String? = nil
@@ -351,6 +360,12 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             }
         }
         return address
+    }
+}
+
+public enum BurnBarCLIHealthFormatter {
+    public static func format(_ response: BurnBarHealthResponse) -> String {
+        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
     }
 }
 
@@ -876,6 +891,20 @@ public struct BurnBarCLIRunner {
 
     public static let shellShimExecutableNames = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
 
+    public static func shouldUseHealthFastPath(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> Bool {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        guard effectiveArguments == ["health"],
+              let invokedExecutablePath else {
+            return false
+        }
+
+        let executableName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        return canonicalExecutableNames.contains(executableName)
+    }
+
     public static func startupPreflightResult(
         arguments: [String],
         invokedExecutablePath: String?
@@ -920,7 +949,7 @@ public struct BurnBarCLIRunner {
     }
 
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
-        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+        BurnBarCLIHealthFormatter.format(response)
     }
 
     private func formatControllerSummary(_ summary: BurnBarControllerSummary) -> String {

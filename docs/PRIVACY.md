@@ -1,6 +1,6 @@
 # OpenBurnBar Privacy Policy
 
-**Last updated: June 9, 2026**
+**Last updated: July 1, 2026**
 
 ## Summary
 
@@ -70,6 +70,10 @@ The legacy raw iCloud session-file mirror is disabled in current builds. OpenBur
 
 If you add a hosted quota account, OpenBurnBar may send provider authentication material that you explicitly provide to OpenBurnBar-operated Firebase/Google Cloud infrastructure. The Firestore document stores only non-secret metadata and a redacted label. Secret values are stored in Google Cloud Secret Manager and are used by Cloud Functions or the hosted quota runner to refresh quota snapshots. Hosted quota refresh requires a valid subscription entitlement and may be rate limited.
 
+### Hosted Fusion Web Search (opt-in, paid entitlement)
+
+Elder Wand Fusion can run live web searches through OpenBurnBar's servers when you invoke the hosted search tool. Your search query text is sent from Cloud Functions to a hosted search subprocessor — Perplexity (primary) or Tavily (fallback) — using OpenBurnBar-held API keys, so those keys never touch your device. Only the query string leaves our servers; your own API keys, chat history, session logs, and file contents are never included. Hosted Fusion search requires BurnBar Cloud Pro or Ultra and is metered per month.
+
 ### Hosted MiniMax LLM Answers (opt-in, paid entitlement)
 
 If you use the BurnBar-hosted Intelligence Brief fallback, OpenBurnBar sends a bounded briefing prompt and privacy-filtered usage digest through Cloud Functions to the hosted LLM provider path. This requires BurnBar Pro. Users who connect their own model or stay in local/privacy mode do not need to use the hosted fallback.
@@ -98,21 +102,23 @@ If you choose to notarize a Computer Use audit session, OpenBurnBar submits only
 
 ---
 
-## Third-Party Services
+## Third-Party Services and Data Subprocessors
 
-When cloud sync is enabled:
+The third parties below act as OpenBurnBar's data subprocessors. Each one receives data only when you opt into the feature named in its row — several are reached only after cloud sync or a paid entitlement is enabled. Every hosted egress path here uses OpenBurnBar-held credentials, never your own provider keys.
 
-| Service | Purpose | Privacy Policy |
-|---------|---------|----------------|
-| Firebase / Google Cloud | Authentication, optional Firestore sync, Cloud Functions, Secret Manager, hosted quota infrastructure | [firebase.google.com/support/privacy](https://firebase.google.com/support/privacy) |
-| Apple iCloud | Legacy personal iCloud Drive mirror cleanup and future sealed archive support | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
-| Apple App Store / StoreKit | Subscription purchase, entitlement verification, and billing status | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
-| Google Play Billing | Android subscription purchase and entitlement verification | [policies.google.com/privacy](https://policies.google.com/privacy) |
-| Stripe | Web subscription checkout, customer portal, entitlement webhook processing | [stripe.com/privacy](https://stripe.com/privacy) |
-| OpenTimestamps calendar servers | Optional Computer Use audit-chain timestamping; receives only a 32-byte hash | [opentimestamps.org](https://opentimestamps.org/) |
-| OpenRouter / MiniMax | Optional BurnBar Pro hosted LLM fallback for Intelligence Brief answers | [openrouter.ai/privacy](https://openrouter.ai/privacy) / [minimax.io/privacy](https://www.minimax.io/privacy) |
-| Sentry | Optional crash reporting | [sentry.io/privacy](https://sentry.io/privacy) |
-| Amplitude | Optional, opt-in product-usage analytics (feature names, outcomes, bucketed counts — no content, keys, or secrets) | [amplitude.com/privacy](https://amplitude.com/privacy) |
+| Service | Purpose | Data shared | Privacy Policy |
+|---------|---------|-------------|----------------|
+| Firebase / Google Cloud | Authentication, optional Firestore sync, Cloud Functions, Secret Manager, hosted quota infrastructure | Account identifiers, opt-in usage/quota metadata, sealed (end-to-end encrypted) content blobs, and provider secrets held in Secret Manager | [firebase.google.com/support/privacy](https://firebase.google.com/support/privacy) |
+| Apple iCloud | Legacy personal iCloud Drive mirror cleanup and future sealed archive support | Legacy local session-mirror files inside your own iCloud container | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
+| Apple App Store / StoreKit | Subscription purchase, entitlement verification, and billing status | Purchase receipts and entitlement status | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
+| Google Play Billing | Android subscription purchase and entitlement verification | Purchase tokens and entitlement status | [policies.google.com/privacy](https://policies.google.com/privacy) |
+| Stripe | Web subscription checkout, customer portal, entitlement webhook processing | Billing/customer and subscription identifiers and payment status; card numbers are entered with and retained by Stripe, never OpenBurnBar | [stripe.com/privacy](https://stripe.com/privacy) |
+| Perplexity | Primary provider for opt-in hosted Fusion (Elder Wand) web search | Your search query text only — no account keys, chat, session logs, or file contents | [perplexity.ai/hub/legal/privacy-policy](https://www.perplexity.ai/hub/legal/privacy-policy) |
+| Tavily | Fallback provider for opt-in hosted Fusion web search | Your search query text only — no account keys, chat, session logs, or file contents | [tavily.com/privacy](https://www.tavily.com/privacy) |
+| OpenRouter / MiniMax | Optional BurnBar Pro hosted LLM fallback for Intelligence Brief answers | Your Intelligence Brief question plus a privacy-bounded usage digest — no raw transcripts, provider keys, or file bodies | [openrouter.ai/privacy](https://openrouter.ai/privacy) / [minimax.io/privacy](https://www.minimax.io/privacy) |
+| OpenTimestamps calendar servers | Optional Computer Use audit-chain timestamping | Only a 32-byte SHA-256 hash of your local audit file | [opentimestamps.org](https://opentimestamps.org/) |
+| Sentry | Optional crash reporting | Anonymized crash reports and stack traces — no content, keys, or secrets | [sentry.io/privacy](https://sentry.io/privacy) |
+| Amplitude | Optional, opt-in product-usage analytics | Feature names, enumerated outcomes, and bucketed counts/durations — no content, keys, or secrets | [amplitude.com/privacy](https://amplitude.com/privacy) |
 
 ---
 

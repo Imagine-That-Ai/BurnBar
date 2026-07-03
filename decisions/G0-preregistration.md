@@ -115,15 +115,20 @@ these conditions; **Alberto signs** the bind.
 `openburnbar-db-compat-v53.sqlcipher` fixture (live migrator → v53, 54 migrations), the DB-compat
 vector (schema hash `8f8f0eba…3992c` + FTS5 `bm25()`/`snippet()` row set), the observed params, and
 [`decisions/sqlcipher-params.md`](sqlcipher-params.md) pinning `cipher_compatibility=4`,
-`kdf_iter=256000`, `cipher_page_size=4096`, `HMAC_SHA512`, `PBKDF2_HMAC_SHA512`. A stock
+`kdf_iter=256000`, `cipher_page_size=4096`, `HMAC_SHA512`, `PBKDF2_HMAC_SHA512`. These inputs are
+the committed fixture set under `AgentLensTests/Fixtures/DBByteCompat/`:
+`openburnbar-db-compat-v53.sqlcipher`, `openburnbar-db-compat-vector.json`,
+`openburnbar-db-compat-params-observed.json`, and `openburnbar-db-compat-README.md`, with the Mac
+oracle in `AgentLensTests/Active/DatabaseByteCompatVectorTests.swift`. A stock
 `brew install sqlcipher` CLI already reproduces the schema hash + FTS vector cross-provider — a cheap
 pre-check. `DB-010` is the **Windows-native** proof against the committed fixture.
 
 **Measurable trigger (0-d / `DB-010`), all required:**
 
-1. Open the committed `openburnbar-db-compat-v53.sqlcipher` on Windows with passphrase
-   `OBB-WinPort-DBByteCompat-Fixture-Key-v53-000=` and **no extra PRAGMAs** → `PRAGMA cipher_version`
-   non-empty.
+1. Open the committed
+   `AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher` on Windows with
+   passphrase `OBB-WinPort-DBByteCompat-Fixture-Key-v53-000=` and **no extra PRAGMAs** →
+   `PRAGMA cipher_version` non-empty. This is the first-stage default-open attempt.
 2. Readback: `cipher_page_size=4096`, `kdf_iter=256000`, `cipher_hmac_algorithm=HMAC_SHA512`,
    `cipher_kdf_algorithm=PBKDF2_HMAC_SHA512`.
 3. **Schema hash == Mac** — SHA-256 over the normalized `sqlite_master` DDL (the `DB-009` algorithm:
@@ -146,10 +151,13 @@ fallback the plan already names.
   Option A with the raw-SQLCipher-C data layer.** This is a pre-registered *sub-branch selection*
   (DB path = raw-C), **not** an Option-A abort — the plan names raw-SQLCipher-C as the fallback (§9.3).
   Owner **W2** picks GRDB-vs-raw-C on the evidence; no Alberto escalation.
-- **A pinnable parameter mismatch** (schema hash or FTS row set differs, but an *explicit* PRAGMA pin
-  — `cipher_compatibility=4; kdf_iter=256000; cipher_page_size=4096` — makes it reproduce, per
-  `decisions/sqlcipher-params.md`) → **FIX**: add the explicit pins on **both** platforms in
-  lock-step, re-run the trigger before GO. Owner **W2**.
+- **A pinnable parameter mismatch** (schema hash or FTS row set differs during the first-stage
+  no-extra-PRAGMA attempt, but a **second-stage explicit-pin rerun** with
+  `cipher_compatibility=4; kdf_iter=256000; cipher_page_size=4096` reproduces the committed vector,
+  per `decisions/sqlcipher-params.md`) → **FIX**: add the explicit pins on **both** platforms in
+  lock-step, then re-run all six DB-010 checks with the explicit-pin profile before GO. The first
+  stage is still recorded as a miss; the explicit-pin rerun is the only passing evidence for this
+  branch. Owner **W2**.
 - **Neither GRDB nor raw-SQLCipher-C reproduces byte-compat, and no Mac-side pin fixes it** → the
   "reuse the Mac's encrypted file" thesis is **falsified** → **PIVOT to Alberto** with the exact
   failing parameter and two pre-framed options: **(i)** re-encrypt / migrate on first Windows open (a
@@ -217,9 +225,14 @@ round-trip** via `dotnet test` on macOS (5/5) against the native `libburnbar_rem
 build workflows and cross-compiled the `burnbar_remote.dll` from macOS (WPD-0002). `G0` needs the
 **Windows-native** re-run.
 
-**Measurable trigger (0-c):** on Windows (CI lane `RUST-006` and/or the dev host), the C# binding
-loads the Windows `burnbar_remote.dll` and round-trips the **committed golden wire vector** through
-`encode/decode_quality_decision` (async + callback + error interface) → `dotnet test`.
+**Measurable trigger (0-c):** on Windows (CI lane `RUST-006` and/or the dev host), the scorer first
+verifies the registered C# harness inputs are committed:
+`windows/tests/BurnBarRemoteInterop/BurnBarRemoteInterop.csproj` and
+`windows/tests/BurnBarRemoteInterop/Fixtures/quality_decision_wire_vectors.json`. If either path is
+missing, Criterion 4 is a **block** before execution. If present, the harness loads the Windows
+`burnbar_remote.dll` and round-trips the fixture through `encode/decode_quality_decision` (async +
+callback + error interface) → `dotnet test
+windows/tests/BurnBarRemoteInterop/BurnBarRemoteInterop.csproj`.
 
 **Pass bar:** the C# round-trip output is **byte-identical** to the Mac golden (the same 5/5 vectors),
 proving the parity-locked wire protocol is preserved across the Windows binding.
@@ -242,10 +255,12 @@ proving the parity-locked wire protocol is preserved across the Windows binding.
 
 ### Criterion 5 — stream-json parse-diff · `STREAM-029` · **required-pass (not PIVOT)**
 
-**Measurable trigger:** run `claude --output-format stream-json` on Windows against a **fixed prompt**,
-capture **N** events, normalize them per the **parser-output contract** (exclude wall-clock /
-UUID / absolute-path volatile fields — `PARSER_OUTPUT_CONTRACT.md`), and **diff the normalized event
-stream** against a Mac run of the *same* prompt.
+**Measurable trigger:** run `claude --output-format stream-json` on Windows against the fixed prompt
+`Summarize this sentence in exactly five words: OpenBurnBar parser portability gate.`, capture
+**exactly 25 stream-json events** (or the complete run if Claude exits before event 25), normalize
+them per the **parser-output contract** (exclude wall-clock / UUID / absolute-path volatile fields —
+`PARSER_OUTPUT_CONTRACT.md`), and **diff the normalized event stream** against a Mac run of the *same*
+prompt and the same 25-event cap.
 
 **Pass bar:** the fixture is **captured** *and* the normalized streams are **identical** — or every
 diff line is attributable to a **known-portable transform** (CRLF↔LF line framing, path-remap) that
@@ -271,9 +286,13 @@ performs the capture.
 
 ### Criterion 6 — ARM64 builds · `ARM64-020` · 0-g · **required-pass (not PIVOT)**
 
-**Measurable trigger (0-g, build-only at G0):** compile for `aarch64-pc-windows-msvc` — (i) the Core
-engine subset (Option-A Engine, or the Option-B core once bound), (ii) **both** Rust crates
-(`openburnbar-iroh`, `burnbar-remote`), and (iii) a **WinUI hello-world** shell.
+**Measurable trigger (0-g, build-only at G0):** use a two-stage ARM64 build gate. **Pre-bind**, compile
+for `aarch64-pc-windows-msvc` both candidate core surfaces that could be bound by Criterion 1: the
+Option-A Swift Engine subset and the Option-B Rust/C# core skeleton. Also compile **both** Rust crates
+(`openburnbar-iroh`, `burnbar-remote`) and a **WinUI hello-world** shell. **Post-bind**, score this
+criterion against the stack Alberto binds: Option A requires the Swift Engine subset plus both Rust
+crates plus WinUI shell; Option B requires the Rust/C# core skeleton plus both Rust crates plus WinUI
+shell. The non-bound candidate's result is recorded as evidence, not used to fail the bound stack.
 
 **Pass bar:** all three **build clean** for ARM64. (Full ARM64 *functional* parity — running the whole
 suite — is a **G3** criterion, §7.3, not G0.)

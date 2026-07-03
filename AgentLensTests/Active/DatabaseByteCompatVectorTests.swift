@@ -37,7 +37,8 @@ private final class DBByteCompatBundleMarker {}
 ///      `  scripts/test-openburnbar-app.sh -only-testing:AgentLensTests/DatabaseByteCompatVectorTests`
 ///   2. Copy `/tmp/obb-db-compat-out/*` into `AgentLensTests/Fixtures/DBByteCompat/`.
 ///   3. Regenerate the Xcode project (`xcodegen generate`) so the resources bundle.
-///   4. Re-run the test — the committed-fixture assertions now activate and pass.
+///   4. Re-run the test — the committed-fixture assertions must pass. Missing
+///      bundled resources are a hard failure because this kit now commits them.
 ///
 /// Non-goal: opening the fixture **on Windows** — that is `VAL-P0-DB-010`
 /// (the R2 kill-risk), deliberately out of scope here.
@@ -149,13 +150,16 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         print("[db-compat] Candidate artifacts written to \(outputDir.path)")
 
         // (6) Validate against the COMMITTED (bundled) fixture + vector.
-        guard let committedVectorURL = bundledURL(resource: vectorBaseName, ext: "json"),
-              let committedFixtureURL = bundledURL(resource: fixtureBaseName, ext: "sqlcipher") else {
-            throw XCTSkip(
-                "No committed DB-compat fixture bundled yet. Copy \(outputDir.path)/* into "
-                + "AgentLensTests/Fixtures/DBByteCompat/, regenerate the project, and re-run."
-            )
-        }
+        let committedVectorURL = try requireBundledResource(
+            resource: vectorBaseName,
+            ext: "json",
+            outputDir: outputDir
+        )
+        let committedFixtureURL = try requireBundledResource(
+            resource: fixtureBaseName,
+            ext: "sqlcipher",
+            outputDir: outputDir
+        )
 
         let committedVector = try JSONDecoder().decode(
             DatabaseByteCompatVector.Vector.self,
@@ -339,5 +343,18 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         return bundle.url(forResource: resource, withExtension: ext)
             ?? bundle.url(forResource: resource, withExtension: ext, subdirectory: "DBByteCompat")
             ?? bundle.url(forResource: resource, withExtension: ext, subdirectory: "Fixtures/DBByteCompat")
+    }
+
+    private func requireBundledResource(resource: String, ext: String, outputDir: URL) throws -> URL {
+        if let url = bundledURL(resource: resource, ext: ext) {
+            return url
+        }
+
+        XCTFail(
+            "Required DB-compat fixture resource \(resource).\(ext) is missing from the test bundle. "
+            + "Copy \(outputDir.path)/* into AgentLensTests/Fixtures/DBByteCompat/, regenerate the project, "
+            + "and re-run."
+        )
+        throw CocoaError(.fileNoSuchFile)
     }
 }

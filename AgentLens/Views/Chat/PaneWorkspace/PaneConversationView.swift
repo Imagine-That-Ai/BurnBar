@@ -1,6 +1,28 @@
 import Foundation
+import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
+
+struct PaneThreadDropPayload: Codable, Transferable {
+    let threadID: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .openBurnBarChatThread)
+    }
+}
+
+struct PaneDragPayload: Codable, Transferable {
+    let paneID: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .openBurnBarChatPane)
+    }
+}
+
+extension UTType {
+    static let openBurnBarChatThread = UTType(exportedAs: "ai.burnbar.chat-thread")
+    static let openBurnBarChatPane = UTType(exportedAs: "ai.burnbar.chat-pane")
+}
 
 /// One full conversation rendered as a tiling pane: a per-pane header (engine + model
 /// pickers, split + close affordances), the message stream or welcome state, and the
@@ -17,15 +39,35 @@ struct PaneConversationView: View {
     @State private var brief = InsightBriefSnapshot()
     @State private var showCLIAssistantConsent = false
     @State private var atomRouter = HermesAtomRouter()
-    @State private var dropZone: PaneDropZone?
-    @State private var paneSize: CGSize = .zero
+    @State private var isDropTargeted = false
+    @State private var isRenamingPane = false
+    @State private var renameDraft = ""
 
     private let canvasMaxWidth: CGFloat = 760
 
     private var isActive: Bool { workspace.activeLeafID == leafID }
     private var showsChrome: Bool { workspace.isTiled }
+    private var leaf: PaneLeaf? { workspace.leafAnywhere(leafID) }
+    private var paneTitle: String {
+        if let title = leaf?.customTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            return title
+        }
+        if let threadTitle = leaf.map({ workspace.threadTitle(for: $0.controller.activeThreadID) }),
+           !threadTitle.isEmpty {
+            return threadTitle
+        }
+        return controller.chatBackend.displayName
+    }
     private var accent: Color {
-        controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy
+        leaf?.colorToken?.color ?? (controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+    }
+    private var controlPersistenceSignature: String {
+        let backend = controller.chatBackend
+        return [
+            backend.rawValue,
+            controller.chatModelSelection(for: backend),
+            controller.chatViewMode.rawValue
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -35,8 +77,7 @@ struct PaneConversationView: View {
             Divider().opacity(0.35)
             composer
         }
-        .background { paneBackground }
-        .overlay { dropZoneOverlay }
+        .background { dropHighlight }
         .overlay { paneRing }
         .environment(settingsManager)
         .environment(\.hermesAtomNavigator, atomRouter)
@@ -58,16 +99,45 @@ struct PaneConversationView: View {
                 showCLIAssistantConsent = false
             }
         }
+        .popover(isPresented: $isRenamingPane, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                TextField("Pane title", text: $renameDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                    .onSubmit {
+                        workspace.renamePane(leafID, title: renameDraft)
+                        isRenamingPane = false
+                    }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { isRenamingPane = false }
+                    Button("Save") {
+                        workspace.renamePane(leafID, title: renameDraft)
+                        isRenamingPane = false
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded {
             if showsChrome { workspace.setActive(leafID) }
         })
-        .onDrop(of: PaneDropDelegate.acceptedTypes, delegate: PaneDropDelegate(
-            leafID: leafID,
-            workspace: workspace,
-            size: paneSize,
-            zone: $dropZone
-        ))
+        .dropDestination(for: PaneThreadDropPayload.self) { items, _ in
+            guard let threadID = items.first?.threadID else { return false }
+            Task { await workspace.bindExistingThread(threadID, toLeaf: leafID) }
+            return true
+        } isTargeted: { hovering in
+            isDropTargeted = hovering
+        }
+        .dropDestination(for: PaneDragPayload.self) { items, _ in
+            guard let sourceID = items.first?.paneID, sourceID != leafID else { return false }
+            workspace.swapPanes(sourceID, leafID)
+            return true
+        } isTargeted: { hovering in
+            isDropTargeted = hovering
+        }
         .task { atomRouter.onPerform = { _ in } }
         .onChange(of: controller.activeThreadID) { _, _ in
             workspace.persist()
@@ -77,11 +147,17 @@ struct PaneConversationView: View {
                 workspace.primaryController.refreshHistory()
             }
         }
+        .onChange(of: isActive) { _, active in
+            if active { workspace.markSeenIfVisible(leafID) }
+        }
         .onChange(of: controller.messages.count) { _, _ in
             // Keep the rail's preview / message-count fresh after a non-primary pane sends.
             if !controller.persistsViewState {
                 workspace.primaryController.refreshHistory()
             }
+        }
+        .onChange(of: controlPersistenceSignature) { _, _ in
+            workspace.persistPaneControlChange(leafID)
         }
         .onChange(of: controller.dataStore.usagesVersion) { _, _ in
             Task { @MainActor in
@@ -107,6 +183,7 @@ struct PaneConversationView: View {
             Task { @MainActor in
                 brief = await controller.buildInsightBriefSnapshotAsync(refreshRollups: false)
             }
+            workspace.markSeenIfVisible(leafID)
         }
     }
 
@@ -115,16 +192,55 @@ struct PaneConversationView: View {
     @ViewBuilder
     private var paneHeader: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
+            Button {
+                workspace.setActive(leafID)
+                renameDraft = paneTitle
+                isRenamingPane = true
+            } label: {
+                HStack(spacing: 6) {
+                    if leaf?.unseenCompletionAt != nil {
+                        PaneStatusDot(color: accent)
+                    }
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 7, height: 7)
+                        .opacity(leaf?.colorToken == nil ? 0.55 : 1)
+                    Text(paneTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 150, alignment: .leading)
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Rename pane")
+            .draggable(PaneDragPayload(paneID: leafID))
+
             ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
             ChatEngineModelMenu(controller: controller)
                 .layoutPriority(1)
             Spacer(minLength: DesignSystem.Spacing.sm)
-            Button { workspace.splitActive(axis: .horizontal) } label: {
+            Button {
+                workspace.setActive(leafID)
+                workspace.toggleZoomActive()
+            } label: {
+                Image(systemName: workspace.selectedTab.zoomedPaneID == leafID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Zoom pane")
+            .accessibilityLabel("Zoom pane")
+            paneMenu
+            Button {
+                workspace.setActive(leafID)
+                workspace.splitActive(axis: .horizontal)
+            } label: {
                 Image(systemName: "rectangle.split.2x1")
             }
             .help("Split right (⌘D)")
             .accessibilityLabel("Split pane right")
-            Button { workspace.splitActive(axis: .vertical) } label: {
+            Button {
+                workspace.setActive(leafID)
+                workspace.splitActive(axis: .vertical)
+            } label: {
                 Image(systemName: "rectangle.split.1x2")
             }
             .help("Split down (⌘⇧D)")
@@ -147,66 +263,69 @@ struct PaneConversationView: View {
         .overlay(alignment: .bottom) { Divider().opacity(0.35) }
     }
 
-    /// Captures the pane's live size (in the same coordinate space as `DropInfo.location`)
-    /// so the drop delegate can classify a drop point into an edge/center zone. Draws
-    /// nothing visible — the suggestion is the `dropZoneOverlay`.
-    private var paneBackground: some View {
-        GeometryReader { geo in
-            Color.clear
-                .onAppear { paneSize = geo.size }
-                .onChange(of: geo.size) { _, size in paneSize = size }
-        }
-    }
-
-    /// The cmux-style "suggest new pane location" overlay shown while a chat chip is
-    /// dragged over this pane: dims the pane and highlights the region the dropped thread
-    /// would occupy — the whole pane for `.center` (load here), a half for each edge
-    /// (split into a new pane on that side).
     @ViewBuilder
-    private var dropZoneOverlay: some View {
-        if let zone = dropZone {
-            GeometryReader { geo in
-                let r = zone.highlightUnitRect
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .fill(Color.black.opacity(0.10))
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(accent.opacity(0.20))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .strokeBorder(accent.opacity(0.9), lineWidth: 2)
-                        )
-                        .overlay {
-                            Label(zone.hint, systemImage: zone.symbolName)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(accent)
-                                .padding(.horizontal, DesignSystem.Spacing.sm)
-                                .padding(.vertical, DesignSystem.Spacing.xs)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.9))
-                                )
-                        }
-                        .frame(width: r.width * geo.size.width, height: r.height * geo.size.height)
-                        .position(
-                            x: (r.minX + r.width / 2) * geo.size.width,
-                            y: (r.minY + r.height / 2) * geo.size.height
-                        )
+    private var paneMenu: some View {
+        Menu {
+            Button("Rename") {
+                renameDraft = paneTitle
+                isRenamingPane = true
+            }
+            Menu("Color") {
+                Button("None") { workspace.setPaneColor(leafID, colorToken: nil) }
+                Divider()
+                ForEach(PaneColorToken.allCases) { token in
+                    Button(token.rawValue.capitalized) {
+                        workspace.setPaneColor(leafID, colorToken: token)
+                    }
                 }
             }
-            .allowsHitTesting(false)
-            .transition(.opacity)
+            Button((leaf?.alertsEnabled ?? true) ? "Mute Completion Alerts" : "Enable Completion Alerts") {
+                workspace.setPaneAlertsEnabled(leafID, enabled: !(leaf?.alertsEnabled ?? true))
+            }
+            Divider()
+            Button("Move to New Tab") {
+                workspace.setActive(leafID)
+                workspace.moveToNewTab(leafID)
+            }
+            if workspace.tabs.count > 1 {
+                Menu("Move to Tab") {
+                    ForEach(workspace.tabs.filter { $0.id != workspace.selectedTabID }) { tab in
+                        Button(workspace.displayTitle(for: tab)) {
+                            workspace.setActive(leafID)
+                            workspace.movePane(leafID, toTab: tab.id)
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Mark Seen") { workspace.markSeen(leafID) }
+            Button("Close Pane") {
+                workspace.setActive(leafID)
+                workspace.closeActive()
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .help("Pane options")
+    }
+
+    @ViewBuilder
+    private var dropHighlight: some View {
+        if isDropTargeted {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(accent.opacity(0.10))
+        } else {
+            Color.clear
         }
     }
 
     @ViewBuilder
     private var paneRing: some View {
-        let dropping = dropZone != nil
-        if showsChrome || dropping {
+        if showsChrome || isDropTargeted {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .strokeBorder(
-                    dropping ? accent.opacity(0.9) : (isActive ? accent.opacity(0.6) : Color.clear),
-                    lineWidth: dropping ? 2 : (isActive ? 1.5 : 0)
+                    isDropTargeted ? accent.opacity(0.9) : (isActive ? accent.opacity(0.6) : Color.clear),
+                    lineWidth: isDropTargeted ? 2 : (isActive ? 1.5 : 0)
                 )
                 .allowsHitTesting(false)
         }
@@ -303,7 +422,6 @@ struct PaneConversationView: View {
         case .antigravity: return "Talk to Antigravity with your indexed history as grounding."
         case .cursorAgent: return "Talk to Cursor Agent with your indexed history as grounding."
         case .openClaude: return "Talk to OpenClaude with your indexed history as grounding."
-        case .omp: return "Talk to OMP with your indexed history as grounding."
         }
     }
 
@@ -419,63 +537,5 @@ struct PaneConversationView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// Drives the cmux-style drag-to-split drop for one pane. Unlike `.dropDestination`
-/// (which reports only a Bool while hovering), a `DropDelegate` exposes the live drop
-/// LOCATION on every `dropUpdated`, so the pane can suggest a target zone (center vs an
-/// edge) in real time and, on drop, either load the thread into the pane (`.center`) or
-/// split the pane and drop the thread into a new pane on that edge.
-private struct PaneDropDelegate: DropDelegate {
-    let leafID: UUID
-    let workspace: PaneWorkspaceModel
-    let size: CGSize
-    @Binding var zone: PaneDropZone?
-
-    static let acceptedTypes: [UTType] = [.plainText, .utf8PlainText, .text]
-
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: PaneDropDelegate.acceptedTypes)
-    }
-
-    func dropEntered(info: DropInfo) {
-        zone = PaneDropZone.classify(info.location, in: size)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        zone = PaneDropZone.classify(info.location, in: size)
-        return DropProposal(operation: .copy)
-    }
-
-    func dropExited(info: DropInfo) {
-        zone = nil
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        let target = PaneDropZone.classify(info.location, in: size)
-        zone = nil
-        guard let provider = info.itemProviders(for: PaneDropDelegate.acceptedTypes).first else {
-            return false
-        }
-        let leafID = leafID
-        let workspace = workspace
-        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let threadID = object as? String,
-                  !threadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            Task { @MainActor in
-                if let axis = target.splitAxis {
-                    workspace.splitLeaf(
-                        leafID,
-                        axis: axis,
-                        placingThreadID: threadID,
-                        newLeafFirst: target.placesNewLeafFirst
-                    )
-                } else {
-                    workspace.bind(threadID: threadID, toLeaf: leafID)
-                }
-            }
-        }
-        return true
     }
 }

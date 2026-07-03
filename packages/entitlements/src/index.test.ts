@@ -123,7 +123,11 @@ test("premium feature accepts every paid SKU including aliases", () => {
     APPLE_PRODUCT_IDS.proAnnual,
     APPLE_PRODUCT_IDS.proMaxMonthly,
     APPLE_PRODUCT_IDS.proMaxAnnual,
+    APPLE_PRODUCT_IDS.ultraMonthly,
+    APPLE_PRODUCT_IDS.ultraAnnual,
     GOOGLE_PLAY_PRODUCT_IDS.cloudProMonthly,
+    GOOGLE_PLAY_PRODUCT_IDS.ultraMonthly,
+    GOOGLE_PLAY_PRODUCT_IDS.ultraAnnual,
     ...BURNBAR_CLOUD_PRO_PRODUCT_ALIASES,
   ]) {
     assert.equal(ids.has(id), true, `premium should grant ${id}`);

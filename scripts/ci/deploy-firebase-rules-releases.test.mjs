@@ -5,6 +5,8 @@ import {
   buildReleaseCreateRequest,
   buildReleasePatchRequest,
   buildReleaseUpdate,
+  releasesNeedingRulesetDeploy,
+  rulesetFileContentHash,
 } from "./deploy-firebase-rules-releases.mjs";
 
 const releaseName = "projects/demo-project/releases/cloud.firestore";
@@ -23,12 +25,8 @@ assert.deepEqual(JSON.parse(patch.body), {
     name: releaseName,
     rulesetName,
   },
+  updateMask: "rulesetName",
 });
-assert.equal(
-  Object.hasOwn(JSON.parse(patch.body), "updateMask"),
-  false,
-  "Firebase Rules release PATCH must not send an unsupported update mask",
-);
 
 const create = buildReleaseCreateRequest(releaseName, rulesetName);
 assert.equal(create.method, "POST");
@@ -44,6 +42,92 @@ assert.throws(
 assert.throws(
   () => buildReleasePatchRequest(releaseName, "projects/demo-project/releases/not-a-ruleset"),
   /rulesetName must be a Firebase resource name/,
+);
+
+const desiredRuleset = {
+  source: {
+    files: [
+      {
+        name: "firestore.rules",
+        content: [
+          "rules_version = '2';",
+          "service cloud.firestore {",
+          "  match /databases/{database}/documents {",
+          "    match /{document=**} { allow read: if true; }",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+  },
+};
+const desiredContentHash = rulesetFileContentHash(
+  desiredRuleset,
+  "firestore.rules",
+);
+assert.equal(
+  rulesetFileContentHash(
+    {
+      source: {
+        files: [
+          {
+            name: "firestore.rules",
+            content: `${desiredRuleset.source.files[0].content}\n\n`,
+          },
+        ],
+      },
+    },
+    "firestore.rules",
+  ),
+  desiredContentHash,
+);
+assert.equal(rulesetFileContentHash(desiredRuleset, "storage.rules"), null);
+
+const missing = new Error("not found");
+missing.status = 404;
+const calls = new Map();
+const count = (name) => calls.set(name, (calls.get(name) || 0) + 1);
+const unchangedRulesetName = "projects/demo-project/rulesets/current";
+const staleRulesetName = "projects/demo-project/rulesets/stale";
+const releases = [
+  "projects/demo-project/releases/cloud.firestore",
+  "projects/demo-project/releases/firebase.storage/demo.appspot.com",
+  "projects/demo-project/releases/firebase.storage/stale.appspot.com",
+  "projects/demo-project/releases/firebase.storage/missing.appspot.com",
+];
+const deployPlan = await releasesNeedingRulesetDeploy({
+  releaseNames: releases,
+  desiredContentHash,
+  fileName: "firestore.rules",
+  async fetchResource(name) {
+    count(name);
+    if (name === releases[0] || name === releases[1]) {
+      return { rulesetName: unchangedRulesetName };
+    }
+    if (name === releases[2]) return { rulesetName: staleRulesetName };
+    if (name === releases[3]) throw missing;
+    if (name === unchangedRulesetName) return desiredRuleset;
+    if (name === staleRulesetName) {
+      return {
+        source: {
+          files: [
+            { name: "firestore.rules", content: "rules_version = '2';\n" },
+          ],
+        },
+      };
+    }
+    throw new Error(`unexpected test resource: ${name}`);
+  },
+});
+assert.deepEqual(deployPlan, {
+  staleReleaseNames: [releases[2], releases[3]],
+  unchangedReleaseCount: 2,
+});
+assert.equal(
+  calls.get(unchangedRulesetName),
+  1,
+  "shared current ruleset should only be fetched once",
 );
 
 console.log("PASS: Firebase Rules release request builders");

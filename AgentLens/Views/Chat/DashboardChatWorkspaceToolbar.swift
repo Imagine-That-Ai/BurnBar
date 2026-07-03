@@ -14,6 +14,10 @@ struct DashboardChatWorkspaceToolbar: View {
     /// the top toolbar hides its duplicates. Single pane ⇒ true (identical to today).
     var showsEnginePickers: Bool = true
 
+    /// When the pane workspace is tiled, each pane carries its own engine + model pickers,
+    /// so the shared toolbar hides them to avoid a duplicate control surface.
+    var showsEnginePickers: Bool = true
+
     var onNewChat: () -> Void
     var onShowClearChatPrompt: () -> Void
     var onPopOut: (() -> Void)?

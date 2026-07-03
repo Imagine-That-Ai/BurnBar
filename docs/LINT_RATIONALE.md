@@ -74,6 +74,7 @@ Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 budgets/datastore-isolation-baseline.json
 budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
+budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/swift-file-size-baseline.json
 budgets/windows-tree-baseline.json

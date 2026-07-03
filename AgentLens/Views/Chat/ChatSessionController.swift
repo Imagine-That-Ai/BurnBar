@@ -33,8 +33,6 @@ final class ChatSessionController {
         case localOracle
         case hybridIndexThenLLM
     }
-    let persistsViewState: Bool
-
     var messages: [ChatMessageRecord] = []
 
     var inputText = ""
@@ -61,6 +59,8 @@ final class ChatSessionController {
 
     var chatBackend: ChatBackendID = .codex
 
+    @ObservationIgnored var onStreamSettled: ((ChatStreamSettleOutcome) -> Void)?
+
     /// Optional persona text for the next send. The desktop pet bubble sets this
     /// to the active ``PetDefinition``'s `agent.persona`; the prompt assembler
     /// wraps it as untrusted style context so the trusted `.core` section remains
@@ -74,27 +74,27 @@ final class ChatSessionController {
     /// Per-backend `model` selection for the active chat. Empty means the
     /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
-        didSet { persistViewStateValue(chatModelCodex, forKey: Self.udChatModelCodex) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) } }
     }
 
     var chatModelClaude: String = "" {
-        didSet { persistViewStateValue(chatModelClaude, forKey: Self.udChatModelClaude) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelClaude, forKey: Self.udChatModelClaude) } }
     }
 
     var chatModelHermes: String = "" {
-        didSet { persistViewStateValue(chatModelHermes, forKey: Self.udChatModelHermes) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelHermes, forKey: Self.udChatModelHermes) } }
     }
 
     var chatModelOpenClaw: String = "" {
-        didSet { persistViewStateValue(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) } }
     }
 
     var chatModelPiAgent: String = "" {
-        didSet { persistViewStateValue(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) } }
     }
 
     var chatModelDroid: String = "" {
-        didSet { persistViewStateValue(chatModelDroid, forKey: Self.udChatModelDroid) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) } }
     }
 
     nonisolated static func buildFocusSessionPromptSection(
@@ -124,30 +124,41 @@ final class ChatSessionController {
     }
 
     var chatModelForge: String = "" {
-        didSet { persistViewStateValue(chatModelForge, forKey: Self.udChatModelForge) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) } }
     }
 
     var chatModelAntigravity: String = "" {
-        didSet { persistViewStateValue(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) } }
     }
 
     var chatModelCursorAgent: String = "" {
-        didSet { persistViewStateValue(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) } }
     }
 
     var chatModelOpenClaude: String = "" {
-        didSet { persistViewStateValue(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) }
-    }
-
-    var chatModelOMP: String = "" {
-        didSet { persistViewStateValue(chatModelOMP, forKey: Self.udChatModelOMP) }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) } }
     }
 
     var hermesAvailable: Bool = false
 
+    /// Mirror of `CLIBridge.hermesCatalogAuthRejected`: the gateway is up but
+    /// answered the last catalog probe with 401/403, so chat sends would fail
+    /// on auth. The pre-send gate turns this into an actionable message
+    /// instead of letting the send dead-end.
+    var hermesCatalogAuthRejected: Bool = false
+
     /// In-flight background re-probe that backfills the Hermes `/v1/models`
     /// catalog after a cold start (see `scheduleHermesCatalogWarmIfNeeded`).
     @ObservationIgnored private var hermesCatalogWarmTask: Task<Void, Never>?
+
+    /// `API_SERVER_KEY` cached from `~/.hermes/.env`, refreshed on every
+    /// `probeHermesAvailability()` pass. When Settings has no explicit Hermes
+    /// bearer token, chat requests fall back to this key — keeping the
+    /// `hermesUnavailableMessage()` promise ("OpenBurnBar will reuse it
+    /// locally") true for actual sends, not just for
+    /// `HermesRuntimeLauncher`'s status checks. Only ever attached to loopback
+    /// gateway URLs (see `resolvedHermesBearerToken`).
+    @ObservationIgnored private var hermesEnvFallbackBearerToken: String?
 
     var openClawAvailable: Bool = false
 
@@ -275,7 +286,7 @@ final class ChatSessionController {
         }
         return .agent
     }() {
-        didSet { persistViewStateValue(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
+        didSet { if persistsViewState { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") } }
     }
 
     /// User-attached files staged for the next outgoing message. Cleared on
@@ -320,7 +331,6 @@ final class ChatSessionController {
 
     static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
     static let udChatModelOpenClaude = "chatPanel.model.openclaude"
-    static let udChatModelOMP = "chatPanel.model.omp"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -378,19 +388,27 @@ final class ChatSessionController {
 
     var sharedFeaturesAvailable = true
 
+    /// When false, this controller is a tiling-pane instance: it owns its conversation
+    /// in memory but writes NO global chat UserDefaults keys (backend / model / viewMode /
+    /// geometry / thread slot) and never auto-resolves its thread from the shared slot.
+    /// The pane workspace owns all per-pane persistence. Default `true` preserves the
+    /// app-wide single-instance behavior for every existing call site.
+    let persistsViewState: Bool
+
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil,
-        initialThreadID: String? = nil,
-        persistsViewState: Bool = true,
         cliBridge: CLIBridge? = nil,
         memoryService: (any MemoryServing)? = nil,
-        memoryExtractionEngine: MemoryExtractionEngine? = nil
+        memoryExtractionEngine: MemoryExtractionEngine? = nil,
+        initialThreadID: String? = nil,
+        persistsViewState: Bool = true,
+        initialBackend: ChatBackendID? = nil
     ) {
+        self.persistsViewState = persistsViewState
         self.dataStore = dataStore
         self.settingsManager = settingsManager
-        self.persistsViewState = persistsViewState
         self.memoryService = memoryService
         self.memoryExtractionEngine = memoryExtractionEngine
         if let searchService {
@@ -408,19 +426,14 @@ final class ChatSessionController {
         self.retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
         self.cliBridge = cliBridge ?? CLIBridge()
 
-        if persistsViewState {
-            Self.migrateLegacyChatModeIfNeeded()
-            Self.migrateThreadIDSlotsIfNeeded()
-        }
+        Self.migrateLegacyChatModeIfNeeded()
+        Self.migrateThreadIDSlotsIfNeeded()
 
-        if persistsViewState,
-           let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
+        if let initialBackend {
+            chatBackend = initialBackend
+        } else if let raw = UserDefaults.standard.string(forKey: Self.udChatBackend),
            let backend = ChatBackendID(rawValue: raw) {
             chatBackend = backend
-        }
-
-        if let initialThreadID {
-            activeThreadID = initialThreadID
         }
 
         chatModelCodex = UserDefaults.standard.string(forKey: Self.udChatModelCodex) ?? ""
@@ -433,7 +446,6 @@ final class ChatSessionController {
         chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
         chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
-        chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -444,6 +456,10 @@ final class ChatSessionController {
         // Validate offset is within reasonable bounds (-500 to 500 pixels)
         if abs(ox) <= 500 && abs(oy) <= 500 && (ox != 0 || oy != 0) {
             panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
+        }
+
+        if let initialThreadID {
+            activeThreadID = initialThreadID
         }
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -481,7 +497,6 @@ final class ChatSessionController {
         case .antigravity: return chatModelAntigravity
         case .cursorAgent: return chatModelCursorAgent
         case .openClaude: return chatModelOpenClaude
-        case .omp: return chatModelOMP
         }
     }
 
@@ -497,8 +512,33 @@ final class ChatSessionController {
         case .antigravity: chatModelAntigravity = value
         case .cursorAgent: chatModelCursorAgent = value
         case .openClaude: chatModelOpenClaude = value
-        case .omp: chatModelOMP = value
         }
+    }
+
+    /// Copy non-global dependencies that pane controllers need to behave like
+    /// the app-wide chat controller. This intentionally avoids thread, message,
+    /// and stream state.
+    func copyPaneRuntimeBindings(from source: ChatSessionController) {
+        memoryService = source.memoryService
+        memoryExtractionEngine = source.memoryExtractionEngine
+        sharedFeaturesAvailable = source.sharedFeaturesAvailable
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        computerUseRuntimeController = source.computerUseRuntimeController
+        #endif
+    }
+
+    /// Copy the active conversation controls without resolving a new thread slot.
+    /// Used when creating or re-homing tiled panes, where backend/model state is
+    /// pane-local and must not fall back to the primary controller defaults.
+    func copyPaneConversationControls(from source: ChatSessionController) {
+        chatBackend = source.chatBackend
+        for backend in ChatBackendID.allCases {
+            setChatModelSelection(source.chatModelSelection(for: backend), for: backend)
+        }
+        chatViewMode = source.chatViewMode
+        hermesAvailable = source.hermesAvailable
+        openClawAvailable = source.openClawAvailable
+        piAgentAvailable = source.piAgentAvailable
     }
 
     var activeDesktopControlGrant: AgentCapabilityGrant? {
@@ -618,7 +658,6 @@ final class ChatSessionController {
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
-        case .omp: return .omp
         }
     }
 
@@ -656,8 +695,6 @@ final class ChatSessionController {
             return chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines)
         case .openClaude:
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .omp:
-            return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -707,7 +744,7 @@ final class ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             return 0
         }
     }
@@ -720,7 +757,7 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             return []
         }
     }
@@ -807,8 +844,28 @@ final class ChatSessionController {
             return advertised.id
         }
 
-        return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let liveDefault = gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !liveDefault.isEmpty { return liveDefault }
+        // Catalog unreadable (cold start, or /v1/models behind an unset API key
+        // while /health stays open) so there is no gateway default. Preserve any
+        // explicit family intent first: the gateway routes canonical family
+        // names ("claude", "codex", …) directly, so a user who picked a family
+        // keeps their provider instead of being silently rerouted to the
+        // gateway's default agent.
+        if let family = hermesFamilyHint(for: override) { return family.rawValue }
+        if let selectedFamily { return selectedFamily.rawValue }
+        // Nothing selected anywhere: fall back to the gateway's canonical self
+        // alias instead of "". The gateway routes "hermes" to its default agent
+        // and remains the routing authority, so the send surfaces the gateway's
+        // real error (e.g. "Invalid API key") instead of dead-ending locally on
+        // the "No eligible route" gate. `chatHermes` always allowlists this alias.
+        return hermesCanonicalModelAlias
     }
+
+    /// The Hermes gateway's self alias: routed server-side to the gateway's
+    /// default agent, and permanently present in `CLIBridge.chatHermes`'s model
+    /// allowlist even when the `/v1/models` catalog is unreadable.
+    nonisolated static let hermesCanonicalModelAlias = "hermes"
 
     nonisolated static func hermesFamilyHint(for model: String) -> HermesModelID? {
         let normalized = model
@@ -849,15 +906,19 @@ final class ChatSessionController {
     /// For **Hermes** an unread catalog must NOT block the send: the gateway
     /// routes the canonical family names ("claude", "codex", "ollama", …)
     /// directly and is itself the routing authority — it returns a real error if
-    /// the model is genuinely unroutable. OpenClaw/Pi are generic OpenAI-
-    /// compatible gateways whose model id must match the advertised catalog, so
-    /// they keep verifying against it.
+    /// the model is genuinely unroutable. The gateway's own
+    /// `hermesCanonicalModelAlias` is likewise always eligible — it is never
+    /// advertised in `/v1/models`, yet the gateway routes it to its default
+    /// agent (verified against hermes-agent 0.17.0). OpenClaw/Pi are generic
+    /// OpenAI-compatible gateways whose model id must match the advertised
+    /// catalog, so they keep verifying against it.
     nonisolated static func selectedModelRoutingError(
         backend: ChatBackendID,
         selectedModel: String,
         liveModels: [OpenAICompatibleAdvertisedModel]
     ) -> String? {
         guard backend == .hermes || backend == .openclaw || backend == .piAgent else { return nil }
+        if backend == .hermes, selectedModel == hermesCanonicalModelAlias { return nil }
         guard !selectedModel.isEmpty else {
             return "No eligible route for \(backend.displayName). Add or enable an account/provider that serves this model."
         }
@@ -891,12 +952,56 @@ final class ChatSessionController {
     }
 
     func probeHermesAvailability() async {
+        await refreshHermesEnvFallbackBearerToken()
         await cliBridge.probeHermesAvailability(
             baseURL: hermesGatewayBaseURL,
             bearerToken: hermesBearerToken
         )
         hermesAvailable = cliBridge.hermesAvailable
+        hermesCatalogAuthRejected = cliBridge.hermesCatalogAuthRejected
         scheduleHermesCatalogWarmIfNeeded()
+    }
+
+    /// True while `hermesEnvFallbackBearerToken` holds a key read from
+    /// `~/.hermes/.env` (exposed so extensions in other files can tailor the
+    /// auth-rejection guidance without widening access to the key itself).
+    var hermesEnvFallbackKeyPresent: Bool {
+        hermesEnvFallbackBearerToken?.isEmpty == false
+    }
+
+    /// Actionable transcript reply for the "gateway up, key rejected" state,
+    /// tailored to which key was actually presented. Pure for unit tests.
+    nonisolated static func hermesAuthRejectedMessage(
+        settingsTokenPresent: Bool,
+        envKeyPresent: Bool
+    ) -> String {
+        if settingsTokenPresent {
+            return "The Hermes gateway is running but rejected the Bearer Token from Settings → Chat Gateway → Hermes Gateway. "
+                + "For a local gateway it must match API_SERVER_KEY in ~/.hermes/.env — update it there "
+                + "(or clear the field to let OpenBurnBar reuse the local key automatically) and send again."
+        }
+        if envKeyPresent {
+            return "The Hermes gateway rejected the local API_SERVER_KEY from ~/.hermes/.env — it is likely running with an older key. "
+                + "Use Settings → Chat Gateway → Hermes Gateway → Open Hermes + Gateway to restart it with the current key, then send again."
+        }
+        return "The Hermes gateway requires an API key. Paste API_SERVER_KEY (from ~/.hermes/.env on the gateway machine) "
+            + "into Settings → Chat Gateway → Hermes Gateway → Bearer Token, then send again."
+    }
+
+    /// Refreshes the cached `~/.hermes/.env` `API_SERVER_KEY` fallback. Skips
+    /// the file read entirely when Settings already carries an explicit token
+    /// (it always wins) or when the configured gateway is not loopback (the
+    /// local key must never leave the machine). Not `private`: the send path
+    /// (`validateChatBackendAvailability`, in the Search extension) re-runs it
+    /// per send so clearing the Settings token mid-session picks the env key
+    /// back up without waiting for the next availability probe.
+    func refreshHermesEnvFallbackBearerToken() async {
+        let settingsToken = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard settingsToken.isEmpty, Self.allowsHermesEnvKeyReuse(hermesGatewayBaseURL) else {
+            hermesEnvFallbackBearerToken = nil
+            return
+        }
+        hermesEnvFallbackBearerToken = await HermesEnvironmentFile.readAPIServerKey()
     }
 
     /// When the gateway is reachable but its `/v1/models` catalog has not loaded
@@ -917,6 +1022,7 @@ final class ChatSessionController {
                     bearerToken: self.hermesBearerToken
                 )
                 self.hermesAvailable = self.cliBridge.hermesAvailable
+                self.hermesCatalogAuthRejected = self.cliBridge.hermesCatalogAuthRejected
                 if !self.cliBridge.hermesGatewayModels.isEmpty { break }
             }
             self?.hermesCatalogWarmTask = nil
@@ -957,8 +1063,43 @@ final class ChatSessionController {
     }
 
     var hermesBearerToken: String? {
-        let t = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
+        Self.resolvedHermesBearerToken(
+            settingsToken: settingsManager.hermesBearerToken,
+            envFallbackKey: hermesEnvFallbackBearerToken,
+            baseURL: hermesGatewayBaseURL
+        )
+    }
+
+    /// Pure bearer-token resolution for the Hermes chat path (unit-testable).
+    /// An explicit Settings token always wins. Otherwise the cached
+    /// `API_SERVER_KEY` from `~/.hermes/.env` is reused — but only toward a
+    /// loopback gateway, so the local gateway's key is never attached to a
+    /// request leaving this machine.
+    nonisolated static func resolvedHermesBearerToken(
+        settingsToken: String,
+        envFallbackKey: String?,
+        baseURL: URL
+    ) -> String? {
+        let explicit = settingsToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+        guard let envFallbackKey,
+              !envFallbackKey.isEmpty,
+              allowsHermesEnvKeyReuse(baseURL) else {
+            return nil
+        }
+        return envFallbackKey
+    }
+
+    /// The `~/.hermes/.env` `API_SERVER_KEY` authenticates the *local* Hermes
+    /// gateway; reuse is restricted to loopback hosts.
+    nonisolated static func allowsHermesEnvKeyReuse(_ baseURL: URL) -> Bool {
+        guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              let host = components.host,
+              components.user == nil,
+              components.password == nil else {
+            return false
+        }
+        return LocalLLMEndpointPolicy.isLoopbackHost(host)
     }
 
     var hermesGatewayBaseURL: URL {
@@ -1140,7 +1281,7 @@ final class ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
@@ -1221,34 +1362,35 @@ final class ChatSessionController {
             "backend": .string(backend.rawValue),
             "previous_backend": .string(previousBackend.rawValue)
         ])
+        // A tiling pane (persistsViewState == false) is bound to a fixed thread:
+        // switching its engine keeps the SAME conversation and writes NO global keys.
+        // It must never re-resolve the thread from the shared per-backend slot.
         if persistsViewState {
             UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
-        }
 
-        let nextThread = persistsViewState
-            ? await resolveThreadID(for: backend, createIfMissing: true)
-            : activeThreadID
-        activeThreadID = nextThread
-        let fetchedMessages: [ChatMessageRecord]
-        do {
-            fetchedMessages = try await dataStore.fetchChatMessages(threadID: nextThread)
-        } catch {
-            AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
-            fetchedMessages = []
-        }
-        guard chatBackend == backend, activeThreadID == nextThread else { return }
-        messages = fetchedMessages
-
-        if messages.isEmpty {
-            if backend.requiresCLIAssistantConsent {
-                chatViewMode = .cli
-            } else {
-                chatViewMode = .agent
+            let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
+            activeThreadID = nextThread
+            let fetchedMessages: [ChatMessageRecord]
+            do {
+                fetchedMessages = try await dataStore.fetchChatMessages(threadID: nextThread)
+            } catch {
+                AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
+                fetchedMessages = []
             }
-        }
+            guard chatBackend == backend, activeThreadID == nextThread else { return }
+            messages = fetchedMessages
 
-        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
-        persistActiveThreadSlot()
+            if messages.isEmpty {
+                if backend.requiresCLIAssistantConsent {
+                    chatViewMode = .cli
+                } else {
+                    chatViewMode = .agent
+                }
+            }
+
+            firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+            persistActiveThreadSlot()
+        }
         await Task.yield()
         refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -1297,11 +1439,6 @@ final class ChatSessionController {
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
-    private func persistViewStateValue(_ value: String, forKey key: String) {
-        guard persistsViewState else { return }
-        UserDefaults.standard.set(value, forKey: key)
-    }
-
     func clampedPanelOffset(_ proposed: CGSize, container: CGSize, padding: CGFloat) -> CGSize {
         guard container.width > 1, container.height > 1 else { return proposed }
         let minX = -(container.width - panelWidth - padding * 2)
@@ -1337,6 +1474,7 @@ final class ChatSessionController {
 
     /// Copies legacy single-thread ID into the Codex slot once so existing users keep their history.
     func migrateCodexThreadFromLegacyIfNeeded() async {
+        guard persistsViewState else { return }
         let key = Self.threadStorageKey(for: .codex)
         guard UserDefaults.standard.string(forKey: key) == nil else { return }
         if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
@@ -1346,14 +1484,6 @@ final class ChatSessionController {
     }
 
     func resolveThreadID(for backend: ChatBackendID, createIfMissing: Bool) async -> String {
-        guard persistsViewState else {
-            if createIfMissing,
-               (try? await dataStore.chatThreadExists(id: activeThreadID)) != true {
-                _ = try? await dataStore.createChatThread(id: activeThreadID)
-            }
-            return activeThreadID
-        }
-
         let key = Self.threadStorageKey(for: backend)
         if let tid = UserDefaults.standard.string(forKey: key),
            (try? await dataStore.chatThreadExists(id: tid)) == true {
@@ -1361,23 +1491,23 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
-                UserDefaults.standard.set(legacy, forKey: key)
+                if persistsViewState { UserDefaults.standard.set(legacy, forKey: key) }
                 return legacy
             }
             let hermesTid = UserDefaults.standard.string(forKey: Self.threadStorageKey(for: .hermes))
             if let mostRecent = try? await dataStore.fetchMostRecentChatThreadID(),
                mostRecent != hermesTid,
                (try? await dataStore.chatThreadExists(id: mostRecent)) == true {
-                UserDefaults.standard.set(mostRecent, forKey: key)
+                if persistsViewState { UserDefaults.standard.set(mostRecent, forKey: key) }
                 return mostRecent
             }
             if createIfMissing {
                 do {
                     let created = try await dataStore.createChatThread()
-                    UserDefaults.standard.set(created, forKey: key)
+                    if persistsViewState { UserDefaults.standard.set(created, forKey: key) }
                     return created
                 } catch {
                     AppLogger.chat.silentFailure("createChatThread (cli)", error: error)
@@ -1389,7 +1519,7 @@ final class ChatSessionController {
             if createIfMissing {
                 do {
                     let created = try await dataStore.createChatThread()
-                    UserDefaults.standard.set(created, forKey: key)
+                    if persistsViewState { UserDefaults.standard.set(created, forKey: key) }
                     return created
                 } catch {
                     AppLogger.chat.silentFailure("createChatThread (hermes/openclaw/pi)", error: error)
@@ -1421,11 +1551,6 @@ final class ChatSessionController {
     }
 
     func loadPersistedMessagesAsync() async {
-        guard persistsViewState else {
-            await hydratePaneThread()
-            return
-        }
-
         await migrateCodexThreadFromLegacyIfNeeded()
         await syncChatBackendWithEnabledBackendsAsync()
 
@@ -1452,51 +1577,6 @@ final class ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
         refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
-    }
-
-    func hydratePaneThread() async {
-        let threadID = activeThreadID
-        do {
-            if try await dataStore.chatThreadExists(id: threadID) == false {
-                _ = try await dataStore.createChatThread(id: threadID)
-            }
-            let fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
-            guard activeThreadID == threadID else { return }
-            messages = fetchedMessages
-            firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
-            conversationJumpTargets = []
-            ensureChatWorkspaceDirectoryExists()
-            refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
-        } catch {
-            AppLogger.chat.silentFailure("hydratePaneThread", error: error)
-        }
-    }
-
-    func teardownForPaneClose() {
-        streamTask?.cancel()
-        searchTask?.cancel()
-        refreshHistoryTask?.cancel()
-        retrievalHealthTask?.cancel()
-        textExpansionPreviewTask?.cancel()
-        textExpansionLookupTask?.cancel()
-        cliBridge.cancel()
-        revokeDesktopControl()
-        streamTask = nil
-        searchTask = nil
-        refreshHistoryTask = nil
-        retrievalHealthTask = nil
-        textExpansionPreviewTask = nil
-        textExpansionLookupTask = nil
-        isStreaming = false
-        activeStreamMessageId = nil
-        streamError = nil
-        selectedContext = nil
-        conversationJumpTargets = []
-        lastRecalledMemoryCitations = []
-        pendingMemoryJumpMessageID = nil
-        memoryJumpHighlightMessageID = nil
-        pendingAttachments = []
-        attachmentError = nil
     }
 
     func clearChat() {

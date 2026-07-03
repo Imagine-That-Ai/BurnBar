@@ -744,6 +744,16 @@ expect(
 );
 
 expect(
+  "release publish Bash 4-only mapfile fails on macOS runner compatibility",
+  GOOD_RELEASE.replace(
+    "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+    "mapfile -t PROVENANCE_PATHS < <(find \"$RUNNER_TEMP\" -type f -name \"*.sigstore.json\" -print)\n          if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release publish neutered provenance bundle guard body fails",
   GOOD_RELEASE.replace(
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',

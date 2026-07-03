@@ -21,15 +21,15 @@ import OpenBurnBarCore
 //   #3 Architectural guard: the engine's only durable-write path is the worker's
 //      preflight/quarantine; a clean fact lands `.quarantined`, NEVER `.approved`, even
 //      though the model proposed `.approved` — the worker overrode it.
-    //   #5 With both levers ON, the engine drains and writes; with the extraction gate OFF,
-    //      nothing is claimed and nothing is written (asserted by the kill-switch leg); with
-    //      extraction ON but authority writes explicitly OFF, the loop may run but ZERO
-    //      durable memories are written (asserted by the gate-matrix leg; PR-D FIX #2).
+//   #5 With both levers ON, the engine drains and writes; with the extraction gate OFF,
+//      nothing is claimed and nothing is written (asserted by the kill-switch leg); with
+//      extraction ON but authority writes explicitly OFF, the loop may run but ZERO
+//      durable memories are written (asserted by the gate-matrix leg; PR-D FIX #2).
 //
-    // The production path is live after opt-in: durable writes require the AND of two
-    // independent levers, `memoryExtractionEnabled` (consent + user toggle + fleet gate)
-    // and `chatMemoryAuthorityWritesEnabledByDefault`. This test keeps both levers on to
-    // exercise the write path; it never mutates global state.
+// The production path is live after opt-in: durable writes require the AND of two
+// independent levers, `memoryExtractionEnabled` (consent + user toggle + fleet gate)
+// and `chatMemoryAuthorityWritesEnabledByDefault`. This test keeps both levers on to
+// exercise the write path; it never mutates global state.
 @MainActor
 final class MemoryActivationEndToEndTests: XCTestCase {
 
@@ -202,8 +202,8 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         let store = ControlPlaneStore(dbQueue: queue)
         // Gate CLOSED via the EXTRACTION lever: the user toggle is off, so
         // `memoryExtractionEnabled` is false and the engine's `runDrain` short-circuits to
-        // `.killSwitchOff` before any pump. Authority writes are allowed here so this leg
-        // isolates the extraction-gate lever (not the authority-write lever, which the gate-matrix
+        // `.killSwitchOff` before any pump. Authority writes are forced ON here so this leg
+        // isolates the extraction-gate lever (not the authority lever, which the gate-matrix
         // test below exercises).
         let settings = Self.makeSettingsWithExtractionDisabled()
         let service = OpenBurnBarMemoryService(store: store)
@@ -257,13 +257,74 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertEqual(memCount, 0, "nothing written while the kill switch is off")
     }
 
-    // MARK: - Gate-matrix leg (PR-D FIX #2): extraction ENABLED + explicit writes OFF => 0 writes
+    // MARK: - Gate-open leg: persisted backlog drains when consent opens after enqueue
+
+    func test_gateOpeningAfterJobEnqueued_launchesDrainForExistingBacklog() async throws {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
+        let store = ControlPlaneStore(dbQueue: queue)
+        let settings = Self.makeIsolatedSettings()
+        Self.configureLocalProvider(settings)
+        settings.memoryAutomaticExtraction = true
+        settings.memoryExtractionRemoteConfigEnabled = true
+        XCTAssertFalse(settings.memoryExtractionEnabled, "consent is still closed, so the engine must not claim yet")
+
+        let service = OpenBurnBarMemoryService(store: store)
+        let engine = MemoryExtractionEngine(
+            chatMemoryStore: store,
+            dataStore: dataStore,
+            settingsManager: settings,
+            providerAPIKeyStore: ProviderAPIKeyStore(),
+            authorityWritesGoLiveEnabled: true
+        )
+        XCTAssertNil(engine.lastPumpReport)
+
+        let threadID = "thread-gate-open"
+        let terminalID = "msg-gate-open-terminal"
+        MemoryActivationHTTPStub.responseJSON = """
+        {"memories":[{"text":"User prefers local memory extraction.","kind":"preference","confidence":0.91,"messageId":"\(terminalID)"}]}
+        """
+
+        try await dataStore.actor.conversationStore.saveChatMessage(
+            ChatMessageRecord(
+                id: terminalID,
+                role: .assistant,
+                content: "Remember that local memory extraction is preferred.",
+                timestamp: Date(timeIntervalSince1970: 1_950_000_300)
+            ),
+            threadID: threadID,
+            isTerminalAssistantCommit: true,
+            memoryService: service,
+            extractionContext: MemoryExtractionContext(
+                scope: Self.scope,
+                threadLogicalID: "\(threadID)-logical",
+                promptVersion: ChatSessionController.memoryPromptVersion
+            )
+        )
+
+        let jobIDValue = try await Self.onlyJobID(queue)
+        let jobID = try XCTUnwrap(jobIDValue)
+        let initialStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        XCTAssertEqual(initialStatus, .pending)
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "closed consent must not call the model")
+
+        settings.memoryConsentGranted = true
+
+        try await Self.waitForJobStatus(.succeeded, jobID: jobID, store: store)
+        let chatMemoryCount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
+        }
+        XCTAssertEqual(chatMemoryCount, 1, "opening the gate drains the already-pending backlog")
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 1, "the drain was launched by the gate-open notification")
+    }
+
+    // MARK: - Gate-matrix leg (PR-D FIX #2): extraction ENABLED + authority OFF => 0 writes
     //
     // This is the regression the original headline test made UNREPRESENTABLE: it set only
     // `memoryExtractionEnabled` (default TRUE) and asserted a durable write, which encoded
     // the two-levers-collapsed-into-one bug as expected behavior. Here extraction is ENABLED
-    // but the explicit authority-write override is OFF. The worker's authority closure is
-    // the AND of the two levers, so it is `true && false == false`:
+    // but authority writes are explicitly OFF. The worker's authority closure is the AND of
+    // the two levers, so it is `true && false == false`:
     // the loop may run, but ZERO durable `agent_memories` rows are written, and crucially the
     // job is NOT silently marked succeeded as if it had written.
     func test_gateMatrix_extractionEnabled_explicitWritesOff_drainsButWritesNothing() async throws {
@@ -274,11 +335,11 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         // Extraction ENABLED (both G4 sub-levers on) — the LLM round-trip is permitted.
         let settings = Self.makeSettingsWithExtractionEnabled()
         XCTAssertTrue(settings.memoryExtractionEnabled, "extraction lever is ON for this leg")
-        // Production is live; this leg uses an explicit false override to keep the dormant
-        // authority path covered.
+        // Production authority writes default on; this leg explicitly injects OFF below
+        // to keep the safety matrix covered.
         XCTAssertTrue(
             ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
-            "the production default should allow writes once consent + fleet gates are open"
+            "production authority writes should default on after memory opt-in"
         )
         let service = OpenBurnBarMemoryService(store: store)
         let engine = MemoryExtractionEngine(
@@ -289,10 +350,10 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             authorityWritesGoLiveEnabled: false
         )
 
-        let threadID = "thread-golive-off"
-        let terminalID = "msg-golive-off-terminal"
+        let threadID = "thread-authority-off"
+        let terminalID = "msg-authority-off-terminal"
         let now = Date(timeIntervalSince1970: 1_950_000_200)
-        // A clean, non-secret candidate that WOULD be stored if the go-live lever allowed.
+        // A clean, non-secret candidate that WOULD be stored if the authority lever allowed.
         MemoryActivationHTTPStub.responseJSON = """
         {"memories":[{"text":"User prefers tabs over spaces.","kind":"preference","confidence":0.9,"messageId":"\(terminalID)"}]}
         """
@@ -313,41 +374,90 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         let jobRows = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs") ?? 0
         }
-        XCTAssertEqual(jobRows, 1, "enqueue is independent of the go-live lever")
+        XCTAssertEqual(jobRows, 1, "enqueue is independent of the authority lever")
 
-        // Drain with extraction ON but authority writes OFF. `runDrain` passes its own
+        // Drain with extraction ON but authority writes explicitly OFF. `runDrain` passes its own
         // `memoryExtractionEnabled` entry guard (extraction IS enabled), so it builds a pump
-        // and ticks the worker, but the worker's pre-claim authority guard (the AND) is
+        // and ticks the worker — but the worker's pre-claim authority guard (the AND) is
         // false, so it claims NOTHING and the pump reports idle with zero processed.
         let report = await engine.runDrain()
-        XCTAssertEqual(report.processed, 0, "no job processed while the go-live lever is off")
+        XCTAssertEqual(report.processed, 0, "no job processed while authority writes are off")
         XCTAssertEqual(report.failed, 0, "and no job spuriously failed either")
         XCTAssertEqual(
             report.stoppedReason, .idle,
             "the worker's authority gate returns idle pre-claim; the pump stops cleanly"
         )
         // The model is NEVER called: the worker short-circuits before the extractor runs, so
-        // there is no LLM egress when the go-live lever is off (defense against paid calls).
+        // there is no LLM egress when the authority lever is off (defense against paid calls).
         XCTAssertEqual(MemoryActivationHTTPStub.requestCount, 0, "no LLM egress while authority writes are off")
 
         // The job is NOT silently succeeded — it stays claimable (`pending`) for a future
-        // drain after go-live is flipped. This is the "does not succeed as if it wrote" half.
+        // drain after authority writes are allowed. This is the "does not succeed as if it wrote" half.
         let jobIDValue = try await Self.onlyJobID(queue)
         let jobID = try XCTUnwrap(jobIDValue)
-        let writesOffStatus = try await store.memoryExtractionJobStatus(id: jobID)
+        let authorityOffStatus = try await store.memoryExtractionJobStatus(id: jobID)
         XCTAssertEqual(
-            writesOffStatus, .pending,
-            "an off authority-write lever must not claim or terminally complete the job"
+            authorityOffStatus, .pending,
+            "an off authority lever must not claim or terminally complete the job"
         )
 
         // ZERO durable memories written — the headline assertion of this regression.
         let chatMemoryCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memories WHERE source_kind = 'chat'") ?? -1
         }
-        XCTAssertEqual(chatMemoryCount, 0, "extraction ON + authority writes OFF => ZERO durable memories")
+        XCTAssertEqual(chatMemoryCount, 0, "extraction ON + authority OFF => ZERO durable memories")
         // The deterministic id that WOULD have been written is absent.
         let wouldBeMemory = try await store.fetchChatMemoryAuthorityRecord(id: "memory-\(jobID)-0")
         XCTAssertNil(wouldBeMemory, "no authority record exists while authority writes are off")
+    }
+
+    func test_runDrainSchedulesFollowUpWhenBacklogExceedsPumpCeiling() async throws {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
+        let store = ControlPlaneStore(dbQueue: queue)
+        let settings = Self.makeSettingsWithExtractionEnabled()
+        let service = OpenBurnBarMemoryService(store: store)
+        let engine = MemoryExtractionEngine(
+            chatMemoryStore: store,
+            dataStore: dataStore,
+            settingsManager: settings,
+            providerAPIKeyStore: ProviderAPIKeyStore(),
+            authorityWritesGoLiveEnabled: true
+        )
+
+        MemoryActivationHTTPStub.responseJSON = "{\"memories\":[]}"
+        let totalJobs = MemoryExtractionPolicy.maxJobsPerPump + 1
+        let now = Date(timeIntervalSince1970: 1_950_001_000)
+        for index in 0 ..< totalJobs {
+            let threadID = "thread-ceiling-\(index)"
+            let messageID = "msg-ceiling-\(index)"
+            try await dataStore.actor.conversationStore.saveChatMessage(
+                ChatMessageRecord(
+                    id: messageID,
+                    role: .assistant,
+                    content: "Backlog item \(index).",
+                    timestamp: now.addingTimeInterval(TimeInterval(index))
+                ),
+                threadID: threadID,
+                isTerminalAssistantCommit: true,
+                memoryService: service,
+                extractionContext: MemoryExtractionContext(
+                    scope: Self.scope,
+                    threadLogicalID: "\(threadID)-logical",
+                    promptVersion: ChatSessionController.memoryPromptVersion
+                )
+            )
+        }
+
+        let firstReport = await engine.runDrain()
+        XCTAssertEqual(firstReport.processed, MemoryExtractionPolicy.maxJobsPerPump)
+        XCTAssertEqual(firstReport.stoppedReason, .reachedJobCeiling)
+
+        try await Self.waitForSucceededJobCount(totalJobs, queue: queue)
+        let counts = try await Self.jobStatusCounts(queue)
+        XCTAssertEqual(counts[MemoryEventStatus.pending.rawValue] ?? 0, 0)
+        XCTAssertEqual(counts[MemoryEventStatus.succeeded.rawValue] ?? 0, totalJobs)
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, totalJobs)
     }
 
     // MARK: - Fixtures
@@ -405,6 +515,54 @@ final class MemoryActivationEndToEndTests: XCTestCase {
     private static func onlyJobID(_ queue: DatabaseQueue) async throws -> String? {
         try await queue.read { db in
             try String.fetchOne(db, sql: "SELECT id FROM memory_extraction_jobs LIMIT 1")
+        }
+    }
+
+    private static func waitForJobStatus(
+        _ expected: MemoryEventStatus,
+        jobID: String,
+        store: ControlPlaneStore,
+        timeout: TimeInterval = 3
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastStatus: MemoryEventStatus?
+        while Date() < deadline {
+            lastStatus = try await store.memoryExtractionJobStatus(id: jobID)
+            if lastStatus == expected { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("timed out waiting for job \(jobID) to reach \(expected), last status: \(String(describing: lastStatus))")
+    }
+
+    private static func waitForSucceededJobCount(
+        _ expected: Int,
+        queue: DatabaseQueue,
+        timeout: TimeInterval = 5
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastCounts: [String: Int] = [:]
+        while Date() < deadline {
+            lastCounts = try await jobStatusCounts(queue)
+            if lastCounts[MemoryEventStatus.succeeded.rawValue] == expected { return }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTFail("timed out waiting for \(expected) succeeded jobs, last counts: \(lastCounts)")
+    }
+
+    private static func jobStatusCounts(_ queue: DatabaseQueue) async throws -> [String: Int] {
+        try await queue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT status, COUNT(*) AS count FROM memory_extraction_jobs GROUP BY status"
+            )
+            var counts: [String: Int] = [:]
+            for row in rows {
+                guard let status: String = row["status"], let count: Int = row["count"] else {
+                    continue
+                }
+                counts[status] = count
+            }
+            return counts
         }
     }
 }

@@ -46,6 +46,47 @@ extension ChatSessionController {
         ensureChatWorkspaceDirectoryExists()
     }
 
+    /// Tiling-pane hydration. A pane controller is constructed with
+    /// `initialThreadID == its bound thread`, so `openHistoryThreadAsync` would
+    /// short-circuit on its `threadID != activeThreadID` guard and never load the
+    /// conversation. This loads the bound thread's messages unconditionally and
+    /// writes no global slot keys (panes set `persistsViewState == false`).
+    func hydratePaneThread() async {
+        // Never clobber an in-flight stream: when a pane view is recreated mid-stream
+        // (a sibling split/close re-parents it), onAppear re-hydrates, but the streaming
+        // assistant message is not yet persisted. Mirror loadPersistedMessagesAsync's guard.
+        guard !isStreaming else { return }
+        let threadID = activeThreadID
+        let fetchedMessages: [ChatMessageRecord]
+        do {
+            fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
+        } catch {
+            AppLogger.chat.silentFailure("fetchChatMessages (hydratePane)", error: error)
+            fetchedMessages = []
+        }
+        guard activeThreadID == threadID, !isStreaming else { return }
+        messages = fetchedMessages
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+        ensureChatWorkspaceDirectoryExists()
+    }
+
+    /// Explicit teardown for a tiling pane being closed. ARC will NOT free a
+    /// streaming controller on its own — the in-flight `streamTask` strongly
+    /// retains `self` via `guard let self` — and `deinit` never cancels the
+    /// `cliBridge`. The pane workspace calls this before dropping the leaf.
+    ///
+    /// Desktop-control grant revocation is coordinated by `PaneWorkspaceModel`,
+    /// because only the workspace can tell whether another live pane still owns the
+    /// same `(runtimeID, threadID)` authorization.
+    func teardownForPaneClose() {
+        onStreamSettled = nil
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+    }
+
     /// E1 (citation jump): navigate to the chat message a recalled memory cites.
     ///
     /// Recall is app-wide (`recallChatMemorySnippets` carries no thread predicate),
@@ -386,15 +427,26 @@ extension ChatSessionController {
         )
 
         let searchSvc = typedSearchService
+        let retrievalFilters = RetrievalFilters(
+            artifactTypes: [.conversation, .skillDoc, .agentDoc],
+            ownership: .personal
+        )
+        let activeProjectionJobs: Int
+        do {
+            activeProjectionJobs = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        } catch {
+            activeProjectionJobs = retrievalHealthSnapshot.projectionQueue.queueDepth
+            AppLogger.chat.silentFailure("countProjectionJobs (chat retrieval gate)", error: error)
+        }
+        let typedRetrievalAvailable = searchSvc != nil
+            && activeProjectionJobs == 0
+            && !retrievalHealthSnapshot.rebuild.inProgress
         let queryRun: OpenBurnBarQueryRunResult
-        if let searchSvc {
+        if let searchSvc, typedRetrievalAvailable {
             queryRun = await searchSvc.runBurnBarQuery(
                 RetrievalQuery(
                     text: retrievalText,
-                    filters: RetrievalFilters(
-                        artifactTypes: [.conversation, .skillDoc, .agentDoc],
-                        ownership: .personal
-                    ),
+                    filters: retrievalFilters,
                     lexicalCandidateLimit: OpenBurnBarChatContextBudget.chatLexicalCandidateLimit,
                     semanticCandidateLimit: OpenBurnBarChatContextBudget.chatSemanticCandidateLimit,
                     rerankCandidateLimit: OpenBurnBarChatContextBudget.chatRerankCandidateLimit,
@@ -402,15 +454,25 @@ extension ChatSessionController {
                 )
             )
         } else {
-            AppLogger.chat.info(
-                "chat send continuing without typed search service",
-                metadata: ["backend": chatBackend.rawValue]
-            )
-            queryRun = OpenBurnBarQueryRunResult(
+            if searchSvc == nil {
+                AppLogger.chat.info(
+                    "chat send continuing without typed search service",
+                    metadata: ["backend": chatBackend.rawValue]
+                )
+            } else {
+                AppLogger.chat.info(
+                    "chat send using fallback retrieval while search index catches up",
+                    metadata: [
+                        "backend": chatBackend.rawValue,
+                        "activeProjectionJobs": String(activeProjectionJobs),
+                        "rebuildInProgress": retrievalHealthSnapshot.rebuild.inProgress ? "true" : "false"
+                    ]
+                )
+            }
+            queryRun = await runFallbackBurnBarQuery(
+                text: retrievalText,
                 plan: retrievalPlan,
-                retrievalResults: [],
-                aggregateOccurrenceCount: nil,
-                aggregateWindowDescription: nil
+                filters: retrievalFilters
             )
         }
         let retrievalResults = queryRun.retrievalResults
@@ -742,14 +804,6 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
-                    case .omp:
-                        return self.cliBridge.chatOMPStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
                     }
                 }
                 for try await event in stream {
@@ -866,13 +920,15 @@ extension ChatSessionController {
                         self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
                     }
                     self.selectedContext = nil
+                    self.onStreamSettled?(.completed)
                 }.value
             } catch {
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
+                    let shouldPersistFailure = !(error is CancellationError)
                     // Don't surface cancellation as an error — cancelGeneration() already cleaned up
-                    if !(error is CancellationError) {
+                    if shouldPersistFailure {
                         let nsError = error as NSError
                         Analytics.shared.track(.chatGenerationFailed, [
                             "backend": .string(self.chatBackend.rawValue),
@@ -888,23 +944,96 @@ extension ChatSessionController {
                         if self.messages[idx].content.isEmpty {
                             self.messages[idx].content = self.streamError ?? "Error"
                         }
+                        if shouldPersistFailure {
+                            do {
+                                try await self.dataStore.saveChatMessage(
+                                    self.messages[idx],
+                                    threadID: self.activeThreadID
+                                )
+                                self.refreshHistory()
+                            } catch {
+                                AppLogger.chat.silentFailure("saveChatMessage (streaming failure)", error: error)
+                            }
+                        }
                     }
                     self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
+                    self.onStreamSettled?(.failed(cancelled: error is CancellationError))
                 }.value
             }
         }
     }
 
+    private func runFallbackBurnBarQuery(
+        text: String,
+        plan: BurnBarSearchPlan,
+        filters baseFilters: RetrievalFilters
+    ) async -> OpenBurnBarQueryRunResult {
+        var filters = baseFilters
+        var aggregateWindowDescription: String?
+        if filters.dateRange == nil,
+           let inferred = BurnBarSearchTimeWindow.inferredDateRange(from: text, now: Date(), calendar: .current) {
+            filters.dateRange = inferred
+            let fmt = DateFormatter()
+            fmt.dateStyle = .medium
+            fmt.timeStyle = .short
+            aggregateWindowDescription =
+                "Counts and retrieval are limited to local time window: \(fmt.string(from: inferred.lowerBound)) – \(fmt.string(from: inferred.upperBound))."
+        }
+
+        var aggregateCount: Int?
+        if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
+            do {
+                aggregateCount = try await dataStore.countOccurrencesInConversationFullText(
+                    patterns: plan.aggregatePatterns,
+                    provider: filters.provider,
+                    projectName: filters.projectName,
+                    dateRange: filters.dateRange,
+                    conversationSources: filters.conversationSources
+                )
+            } catch {
+                AppLogger.chat.silentFailure("aggregate_count_query_failed (typed search fallback)", error: error)
+            }
+        }
+
+        return OpenBurnBarQueryRunResult(
+            plan: plan,
+            retrievalResults: [],
+            aggregateOccurrenceCount: aggregateCount,
+            aggregateWindowDescription: aggregateWindowDescription
+        )
+    }
+
     private func validateChatBackendAvailability() async -> Bool {
         switch chatBackend {
         case .hermes:
-            if !hermesAvailable {
+            // Re-resolve the bearer fallback every send: a Settings token
+            // cleared mid-session must not leave the cached ~/.hermes/.env key
+            // nil'd out from the last explicit-token probe.
+            await refreshHermesEnvFallbackBearerToken()
+            // Re-probe when unavailable, but ALSO when the last probe saw the
+            // key rejected — the user may have just fixed the token in
+            // Settings, and this send should self-heal without a restart.
+            if !hermesAvailable || hermesCatalogAuthRejected {
                 await probeHermesAvailability()
             }
             if !hermesAvailable {
                 await appendAndPersistAssistantError(
                     await hermesUnavailableMessage(),
                     logContext: "Hermes unavailable"
+                )
+                return false
+            }
+            if hermesCatalogAuthRejected {
+                // Fail fast with the exact fix, instead of letting the send
+                // reach the gateway just to be bounced on auth (and instead of
+                // paying the retrieval pass first).
+                await appendAndPersistAssistantError(
+                    Self.hermesAuthRejectedMessage(
+                        settingsTokenPresent: !settingsManager.hermesBearerToken
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        envKeyPresent: hermesEnvFallbackKeyPresent
+                    ),
+                    logContext: "Hermes auth rejected"
                 )
                 return false
             }
@@ -930,7 +1059,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -975,12 +1104,6 @@ extension ChatSessionController {
                 "openclaude",
                 "OpenClaude CLI was not found. Install OpenClaude and ensure `openclaude` is on your PATH.",
                 "OpenClaude not found"
-            )
-        case .omp:
-            requirement = (
-                "omp",
-                "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.",
-                "OMP not found"
             )
         case .codex:
             requirement = (

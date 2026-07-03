@@ -12,6 +12,10 @@ final class CLIBridge: ObservableObject {
 
     private(set) var detectedBackend: Backend?
     private(set) var hermesAvailable: Bool = false
+    /// The last Hermes catalog probe was answered with 401/403: the gateway is
+    /// up but rejected the bearer key. Distinct from "catalog not readable yet"
+    /// (cold start), which self-heals — this state needs the user to fix a key.
+    private(set) var hermesCatalogAuthRejected: Bool = false
     private(set) var openClawAvailable: Bool = false
     private(set) var piAgentAvailable: Bool = false
     /// The model name currently loaded in Hermes (fetched from /v1/models).
@@ -59,6 +63,7 @@ final class CLIBridge: ObservableObject {
             bearerToken: bearerToken
         )
         hermesAvailable = result.available
+        hermesCatalogAuthRejected = result.authRejected
         hermesModelName = result.modelName
         hermesAdvertisedModels = result.hermesModels
         hermesGatewayModels = result.models
@@ -762,12 +767,7 @@ final class CLIBridge: ObservableObject {
     nonisolated private static func probeHermes(
         baseURL: URL,
         bearerToken: String?
-    ) async -> (
-        available: Bool,
-        modelName: String?,
-        hermesModels: [HermesAdvertisedModel],
-        models: [OpenAICompatibleAdvertisedModel]
-    ) {
+    ) async -> OpenAICompatibleModelProbeResult {
         // Read the live /v1/models catalog (the picker's source of truth) and
         // probe /health concurrently. The catalog can lag a cold-started gateway
         // by a few seconds while it aggregates upstream providers, but /health
@@ -785,7 +785,20 @@ final class CLIBridge: ObservableObject {
             bearerToken: bearerToken,
             timeout: 8
         )
-        return Self.resolveHermesAvailability(catalog: catalog, healthReachable: await healthy)
+        let resolved = Self.resolveHermesAvailability(
+            catalog: (catalog.available, catalog.modelName, catalog.hermesModels, catalog.models),
+            healthReachable: await healthy
+        )
+        // Auth rejection rides alongside the availability verdict: a 401/403
+        // catalog answer proves the gateway is up (hence still "available" via
+        // /health) while pinpointing the key as the thing to fix.
+        return OpenAICompatibleModelProbeResult(
+            available: resolved.available,
+            authRejected: catalog.authRejected,
+            modelName: resolved.modelName,
+            hermesModels: resolved.hermesModels,
+            models: resolved.models
+        )
     }
 
     /// Pure availability decision for the Hermes probe (extracted so the

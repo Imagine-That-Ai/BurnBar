@@ -61,6 +61,70 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         ])
     }
 
+    func test_refreshStatus_authRejectedReportsRunningGatewayNeedingKey() async {
+        // A 401 catalog answer proves the gateway is up: Settings must say
+        // "running + fix the key", not the misleading "gateway is not running".
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            gatewayAuthRejected: true,
+            dashboardStatusOutput: "Hermes dashboard running PID 123"
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        let status = await launcher.refreshStatus()
+
+        XCTAssertTrue(status.gatewayRunning)
+        XCTAssertTrue(status.authRejected)
+        XCTAssertFalse(status.isReady, "a rejected key must not read as ready")
+        XCTAssertEqual(status.message, HermesRuntimeLauncher.authRejectedStatusMessage)
+    }
+
+    func test_managedStatus_authRejectedDoesNotReportOnlineGateway() async {
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            gatewayAuthRejected: true,
+            dashboardStatusOutput: "Hermes dashboard running PID 123"
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        let status = await launcher.refreshStatus()
+        let managed = launcher.managedStatus
+
+        XCTAssertTrue(status.gatewayRunning, "Hermes status should still expose that a gateway process answered")
+        XCTAssertTrue(status.authRejected)
+        XCTAssertFalse(managed.gatewayRunning, "Managed runtime consumers need a usable gateway, not a 401ing one")
+        XCTAssertFalse(managed.isReady)
+        XCTAssertNil(managed.selectedInstanceID)
+        XCTAssertTrue(managed.instances.isEmpty)
+        XCTAssertEqual(managed.message, HermesRuntimeLauncher.authRejectedStatusMessage)
+    }
+
+    func test_openHermesAndGateway_replacesGatewayInsteadOfDuplicatingWhenAuthRejected() async {
+        // The wrong-key state used to look like "gateway down", so Open Hermes
+        // + Gateway would fork a second `gateway run` next to the live one.
+        // Now it must restart the existing gateway in place (`--replace`), so
+        // the replacement re-reads ~/.hermes/.env and the key matches again —
+        // making the "restart it with the current key" guidance actually work.
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            gatewayAuthRejected: true,
+            dashboardStatusOutput: "Hermes dashboard running PID 123"
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        let status = await launcher.openHermesAndGateway()
+
+        XCTAssertTrue(status.gatewayRunning)
+        XCTAssertFalse(status.authRejected, "the replaced gateway accepts the current key")
+        XCTAssertTrue(status.isReady)
+        let detachedCommands = await fake.detachedCommands
+        XCTAssertTrue(detachedCommands.contains(["gateway", "run", "--replace"]))
+        XCTAssertFalse(
+            detachedCommands.contains(["gateway", "run"]),
+            "a plain gateway run would fork a duplicate beside the live gateway"
+        )
+    }
+
     func test_openHermesAndGateway_doesNotDuplicateRunningGatewayOrDashboard() async {
         let fake = FakeHermesRuntime(
             gatewayAvailable: true,
@@ -273,6 +337,7 @@ private actor FakeHermesRuntime {
 
     private let executable: String?
     private var gatewayAvailable: Bool
+    private var gatewayAuthRejected: Bool
     private var dashboardStatusOutput: String
     private var failFirstGatewayStart: Bool
     private var gatewayStartAttempts = 0
@@ -280,11 +345,13 @@ private actor FakeHermesRuntime {
     init(
         executable: String? = "/usr/local/bin/hermes",
         gatewayAvailable: Bool = false,
+        gatewayAuthRejected: Bool = false,
         dashboardStatusOutput: String = "",
         failFirstGatewayStart: Bool = false
     ) {
         self.executable = executable
         self.gatewayAvailable = gatewayAvailable
+        self.gatewayAuthRejected = gatewayAuthRejected
         self.dashboardStatusOutput = dashboardStatusOutput
         self.failFirstGatewayStart = failFirstGatewayStart
     }
@@ -303,7 +370,7 @@ private actor FakeHermesRuntime {
                 try await self?.launchDetached(arguments)
             },
             probeGateway: { [weak self] _, _ in
-                guard let self else { return (false, nil) }
+                guard let self else { return (false, false, nil) }
                 return await self.probeGateway()
             },
             ensureAPIServerEnabled: { [weak self] in
@@ -343,13 +410,20 @@ private actor FakeHermesRuntime {
             }
             gatewayAvailable = true
         }
+        if arguments == ["gateway", "run", "--replace"] {
+            // In-place restart: the replacement re-reads ~/.hermes/.env, so the
+            // key the app presents matches again.
+            gatewayStartAttempts += 1
+            gatewayAvailable = true
+            gatewayAuthRejected = false
+        }
         if arguments == ["dashboard", "--tui"] {
             dashboardStatusOutput = "Hermes dashboard running PID 456"
         }
     }
 
-    private func probeGateway() -> (available: Bool, modelName: String?) {
-        (gatewayAvailable, gatewayAvailable ? "hermes-agent" : nil)
+    private func probeGateway() -> (available: Bool, authRejected: Bool, modelName: String?) {
+        (gatewayAvailable, gatewayAuthRejected, gatewayAvailable ? "hermes-agent" : nil)
     }
 
     private func ensureAPIServerEnabled() {

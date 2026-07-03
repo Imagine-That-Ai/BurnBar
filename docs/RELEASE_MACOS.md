@@ -97,20 +97,24 @@ that a DMG exists.
 The macOS trust gate downloads the same public DMG and runs Apple platform
 checks against the real artifact: Gatekeeper assessment for the DMG, stapler
 validation for the notarization ticket, app bundle code-signature verification,
-Developer ID certificate inspection, and Gatekeeper execution assessment for
-the mounted app. A public download is not shippable unless this command passes;
-URL liveness alone is not enough. The `Public macOS Download Trust` workflow
-runs this check automatically when `website/src/data/site.ts` changes, so a
-future button update cannot silently point users at an unsigned or unstapled
-DMG.
+Developer ID certificate inspection, Firebase Auth Keychain entitlement/profile
+verification, and Gatekeeper execution assessment for the mounted app. A public
+download is not shippable unless this command passes; URL liveness alone is not
+enough. The `Public macOS Download Trust` workflow runs this check automatically
+when `website/src/data/site.ts` changes, so a future button update cannot
+silently point users at an unsigned, unstapled, or Keychain-broken DMG.
 
-Release artifacts must also include the shipped Firebase client plist. It is
-client configuration, not a private signing secret, and it must be embedded
-before Developer ID signing so the sealed app can initialize cloud auth. The
-release workflow runs `scripts/ci/verify-apple-release-firebase-config.sh` on
-the unsigned app and packaged DMG/ZIP; the website trust gate runs the same
-check against the downloaded public copy. A DMG that launches with "Cloud auth
-is unavailable" is not shippable.
+Release artifacts must also include the shipped Firebase client plist and the
+app's `MAC_APP_DIRECT` provisioning profile. The plist is client configuration,
+not a private signing secret. The profile authorizes Firebase Auth's macOS
+Keychain access group for `com.openburnbar.app`. Both must be embedded before
+Developer ID signing so the sealed app can initialize cloud auth and persist the
+signed-in Firebase user. The release workflow runs
+`scripts/ci/verify-apple-release-firebase-config.sh` on the unsigned app and
+packaged DMG/ZIP; the website trust gate runs the same config check plus the
+Keychain entitlement/profile check against the downloaded public copy. A DMG
+that launches with "Cloud auth is unavailable" or Keychain access errors is not
+shippable.
 
 If the branded `downloads.burnbar.ai` host is down, the emergency recovery path
 is to repoint the website at a known live GitHub Release asset, rerun the
@@ -173,7 +177,7 @@ The `tag-release.sh` script:
 The workflow will:
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
 2. Scan the publishable tree with `gitleaks` and verified-secret `trufflehog`
-3. Run Swift, app, and TypeScript tests
+3. Run Swift, app, and TypeScript tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
 4. Build `OpenBurnBar.app` unsigned
 5. Embed daemon/helper artifacts and `OpenBurnBarCore.framework`
 6. Sign app + DMG with Developer ID identity
@@ -189,9 +193,53 @@ The workflow will:
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
 16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
 
+`notarytool` and `stapler` are wrapped by
+`scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
+is still passed to the inner notary request, and the wrapper enforces a separate
+process-group watchdog so a hung notarization or stapling attempt can retry the
+fallback auth mode or fail with a clear error instead of burning the entire
+protected release job timeout.
+
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
+Before approving a promoted release, verify that the tag still points at the
+current `origin/main` tip. If `main` advances after the tag is cut, cancel the
+run before publication and cut a new patch tag from the newest main. Do not ship
+a public direct-download artifact from a stale tag when the release owner asked
+for "everything."
+
+Expected release timing: Swift package tests and macOS app XCTest each have
+explicit workflow timeouts. If either step nears its timeout, treat it as an
+actionable release-lane failure, inspect the completed job logs, fix the root
+cause or split the gate, and rerun on a new tag. Do not let a publish run sit
+opaque until the three-hour job timeout.
+
+Release-lane structure: keep signing, notarization, artifact generation,
+artifact-backed smoke, and publish serialized, but do not add unrelated quality
+checks to that critical path. Functions, Firestore rules, extension/TypeScript,
+replay-host, and supply-chain audit gates should run as independent release jobs
+and block `publish` through `needs`. This keeps a bad gate from shipping while
+allowing slow, independent checks to run beside macOS packaging instead of
+waiting in one long queue.
+
+The protected `build-and-release` job intentionally has a larger wall-clock cap
+than the individual steps. It still contains secret-backed app/mobile,
+SQLCipher, Android signing, macOS signing, notarization, provenance, and
+artifact upload work; a cold runner can approach three hours even when every
+individual gate is healthy. Keep step-level timeouts tight for diagnostics, but
+do not let the aggregate job cap cancel a valid release after the expensive
+validation gates have already passed.
+
+Emergency retry lane: if a tag run already passed Swift tests, release app
+smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests for the
+same product source, but later died in packaging/notarization/publish, an owner
+may rerun `workflow_dispatch` with `run_release_validation_gates=false`. The
+reason must name owner approval and link the prior GitHub Actions run. This
+skips only the slow validation gates; preflight, secret checks, config
+injection, Android AAB build, macOS signing, notarization, artifact smoke,
+provenance, publish, and live feed verification still run.
 
 ## Release artifacts
 
@@ -277,7 +325,16 @@ provisioning profiles are intentionally excluded because they are not publishabl
 
 ## Release entitlements
 
-The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`. That file intentionally omits provisioning-profile-only capabilities such as iCloud, Apple Sign-In, and keychain access groups unless a matching Developer ID provisioning profile is embedded before signing. The development entitlements in `AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode builds.
+The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`
+after expanding the team/bundle placeholders into a temporary signing plist. The
+direct-download app must embed a `MAC_APP_DIRECT` profile for
+`com.openburnbar.app` and must sign with `keychain-access-groups` containing
+`TEAMID.com.openburnbar.app`; Firebase Auth on macOS cannot persist users
+without it. Direct-download release entitlements still omit iCloud and Apple
+Sign-In until those capabilities are intentionally added to the Developer ID
+profile and QA flow. The development entitlements in
+`AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode
+builds.
 
 ## Rollback
 
@@ -296,6 +353,7 @@ Tagged releases are **fail-hard**: if any required secret below is missing, the 
 | `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
 | `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
 | `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
+| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; required so Firebase Auth can use the app Keychain access group |
 | `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
 | `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast |
