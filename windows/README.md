@@ -17,6 +17,7 @@ builds, lints, and ratchets. No product code lives here yet.
 | [`app/`](app/) | The **WinUI 3 (C#/.NET) shell** — tray flyout, main window, Mica/Acrylic glass, design-token theme, Pretext host. | W6 |
 | [`pal/`](pal/) | The **Platform Abstraction Layer** — FS paths, secret store (CNG/TPM + DPAPI), process/ConPTY, named-pipe IPC, toasts, tray, watchers, autolaunch, hotkey, single-instance, mDNS/Bonjour, self-signature check. | W1 |
 | [`native/`](native/) | The **native shim** — the C-ABI / FFI bridge that surfaces the Rust crates (`crates/openburnbar-iroh`, `crates/burnbar-remote`) and the DB/crypto engine to the managed shell. | W2 |
+| [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read-only, DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. | W2 |
 | [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. | W11 |
 
 ## The aggregating solution
@@ -31,7 +32,7 @@ those PRs only *add* to a known-good aggregator rather than inventing the top-le
 ## Where new Windows source goes
 
 Every Windows **source file** (`.cs`, `.xaml`, `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.rs`)
-must live under one of the four documented sub-trees above. The per-tree budget
+must live under one of the five documented sub-trees above. The per-tree budget
 ([`scripts/debt/check-windows-tree-budget.sh`](../scripts/debt/check-windows-tree-budget.sh))
 fails a PR that drops source directly under `windows/` outside those areas, so the layout stays
 self-enforcing.
