@@ -170,6 +170,10 @@ final class MemoryExtractionEngine {
             authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled },
             extractor: extractor.makeExtractor()
         )
+        // If consent, the user toggle, or Remote Config opens the combined gate after app
+        // startup, immediately kick any persisted backlog instead of waiting for a future
+        // terminal chat commit.
+        MemoryExtractionKillSwitchRegistry.registerDrainLauncher(self)
     }
 
     // MARK: - Kill switch + settings propagation
