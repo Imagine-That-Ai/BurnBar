@@ -13,14 +13,14 @@ final class PensieveVectorCloakTests: XCTestCase {
 
     private func norm(_ a: [Double]) -> Double { dot(a, a).squareRoot() }
 
-    func test_cloak_isDeterministicForKeyAndModel() {
+    func test_cloak_isDeterministicForKeyAndModel() throws {
         let v = PensieveVectorCloak.deterministicEmbed("hosted minimax encrypted search")
         let a = try PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
         let b = try PensieveVectorCloak.cloak(v, vaultKey: key, modelVersion: "bge-small-en-v1.5")
         XCTAssertEqual(a, b)
     }
 
-    func test_cloak_preservesNormAndInnerProduct_exactly() {
+    func test_cloak_preservesNormAndInnerProduct_exactly() throws {
         // Orthonormal Q ⇒ ‖Qx‖ = ‖x‖ and <Qx,Qy> = <x,y>. Cosine ranking is
         // therefore identical over cloaked vs raw vectors — the core invariant.
         let x = PensieveVectorCloak.deterministicEmbed("pensieve repo docs and notes")
@@ -34,7 +34,7 @@ final class PensieveVectorCloakTests: XCTestCase {
         XCTAssertEqual(dot(qx, qy), dot(x, y), accuracy: 1e-9)
     }
 
-    func test_cloak_differsByKey() {
+    func test_cloak_differsByKey() throws {
         let v = PensieveVectorCloak.deterministicEmbed("private launch plan")
         let a = try PensieveVectorCloak.cloak(v, vaultKey: key)
         let b = try PensieveVectorCloak.cloak(v, vaultKey: otherKey)
