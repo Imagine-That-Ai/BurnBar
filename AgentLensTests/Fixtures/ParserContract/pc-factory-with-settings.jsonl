@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2025-07-01T00:00:00Z","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","timestamp":"2025-07-01T00:00:00Z","message":{"role":"assistant","content":"Hi there","model":"glm-4","usage":{"input_tokens":800,"output_tokens":400}}}
