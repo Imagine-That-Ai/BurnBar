@@ -609,6 +609,11 @@ targets:
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/chat_history.jsonl
         buildPhase: resources
+      # Portable prompt-injection-wrap contract vectors (VAL-P0-HARNESS-025).
+      # Bundled so LLMSafeWrapVectorTests reads the single canonical portable copy
+      # (no per-target duplicate) via Bundle(for:).
+      - path: tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json
+        buildPhase: resources
     postBuildScripts:
       - name: Bundle App Store Compliance Source Fixtures
         script: |
