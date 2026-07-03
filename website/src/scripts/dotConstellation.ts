@@ -199,6 +199,61 @@
   }
   if (document.documentElement.getAttribute("data-theme") === "light") loadLogos();
 
+  // ─── Click-to-summon glyph burst (LIGHT theme) ───
+  // Mirrors the dark-theme ember burst in emberSwarm.ts: clicking empty space
+  // drops a small, short-lived spray of token glyphs at the cursor that lift
+  // like embers and fade. Kept self-contained (no imports) so the vm-based
+  // idle/reduced-motion test harnesses can still load this file verbatim.
+  var BURST_GLYPHS = ["$", "{}", "</>", "tok", "ctx", "429", "503", "run", "cache"];
+  var burstGlyphs = [];
+  var BURST_MAX = 140;
+  function burstColor(colorIndex, opacity) {
+    // Dark-on-cream ember palette so tokens stay legible on the light page bg.
+    if (colorIndex < 0.12) return "rgba(63, 63, 148, " + opacity + ")"; // deep indigo — rare cool accent
+    if (colorIndex < 0.45) return "rgba(198, 74, 6, " + opacity + ")"; // burnt orange
+    if (colorIndex < 0.72) return "rgba(158, 108, 8, " + opacity + ")"; // dark amber
+    return "rgba(176, 22, 8, " + opacity + ")"; // deep red
+  }
+  function spawnGlyphBurst(cx, cy) {
+    var count = 8 + Math.floor(Math.random() * 5);
+    for (var i = 0; i < count; i++) {
+      var angle = Math.random() * Math.PI * 2;
+      var speed = 1.3 + Math.random() * 3.1;
+      burstGlyphs.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (1 + Math.random() * 1.6), // ember lift
+        text: BURST_GLYPHS[Math.floor(Math.random() * BURST_GLYPHS.length)],
+        colorIndex: Math.random(),
+        size: 11 + Math.random() * 5,
+        life: 1,
+        decay: 0.011 + Math.random() * 0.006 // ~1.1–1.6s at 60fps
+      });
+    }
+    if (burstGlyphs.length > BURST_MAX) burstGlyphs.splice(0, burstGlyphs.length - BURST_MAX);
+    ensureLoop();
+  }
+  function paintBursts() {
+    for (var i = burstGlyphs.length - 1; i >= 0; i--) {
+      var b = burstGlyphs[i];
+      b.vy += 0.035; // gentle gravity so the ember lift arcs back down
+      b.vx *= 0.95;
+      b.vy *= 0.95;
+      b.x += b.vx;
+      b.y += b.vy;
+      b.life -= b.decay;
+      if (b.life <= 0) {
+        burstGlyphs.splice(i, 1);
+        continue;
+      }
+      var a = Math.min(1, b.life * 1.5) * 0.95; // hold bright, fade on the tail
+      ctx.font = "700 " + b.size + "px monospace";
+      ctx.fillStyle = burstColor(b.colorIndex, a);
+      ctx.fillText(b.text, b.x, b.y);
+    }
+  }
+
   var start = 0,
     lastPaint = 0,
     cleared = false,
@@ -228,38 +283,47 @@
     var idx = reduced ? 0 : cycleNum % LOGOS.length;
     var ph = reduced ? 0.5 : cyc - cycleNum;
     var dots = sampled[idx];
-    if (!dots || !dots.length) return;
-    var coh = reduced ? 0.92 : smoothstep(0, 0.22, ph) * (1 - smoothstep(0.78, 1, ph));
-    if (coh <= 0.01) return;
+    var coh =
+      dots && dots.length
+        ? reduced
+          ? 0.92
+          : smoothstep(0, 0.22, ph) * (1 - smoothstep(0.78, 1, ph))
+        : 0;
 
-    var size = Math.min(W, H) * LOGOS[idx].scale;
-    var hx = reduced ? 0.5 : hash(cycleNum * 1.7 + 0.3);
-    var hy = reduced ? 0.46 : hash(cycleNum * 2.3 + 7.1);
-    var cx = (0.2 + 0.6 * hx) * W + (reduced ? 0 : Math.sin(baseT * 0.5 + cycleNum) * W * 0.02);
-    var cy = (0.22 + 0.54 * hy) * H + (reduced ? 0 : Math.cos(baseT * 0.6 + cycleNum) * H * 0.02);
-    var scatter = (1 - coh) * size * 0.6;
-    var rDot = Math.max(1.2, (size / S) * GAP * 0.5);
-    var T = now * 0.0011;
+    // Logo dots only paint when a logo is sampled and mid-cycle; the click
+    // bursts below paint on every light frame regardless of that dissolve gap.
+    if (dots && dots.length && coh > 0.01) {
+      var size = Math.min(W, H) * LOGOS[idx].scale;
+      var hx = reduced ? 0.5 : hash(cycleNum * 1.7 + 0.3);
+      var hy = reduced ? 0.46 : hash(cycleNum * 2.3 + 7.1);
+      var cx = (0.2 + 0.6 * hx) * W + (reduced ? 0 : Math.sin(baseT * 0.5 + cycleNum) * W * 0.02);
+      var cy = (0.22 + 0.54 * hy) * H + (reduced ? 0 : Math.cos(baseT * 0.6 + cycleNum) * H * 0.02);
+      var scatter = (1 - coh) * size * 0.6;
+      var rDot = Math.max(1.2, (size / S) * GAP * 0.5);
+      var T = now * 0.0011;
 
-    for (var k = 0; k < dots.length; k++) {
-      var d = dots[k];
-      var tw = reduced ? 1 : 0.66 + 0.34 * Math.sin(baseT * 1.7 + d.phase);
-      var jx = reduced ? 0 : Math.sin(baseT * 2.1 + d.phase) * 0.6;
-      var jy = reduced ? 0 : Math.cos(baseT * 1.8 + d.phase * 1.3) * 0.6;
-      var sh = reduced ? 0.25 : (Math.sin((d.x - d.y) * 5.5 - T) + 1) / 2;
-      var hi = Math.pow(sh, 2.2);
-      var r = d.r + (255 - d.r) * hi * 0.5;
-      var g = d.g + (255 - d.g) * hi * 0.5;
-      var b = d.b + (255 - d.b) * hi * 0.5;
-      var alpha = coh * tw * d.a * (0.56 + hi * 0.24);
-      if (alpha <= 0.01) continue;
-      var px = cx + d.x * size + d.sx * scatter + jx;
-      var py = cy + d.y * size + d.sy * scatter + jy;
-      ctx.fillStyle = "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + alpha + ")";
-      ctx.beginPath();
-      ctx.arc(px, py, rDot * (0.5 + coh * 0.5), 0, Math.PI * 2);
-      ctx.fill();
+      for (var k = 0; k < dots.length; k++) {
+        var d = dots[k];
+        var tw = reduced ? 1 : 0.66 + 0.34 * Math.sin(baseT * 1.7 + d.phase);
+        var jx = reduced ? 0 : Math.sin(baseT * 2.1 + d.phase) * 0.6;
+        var jy = reduced ? 0 : Math.cos(baseT * 1.8 + d.phase * 1.3) * 0.6;
+        var sh = reduced ? 0.25 : (Math.sin((d.x - d.y) * 5.5 - T) + 1) / 2;
+        var hi = Math.pow(sh, 2.2);
+        var r = d.r + (255 - d.r) * hi * 0.5;
+        var g = d.g + (255 - d.g) * hi * 0.5;
+        var b = d.b + (255 - d.b) * hi * 0.5;
+        var alpha = coh * tw * d.a * (0.56 + hi * 0.24);
+        if (alpha <= 0.01) continue;
+        var px = cx + d.x * size + d.sx * scatter + jx;
+        var py = cy + d.y * size + d.sy * scatter + jy;
+        ctx.fillStyle = "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + alpha + ")";
+        ctx.beginPath();
+        ctx.arc(px, py, rDot * (0.5 + coh * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
+
+    paintBursts();
   }
   function ensureLoop() {
     if (rafId == null) rafId = requestAnimationFrame(draw);
@@ -271,4 +335,24 @@
     attributes: true,
     attributeFilter: ["data-theme"]
   });
+
+  // Click empty space to summon a glyph burst in LIGHT theme (dark theme is
+  // handled by emberSwarm.ts). Skips real interactive controls and
+  // keyboard-activated clicks so nothing is hijacked; static for reduced-motion.
+  if (!reduced) {
+    window.addEventListener("click", function (e) {
+      if (e.detail === 0) return; // keyboard-activated click carries no cursor point
+      if (document.documentElement.getAttribute("data-theme") !== "light") return;
+      var t = e.target;
+      if (
+        t &&
+        t.closest &&
+        t.closest(
+          "a, button, input, textarea, select, summary, label, [role='button'], [contenteditable], .btn"
+        )
+      )
+        return;
+      spawnGlyphBurst(e.clientX, e.clientY);
+    });
+  }
 })();
