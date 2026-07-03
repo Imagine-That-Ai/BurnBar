@@ -172,7 +172,8 @@ final class ThreadInboxStore {
         switch rawRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "codex": return .codex
         case "claude": return .claude
-        case "openclaw", "openclaude", "open-claude", "open_claude": return .openClaw
+        case "openclaw": return .openClaw
+        case "openclaude", "open-claude", "open_claude": return .openClaude
         case "droid", "factory", "factory-droid", "factorydroid": return .droid
         case "forge", "forge-dev", "forgedev": return .forge
         case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
