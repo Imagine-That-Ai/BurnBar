@@ -2219,7 +2219,7 @@ final class AccountManagerTests: XCTestCase {
 
         XCTAssertEqual(
             AccountManager.userFacingAuthErrorMessageForTesting(error),
-            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If you installed a local build, rebuild it with Keychain Sharing enabled; otherwise reinstall the latest notarized OpenBurnBar download."
         )
     }
 
