@@ -41,6 +41,25 @@ internal static class WindowChrome
     }
 
     /// <summary>
+    /// Enable or disable the translucent backdrop for a window. Enabling re-applies Mica
+    /// when the OS supports it; disabling clears <see cref="Window.SystemBackdrop"/> so the
+    /// window falls back to its solid theme brush. This is the shell's reduced-transparency /
+    /// high-contrast path (master plan §9.6 theme axes) and is independent of the per-card
+    /// Liquid-Glass shim (#1200).
+    /// </summary>
+    public static void ApplyBackdrop(Window window, bool enabled)
+    {
+        if (enabled)
+        {
+            TryApplyMica(window);
+        }
+        else
+        {
+            window.SystemBackdrop = null;
+        }
+    }
+
+    /// <summary>
     /// Turn a window into a borderless, non-resizable, always-on-top flyout: no title bar,
     /// no border, hidden from the taskbar and Alt-Tab. Mirrors an NSPopover attached to the
     /// menu-bar status item.
