@@ -340,6 +340,14 @@ let openBurnBarCoreExcludes = [
     "BurnBarHNSWVectorIndex.swift",
     "ChromeProfileDiscovery.swift",
     "OpenBurnBarAgentContracts.swift",
+    // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
+    // uses _putenv_s); App Check is not part of the Engine subset.
+    "AppCheckDebugTokenEnvironment.swift",
+    // Contracts referencing types defined in excluded files:
+    //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
+    //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
+    "Contracts/BurnBarRunContracts.swift",
+    "Contracts/MissionGroupContracts.swift",
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
@@ -356,6 +364,10 @@ let openBurnBarCoreExcludes = [
     "SharedModels/BurnBarLiveActivityAttributes.swift",
     // Uses CloudVaultCrypto (excluded) for sealed-payload encryption.
     "SharedModels/CLIAgentSessionRecord.swift",
+    // References CLIAgentRuntime + CLIAgentSessionRecord (excluded above).
+    "SharedModels/CLIAgentResumePresentation.swift",
+    // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
+    "SharedModels/PiConnectionTypes.swift",
     "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
