@@ -31,6 +31,7 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
     case origami
     case inkDiffusion = "ink-diffusion"
     case petroleumSheen = "petroleum-sheen"
+    case boids
 
     static let storageKey = "mobileBackdropKernel"
     /// Keep first launch on the original provider-dot look. The heavier
@@ -79,6 +80,7 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
         case .origami: return "Origami"
         case .inkDiffusion: return "Ink Diffusion"
         case .petroleumSheen: return "Petroleum Sheen"
+        case .boids: return "Boids"
         }
     }
 
@@ -114,12 +116,13 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
         case .origami: return "Warm kozo paper with quiet folded, cut, washed, and quilled marks."
         case .inkDiffusion: return "Ink wicks into wet fiber and separates into spectral halos."
         case .petroleumSheen: return "Thin-film oil-slick rainbows drift over deep water."
+        case .boids: return "A living murmuration — hundreds of birds flocking as one."
         }
     }
 
     var rendererFamily: MobileBackdropKernelFamily {
         switch self {
-        case .constellation: return .constellation
+        case .constellation, .boids: return .constellation
         case .flow, .lic, .spectralDrift, .kineticStipple: return .flow
         case .aurora, .fluidAurora, .agent1, .neuralBloom: return .ribbons
         case .mesh, .blobsMesh, .liquidLumen, .plasmaOrbs: return .orbs

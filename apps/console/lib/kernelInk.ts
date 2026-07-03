@@ -132,6 +132,7 @@ export const KERNEL_INK: Record<KernelId, KernelInk> = {
   origami: { lum: 0.2, busy: 0.25, scrim: { hero: 0.3, read: 0.46 }, haloTier: 1, accent: "#FFC49A", motion: "rise", timing: T.rise() },
   "ink-diffusion": { lum: 0.3, busy: 0.6, scrim: { hero: 0.46, read: 0.62, nav: 0.5 }, haloTier: 3, accent: "#8FB0E0", motion: "bleed", timing: T.bleed() },
   "petroleum-sheen": { lum: 0.34, busy: 0.65, scrim: { hero: 0.5, read: 0.66, nav: 0.46 }, haloTier: 3, accent: "#7AD6D0", motion: "marble", timing: T.marble() },
+  boids: { lum: 0.12, busy: 0.45, scrim: { hero: 0.24, read: 0.4 }, haloTier: 1, accent: "#8FA0FF", motion: "drift", timing: T.drift() },
 };
 
 /** Resolve the ink for a kernel, falling back to the calm default. */

@@ -179,13 +179,27 @@ private struct PulseHeroBurnCardContent: View {
 
     // MARK: - Footer Row
 
+    /// Whether usage has actually arrived recently. The footer used to claim
+    /// "Streaming live from your Mac" unconditionally — including on a device
+    /// that had never received a single byte — which pointed users away from
+    /// real sync problems.
+    private var liveFeedIsActive: Bool {
+        liveUsages.contains { now.timeIntervalSince($0.endTime) < 10 * 60 }
+    }
+
+    private var footerStatusText: String {
+        if liveFeedIsActive { return "Streaming live from your Mac" }
+        if let total, total.requests > 0 { return "Synced from your Mac" }
+        return "Waiting for your Mac — open OpenBurnBar on the Mac to sync"
+    }
+
     private var footerRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "flame.fill")
-                .foregroundStyle(MobileTheme.amber)
+                .foregroundStyle(liveFeedIsActive ? MobileTheme.amber : MobileTheme.Colors.textMuted)
                 .font(.system(size: 12, weight: .bold))
-                .symbolEffect(.pulse, options: .repeating)
-            Text("Streaming live from your Mac")
+                .symbolEffect(.pulse, options: .repeating, isActive: liveFeedIsActive)
+            Text(footerStatusText)
                 .font(MobileTheme.Typography.tiny)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Spacer()
