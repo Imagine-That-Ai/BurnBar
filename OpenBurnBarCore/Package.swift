@@ -335,34 +335,42 @@ let openBurnBarCoreExcludes = [
     "CLITerminalSessionSupervisor.swift",
     "BrowserLaunchAdapter.swift",
     "BurnBarPersistentVectorIndex.swift",
+    // HNSW index references BurnBarPersistentVectorIndexError (excluded above);
+    // the vector index is not part of the Foundation Engine subset.
+    "BurnBarHNSWVectorIndex.swift",
     "ChromeProfileDiscovery.swift",
     "OpenBurnBarAgentContracts.swift",
-    "Services/Insights/InsightAnalysisCache.swift",
-    "Services/Insights/InsightAnalysisEngine.swift",
-    "Services/Insights/InsightAnalysisModelPrompt.swift",
-    "Services/Insights/InsightCache.swift",
-    "Services/Insights/InsightDigestBuilder.swift",
-    "Services/Insights/Verdict/RuleBasedVerdictEngine.swift",
-    "Services/Insights/Verdict/VerdictCache.swift",
+    // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
+    // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
+    // the prior partial set that left model files referencing excluded types.
+    "AgentInsights",
+    "Demo/InsightVerdictDemoFixture.swift",
+    "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
-    "TextExpansion/TextExpansionKeyEventCharacters.swift",
+    // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
+    // in the Engine subset and not referenced outside its own directory.
+    "TextExpansion",
     "UIMode.swift",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
+    // Uses CloudVaultCrypto (excluded) for sealed-payload encryption.
+    "SharedModels/CLIAgentSessionRecord.swift",
     "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
+    // Uses HermesRelayCrypto (excluded) for relay-envelope open/seal.
+    "SharedModels/HermesRelayAuthenticatedRequest.swift",
     "SharedModels/HermesRelayCrypto.swift",
-    "SharedModels/Insights/InsightAnalysis.swift",
+    "SharedModels/Insights",
+    "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
     "SharedModels/PensieveVectorCloak.swift",
     "SharedModels/PixelClockSettingsModel.swift",
     "SharedModels/SmartHubDisplaySettingsModel.swift",
     "SharedModels/SwarmColorDriver.swift",
-    "SharedModels/ThemePrimitives.swift",
-    "Services/Insights/Share"
+    "SharedModels/ThemePrimitives.swift"
 ]
 let computerUseCoreExcludes = [
     "Mac",
