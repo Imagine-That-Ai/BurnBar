@@ -914,6 +914,33 @@ jobs:
       - name: Check production env files
         run: bash scripts/ci/check-env-no-secrets.sh
 
+  # ── Windows-port parity honesty: storage-prune waiver ───────────────────────
+  # While the Windows Engine lane compiles a PRUNED Engine subset (drops
+  # GRDB-SQLCipher + OpenBurnBarData via OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD),
+  # that gap must be an explicit, dated, tracked waiver — never silent parity.
+  # This gate fails if any workflow prunes storage without an active, unexpired
+  # waiver naming it, and auto-passes once the un-prune lane removes the flag.
+  windows-storage-prune-waiver:
+    name: Windows storage-prune waiver
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            .github/workflows
+            docs/windows-port/STORAGE_PRUNE_WAIVER.md
+            scripts/ci/verify-windows-storage-prune-waiver.sh
+            scripts/ci/verify-windows-storage-prune-waiver.test.sh
+
+      - name: Self-test the storage-prune waiver gate
+        run: bash scripts/ci/verify-windows-storage-prune-waiver.test.sh
+
+      - name: Verify Windows storage-prune waiver (parity honesty)
+        run: bash scripts/ci/verify-windows-storage-prune-waiver.sh
+
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
   # allowance, and account-deletion harnesses guard revenue and compliance. They
@@ -1030,6 +1057,7 @@ jobs:
       - services-fast
       - no-suppressions
       - twin-basenames
+      - windows-storage-prune-waiver
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest
