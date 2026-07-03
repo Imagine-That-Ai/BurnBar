@@ -347,6 +347,8 @@ let openBurnBarCoreExcludes = [
     //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
     //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
     "Contracts/BurnBarRunContracts.swift",
+    // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
+    "Contracts/BurnBarEventContracts.swift",
     "Contracts/MissionGroupContracts.swift",
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
