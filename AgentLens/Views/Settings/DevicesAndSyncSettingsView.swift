@@ -991,7 +991,15 @@ final class DeviceTrustViewModel {
     private static func physicalDeviceKey(for device: MacTrustedDevice) -> String {
         [
             device.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            device.platform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            device.platform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            // Never collapse a PENDING registration into a trusted row (or vice
+            // versa). Device identities rotate (vendor-ID reset, reinstall), so a
+            // user's real phone re-registers as pending under the same generic
+            // name ("iPhone") as its old trusted identity — the old name+platform
+            // key hid the pending row entirely, leaving no way to approve the
+            // device from this screen. Duplicate registrations still collapse
+            // within the same trust state, which was the point of the dedupe.
+            device.trustState.rawValue
         ].joined(separator: "\u{1F}")
     }
 
