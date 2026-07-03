@@ -9,29 +9,26 @@ import Foundation
 // in the worker + `ChatTranscriptExtractor`; this type stays MainActor-isolated so it can
 // be observed and so the kill switch is updated synchronously from the UI.
 //
-// THE FEATURE SHIPS OFF. Durable writes are gated by THREE fail-closed levers. The user
+// Durable writes are gated by fail-closed consent/fleet levers plus the authority-write
+// default. The user
 // CONSENT lever (G0) folds into `memoryExtractionEnabled` alongside the user toggle and the
 // fleet kill switch; the worker's authority closure then ANDs that combined gate with the
-// human-owned go-live flag. NO durable `agent_memories` row is written until BOTH allow:
+// authority-write default. NO durable `agent_memories` row is written until BOTH allow:
 //   1. `settingsManager.memoryExtractionEnabled` — the combined G0+G4 gate (user CONSENT
 //      AND user toggle AND Firebase Remote Config fleet kill switch; DEFAULTS FALSE because
 //      consent (G0) is off until the user opts in). The engine mirrors this into a
 //      `Sendable` atomic (`MemoryExtractionKillSwitch`) the worker reads off-main. This is
 //      the instant fleet kill; it gates whether the LLM round-trip runs at all.
 //   2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, DEFAULTS
-//      FALSE) — the human-owned go-live switch. Threaded through `init` and AND-ed into
-//      the worker's authority closure (PR-D FIX #1). Because it defaults false, durable
-//      writes stay blocked EVEN WHEN extraction is enabled: the loop may claim + drain +
-//      run the model, but `recomputeProvenance` → `addChatMemoryAuthorityRecord(enabled:)`
-//      is called with `false`, which throws `.disabled` and persists nothing.
-// This engine flips NOTHING on; it only reflects whatever those levers currently say.
+//      TRUE) — the production authority-write default. Threaded through `init` and AND-ed
+//      into the worker's authority closure (PR-D FIX #1). Tests can still inject `false`
+//      to prove an explicit authority-off lever claims nothing and spends nothing.
+// This engine flips nothing dynamically; it only reflects whatever those levers currently say.
 //
 // WHY THE AND IS REQUIRED: even once a user grants consent + enables the toggle (so
-// `memoryExtractionEnabled` becomes true to observe the loop), durable writes must STILL
-// require the separate, human-owned go-live flag. Wiring the worker gate to
-// `{ killSwitch.isAllowed() }` alone would let a consenting user's extraction toggle by
-// itself enable durable writes before the operator has signed off on go-live. The static
-// default-false go-live flag is that second, human-owned lever; it MUST be AND-ed in.
+// `memoryExtractionEnabled` becomes true to observe the loop), durable writes still route
+// through the separate authority lever. Wiring the worker gate to `{ killSwitch.isAllowed() }`
+// alone would make that lever untestable and remove the explicit safety override.
 //
 // PR-D2 must-fixes folded in:
 //   #1 The pump loops on the worker's tri-state `DrainOutcome`, NOT a `Bool`, so one
@@ -115,13 +112,10 @@ final class MemoryExtractionEngine {
     ///     writes memories to the one store — the basis for the worker being the sole
     ///     provenance authority without a second store).
     ///   - dataStore: reserved spend source for a future explicit cloud-egress gate.
-    ///   - authorityWritesGoLiveEnabled: the SECOND, human-owned dormancy lever (PR-D FIX
-    ///     #1). Defaults to the static `chatMemoryAuthorityWritesEnabledByDefault` (false),
-    ///     so durable writes stay blocked until a human flips the go-live flag — EVEN WHEN
-    ///     `memoryExtractionEnabled` is true (i.e. after the user has consented and enabled
-    ///     extraction). It is AND-ed with the
-    ///     live kill-switch atomic in the worker's authority closure below. Exposed as a
-    ///     parameter so the gate matrix (extraction on + authority off ⇒ zero writes) is
+    ///   - authorityWritesGoLiveEnabled: the second authority lever. Defaults to the
+    ///     static `chatMemoryAuthorityWritesEnabledByDefault`; production writes are now
+    ///     allowed whenever the consent/toggle/Remote Config gate is open. It remains
+    ///     injectable so the gate matrix (extraction on + authority off => zero writes) is
     ///     representable and testable.
     init(
         chatMemoryStore: ControlPlaneStore,
@@ -167,15 +161,19 @@ final class MemoryExtractionEngine {
             store: chatMemoryStore,
             // Re-establish the kill switch at the WORKER boundary (PR-D2 must-fix #4): the
             // worker reads the LIVE atomic, never a cached or main-isolated value. AND it
-            // with the human-owned go-live lever (PR-D FIX #1) so durable writes require
-            // BOTH the extraction gate (consent+toggle+RC; default-false until the user
-            // opts in) AND the (default-false) go-live flag.
-            // `authorityWritesGoLiveEnabled` is captured by value: it is a static go-live
-            // switch flipped by a deliberate code/config change + restart, not a per-tick
-            // toggle, so it does not need the live-atomic treatment the fleet kill needs.
+            // with the authority-write lever (PR-D FIX #1) so durable writes require BOTH
+            // the extraction gate (consent+toggle+RC; default-false until the user opts in)
+            // AND the production write default / explicit test override.
+            // `authorityWritesGoLiveEnabled` is captured by value: it is a static runtime
+            // default or test override, not a per-tick toggle, so it does not need the
+            // live-atomic treatment the fleet kill needs.
             authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled },
             extractor: extractor.makeExtractor()
         )
+        // If consent, the user toggle, or Remote Config opens the combined gate after app
+        // startup, immediately kick any persisted backlog instead of waiting for a future
+        // terminal chat commit.
+        MemoryExtractionKillSwitchRegistry.registerDrainLauncher(self)
     }
 
     // MARK: - Kill switch + settings propagation

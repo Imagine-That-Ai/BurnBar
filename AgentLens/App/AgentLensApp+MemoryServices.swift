@@ -27,12 +27,10 @@ import Foundation
 //      memory daily cap — because LLM egress + spend happen the instant
 //      `memoryExtractionEnabled` flips, which is an EARLIER switch than authority-writes.
 //
-// THE FEATURE SHIPS OFF. `startMemoryExtractionIfNeeded` is a no-op whenever the combined
-// gate `settingsManager.memoryExtractionEnabled` is false, and that gate includes G0 user
-// consent (default FALSE). The worker also keeps the human-owned durable-write lever
-// (`ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault`, default FALSE) as a
-// deeper pre-claim/per-record backstop. This file flips nothing on; it only constructs
-// the dormant machinery and, when all levers allow, lets the existing drain run.
+// The feature remains consent/fleet gated: `startMemoryExtractionIfNeeded` is a no-op
+// whenever the combined gate `settingsManager.memoryExtractionEnabled` is false, and
+// that gate includes G0 user consent (default FALSE). The authority-write default is now
+// live, so opted-in users drain their local pending extraction queue.
 extension OpenBurnBarApp {
 
     /// Bundle of the memory services that share one `ControlPlaneStore`. Built once in
@@ -70,8 +68,8 @@ extension OpenBurnBarApp {
         // conforms to `TransactionalMemoryExtractionServing`, `saveChatMessage` enqueues the
         // outbox row inside the chat-message transaction. The service also binds caller
         // scopes to the current OpenBurnBar app/account boundary before touching memory rows.
-        // Behavior stays gated by the G4 kill switch in the controller and authority-writes
-        // default off, so this is dormant until the memory feature is enabled fleet-wide.
+        // Behavior stays gated by the G4 kill switch in the controller and the shared
+        // authority-write default.
         let service = OpenBurnBarMemoryService(
             store: store,
             scopeAuthorizationProvider: {
@@ -104,12 +102,9 @@ extension OpenBurnBarApp {
 
     /// Start the memory-extraction drain loop, if the gate currently allows. Called from
     /// `startLiveServicesIfNeeded` (already behind `shouldUseTestStubScene`, so it never
-    /// runs under the test-stub scene). A no-op when the combined kill switch is off — and
-    /// even when extraction IS enabled, the worker's authority closure (the AND of the live
-    /// kill switch AND the human-owned go-live flag, default OFF — PR-D FIX #1) blocks every
-    /// durable write, so the loop can run while nothing is persisted. `launchDrain()` itself
-    /// re-reads the live gate and returns immediately when extraction is disabled, so this
-    /// is safe to call unconditionally on startup.
+    /// runs under the test-stub scene). A no-op when the combined kill switch is off.
+    /// `launchDrain()` itself re-reads the live gate and returns immediately when extraction
+    /// is disabled, so this is safe to call unconditionally on startup.
     @MainActor
     func startMemoryExtractionIfNeeded(context: OpenBurnBarRuntimeContext) {
         guard let engine = context.memoryExtractionEngine else { return }

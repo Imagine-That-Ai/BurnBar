@@ -91,33 +91,6 @@ def legal_review_blockers(
     ]
 
 
-def owner_emergency_approval_is_valid(
-    evidence_path: Path,
-    repo_root: Path,
-    *,
-    expected_release_tag: str | None = None,
-) -> bool:
-    legal_review = load_ci_module(repo_root, "check_agpl_legal_release_review")
-
-    if not evidence_path.is_file():
-        return False
-
-    try:
-        data = json.loads(evidence_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-
-    owner_status = getattr(legal_review, "OWNER_ATTESTED_SOFT_APPROVAL_STATUS", "owner_attested_soft_approval")
-    status = data.get("reviewStatus") or data.get("status")
-    if status != owner_status:
-        return False
-
-    validator = getattr(legal_review, "validate_owner_attested_soft_approval", None)
-    if validator is None:
-        return False
-    return not validator(data, repo_root=repo_root, expected_release_tag=expected_release_tag)
-
-
 def collect_blockers(
     *,
     repo_root: Path,
@@ -128,14 +101,7 @@ def collect_blockers(
     expected_release_tag: str | None = None,
 ) -> list[str]:
     blockers = []
-    runtime_gate_required = include_runtime_readiness
-    if allow_owner_emergency_approval and include_legal_review:
-        runtime_gate_required = not owner_emergency_approval_is_valid(
-            legal_evidence,
-            repo_root,
-            expected_release_tag=expected_release_tag,
-        )
-    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=runtime_gate_required))
+    blockers.extend(source_provenance_blockers(repo_root, include_runtime_readiness=include_runtime_readiness))
     if include_legal_review:
         blockers.extend(
             legal_review_blockers(
@@ -174,8 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Allow a structured owner-attested soft-approval packet to satisfy "
-            "runtime/legal release holds for an emergency artifact release. The "
-            "default path still requires signed external-counsel approval."
+            "the legal release hold for an emergency artifact release. Runtime "
+            "readiness is always enforced for product release preflight."
         ),
     )
     parser.add_argument(
