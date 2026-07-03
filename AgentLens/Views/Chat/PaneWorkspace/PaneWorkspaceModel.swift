@@ -185,20 +185,36 @@ final class PaneWorkspaceModel {
                 return
             }
             let survivorThread = survivor.controller.activeThreadID
-            primaryController.teardownForPaneClose()
+            teardownControllerForPaneClose(primaryController, preservingGrantsIn: Self.collectLeaves(siblingNode))
             primaryController.copyPaneConversationControls(from: survivor.controller)
-            survivor.controller.teardownForPaneClose()
+            teardownControllerForPaneClose(survivor.controller, preservingGrantsIn: [survivor])
             primaryController.openHistoryThread(survivorThread)
             let rehomed = PaneLeaf(id: survivor.id, controller: primaryController, isPrimary: true)
             let newSibling = Self.replaceLeafNode(survivor.id, in: siblingNode, with: .leaf(rehomed))
             replaceNode(withID: parent.id, with: newSibling)
             activeLeafID = rehomed.id
         } else {
-            target.controller.teardownForPaneClose()
+            teardownControllerForPaneClose(target.controller, preservingGrantsIn: Self.collectLeaves(siblingNode))
             replaceNode(withID: parent.id, with: siblingNode)
             activeLeafID = Self.firstLeaf(in: siblingNode).id
         }
         persist()
+    }
+
+    private func teardownControllerForPaneClose(
+        _ controller: ChatSessionController,
+        preservingGrantsIn survivingLeaves: [PaneLeaf]
+    ) {
+        let runtimeID = controller.assistantRuntimeID(for: controller.chatBackend)
+        let threadID = controller.activeThreadID
+        let grantStillOwnedBySurvivingPane = survivingLeaves.contains { leaf in
+            leaf.controller.activeThreadID == threadID
+                && leaf.controller.assistantRuntimeID(for: leaf.controller.chatBackend) == runtimeID
+        }
+        if !grantStillOwnedBySurvivingPane {
+            controller.revokeDesktopControl()
+        }
+        controller.teardownForPaneClose()
     }
 
     /// Load a thread into a specific pane (drag-and-drop target). Only that pane changes.
@@ -311,6 +327,7 @@ final class PaneWorkspaceModel {
         // promote the first leaf, tearing down the pane controller built for it.
         if !primaryAssigned {
             let first = firstLeaf(in: tree)
+            first.controller.revokeDesktopControl()
             first.controller.teardownForPaneClose()
             let promoted = PaneLeaf(id: first.id, controller: primaryController, isPrimary: true)
             tree = replaceLeafNode(first.id, in: tree, with: .leaf(promoted))
