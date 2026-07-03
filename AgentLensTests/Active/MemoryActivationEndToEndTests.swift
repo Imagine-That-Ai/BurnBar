@@ -411,6 +411,55 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         XCTAssertNil(wouldBeMemory, "no authority record exists while authority writes are off")
     }
 
+    func test_runDrainSchedulesFollowUpWhenBacklogExceedsPumpCeiling() async throws {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
+        let store = ControlPlaneStore(dbQueue: queue)
+        let settings = Self.makeSettingsWithExtractionEnabled()
+        let service = OpenBurnBarMemoryService(store: store)
+        let engine = MemoryExtractionEngine(
+            chatMemoryStore: store,
+            dataStore: dataStore,
+            settingsManager: settings,
+            providerAPIKeyStore: ProviderAPIKeyStore(),
+            authorityWritesGoLiveEnabled: true
+        )
+
+        MemoryActivationHTTPStub.responseJSON = "{\"memories\":[]}"
+        let totalJobs = MemoryExtractionPolicy.maxJobsPerPump + 1
+        let now = Date(timeIntervalSince1970: 1_950_001_000)
+        for index in 0 ..< totalJobs {
+            let threadID = "thread-ceiling-\(index)"
+            let messageID = "msg-ceiling-\(index)"
+            try await dataStore.actor.conversationStore.saveChatMessage(
+                ChatMessageRecord(
+                    id: messageID,
+                    role: .assistant,
+                    content: "Backlog item \(index).",
+                    timestamp: now.addingTimeInterval(TimeInterval(index))
+                ),
+                threadID: threadID,
+                isTerminalAssistantCommit: true,
+                memoryService: service,
+                extractionContext: MemoryExtractionContext(
+                    scope: Self.scope,
+                    threadLogicalID: "\(threadID)-logical",
+                    promptVersion: ChatSessionController.memoryPromptVersion
+                )
+            )
+        }
+
+        let firstReport = await engine.runDrain()
+        XCTAssertEqual(firstReport.processed, MemoryExtractionPolicy.maxJobsPerPump)
+        XCTAssertEqual(firstReport.stoppedReason, .reachedJobCeiling)
+
+        try await Self.waitForSucceededJobCount(totalJobs, queue: queue)
+        let counts = try await Self.jobStatusCounts(queue)
+        XCTAssertEqual(counts[MemoryEventStatus.pending.rawValue] ?? 0, 0)
+        XCTAssertEqual(counts[MemoryEventStatus.succeeded.rawValue] ?? 0, totalJobs)
+        XCTAssertEqual(MemoryActivationHTTPStub.requestCount, totalJobs)
+    }
+
     // MARK: - Fixtures
 
     private static let scope = MemoryScope(appID: "openburnbar")
@@ -483,6 +532,38 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTFail("timed out waiting for job \(jobID) to reach \(expected), last status: \(String(describing: lastStatus))")
+    }
+
+    private static func waitForSucceededJobCount(
+        _ expected: Int,
+        queue: DatabaseQueue,
+        timeout: TimeInterval = 5
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastCounts: [String: Int] = [:]
+        while Date() < deadline {
+            lastCounts = try await jobStatusCounts(queue)
+            if lastCounts[MemoryEventStatus.succeeded.rawValue] == expected { return }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTFail("timed out waiting for \(expected) succeeded jobs, last counts: \(lastCounts)")
+    }
+
+    private static func jobStatusCounts(_ queue: DatabaseQueue) async throws -> [String: Int] {
+        try await queue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT status, COUNT(*) AS count FROM memory_extraction_jobs GROUP BY status"
+            )
+            var counts: [String: Int] = [:]
+            for row in rows {
+                guard let status: String = row["status"], let count: Int = row["count"] else {
+                    continue
+                }
+                counts[status] = count
+            }
+            return counts
+        }
     }
 }
 
