@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -80,16 +80,16 @@ export function resolveOpenBurnBarDaemonRuntimePaths(
   const platform = input.platform ?? process.platform;
   const homeDir = input.homeDir ?? homedir();
   const supportDirOverride = env.OPENBURNBAR_DAEMON_SUPPORT_DIR ?? env.BURNBAR_DAEMON_SUPPORT_DIR;
-  const socketPathOverride = env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH;
+  const socketPathOverride =
+    env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH ?? env.OPENBURNBAR_SOCKET_PATH;
   const authTokenFileOverride =
     env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ?? env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
 
   if (platform === 'linux') {
-    const runtimeRoot = env.XDG_RUNTIME_DIR?.trim() || join(tmpdir(), `openburnbar-${input.uid ?? 'user'}`);
-    const stateRoot = env.XDG_STATE_HOME?.trim() || join(homeDir, '.local', 'state');
-    const supportDir = supportDirOverride ?? join(stateRoot, 'openburnbar');
+    const dataRoot = env.XDG_DATA_HOME?.trim() || join(homeDir, '.local', 'share');
+    const supportDir = supportDirOverride ?? join(dataRoot, 'openburnbar');
     return {
-      socketPath: socketPathOverride ?? join(runtimeRoot, 'openburnbar', 'openburnbar-daemon.sock'),
+      socketPath: socketPathOverride ?? join(supportDir, 'openburnbar-daemon.sock'),
       authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),
       supportDir
     };
