@@ -89,7 +89,7 @@ public enum BurnBarDaemonPaths {
 }
 
 public enum BurnBarDaemonVersion {
-    public static let current = "1.0.12"
+    public static let current = "1.0.27"
 }
 
 public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {

@@ -35,6 +35,16 @@ on:
         required: false
         type: string
         default: ""
+      run_release_validation_gates:
+        description: "Run slow release validation gates before packaging. Disable only for an owner-approved retry with equivalent prior-run evidence."
+        required: false
+        type: boolean
+        default: true
+      release_validation_bypass_reason:
+        description: "Required when run_release_validation_gates=false; include prior successful gate evidence, owner approval, and retry scope."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: release-${{ github.ref }}
@@ -50,13 +60,115 @@ env:
   DERIVED_DATA: .derived-data
 
 jobs:
+  release-functions-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Functions Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Install OpenBurnBar Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Lint OpenBurnBar Functions
+        run: npm --prefix functions run lint
+
+      - name: Build OpenBurnBar Functions
+        run: npm --prefix functions run build
+
+      - name: Run OpenBurnBar Functions tests
+        run: npm --prefix functions test
+
+      - name: Run Firestore rules emulator tests
+        run: npm --prefix functions run test:firestore-rules
+
+  release-extension-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Extension and TS Gate
+    runs-on: macos-26
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Run TypeScript tests
+        run: ./scripts/test-openburnbar-ts.sh
+
+      - name: Run replay evals
+        run: ./scripts/test-openburnbar-replay-evals.sh
+
+      - name: Run extension-host tests
+        run: ./scripts/test-openburnbar-extension-host.sh
+
+  release-supply-chain-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Release Supply Chain Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            extensions/openburnbar/package-lock.json
+
+      - name: Install audit dependencies
+        run: |
+          npm ci --prefix functions
+          npm ci --prefix extensions/openburnbar
+
+      - name: Run supply chain audit
+        run: ./scripts/supply-chain-audit.sh
+
   build-and-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     environment: release
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
-    timeout-minutes: 180
+    # The approved release lane still serializes the secret-backed app/mobile,
+    # SQLCipher, Android signing, notarization, and artifact generation steps.
+    # v1.0.16 proved those gates can legitimately run past 180 minutes on cold
+    # macOS runners, so keep the independent gates parallel but give this
+    # protected packaging lane enough headroom to reach publish.
+    timeout-minutes: 360
     outputs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
@@ -194,14 +306,44 @@ jobs:
             exit 1
           fi
 
+      - name: Validate release validation bypass reason
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
+        env:
+          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
+        run: |
+          set -euo pipefail
+          compact="${RELEASE_VALIDATION_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::run_release_validation_gates=false requires release_validation_bypass_reason with prior-run evidence."
+            exit 1
+          fi
+          if ((${#RELEASE_VALIDATION_BYPASS_REASON} < 140)); then
+            echo "::error::release_validation_bypass_reason must include owner approval, prior run evidence, and retry scope."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(owner|approved|approval|approver)\b' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must name owner approval."
+            exit 1
+          fi
+          if ! grep -Eiq '\b(Swift|app smoke|SQLCipher|mobile|Android|retrieval|validation)\b' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must describe the release validation gates being reused."
+            exit 1
+          fi
+          if ! grep -Eiq 'https://github\.com/Imagine-That-Ai/BurnBar/actions/runs/[0-9]+' <<<"${RELEASE_VALIDATION_BYPASS_REASON}"; then
+            echo "::error::release_validation_bypass_reason must include the prior GitHub Actions run URL."
+            exit 1
+          fi
+
       - name: Release preflight summary
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
           VERSION: ${{ steps.version.outputs.version }}
+          RUN_RELEASE_VALIDATION_GATES: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: |
           echo "Release tag: $TAG_NAME"
           echo "Version: $VERSION"
           echo "Strict notarized release mode: true"
+          echo "Run release validation gates: ${RUN_RELEASE_VALIDATION_GATES}"
           echo "Firebase secrets available: ${HAS_FIREBASE_SECRETS}"
           echo "Signing secrets available: ${HAS_SIGNING_SECRETS}"
           echo "Notary API secrets available: ${HAS_NOTARY_SECRETS}"
@@ -294,21 +436,6 @@ jobs:
           OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-sentry-config-ios.sh
 
-      - name: Install OpenBurnBar Functions dependencies
-        run: npm ci --prefix functions
-
-      - name: Lint OpenBurnBar Functions
-        run: npm --prefix functions run lint
-
-      - name: Build OpenBurnBar Functions
-        run: npm --prefix functions run build
-
-      - name: Run OpenBurnBar Functions tests
-        run: npm --prefix functions test
-
-      - name: Install extension dependencies
-        run: npm ci --prefix extensions/openburnbar
-
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
@@ -322,27 +449,55 @@ jobs:
           protoc --version
 
       - name: Run Swift tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         timeout-minutes: 25
         # Coverage is a PR/CI responsibility. Release publication needs pass/fail
         # proof and bounded diagnostics, not a cold-runner coverage rebuild.
         run: ./scripts/test-openburnbar-swift.sh
 
-      - name: Run OpenBurnBar app tests
+      - name: Run OpenBurnBar release-critical app tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         timeout-minutes: 75
-        # Keep the active app XCTest gate, but do not collect coverage in the
-        # release lane. A cold GitHub macOS runner can otherwise spend most of
-        # an emergency publish rebuilding instrumented app/test products.
-        run: ./scripts/test-openburnbar-app.sh
+        # The full OpenBurnBarTests app suite is a PR/CI responsibility. Release
+        # publication needs a bounded app-host smoke that still proves the
+        # surfaces most likely to break a shipped binary: direct-download
+        # metadata, Firebase/App Check config, menu-bar click/popover behavior,
+        # and the newest chat pane tiling contracts. The selected test slice is
+        # intentionally narrow, but cold GitHub macOS runners still compile the
+        # app host and SwiftPM graph before XCTest starts, so this step keeps
+        # enough wall-clock headroom for dependency build time without restoring
+        # the full app-suite release gate.
+        run: |
+          source scripts/lib/openburnbar-release-app-test-filters.sh
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
+            ./scripts/test-openburnbar-app.sh
 
       - name: Verify SQLCipher codec in Release configuration
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        timeout-minutes: 60
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
 
       - name: Run OpenBurnBar mobile unit tests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_mobile_unit_tests }}
-        timeout-minutes: 45
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        timeout-minutes: 75
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
-        # Release gates need pass/fail proof; coverage collection belongs to CI, not notarized artifact publication.
-        run: ./scripts/test-openburnbar-mobile.sh
+        # The full mobile suite is a PR/CI responsibility. Release publication
+        # needs a bounded mobile-host smoke that still proves App Store/TestFlight
+        # metadata, Firebase/App Check readiness, auth startup safety, iPad
+        # navigation, and the newest mobile kernel/backdrop contracts. Cold
+        # GitHub macOS runners still compile the iOS app host and SwiftPM graph,
+        # so this step keeps enough wall-clock headroom for dependency build time
+        # without restoring the full mobile-suite release gate.
+        run: |
+          source scripts/lib/openburnbar-release-mobile-test-filters.sh
+          OPENBURNBAR_MOBILE_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE=240 \
+          OPENBURNBAR_MOBILE_TEST_MAX_ALLOWANCE=480 \
+          OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)" \
+            ./scripts/test-openburnbar-mobile.sh
 
       - name: Record owner-approved mobile unit test bypass
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
@@ -360,26 +515,41 @@ jobs:
             echo "- Scope: iOS simulator mobile unit-test gate only; Swift tests, app tests, SQLCipher codec checks, TypeScript tests, Firestore rules, Android tests, supply-chain checks, signing, notarization, and artifact verification still run."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record owner-approved release validation bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing slow release validation gates for manual release ${TAG_NAME}: ${RELEASE_VALIDATION_BYPASS_REASON}"
+          {
+            echo "## Owner-approved release validation bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Version: ${VERSION}"
+            echo "- Reason/evidence: ${RELEASE_VALIDATION_BYPASS_REASON}"
+            echo "- Scope: Swift tests, release app smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests only; preflight, secret validation, Firebase/App Check config injection, Android release bundle build, macOS signing, notarization, artifact smoke, provenance, publish, and live feed verification still run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run retrieval replay evals
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
-      - name: Run TypeScript tests
-        run: ./scripts/test-openburnbar-ts.sh
-
-      - name: Run replay evals
-        run: ./scripts/test-openburnbar-replay-evals.sh
-
-      - name: Run extension-host tests
-        run: ./scripts/test-openburnbar-extension-host.sh
-
-      - name: Run Firestore rules emulator tests
-        run: npm --prefix functions run test:firestore-rules
+      - name: Prepare Signal FFI XCFramework for release app
+        env:
+          SIGNAL_FFI_BUILD_PROFILE: release
+          # The direct-download macOS release packages only the Mac app here.
+          # iOS/TestFlight artifacts are cut through the mobile lane, and the
+          # mobile test script prepares iOS slices when that gate is enabled.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+          CARGO_BUILD_JOBS: "2"
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Set up Java 21 (Android release tests)
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -412,6 +582,7 @@ jobs:
         run: bash ./scripts/ci/inject-android-keystore.sh
 
       - name: Run Android unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-android.sh
 
       - name: Build signed Android release bundle
@@ -434,8 +605,8 @@ jobs:
           name: app-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
 
-      - name: Run supply chain audit
-        run: ./scripts/supply-chain-audit.sh
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
 
       - name: Inject extension Sentry DSN
         env:
@@ -464,6 +635,11 @@ jobs:
           # Stamp Build Provenance phase records channel=release (not "source").
           OPENBURNBAR_BUILD_CHANNEL: release
         run: |
+          set -euo pipefail
+
+          xcodebuild_log="${RUNNER_TEMP:-/tmp}/openburnbar-release-app-xcodebuild.log"
+          rm -f "$xcodebuild_log"
+
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -476,7 +652,39 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build >"$xcodebuild_log" 2>&1 &
+          xcodebuild_pid="$!"
+
+          heartbeat_count=0
+          while kill -0 "$xcodebuild_pid" 2>/dev/null; do
+            sleep 60
+            if kill -0 "$xcodebuild_pid" 2>/dev/null; then
+              heartbeat_count=$((heartbeat_count + 1))
+              echo "::notice::xcodebuild Release .app still running at $(date -u +%Y-%m-%dT%H:%M:%SZ) (${heartbeat_count}m elapsed)"
+              if [[ -s "$xcodebuild_log" ]]; then
+                echo "::group::xcodebuild Release .app recent output"
+                tail -n 40 "$xcodebuild_log" || true
+                echo "::endgroup::"
+              fi
+            fi
+          done
+
+          set +e
+          wait "$xcodebuild_pid"
+          xcodebuild_status="$?"
+          set -e
+
+          if [[ "$xcodebuild_status" -ne 0 ]]; then
+            echo "::error::xcodebuild Release .app failed with exit code ${xcodebuild_status}"
+            echo "::group::xcodebuild Release .app final log"
+            tail -n 200 "$xcodebuild_log" || true
+            echo "::endgroup::"
+            exit "$xcodebuild_status"
+          fi
+
+          echo "::group::xcodebuild Release .app final log"
+          tail -n 80 "$xcodebuild_log" || true
+          echo "::endgroup::"
 
       - name: Embed daemon binary in app bundle
         run: |
@@ -597,11 +805,15 @@ jobs:
       - name: Codesign app bundle (deterministic order)
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
           ENTITLEMENTS="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+          APP_PROFILE="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.provisionprofile"
+          APP_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.plist"
+          APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
 
@@ -609,6 +821,64 @@ jobs:
             echo "::error::App bundle not found at $APP_PATH"
             exit 1
           fi
+          if [[ -z "${OPENBURNBAR_APP_PROFILE_BASE64:-}" ]]; then
+            echo "::error::OPENBURNBAR_APP_PROFILE_BASE64 is required. Store the com.openburnbar.app MAC_APP_DIRECT profile as a GitHub Actions secret."
+            exit 1
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["OPENBURNBAR_APP_PROFILE_BASE64"].split())
+          Path(os.environ["APP_PROFILE"]).write_bytes(base64.b64decode(payload))
+          PY
+          security cms -D -i "$APP_PROFILE" > "$APP_PROFILE_PLIST"
+          if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$APP_PROFILE_PLIST" 2>/dev/null || true)" != "true" ]]; then
+            echo "::error::App profile must be a Developer ID / MAC_APP_DIRECT all-devices profile."
+            exit 1
+          fi
+          APP_PROFILE_TEAM_ID="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          APP_PROFILE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          EXPECTED_APP_IDENTIFIER="${APP_PROFILE_TEAM_ID}.${BUNDLE_ID}"
+          if [[ ! "$APP_PROFILE_TEAM_ID" =~ ^[A-Z0-9]{10}$ || "$APP_PROFILE_IDENTIFIER" != "$EXPECTED_APP_IDENTIFIER" ]]; then
+            echo "::error::App profile must authorize $BUNDLE_ID for team ${APP_PROFILE_TEAM_ID:-<missing>}; found application identifier '${APP_PROFILE_IDENTIFIER:-missing}'."
+            exit 1
+          fi
+          APP_PROFILE_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          if ! grep -q "${APP_PROFILE_TEAM_ID}\\.\\*\\|${EXPECTED_APP_IDENTIFIER}" <<<"$APP_PROFILE_KEYCHAIN_GROUPS"; then
+            echo "::error::App profile does not authorize the $EXPECTED_APP_IDENTIFIER Keychain access group."
+            printf '%s\n' "$APP_PROFILE_KEYCHAIN_GROUPS"
+            exit 1
+          fi
+          python3 - "$ENTITLEMENTS" "$APP_SIGNING_ENTITLEMENTS" "$APP_PROFILE_TEAM_ID" "$BUNDLE_ID" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          source, destination, team_id, bundle_id = sys.argv[1:5]
+
+          def expand(value):
+              if isinstance(value, str):
+                  return (
+                      value
+                      .replace("$(AppIdentifierPrefix)", f"{team_id}.")
+                      .replace("$(TeamIdentifierPrefix)", team_id)
+                      .replace("$(PRODUCT_BUNDLE_IDENTIFIER)", bundle_id)
+                  )
+              if isinstance(value, list):
+                  return [expand(item) for item in value]
+              if isinstance(value, dict):
+                  return {key: expand(item) for key, item in value.items()}
+              return value
+
+          with Path(source).open("rb") as file:
+              entitlements = plistlib.load(file)
+          with Path(destination).open("wb") as file:
+              plistlib.dump(expand(entitlements), file)
+          PY
 
           sign_one() {
             local path="$1"
@@ -690,8 +960,9 @@ jobs:
             "runtime,library" \
             "com.openburnbar.privileged-input-killswitch-watchdog"
 
+          cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
-            --entitlements "$ENTITLEMENTS" \
+            --entitlements "$APP_SIGNING_ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
@@ -702,6 +973,20 @@ jobs:
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
+          ACTUAL_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBar-signed-entitlements.plist"
+          codesign -d --entitlements :- "$APP_PATH" > "$ACTUAL_ENTITLEMENTS" 2>/dev/null
+          ACTUAL_APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          ACTUAL_TEAM_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          ACTUAL_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          if [[ "$ACTUAL_APP_IDENTIFIER" != "$EXPECTED_APP_IDENTIFIER" || "$ACTUAL_TEAM_IDENTIFIER" != "$APP_PROFILE_TEAM_ID" ]]; then
+            echo "::error::Direct-download app identity entitlements are wrong: app='${ACTUAL_APP_IDENTIFIER:-missing}' team='${ACTUAL_TEAM_IDENTIFIER:-missing}' expected app='$EXPECTED_APP_IDENTIFIER' team='$APP_PROFILE_TEAM_ID'."
+            exit 1
+          fi
+          if ! grep -q "$EXPECTED_APP_IDENTIFIER" <<<"$ACTUAL_KEYCHAIN_GROUPS"; then
+            echo "::error::Direct-download app is missing Firebase Auth Keychain group $EXPECTED_APP_IDENTIFIER."
+            printf '%s\n' "$ACTUAL_KEYCHAIN_GROUPS"
+            exit 1
+          fi
           spctl --assess --type execute -vv "$APP_PATH" || true
 
       - name: Create DMG
@@ -758,33 +1043,57 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          OPENBURNBAR_NOTARY_OUTER_TIMEOUT_SECONDS: "2100"
+          OPENBURNBAR_STAPLER_OUTER_TIMEOUT_SECONDS: "600"
         run: |
           NOTARY_ARGS=(
             --key "$notary_key_path"
             --key-id "$APPLE_NOTARY_KEY_ID"
           )
 
+          run_notary_submit() {
+            local mode="$1"
+            shift
+
+            python3 scripts/ci/release-command-watchdog.py \
+              --mode "$mode" \
+              --outer-timeout-seconds "$OPENBURNBAR_NOTARY_OUTER_TIMEOUT_SECONDS" \
+              -- \
+              xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" "$@" --wait --timeout 30m
+          }
+
+          run_stapler() {
+            local mode="$1"
+            shift
+
+            python3 scripts/ci/release-command-watchdog.py \
+              --mode "$mode" \
+              --outer-timeout-seconds "$OPENBURNBAR_STAPLER_OUTER_TIMEOUT_SECONDS" \
+              -- \
+              xcrun stapler "$@" "$DMG_PATH"
+          }
+
           # Avoid using `notarytool history` as an auth probe because it can
           # trap on some runner/toolchain combinations. Probe by submit itself.
           if [[ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
             set +e
-            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait --timeout 30m
+            run_notary_submit "team API key" --issuer "$APPLE_NOTARY_ISSUER_ID"
             notary_status=$?
             set -e
             if [[ $notary_status -eq 0 ]]; then
               echo "Notary auth mode: team API key"
             else
               echo "::warning::Issuer-mode notarization failed; retrying without issuer (individual key mode)."
-              xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+              run_notary_submit "individual API key"
               echo "Notary auth mode: individual API key"
             fi
           else
-            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+            run_notary_submit "individual API key"
             echo "Notary auth mode: individual API key"
           fi
 
-          xcrun stapler staple "$DMG_PATH"
-          xcrun stapler validate "$DMG_PATH"
+          run_stapler "stapler staple" staple
+          run_stapler "stapler validate" validate
 
       - name: Create ZIP archive
         id: zip
@@ -1337,7 +1646,7 @@ jobs:
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
   publish:
-    needs: [build-and-release, smoke-test]
+    needs: [build-and-release, smoke-test, release-functions-gate, release-extension-gate, release-supply-chain-gate]
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -1376,7 +1685,10 @@ jobs:
           SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
-          mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          PROVENANCE_PATHS=()
+          while IFS= read -r provenance_path; do
+            [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
+          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"

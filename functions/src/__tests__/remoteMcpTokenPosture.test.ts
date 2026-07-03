@@ -5,6 +5,7 @@ import {
   issueRemoteMcpGrantForSignedInUser,
   isRemoteMcpProductionIssuerRuntime,
   REMOTE_MCP_DEFAULT_GRANT_SCOPES,
+  shouldBindRemoteMcpHmacSecretForRuntime,
 } from "../remoteMcpOAuth.js";
 import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 
@@ -13,6 +14,20 @@ function decodeHmacAccessToken(token: string): { scopes?: unknown } {
   if (!body) throw new Error("missing token body");
   const decoded: { scopes?: unknown } = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
   return decoded;
+}
+
+async function withProductionRemoteMcpRuntime<T>(fn: () => T | Promise<T>): Promise<T> {
+  const previousRuntimeEnvironment = process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT;
+  process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT = "production";
+  try {
+    return await fn();
+  } finally {
+    if (previousRuntimeEnvironment === undefined) {
+      delete process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT;
+    } else {
+      process.env.REMOTE_MCP_RUNTIME_ENVIRONMENT = previousRuntimeEnvironment;
+    }
+  }
 }
 
 describe("Remote MCP Functions issuer token posture", () => {
@@ -43,6 +58,17 @@ describe("Remote MCP Functions issuer token posture", () => {
   it("detects production Cloud Run/Functions runtime", () => {
     expect(isRemoteMcpProductionIssuerRuntime({ K_SERVICE: "issue-remote-mcp-grant" })).toBe(true);
     expect(isRemoteMcpProductionIssuerRuntime({ NODE_ENV: "test", K_SERVICE: "ignored-in-tests" })).toBe(false);
+    expect(isRemoteMcpProductionIssuerRuntime({ NODE_ENV: "test", REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" })).toBe(
+      true,
+    );
+  });
+
+  it("does not bind the legacy HMAC secret for production callables", () => {
+    expect(shouldBindRemoteMcpHmacSecretForRuntime({ REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" })).toBe(false);
+  });
+
+  it("keeps the HMAC fallback bound outside production for emulator compatibility", () => {
+    expect(shouldBindRemoteMcpHmacSecretForRuntime({ NODE_ENV: "test" })).toBe(true);
   });
 
   it("keeps hosted knowledge access out of default grants", async () => {
@@ -83,5 +109,38 @@ describe("Remote MCP Functions issuer token posture", () => {
     expect(grant.scopes).toEqual([...explicitScopes]);
     expect(decodeHmacAccessToken(grant.accessToken).scopes).toEqual([...explicitScopes]);
     expect(store.get("users/alice-uid/remote_mcp_clients/obbc_knowledge")?.allowedScopes).toEqual([...explicitScopes]);
+  });
+
+  it("throws in production when only the HMAC secret is configured", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const db = pathKeyedFirestore(store);
+
+    await expect(
+      withProductionRemoteMcpRuntime(() =>
+        issueRemoteMcpGrantForSignedInUser(db, "alice-uid", {
+          clientId: "obbc_prod_hmac_only",
+          entitlementFamily: "burnbar_pro",
+          tokenSecret: "shared-prod-secret",
+          audience: "https://mcp.burnbar.ai/mcp",
+        }),
+      ),
+    ).rejects.toThrow(/REMOTE_MCP_TOKEN_HMAC_SECRET must not be used/u);
+  });
+
+  it("throws in production when HMAC secret is present alongside Ed25519", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const db = pathKeyedFirestore(store);
+
+    await expect(
+      withProductionRemoteMcpRuntime(() =>
+        issueRemoteMcpGrantForSignedInUser(db, "alice-uid", {
+          clientId: "obbc_prod_dual_signer",
+          entitlementFamily: "burnbar_pro",
+          tokenSecret: "shared-prod-secret",
+          tokenEd25519PrivateKeyBase64PEM: "base64-pem",
+          audience: "https://mcp.burnbar.ai/mcp",
+        }),
+      ),
+    ).rejects.toThrow(/REMOTE_MCP_TOKEN_HMAC_SECRET must not be used/u);
   });
 });

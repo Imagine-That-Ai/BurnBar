@@ -238,8 +238,19 @@ For manual verification before promoting a release:
 make build
 
 # Run the release smoke test. The smoke script generates a throwaway daemon
-# socket auth token and verifies authenticated daemon health.
+# socket auth token and verifies authenticated daemon health. It also runs the
+# shared bounded release-critical app XCTest slice used by the GitHub release
+# workflow; the full app XCTest suite belongs in PR/CI, not the artifact
+# publication path.
 scripts/test-openburnbar-release-smoke.sh
+
+# To inspect or locally run only the release-critical app slice. The GitHub
+# release workflow gives this focused slice a 75-minute envelope because cold
+# macOS runners compile the app host and SwiftPM graph before XCTest starts; the
+# selected tests remain the same bounded release-critical list.
+source scripts/lib/openburnbar-release-app-test-filters.sh
+OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
+  ./scripts/test-openburnbar-app.sh
 
 # Check code signing
 codesign -dvvv .derived-data/Build/Products/Release/OpenBurnBar.app

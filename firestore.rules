@@ -4673,15 +4673,22 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowEnvelopeDocument();
-      allow delete: if ownsUserNamespace(userId);
+      // Sealed credential envelopes are non-deletable from the client; retirement
+      // flows through a server-only path so the escrow history stays intact.
+      allow delete: if false;
     }
 
     match /users/{userId}/escrow_audit_events/{eventId} {
+      // Tamper-evidence log: append-only for the owner. Once written, an audit
+      // event cannot be mutated or erased from the client — only server-side
+      // (Admin SDK) reconciliation may touch history. Mirrors the stricter
+      // computer_use_actions header above.
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /users/{userId}/cloud_profile/{profileId} {

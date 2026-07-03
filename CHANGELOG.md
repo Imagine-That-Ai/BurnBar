@@ -7,6 +7,230 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.27] - 2026-07-03
+
+### Fixed
+
+- **Direct-download Firebase Auth Keychain access** — signs the notarized
+  Developer ID app with the `4Y367DF25B.com.openburnbar.app` Keychain access
+  group and embeds the matching all-devices Mac App Direct provisioning profile,
+  so the downloaded app can open the Firebase Auth account page without the
+  macOS Keychain error banner.
+- **Release signing guardrails** — makes the macOS website-release builder,
+  GitHub release workflow, and public download trust gate fail if the app is
+  missing the direct-download provisioning profile, application identifier,
+  team identifier, or Firebase Auth Keychain group.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 37 / `versionName` `1.0.27` so Google Play receives the same
+  source cut as the macOS hotfix.
+
+## [1.0.26] - 2026-07-02
+
+### Added
+
+- **Tabbed Chat pane workspaces** — extends the cmux-style Chat tiling surface
+  with multiple conversation tabs, tab restore/reopen, per-tab names/colors,
+  per-pane names/colors, pane zoom, pane-to-tab moves, drag-to-swap panes, and
+  rail indicators that distinguish open panes from hidden panes with completed
+  background replies. Completion alerts now route through local notifications
+  and focus the relevant pane when tapped. The workspace persists via a v2
+  snapshot while still migrating the original v1 tiling layout.
+
+### Fixed
+
+- **Dashboard chat launch stability** — hardens the shared CLI launch path used
+  by the dashboard and popover so Claude, Hermes, and Codex chat replies keep
+  working when the search-index projection backlog is unavailable or the pinned
+  executable needs localized recovery messaging.
+- **Hermes fallback chat** — lets Hermes chat recover without a configured
+  bearer token and turns key rejection into a self-healing, actionable prompt
+  instead of a dead chat pane.
+- **Release download link** — keeps the public website's macOS fallback download
+  pinned to the smoke-proven GitHub Release asset while the updater feed remains
+  owned by the promoted release.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 36 / `versionName` `1.0.26` so Google Play receives the same
+  source cut as the macOS release.
+
+## [1.0.25] - 2026-07-02
+
+### Fixed
+
+- **Release publish job** — replaces the macOS publish step's Bash 4-only
+  `mapfile` usage with Bash 3.2-compatible provenance collection, so the
+  already-built, signed, notarized, and smoke-tested artifacts can be uploaded
+  from GitHub's hosted macOS runners.
+- **Current-main release cut** — moves the public release forward from the
+  smoke-proven `v1.0.24` tag to the newest `main` state, including the Computer
+  Use downgrade-only trust clamp and the committed remediation tracker.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 35 / `versionName` `1.0.25` so Google Play receives the same
+  release cut as the macOS publish retry.
+
+## [1.0.24] - 2026-07-02
+
+### Fixed
+
+- **Release smoke health check** — retries the public release from the newest
+  `main` cut after `v1.0.23` built and notarized successfully but failed the
+  packaged DMG smoke test. The signed `OpenBurnBarCLI health` command now uses
+  the daemon socket client directly for the exact health probe instead of
+  constructing the full CLI runner and opening the default profile store first,
+  preventing the smoke harness from hanging before it can verify the packaged
+  daemon.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 34 / `versionName` `1.0.24` so Google Play receives the same
+  release cut as the macOS retry.
+
+## [1.0.23] - 2026-07-01
+
+### Fixed
+
+- **macOS release libsignal link** — prepares the ignored
+  `OpenBurnBarSignalFfiMac.xcframework` from the vendored libsignal submodule
+  inside the protected release workflow before Xcode resolves packages or links
+  the Developer ID app, so the public DMG no longer depends on a developer's
+  local FFI build output.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 33 / `versionName` `1.0.23` so Google Play receives the same
+  release cut as the website retry.
+
+## [1.0.22] - 2026-07-01
+
+### Fixed
+
+- **Release notarization watchdog** — supersedes the wedged `v1.0.21` macOS
+  publish run after the signed DMG entered the Apple notarize/staple step and
+  never returned from the old unbounded shell command. Release CI now wraps
+  `notarytool` and `stapler` in a process-group watchdog so Apple-tool hangs
+  retry or fail with clear logs instead of consuming the protected release job.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 32 / `versionName` `1.0.22` for the fixed release cut.
+
+## [1.0.21] - 2026-07-01
+
+### Fixed
+
+- **Release smoke auth hardening** — pulls the public release forward from the
+  failed `v1.0.20` tag to the newest `main` commit and closes the release-smoke
+  token leak: the smoke daemon now receives its socket auth token from a chmod
+  600 token file instead of LaunchAgent environment, diagnostics redact token
+  fields, local smoke runs no longer print the raw GitHub mask command, and
+  explicit token-file arguments override stale inherited launchd auth.
+- **Fresh mobile release build** — bumps the iOS, iPadOS, widget, and keyboard
+  build number to `81` so the TestFlight upload for this release is unique and
+  tied to the same source cut as the macOS and Android artifacts.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 31 / `versionName` `1.0.21` so Google Play receives the same
+  release cut as the website and Apple lanes.
+
+## [1.0.20] - 2026-07-01
+
+### Fixed
+
+- **Release DMG smoke resilience** — supersedes the failed `v1.0.19` publish
+  run after the signed app, notarized DMG, Android AAB, and provenance artifacts
+  built successfully but the macOS 15 smoke runner timed out during the
+  installed-layout daemon/CLI health handshake. The gate still requires the
+  mounted DMG to launch the app and authenticate through the signed CLI, but it
+  now gives first-run code-signature validation realistic cold-runner headroom
+  and emits launchd/socket diagnostics if health does not come up.
+
+## [1.0.19] - 2026-07-01
+
+### Fixed
+
+- **Foreground Xcode release heartbeat** — supersedes the failed `v1.0.18`
+  publish run. That run proved Android packaging, extension build, Functions,
+  daemon release binaries, package resolution, and the initial heartbeat all
+  ran, but the macOS unsigned Release app step still went silent during the
+  long Xcode phase. The release lane now runs `xcodebuild` in the background,
+  keeps the foreground shell printing a one-minute heartbeat plus recent
+  `xcodebuild` log output, and emits the final Xcode tail on failure so the
+  runner cannot silently kill a healthy build without evidence.
+
+## [1.0.18] - 2026-07-01
+
+### Fixed
+
+- **Release Xcode heartbeat** — supersedes the failed `v1.0.17` publish run
+  with the same newest-`main` source after Android AAB packaging succeeded.
+  The macOS unsigned Release app build entered a long quiet whole-module Xcode
+  phase and GitHub terminated the step without a compiler error. The release
+  lane now emits a one-minute heartbeat while `xcodebuild` is still running, so
+  quiet-but-active macOS packaging can reach signing, notarization, upload, and
+  live feed verification.
+
+## [1.0.17] - 2026-07-01
+
+### Fixed
+
+- **Release lane wall-clock cap** — supersedes the cancelled `v1.0.16`
+  publish run with the same newest-`main` source after the Android entitlement
+  fixture fix was proven in CI. The prior run passed Swift tests, release app
+  smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests, then
+  hit the protected `build-and-release` job's 180-minute cap while the signed
+  Android AAB was still building. The release packaging lane now has enough
+  bounded headroom for Android signing, macOS signing, notarization, provenance,
+  and artifact upload to finish instead of cancelling before publish.
+- **Owner-approved release retry path** — manual release reruns can now skip
+  already-proven slow validation gates only when the operator supplies owner
+  approval and a prior GitHub Actions run URL. The retry still rebuilds the
+  signed Android bundle, signs/notarizes macOS artifacts, runs artifact smoke,
+  publishes, and verifies the live feed.
+
+## [1.0.16] - 2026-06-30
+
+### Fixed
+
+- **Android release gate entitlement fixture** — supersedes the failed
+  `v1.0.15` publish run with the same newest-`main` source, but fixes the
+  Android `HostedQuotaSubscriptionStoreTest` active-subscription fixtures that
+  expired at noon UTC on release day. The full Android JVM gate now uses a
+  stable future active-entitlement fixture, while the explicit expired-purchase
+  regression remains pinned to `2020-01-01T00:00:00Z`.
+
+## [1.0.15] - 2026-06-30
+
+### Fixed
+
+- **Bounded release-critical mobile gate** — supersedes the failed `v1.0.14`
+  publish run with the same newest-`main` source and pane-enabled macOS app, but
+  keeps the release workflow from running the full iOS simulator suite in the
+  artifact publication path. The release lane now runs a focused mobile XCTest
+  slice for App Store/TestFlight metadata, Firebase/App Check readiness, auth
+  startup safety, iPad navigation, mobile kernel/backdrop parity, Pulse/theme
+  basics, Sentry scrubbing, and provider setup contracts. The full mobile suite
+  remains a PR/CI gate.
+
+## [1.0.14] - 2026-06-30
+
+### Fixed
+
+- **Cold-runner release app smoke timeout** — supersedes the failed `v1.0.13`
+  publish run with the same newest-`main` source and pane-enabled macOS app, but
+  gives the bounded release-critical app XCTest slice enough GitHub macOS
+  cold-build headroom to compile the app host and SwiftPM graph before XCTest
+  starts. The release gate still uses the narrow direct-download, Firebase/App
+  Check, menu-bar/popover, and Chat pane tiling filters instead of the full app
+  suite.
+
+## [1.0.13] - 2026-06-30
+
+### Fixed
+
+- **Promoted release cut from newest main** — supersedes the failed `v1.0.12`
+  publish run with the same pane-enabled source plus the release-lane fix
+  itself. The tag includes PR #1095's cmux-style Chat pane tiling, PR #1104's
+  chat send fallback repair, and the `v1.0.12` release metadata.
+- **Bounded release-critical app gate** — the release workflow now runs a
+  shared, focused app-host XCTest slice for direct-download metadata,
+  Firebase/App Check readiness, menu-bar click/popover behavior, and Chat pane
+  tiling instead of the full app suite that timed out while still passing. The
+  full app suite remains a PR/CI gate; `scripts/test-openburnbar-release-smoke.sh`
+  uses the same shared release-critical filter list so the runbook and workflow
+  cannot drift.
+
 ## [1.0.12] - 2026-06-30
 
 ### Added

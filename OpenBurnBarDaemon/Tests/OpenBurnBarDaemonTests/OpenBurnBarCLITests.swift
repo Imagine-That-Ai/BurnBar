@@ -53,12 +53,78 @@ final class BurnBarCLITests: XCTestCase {
         ))
     }
 
+    func testHealthFastPathIsLimitedToCanonicalOpenBurnBarExecutable() {
+        XCTAssertTrue(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertTrue(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["--", "health"],
+            invokedExecutablePath: "/tmp/openburnbar-cli"
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: "/tmp/codex"
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["health"],
+            invokedExecutablePath: nil
+        ))
+        XCTAssertFalse(BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: ["exec", "codex", "health"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+    }
+
     func testHealthCommandFormatsDaemonStatus() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.run(arguments: ["health"])
 
         XCTAssertTrue(output.contains("Daemon 0.1.0"))
         XCTAssertTrue(output.contains("ok=true"))
+    }
+
+    func testSharedHealthFormatterMatchesCLIOutput() throws {
+        let response = try FakeCLIClient().health()
+
+        XCTAssertEqual(
+            BurnBarCLIHealthFormatter.format(response),
+            "Daemon 0.1.0 | protocol 1 | socket /tmp/openburnbar.sock | ok=true"
+        )
+    }
+
+    func testSocketClientResolvesExplicitSocketPathFromEnvironment() {
+        let url = BurnBarCLISocketClient.resolvedSocketURL(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_PATH": " /tmp/openburnbar-release-smoke.sock ",
+            "OPENBURNBAR_DAEMON_SUPPORT_DIR": "/tmp/ignored-support-dir"
+        ])
+
+        XCTAssertEqual(url.path, "/tmp/openburnbar-release-smoke.sock")
+    }
+
+    func testSocketClientResolvesLegacyExplicitSocketPathFromEnvironment() {
+        let url = BurnBarCLISocketClient.resolvedSocketURL(environment: [
+            "BURNBAR_DAEMON_SOCKET_PATH": "/tmp/openburnbar-legacy-smoke.sock"
+        ])
+
+        XCTAssertEqual(url.path, "/tmp/openburnbar-legacy-smoke.sock")
+    }
+
+    func testSocketClientPrefersPrimaryExplicitSocketPathEnvironmentName() {
+        let url = BurnBarCLISocketClient.resolvedSocketURL(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_PATH": "/tmp/openburnbar-primary.sock",
+            "BURNBAR_DAEMON_SOCKET_PATH": "/tmp/openburnbar-legacy.sock"
+        ])
+
+        XCTAssertEqual(url.path, "/tmp/openburnbar-primary.sock")
+    }
+
+    func testSocketClientFallsBackWhenExplicitSocketPathIsBlank() {
+        let url = BurnBarCLISocketClient.resolvedSocketURL(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_PATH": "  "
+        ])
+
+        XCTAssertEqual(url, BurnBarDaemonPaths.defaultSocketURL)
     }
 
     func testRemoteUnlockCertificationStatusUsesProofStore() throws {

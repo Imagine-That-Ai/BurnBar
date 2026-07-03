@@ -5,6 +5,7 @@
 #   ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_SKIP_BUILD=1 ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin x86_64-apple-darwin" ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_RUST_TOOLCHAIN=1.94.0 ./scripts/build-signal-ffi-xcframework.sh
 #
 # Output:
 #   Vendor/OpenBurnBarSignalFfiIOS.xcframework/
@@ -27,6 +28,8 @@ BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
 EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
+MACHO_REPAIR_TOOL="${BUILD_DIR}/repair_macho_linkedit_alignment.py"
+RUSTC_WRAPPER_SCRIPT="${BUILD_DIR}/rustc-wrapper.sh"
 METADATA_FILE_NAME=".openburnbar-signal-ffi-build.env"
 
 PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-release}"
@@ -93,11 +96,148 @@ else
 fi
 [[ -x "${CARGO_BIN}" ]] || abort "cargo not found in PATH"
 
+RUST_TOOLCHAIN="${SIGNAL_FFI_RUST_TOOLCHAIN:-stable}"
+[[ -n "${RUST_TOOLCHAIN}" ]] || abort "SIGNAL_FFI_RUST_TOOLCHAIN cannot be empty"
+
+write_macho_repair_tool() {
+  mkdir -p "${BUILD_DIR}"
+  cat > "${MACHO_REPAIR_TOOL}" <<'PY'
+import struct
+import subprocess
+import sys
+
+for path in sys.argv[1:]:
+    with open(path, "rb") as handle:
+        data = bytearray(handle.read())
+
+    # Xcode 27's linker rejects dylibs whose LINKEDIT string pool is not
+    # 8-byte aligned. Rust proc-macro dylibs can hit the same issue before the
+    # final libsignal cdylib is staged, so repair generated dylibs immediately.
+    if len(data) < 32 or struct.unpack_from("<I", data, 0)[0] != 0xFEEDFACF:
+        continue
+
+    _, _, _, _, ncmds, _, _, _ = struct.unpack_from("<IiiIIIII", data, 0)
+    offset = 32
+    symtab_offset = None
+    linkedit_offset = None
+    codesig_offset = None
+    string_offset = None
+
+    for _ in range(ncmds):
+        command, command_size = struct.unpack_from("<II", data, offset)
+        if command == 0x19:  # LC_SEGMENT_64
+            segment_name = struct.unpack_from("<16s", data, offset + 8)[0].rstrip(b"\0")
+            if segment_name == b"__LINKEDIT":
+                linkedit_offset = offset
+        elif command == 0x2:  # LC_SYMTAB
+            symtab_offset = offset
+            _, _, string_offset, _ = struct.unpack_from("<IIII", data, offset + 8)
+        elif command == 0x1D:  # LC_CODE_SIGNATURE
+            codesig_offset = offset
+        offset += command_size
+
+    if symtab_offset is None or string_offset is None:
+        continue
+
+    string_padding = (-string_offset) % 8
+    insertions = []
+    if string_padding:
+        insertions.append((string_offset, string_padding))
+        struct.pack_into("<I", data, symtab_offset + 16, string_offset + string_padding)
+
+    if codesig_offset is not None:
+        signature_offset, _ = struct.unpack_from("<II", data, codesig_offset + 8)
+        shifted_signature_offset = signature_offset
+        if string_padding and signature_offset >= string_offset:
+            shifted_signature_offset += string_padding
+        signature_padding = (-shifted_signature_offset) % 16
+        if signature_padding:
+            insertions.append((signature_offset, signature_padding))
+        struct.pack_into(
+            "<I",
+            data,
+            codesig_offset + 8,
+            shifted_signature_offset + signature_padding,
+        )
+
+    if linkedit_offset is not None:
+        linkedit_file_offset, linkedit_size = struct.unpack_from("<QQ", data, linkedit_offset + 40)
+        inserted_size = sum(size for where, size in insertions if where >= linkedit_file_offset)
+        if inserted_size:
+            struct.pack_into("<Q", data, linkedit_offset + 48, linkedit_size + inserted_size)
+
+    if not insertions:
+        continue
+
+    for where, size in sorted(insertions, reverse=True):
+        data[where:where] = b"\0" * size
+
+    with open(path, "wb") as handle:
+        handle.write(data)
+
+    subprocess.run(
+        ["/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", path],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+PY
+}
+
+write_rustc_wrapper() {
+  write_macho_repair_tool
+  cat > "${RUSTC_WRAPPER_SCRIPT}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+repair_tool="${OPENBURNBAR_SIGNAL_FFI_MACHO_REPAIR_TOOL:?}"
+real_rustc="$1"
+shift
+
+set +e
+"${real_rustc}" "$@"
+status=$?
+set -e
+if [[ "${status}" -ne 0 ]]; then
+  exit "${status}"
+fi
+
+args=("$@")
+crate_name=""
+out_dir=""
+for ((index = 0; index < ${#args[@]}; index++)); do
+  case "${args[$index]}" in
+    --crate-name)
+      if (( index + 1 < ${#args[@]} )); then
+        crate_name="${args[$((index + 1))]}"
+      fi
+      ;;
+    --out-dir)
+      if (( index + 1 < ${#args[@]} )); then
+        out_dir="${args[$((index + 1))]}"
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "${crate_name}" || -z "${out_dir}" || ! -d "${out_dir}" ]]; then
+  exit 0
+fi
+
+safe_crate_name="${crate_name//-/_}"
+shopt -s nullglob
+for dylib in "${out_dir}/lib${safe_crate_name}"*.dylib; do
+  python3 "${repair_tool}" "${dylib}"
+done
+EOF
+  chmod +x "${RUSTC_WRAPPER_SCRIPT}"
+}
+
 ensure_rust_target() {
   local target="$1"
-  if ! "${RUSTUP_BIN}" +stable target list --installed | grep -q "^${target}$"; then
+  if ! "${RUSTUP_BIN}" "+${RUST_TOOLCHAIN}" target list --installed | grep -q "^${target}$"; then
     log "installing rust target ${target}"
-    "${RUSTUP_BIN}" +stable target add "${target}"
+    "${RUSTUP_BIN}" "+${RUST_TOOLCHAIN}" target add "${target}"
   fi
 }
 
@@ -121,15 +261,17 @@ build_target() {
     )
   fi
   ensure_rust_target "${target}"
-  log "cargo +stable rustc ${PROFILE} ${target} (${crate_type})"
+  log "cargo +${RUST_TOOLCHAIN} rustc ${PROFILE} ${target} (${crate_type})"
   (
     cd "${LIBSIGNAL_DIR}"
     CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
     MACOSX_DEPLOYMENT_TARGET=14.0 \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
+    OPENBURNBAR_SIGNAL_FFI_MACHO_REPAIR_TOOL="${MACHO_REPAIR_TOOL}" \
+    RUSTC_WRAPPER="${RUSTC_WRAPPER_SCRIPT}" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" +stable rustc \
+      "${CARGO_BIN}" "+${RUST_TOOLCHAIN}" rustc \
         -p libsignal-ffi \
         ${PROFILE_FLAG} \
         --target "${target}" \
@@ -273,6 +415,8 @@ stage_dynamic_target() {
 }
 
 stage_exports
+
+write_rustc_wrapper
 
 if [[ "${SIGNAL_FFI_SKIP_BUILD:-0}" != "1" ]]; then
   for target in "${TARGETS[@]}"; do

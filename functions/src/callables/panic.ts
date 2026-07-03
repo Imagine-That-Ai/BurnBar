@@ -24,7 +24,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { boundedTrimmedString } from "./shared.js";
+import { optionalEnumField, parseCallableInput } from "../validation/callableSchema.js";
 import { revokeAllSignalSessions } from "../signalDirectoryRuntime.js";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 import { providerAccountSecretRefPath } from "../quota.js";
@@ -34,6 +34,14 @@ import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./audi
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 type PanicScope = "sync" | "all";
+
+// Declared payload for the panic button. `scope` is optional and defaults to the
+// least-destructive "sync" when omitted; the message matches the legacy contract.
+// A malformed non-object payload is now rejected up front — the high-risk proof
+// enforcement below (nonce + trusted-device action proof) would reject it anyway.
+const REVOKE_ALL_ACCESS_INPUT = {
+  scope: optionalEnumField(["sync", "all"], { maxLength: 16, message: "scope must be sync or all." }),
+};
 
 const REVOKE_REASON = "panic_revoke_all";
 // Keep each WriteBatch comfortably under Firestore's 500-op commit limit.
@@ -163,11 +171,8 @@ export const revokeAllAccess = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking access.");
     enforceAuthAndAppCheck(request, uid);
 
-    const scopeRaw = boundedTrimmedString(request.data?.scope, "scope", 16, false) ?? "sync";
-    if (scopeRaw !== "sync" && scopeRaw !== "all") {
-      throw new HttpsError("invalid-argument", "scope must be sync or all.");
-    }
-    const scope: PanicScope = scopeRaw;
+    const parsedInput = parseCallableInput("revokeAllAccess", REVOKE_ALL_ACCESS_INPUT, request.data);
+    const scope: PanicScope = parsedInput.scope === "all" ? "all" : "sync";
     await enforceHighRiskOwnerAction(request, uid, {
       actionKind: "revoke_all_access",
       subjectId: scope,

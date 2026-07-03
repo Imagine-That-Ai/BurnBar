@@ -1115,6 +1115,18 @@ final class AgentToolBroker: Sendable {
     }
 }
 
+/// Result of an OpenAI-compatible `/v1/models` probe. `available` and
+/// `authRejected` are mutually exclusive: `available` means the catalog was
+/// readable, while `authRejected` means a 401/403 answer proved a gateway is
+/// up but rejected the presented key.
+struct OpenAICompatibleModelProbeResult: Sendable {
+    var available: Bool
+    var authRejected: Bool = false
+    var modelName: String?
+    var hermesModels: [HermesAdvertisedModel] = []
+    var models: [OpenAICompatibleAdvertisedModel] = []
+}
+
 enum OpenAICompatibleModelProbe {
     static func modelsURL(baseURL: URL) -> URL? {
         URL(string: "v1/models", relativeTo: baseURL)?.absoluteURL
@@ -1180,27 +1192,53 @@ enum OpenAICompatibleModelProbe {
         return (result.available, result.modelName)
     }
 
+    /// `probeWithModel` plus the auth verdict, for callers that must distinguish
+    /// "gateway down" from "gateway up but the key was rejected" (a 401/403
+    /// proves a server is answering, so relaunching it would fork a duplicate).
+    static func probeWithModelAuth(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, authRejected: Bool, modelName: String?) {
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session)
+        return (result.available, result.authRejected, result.modelName)
+    }
+
+    /// hermes-agent (≥0.17) answers 401 `invalid_api_key` when `API_SERVER_KEY`
+    /// is required and the bearer is missing/stale; generic gateways use 403 too.
+    static func isAuthRejectedStatus(_ statusCode: Int) -> Bool {
+        statusCode == 401 || statusCode == 403
+    }
+
     static func probeWithModels(
         baseURL: URL,
         bearerToken: String?,
         timeout: TimeInterval = 2,
         session: URLSession = .shared
-    ) async -> (available: Bool, modelName: String?, hermesModels: [HermesAdvertisedModel], models: [OpenAICompatibleAdvertisedModel]) {
+    ) async -> OpenAICompatibleModelProbeResult {
         guard let request = modelsRequest(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout) else {
-            return (false, nil, [], [])
+            return OpenAICompatibleModelProbeResult(available: false)
         }
         do {
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else { return (false, nil, [], []) }
-            return (
-                true,
-                OpenAICompatibleModelListParser.modelName(from: data),
-                OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
-                OpenAICompatibleModelListParser.advertisedModels(from: data)
+            guard let http = response as? HTTPURLResponse else {
+                return OpenAICompatibleModelProbeResult(available: false)
+            }
+            guard (200...299).contains(http.statusCode) else {
+                return OpenAICompatibleModelProbeResult(
+                    available: false,
+                    authRejected: isAuthRejectedStatus(http.statusCode)
+                )
+            }
+            return OpenAICompatibleModelProbeResult(
+                available: true,
+                modelName: OpenAICompatibleModelListParser.modelName(from: data),
+                hermesModels: OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
+                models: OpenAICompatibleModelListParser.advertisedModels(from: data)
             )
         } catch {
-            return (false, nil, [], [])
+            return OpenAICompatibleModelProbeResult(available: false)
         }
     }
 }
@@ -1661,25 +1699,43 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             if chunks.joined(separator: "\n").count > 4096 { break }
         }
         let text = chunks.joined(separator: "\n")
-        guard !text.isEmpty else { return "HTTP \(statusCode)" }
+        guard !text.isEmpty else {
+            return appendingAuthGuidanceIfNeeded("HTTP \(statusCode)", statusCode: statusCode)
+        }
         if let data = text.data(using: .utf8) {
             return errorDetail(statusCode: statusCode, data: data)
         }
-        return "HTTP \(statusCode): \(text)"
+        return appendingAuthGuidanceIfNeeded("HTTP \(statusCode): \(text)", statusCode: statusCode)
     }
 
     private static func errorDetail(statusCode: Int, data: Data) -> String {
         let text = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let detail: String
         if let parsed = parsedErrorMessage(from: data)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !parsed.isEmpty {
             if parsed.localizedCaseInsensitiveContains("HTTP \(statusCode)") {
-                return parsed
+                detail = parsed
+            } else {
+                detail = "HTTP \(statusCode): \(parsed)"
             }
-            return "HTTP \(statusCode): \(parsed)"
+        } else if text.isEmpty {
+            detail = "HTTP \(statusCode)"
+        } else {
+            detail = "HTTP \(statusCode): \(text)"
         }
-        guard !text.isEmpty else { return "HTTP \(statusCode)" }
-        return "HTTP \(statusCode): \(text)"
+        return appendingAuthGuidanceIfNeeded(detail, statusCode: statusCode)
+    }
+
+    /// A 401/403 from any OpenAI-compatible gateway is a configuration problem
+    /// the user can fix — say where, instead of leaving the raw gateway JSON as
+    /// a dead end. This client serves Hermes, OpenClaw, and Pi alike, so the
+    /// guidance stays backend-neutral; the Hermes pre-send gate delivers the
+    /// Hermes-specific remedies (`hermesAuthRejectedMessage`).
+    static func appendingAuthGuidanceIfNeeded(_ detail: String, statusCode: Int) -> String {
+        guard OpenAICompatibleModelProbe.isAuthRejectedStatus(statusCode) else { return detail }
+        return detail + " — the gateway rejected this app's API key. "
+            + "Update this backend's Bearer Token under Settings → Chat Gateway, then send again."
     }
 
     private static func parsedErrorMessage(from data: Data) -> String? {

@@ -1,9 +1,17 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def current_release_tag() -> str:
+    project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
+    match = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?', project_yml)
+    assert match is not None, "project.yml must declare MARKETING_VERSION"
+    return f"v{match.group(1)}"
 
 
 def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
@@ -17,8 +25,8 @@ def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
 
     assert result.returncode != 0
     assert "HOLD: BurnBar product release preflight is not ready" in result.stderr
-    assert "runtimeReadiness.status must be 'ready'" in result.stderr
-    assert "legal release review is not approved" in result.stderr
+    assert "legal release review is not approved: 'owner_attested_soft_approval'" in result.stderr
+    assert "legal release review pending evidence must explicitly say it is not legal approval" in result.stderr
 
 
 def test_release_preflight_rejects_pending_legal_template_as_release_approval():
@@ -38,6 +46,30 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
     assert result.returncode != 0
     assert "HOLD: BurnBar product release preflight is not ready" in result.stderr
     assert "legal release review is not approved: 'pending'" in result.stderr
+
+
+def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
+    evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
+    data = json.loads(evidence.read_text(encoding="utf-8"))
+    expected_release_tag = current_release_tag()
+
+    assert data["repo"]["releaseTag"] == expected_release_tag
+
+    result = subprocess.run(
+        [
+            "python3",
+            "scripts/ci/check_burnbar_release_preflight.py",
+            "--allow-owner-emergency-approval",
+            "--expected-release-tag",
+            expected_release_tag,
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert "owner emergency approval: repo.releaseTag" not in result.stderr
 
 
 def test_release_preflight_strictly_validates_claimed_approval(tmp_path):
@@ -103,6 +135,231 @@ def test_product_release_workflows_invoke_release_preflight():
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
+
+
+def test_release_workflow_uses_bounded_release_critical_app_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    smoke = (ROOT / "scripts/test-openburnbar-release-smoke.sh").read_text(encoding="utf-8")
+    filters = (ROOT / "scripts/lib/openburnbar-release-app-test-filters.sh").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Run OpenBurnBar release-critical app tests")
+    step_end = body.index("- name: Verify SQLCipher codec in Release configuration")
+    app_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 75" in app_step
+    assert "cold GitHub macOS runners still compile the" in app_step
+    assert "source scripts/lib/openburnbar-release-app-test-filters.sh" in app_step
+    assert 'OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)"' in app_step
+    assert "./scripts/test-openburnbar-app.sh" in app_step
+    assert "- name: Run OpenBurnBar app tests" not in body
+    assert "timeout-minutes: 180" not in app_step
+    assert "run: ./scripts/test-openburnbar-app.sh" not in body
+
+    assert "source \"$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh\"" in smoke
+    assert 'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"' in smoke
+
+    for required_filter in (
+        "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",
+        "OpenBurnBarTests/OpenBurnBarAppCheckProviderFactoryTests",
+        "OpenBurnBarTests/OpenBurnBarRuntimeTests",
+        "OpenBurnBarTests/PopoverContentPrewarmerTests",
+        "OpenBurnBarTests/PaneWorkspaceModelTests",
+        "OpenBurnBarTests/ChatSessionControllerPaneModeTests",
+    ):
+        assert required_filter in filters
+
+
+def test_release_build_and_release_job_has_packaging_headroom():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_start = body.index("  build-and-release:")
+    build_end = body.index("  smoke-test:")
+    build_job = body[build_start:build_end]
+
+    assert "timeout-minutes: 360" in build_job
+    assert "v1.0.16 proved those gates can legitimately run past 180 minutes" in build_job
+    assert "Build signed Android release bundle" in build_job
+    assert "Notarize and staple DMG" in build_job
+
+
+def test_release_workflow_keeps_quiet_xcode_build_alive():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Build Release .app (unsigned)")
+    step_end = body.index("- name: Embed daemon binary in app bundle", step_start)
+    app_build_step = body[step_start:step_end]
+
+    assert "openburnbar-release-app-xcodebuild.log" in app_build_step
+    assert "xcodebuild_pid" in app_build_step
+    assert "xcodebuild Release .app still running" in app_build_step
+    assert "xcodebuild Release .app recent output" in app_build_step
+    assert "tail -n 40 \"$xcodebuild_log\"" in app_build_step
+    assert "tail -n 200 \"$xcodebuild_log\"" in app_build_step
+    assert "wait \"$xcodebuild_pid\"" in app_build_step
+
+
+def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    prepare_start = body.index("- name: Prepare Signal FFI XCFramework for release app")
+    lockfile_index = body.index("- name: Verify OpenBurnBar app SwiftPM lockfile")
+    resolve_index = body.index("- name: Resolve Xcode packages")
+    app_build_index = body.index("- name: Build Release .app (unsigned)")
+    prepare_step = body[prepare_start:lockfile_index]
+
+    assert prepare_start < lockfile_index < resolve_index < app_build_index
+    assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
+    assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
+    assert "CARGO_BUILD_JOBS: \"2\"" in prepare_step
+    assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
+
+
+def test_release_workflow_guards_owner_approved_validation_bypass():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "run_release_validation_gates:" in body
+    assert "release_validation_bypass_reason:" in body
+    assert "Validate release validation bypass reason" in body
+    assert "run_release_validation_gates=false requires release_validation_bypass_reason" in body
+    assert "release_validation_bypass_reason must name owner approval" in body
+    assert "release_validation_bypass_reason must include the prior GitHub Actions run URL" in body
+    assert "Record owner-approved release validation bypass" in body
+
+    build_start = body.index("  build-and-release:")
+    build_end = body.index("  smoke-test:")
+    build_job = body[build_start:build_end]
+
+    for step_name in (
+        "- name: Run Swift tests",
+        "- name: Run OpenBurnBar release-critical app tests",
+        "- name: Verify SQLCipher codec in Release configuration",
+        "- name: Run retrieval replay evals",
+        "- name: Run Android unit tests",
+    ):
+        step_start = build_job.index(step_name)
+        step_end = build_job.find("\n      - name:", step_start + 1)
+        if step_end == -1:
+            step_end = len(build_job)
+        step = build_job[step_start:step_end]
+        assert "inputs.run_release_validation_gates" in step
+
+    packaging_start = build_job.index("- name: Build signed Android release bundle")
+    packaging_step_end = build_job.find("\n      - name:", packaging_start + 1)
+    packaging_step = build_job[packaging_start:packaging_step_end]
+    assert "inputs.run_release_validation_gates" not in packaging_step
+
+
+def test_release_workflow_uses_bounded_release_critical_mobile_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    filters = (ROOT / "scripts/lib/openburnbar-release-mobile-test-filters.sh").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Run OpenBurnBar mobile unit tests")
+    step_end = body.index("- name: Record owner-approved mobile unit test bypass")
+    mobile_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 75" in mobile_step
+    assert "source scripts/lib/openburnbar-release-mobile-test-filters.sh" in mobile_step
+    assert 'OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)"' in mobile_step
+    assert "./scripts/test-openburnbar-mobile.sh" in mobile_step
+    assert "full mobile suite is a PR/CI responsibility" in mobile_step
+    assert "AgentLiveStagePresenterTests" not in filters
+
+    for required_filter in (
+        "OpenBurnBarMobileTests/AppStoreReviewComplianceTests",
+        "OpenBurnBarMobileTests/AuthStoreTests",
+        "OpenBurnBarMobileTests/ConversationCockpitAuthTests",
+        "OpenBurnBarMobileTests/iPadNavigationUITests",
+        "OpenBurnBarMobileTests/MobileBackdropKernelTests",
+        "OpenBurnBarMobileTests/MobileSentryScrubberTests",
+        "OpenBurnBarMobileTests/MobileThemeTests",
+        "OpenBurnBarMobileTests/PulseWindowMetricsTests",
+    ):
+        assert required_filter in filters
+
+
+def test_release_workflow_bounds_sqlcipher_release_codec_gate():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    step_start = body.index("- name: Verify SQLCipher codec in Release configuration")
+    step_end = body.index("- name: Run OpenBurnBar mobile unit tests")
+    sqlcipher_step = body[step_start:step_end]
+
+    assert "timeout-minutes: 60" in sqlcipher_step
+    assert "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh" in sqlcipher_step
+
+
+def test_release_workflow_parallelizes_independent_publish_gates():
+    body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "release-functions-gate:" in body
+    assert "release-extension-gate:" in body
+    assert "release-supply-chain-gate:" in body
+    assert "name: Release Functions Gate" in body
+    assert "name: Release Extension and TS Gate" in body
+    assert "name: Release Supply Chain Gate" in body
+
+    functions_start = body.index("  release-functions-gate:")
+    extension_start = body.index("  release-extension-gate:")
+    supply_chain_start = body.index("  release-supply-chain-gate:")
+    build_start = body.index("  build-and-release:")
+    for gate_job in (
+        body[functions_start:extension_start],
+        body[extension_start:supply_chain_start],
+        body[supply_chain_start:build_start],
+    ):
+        assert "permissions:\n      contents: read" in gate_job
+        assert "id-token: write" not in gate_job
+        assert "attestations: write" not in gate_job
+
+    smoke_start = body.index("  smoke-test:")
+    build_job = body[build_start:smoke_start]
+    assert "npm --prefix functions run lint" not in build_job
+    assert "npm --prefix functions run build" not in build_job
+    assert "npm --prefix functions test" not in build_job
+    assert "./scripts/test-openburnbar-ts.sh" not in build_job
+    assert "./scripts/test-openburnbar-extension-host.sh" not in build_job
+    assert "npm --prefix functions run test:firestore-rules" not in build_job
+    assert "./scripts/supply-chain-audit.sh" not in build_job
+    assert "Inject extension Sentry DSN" in build_job
+    assert "Build extension" in build_job
+
+    publish_start = body.index("  publish:")
+    verify_start = body.index("  verify-live-update-feed:")
+    publish_job = body[publish_start:verify_start]
+    assert (
+        "needs: [build-and-release, smoke-test, release-functions-gate, "
+        "release-extension-gate, release-supply-chain-gate]"
+    ) in publish_job
+
+
+def test_app_test_wrapper_supports_multiple_normalized_filters():
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "OPENBURNBAR_APP_TEST_FILTERS=$'AgentLensTests/Foo\\n"
+                "OpenBurnBarTests/Bar,OpenBurnBarTests/Baz;AgentLensTests' "
+                "scripts/test-openburnbar-app.sh --print-xcodebuild-filters"
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    filters = [
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("OpenBurnBarTests")
+    ]
+    assert filters == [
+        "OpenBurnBarTests/Foo",
+        "OpenBurnBarTests/Bar",
+        "OpenBurnBarTests/Baz",
+        "OpenBurnBarTests",
+    ]
 
 
 def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
@@ -263,10 +520,22 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'python3 - "$installed_cli_bin"' in script
     assert '[cli, "health"]' in script
     assert "subprocess.TimeoutExpired" in script
-    assert "timeout=2" in script
-    assert "health_deadline_seconds=30" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS" in script
+    assert "timeout=timeout" in script
+    assert "OpenBurnBarCLI health timed out after {timeout}s" in script
+    assert "OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS" in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_CLI_TIMEOUT_SECONDS:-}" 45' in script
+    assert 'positive_integer_or_default "${OPENBURNBAR_RELEASE_SMOKE_HEALTH_DEADLINE_SECONDS:-}" 180' in script
+    assert '[[ "${GITHUB_ACTIONS:-}" == "true" ]]' in script
+    assert 'echo "::add-mask::$socket_auth_token"' in script
+    assert "--socket-auth-token-file" in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"' in script
+    assert 'OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"' not in script
+    assert "<redacted>" in script
     assert 'while [[ "$(date +%s)" -lt "$health_deadline_epoch" ]]' in script
     assert "for attempt in {1..60}" not in script
+    assert "launchctl print" in script
+    assert "stat -f" in script
     assert '"${installed_daemon_bin}"' in script
     assert '"$cli_bin" health' not in script
     assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in script
@@ -274,3 +543,16 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert '"method": "daemon.health"' not in script
     assert "Daemon socket not found at $DAEMON_SOCKET after 20s" not in workflow
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
+
+
+def test_daemon_token_file_arguments_override_inherited_environment():
+    daemon_main = (
+        ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift"
+    ).read_text(encoding="utf-8")
+
+    assert 'var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]' in daemon_main
+    assert 'var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]' in daemon_main
+    assert 'gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert 'socketAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert "if gatewayAuthToken == nil" not in daemon_main
+    assert "if socketAuthToken == nil" not in daemon_main
